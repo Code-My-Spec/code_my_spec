@@ -1,7 +1,6 @@
 defmodule CmsHarness.Agents.Tools.Direct do
   @moduledoc """
-  The plumbing under the tools an agent carries because a script may not have
-  them.
+  The tools an agent carries because a script may not have them.
 
   `CodeMode.Catalog` refuses to bind `assign_subagent` to a script, and the
   reason it gives is about scripts: "it spawns background work, and a loop
@@ -18,60 +17,41 @@ defmodule CmsHarness.Agents.Tools.Direct do
   where the model decides each one and the transcript shows it — which is
   exactly what a loop would take away.
 
-  Everything here is the part that would be copied three times: the session, the
-  forward, and the refusal when a machine cannot reach its server. What each
-  tool supplies is its name, its sentence, and its schema.
+  Each is built from the definition the server's launch request carries, and
+  forwards to the MCP tool of the same name. The name, description and schema
+  are the server's, so the engine's tool cannot disagree with the one every
+  other client lists. They used to be a hand-written module each, and a tool
+  the server listed with no module here answered `Unknown tool` — `promote` and
+  all four of the spine did, each found by an agent that had been told to call
+  it.
   """
 
-  @doc """
-  Define an Alloy tool that forwards to one MCP tool by name.
+  alias CmsHarness.Mcp
 
-  `:name` is the MCP tool's name and the Alloy tool's; they are the same tool
-  seen from two sides, and giving them different names would make the agent's
-  transcript disagree with the server's log about what was called.
-  """
-  defmacro __using__(opts) do
-    name = Keyword.fetch!(opts, :name)
-    nothing_to = Keyword.fetch!(opts, :nothing_to)
-
-    quote do
-      @behaviour Alloy.Tool
-
-      alias CmsHarness.Mcp
-
-      @impl true
-      def name, do: unquote(name)
-
-      @impl true
-      def execute(input, context) do
-        with {:ok, client} <- session(context) do
-          Mcp.call(client, unquote(name), arguments(input))
-        end
-      end
-
+  @doc "An Alloy tool forwarding to the MCP tool `definition` describes."
+  @spec tool(map()) :: Alloy.Tool.Inline.t()
+  def tool(%{"name" => name} = definition) do
+    Alloy.Tool.inline(
+      name: name,
+      description: definition["description"],
+      input_schema: definition["input_schema"],
+      execute: &forward(name, &1, &2),
       # Only a person's turn. `:code_execution` is what `run_script` runs as,
       # and letting these back in through that door would rebuild the loop the
       # exclusion exists to prevent.
-      @impl true
-      def allowed_callers, do: [:human]
+      allowed_callers: [:human],
+      result_type: :text
+    )
+  end
 
-      @impl true
-      def result_type, do: :text
+  # Pass through what the caller set and nothing else, so a tool that gains an
+  # argument on the server gains it here without an edit.
+  defp forward(name, input, %{mcp_client: client}) when not is_nil(client),
+    do: Mcp.call(client, name, if(is_map(input), do: input, else: %{}))
 
-      # Pass through what the caller set and nothing else, so a tool that gains
-      # an argument on the server gains it here without an edit.
-      defp arguments(input) when is_map(input), do: input
-      defp arguments(_input), do: %{}
-
-      defp session(%{mcp_client: client}) when not is_nil(client), do: {:ok, client}
-
-      defp session(_context) do
-        {:error,
-         "This agent has no session with its project's server, so there is " <>
-           unquote(nothing_to) <> ". Check the harness is connected."}
-      end
-
-      defoverridable arguments: 1
-    end
+  defp forward(name, _input, _context) do
+    {:error,
+     "This agent has no session with its project's server, so `#{name}` cannot reach it. " <>
+       "Check the harness is connected."}
   end
 end

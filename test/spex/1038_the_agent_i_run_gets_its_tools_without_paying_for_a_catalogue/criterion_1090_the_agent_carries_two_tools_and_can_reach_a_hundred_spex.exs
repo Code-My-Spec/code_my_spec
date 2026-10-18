@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
       end
 
       then_ "it is code mode's two, and not the ninety-eight behind them", context do
-        names = Enum.map(context.tools, & &1.name())
+        names = context.tools
 
         assert "run_script" in names,
                "the agent cannot run a script, so the ninety-eight are unreachable " <>

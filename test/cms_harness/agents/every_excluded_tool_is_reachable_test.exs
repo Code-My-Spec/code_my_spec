@@ -61,9 +61,9 @@ defmodule CmsHarness.Agents.EveryExcludedToolIsReachableTest do
   }
 
   defp carried do
-    [direct_tools: ToolIndex.carried(ToolRegistry.registry())]
+    [direct_tools: ToolIndex.carried_definitions(ToolRegistry.registry())]
     |> Engine.tools()
-    |> Enum.map(& &1.name())
+    |> Enum.map(&Engine.tool_name/1)
     |> MapSet.new()
   end
 

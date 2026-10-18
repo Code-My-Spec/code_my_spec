@@ -15,7 +15,10 @@ defmodule CmsHarness.Agents.Engine.UnknownToolMessageTest do
 
   defp direct_names,
     do:
-      Enum.map(Impl.tools(direct_tools: ToolIndex.carried(ToolRegistry.registry())), & &1.name())
+      Enum.map(
+        Impl.tools(direct_tools: ToolIndex.carried_definitions(ToolRegistry.registry())),
+        &Impl.tool_name/1
+      )
 
   defp answer(name), do: Impl.unknown_tool_message(name, reach(), direct_names())
 

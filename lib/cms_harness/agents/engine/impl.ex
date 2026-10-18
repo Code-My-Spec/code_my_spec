@@ -19,6 +19,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
+  alias CmsHarness.Agents.Tools.Direct
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
@@ -142,7 +143,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   Read off the running agent, not recomputed.
   """
-  @spec agent_tools(String.t()) :: [module()]
+  @spec agent_tools(String.t()) :: [module() | Alloy.Tool.Inline.t()]
   def agent_tools(agent_id) do
     case whereis(agent_id) do
       {:ok, pid} -> GenServer.call(pid, :tools)
@@ -700,12 +701,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   What an agent of this type carries.
 
   The four core tools (read, write, edit, bash) plus the launch request's
-  `direct_tools`, each resolved to `CmsHarness.Agents.Tools.<Name>` by its MCP
-  name. Everything else is reached through `run_script`. The server's
-  `ToolIndex.carried/1` is the one list; tools `CodeMode.Catalog` excludes from
-  scripts must be direct here. See knowledge/harness, "Agent engine".
+  `direct_tools`: the server's `ToolIndex.carried_definitions/1`, each built by
+  `direct_tool/1`. Everything else is reached through `run_script`. Tools
+  `CodeMode.Catalog` excludes from scripts must be direct here. See
+  knowledge/harness, "Agent engine".
   """
-  @spec tools(keyword()) :: [module()]
+  @spec tools(keyword()) :: [module() | Alloy.Tool.Inline.t()]
   def tools(opts) do
     [
       Alloy.Tool.Core.Read,
@@ -716,9 +717,24 @@ defmodule CmsHarness.Agents.Engine.Impl do
       Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
   end
 
-  @doc false
-  @spec direct_tool(String.t()) :: module()
-  def direct_tool(name), do: Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
+  @doc """
+  One carried tool. A harness module of the tool's name when it does more
+  than forward (`run_script`, `run_browser_script`, `tool_docs`); otherwise a
+  forward to the server built from the definition.
+  """
+  @spec direct_tool(map()) :: module() | Alloy.Tool.Inline.t()
+  def direct_tool(%{"name" => name} = definition) do
+    module = Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
+
+    if Code.ensure_loaded?(module) and function_exported?(module, :execute, 2),
+      do: module,
+      else: Direct.tool(definition)
+  end
+
+  @doc "A tool's name, whether it is a module or an inline tool."
+  @spec tool_name(module() | Alloy.Tool.Inline.t()) :: String.t()
+  def tool_name(%Alloy.Tool.Inline{name: name}), do: name
+  def tool_name(module) when is_atom(module), do: module.name()
 
   @doc """
   What a direct call to a tool the engine does not carry is told.
@@ -775,7 +791,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   defp unknown_tool_hook(opts) do
     reach = Keyword.get(opts, :tool_reach)
-    direct_names = Enum.map(tools(opts), & &1.name())
+    direct_names = Enum.map(tools(opts), &tool_name/1)
     &unknown_tool_message(&1, reach, direct_names)
   end
 
