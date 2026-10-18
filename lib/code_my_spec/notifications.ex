@@ -607,10 +607,20 @@ defmodule CodeMySpec.Notifications do
     released
   end
 
+  # On 234810fe, main ruled the task-specific resume notice gets one wording
+  # from one shared builder (TaskOwner.resolved_header/1 + resume_instruction/2,
+  # matched in Work.offer_prompt_body/3) -- the "leave the loop" paragraph
+  # tap_out_denied_notice/2 leads with does not fit a task-specific deny (it
+  # describes the whole-agent continuous-stop case wake_if_still_in_the_loop/2
+  # still uses it for) and no active 1080 criterion asks for that wording
+  # here. But the actual information in that notice -- the decider's own
+  # reason, and any blocker it named that has since resolved -- is real and
+  # stays: tap_out_task_denied_detail/2 carries only that, not the
+  # mismatched lead paragraph.
   defp settle_tap_out_blocker(%{decision: "deny"} = request, answer) do
     {:ok, released} =
       TaskOwner.blocker_resolved(:tap_out, request.id, :denied,
-        detail: tap_out_denied_notice(answer, request)
+        detail: tap_out_task_denied_detail(answer, request)
       )
 
     released
@@ -671,6 +681,17 @@ defmodule CodeMySpec.Notifications do
 
   # The decider's reason carries: without the why, an agent re-reads its own
   # transcript and reaches its last conclusion again.
+  # The reason and settled-blockers reconciliation alone, with no lead
+  # paragraph -- for a task-specific deny, whose own resume text (built by
+  # Work.offer_prompt_body/3, matching TaskOwner.resolved_header/1) already
+  # says what happened.
+  defp tap_out_task_denied_detail(answer, request) do
+    ""
+    |> append_reason(answer)
+    |> append_settled_blockers(request)
+    |> String.trim_leading()
+  end
+
   defp tap_out_denied_notice(answer, request) do
     base = """
     Your request to leave the loop was declined. You are still in it, and there

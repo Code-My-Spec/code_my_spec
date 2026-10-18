@@ -705,9 +705,14 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
+  # Matches TaskOwner.resolved_header/1's own format for {:tap_out, id, :denied}
+  # exactly, so a later rung of the same offer (this path) reads the same as
+  # the first delivery (resume_ready/4, via wake_released/wake_with_notice) --
+  # main's correction on 234810fe: one event, one wording, from one shared
+  # builder, not two copies that happened to say similar things.
   defp offer_prompt_body(scope, agent, {"tap_out", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
-    "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
+    "Your blocker tap_out #{id} was denied; #{resume_instruction(scope, tasks)}"
   end
 
   # The extra text is chosen by the offer's rung on its kind's ladder: `:remind`
