@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
     end
   end
 
-  spex "A work offer is declined by a tap-out on it", criterion: 1675 do
+  spex "A pending tap-out on a work offer leaves it open", criterion: 1675 do
     scenario "the coder starts the work and taps out of it" do
       given_ "a coder offered work, mid-turn", context do
         :ok = Fixtures.install_recording_agent_transport(context)
@@ -78,10 +78,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
         {:ok, context}
       end
 
-      then_ "the work offer is declined, with its reason", context do
+      # Criterion 2162: a tap-out does not decline an offer -- it stays open
+      # on the agent until main resolves it.
+      then_ "the work offer stays open, not declined", context do
         assert [offer] = offers(context, context.coder, %{kind: "work"}), listing(context)
-        assert offer.status == "declined"
-        assert offer.reason =~ "Needs a product call."
+        assert offer.status == "open"
         {:ok, context}
       end
     end
