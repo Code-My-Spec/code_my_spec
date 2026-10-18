@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2168Spex do
         :ok = end_turn(context, context.coder)
 
         id = context.coder
-        assert_receive {:agent_dispatch, ^id, _ref, first}, 2_000
+        first = next_problems_dispatch(id)
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)
         {:ok, Map.put(context, :first, first)}
       end
@@ -54,8 +54,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2168Spex do
 
       when_ "it ignores that rung and ends another turn", context do
         :ok = end_turn(context, context.coder)
-        id = context.coder
-        assert_receive {:agent_dispatch, ^id, _ref, second}, 2_000
+        second = next_problems_dispatch(context.coder)
         {:ok, Map.put(context, :second, second)}
       end
 
@@ -66,4 +65,25 @@ defmodule CodeMySpecSpex.Story1080.Criterion2168Spex do
       end
     end
   end
+
+  # land_analysis's own real run completion also dispatches a generic "your
+  # run finished" alert to the agent, ahead of the turn-end problems-offer
+  # dispatch this scenario actually tests -- skip past anything that isn't
+  # the ladder's own wording, within the same window.
+  defp next_problems_dispatch(id, deadline \\ System.monotonic_time(:millisecond) + 2_000) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {:agent_dispatch, ^id, _ref, text} ->
+        matches? = text =~ "problems to fix" or text =~ "lib/example_context"
+        pick_problems_dispatch(matches?, text, id, deadline)
+    after
+      remaining -> flunk("no problems-offer dispatch for #{id} within the window")
+    end
+  end
+
+  defp pick_problems_dispatch(true, text, _id, _deadline), do: text
+
+  defp pick_problems_dispatch(false, _text, id, deadline),
+    do: next_problems_dispatch(id, deadline)
 end
