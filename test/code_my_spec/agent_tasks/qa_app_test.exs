@@ -241,31 +241,27 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       assert prompt =~ "BDD Spec Coverage"
     end
 
-    test "generates per-story prompt files", %{scope: scope} do
+    test "writes no per-story prompt files", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       assert {:ok, _prompt} = QaApp.command(scope, task)
 
-      # Prompt file should be written for the story
       prompt_path =
         Path.join(fixture_environment(scope).cwd, ".code_my_spec/qa/#{story.number}/prompt.md")
 
-      assert File.exists?(prompt_path)
-
-      content = File.read!(prompt_path)
-      assert content =~ "User Authentication"
-      assert content =~ "start_task"
-      assert content =~ "qa_complete"
+      refute File.exists?(prompt_path)
     end
 
-    test "includes prompt file paths in orchestration prompt", %{scope: scope} do
+    test "dispatches each story by number to start its own qa_complete task", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
       assert {:ok, prompt} = QaApp.command(scope, task)
 
-      assert prompt =~ ".code_my_spec/qa/#{story.number}/prompt.md"
+      assert prompt =~ "Story #{story.number}: User Authentication"
+      assert prompt =~ "qa_complete"
+      refute prompt =~ "prompt.md"
     end
   end
 

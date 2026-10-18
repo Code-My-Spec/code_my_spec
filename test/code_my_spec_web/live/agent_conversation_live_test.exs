@@ -937,6 +937,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       header = "header [data-test='story-progress']"
       row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
 
+      render_async(view)
       {done, total} = slice_progress(scope, project, story)
       assert has_element?(view, header <> "[data-done='#{done}'][data-total='#{total}']")
       assert has_element?(view, row <> "[data-done='#{done}'][data-total='#{total}']")
@@ -949,6 +950,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       send(view.pid, {:graph_updated, project.id})
       render(view)
+      render_async(view)
 
       {done, total} = slice_progress(scope, project, story)
       assert {done, total} != before or total == 0
