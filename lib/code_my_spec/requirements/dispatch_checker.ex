@@ -34,9 +34,9 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
   @doc """
   Whether the main agent has nothing to do about assignment.
 
-  Satisfied is the quiet state. Unsatisfied means: prepare the next epic and
-  send it for approval — not assign it, because sending and approving are two
-  separate acts.
+  Satisfied is the quiet state. Unsatisfied means: give a waiting fix to a free
+  team, or prepare the next epic and send it for approval — not assign it,
+  because sending and approving are two separate acts.
   """
   @spec dispatched?(term(), term()) :: {boolean(), map()}
   def dispatched?(scope, _entity), do: scope |> Epics.dispatch_state() |> verdict()
@@ -59,14 +59,27 @@ defmodule CodeMySpec.Requirements.DispatchChecker do
       {:nothing_to_assign, :all_assigned} ->
         {true, %{status: "Every ready story belongs to an epic; nothing left to hand out"}}
 
-      {:work_to_assign, stories} ->
-        {false,
-         %{
-           reason:
-             "#{length(stories)} ready #{noun(length(stories))} and nothing being built — " <>
-               "group them into an epic and send it for approval"
-         }}
+      {:work_to_assign, waiting} ->
+        {false, %{reason: "Nothing is being built. " <> Enum.join(reasons(waiting), "; ")}}
     end
+  end
+
+  # Fixes first, by number: a shipped story's accepted fix is approved work, so
+  # it goes straight to a free team rather than through an epic.
+  defp reasons(%{fixes: fixes, ready: ready}) do
+    [
+      fixes != [] &&
+        "#{length(fixes)} #{noun(length(fixes))} with accepted fixes no team has " <>
+          "(#{numbers(fixes)}): give one to a free team with set_active_story",
+      ready != [] &&
+        "#{length(ready)} ready #{noun(length(ready))}: group them into an epic and send it for approval"
+    ]
+    |> Enum.filter(& &1)
+  end
+
+  defp numbers(stories) do
+    shown = stories |> Enum.take(5) |> Enum.map_join(", ", &"##{&1.number}")
+    if length(stories) > 5, do: shown <> ", …", else: shown
   end
 
   defp noun(1), do: "story"

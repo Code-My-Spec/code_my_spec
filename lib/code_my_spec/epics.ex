@@ -15,6 +15,8 @@ defmodule CodeMySpec.Epics do
     top_level?: true,
     deps: [
       CodeMySpec.Agents.Agent,
+      CodeMySpec.Configurations,
+      CodeMySpec.Issues,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
       CodeMySpec.Users.Scope,
@@ -25,8 +27,11 @@ defmodule CodeMySpec.Epics do
   import Ecto.Query, only: [from: 2, where: 3]
 
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Epics.Epic
   alias CodeMySpec.Epics.EpicsRepository
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -109,8 +114,10 @@ defmodule CodeMySpec.Epics do
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(scope), message)
   end
 
+  @type waiting :: %{fixes: [Story.t()], ready: [Story.t()]}
+
   @type dispatch_state ::
-          {:work_to_assign, [Epic.t()]}
+          {:work_to_assign, waiting()}
           | {:nothing_to_assign, :in_progress}
           | {:nothing_to_assign, :all_assigned}
 
@@ -126,14 +133,45 @@ defmodule CodeMySpec.Epics do
   @spec dispatch_state(Scope.t()) :: dispatch_state()
   def dispatch_state(%Scope{active_project_id: project_id} = scope)
       when is_binary(project_id) do
-    cond do
-      in_progress?(project_id) -> {:nothing_to_assign, :in_progress}
-      unassigned(scope) == [] -> {:nothing_to_assign, :all_assigned}
-      true -> {:work_to_assign, unassigned(scope)}
+    if in_progress?(project_id) do
+      {:nothing_to_assign, :in_progress}
+    else
+      fixes = offered_fixes(scope)
+      awaiting_dispatch(candidates(scope, fixes), fixes)
     end
   end
 
   def dispatch_state(%Scope{}), do: {:nothing_to_assign, :all_assigned}
+
+  @doc """
+  What waits for a team, from rows the caller already holds.
+
+  Two kinds, kept apart because main acts on them differently. `fixes`: stories
+  holding a fix no team has (`Issue.fix_offered?/2`), worst severity first. The
+  issue was accepted, so the work is approved; epic, `ready_for_dev` and the
+  promotion stamp do not matter, and most legacy-promoted stories sit in draft
+  epics. A story already on a copy is that team's. `ready`: shaped stories in no
+  epic and not yet promoted, to be grouped and sent for approval.
+  """
+  @spec awaiting_dispatch([Story.t()], [Issue.t()]) :: dispatch_state()
+  def awaiting_dispatch(stories, fixes) do
+    worst = worst_severity_by_story(fixes)
+
+    waiting = %{
+      fixes:
+        stories
+        |> Enum.filter(&(Map.has_key?(worst, &1.id) and unheld?(&1)))
+        |> Enum.sort_by(
+          &{Map.fetch!(worst, &1.id), DateTime.to_unix(&1.inserted_at, :microsecond)}
+        ),
+      ready: Enum.filter(stories, &(ready_unassigned?(&1) and not Map.has_key?(worst, &1.id)))
+    }
+
+    case waiting do
+      %{fixes: [], ready: []} -> {:nothing_to_assign, :all_assigned}
+      waiting -> {:work_to_assign, waiting}
+    end
+  end
 
   # Anything dispatched and not finished, or any agent holding a claimed task.
   # A failed epic is not in progress — that is the distinction
@@ -172,20 +210,39 @@ defmodule CodeMySpec.Epics do
     |> Enum.any?(fn agent -> Enum.any?(agent.tasks || [], &(&1.status == :active)) end)
   end
 
-  # Stories that are ready, delivered nowhere yet, and belong to no epic.
-  # Ready matters: an unshaped story is not work waiting to be assigned, it is
-  # work waiting to be shaped, and proposing it would put the wrong thing in
-  # front of somebody. Promoted matters too, and separately: `ready_for_dev`
-  # is product's approval and stays set after delivery (clearing it on
-  # promotion would un-project the story's own requirement graph — issue
-  # b6462c09), so a shipped story is excluded here, in what still needs
-  # dispatch, rather than by changing what "ready" means.
-  defp unassigned(%Scope{active_project_id: project_id}) do
+  # `ready_for_dev` is product's approval and stays set after delivery
+  # (clearing it on promotion would un-project the story's own requirement
+  # graph — issue b6462c09), so a shipped story is excluded from `ready` by its
+  # stamp rather than by changing what "ready" means.
+  defp ready_unassigned?(story),
+    do: story.ready_for_dev == true and is_nil(story.epic_id) and is_nil(story.promoted_version)
+
+  defp unheld?(story), do: is_nil(story.working_copy_id) and is_nil(story.retired_at)
+
+  defp worst_severity_by_story(fixes) do
+    fixes
+    |> Enum.reject(&is_nil(&1.story_id))
+    |> Enum.group_by(& &1.story_id, &Issue.severity_index(&1.severity))
+    |> Map.new(fn {story_id, indexes} -> {story_id, Enum.min(indexes)} end)
+  end
+
+  defp offered_fixes(scope) do
+    threshold = Configurations.fix_issues_min_severity(scope)
+
+    scope
+    |> Issues.list_by_status_and_min_severity(:accepted, threshold)
+    |> Enum.filter(&(not is_nil(&1.story_id) and Issue.fix_offered?(&1, threshold)))
+  end
+
+  defp candidates(%Scope{active_project_id: project_id}, fixes) do
+    fix_story_ids = Enum.map(fixes, & &1.story_id)
+
     Story
     |> where(
       [s],
-      s.project_id == ^project_id and s.ready_for_dev == true and is_nil(s.epic_id) and
-        is_nil(s.promoted_version)
+      s.project_id == ^project_id and
+        ((s.ready_for_dev == true and is_nil(s.epic_id) and is_nil(s.promoted_version)) or
+           s.id in ^fix_story_ids)
     )
     |> Repo.all()
   end
