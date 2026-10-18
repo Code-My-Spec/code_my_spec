@@ -110,7 +110,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
       end
 
       then_ "exactly one denial offer on the task, linked to the resume prompt", context do
-        assert_offer(context, "denial", "task:#{context.task_id}")
+        # The subject is the tap-out, not the task: `Work.released_subject/1`
+        # keys a tap-out's release on its blocker, the same subject the
+        # denial itself was recorded against, so the two supersede each other.
+        assert_offer(context, "denial", "tap_out:#{context.blocker}")
       end
 
       then_ "the task is not also offered as a second active task", context do
