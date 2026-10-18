@@ -4,19 +4,14 @@
       {
         "hooks": [
           {
-            "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/session-start",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
+            "type": "http",
+            "url": "http://localhost:4004/api/hooks/session-start",
+            "timeout": 30,
+            "headers": {
+              "X-Messaging-Socket": "$CLAUDE_CODE_MESSAGING_SOCKET"
+            },
+            "allowedEnvVars": [
+              "CLAUDE_CODE_MESSAGING_SOCKET"
             ]
           }
         ]

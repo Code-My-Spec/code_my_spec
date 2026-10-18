@@ -143,6 +143,38 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
     assert Enum.map(Agents.running_main_agents(scope), & &1.id) == [terminal.id, ours.id]
   end
 
+  test "a live terminal main on another copy is not asked to do main's work", %{
+    scope: scope,
+    copy: main_copy
+  } do
+    {:ok, ours} =
+      AgentsRepository.create_agent(scope, %{
+        engine: :alloy,
+        provider: "anthropic",
+        role: :main,
+        working_copy_id: main_copy.id,
+        working_copy: main_copy.root
+      })
+
+    root = "/workspace/feature-#{System.unique_integer([:positive])}"
+
+    {:ok, feature} =
+      CodeMySpec.WorkingCopies.issue(scope, nil,
+        label: "a feature checkout",
+        root: root,
+        device: device_fixture(scope)
+      )
+
+    {:ok, feature} = CodeMySpec.WorkingCopies.report_root(feature, root)
+
+    {:ok, elsewhere} =
+      Agents.register_terminal(%{scope | active_working_copy_id: feature.id}, session_id())
+
+    CodeMySpecTest.AgentPresence.present(elsewhere)
+
+    assert Enum.map(Agents.running_main_agents(scope), & &1.id) == [ours.id]
+  end
+
   test "the SessionStart hook registers the agent and tells it who it is", %{scope: scope} do
     session = session_id()
 

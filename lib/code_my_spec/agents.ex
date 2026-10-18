@@ -1511,20 +1511,33 @@ defmodule CodeMySpec.Agents do
   The project's on-duty `main` agents (not off, not retired), newest first,
   wherever they run. The one source every "find the main agent" reads.
 
-  A terminal main takes main's duties only while it is live, ahead of the
-  mains we run (John, 2026-10-18); one not live is not asked at all, since
-  nothing reaches it.
+  A terminal main on the main copy takes main's duties while it is live,
+  ahead of the mains we run (John, 2026-10-18). One that is not live, or is
+  main of some other copy, is not asked: nothing reaches the first, and the
+  second is a person working elsewhere.
   """
   @spec running_main_agents(Scope.t()) :: [Agent.t()]
   def running_main_agents(%Scope{} = scope) do
     present = present_ids(scope)
+    main_copy_id = main_copy_id(scope)
 
     {terminal, ours} =
       scope
       |> AgentsRepository.list_running_main()
       |> Enum.split_with(&(&1.engine == :claude_code))
 
-    Enum.filter(terminal, &MapSet.member?(present, &1.id)) ++ ours
+    Enum.filter(
+      terminal,
+      &(&1.working_copy_id == main_copy_id and MapSet.member?(present, &1.id))
+    ) ++
+      ours
+  end
+
+  defp main_copy_id(scope) do
+    case WorkingCopies.main(scope) do
+      nil -> nil
+      copy -> copy.id
+    end
   end
 
   @doc """
@@ -1965,7 +1978,10 @@ defmodule CodeMySpec.Agents do
 
   # The project's agent wherever it currently is, which during a move is not
   # the main copy — that is the point of moving it.
-  defp main_agent_anywhere(%Scope{} = scope), do: scope |> running_main_agents() |> List.first()
+  # Only a main we run moves with the main copy: a terminal session is a
+  # person's, and stays where they are.
+  defp main_agent_anywhere(%Scope{} = scope),
+    do: scope |> running_main_agents() |> Enum.find(&(&1.engine != :claude_code))
 
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.
@@ -2212,9 +2228,17 @@ defmodule CodeMySpec.Agents do
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
-    with {:ok, _} = sent <- Mailbox.send_now(scope, id, ref) do
-      interrupt_if_busy(scope, id)
-      sent
+    with {:ok, entry} = sent <- Mailbox.send_now(scope, id, ref) do
+      case AgentsRepository.fetch_agent(scope, id) do
+        # A terminal session reads it at its next tool call; nothing stops its
+        # turn (story 1123), and the caller says so.
+        {:ok, %Agent{engine: :claude_code}} ->
+          {:ok, {:not_interruptible, entry}}
+
+        _ ->
+          interrupt_if_busy(scope, id)
+          sent
+      end
     end
   end
 
@@ -2251,6 +2275,25 @@ defmodule CodeMySpec.Agents do
          {:ok, _} <- Mailbox.ready(scope, agent_id, generation, event["ref"]) do
       broadcast_unreferenced_ready(scope, agent_id, agent, event)
 
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
+  # A terminal session queues what it is sent (story 1123), so a message
+  # written to its socket is delivered: its entry is settled and the next one
+  # pumped. Its turns are its own, reported from its hooks, not here.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "delivered", "ref" => ref, "generation" => generation},
+        _opts
+      )
+      when is_binary(ref) and is_binary(generation) do
+    with {:ok, _} <- Mailbox.finish(scope, agent_id, ref, generation) do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
       end)

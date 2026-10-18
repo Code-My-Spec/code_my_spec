@@ -46,7 +46,9 @@ defmodule CodeMySpec.Hooks.SessionStart do
   # The agent hears who it is: its id and the role it joined as, which it
   # settles with the person. Registration failing leaves the session working.
   defp introduce(body, {:ok, agent}) do
-    Map.put(body, :hookSpecificOutput, %{
+    body
+    |> Map.put(:agent_id, agent.id)
+    |> Map.put(:hookSpecificOutput, %{
       hookEventName: "SessionStart",
       additionalContext:
         "You are agent #{agent.id} on this project, registered as its #{agent.role} agent. " <>

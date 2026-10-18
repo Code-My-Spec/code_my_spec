@@ -21,7 +21,8 @@ defmodule CmsHarness.Agents do
     * `:status` — `{:ok, %{busy?: boolean()}}`.
     * `:interrupt` — `:ok`, `:idle`, or `{:error, reason}`.
 
-  `Engine` is the Alloy agent this harness runs itself.
+  `Engine` is the Alloy agent this harness runs itself; `Terminal` is a
+  person's Claude Code session, reached through its inbox socket.
   """
 
   use Boundary,
@@ -98,6 +99,15 @@ defmodule CmsHarness.Agents do
   end
 
   def launch(_request), do: {:error, :agent_id_required}
+
+  @doc """
+  Serve a terminal Claude Code session as `agent_id`, through its inbox
+  socket (story 1123). See `Agents.Terminal`.
+  """
+  @spec attach_terminal(String.t(), String.t(), String.t()) :: {:ok, pid()} | {:error, term()}
+  defdelegate attach_terminal(agent_id, socket, working_copy),
+    to: CmsHarness.Agents.Terminal,
+    as: :attach
 
   @doc """
   Stop one agent, and say whether it was there to stop.
