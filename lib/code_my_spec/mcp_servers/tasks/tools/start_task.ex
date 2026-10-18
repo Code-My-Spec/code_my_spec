@@ -427,7 +427,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   defp not_already_done(scope, owner, requirement) do
     if Requirements.satisfied_now?(scope, requirement) do
       :ok = Requirements.refresh_entity(scope, {requirement.entity_type, requirement.entity_id})
-      close_stale_offer(owner, requirement)
+      close_stale_offer(scope, owner, requirement)
 
       {:error,
        "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
@@ -438,14 +438,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     end
   end
 
-  defp close_stale_offer(%Agent{id: id}, requirement),
+  # A story's own offer subject is keyed on its public number (the same key
+  # Work.node_key/2 builds), not the database id `requirement.entity_id`
+  # carries -- the same resolution `entity_label/2` below already needs for
+  # the same reason.
+  defp close_stale_offer(scope, %Agent{id: id}, %{entity_type: "story"} = requirement) do
+    Offers.close_stale(id, "story:#{entity_label(scope, requirement)}:#{requirement.name}")
+  end
+
+  defp close_stale_offer(_scope, %Agent{id: id}, requirement),
     do:
       Offers.close_stale(
         id,
         "#{requirement.entity_type}:#{requirement.entity_id}:#{requirement.name}"
       )
 
-  defp close_stale_offer(_owner, _requirement), do: :ok
+  defp close_stale_offer(_scope, _owner, _requirement), do: :ok
 
   defp entity_label(scope, %{entity_type: "story", entity_id: id}) do
     case Stories.get_story(scope, id) do

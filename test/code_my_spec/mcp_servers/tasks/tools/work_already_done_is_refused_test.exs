@@ -75,8 +75,16 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.WorkAlreadyDoneIsRefusedTest do
 
     agent = coder(ctx)
 
+    # The real push path (Work.node_key/2) keys a story's offer on its public
+    # number, not its database id -- matching that here, not ctx.story.id,
+    # is what close_stale_offer/2 (start_task.ex) now resolves against too.
     offered =
-      Offers.record(nil, agent, :work, {"requirement", "story:#{ctx.story.id}:component_linked"})
+      Offers.record(
+        nil,
+        agent,
+        :work,
+        {"requirement", "story:#{ctx.story.number}:component_linked"}
+      )
 
     assert {true, text} = start(ctx, agent)
     assert text =~ "already satisfied"
