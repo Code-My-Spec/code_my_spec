@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
         Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    {response.isError == true, response_text(response)}
+    {match?({:error, _}, response), response_text(response)}
   end
 
   @doc "The commit the story is stamped ready for QA at, or nil."
