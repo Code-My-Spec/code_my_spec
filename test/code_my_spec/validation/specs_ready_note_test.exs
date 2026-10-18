@@ -23,7 +23,6 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
     # yet to protect) — this test is specifically about a spex finding
     # blocking, so it needs the mode a project earns once it has stories
     # worth holding the line on.
-    {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
     %{scope: scope, tmp: tmp}
   end

@@ -4,12 +4,10 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
   Criterion 5086 — When a ProjectConfiguration does not yet exist, the first
   time it is accessed it is auto-created with the documented defaults.
 
-  Defaults per the rules doc:
-  - compile_warnings: block
-  - credo: block_changed
-  - exunit: block_all
-  - spex: off
-  - qa_validation: block_changed
+  Defaults: QA brief validation and architecture drift on, advisory findings
+  do not block promotion.
+  There are no per-analyzer blocking modes: problems gate at promotion only,
+  on the fixed four sources (John, 2026-10-18).
   """
 
   use CodeMySpecSpex.Case
@@ -39,27 +37,21 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
         html = render(context.config_live)
 
         assert html =~
-                 ~r/name="configuration\[compile_warnings\]"[^>]*>.*?<option[^>]*value="block"[^>]*selected/s,
-               "compile_warnings must default to block"
+                 ~r/name="configuration\[qa_validation\]"[^>]*>.*?<option[^>]*value="on"[^>]*selected/s,
+               "QA brief validation must default to on"
 
         assert html =~
-                 ~r/name="configuration\[credo\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
-               "credo must default to block_changed"
+                 ~r/name="configuration\[advisory_findings\]"[^>]*>.*?<option[^>]*value="dont_block"[^>]*selected/s,
+               "advisory findings must not block promotion by default"
 
         assert html =~
-                 ~r/name="configuration\[exunit\]"[^>]*>.*?<option[^>]*value="block_all"[^>]*selected/s,
-               "exunit must default to block_all"
+                 ~r/name="configuration\[architecture\]"[^>]*>.*?<option[^>]*value="on"[^>]*selected/s,
+               "architecture drift must default to on"
 
-        assert html =~
-                 ~r/name="configuration\[spex\]"[^>]*>.*?<option[^>]*value="off"[^>]*selected/s,
-               "spex must default to off"
-
-        refute html =~ ~s(name="configuration[spec_validation]"),
-               "specs are not validated any more (3aeb66cf), so there is nothing to configure"
-
-        assert html =~
-                 ~r/name="configuration\[qa_validation\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
-               "qa_validation must default to block_changed"
+        for retired <- ~w(compile_warnings credo exunit spex spec_validation) do
+          refute html =~ ~s(name="configuration[#{retired}]"),
+                 "#{retired} has no setting: problems gate at promotion on the fixed four sources"
+        end
 
         {:ok, context}
       end

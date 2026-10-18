@@ -106,7 +106,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       scope = put_fixture_environment(%{ctx.scope | cwd: tmp}, Environment.new(:local, tmp))
 
       Configurations.get_or_create(scope)
-      {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
       for path <- [@mine, @spex_path] do
         File.mkdir_p!(Path.join(tmp, Path.dirname(path)))

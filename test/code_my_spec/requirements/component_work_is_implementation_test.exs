@@ -28,8 +28,7 @@ defmodule CodeMySpec.Requirements.ComponentWorkIsImplementationTest do
       project_id: Ecto.UUID.generate(),
       require_specs: true,
       require_reviews: true,
-      require_unit_tests: true,
-      exunit: :block_all
+      require_unit_tests: true
     }
 
     changeset = ProjectConfiguration.changeset(%ProjectConfiguration{}, attrs)
