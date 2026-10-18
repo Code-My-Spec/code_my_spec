@@ -279,6 +279,103 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["reason"] =~ "app.ex"
   end
 
+  # 41644862: 8733d80d8 conflicted with main in a file and in the
+  # `.code_my_spec` submodule pointer at once. `git merge --abort` failed
+  # under `submodule.recurse`, so the gate kept the half-merge and the next
+  # step compiled its conflict markers, reporting "could not reset the
+  # gate's test database" instead of naming the conflict.
+  test "a candidate conflicting with main in a file and the docs pointer is rejected naming both, and the gate ends clean",
+       ctx do
+    seed = CodeMySpec.TempFile.dir("conflict-seed")
+    origin = CodeMySpec.TempFile.dir("conflict-origin")
+    File.mkdir_p!(seed)
+    File.mkdir_p!(origin)
+    on_exit(fn ->
+      File.rm_rf(seed)
+      File.rm_rf(origin)
+    end)
+
+    git!(origin, ["init", "-q", "--bare", "--initial-branch=main"])
+    git!(seed, ["init", "-q", "--initial-branch=main"])
+    git!(seed, ["config", "user.email", "q@example.com"])
+    git!(seed, ["config", "user.name", "Q"])
+    git!(seed, ["commit", "-q", "--allow-empty", "-m", "docs"])
+    git!(seed, ["push", "-q", origin, "main"])
+
+    git!(ctx.main_root, [
+      "-c",
+      "protocol.file.allow=always",
+      "submodule",
+      "add",
+      "-q",
+      origin,
+      ".code_my_spec"
+    ])
+
+    git!(ctx.main_root, ["add", ".code_my_spec", ".gitmodules"])
+    git!(ctx.main_root, ["commit", "-q", "-m", "add docs"])
+
+    root = CodeMySpec.TempFile.dir("queue-conflict")
+    File.rm_rf!(root)
+    git!(ctx.main_root, ["worktree", "add", "-q", "-b", "conflict", root, "main"])
+    on_exit(fn -> File.rm_rf(root) end)
+
+    File.write!(Path.join(root, "app.ex"), "candidate's App\n")
+    git!(root, ["add", "app.ex"])
+    git!(root, ["update-index", "--cacheinfo", "160000,#{String.duplicate("a", 40)},.code_my_spec"])
+    git!(root, ["commit", "-q", "-m", "candidate"])
+    candidate_commit = git!(root, ["rev-parse", "HEAD"])
+
+    {:ok, copy} =
+      WorkingCopies.issue(ctx.scope, nil, label: "conflict", device: device_fixture(ctx.scope))
+
+    {:ok, copy} = WorkingCopies.report_root(copy, root)
+
+    :ok =
+      register_working_copy_environment(
+        %{ctx.scope | active_working_copy_id: copy.id},
+        Environment.new(:local, root)
+      )
+
+    # Main diverges on its own, after the candidate branched -- the same
+    # file, differently, and the docs pointer, differently -- so the gate's
+    # merge conflicts on both at once, the shape 8733d80d8 hit.
+    File.write!(Path.join(ctx.main_root, "app.ex"), "main's App\n")
+    git!(ctx.main_root, ["add", "app.ex"])
+
+    git!(ctx.main_root, [
+      "update-index",
+      "--cacheinfo",
+      "160000,#{String.duplicate("b", 40)},.code_my_spec"
+    ])
+
+    git!(ctx.main_root, ["commit", "-q", "-m", "main diverges"])
+    main_commit = git!(ctx.main_root, ["rev-parse", "HEAD"])
+
+    entry = queue(ctx, %{copy: copy, commit: candidate_commit})
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert {:ok, %{status: :ejected, result: result}} = settle(entry),
+           "a candidate conflicting with main in a file and the docs pointer was not ejected"
+
+    assert result["reason"] =~ "app.ex"
+    assert result["reason"] =~ ".code_my_spec"
+    assert result["reason"] =~ String.slice(candidate_commit, 0, 12)
+    assert result["reason"] =~ String.slice(main_commit, 0, 12)
+    assert result["reason"] =~ "Merge main"
+
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == main_commit
+    assert git!(ctx.gate_root, ["status", "--porcelain", "--ignore-submodules"]) == ""
+
+    {merge_head, _} =
+      System.cmd("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"],
+        cd: ctx.gate_root,
+        stderr_to_stdout: true
+      )
+
+    assert merge_head == ""
+  end
+
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
     gate = gate_scope(ctx)
