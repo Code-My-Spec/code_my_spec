@@ -2368,6 +2368,10 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
+  # What a terminal session's turn spent (story 1124): recorded by the channel
+  # as usage, never written to the conversation as something the agent said.
+  def record_turn_event(%Scope{}, _agent_id, %{"kind" => "turn_usage"}, _opts), do: :ok
+
   # A terminal session's turn ending (story 1124), read off Claude Code's own
   # agent list: what an engine's turn end settles — the turn, a decline, its
   # offers, what main must hear — and then its queue and its next offer. No
