@@ -52,7 +52,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion1741Spex do
         id = context.coder
         refute_receive {:work_turn_requested, ^id, _ref, _prompt}, 1_000
 
-        assert [_, _, _] = offers(context, id, %{kind: "work", status: "ignored"}),
+        # Main's correction (a01ffadb, refined on 21eb9860): the third
+        # ignore reaches the ladder's last rung and settles :open, not
+        # :ignored -- it stays open, held back, until main acts. Two
+        # rungs climbed and settled :ignored (attempts 1 and 2), the third
+        # left open: still three attempts, still not pushed a fourth time.
+        assert [_, _] = offers(context, id, %{kind: "work", status: "ignored"}),
+               listing(context)
+
+        assert [_] = offers(context, id, %{kind: "work", status: "open"}),
                listing(context)
 
         {:ok, context}
