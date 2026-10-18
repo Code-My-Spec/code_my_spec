@@ -4,8 +4,9 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   Used by the support inbox, the story interview and the agent conversation.
 
-  **Which side is "mine"** is an argument (`own_role`): the operator sits right
-  in the support inbox, the assistant in an agent conversation.
+  **Which side is "mine"** is an argument (`own_role`): whoever is reading sits
+  right, in a bubble — the operator in the support inbox, the person in an
+  agent conversation and an interview. The other side is plain text.
 
   **Calls and results.** A tool call is an assistant turn carrying a
   `tool_calls` array; a `role: :tool` message is a result
@@ -173,11 +174,14 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-role={@role}
       data-agent-role={@label}
       data-sender-id={@sender_id}
-      class={["chat", side(@role, @own_role)]}
+      class={[
+        "flex w-full flex-col",
+        if(mine?(@role, @own_role), do: "items-end", else: "items-start")
+      ]}
     >
       <div
         :if={@label || @inserted_at}
-        class="chat-header flex items-center gap-2 text-xs opacity-60"
+        class="mb-1 flex items-center gap-2 px-1 text-xs opacity-50"
       >
         <span :if={@label}>{@label}</span>
         <.local_time :if={@inserted_at} id={"#{@id}-time"} at={@inserted_at} />
@@ -185,7 +189,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       <%!-- min-w-0 so the bubble may shrink below its content: without it a
             flex/grid ancestor sizes to the longest unbroken token, and the
             wrapping rules never get the chance to apply. --%>
-      <div class={["chat-bubble min-w-0 break-words", tone(@role, @own_role)]}>
+      <div class={["min-w-0 break-words", bubble(@role, @own_role)]}>
         <%!-- The model writes markdown and always has; rendering it as plain
               text showed backticks, hyphens and hashes as literal characters.
               `md_html/1` is Earmark configured to escape raw HTML — checked,
@@ -199,16 +203,13 @@ defmodule CodeMySpecWeb.ChatComponents do
               unmarked lines. `max-w-none` because the bubble sets the width.
 
               No `prose-invert` — `.chat-prose` in app.css makes every prose
-              color token `inherit` instead, from the bubble's own
-              `chat-bubble-primary`/`text-base-content`, which already knows
-              which text color is readable on itself per theme. A hardcoded
-              invert-or-not here can only match one theme at a time; ask this
-              once and it works in both.
+              color token `inherit` from the page's own text color, so it reads
+              in both themes.
 
               Prose only. Arguments and results are code and stay in <pre>. --%>
         <div
           :if={@text != ""}
-          class="chat-prose prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1"
+          class="chat-prose prose max-w-none text-[15px] leading-relaxed prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-pre:my-3 prose-headings:mb-2 prose-headings:mt-5 [&>:first-child]:mt-0 [&>:last-child]:mb-0"
         >
           {md_html(@text)}
         </div>
@@ -264,15 +265,16 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-failed={to_string(@failed)}
       data-state={if @result, do: "done", else: "running"}
       class={[
-        "group rounded-box border",
+        "group rounded-lg border",
         @failed && "border-error/40 bg-error/5",
-        !@failed && "border-base-300 bg-base-200/40"
+        !@failed &&
+          "border-transparent hover:bg-base-content/[0.04] open:border-base-300 open:bg-base-200/40"
       ]}
     >
       <%!-- min-w-0 + break-all: `mcp__plugin_codemyspec_local__add_scenario` is
             one unbreakable token wider than a phone, and a flex item will not
             shrink below its content unless told to. --%>
-      <summary class="flex cursor-pointer items-center gap-2 p-2 text-sm">
+      <summary class="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[13px] opacity-80">
         <.icon
           name={if @failed, do: "hero-x-circle", else: "hero-wrench-screwdriver"}
           class={"size-4 shrink-0 #{if @failed, do: "text-error", else: "opacity-50"}"}
@@ -798,9 +800,9 @@ defmodule CodeMySpecWeb.ChatComponents do
       id={@id}
       data-test="tool-call-group"
       data-count={call_count(@item.messages)}
-      class="rounded-box border border-base-300 bg-base-200/40 p-2"
+      class="rounded-lg px-2 py-1.5 hover:bg-base-content/[0.04] open:bg-base-200/40"
     >
-      <summary class="flex cursor-pointer items-center gap-2 text-sm">
+      <summary class="flex cursor-pointer items-center gap-2 text-[13px] opacity-80">
         <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-50" />
         <span>used {call_count(@item.messages)} tools</span>
       </summary>
@@ -830,9 +832,10 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   # Right is whoever the reader is speaking as, which differs per surface.
-  defp side(role, role), do: "chat-end"
-  defp side(_role, _own), do: "chat-start"
+  defp mine?(role, own_role), do: role == own_role
 
-  defp tone(role, role), do: "chat-bubble-primary"
-  defp tone(_role, _own), do: "bg-base-200 text-base-content"
+  # The reader's own words sit in a quiet bubble; the other side is plain text
+  # across the column, as a transcript reads.
+  defp bubble(role, role), do: "max-w-[85%] rounded-2xl bg-base-content/[0.07] px-4 py-2.5"
+  defp bubble(_role, _own), do: "w-full"
 end

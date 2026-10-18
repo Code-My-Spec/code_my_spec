@@ -210,12 +210,17 @@ defmodule CmsHarnessTest.LiveHarness do
   status says nothing and the body is the answer.
   """
   @spec post_hook(String.t(), String.t(), map()) :: map()
-  def post_hook(working_copy_id, hook, payload) do
+  def post_hook(working_copy_id, hook, payload, headers \\ []) do
     # The endpoint is in the harness tree. Without this a spex run on its own
     # found no endpoint, and passed only when an earlier spex had started it.
     :ok = CmsHarnessTest.Projects.ensure_harness_supervisor_started()
 
-    ConnTest.build_conn()
+    # Headers an HTTP hook carries — the SessionStart hook names its session's
+    # messaging socket this way (story 1123).
+    headers
+    |> Enum.reduce(ConnTest.build_conn(), fn {name, value}, conn ->
+      Plug.Conn.put_req_header(conn, name, value)
+    end)
     |> Plug.Conn.put_req_header("content-type", "application/json")
     |> ConnTest.dispatch(
       CmsHarness.Web.Endpoint,

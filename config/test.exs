@@ -294,6 +294,10 @@ config :code_my_spec,
 # wants a server still gets one — this is only the fallback, which is the leak.
 config :code_my_spec, :harness_server_url, "http://127.0.0.1:1"
 
+# A terminal agent reads Claude Code's own agent list (`claude agents --json`);
+# a test says what is on it instead of running `claude` (stories 1123, 1124).
+config :code_my_spec, :claude_sessions, {CmsHarnessTest.ClaudeSessions, :list, []}
+
 # A harness announcing its machine reaches `CodeMySpecWeb.Endpoint` in-process
 # rather than over the network — the real router, plug pipeline, controller and
 # sandbox, with only the socket removed.

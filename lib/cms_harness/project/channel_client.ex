@@ -48,7 +48,6 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
-  alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Channel
@@ -269,7 +268,7 @@ defmodule CmsHarness.Project.ChannelClient do
     report_agents_present(socket)
 
     for id <- Liveness.present(socket.assigns.project.root) do
-      case Engine.whereis(id) do
+      case CmsHarness.Agents.whereis(id) do
         {:ok, pid} -> send(pid, :mailbox_ready)
         _ -> :ok
       end
@@ -1903,7 +1902,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: {:reply, {:error, :not_connected}, socket}
 
   def handle_call({:mailbox, params}, from, socket) do
-    case Engine.whereis(params["agent_id"]) do
+    case CmsHarness.Agents.whereis(params["agent_id"]) do
       {:ok, pid} when pid == elem(from, 0) -> mailbox_request(params, from, socket)
       _ -> {:reply, {:error, :stale_engine}, socket}
     end

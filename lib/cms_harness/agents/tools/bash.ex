@@ -1,6 +1,8 @@
 defmodule CmsHarness.Agents.Tools.Bash do
   @moduledoc """
-  Bash with partial output retained when its deadline expires.
+  Bash with partial output retained when its deadline expires, and a long
+  result spilled to a file (`Spill`) rather than cut: `Shell` holds every byte
+  the command wrote, so nothing in the middle is lost.
 
   An agent's `mix test`/`mix spex` is routed through its copy's analysis
   service, as a Claude Code agent's is by the PreToolUse hook: the run is
@@ -10,6 +12,7 @@ defmodule CmsHarness.Agents.Tools.Bash do
   @behaviour Alloy.Tool
 
   alias CmsHarness.Agents.Shell
+  alias CmsHarness.Agents.Spill
   alias CodeMySpec.Hooks.PreToolUse
 
   @impl true
@@ -25,6 +28,13 @@ defmodule CmsHarness.Agents.Tools.Bash do
 
   @impl true
   def execute(input, context) do
+    case run(input, context) do
+      {:ok, text} -> {:ok, Spill.shape(text, context, name())}
+      {:error, text} -> {:error, Spill.shape(text, context, name())}
+    end
+  end
+
+  defp run(input, context) do
     dir = Map.get(context, :working_directory)
 
     copy_id = Map.get(context, :working_copy_id)

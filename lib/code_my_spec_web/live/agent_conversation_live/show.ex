@@ -901,6 +901,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("send_now", %{"ref" => ref}, socket) do
     case Agents.send_now(socket.assigns.current_scope, socket.assigns.conversation.agent_id, ref) do
+      {:ok, {:not_interruptible, _entry}} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Sent. A terminal session reads it at its next tool call — it can't be interrupted."
+         )
+         |> assign(:pending, pending_for(socket.assigns.conversation))}
+
       {:ok, _entry} ->
         {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
 
@@ -1802,9 +1811,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       reading the page rather than looking at it. --%>
       <%!-- No `max-w-*` on the wide side. This is the one screen a founder is
       meant to live on while an agent works — John: "it should be full width."
-      Capping it the way a reading-width page would fought the point of the
-      resizable panel beside it. Narrow keeps its cap; a phone is never wide
-      enough for it to matter. --%>
+      The transcript inside it is held to a 48rem reading column instead, so
+      the pane can be wide without lines that are. --%>
       <div
         id="conversation-layout"
         phx-hook="Viewport"
@@ -1988,6 +1996,25 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # narrow layouts.
   defp conversation_column(assigns) do
     ~H"""
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".Composer">
+      export default {
+        mounted() {
+          this.fit();
+          this.el.addEventListener("input", () => this.fit());
+          this.el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+              e.preventDefault();
+              if (this.el.value.trim() !== "") this.el.form.requestSubmit();
+            }
+          });
+        },
+        updated() { this.fit(); },
+        fit() {
+          this.el.style.height = "auto";
+          this.el.style.height = this.el.scrollHeight + "px";
+        }
+      }
+    </script>
     <div
       data-test="agent-conversation"
       data-project-id={@project.id}
@@ -2149,7 +2176,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         id={"agent-scroll-#{(@conversation && @conversation.id) || "empty"}"}
         data-test="conversation-scroll"
         phx-hook="StickToBottom"
-        class="min-h-0 flex-1 overflow-y-auto py-4"
+        class="min-h-0 flex-1 overflow-y-auto py-6 px-[max(1rem,calc((100%-48rem)/2))]"
         style="overflow-anchor: auto"
       >
         <%!-- Two failures, two remedies, and telling them apart is the whole
@@ -2224,15 +2251,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
         <div
           id="agent-turns"
-          class="space-y-2"
+          class="space-y-6"
           phx-viewport-top={@more_above? && "load_older"}
           data-more-above={to_string(@more_above?)}
         >
           <p :if={@more_above?} data-test="loading-older" class="py-2 text-center text-xs opacity-40">
             loading earlier turns…
           </p>
-          <div :for={item <- @items} id={"turn-group-#{item.id}"} class="space-y-2">
-            <ChatComponents.turn_item id={"turn-#{item.id}"} item={item} results={@results} />
+          <div :for={item <- @items} id={"turn-group-#{item.id}"} class="space-y-3">
+            <ChatComponents.turn_item
+              id={"turn-#{item.id}"}
+              item={item}
+              own_role={:user}
+              results={@results}
+            />
             <%!-- Beside the work that prompted it. An answered one keeps
             rendering here with what was said, because in a transcript the
             answer is part of the record rather than a modal that closes. --%>
@@ -2274,6 +2306,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             :if={@agent_writing}
             id="agent-writing"
             role={:assistant}
+            own_role={:user}
             label="writing…"
             text={@agent_writing}
           />
@@ -2298,7 +2331,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         :if={@analysis_running != []}
         data-test="analysis-running"
         data-sources={Enum.join(@analysis_running, ",")}
-        class="flex shrink-0 items-center gap-3 border-t border-base-300 pt-3 text-sm"
+        class="flex shrink-0 items-center gap-3 pt-3 text-sm px-[max(1rem,calc((100%-48rem)/2))]"
       >
         <span class="loading loading-spinner loading-xs text-info"></span>
         <span>{analysis_label(@analysis_running)}</span>
@@ -2310,7 +2343,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       <div
         :for={{message, run} <- pending_runs(@pending)}
         data-test="agent-pending-message"
-        class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3 text-xs"
+        class="flex shrink-0 items-center gap-2 pt-3 text-xs px-[max(1rem,calc((100%-48rem)/2))]"
       >
         <%!-- Pending content appears here until delivery moves it into the transcript. --%>
         <details
@@ -2352,7 +2385,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test="agent-message-form"
         phx-submit="send_message"
         phx-change="draft"
-        class="flex shrink-0 items-center gap-2 border-t border-base-300 pt-3"
+        class="shrink-0 pt-2 pb-3 px-[max(1rem,calc((100%-48rem)/2))]"
       >
         <%!-- A rendered value is load-bearing, which is not obvious and cost a
       duplicate send in real use. Without one the DOM patch has nothing to
@@ -2365,28 +2398,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       every time someone opened one. `send_message` clears `@draft` itself,
       so the duplicate-send fix is still explicit rather than a side effect
       of rendering nothing. --%>
-        <input
-          type="text"
-          name="message"
-          value={@draft}
-          autocomplete="off"
-          placeholder="say something to this agent"
-          data-test="agent-message"
-          class="input input-bordered min-w-0 flex-1"
-        />
-        <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
+        <div class="flex items-end gap-2 rounded-3xl border border-base-content/10 bg-base-200 py-2 pl-4 pr-2 shadow-sm focus-within:border-base-content/25">
+          <textarea
+            id="agent-message-input"
+            name="message"
+            rows="1"
+            phx-hook=".Composer"
+            autocomplete="off"
+            placeholder="Message this agent"
+            data-test="agent-message"
+            class="max-h-60 min-h-6 min-w-0 flex-1 resize-none self-center bg-transparent py-1 text-[15px] leading-6 outline-none"
+          >{@draft}</textarea>
+          <%!-- Disabled while it is in flight. `dispatch_message/3` waits on the
       machine — up to the transport's patience if that machine is slow — and
       a button that stays live through that invites the second click, which
       is a second turn and a second answer rather than a wasted one. --%>
-        <button type="submit" phx-disable-with="Sending…" class="btn btn-sm btn-primary">
-          Send
-        </button>
+          <button
+            type="submit"
+            phx-disable-with=""
+            aria-label="Send"
+            class="btn btn-circle btn-primary btn-sm shrink-0"
+          >
+            <.icon name="hero-arrow-up" class="size-4" />
+          </button>
+        </div>
       </form>
 
       <p
         :if={@conversation != nil and not @talkable?}
         data-test="agent-not-talkable"
-        class="shrink-0 border-t border-base-300 pt-3 text-xs opacity-60"
+        class="shrink-0 pt-3 pb-2 text-center text-xs opacity-60 px-[max(1rem,calc((100%-48rem)/2))]"
       >
         This agent is not running, so there is nothing to send a message to.
       </p>

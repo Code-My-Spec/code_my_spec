@@ -64,8 +64,8 @@ defmodule CmsHarness.Agents.Engine.Server do
     end
   end
 
-  def handle_call(:alloy, _from, state) do
-    {:reply, {:ok, state.alloy}, state}
+  def handle_call(:history, _from, state) do
+    {:reply, {:ok, state.messages}, state}
   end
 
   def handle_call(:status, _from, state) do
@@ -118,7 +118,6 @@ defmodule CmsHarness.Agents.Engine.Server do
   def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
   def handle_info({:DOWN, _ref, :process, _pid, _reason}, state), do: {:noreply, state}
 
-  def handle_info({:EXIT, alloy, reason}, %{alloy: alloy} = state), do: {:stop, reason, state}
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   @impl true

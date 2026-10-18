@@ -28,9 +28,13 @@ defmodule CmsHarness.Web.HooksController do
 
     case conn.assigns.working_copy do
       {:ok, working_dir} ->
+        params = with_messaging(hook, conn, working_dir, params)
+        decision = decide(hook, working_dir, params)
+        attach_terminal(hook, conn, working_dir, params, decision)
+
         conn
         |> put_status(200)
-        |> json(decide(hook, working_dir, params))
+        |> json(decision)
 
       {:unknown_harness, id} ->
         conn
@@ -202,4 +206,66 @@ defmodule CmsHarness.Web.HooksController do
 
   # "/api/hooks/stop" -> "stop"
   defp hook_name(conn), do: List.last(conn.path_info)
+
+  # A terminal session's SessionStart names its inbox socket in a header
+  # (story 1123). Whether a message written there will be taken is read here,
+  # where the session's settings are; the server is told how this agent is
+  # reached and why, never the socket.
+  defp with_messaging("session-start", conn, working_dir, params) do
+    messaging =
+      case socket(conn) do
+        nil ->
+          %{
+            "delivery" => "stop_hook",
+            "why" => "this Claude Code exposes no messaging socket (it needs v2.1.224 or later)"
+          }
+
+        _socket ->
+          case CmsHarness.Agents.inbound(working_dir, params["permission_mode"]) do
+            :accept -> %{"delivery" => "socket"}
+            {_held_or_refused, why} -> %{"delivery" => "stop_hook", "why" => why}
+          end
+      end
+
+    Map.put(params, "messaging", messaging)
+  end
+
+  defp with_messaging(_hook, _conn, _working_dir, params), do: params
+
+  # The socket stays here: this harness is on the session's machine and the
+  # server is not.
+  defp attach_terminal(
+         "session-start",
+         conn,
+         working_dir,
+         %{"messaging" => %{"delivery" => "socket"}} = params,
+         %{"agent_id" => agent_id}
+       )
+       when is_binary(agent_id) do
+    session = %{
+      socket: socket(conn),
+      working_copy: working_dir,
+      session_id: params["session_id"],
+      transcript: params["transcript_path"]
+    }
+
+    case CmsHarness.Agents.attach_terminal(agent_id, session) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] terminal agent #{agent_id} could not attach: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp attach_terminal(_hook, _conn, _working_dir, _params, _decision), do: :ok
+
+  defp socket(conn) do
+    case get_req_header(conn, "x-messaging-socket") do
+      [socket | _] when socket != "" -> socket
+      _ -> nil
+    end
+  end
 end

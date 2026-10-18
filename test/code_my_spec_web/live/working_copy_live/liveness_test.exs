@@ -175,4 +175,29 @@ defmodule CodeMySpecWeb.WorkingCopyLive.LivenessTest do
       assert summary.label == "Running"
     end
   end
+
+  # Story 1124: a terminal session reads by presence, like an agent we run.
+  describe "a terminal agent" do
+    defp terminal(lifecycle, minutes_ago),
+      do: Map.put(agent(lifecycle, :claude_code, minutes_ago), :engine_session_id, "cc-1")
+
+    test "is running while its session is live" do
+      summary = Liveness.agent(terminal(:running, 0), @now)
+
+      assert summary.label == "Running"
+      assert summary.since == nil
+    end
+
+    test "is away, not stalled or starting, when its session has ended" do
+      summary = Liveness.agent(terminal(:starting, 30), @now)
+
+      assert summary.label == "Away"
+      assert summary.since == "30m ago"
+    end
+
+    test "counts as present on its copy while live, and as stopped when away" do
+      assert Liveness.working_copy([terminal(:running, 0)], @now).label == "Running"
+      assert Liveness.working_copy([terminal(:starting, 5)], @now).label == "Stopped"
+    end
+  end
 end

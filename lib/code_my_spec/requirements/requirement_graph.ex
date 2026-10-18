@@ -83,6 +83,16 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # Settle the writer before serving its rows, at the vantage the reader named.
+  @doc """
+  Wait for the writer to apply what is pending at the scope's vantage, as every
+  read here does first. For a reader that serves stored rows itself.
+  """
+  @spec settle(Scope.t()) :: :ok
+  def settle(%Scope{} = scope) do
+    scope |> normalize_vantage() |> settle_owner()
+    :ok
+  end
+
   defp settle_owner(%Scope{active_project_id: project_id} = scope) do
     # Why: a read starts the writer only for a project with no rows at all, or
     # it would resurrect a projector a test's teardown had stopped.

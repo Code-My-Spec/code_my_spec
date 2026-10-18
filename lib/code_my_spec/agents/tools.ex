@@ -62,6 +62,7 @@ defmodule CodeMySpec.Agents.Tools do
       CodeMySpec.Agents.Tools.RetireAgent,
       CodeMySpec.Agents.Tools.SearchAnswers,
       CodeMySpec.Agents.Tools.SetAgentContinuous,
+      CodeMySpec.Agents.Tools.SetMyRole,
       CodeMySpec.Agents.Tools.ShowInPanel,
       CodeMySpec.Agents.Tools.StartAnalysis,
       CodeMySpec.Agents.Tools.StartTask,

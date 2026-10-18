@@ -320,6 +320,120 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  A terminal Claude Code session joining as an agent (story 1122).
+
+  Found again by its own session id, so a resumed session gets its agent back
+  rather than a new one. It may take any role on any copy, even one an agent
+  already holds: the one-per-role rule is for the agents we start. Main by
+  default; the agent changes it with the person (`set_terminal_role/3`).
+  """
+  @spec register_terminal(Scope.t(), String.t(), atom()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def register_terminal(scope, session_id, role \\ :main)
+
+  def register_terminal(%Scope{active_working_copy_id: copy_id} = scope, session_id, role)
+      when is_binary(copy_id) and is_binary(session_id) and session_id != "" do
+    case AgentsRepository.get_by_engine_session(scope, session_id) do
+      %Agent{} = agent -> {:ok, agent}
+      nil -> create_terminal(scope, copy_id, session_id, role)
+    end
+  end
+
+  def register_terminal(%Scope{active_working_copy_id: nil}, _session_id, _role),
+    do: {:error, :no_working_copy}
+
+  def register_terminal(_scope, _session_id, _role), do: {:error, :session_id_required}
+
+  defp create_terminal(scope, copy_id, session_id, role) do
+    with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+         {:ok, agent} <-
+           AgentsRepository.create_agent(scope, %{
+             engine: :claude_code,
+             engine_session_id: session_id,
+             provider: "claude-code",
+             role: role,
+             working_copy_id: copy_id,
+             working_copy: copy.root,
+             # Woken idle only when the person turns this on.
+             continuous: false
+           }),
+         {:ok, _conversation} <- open_conversation(scope, agent) do
+      broadcast(scope, {:agent_started, agent})
+      {:ok, agent}
+    else
+      # Two hooks for one session racing: the other one made it.
+      {:error, %Ecto.Changeset{errors: [{:project_id, {_, [constraint: :unique] ++ _}} | _]}} ->
+        {:ok, AgentsRepository.get_by_engine_session(scope, session_id)}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  The id of the terminal agent a Claude Code session is, or nil: how a call
+  carrying the session id the PreToolUse hook injects names its agent.
+  """
+  @spec terminal_agent_id(Scope.t() | nil, String.t() | nil) :: Ecto.UUID.t() | nil
+  def terminal_agent_id(%Scope{} = scope, session_id)
+      when is_binary(session_id) and session_id != "" do
+    case AgentsRepository.get_by_engine_session(scope, session_id) do
+      %Agent{retired_at: nil, id: id} -> id
+      _ -> nil
+    end
+  end
+
+  def terminal_agent_id(_scope, _session_id), do: nil
+
+  @doc """
+  What a terminal session's stop hook hands over (story 1123): the messages
+  waiting for its agent when nothing else can reach it — no live socket,
+  because its Claude Code is too old or holds or refuses socket messages.
+  Empty when the agent is live, or the session is not a terminal agent.
+  """
+  @spec take_held_for_stop(Scope.t(), String.t() | nil) :: [String.t()]
+  def take_held_for_stop(%Scope{} = scope, session_id) do
+    case terminal_agent_id(scope, session_id) do
+      nil ->
+        []
+
+      id ->
+        if MapSet.member?(present_ids(scope), id),
+          do: [],
+          else: Mailbox.take_for_stop(scope, id)
+    end
+  end
+
+  @doc """
+  A terminal agent taking the role it chose with the person. Agents we start
+  keep theirs: their role is their seat.
+  """
+  @spec set_terminal_role(Scope.t(), Agent.t(), atom() | String.t()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def set_terminal_role(%Scope{} = scope, %Agent{engine: :claude_code} = agent, role) do
+    with {:ok, role} <- role_of(%{role: role}),
+         {:ok, updated} <- AgentsRepository.update_agent(scope, agent, role_attrs(agent, role)) do
+      broadcast(scope, {:agent_started, updated})
+      {:ok, updated}
+    end
+  end
+
+  def set_terminal_role(_scope, %Agent{}, _role), do: {:error, :not_a_terminal_agent}
+
+  # The old role's holdings go; the new role takes its team's, as a joining
+  # member would. Continuous is the person's and carries over.
+  defp role_attrs(%Agent{} = agent, role) do
+    Map.merge(
+      %{story_id: nil, epic_id: nil, issue_id: nil},
+      Assignment.inherit(%{
+        role: role,
+        working_copy_id: agent.working_copy_id,
+        continuous: agent.continuous
+      })
+    )
+  end
+
   # A stopped agent still holding work is resumed, not replaced: task ownership
   # is which row's list a task sits in, and moving tasks would mint new ids and
   # orphan their blockers. Only for a holder, so a role can still get a fresh
@@ -913,7 +1027,10 @@ defmodule CodeMySpec.Agents do
 
   # On duty holds a seat, whether or not its process is up this moment — one
   # being restored has not given it up.
-  defp seat_holders(scope), do: AgentsRepository.list_on_duty(scope)
+  # A terminal session holds no seat (story 1122): it may share any role, and
+  # an agent we start is never refused on its account.
+  defp seat_holders(scope),
+    do: scope |> AgentsRepository.list_on_duty() |> Enum.reject(&(&1.engine == :claude_code))
 
   # Root as well as id: a root with no row of its own is recorded under the
   # caller's copy id (`id_for/2`), and is still a different tree.
@@ -1415,9 +1532,35 @@ defmodule CodeMySpec.Agents do
   @doc """
   The project's on-duty `main` agents (not off, not retired), newest first,
   wherever they run. The one source every "find the main agent" reads.
+
+  A terminal main on the main copy takes main's duties while it is live,
+  ahead of the mains we run (John, 2026-10-18). One that is not live, or is
+  main of some other copy, is not asked: nothing reaches the first, and the
+  second is a person working elsewhere.
   """
   @spec running_main_agents(Scope.t()) :: [Agent.t()]
-  defdelegate running_main_agents(scope), to: AgentsRepository, as: :list_running_main
+  def running_main_agents(%Scope{} = scope) do
+    present = present_ids(scope)
+    main_copy_id = main_copy_id(scope)
+
+    {terminal, ours} =
+      scope
+      |> AgentsRepository.list_running_main()
+      |> Enum.split_with(&(&1.engine == :claude_code))
+
+    Enum.filter(
+      terminal,
+      &(&1.working_copy_id == main_copy_id and MapSet.member?(present, &1.id))
+    ) ++
+      ours
+  end
+
+  defp main_copy_id(scope) do
+    case WorkingCopies.main(scope) do
+      nil -> nil
+      copy -> copy.id
+    end
+  end
 
   @doc """
   The project's own agent, started if it does not exist yet.
@@ -1857,7 +2000,10 @@ defmodule CodeMySpec.Agents do
 
   # The project's agent wherever it currently is, which during a move is not
   # the main copy — that is the point of moving it.
-  defp main_agent_anywhere(%Scope{} = scope), do: scope |> running_main_agents() |> List.first()
+  # Only a main we run moves with the main copy: a terminal session is a
+  # person's, and stays where they are.
+  defp main_agent_anywhere(%Scope{} = scope),
+    do: scope |> running_main_agents() |> Enum.find(&(&1.engine != :claude_code))
 
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.
@@ -2104,9 +2250,17 @@ defmodule CodeMySpec.Agents do
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
-    with {:ok, _} = sent <- Mailbox.send_now(scope, id, ref) do
-      interrupt_if_busy(scope, id)
-      sent
+    with {:ok, entry} = sent <- Mailbox.send_now(scope, id, ref) do
+      case AgentsRepository.fetch_agent(scope, id) do
+        # A terminal session reads it at its next tool call; nothing stops its
+        # turn (story 1123), and the caller says so.
+        {:ok, %Agent{engine: :claude_code}} ->
+          {:ok, {:not_interruptible, entry}}
+
+        _ ->
+          interrupt_if_busy(scope, id)
+          sent
+      end
     end
   end
 
@@ -2145,6 +2299,61 @@ defmodule CodeMySpec.Agents do
 
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
+  # A terminal session queues what it is sent (story 1123), so a message
+  # written to its socket is delivered: its entry is settled and the next one
+  # pumped. Its turns are its own, reported from its hooks, not here.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "delivered", "ref" => ref, "generation" => generation},
+        _opts
+      )
+      when is_binary(ref) and is_binary(generation) do
+    with {:ok, _} <- Mailbox.finish(scope, agent_id, ref, generation) do
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
+  # A terminal session's turn ending (story 1124), read off Claude Code's own
+  # agent list: what an engine's turn end settles — the turn, a decline, its
+  # offers, what main must hear — and then its queue and its next offer. No
+  # stop menu: the session's own Stop hook is that moment.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "turn_over", "generation" => generation},
+        _opts
+      )
+      when is_binary(generation) do
+    # Not `Mailbox.ready/4`: that reads a turn ending unreported as one a
+    # restart cut, and a terminal turn always ends this way.
+    with {:ok, %Agent{engine: :claude_code, mailbox_generation: ^generation} = agent} <-
+           AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, settled} <-
+           AgentsRepository.update_agent(
+             scope,
+             agent,
+             Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, agent.turn_started_at))
+           ) do
+      {:ok, settled} = Work.record_decline(scope, settled, agent.turn_started_at)
+      :ok = Offers.settle_turn(settled)
+      tell_main_held_back(scope, settled)
+      tell_main_undelivered_instructions(scope, settled)
+      broadcast(scope, {:agent_turn, settled})
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+        Work.request_turn_if_runnable(scope, settled, :turn_ended)
       end)
     end
 

@@ -35,16 +35,40 @@ defmodule CmsHarness.Agents.ATurnStartingIsAnnouncedTest do
     %{root: tmp_dir}
   end
 
+  # A streamed reply: the engine runs its turns through `Alloy.stream/3`, and
+  # Alloy's Anthropic stream reads server-sent events.
   defp reply_body do
-    Jason.encode!(%{
-      "id" => "msg_1",
-      "type" => "message",
-      "role" => "assistant",
-      "model" => "claude-opus-5",
-      "content" => [%{"type" => "text", "text" => "ok"}],
-      "stop_reason" => "end_turn",
-      "usage" => %{"input_tokens" => 1, "output_tokens" => 1}
-    })
+    [
+      %{
+        "type" => "message_start",
+        "message" => %{
+          "id" => "msg_1",
+          "type" => "message",
+          "role" => "assistant",
+          "model" => "claude-opus-5",
+          "content" => [],
+          "usage" => %{"input_tokens" => 1, "output_tokens" => 0}
+        }
+      },
+      %{
+        "type" => "content_block_start",
+        "index" => 0,
+        "content_block" => %{"type" => "text", "text" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "text_delta", "text" => "ok"}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{
+        "type" => "message_delta",
+        "delta" => %{"stop_reason" => "end_turn"},
+        "usage" => %{"output_tokens" => 1}
+      },
+      %{"type" => "message_stop"}
+    ]
+    |> Enum.map_join("", &"event: #{&1["type"]}\ndata: #{Jason.encode!(&1)}\n\n")
   end
 
   # Parks inside the turn and hands the test the pid holding it, so the
@@ -56,7 +80,7 @@ defmodule CmsHarness.Agents.ATurnStartingIsAnnouncedTest do
       hold_first_turn(counter, test_pid, :counters.get(counter, 1))
 
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.put_resp_content_type("text/event-stream")
       |> Plug.Conn.resp(200, reply_body())
     end
   end

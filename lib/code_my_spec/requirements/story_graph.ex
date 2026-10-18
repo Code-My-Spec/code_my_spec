@@ -1,8 +1,9 @@
 defmodule CodeMySpec.Requirements.StoryGraph do
   @moduledoc "A story's component architecture first, then its published requirements."
 
-  alias CodeMySpec.{Components, Requirements, Stories}
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.{Components, Issues, Requirements, Stories}
+  alias CodeMySpec.Requirements.{Projection, RequirementGraph}
+  alias CodeMySpec.Users.Scope
 
   def read(scope, story_id) do
     case Stories.get_story(scope, story_id) do
@@ -16,14 +17,43 @@ defmodule CodeMySpec.Requirements.StoryGraph do
     end
   end
 
-  def project(story, components, graph) do
-    by_id = Map.new(components, &{&1.id, &1})
+  @doc """
+  `progress/1` of the story's slice, reading only the slice's stored rows: the
+  story's, its issues' and its components'. `read/2` serves the whole graph
+  and its actionable set before selecting, which a count needs neither of.
+  Settles first, like every read, so a story whose rows are pending is not
+  read as having none.
+  """
+  @spec read_progress(Scope.t(), integer()) ::
+          {:ok, {non_neg_integer(), non_neg_integer()}} | {:error, :not_found}
+  def read_progress(scope, story_id) do
+    case Stories.get_story(scope, story_id) do
+      nil ->
+        {:error, :not_found}
 
-    ctx = %{
-      components: components,
-      components_by_id: by_id,
-      children_by_parent: Enum.group_by(components, & &1.parent_component_id)
-    }
+      story ->
+        ctx = component_context(Components.list_components_with_dependencies(scope))
+        component_ids = RequirementGraph.story_component_ids(story, ctx)
+
+        slice =
+          Map.merge(ctx, %{
+            components: Enum.filter(ctx.components, &MapSet.member?(component_ids, &1.id)),
+            stories: [story],
+            story_issues: Issues.list_story_submissions(scope, story.id)
+          })
+
+        vantage = %{scope | active_working_copy_id: Projection.vantage(scope)}
+        :ok = RequirementGraph.settle(vantage)
+        {nodes, _edges} = Projection.load(vantage, slice)
+        owned = Enum.filter(nodes, &root?(&1, story.id, component_ids))
+
+        {:ok, {Enum.count(owned, & &1.satisfied), length(owned)}}
+    end
+  end
+
+  def project(story, components, graph) do
+    ctx = component_context(components)
+    by_id = ctx.components_by_id
 
     component_ids = RequirementGraph.story_component_ids(story, ctx)
     selected = Enum.filter(components, &MapSet.member?(component_ids, &1.id))
@@ -66,11 +96,7 @@ defmodule CodeMySpec.Requirements.StoryGraph do
   def select(graph, story_id, component_ids) do
     roots =
       graph.nodes
-      |> Enum.filter(fn node ->
-        (node.entity_type == "story" and node.entity_id == story_id) or
-          (node.entity_type == "issue" and node.details["story_id"] == story_id) or
-          (node.entity_type == "component" and MapSet.member?(component_ids, node.entity_id))
-      end)
+      |> Enum.filter(&root?(&1, story_id, component_ids))
       |> MapSet.new(&key/1)
 
     # Project prerequisites remain visible, but requirement edges cannot
@@ -98,6 +124,21 @@ defmodule CodeMySpec.Requirements.StoryGraph do
   def progress(%{nodes: nodes, story_keys: roots}) do
     owned = Enum.filter(nodes, &MapSet.member?(roots, key(&1)))
     {Enum.count(owned, & &1.satisfied), length(owned)}
+  end
+
+  defp component_context(components) do
+    %{
+      components: components,
+      components_by_id: Map.new(components, &{&1.id, &1}),
+      children_by_parent: Enum.group_by(components, & &1.parent_component_id)
+    }
+  end
+
+  # The story's own nodes: what its slice counts, before project gates join.
+  defp root?(node, story_id, component_ids) do
+    (node.entity_type == "story" and node.entity_id == story_id) or
+      (node.entity_type == "issue" and node.details["story_id"] == story_id) or
+      (node.entity_type == "component" and MapSet.member?(component_ids, node.entity_id))
   end
 
   defp include_project_gate(%{from: {"project", _, _} = from, to: to}, ids, roots) do
