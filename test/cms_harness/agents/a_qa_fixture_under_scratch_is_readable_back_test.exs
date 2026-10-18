@@ -10,6 +10,8 @@ defmodule CmsHarness.Agents.AQaFixtureUnderScratchIsReadableBackTest do
   """
   use ExUnit.Case, async: true
 
+  alias Alloy.Agent.Config
+  alias Alloy.Agent.State
   alias Alloy.Message
   alias Alloy.Tool.Executor
   alias CmsHarness.Agents
@@ -38,7 +40,7 @@ defmodule CmsHarness.Agents.AQaFixtureUnderScratchIsReadableBackTest do
 
     on_exit(fn -> Agents.halt(id) end)
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, id})
-    :sys.get_state(:sys.get_state(engine).alloy)
+    State.init(Config.from_opts(:sys.get_state(engine).alloy_opts))
   end
 
   defp read(state, path) do

@@ -96,7 +96,11 @@ defmodule CmsHarness.Agents do
 
     for module <- modules,
         String.starts_with?(Atom.to_string(module), "Elixir.CmsHarness.Agents.Tools."),
-        module not in [CmsHarness.Agents.Tools.Bash, CmsHarness.Agents.Tools.Direct],
+        module not in [
+          CmsHarness.Agents.Tools.Bash,
+          CmsHarness.Agents.Tools.Read,
+          CmsHarness.Agents.Tools.Direct
+        ],
         Code.ensure_loaded?(module) and function_exported?(module, :name, 0),
         do: module.name()
   end

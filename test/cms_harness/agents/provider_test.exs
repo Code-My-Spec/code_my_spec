@@ -56,7 +56,7 @@ defmodule CmsHarness.Agents.ProviderTest do
       {:ok, codex} = Provider.options("openai-codex", %{}, timeout_ms: nil)
       {:ok, claude} = Provider.options("claude-code", %{}, timeout_ms: nil)
       {Alloy.Provider.Codex, codex_config} = Keyword.fetch!(codex, :provider)
-      {Alloy.Provider.ClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
+      {AlloyClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
 
       assert codex_config.timeout_ms == claude_config.timeout_ms
     end
@@ -81,14 +81,14 @@ defmodule CmsHarness.Agents.ProviderTest do
   describe "how long one claude-code call may run" do
     test "long enough for the CLI to compact a full session" do
       {:ok, opts} = Provider.options("claude-code", %{}, timeout_ms: nil)
-      {Alloy.Provider.ClaudeCode, config} = Keyword.fetch!(opts, :provider)
+      {AlloyClaudeCode, config} = Keyword.fetch!(opts, :provider)
 
       assert config.timeout_ms >= :timer.minutes(10)
     end
 
     test "a timeout it was given reaches the provider" do
       {:ok, opts} = Provider.options("claude-code", %{}, timeout_ms: 45_000)
-      {Alloy.Provider.ClaudeCode, config} = Keyword.fetch!(opts, :provider)
+      {AlloyClaudeCode, config} = Keyword.fetch!(opts, :provider)
 
       assert config.timeout_ms == 45_000
     end
@@ -111,9 +111,20 @@ defmodule CmsHarness.Agents.ProviderTest do
 
       assert config.codex_home == Path.expand("~/.codex")
 
-      assert config.ignore_user_config,
+      # Alloy ignores the home's config.toml unless a profile is named.
+      refute Map.has_key?(config, :profile),
              "the home's config.toml brings its owner's plugins, MCP servers, approval " <>
                "reviewer and default model to every call"
+    end
+
+    test "a codex agent resumes its own thread and runs no command of its own" do
+      {:ok, opts} = Provider.options("openai-codex", %{}, working_copy: "/tmp/copy")
+      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+
+      assert config.persist_session
+      assert config.workdir == "/tmp/copy"
+      assert "features.shell_tool=false" in config.config_overrides
+      assert "features.unified_exec=false" in config.config_overrides
     end
 
     test "a codex agent uses the model it was given" do

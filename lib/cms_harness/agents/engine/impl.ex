@@ -13,7 +13,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   require Logger
 
-  alias Alloy.Agent.Server
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.Keeper
@@ -22,7 +21,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Agents.TurnEvents
   alias CmsHarness.Agents.TurnProgress
+  alias CmsHarness.Agents.UnknownTool
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
   alias CmsHarness.Mcp.Session
@@ -166,20 +167,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   What this agent knows — every turn it is holding, oldest first.
 
-  Not the transcript: this asks the loop for the messages a turn will actually
-  run against. `{:error, :busy}` while a turn is running, since the loop
-  answers only between turns.
+  Not the transcript: the messages the next turn will run against. While a
+  turn runs, the ones it started from.
   """
-  @spec history(String.t()) ::
-          {:ok, [Alloy.Message.t()]} | {:error, :not_running | :busy}
+  @spec history(String.t()) :: {:ok, [Alloy.Message.t()]} | {:error, :not_running}
   def history(agent_id) do
-    with {:ok, pid} <- whereis(agent_id),
-         {:ok, alloy} <- GenServer.call(pid, :alloy) do
-      # Asked of the loop directly: proxying would park the engine for a turn.
-      {:ok, Server.messages(alloy)}
-    end
-  catch
-    :exit, {:timeout, _} -> {:error, :busy}
+    with {:ok, pid} <- whereis(agent_id), do: GenServer.call(pid, :history)
   end
 
   @doc """
@@ -241,37 +234,41 @@ defmodule CmsHarness.Agents.Engine.Impl do
     {alloy_opts, interrupted} = restored(alloy_opts, Keeper.recall(agent_id))
     prune_spilled(spill_dir(agent_id))
 
-    case Server.start_link(alloy_opts) do
-      {:ok, alloy} ->
-        Process.flag(:trap_exit, true)
-        :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
-        :ok = register_mailbox(opts, agent_id, generation)
+    # A turn runs in a linked task; its crash arrives as a message.
+    Process.flag(:trap_exit, true)
+    :ok = Liveness.watch(agent_id, self(), Keyword.fetch!(opts, :working_copy))
+    :ok = register_mailbox(opts, agent_id, generation)
 
-        {:ok,
-         %{
-           agent_id: agent_id,
-           working_copy: Keyword.fetch!(opts, :working_copy),
-           # For `agent_tools/1`.
-           tools: Keyword.fetch!(alloy_opts, :tools),
-           # For `mcp_client/1`.
-           mcp_client: get_in(alloy_opts, [:context, :mcp_client]),
-           provider: Keyword.fetch!(opts, :provider),
-           on_stop: Keyword.get(opts, :on_stop),
-           on_event: Keyword.get(opts, :on_event),
-           on_draft: Keyword.get(opts, :on_draft),
-           alloy: alloy,
-           alloy_opts: alloy_opts,
-           # The turn in flight, or nil. One at a time — an agent working two
-           # turns at once in one checkout is two agents editing one tree.
-           turn: nil,
-           generation: generation,
-           on_consume: Keyword.get(opts, :on_consume)
-         }
-         |> settle_interrupted(interrupted)}
-
-      {:error, reason} ->
-        {:stop, reason}
-    end
+    {:ok,
+     %{
+       agent_id: agent_id,
+       working_copy: Keyword.fetch!(opts, :working_copy),
+       # For `agent_tools/1`.
+       tools: Keyword.fetch!(alloy_opts, :tools),
+       # For `mcp_client/1`.
+       mcp_client: get_in(alloy_opts, [:context, :mcp_client]),
+       provider: Keyword.fetch!(opts, :provider),
+       on_stop: Keyword.get(opts, :on_stop),
+       on_event: Keyword.get(opts, :on_event),
+       on_draft: Keyword.get(opts, :on_draft),
+       # The history is the agent's state: each turn is `Alloy.stream/3` run
+       # against it, and its result is the history the next one starts from.
+       messages: Keyword.get(alloy_opts, :messages, []),
+       alloy_opts: Keyword.delete(alloy_opts, :messages),
+       # What the provider asked to be handed back on its next call (a CLI's
+       # session to resume), carried from one turn's result to the next.
+       provider_state: %{},
+       # Codex's persisted thread is resumed only within one generation. A new
+       # one after a turn that failed or was stopped, since that thread may
+       # hold a turn Alloy's history does not; and a new one per process.
+       session_generation: generation,
+       # The turn in flight, or nil. One at a time — an agent working two
+       # turns at once in one checkout is two agents editing one tree.
+       turn: nil,
+       generation: generation,
+       on_consume: Keyword.get(opts, :on_consume)
+     }
+     |> settle_interrupted(interrupted)}
   end
 
   # A restart, after a crash: the history the agent had when it last wrote it
@@ -304,10 +301,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   defp settle_interrupted(state, _message) do
     :ok =
-      Keeper.remember(state.agent_id, %{
-        messages: Keyword.fetch!(state.alloy_opts, :messages),
-        in_flight: nil
-      })
+      Keeper.remember(state.agent_id, %{messages: state.messages, in_flight: nil})
 
     state
   end
@@ -319,6 +313,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
     # The MCP session is not closed here: it is the Keeper's child
     # (`Mcp.Session`) and closes itself when the Keeper stops it. Nor the copy's
     # browser session, which `CmsHarness.Browser.Owner` holds for the copy.
+    stop_running_turn(state)
     run_on_stop(state.on_stop)
     Logger.info("[CmsHarness] agent #{state.agent_id} stopped")
     announce_death(state, reason)
@@ -336,6 +331,19 @@ defmodule CmsHarness.Agents.Engine.Impl do
     Logger.warning("[CmsHarness] agent #{state.agent_id} died: #{text}")
     state.on_event.(state.agent_id, %{event: :agent_died, text: text})
   end
+
+  # A stopped agent's turn stops with it, subprocesses included. Closing a
+  # port does not end the program behind it: a turned-off Claude Code agent's
+  # `claude -p` kept editing its copy for ten minutes, and the loop, in a task
+  # nothing linked, started another.
+  defp stop_running_turn(%{turn: %{task: %Task{} = task}}) do
+    case stop_turn_task(task) do
+      :ok -> :ok
+      {:error, failure} -> Logger.warning("[CmsHarness] stopping a turn: #{inspect(failure)}")
+    end
+  end
+
+  defp stop_running_turn(_state), do: :ok
 
   defp run_on_stop(fun) when is_function(fun, 0), do: fun.()
   defp run_on_stop(_), do: :ok
@@ -380,7 +388,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # reachable mid-turn and a crashing turn arrives as a message. `_timeout` is
   # the sender's wait, settled via `awaiting`; it never bounds the turn.
   def start_turn(state, ref, message, _timeout, awaiting) do
-    checkpoint = state.alloy |> :sys.get_state() |> Alloy.Agent.State.materialize()
+    checkpoint = %{messages: state.messages}
 
     :ok =
       Keeper.remember(
@@ -390,7 +398,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
     announce_turn_start(state, ref)
 
-    task = Task.async(fn -> run_turn(state, message, :infinity) end)
+    task = Task.async(fn -> execute(state, message) end)
 
     %{
       task: task,
@@ -408,10 +416,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # abnormal waiter exit requires confirmed Alloy shutdown before a replacement
   # can consume another mailbox message.
   def abort_turn(state, reason) do
-    Process.unlink(state.alloy)
-    Task.shutdown(state.turn.task, :brutal_kill)
-
-    case Execution.stop(state.alloy) do
+    case stop_turn_task(state.turn.task) do
       :ok ->
         recover_turn(state, reason)
 
@@ -429,10 +434,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   turn stopped before its first round of tool calls keeps its prompt.
   """
   def interrupt_turn(state) do
-    Process.unlink(state.alloy)
-    Task.shutdown(state.turn.task, :brutal_kill)
-
-    case Execution.stop(state.alloy) do
+    case stop_turn_task(state.turn.task) do
       :ok ->
         resume_interrupted(state)
 
@@ -455,43 +457,57 @@ defmodule CmsHarness.Agents.Engine.Impl do
           )
         ]
 
-    case Server.start_link(Keyword.put(state.alloy_opts, :messages, messages)) do
-      {:ok, alloy} -> settle(%{state | alloy: alloy}, {:error, :interrupted})
-      {:error, failure} -> {:stop, {:turn_recovery_failed, failure}, state}
-    end
+    settle(stopped(state, messages), {:error, :interrupted})
   end
+
+  # The turn task waits; the loop runs in an execution it starts unlinked, so
+  # a waiter that dies leaves the execution — and the ports it owns — alive to
+  # be found and stopped. A port whose owner has died is closed, and the
+  # program behind it keeps running with nothing left that knows its pid.
+  defp execute(state, message) do
+    Alloy.TaskSupervisor
+    |> Task.Supervisor.async_nolink(fn -> run_turn(state, message) end)
+    |> Task.await(:infinity)
+  end
+
+  # The waiter and everything it started — the execution, its tool tasks, a
+  # CLI provider's subprocess — are found by ancestry from the waiter and
+  # stopped together. The waiter is not shut down first: that would orphan
+  # them before they are found.
+  defp stop_turn_task(%Task{pid: pid} = task) do
+    result = Execution.stop(pid)
+    Task.shutdown(task, :brutal_kill)
+    result
+  end
+
+  # Codex's saved thread may hold the stopped turn, which Alloy's history does
+  # not, so its next call starts a new one (`:session_generation`).
+  defp stopped(state, messages),
+    do: %{state | messages: messages, session_generation: new_ref()}
 
   defp started_with(turn),
     do: turn.checkpoint.messages ++ [Alloy.Message.user(turn.message)]
 
   defp recover_turn(state, reason) do
-    recovered =
-      state.turn.checkpoint
-      |> Alloy.Agent.State.append_messages([
-        Alloy.Message.user(state.turn.message),
-        Alloy.Message.user(
-          "The preceding turn was interrupted (#{inspect(reason)}). " <>
-            "Its actions may have taken effect; inspect the current state before retrying."
-        )
-      ])
-      |> Alloy.Agent.State.materialize()
+    messages =
+      state.turn.checkpoint.messages ++
+        [
+          Alloy.Message.user(state.turn.message),
+          Alloy.Message.user(
+            "The preceding turn was interrupted (#{inspect(reason)}). " <>
+              "Its actions may have taken effect; inspect the current state before retrying."
+          )
+        ]
 
-    case Server.start_link(Keyword.put(state.alloy_opts, :messages, recovered.messages)) do
-      {:ok, alloy} ->
-        :sys.replace_state(alloy, fn _fresh -> recovered end)
-        settle(%{state | alloy: alloy}, {:error, reason})
-
-      {:error, failure} ->
-        {:stop, {:turn_recovery_failed, failure}, state}
-    end
+    settle(stopped(state, messages), {:error, reason})
   end
 
   # A turn ended: whoever was waiting hears about it, and whatever was waiting
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
-    :ok =
-      Keeper.remember(state.agent_id, %{messages: Server.messages(state.alloy), in_flight: nil})
+    state = absorb(state, result)
+    :ok = Keeper.remember(state.agent_id, %{messages: state.messages, in_flight: nil})
 
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
@@ -501,6 +517,21 @@ defmodule CmsHarness.Agents.Engine.Impl do
     send(self(), :mailbox_ready)
     {:noreply, state}
   end
+
+  # What a finished run leaves for the next turn: its history, and the provider
+  # state to hand back. A failed run is treated as stopped (`stopped/2`). A
+  # turn stopped by the engine arrives as a bare reason, its history already
+  # set.
+  defp absorb(state, {:ok, %Alloy.Result{} = result}),
+    do: %{state | messages: result.messages, provider_state: provider_state(result, state)}
+
+  defp absorb(state, {:error, %Alloy.Result{} = result}),
+    do: %{stopped(state, result.messages) | provider_state: provider_state(result, state)}
+
+  defp absorb(state, _result), do: state
+
+  defp provider_state(result, state),
+    do: Map.get(result.metadata, :provider_state, state.provider_state)
 
   # Every completed turn reports its ref and generation. The server decides
   # whether durable waiting work or the stop decision goes next. A separate
@@ -533,7 +564,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # The provider's own usage, carried on `turn_ended`: asking the loop
   # afterwards answers busy while the next turn runs. Nil (not zero) when no
   # provider answered.
-  defp usage_of({:ok, %{usage: %Alloy.Usage{} = usage}}), do: Map.from_struct(usage)
+  defp usage_of({_ok_or_error, %{usage: %Alloy.Usage{} = usage}}), do: Map.from_struct(usage)
   defp usage_of(%{usage: %Alloy.Usage{} = usage}), do: Map.from_struct(usage)
   defp usage_of(_result), do: nil
 
@@ -646,26 +677,45 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # a guessable one names another operator's message.
   def new_ref, do: Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
 
-  # `stream_chat/4` reports each step as it happens. Not the Server's PubSub,
-  # which broadcasts only when a turn completes — a failing turn never does.
-  defp run_turn(%{on_event: nil} = state, message, timeout) do
+  # One turn: the loop run against the history the agent holds. `on_event`
+  # reports each step as it happens; text arrives as `:text_delta` envelopes
+  # there too, so the chunk callback has nothing to do. The loop's own
+  # `timeout_ms` bounds it.
+  defp run_turn(%{on_event: nil} = state, message) do
     # Nobody is listening; just answer the caller.
-    Server.chat(state.alloy, message, timeout: timeout)
+    Alloy.run(message, turn_options(state))
   end
 
-  defp run_turn(state, message, timeout) do
+  defp run_turn(state, message) do
     report = state.on_event
     draft = state.on_draft
     agent_id = state.agent_id
 
-    Server.stream_chat(
-      state.alloy,
+    Alloy.stream(
       message,
       fn _chunk -> :ok end,
-      timeout: timeout,
-      on_event: fn envelope -> report_step(report, draft, agent_id, envelope) end
+      Keyword.put(turn_options(state), :on_event, fn envelope ->
+        report_step(report, draft, agent_id, envelope)
+      end)
     )
   end
+
+  defp turn_options(state) do
+    state.alloy_opts
+    |> Keyword.put(:messages, state.messages)
+    |> Keyword.update!(:provider, fn {module, config} ->
+      {module, provider_config(module, config, state)}
+    end)
+  end
+
+  defp provider_config(Alloy.Provider.Codex, config, state) do
+    config
+    |> Map.put(:provider_state, state.provider_state)
+    |> Map.put(:session_generation, state.session_generation)
+  end
+
+  defp provider_config(_module, config, state),
+    do: Map.put(config, :provider_state, state.provider_state)
 
   # A step is a tool call, a message, a turn ending — not a token.
   # `:text_delta` and `:thinking_delta` are never reported as steps (each would
@@ -679,7 +729,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
        when event in [:text_delta, :thinking_delta],
        do: :ok
 
-  defp report_step(report, _draft, agent_id, envelope), do: report.(agent_id, envelope)
+  defp report_step(report, _draft, agent_id, envelope),
+    do: report.(agent_id, TurnEvents.with_result(envelope))
 
   defp via(agent_id), do: {:via, Registry, {@registry, {:agent, agent_id}}}
 
@@ -708,7 +759,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @spec tools(keyword()) :: [module()]
   def tools(opts) do
     [
-      Alloy.Tool.Core.Read,
+      CmsHarness.Agents.Tools.Read,
       Alloy.Tool.Core.Write,
       Alloy.Tool.Core.Edit,
       CmsHarness.Agents.Tools.Bash
@@ -822,15 +873,16 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
        # `ToolResults`: an error struct in a result block cannot be JSON-encoded
-       # for the next request. `TurnProgress`: an interrupted turn keeps what it
-       # did.
-       |> Keyword.put(:middleware, [Compaction, ToolResults, TurnProgress])
-       # Tells the agent where an uncarried tool is reachable, not just
-       # "Unknown tool".
-       |> Keyword.put(:unknown_tool, unknown_tool_hook(opts))
-       # Long results spill to a file (agent sees head, tail and path), outside
-       # the checkout so the tree stays clean.
-       |> Keyword.put(:tool_result_spill, dir: spill_dir(Keyword.fetch!(opts, :agent_id)))
+       # for the next request. `UnknownTool`: where an uncarried tool is
+       # reachable. `TurnProgress`: an interrupted turn keeps what it did.
+       # `TurnEvents` last, so the result it reports is the one the model sees.
+       |> Keyword.put(:middleware, [
+         Compaction,
+         ToolResults,
+         UnknownTool,
+         TurnProgress,
+         TurnEvents
+       ])
        |> Keyword.put(:context, %{
          working_directory: working_copy,
          allowed_paths: [
@@ -849,6 +901,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
          mcp_client: mcp_client,
          # Middleware is a module, so its per-agent reporter rides the context.
          on_compaction: compaction_reporter(opts),
+         on_turn_event: compaction_reporter(opts),
+         # Read by `UnknownTool`.
+         unknown_tool: unknown_tool_hook(opts),
+         # Long results spill here (`Spill`, in the tools), outside the
+         # checkout so the tree stays clean.
+         spill_dir: spill_dir(Keyword.fetch!(opts, :agent_id)),
          # Told after each round of tool calls what the turn has done so far.
          on_progress: progress_reporter(opts)
        })

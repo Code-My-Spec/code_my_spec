@@ -236,10 +236,9 @@ defmodule CmsHarness.Agents.AToolErrorDoesNotKillTheAgentTest do
     @tag :capture_log
     test "says it died, and why", %{root: root} do
       {_id, pid} = quiet_agent(root)
-      {:ok, alloy} = GenServer.call(pid, :alloy)
       ref = Process.monitor(pid)
 
-      Process.exit(alloy, :provider_exploded)
+      :sys.terminate(pid, :provider_exploded)
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :provider_exploded}, 5_000
       assert_receive {:event, %{event: :agent_died, text: text}}, 5_000
