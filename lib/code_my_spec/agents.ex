@@ -688,12 +688,24 @@ defmodule CodeMySpec.Agents do
   # out loud, the same restart offer Main.attempt/4 already sends when it
   # restarts an agent itself (:own_reply, offer: {:resume, {"restart", nil}}),
   # here for the harness's own reconnect instead of main's explicit restart.
+  #
+  # Only when there is nothing else to say: a non-continuous agent is not in
+  # the loop to be told anything, and an agent still holding an active task
+  # is about to get the join's separate `agents_present` sweep's own real
+  # turn naming that task -- recording this offer first would open a second
+  # one on top of it, and that real push would refuse as the error criterion
+  # 2170 is for (confirmed: a_restored_holder_is_resumed_test.exs's held-task
+  # cases timed out with this guard absent). Either case still gets its dead
+  # turn cleared by `Offers.abandon_turns/1` above; only the extra word is
+  # conditional.
   defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent) do
     Offers.abandon_turns(agent.id)
 
-    send_to_agent(agent.id, "The harness restarted.", :own_reply,
-      offer: {:resume, {"restart", nil}}
-    )
+    if agent.continuous && is_nil(Agent.active_task(agent)) do
+      send_to_agent(agent.id, "The harness restarted.", :own_reply,
+        offer: {:resume, {"restart", nil}}
+      )
+    end
 
     :ok
   end
