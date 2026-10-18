@@ -56,7 +56,7 @@ defmodule CodeMySpecWeb.UserSocket do
             "[UserSocket] connect refused — token expired/revoked #{caller(token, connect_info)}"
           )
 
-          :error
+          {:error, :token_expired}
         end
 
       nil ->
@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.UserSocket do
         "(params keys: #{inspect(Map.keys(params))}) #{peer(connect_info)}"
     )
 
-    :error
+    {:error, :missing_token}
   end
 
   # The test's own database connection, for a socket a test opened.
@@ -121,14 +121,14 @@ defmodule CodeMySpecWeb.UserSocket do
             "which has no account #{caller(token, connect_info)}"
         )
 
-        :error
+        {:error, :project_has_no_account}
 
       nil ->
         Logger.warning(
           "[UserSocket] connect refused — token not found #{caller(token, connect_info)}"
         )
 
-        :error
+        {:error, :token_not_found}
     end
   end
 
@@ -149,7 +149,35 @@ defmodule CodeMySpecWeb.UserSocket do
         "#{caller(token, connect_info)}"
     )
 
-    :error
+    {:error, :no_account_owner}
+  end
+
+  @doc """
+  The 403 an un-upgraded websocket connection gets when `connect/3` refuses it
+  with `{:error, reason}` -- configured as this socket's `:error_handler`
+  (`endpoint.ex`). Stock Phoenix (`Phoenix.Transports.WebSocket.handle_error/2`)
+  discards the reason and always sends an empty body, which is why a harness's
+  own log could only say the far side said no (issue 62377cc3) -- naming the
+  caller server-side (d96809d4) still left the CALLER unable to tell a
+  permanent refusal (its credential is gone) from a transient one (network,
+  timeout) apart, so it retried a dead credential forever on the same backoff
+  as a live one.
+
+  The reason is set as a response HEADER, not only the JSON body: the
+  harness's websocket client (Slipstream, backed by Mint) reports a refused
+  upgrade from the raw HTTP response parts it decodes itself
+  (`[{:status, ref, status}, {:headers, ref, headers} | _maybe_done]` in
+  `Slipstream.Connection.Pipeline`) and keeps the status and headers in its
+  own `failure_info`, but the match discards everything after headers --
+  `_maybe_done`, which is where a response body's `{:data, ...}`/`{:done,
+  ...}` parts would be. A header survives that trip; a body does not.
+  """
+  @spec handle_connect_error(Plug.Conn.t(), term()) :: Plug.Conn.t()
+  def handle_connect_error(conn, reason) do
+    conn
+    |> Plug.Conn.put_resp_header("x-connect-refusal-reason", to_string(reason))
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(403, Jason.encode!(%{"error" => to_string(reason)}))
   end
 
   # Enough to identify the credential, and nothing that could be replayed.

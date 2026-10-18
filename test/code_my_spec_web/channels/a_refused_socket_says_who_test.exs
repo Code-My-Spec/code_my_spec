@@ -41,7 +41,8 @@ defmodule CodeMySpecWeb.ARefusedSocketSaysWhoTest do
 
   defp refusal(token) do
     capture_log(fn ->
-      assert :error = UserSocket.connect(%{"token" => token}, %Phoenix.Socket{}, connect_info())
+      assert {:error, _reason} =
+               UserSocket.connect(%{"token" => token}, %Phoenix.Socket{}, connect_info())
     end)
   end
 

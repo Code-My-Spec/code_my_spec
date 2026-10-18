@@ -232,4 +232,13 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
 
     assert Terminal.session_record("cc-elsewhere", dir) == nil
   end
+
+  # Seen live: Claude Code 2.1.293 left a stray brace after the object.
+  test "a registry file with junk after its object is still read", %{dir: dir} do
+    record = %{"sessionId" => "cc-trailing", "messagingSocketPath" => "/tmp/cc-socks/1.sock"}
+    File.write!(Path.join(dir, "1.json"), Jason.encode!(record) <> "}")
+
+    assert %{"messagingSocketPath" => "/tmp/cc-socks/1.sock"} =
+             Terminal.session_record("cc-trailing", dir)
+  end
 end

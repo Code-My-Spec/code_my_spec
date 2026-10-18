@@ -70,11 +70,15 @@ defmodule CmsHarness.SyncPathTest do
       FakeServer.start()
       refute Projects.connected?(project.root)
 
-      observation = Task.async(fn -> CmsHarness.Setup.Connection.observe(project.root) end)
+      # A budget for a loaded machine, not the 5s default: the claim is which
+      # state is observed, not how fast a gate's box connects.
+      observation =
+        Task.async(fn -> CmsHarness.Setup.Connection.observe(project.root, 20_000) end)
+
       assert Task.yield(observation, 50) == nil
       {:ok, _} = Projects.ensure_started(project.root)
 
-      result = Task.await(observation, 6_000)
+      result = Task.await(observation, 25_000)
       assert result.connected == true
       assert result.connection_state == "connected"
       assert {:ok, _, _} = DateTime.from_iso8601(result.observed_at)

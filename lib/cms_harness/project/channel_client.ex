@@ -115,6 +115,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:topic, "harness_project:#{project.id}")
       |> assign(:joined, false)
       |> assign(:refused, nil)
+      |> assign(:terminal_refusal, nil)
       |> assign(:read_model, nil)
       |> assign(:pending, %{})
       |> assign(:analysis_refs, %{})
@@ -532,7 +533,10 @@ defmodule CmsHarness.Project.ChannelClient do
     socket = socket |> stamp_server_reply() |> assign(:restore_ref, nil)
 
     case reply do
-      {:ok, %{"agents" => agents}} when is_list(agents) ->
+      {:ok, %{"agents" => agents} = restore} when is_list(agents) ->
+        # Off this process: attaching registers through this channel.
+        root = socket.assigns.project.root
+        Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       other ->
@@ -1172,6 +1176,44 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  # A terminal agent whose Claude Code session is still running comes back
+  # attached to its socket, found again in Claude Code's own registry; one
+  # whose session ended stays away until its session starts again.
+  defp reattach_terminals(root, terminals) do
+    for %{"agent_id" => id, "session_id" => session_id} <- terminals,
+        %{"messagingSocketPath" => socket} = record when is_binary(socket) <-
+          [CmsHarness.Agents.terminal_session(session_id)] do
+      session = %{
+        socket: socket,
+        working_copy: root,
+        session_id: session_id,
+        transcript: transcript_path(record)
+      }
+
+      case CmsHarness.Agents.attach_terminal(id, session) do
+        {:ok, _pid} ->
+          Logger.info("[CmsHarness] re-attached terminal agent #{id}")
+
+        {:error, reason} ->
+          Logger.warning(
+            "[CmsHarness] could not re-attach terminal agent #{id}: #{inspect(reason)}"
+          )
+      end
+    end
+
+    :ok
+  end
+
+  # Where Claude Code writes a session's transcript: its cwd with `/` and `.`
+  # as `-`, under `~/.claude/projects`. Nil when that file is not there.
+  defp transcript_path(%{"cwd" => cwd, "sessionId" => id}) when is_binary(cwd) do
+    dir = String.replace(cwd, ~r{[/.]}, "-")
+    path = Path.expand("~/.claude/projects/#{dir}/#{id}.jsonl")
+    if File.exists?(path), do: path
+  end
+
+  defp transcript_path(_record), do: nil
+
   # One at a time, so a restore cannot stampede the box. Off this process: a
   # launch waits on the agent's MCP session, and inline it held every
   # `stop_agent` behind the restore. This process owns the queue and the task
@@ -1516,6 +1558,41 @@ defmodule CmsHarness.Project.ChannelClient do
   defp redact_token(uri), do: String.replace(uri, ~r/token=[^&]*/, "token=[redacted]")
 
   @impl Slipstream
+  # Issue 62377cc3 / 620b0389: a 403 on the socket upgrade means the SERVER
+  # refused this credential -- not a network hiccup, not a 5xx, and not
+  # something a retry ever fixes. Logged once, not every 30s forever: a
+  # dead credential hammering production on the same backoff as a live one
+  # is the whole complaint in both issues. Stops here; `retry_now/1` is the
+  # only way back (new credentials, re-linking, or a restart re-`init/1`s
+  # fresh regardless and never reaches this clause with stale state).
+  #
+  # `UserSocket.handle_connect_error/2` answers a refused upgrade with an
+  # `x-connect-refusal-reason` header -- Slipstream keeps headers on a
+  # failed upgrade but discards the response body entirely, so a header is
+  # the only way the reason reaches here at all.
+  def handle_disconnect(
+        {:upgrade_failure, %{status_code: 403, resp_headers: headers}},
+        socket
+      ) do
+    why = refusal_reason(headers) || "no reason given"
+
+    Logger.error(
+      "[CmsHarness] the server refused this harness's socket upgrade (#{why}) -- stopping. " <>
+        "This credential will not be retried on a timer; fix it (new credentials, " <>
+        "re-linking, or a restart) and call retry_now."
+    )
+
+    socket =
+      socket
+      |> assign(:joined, false)
+      |> assign(:join_attempt, nil)
+      |> assign(:terminal_refusal, why)
+      |> pause_watcher()
+      |> fail_pending(:not_connected)
+
+    {:ok, socket}
+  end
+
   def handle_disconnect(reason, socket) do
     delay = backoff(socket.assigns.attempts)
 
@@ -1535,6 +1612,12 @@ defmodule CmsHarness.Project.ChannelClient do
     # exits. `:refused` only tells the health endpoint why nothing is served.
     Process.send_after(self(), :reconnect, delay)
     {:ok, update(socket, :attempts, &(&1 + 1))}
+  end
+
+  defp refusal_reason(headers) do
+    Enum.find_value(headers, fn {key, value} ->
+      if String.downcase(key) == "x-connect-refusal-reason", do: value
+    end)
   end
 
   @impl Slipstream
@@ -1799,6 +1882,13 @@ defmodule CmsHarness.Project.ChannelClient do
     {:reply, socket.assigns.joined, socket}
   end
 
+  # Why the server stopped this harness retrying, or nil -- the health
+  # endpoint's way of surfacing a 403 (issue 62377cc3 / 620b0389) where a
+  # person running the harness actually looks.
+  def handle_call(:terminal_refusal, _from, socket) do
+    {:reply, socket.assigns[:terminal_refusal], socket}
+  end
+
   # Seconds since the server last answered anything, or nil if it never has.
   # Evidence rather than `joined`, which is only this process's belief.
   # Recorded passively on existing replies, so asking cannot hang.
@@ -1947,6 +2037,20 @@ defmodule CmsHarness.Project.ChannelClient do
   # One step of a turn, keyed by agent, while the turn is still running. Not
   # `record_turn`, which carries a finished request/response pair after the fact.
   @impl Slipstream
+  # Issue 62377cc3 / 620b0389: the only way back from a 403's terminal stop
+  # -- never a timer. Dialing fresh re-reads the credential via
+  # `connect_headers/1` -> `Config.connect_headers/1`, the same way
+  # `refresh_identity/1` re-reads `working_copy_id` on every `init/1`, so
+  # new credentials or a re-link are picked up without a process restart.
+  def handle_cast(:retry_now, socket) do
+    socket =
+      socket
+      |> assign(:terminal_refusal, nil)
+      |> assign(:attempts, 0)
+
+    dial(socket)
+  end
+
   def handle_cast({:turn_event, agent_id, envelope}, %{assigns: %{joined: true}} = socket) do
     push(socket, socket.assigns.topic, "agent_turn_event", %{
       "agent_id" => agent_id,
