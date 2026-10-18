@@ -14,12 +14,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.ChannelTest
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -106,7 +107,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       {:ok, _reply, socket} = join_as(scope)
 
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
-      task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+
+      task =
+        Task.async(fn ->
+          ToolLibrary.run(
+            "ensure_app_running",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+        end)
 
       assert %{"ref" => ref} = await_push("ensure_app_running")
 
@@ -118,13 +127,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
         "app_head" => "bb936fa6"
       })
 
-      {:reply, response, _frame} = Task.await(task)
+      response = Task.await(task)
       text = response_text(response)
 
       assert text =~ "/tmp/ensure_tool_three_features"
       assert text =~ "e6d1d8fc"
       assert text =~ "bb936fa6"
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text =~ "Do not test against this app yet"
       assert text =~ "QA requires matching revisions"
       assert text =~ "restart_app"
@@ -136,7 +145,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
         scope = full_scope_fixture()
         {:ok, _reply, socket} = join_as(scope)
         frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
-        task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+
+        task =
+          Task.async(fn ->
+            ToolLibrary.run(
+              "ensure_app_running",
+              %{},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
+          end)
+
         assert %{"ref" => ref} = await_push("ensure_app_running")
 
         answer(socket, "ensure_app_running_result", ref, %{
@@ -147,8 +165,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
           "app_action_reason" => "The health probe failed; inspect log /tmp/candidate.log."
         })
 
-        {:reply, response, _frame} = Task.await(task)
-        assert response.isError
+        response = Task.await(task)
+        assert match?({:error, _}, response)
         text = response_text(response)
         assert text =~ "old111"
         assert text =~ "new222"
@@ -179,7 +197,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
       {:ok, _reply, socket} = join_as(scope)
 
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
-      task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame) end)
+
+      task =
+        Task.async(fn ->
+          ToolLibrary.run(
+            "ensure_app_running",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+        end)
 
       assert %{"ref" => ref} = await_push("ensure_app_running")
 
@@ -190,9 +216,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelAppTest do
         "app_commit" => "e6d1d8fc"
       })
 
-      {:reply, response, _frame} = Task.await(task)
+      response = Task.await(task)
 
-      refute response.isError, response_text(response)
+      assert match?({:ok, _}, response), response_text(response)
       assert response_text(response) =~ "starting e6d1d8fc at http://127.0.0.1:59303"
     end
 

@@ -18,19 +18,20 @@ defmodule CodeMySpec.McpServers.ComponentsServer do
 
   def handle_request(request, frame), do: Handlers.handle(request, __MODULE__, frame)
 
-  # The component tools are library tools (`CodeMySpec.Components.Tools`),
-  # registered on each session's frame at `init/2`, as on `LocalServer`.
+  # The component tools and the three story ones that link stories to
+  # components, all library tools, registered on each session's frame at
+  # `init/2`, as on `LocalServer`.
   @library_tools ~w(create_component update_component delete_component add_dependency
                     remove_dependency get_component list_components start_context_design
                     review_context_design show_architecture architecture_health_summary
-                    context_statistics orphaned_contexts)
+                    context_statistics orphaned_contexts list_stories clear_story_component
+                    set_story_component)
 
   @doc "The library tools this server lists."
   def library_tools, do: Enum.filter(ToolLibrary.tools(), &(&1.name() in @library_tools))
 
-  @doc "Every tool on this server: the components, then its library tools."
-  def registrations,
-    do: __components__() ++ Enum.map(library_tools(), &ToolLibrary.registration/1)
+  @doc "Every tool on this server."
+  def registrations, do: Enum.map(library_tools(), &ToolLibrary.registration/1)
 
   @impl Anubis.Server
   def init(_client_info, frame), do: {:ok, LibraryTools.register(frame, library_tools())}
@@ -38,15 +39,4 @@ defmodule CodeMySpec.McpServers.ComponentsServer do
   @impl Anubis.Server
   def handle_tool_call(name, params, frame),
     do: LibraryTools.call(library_tools(), name, params, frame)
-
-  # Core CRUD operations
-  component(CodeMySpec.McpServers.Stories.Tools.ListStories)
-  component(CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent)
-
-  # Dependency edges are derived from spec files — the architect edits
-  # the source component's `## Dependencies` section and ComponentSync
-  # writes the graph rows. No CRUD tool surface for dependencies.
-
-  # Architecture and design tools
-  component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
 end

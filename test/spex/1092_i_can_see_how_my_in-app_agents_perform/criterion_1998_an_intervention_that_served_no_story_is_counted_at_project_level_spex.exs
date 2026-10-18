@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
   import Phoenix.ChannelTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.RestartApp
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -41,7 +42,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
 
       when_ "I restart the application", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        task = Task.async(fn -> RestartApp.execute(%{}, frame) end)
+
+        task =
+          Task.async(fn ->
+            ToolLibrary.run(
+              "restart_app",
+              %{},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
+          end)
 
         assert_push "restart_app", %{"ref" => ref}, 5_000
 
@@ -60,7 +69,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1998Spex do
           1_000 -> flunk("restart_app_result was never acknowledged")
         end
 
-        {:reply, _response, _frame} = Task.await(task)
+        _response = Task.await(task)
         {:ok, context}
       end
 

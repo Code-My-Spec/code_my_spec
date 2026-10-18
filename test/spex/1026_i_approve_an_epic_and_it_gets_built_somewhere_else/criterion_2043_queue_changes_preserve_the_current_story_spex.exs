@@ -5,10 +5,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2043Spex do
   Both teammates read their current work through the real requirement tool.
   """
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -24,10 +20,10 @@ defmodule CodeMySpecSpex.Story1026.Criterion2043Spex do
           |> Slice.waiting(assigned: true)
           |> Slice.waiting(title: "Additional queued story")
 
-        answer = Slice.call(context, CreateEpic, %{name: "Additional queued work"})
+        answer = Slice.call(context, "create_epic", %{name: "Additional queued work"})
         [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, answer)
 
-        Slice.call(context, AssignStoryToEpic, %{
+        Slice.call(context, "assign_story_to_epic", %{
           story_number: context.waiting.number,
           epic_name: "Additional queued work"
         })
@@ -37,7 +33,7 @@ defmodule CodeMySpecSpex.Story1026.Criterion2043Spex do
 
       when_ "the agent adds the waiting epic to that copy's queue", context do
         answer =
-          Slice.call(context, AssignEpicToWorkingCopy, %{
+          Slice.call(context, "assign_epic_to_working_copy", %{
             epic_id: context.queued_epic_id,
             working_copy_id: context.scope.active_working_copy_id
           })

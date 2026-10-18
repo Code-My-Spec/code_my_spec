@@ -14,10 +14,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,13 +29,14 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, epic_response, _frame} =
-          CreateEpic.execute(
+        epic_response =
+          ToolLibrary.run(
+            "create_epic",
             %{name: "Stone Age", description: "The earliest age of play."},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute epic_response.isError, "expected create_epic to succeed"
+        assert match?({:ok, _}, epic_response), "expected create_epic to succeed"
 
         titles =
           for n <- 1..@story_count do
@@ -96,24 +96,26 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
   end
 
   defp file_story(frame, title) do
-    {:reply, response, _frame} =
-      CreateStory.execute(
+    response =
+      ToolLibrary.run(
+        "create_story",
         %{
           title: title,
           story: "As a player, I want #{title} so that the stone age feels alive."
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute response.isError, "expected create_story to succeed for #{title}"
+    assert match?({:ok, _}, response), "expected create_story to succeed for #{title}"
 
-    {:reply, assign_response, _frame} =
-      AssignStoryToEpic.execute(
+    assign_response =
+      ToolLibrary.run(
+        "assign_story_to_epic",
         %{story_number: story_number!(response), epic_name: "Stone Age"},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute assign_response.isError, "expected #{title} to be filed into the epic"
+    assert match?({:ok, _}, assign_response), "expected #{title} to be filed into the epic"
 
     :ok
   end

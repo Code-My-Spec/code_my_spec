@@ -27,9 +27,9 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 4]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
-  alias CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp
+  alias CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy
+  alias CodeMySpec.WorkingCopies.Tools.ShareCopyApp
+  alias CodeMySpec.WorkingCopies.Tools.UnshareCopyApp
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Req.Test
 

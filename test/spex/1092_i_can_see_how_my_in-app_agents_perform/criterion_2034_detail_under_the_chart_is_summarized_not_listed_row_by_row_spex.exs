@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,8 +52,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2034")
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp.isError, inspect(resp)
+
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp), inspect(resp)
 
         for reason <- [
               "check the migration order",

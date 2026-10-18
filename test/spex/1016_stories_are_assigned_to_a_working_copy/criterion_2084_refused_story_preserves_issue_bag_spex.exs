@@ -1,8 +1,6 @@
 defmodule CodeMySpecSpex.Story1016.Criterion2084Spex do
   @moduledoc "A refused switch leaves issue work assigned."
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -25,7 +23,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2084Spex do
 
       when_ "Main attempts to assign an unknown story", ctx do
         assert {true, _} =
-                 Slice.attempt(ctx, SetActiveStory, %{
+                 Slice.attempt(ctx, "set_active_story", %{
                    story_number: -1,
                    working_copy_id: ctx.scope.active_working_copy_id
                  })

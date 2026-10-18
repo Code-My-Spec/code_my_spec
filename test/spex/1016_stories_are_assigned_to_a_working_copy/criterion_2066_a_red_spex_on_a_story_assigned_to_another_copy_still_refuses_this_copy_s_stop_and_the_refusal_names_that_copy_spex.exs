@@ -45,6 +45,8 @@ defmodule CodeMySpecSpex.Story1016.Criterion2066Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
@@ -52,9 +54,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion2066Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.RealDisk
@@ -100,19 +99,25 @@ defmodule CodeMySpecSpex.Story1016.Criterion2066Spex do
         theirs = join_working_copy(context, "/tmp/spex_2066_their_copy", @their_label)
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, created, _frame} =
-          CreateEpic.execute(%{name: @epic_name, description: "Theirs to build"}, frame)
-
-        {:reply, _assigned, _frame} =
-          AssignStoryToEpic.execute(
-            %{story_number: context.story.number, epic_name: @epic_name},
-            frame
+        created =
+          ToolLibrary.run(
+            "create_epic",
+            %{name: @epic_name, description: "Theirs to build"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _placed, _frame} =
-          AssignEpicToWorkingCopy.execute(
+        _assigned =
+          ToolLibrary.run(
+            "assign_story_to_epic",
+            %{story_number: context.story.number, epic_name: @epic_name},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        _placed =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: epic_id(created), working_copy_id: theirs.working_copy_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}

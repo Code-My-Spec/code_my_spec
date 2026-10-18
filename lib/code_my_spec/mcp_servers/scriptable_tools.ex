@@ -35,64 +35,20 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
     capabilities: [:tools]
 
   component(CodeMySpec.McpServers.Health.Tools.ScriptHealth)
-  component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
-  component(CodeMySpec.McpServers.Stories.Tools.RetireStory)
-  component(CodeMySpec.McpServers.Stories.Tools.RestoreStory)
-  component(CodeMySpec.McpServers.Stories.Tools.GetStory)
-  component(CodeMySpec.McpServers.Stories.Tools.ListStories)
-  component(CodeMySpec.McpServers.Stories.Tools.ListStoryTitles)
-  component(CodeMySpec.McpServers.Stories.Tools.SetStoryComponent)
-  component(CodeMySpec.McpServers.Stories.Tools.ClearStoryComponent)
-  component(CodeMySpec.McpServers.Stories.Tools.AnalyzeStoryLinkage)
-  component(CodeMySpec.McpServers.Stories.Tools.AddCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.RetireCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.RestoreCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.GetCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.MoveCriterion)
-  component(CodeMySpec.McpServers.Stories.Tools.LinkCriterionToRule)
-  component(CodeMySpec.McpServers.Stories.Tools.ListProjectTags)
-  component(CodeMySpec.McpServers.Stories.Tools.TagStories)
-  component(CodeMySpec.McpServers.Stories.Tools.CreateEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.ProposeEpic)
 
   # Placement, kept apart from approval on purpose — John: "let's have these as
   # separate actions, creating the working copy and assigning an epic to a
   # working copy". Listing exists so that choosing between copies can be a
   # judgement rather than a default.
-  component(CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies)
-  component(CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.SyncWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop)
-  component(CodeMySpec.McpServers.Stories.Tools.SetActiveStory)
-  component(CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.UnassignStoryFromWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.ReleaseStoryFromWorkingCopy)
-  component(CodeMySpec.McpServers.Stories.Tools.UnassignEpicFromWorkingCopy)
 
   # Story 1108: an agent on a copy can start, restart and stop its own copy's
   # app. Always the caller's own copy, never a parameter — see each tool's
   # own moduledoc for why that is what makes reaching another copy structural
   # rather than a check to bypass.
-  component(CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning)
-  component(CodeMySpec.McpServers.Stories.Tools.RestartApp)
-  component(CodeMySpec.McpServers.Stories.Tools.StopApp)
 
   # Criteria 1586/1587: sharing a preview is explicit, never automatic on an
   # app coming up — the same "an agent cannot reach another copy" scoping as
   # the three tools above.
-  component(CodeMySpec.McpServers.Stories.Tools.ShareCopyApp)
-  component(CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp)
-  component(CodeMySpec.McpServers.Stories.Tools.UpdateEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.ListEpics)
-  component(CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic)
-  component(CodeMySpec.McpServers.Stories.Tools.SetEpicStoriesReady)
-  component(CodeMySpec.McpServers.Stories.Tools.StartStoryInterview)
-  component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
-  component(CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession)
-  component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
   # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
   # was unreachable from a script even though every sibling Components tool
   # above is registered and no exclusion applies.

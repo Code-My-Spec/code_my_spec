@@ -9,13 +9,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion1995Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,7 +42,13 @@ defmodule CodeMySpecSpex.Story1092.Criterion1995Spex do
           )
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+
+        _resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:story, story)}
       end

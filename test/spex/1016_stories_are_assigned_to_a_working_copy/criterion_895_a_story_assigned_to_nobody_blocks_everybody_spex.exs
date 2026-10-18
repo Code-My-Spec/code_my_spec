@@ -45,7 +45,6 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.EpicHelpers
   alias CodeMySpecSpex.HarnessHooks
@@ -88,10 +87,11 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
         epic = EpicHelpers.propose(context, "Work that is theirs", stories: 1)
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _placed, _frame} =
-          AssignEpicToWorkingCopy.execute(
+        _placed =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: epic, working_copy_id: theirs.working_copy_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}

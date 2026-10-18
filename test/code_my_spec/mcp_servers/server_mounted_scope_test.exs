@@ -12,10 +12,11 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
 
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.UserPreferences
   alias Ecto.Adapters.SQL.Sandbox
@@ -57,29 +58,31 @@ defmodule CodeMySpec.McpServers.ServerMountedScopeTest do
 
   describe "a pure-DB tool over a server-shaped frame" do
     test "list_story_titles answers from a project-scoped frame alone", %{scope: scope} do
-      alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStoryTitles}
-
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      {:reply, create_response, _} =
-        CreateStory.execute(
+      create_response =
+        ToolLibrary.run(
+          "create_story",
           %{
             title: "Watch a sprite from the server",
             story: "As an operator, I want to see what a sprite is doing."
           },
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
-      refute create_response.isError,
-             inspect(Response.to_protocol(create_response))
+      assert match?({:ok, _}, create_response),
+             inspect(create_response)
 
-      {:reply, list_response, _} = ListStoryTitles.execute(%{}, frame)
+      list_response =
+        ToolLibrary.run(
+          "list_story_titles",
+          %{},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
 
-      refute list_response.isError
+      assert {:ok, text} = list_response
 
-      text = list_response |> Response.to_protocol() |> get_in(["content"]) |> hd()
-
-      assert text["text"] =~ "Watch a sprite from the server",
+      assert text =~ "Watch a sprite from the server",
              "a story tool must round-trip with no working directory anywhere in the frame"
     end
   end

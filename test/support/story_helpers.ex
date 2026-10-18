@@ -11,12 +11,8 @@ defmodule CodeMySpecSpex.StoryHelpers do
   `CodeMySpecSpex` boundary.
   """
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -60,7 +56,12 @@ defmodule CodeMySpecSpex.StoryHelpers do
         :error -> base_params
       end
 
-    {:reply, response, _frame} = CreateStory.execute(params, frame)
+    response =
+      ToolLibrary.run(
+        "create_story",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     number = extract_number(response)
 
@@ -69,20 +70,22 @@ defmodule CodeMySpecSpex.StoryHelpers do
     # work already in flight, so release it here. Pass
     # `ready_for_dev: false` to exercise the pace gate itself.
     if Keyword.get(attrs, :ready_for_dev, true) do
-      {:reply, _resp, _frame} =
-        UpdateStory.execute(
+      _resp =
+        ToolLibrary.run(
+          "update_story",
           %{story_number: number, ready_for_dev: true},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
     end
 
     # CreateStory no longer accepts acceptance_criteria (those land via
     # Three Amigos at runtime). Use AddCriterion per description here.
     Enum.each(Keyword.get(attrs, :acceptance_criteria, []), fn description ->
-      {:reply, _resp, _frame} =
-        AddCriterion.execute(
+      _resp =
+        ToolLibrary.run(
+          "add_criterion",
           %{story_number: number, description: description},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
     end)
 
@@ -98,10 +101,11 @@ defmodule CodeMySpecSpex.StoryHelpers do
   def set_component(scope, story_id, module_name) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, _response, _frame} =
-      SetStoryComponent.execute(
+    _response =
+      ToolLibrary.run(
+        "set_story_component",
         %{story_number: number_of(scope, story_id), module_name: module_name},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     fetch(scope, story_id)
@@ -127,7 +131,12 @@ defmodule CodeMySpecSpex.StoryHelpers do
   defp fetch_by_number(scope, number) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, response, _frame} = GetStory.execute(%{story_number: number}, frame)
+    response =
+      ToolLibrary.run(
+        "get_story",
+        %{story_number: number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     story = parse_story(response)
     Map.put(story, :id, CodeMySpec.Stories.get_story_by_number(scope, story.number).id)

@@ -174,14 +174,8 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
     text
   end
 
-  defp call(name, scope, agent, params) when is_binary(name) do
+  defp call(name, scope, agent, params) do
     name |> ToolLibrary.run(params, %{scope: scope, agent_id: agent.id}) |> flagged()
-  end
-
-  defp call(tool, scope, agent, params) do
-    frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
-    {:reply, response, _frame} = tool.execute(params, frame)
-    {response.isError, hd(Response.to_protocol(response)["content"])["text"]}
   end
 
   defp flagged({:ok, text}), do: {false, text}

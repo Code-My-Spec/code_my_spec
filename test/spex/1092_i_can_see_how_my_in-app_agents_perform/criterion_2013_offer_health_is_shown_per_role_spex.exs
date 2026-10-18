@@ -19,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
@@ -76,8 +75,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
         first_frame = %Frame{assigns: %{current_scope: scope, agent_id: first.id}}
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp.isError, inspect(resp)
+
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp), inspect(resp)
 
         started =
           ToolLibrary.run(
@@ -112,8 +118,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
         second_frame = %Frame{assigns: %{current_scope: scope, agent_id: second.id}}
 
-        {:reply, resp2, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp2.isError, inspect(resp2)
+        resp2 =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp2), inspect(resp2)
 
         {:ok, _ref} =
           Work.request_turn_if_runnable(scope, second, "a teammate's task freed up")

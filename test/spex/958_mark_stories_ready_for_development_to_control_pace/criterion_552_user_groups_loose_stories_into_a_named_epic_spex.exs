@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
@@ -30,16 +31,17 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
         story_ids =
           for title <- @titles do
-            {:reply, response, _frame} =
-              CreateStory.execute(
+            response =
+              ToolLibrary.run(
+                "create_story",
                 %{
                   title: title,
                   story: "As a player, I want #{title} so that worship matters."
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError, "expected create_story to succeed for #{title}"
+            assert match?({:ok, _}, response), "expected create_story to succeed for #{title}"
 
             context.scope
             |> Stories.get_story_by_number(story_number!(response))

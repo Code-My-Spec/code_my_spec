@@ -15,11 +15,11 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.ChannelTest
   import CodeMySpecSpex.DeviceHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -33,7 +33,10 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
     scenario "a second copy is connected; the caller's own is not" do
       given_ "a second working copy, connected to the server", context do
         {:ok, other} =
-          WorkingCopies.issue(context.scope, nil, device: device_id(context), root: "/a/second-copy")
+          WorkingCopies.issue(context.scope, nil,
+            device: device_id(context),
+            root: "/a/second-copy"
+          )
 
         {:ok, _reply, _socket} = join_harness_project(context, other.id)
 
@@ -44,15 +47,27 @@ defmodule CodeMySpecSpex.Story1108.Criterion4652Spex do
         assert context.scope.active_working_copy_id != context.other_copy_id,
                "the premise requires the caller's own copy to be a different one"
 
-        response = EnsureAppRunning.execute(%{}, frame_for(context.scope))
+        response =
+          ToolLibrary.run(
+            "ensure_app_running",
+            %{},
+            Map.put(
+              frame_for(context.scope).assigns,
+              :scope,
+              frame_for(context.scope).assigns[:current_scope]
+            )
+          )
+
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "it is told its own copy is unreachable — never routed to the connected one", context do
-        {:reply, response, _frame} = context.response
+      then_ "it is told its own copy is unreachable — never routed to the connected one",
+            context do
+        response = context.response
         text = response_text(response)
 
-        assert text =~ "not" or text =~ "could not" or text =~ "unreachable" or text =~ "connected",
+        assert text =~ "not" or text =~ "could not" or text =~ "unreachable" or
+                 text =~ "connected",
                "expected a refusal naming the caller's own copy as unreachable, got: #{text}"
 
         refute text =~ "serving",

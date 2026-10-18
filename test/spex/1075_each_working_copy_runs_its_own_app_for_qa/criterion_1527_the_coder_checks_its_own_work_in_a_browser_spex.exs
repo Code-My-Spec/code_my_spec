@@ -15,11 +15,11 @@ defmodule CodeMySpecSpex.Story1108.Criterion4651Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.ChannelTest
   import CodeMySpecSpex.DeviceHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Stories.Tools.EnsureAppRunning
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
 
@@ -36,7 +36,19 @@ defmodule CodeMySpecSpex.Story1108.Criterion4651Spex do
       end
 
       when_ "the coding agent calls its own start/ensure tool", context do
-        task = Task.async(fn -> EnsureAppRunning.execute(%{}, frame_for(context.scope)) end)
+        task =
+          Task.async(fn ->
+            ToolLibrary.run(
+              "ensure_app_running",
+              %{},
+              Map.put(
+                frame_for(context.scope).assigns,
+                :scope,
+                frame_for(context.scope).assigns[:current_scope]
+              )
+            )
+          end)
+
         {:ok, Map.put(context, :task, task)}
       end
 
@@ -52,7 +64,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4651Spex do
           "app_head" => "cafefeed"
         })
 
-        {:reply, response, _frame} = Task.await(context.task)
+        response = Task.await(context.task)
         text = response_text(response)
 
         assert text =~ "55001"

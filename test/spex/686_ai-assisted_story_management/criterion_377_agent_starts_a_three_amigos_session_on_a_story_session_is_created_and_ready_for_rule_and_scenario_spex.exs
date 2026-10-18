@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5914Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -33,13 +34,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5914Spex do
       when_ "the agent calls start_three_amigos_session with the story id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartThreeAmigosSession.execute(
+        response =
+          ToolLibrary.run(
+            "start_three_amigos_session",
             %{story_number: context.story.number},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected start_three_amigos_session to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :session_response, response)}

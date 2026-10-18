@@ -10,9 +10,10 @@ defmodule CodeMySpecSpex.Story1032.Criterion3003Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -27,13 +28,14 @@ defmodule CodeMySpecSpex.Story1032.Criterion3003Spex do
 
       given_ "the project has stories", context do
         for title <- ["Alpha", "Beta"] do
-          {:reply, response, _frame} =
-            CreateStory.execute(
+          response =
+            ToolLibrary.run(
+              "create_story",
               %{title: title, story: "As an agent, I want #{title}."},
-              context.frame
+              Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
             )
 
-          refute response.isError
+          assert match?({:ok, _}, response)
         end
 
         {:ok, context}

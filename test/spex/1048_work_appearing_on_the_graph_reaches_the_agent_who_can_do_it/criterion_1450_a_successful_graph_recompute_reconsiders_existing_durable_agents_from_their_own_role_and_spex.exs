@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -67,13 +66,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3552Spex do
         epic = Fixtures.epic_fixture(context.scope)
         :ok = Fixtures.put_story_in_epic(context.scope, story, epic)
 
-        {:reply, assigned, _} =
-          AssignEpicToWorkingCopy.execute(
+        assigned =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: to_string(epic.id), working_copy_id: context.copy_id},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute assigned.isError, response_text(assigned)
+        assert match?({:ok, _}, assigned), response_text(assigned)
         :ok = Fixtures.watch_graph(context.scope)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)

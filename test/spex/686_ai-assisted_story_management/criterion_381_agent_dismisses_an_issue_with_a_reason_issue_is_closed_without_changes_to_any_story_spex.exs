@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.ListStoryTitles
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -103,7 +102,13 @@ defmodule CodeMySpecSpex.Story686.Criterion5918Spex do
       then_ "the unrelated story is unchanged", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} = ListStoryTitles.execute(%{}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_story_titles",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(list_response)
 
         assert body =~ context.story.title,

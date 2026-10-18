@@ -6,12 +6,12 @@ defmodule CodeMySpecSpex.Story1026.Criterion2044Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.WorkingCopyHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -35,8 +35,15 @@ defmodule CodeMySpecSpex.Story1026.Criterion2044Spex do
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _} = CreateEpic.execute(%{name: "Two separate stories"}, frame)
-        false = response.isError
+
+        response =
+          ToolLibrary.run(
+            "create_epic",
+            %{name: "Two separate stories"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = response
 
         stories =
           for title <- ["Selected story", "Other epic story"] do
@@ -47,13 +54,14 @@ defmodule CodeMySpecSpex.Story1026.Criterion2044Spex do
                 acceptance_criteria: ["It works"]
               )
 
-            {:reply, assigned, _} =
-              AssignStoryToEpic.execute(
+            assigned =
+              ToolLibrary.run(
+                "assign_story_to_epic",
                 %{story_number: story.number, epic_name: "Two separate stories"},
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            false = assigned.isError
+            {:ok, _} = assigned
             story
           end
 

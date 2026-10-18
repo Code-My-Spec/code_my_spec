@@ -21,10 +21,11 @@ defmodule CodeMySpecSpex.Story1030.Criterion1591Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
   alias CodeMySpec.WorkingCopies
 
   setup :register_log_in_setup_account
@@ -43,13 +44,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion1591Spex do
           assigns: %{current_scope: %{context.scope | active_working_copy_id: context.copy_id}}
         }
 
-        {:reply, response, _frame} = ShareCopyApp.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "share_copy_app",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it is refused rather than handed an address pointing at nothing", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                "a copy whose app has never been reported serving was handed a preview " <>
                  "anyway. Got: " <> response_text(context.response)
 

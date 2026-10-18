@@ -28,7 +28,7 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.McpServers.Stories.Tools.ListWorkingCopies
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.WorkingCopies
 
   setup do
@@ -75,7 +75,8 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
       mine: mine,
       root: root
     } do
-      {:ok, rows} = ListWorkingCopies.script_result(%{}, frame(scope))
+      {:ok, rows} =
+        ToolLibrary.data("list_working_copies", %{}, Map.put(frame(scope).assigns, :scope, scope))
 
       assert is_list(rows),
              "the answer crosses into Lua as a table, not a string that has to be parsed"
@@ -106,7 +107,8 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
 
       {:ok, _} = WorkingCopies.report_root(theirs, CodeMySpec.TempFile.owned_dir("theirs"))
 
-      {:ok, rows} = ListWorkingCopies.script_result(%{}, frame(scope))
+      {:ok, rows} =
+        ToolLibrary.data("list_working_copies", %{}, Map.put(frame(scope).assigns, :scope, scope))
 
       refute Enum.any?(rows, &(&1["id"] == theirs.id)),
              "another project's checkout in this answer is a wrong answer to 'which one am I'"

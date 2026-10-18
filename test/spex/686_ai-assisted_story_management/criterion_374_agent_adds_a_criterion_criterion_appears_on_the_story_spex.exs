@@ -9,9 +9,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5910Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -38,9 +38,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5910Spex do
           description: "Driver completes the welcome screen"
         }
 
-        {:reply, response, _frame} = AddCriterion.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "add_criterion",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected add_criterion to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :add_response, response)}
@@ -49,8 +54,12 @@ defmodule CodeMySpecSpex.Story686.Criterion5910Spex do
       then_ "get_story shows the new criterion", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 
