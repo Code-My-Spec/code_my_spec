@@ -225,4 +225,16 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
     assert is_nil(again.retired_at)
     assert {:ok, %Agent{engine_session_id: nil}} = Agents.fetch_agent(scope, first.id)
   end
+
+  # Seen live, 2026-10-18: a terminal agent re-attaching mid-turn was sent
+  # "Your turn ended while the harness could not reach the server".
+  test "a terminal agent re-attaching mid-turn is not told to carry on", %{scope: scope} do
+    {:ok, agent} = Agents.register_terminal(scope, session_id())
+    :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "turn_started"})
+    {:ok, _} = CodeMySpec.Agents.Mailbox.register(scope, agent.id, "gen-1")
+
+    {:ok, _} = CodeMySpec.Agents.Mailbox.ready(scope, agent.id, "gen-1", nil)
+
+    assert CodeMySpec.Agents.Mailbox.pending?(agent.id) == false
+  end
 end
