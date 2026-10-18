@@ -67,6 +67,59 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     end
   end
 
+  test "write counts include only inserted or changed rows", ctx do
+    {:ok, loaded} = Preloader.load(ctx.scope)
+    config = Configurations.get_or_create(ctx.scope)
+
+    {covered, nodes} =
+      RequirementGraph.compute_entity(ctx.scope, loaded, config, {"story", ctx.story.id})
+
+    [first, second | rest] = nodes
+    {:ok, _} = GraphStore.write(ctx.scope, covered, nodes)
+
+    {unchanged, unchanged_cost} = measured_write(ctx.scope, covered, nodes)
+    assert unchanged == {:ok, %{inserted: 0, reaped: 0}}
+    assert unchanged_cost.rows_written == 0
+    refute unchanged_cost.raised
+
+    first = %{first | satisfied: not first.satisfied}
+    second = %{second | details: %{"reason" => "changed write-count probe"}}
+    changed_nodes = [first, second | rest]
+
+    {changed, changed_cost} = measured_write(ctx.scope, covered, changed_nodes)
+    assert changed == {:ok, %{inserted: 0, reaped: 0}}
+    assert changed_cost.rows_written == 2
+    refute changed_cost.raised
+
+    stored =
+      GraphStore.event_target()
+      |> where([n], n.story_id == ^ctx.story.id)
+      |> select([n], {n.name, %{satisfied: n.satisfied, details: n.details}})
+      |> Repo.all()
+      |> Map.new()
+
+    assert Map.fetch!(stored, first.name).satisfied == first.satisfied
+    assert Map.fetch!(stored, second.name).details == second.details
+
+    {repeated, repeated_cost} = measured_write(ctx.scope, covered, changed_nodes)
+    assert repeated == {:ok, %{inserted: 0, reaped: 0}}
+    assert repeated_cost.rows_written == 0
+    refute repeated_cost.raised
+  end
+
+  defp measured_write(scope, covered, nodes) do
+    # A separate report key prevents background drains from replacing this measurement.
+    measurement_id = Ecto.UUID.generate()
+
+    result =
+      CodeMySpec.Requirements.DrainCost.measure(
+        %{kind: :event, project_id: measurement_id},
+        fn -> {GraphStore.write(scope, covered, nodes), %{}} end
+      )
+
+    {result, CodeMySpec.Requirements.DrainCost.last(measurement_id, :event)}
+  end
+
   defp event_write(scope, story) do
     {:ok, loaded} = Preloader.load(scope)
     config = Configurations.get_or_create(scope)
