@@ -387,7 +387,14 @@ defmodule CodeMySpec.Agents.Mailbox do
     end
   end
 
-  @doc "Delivery details for the existing conversation UI, derived from mailbox evidence."
+  @doc """
+  Delivery details for the existing conversation UI, derived from mailbox evidence.
+
+  Only what is still on its way: a pending message, or one whose outcome is
+  uncertain until a receipt arrives. A finished entry keeps its diagnostic as a
+  record, but it is nothing the person can act on, and listing it kept retired
+  notes on screen for good.
+  """
   def waiting_messages(conversation) do
     Repo.all(
       from m in Message,
@@ -395,8 +402,7 @@ defmodule CodeMySpec.Agents.Mailbox do
         on: e.message_id == m.id,
         where:
           m.conversation_id == ^conversation.id and
-            (m.delivery == :pending or e.state in [:uncertain, :interrupted] or
-               not is_nil(e.diagnostic)),
+            (m.delivery == :pending or e.state == :uncertain),
         order_by: m.inserted_at,
         select: {m, e}
     )

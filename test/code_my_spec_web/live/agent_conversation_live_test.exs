@@ -258,6 +258,34 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              )
     end
 
+    test "a finished delivery's old diagnostic is not listed as waiting", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, message} =
+        Conversations.add_message(conversation, :operator, "earlier note", "operator", [],
+          delivery: :delivered,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      entry = Mailbox.admit(agent, message, :operator_message)
+
+      entry
+      |> Ecto.Changeset.change(
+        state: :interrupted,
+        diagnostic: "Owning engine was replaced. Consumed work may have side effects."
+      )
+      |> Repo.update!()
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      refute render(view) =~ "Owning engine was replaced"
+    end
+
     test "unowned historical pending messages have no withdrawal control", %{
       conn: conn,
       scope: scope,
