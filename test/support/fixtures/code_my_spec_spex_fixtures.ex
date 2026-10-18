@@ -3801,6 +3801,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Reverses `seal_three_amigos/2`, directly.
+
+  There is no product-facing door to walk back through: `ThreeAmigos.evaluate/2`
+  only ever seals, on a passing check, never unseals. So this writes the field
+  the checker reads (`BddRulesChecker.sealed?/2`) the one way available, the
+  same way `seal_three_amigos/2`'s own doc explains why it does not.
+  """
+  @spec unseal_three_amigos(term(), term()) :: :ok
+  def unseal_three_amigos(scope, story) do
+    {:ok, _story} = CodeMySpec.Stories.update_story(scope, story, %{three_amigos_sealed: false})
+    :ok
+  end
+
+  @doc """
   Starts an agent task the way the removed `POST /api/agent-tasks/start`
   controller used to, for a spex whose criterion is about the task's own
   behaviour rather than about having an HTTP endpoint for it -- LocalWeb, and

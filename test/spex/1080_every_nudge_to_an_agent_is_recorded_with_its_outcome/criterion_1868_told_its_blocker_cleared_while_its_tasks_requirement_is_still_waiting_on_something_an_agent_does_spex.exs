@@ -19,9 +19,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
   (id 14, prerequisite [6], a separate QA-role chain) sat upstream of it,
   confirmed by main's diagnosis and this module's own prerequisite ids).
   `three_amigos_complete`'s own check, `BddRulesChecker.sealed?/2`, reads
-  nothing but `story.three_amigos_sealed` -- flipped directly here, since
-  reopening a sealed story has no product-facing door to walk through the
-  way sealing it does (`Fixtures.seal_three_amigos/2`).
+  nothing but `story.three_amigos_sealed`. Reopening a sealed story has no
+  product-facing door to walk back through the way sealing it does
+  (`Fixtures.seal_three_amigos/2`), so `Fixtures.unseal_three_amigos/2`
+  writes the field the one way available -- through the Fixtures bridge,
+  not a direct context call, so this scenario's own given_ still drives the
+  app the way `test/code_my_spec/spex_givens_test.exs` requires.
   """
 
   use CodeMySpecSpex.Case
@@ -91,7 +94,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
 
       given_ "three_amigos_complete, its task's own prerequisite, is withdrawn again", context do
         story = Stories.get_story_by_number!(context.scope, context.story.number)
-        {:ok, _story} = Stories.update_story(context.scope, story, %{three_amigos_sealed: false})
+        :ok = Fixtures.unseal_three_amigos(context.scope, story)
         :ok = GraphWatcher.settle(context.scope)
 
         {:ok, agent} = CodeMySpec.Agents.AgentsRepository.fetch_agent(context.scope, context.coder)
@@ -137,7 +140,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
 
       then_ "once three_amigos_complete returns, the same task is offered to start_task", context do
         story = Stories.get_story_by_number!(context.scope, context.story.number)
-        {:ok, _story} = Stories.update_story(context.scope, story, %{three_amigos_sealed: true})
+        :ok = Fixtures.seal_three_amigos(context.scope, story)
         :ok = GraphWatcher.settle(context.scope)
         id = context.coder
 
