@@ -46,13 +46,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1869Spex do
 
         refute denied.isError, response_text(denied)
         id = context.coder
-
-        # Shared-sandbox mailbox noise (graph-watcher chatter, unrelated HTTP
-        # replies) can crowd the 2s default enough to miss this real message
-        # under load -- the same symptom tracked on issue b96963a0, whose own
-        # conclusion was "not a code or setup defect" and suggested exactly
-        # this: raise the timeout rather than chase a phantom.
-        assert_receive {:work_turn_requested, ^id, _ref, notice}, 10_000
+        assert_receive {:work_turn_requested, ^id, _ref, notice}, 2_000
         {:ok, Map.put(context, :notice, notice)}
       end
 
