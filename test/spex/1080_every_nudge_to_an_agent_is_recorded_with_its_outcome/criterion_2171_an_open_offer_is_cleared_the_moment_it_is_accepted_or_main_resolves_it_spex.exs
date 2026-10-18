@@ -8,6 +8,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2171Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
