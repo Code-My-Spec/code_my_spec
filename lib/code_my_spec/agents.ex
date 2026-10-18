@@ -1297,24 +1297,49 @@ defmodule CodeMySpec.Agents do
   this agent, and main is told now (`:offer_held_back`), naming the reason.
   The offer is stamped reported, so the turn-end escalation
   (`tell_main_held_back/2`) does not repeat it.
+
+  A pull (`get_next_requirement`) never records an offer of its own (issue
+  e6f18e57) -- so when there is no open offer and no `offer_id` was named,
+  this declines whatever `Work.shown_work/2` says was shown instead, written
+  declined directly rather than refusing with nothing for the agent to name.
   """
   @spec reject_offer(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, CodeMySpec.Agents.Offer.t()} | {:error, :not_found}
   def reject_offer(%Scope{} = scope, agent_id, offer_id, reason) do
-    with {:ok, offer} <- Offers.reject(agent_id, offer_id, reason) do
-      notify_main(
-        scope,
-        :offer_held_back,
-        "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
-          "#{offer.subject_key}`. Reason: #{reason}",
-        offer: {:stalled, {"agent", agent_id}}
-      )
+    case Offers.reject(agent_id, offer_id, reason) do
+      {:ok, offer} ->
+        report_declined(scope, agent_id, offer, reason)
 
-      # This is the one report; the turn-end escalation skips reported offers.
-      :ok = Offers.mark_reported(offer)
-
-      {:ok, offer}
+      {:error, :not_found} = error ->
+        decline_shown(scope, agent_id, offer_id, reason) || error
     end
+  end
+
+  defp decline_shown(scope, agent_id, nil, reason) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {kind, subject} <- Work.shown_work(scope, agent),
+         offer when not is_nil(offer) <- Offers.record_declined(agent, kind, subject, reason) do
+      report_declined(scope, agent_id, offer, reason)
+    else
+      _ -> nil
+    end
+  end
+
+  defp decline_shown(_scope, _agent_id, _offer_id, _reason), do: nil
+
+  defp report_declined(scope, agent_id, offer, reason) do
+    notify_main(
+      scope,
+      :offer_held_back,
+      "Offer declined by agent #{agent_id}: #{offer.kind} `#{offer.subject_type}:" <>
+        "#{offer.subject_key}`. Reason: #{reason}",
+      offer: {:stalled, {"agent", agent_id}}
+    )
+
+    # This is the one report; the turn-end escalation skips reported offers.
+    :ok = Offers.mark_reported(offer)
+
+    {:ok, offer}
   end
 
   @doc """

@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Configurations
@@ -50,7 +51,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
         response =
           execution
           |> RequirementsMapper.story_execution_response(active_subagents)
-          |> with_offer_note(ready_offer(agent, execution))
+          |> with_offer_note(ready_offer(agent))
 
         {:reply, response, frame}
 
@@ -83,14 +84,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # validation path. The Files page's Sync button remains the
   # deliberate full pass.
 
-  # An offer only ever backs a ready wave: `:complete`/`:blocked`/
-  # `:unavailable` have nothing actionable for this role to be asked to act
-  # on, so there is nothing to back with an offer either (criteria 2158,
-  # e6f18e57).
-  defp ready_offer(%Agents.Agent{} = agent, %{status: :ready, actionable: actionable}),
-    do: Work.ensure_work_offer(agent, actionable)
-
-  defp ready_offer(_agent, _execution), do: nil
+  # A pull is a pure read: it never records an offer, only reports one it
+  # already holds (issue e6f18e57, product's ruling: only pushed work turns
+  # climb the ladder). `reject_offer`'s own fallback handles the case this
+  # agent was shown work with no offer behind it at all.
+  defp ready_offer(%Agents.Agent{id: agent_id}), do: Offers.current_work_offer(agent_id)
+  defp ready_offer(_agent), do: nil
 
   defp with_offer_note(response, nil), do: response
 

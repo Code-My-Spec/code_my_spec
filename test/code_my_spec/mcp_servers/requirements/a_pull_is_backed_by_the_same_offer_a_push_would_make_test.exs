@@ -2,8 +2,10 @@ defmodule CodeMySpec.McpServers.Requirements.APullIsBackedByTheSameOfferAPushWou
   @moduledoc """
   Issue e6f18e57: `get_next_requirement` showed an agent actionable work
   with no offer behind it, so `reject_offer` (per main's instruction) had
-  nothing to decline. Per product: work a pull shows is backed by the same
-  single open offer a pushed turn would carry (criteria 2158, 2161, 2163).
+  nothing to decline. Product's ruling (7371fb26): a pull stays a pure read
+  -- it never records an offer or climbs a ladder -- and `reject_offer`
+  called with no open offer and no id declines whatever work the pull most
+  recently showed instead, writing that decline directly.
   """
   use CodeMySpecSpex.Case, async: true
 
@@ -36,25 +38,20 @@ defmodule CodeMySpec.McpServers.Requirements.APullIsBackedByTheSameOfferAPushWou
     Map.put(ctx, :agent, agent)
   end
 
-  test "names the offer and reject_offer, reuses it on a repeat pull, and does not re-offer it once declined",
-       ctx do
+  test "a pull records nothing, and reject_offer with no id declines what it showed", ctx do
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: ctx.agent.id}}
 
     assert {:reply, first, _} = GetNextRequirement.execute(%{}, frame)
     content = response_text(first)
-    assert content =~ "requirement_name=`"
+    assert [_, shown_name] = Regex.run(~r/requirement_name=`(\w+)`/, content)
 
-    assert [offer] = Offers.list_for_agent(ctx.agent.id)
-    assert offer.status == :open
-    assert offer.kind == :work
-    assert content =~ offer.id
-    assert content =~ "reject_offer"
+    # A pull is a pure read: nothing is recorded just by asking.
+    assert Offers.list_for_agent(ctx.agent.id) == []
 
-    # A repeat pull before anything changes finds the same offer open --
-    # not a second attempt, not a climb of its ladder.
+    # Repeating the pull still records nothing.
     assert {:reply, repeat, _} = GetNextRequirement.execute(%{}, frame)
-    assert response_text(repeat) =~ offer.id
-    assert [^offer] = Offers.list_for_agent(ctx.agent.id)
+    assert response_text(repeat) == content
+    assert Offers.list_for_agent(ctx.agent.id) == []
 
     assert {:ok, decline_text} =
              RejectOffer.call(
@@ -62,16 +59,25 @@ defmodule CodeMySpec.McpServers.Requirements.APullIsBackedByTheSameOfferAPushWou
                %{agent_id: ctx.agent.id, scope: ctx.scope}
              )
 
+    assert [offer] = Offers.list_for_agent(ctx.agent.id)
+    assert offer.status == :declined
+    assert offer.kind == :work
+    assert offer.reason == "not this agent's scope"
     assert decline_text =~ offer.id
     declined_key = offer.subject_key
 
     assert {:reply, after_decline, _} = GetNextRequirement.execute(%{}, frame)
-    refute response_text(after_decline) =~ offer.id
+    refute response_text(after_decline) =~ "requirement_name=`#{shown_name}`"
 
     refute Enum.any?(
              Offers.list_for_agent(ctx.agent.id),
              &(&1.status == :open and &1.subject_key == declined_key)
            ),
            "the declined work was offered again before main acted on it"
+  end
+
+  test "reject_offer with no open offer and nothing shown refuses rather than inventing one", ctx do
+    assert {:error, :not_found} =
+             CodeMySpec.Agents.Offers.reject(ctx.agent.id, nil, "nothing to decline")
   end
 end

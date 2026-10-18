@@ -87,7 +87,10 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
 
       assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, agent, :test)
       id = agent.id
-      assert_received {:work_turn_requested, ^id, ^ref, @work_prompt}
+      assert_received {:work_turn_requested, ^id, ^ref, prompt}
+      # Criterion 2158: a pushed work turn also names its offer id and
+      # reject_offer, after the eligible-work text this test is really about.
+      assert String.starts_with?(prompt, @work_prompt)
 
       assert [offer] = Offers.list_for_agent(agent.id)
       assert offer.kind == :work
@@ -99,7 +102,7 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       # database id `head.entity_id` carries internally (issue 56a2d806).
       assert offer.subject_key == "#{head.entity_type}:#{ctx.story.number}:#{head.name}"
       assert offer.working_copy_id == ctx.scope.active_working_copy_id
-      assert linked_texts(offer) == [@work_prompt]
+      assert linked_texts(offer) == [prompt]
     end
 
     test "a second offer of the same work supersedes the first", ctx do

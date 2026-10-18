@@ -25,11 +25,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion2158Spex do
   spex "A work offer names its id and how to refuse it", criterion: 2158 do
     scenario "work is offered to a coder" do
       given_ "coding work is waiting", context do
-        {:ok, context}
+        {:ok, coding_work_waiting(context)}
       end
 
       when_ "it is offered to a continuous coder", context do
-        context = offered_work(context)
+        context = push_waiting_work(context)
         [offer] = offers(context, context.coder, %{kind: "work"})
         {:ok, Map.put(context, :offer, offer)}
       end

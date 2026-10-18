@@ -1114,35 +1114,27 @@ defmodule CodeMySpec.Agents.Work do
     do: actionable(scope, agent.role, agent, owners: owners)
 
   @doc """
-  Backs a pull read (`get_next_requirement`) with the same single open work
-  offer a pushed turn would carry (issue e6f18e57): the agent's current open
-  offer if it already holds one -- one open offer is its status, regardless
-  of subject (criterion 2161) -- or a freshly recorded one for the head of
-  `nodes` (the same `offer_subject/2` a push names) when it holds none and
-  there is some work to back. A repeat pull for the same subject finds that
-  offer already open rather than recording a new attempt or climbing its
-  ladder. `nil` when there is nothing to offer.
+  What a pull (`get_next_requirement`) would currently show this agent to
+  act on: `{kind, subject}` for the head of its claimable work, the same
+  selection `offer_subject/2` makes for a pushed turn, or nil when there is
+  none. Read-only -- a pull never records an offer (issue e6f18e57, product's
+  ruling on 7371fb26: only pushed work turns climb the ladder).
+  `Agents.reject_offer/4`'s own fallback uses this to decline work that was
+  shown but never backed by an offer.
   """
-  @spec ensure_work_offer(Agent.t(), [map()]) :: Offer.t() | nil
-  def ensure_work_offer(%Agent{id: agent_id} = agent, nodes)
-      when is_binary(agent_id) and is_list(nodes) do
-    case Offers.current_work_offer(agent_id) do
-      nil ->
-        case Enum.map(nodes, &{&1.entity_type, &1.entity_id, &1.name}) do
-          [] ->
-            nil
+  @spec shown_work(Scope.t(), Agent.t()) :: {Offer.kind(), Offers.subject()} | nil
+  def shown_work(scope, %Agent{} = agent) do
+    case claimable_work(scope, agent) do
+      [] ->
+        nil
 
-          tuples ->
-            subject = offer_subject(agent, tuples)
-            Offers.record(nil, agent, offer_kind(subject), subject)
-        end
+      nodes ->
+        subject =
+          offer_subject(agent, Enum.map(nodes, &{&1.entity_type, &1.entity_id, &1.name}))
 
-      offer ->
-        offer
+        {offer_kind(subject), subject}
     end
   end
-
-  def ensure_work_offer(_agent, _nodes), do: nil
 
   @doc """
   Whether a task at `agent`'s checkout withholds `node` from it: another
