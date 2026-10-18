@@ -110,6 +110,13 @@ defmodule CmsHarness.Agents do
     as: :attach
 
   @doc """
+  Whether a terminal session in `working_copy`, in `permission_mode`, takes
+  what is written to its socket. See `Agents.Inbound`.
+  """
+  @spec inbound(String.t(), String.t() | nil) :: CmsHarness.Agents.Inbound.verdict()
+  defdelegate inbound(working_copy, permission_mode), to: CmsHarness.Agents.Inbound, as: :verdict
+
+  @doc """
   Stop one agent, and say whether it was there to stop.
 
   Stops exactly one agent: never a tree, never a match by name.
