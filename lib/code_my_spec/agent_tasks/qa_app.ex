@@ -3,8 +3,8 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Orchestrator task for browser-based QA of the running app.
 
   Analyzes the project's routes and stories, then delegates per-story QA
-  testing to QaTester subagents. Follows the DevelopLiveView orchestration
-  pattern: write prompt files, dispatch subagents, validate via delegation.
+  testing to QaTester subagents, each of which starts its own story's
+  `qa_complete` task and writes the brief from what that task returns.
 
   Lifecycle:
   1. Start/verify Phoenix server, via `ensure_app_running` — never a
@@ -16,7 +16,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   4. Write summary to `.code_my_spec/qa/summary.md`
 
   Two main functions:
-  - `command/3` - Writes per-story task-start instructions, returns orchestration prompt
+  - `command/3` - Returns the orchestration prompt
   - `evaluate/3` - Delegates per-story validation to QaStory.evaluate, checks summary
   """
 
@@ -27,14 +27,9 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   alias CodeMySpec.BddSpecs.SpecProjector
 
   @doc """
-  Generate prompt files and orchestration instructions for the QA session.
-
-  For each story:
-  1. Writes instructions to start a captured story QA task, writes to `.code_my_spec/qa/{story_number}/prompt.md`
-  2. Collects the prompt file paths
-
-  Then writes an orchestration prompt instructing the agent to smoke-test
-  routes and dispatch qa subagents per story.
+  The orchestration prompt: smoke-test routes, then dispatch one qa subagent
+  per story. No per-story files are written; each subagent's `start_task`
+  captures the review when QA actually starts.
 
   Returns {:ok, prompt_text}
   """
@@ -49,16 +44,12 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     bdd_summaries = format_bdd_summaries(env)
     existing_issues = list_existing_issues(scope)
 
-    # Defer each review capture until its QA task starts.
-    story_prompts = generate_story_prompts(scope, stories)
-
     prompt =
       build_prompt(
         project,
         env,
         router_content,
         stories,
-        story_prompts,
         bdd_coverage,
         bdd_summaries,
         existing_issues
@@ -90,30 +81,6 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     else
       evaluate_stories(scope, session, stories, summary_exists)
     end
-  end
-
-  # ============================================================================
-  # Per-Story Prompt Generation
-  # ============================================================================
-
-  defp generate_story_prompts(scope, stories) do
-    env = CodeMySpec.AgentTasks.environment(scope)
-
-    Enum.map(stories, fn story ->
-      prompt = """
-      # QA Story #{story.number}: #{story.title}
-
-      Begin this review by calling `start_task` with requirement_name `qa_complete`,
-      entity_type `story`, and entity_id `#{story.number}`. Use the returned task ID
-      and review instructions. This captures the certified revision and submitted
-      fixes when QA actually starts. If readiness is blocked, finish the required
-      story work before beginning QA; do not test from an uncaptured prompt.
-      """
-
-      prompt_path = Path.join([Paths.qa_dir(), to_string(story.number), "prompt.md"])
-      :ok = Environments.write_file(env, prompt_path, prompt)
-      %{story_number: story.number, story_title: story.title, prompt_path: prompt_path}
-    end)
   end
 
   # ============================================================================
@@ -195,7 +162,6 @@ defmodule CodeMySpec.AgentTasks.QaApp do
          env,
          router_content,
          stories,
-         story_prompts,
          bdd_coverage,
          bdd_summaries,
          existing_issues
@@ -209,7 +175,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
         build_bdd_coverage_section(bdd_coverage),
         build_bdd_details_section(bdd_summaries),
         build_existing_issues_section(existing_issues),
-        build_instructions(stories, story_prompts)
+        build_instructions(stories)
       ]
       |> Enum.reject(&is_nil/1)
 
@@ -328,22 +294,11 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     """
   end
 
-  defp build_instructions(stories, story_prompts) do
+  defp build_instructions(stories) do
     dispatch_list =
-      case story_prompts do
-        [] ->
-          "  _(no stories — go straight to summary)_"
-
-        prompts ->
-          Enum.map_join(prompts, "\n", fn sp ->
-            "  - Story #{sp.story_number} (#{sp.story_title}): `#{sp.prompt_path}`"
-          end)
-      end
-
-    story_number_list =
       case stories do
         [] ->
-          "  _(no stories)_"
+          "  _(no stories — go straight to summary)_"
 
         stories ->
           Enum.map_join(stories, "\n", fn story ->
@@ -368,18 +323,14 @@ defmodule CodeMySpec.AgentTasks.QaApp do
     ### Step 3: Dispatch Per-Story QA Agents
 
     For each story, invoke the **qa** subagent
-    (`@"CodeMySpec:qa (agent)"`) with the prompt file path as the argument.
-    The subagent will read the prompt, write a brief, execute tests, file every
-    finding via `create_issue` as it runs, and submit a structured QA attempt
-    via `submit_qa_result` with the linked issue ids.
-
-    Prompt files have been generated for each story:
+    (`@"CodeMySpec:qa (agent)"`) with the story number as the argument. The
+    subagent starts the story's review with `start_task` (requirement_name
+    `qa_complete`, entity_type `story`, entity_id the story number), writes a
+    brief from what it returns, executes tests, files every finding via
+    `create_issue` as it runs, and submits a structured QA attempt via
+    `submit_qa_result` with the linked issue ids.
 
     #{dispatch_list}
-
-    All stories:
-
-    #{story_number_list}
 
     ### Step 4: Write Summary
 
