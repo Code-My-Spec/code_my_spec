@@ -118,6 +118,10 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     """
   end
 
+  # Severity is named explicitly in this prompt (e90a1f80), not left to
+  # `list_issues`' own default, so this story-scope call cannot drift from
+  # what `evaluate/2` grades (any severity) again if that default ever
+  # changes.
   defp build_prompt({:story, _id, number} = target, _issues) do
     """
     # Triage Issues — story #{number}
@@ -126,7 +130,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     issue holds this story's QA whatever its severity, so a low needs a
     decision too.
 
-    #{tools_and_goal("`status: \"incoming\"` and `story_number: #{number}`")}
+    #{tools_and_goal("`status: \"incoming\"`, `story_number: #{number}`, and `severity: \"all\"`")}
 
     Accepting keeps the issue on this story. Only accepted issues at the
     project's `fix_issues_min_severity` must be fixed before QA re-tests; an
