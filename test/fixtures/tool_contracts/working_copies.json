@@ -22,7 +22,7 @@
   },
   {
     "name": "ensure_app_running",
-    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nStory 1108's rule: an agent on a copy can start, restart and stop its own\ncopy's app. Always the caller's own copy \u2014 resolved from the connection's\nscope, never a parameter a caller could point at a different one. That is\nwhat makes \"an agent cannot reach another copy's app\" structural rather\nthan a check that could be bypassed: there is nothing on this schema to\nname another copy with.\n",
+    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nStory 1108's rule: an agent on a copy can start, restart and stop its own\ncopy's app. Always the caller's own copy -- resolved from the connection's\nscope, never a parameter a caller could point at a different one. That is\nwhat makes \"an agent cannot reach another copy's app\" structural rather\nthan a check that could be bypassed: there is nothing on this schema to\nname another copy with.\n\n## Returns when the run starts, not when it finishes\n\nA first boot compiles, which can run well past the code-mode sandbox's\n30s wall clock (issue f2977826, batch 2 of 4f7929e4) -- this used to\nshrink its own wait to fit that budget instead, racing it with a margin.\nThe spawned task claims this working copy's own lock -- shared with\n`restart_app` and `stop_app`, since all three touch the same app process\n-- and only then acks: the reply is \"started\" or \"already running\"; an\nagent that started it is messaged the outcome, any other caller calls\nthis tool again to check.\n",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -54,7 +54,7 @@
   },
   {
     "name": "restart_app",
-    "description": "Restart the caller's own copy of the app, on its current commit.\n\nSee `EnsureAppRunning` \u2014 same \"always the caller's own copy, never a\nparameter\" reasoning applies here.\n",
+    "description": "Restart the caller's own copy of the app, on its current commit.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here.\n\n## Returns when the run starts, not when it finishes\n\nA restart waits for a recompile and a boot, which can run well past the\ncode-mode sandbox's 30s wall clock (issue f2977826, batch 2 of 4f7929e4)\n-- this used to shrink its own wait to fit that budget instead, racing it\nwith a margin. The spawned task claims this working copy's own lock --\nshared with `stop_app` and `ensure_app_running`, since all three touch\nthe same app process, and a restart racing another restart's own\n`_build` directory is exactly the hazard this closes -- and only then\nacks: the reply is \"started\" or \"already running\". A second restart_app\ncall while one is in flight never starts a second one; it is told the\none already running is still going. An agent that started it is messaged\nthe outcome; any other caller calls this tool again to check.\n",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -91,7 +91,7 @@
   },
   {
     "name": "stop_app",
-    "description": "Stop the caller's own copy of the app.\n\nSee `EnsureAppRunning` \u2014 same \"always the caller's own copy, never a\nparameter\" reasoning applies here. A copy with nothing running answers\nsuccess too, same as `AppTransport.stop_app/2` itself.\n",
+    "description": "Stop the caller's own copy of the app.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here. A copy with nothing running answers\nsuccess too, same as `AppTransport.stop_app/2` itself.\n\n## Returns when the run starts, not when it finishes\n\nStopping is normally fast, but this used to hold the code-mode sandbox's\nentire 30s budget inline with no margin to even return an answer\nafterward (issue f2977826, batch 2 of 4f7929e4). The spawned task claims\nthis working copy's own lock -- shared with `restart_app` and\n`ensure_app_running`, since all three touch the same app process -- and\nonly then acks: the reply is \"started\" or \"already running\"; an agent\nthat started it is messaged the outcome, any other caller calls this\ntool again to check.\n",
     "input_schema": {
       "properties": {},
       "type": "object"
