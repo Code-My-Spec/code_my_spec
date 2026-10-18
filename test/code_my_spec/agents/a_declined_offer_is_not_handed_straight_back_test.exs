@@ -33,7 +33,11 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   window in the third test is what keeps the fingerprint from becoming a wedge
   when the work never changes but its claimability does.
   """
-  use CodeMySpecSpex.Case, async: true
+  # Sandbox.mode(Repo, {:shared, self()}) below is global to the Repo -- a
+  # concurrently-running async test can steal connection ownership mid-test
+  # (confirmed: the new claim-cancel tests passed alone, failed alongside
+  # each other, under async: true).
+  use CodeMySpecSpex.Case, async: false
 
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents.AgentsRepository
