@@ -532,7 +532,10 @@ defmodule CmsHarness.Project.ChannelClient do
     socket = socket |> stamp_server_reply() |> assign(:restore_ref, nil)
 
     case reply do
-      {:ok, %{"agents" => agents}} when is_list(agents) ->
+      {:ok, %{"agents" => agents} = restore} when is_list(agents) ->
+        # Off this process: attaching registers through this channel.
+        root = socket.assigns.project.root
+        Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       other ->
@@ -1171,6 +1174,44 @@ defmodule CmsHarness.Project.ChannelClient do
       {:error, _} -> socket
     end
   end
+
+  # A terminal agent whose Claude Code session is still running comes back
+  # attached to its socket, found again in Claude Code's own registry; one
+  # whose session ended stays away until its session starts again.
+  defp reattach_terminals(root, terminals) do
+    for %{"agent_id" => id, "session_id" => session_id} <- terminals,
+        %{"messagingSocketPath" => socket} = record when is_binary(socket) <-
+          [CmsHarness.Agents.terminal_session(session_id)] do
+      session = %{
+        socket: socket,
+        working_copy: root,
+        session_id: session_id,
+        transcript: transcript_path(record)
+      }
+
+      case CmsHarness.Agents.attach_terminal(id, session) do
+        {:ok, _pid} ->
+          Logger.info("[CmsHarness] re-attached terminal agent #{id}")
+
+        {:error, reason} ->
+          Logger.warning(
+            "[CmsHarness] could not re-attach terminal agent #{id}: #{inspect(reason)}"
+          )
+      end
+    end
+
+    :ok
+  end
+
+  # Where Claude Code writes a session's transcript: its cwd with `/` and `.`
+  # as `-`, under `~/.claude/projects`. Nil when that file is not there.
+  defp transcript_path(%{"cwd" => cwd, "sessionId" => id}) when is_binary(cwd) do
+    dir = String.replace(cwd, ~r{[/.]}, "-")
+    path = Path.expand("~/.claude/projects/#{dir}/#{id}.jsonl")
+    if File.exists?(path), do: path
+  end
+
+  defp transcript_path(_record), do: nil
 
   # One at a time, so a restore cannot stampede the box. Off this process: a
   # launch waits on the agent's MCP session, and inline it held every
