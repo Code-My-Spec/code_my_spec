@@ -701,6 +701,11 @@ defmodule CodeMySpec.Requirements.Handlers do
   end
 
   # Use the same review identity check as the ordinary graph computation.
+  #
+  # A false verdict with `waiting_on` (story 1116, criterion 2196: the last
+  # partial/fail attempt cited an issue still open, however it is triaged now)
+  # gets its own row too â every other false story shares `default_details`,
+  # but a reason naming which issue holds this one is not every story's reason.
   defp qa_passes(profile, %{stories: stories}, scope) do
     ctx = %{qa_latest_by_story: profile.latest_by_story}
 
@@ -711,8 +716,9 @@ defmodule CodeMySpec.Requirements.Handlers do
       end
 
     for story <- stories,
-        {true, detail} <- [Verdict.complete_check(scope, story, ctx)] do
-      change("story", story.id, "qa_complete", true, detail)
+        {satisfied?, detail} = Verdict.complete_check(scope, story, ctx),
+        satisfied? or Map.has_key?(detail, :waiting_on) do
+      change("story", story.id, "qa_complete", satisfied?, detail)
     end
   end
 end

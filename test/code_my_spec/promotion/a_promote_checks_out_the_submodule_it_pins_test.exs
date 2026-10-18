@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   @moduledoc """
   f403faa7: a promote that moves main's `.code_my_spec` gitlink must also move
-  main's submodule checkout to it, fetched from the promoting copy's submodule,
-  or refuse before restarting onto a stale docs tree.
+  main's submodule checkout to it, fetched from the promoting copy's submodule
+  or the docs remote, or refuse before restarting onto a stale docs tree.
 
   Git is scripted through the in-memory environment's per-env shell; nothing
   shells out.
@@ -63,7 +63,6 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   defp answer(@sub, ["status", "--porcelain"]), do: {"", 0}
   defp answer(@sub, ["cat-file", "-e", @new_pin <> "^{commit}"]), do: fetched?()
   defp answer(@sub, ["-c", _cfg, "fetch" | _]), do: fetch()
-  defp answer(@sub, ["fetch", "--quiet", "origin", @new_pin]), do: origin_fetch()
   defp answer(@sub, ["checkout", "--quiet", @new_pin]), do: checkout()
   defp answer(@sub, ["rev-parse", "HEAD"]), do: {current() <> "\n", 0}
   defp answer(cd, args), do: {"unscripted: git #{Enum.join(args, " ")} in #{cd}", 1}
@@ -84,12 +83,6 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     Process.put(:fetched_exit, 0)
     {"", 0}
   end
-
-  # The docs remote holds the pin only where a test says so.
-  defp origin_fetch, do: origin_fetch(Process.get(:origin_has_pin, false))
-
-  defp origin_fetch(true), do: fetch()
-  defp origin_fetch(false), do: {"fatal: not our ref", 128}
 
   defp checkout do
     Process.put(:sub_head, @new_pin)
@@ -165,10 +158,27 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     @new_pin
   ]
 
+  @origin_fetch_args [
+    "-c",
+    "uploadpack.allowReachableSHA1InWant=true",
+    "fetch",
+    "--quiet",
+    "origin",
+    @new_pin
+  ]
+
   # `sub_git/4` wraps a failing command's own output with the command that
   # produced it, so the reason names what was actually run, not just what it
   # said.
-  @fetch_failure "`git #{Enum.join(@fetch_args, " ")}` failed: fatal: upload-pack: not our ref #{@new_pin}"
+  @fetch_failure "`git #{Enum.join(@fetch_args, " ")}` failed: fatal: upload-pack: not our ref #{@new_pin}; " <>
+                   "and from the docs remote: `git #{Enum.join(@origin_fetch_args, " ")}` failed: " <>
+                   "fatal: remote error: upload-pack: not our ref #{@new_pin}"
+
+  @unfetchable %{
+    {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128},
+    {@sub, @origin_fetch_args} =>
+      {"fatal: remote error: upload-pack: not our ref #{@new_pin}", 128}
+  }
 
   test "a merge that moves the gitlink fetches the pinned commit by its exact sha, checks it out, and restarts" do
     assert {:ok, %{merged: "story/x"}} = promote(%{})
@@ -201,26 +211,20 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     assert_receive :restarted, 2_000
   end
 
-  # d21bf09c: the gate copy's submodule had never fetched a pin that was on the
-  # docs remote, and every docs-pointer bump was ejected at landing.
-  test "a pinned commit the promoting copy lacks is fetched from the submodule's remote, and lands" do
-    Process.put(:origin_has_pin, true)
+  # 2026-10-18: the gate copy never moves its own submodule, so a batch's pin
+  # was missing from it and every docs-pointer move was rolled back.
+  test "a pin the gate copy lacks is fetched from the docs remote, and lands" do
+    lacking = %{{@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}}
 
-    from_remote = %{
-      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
-    }
+    assert {:ok, %{merged: "story/x"}} = promote(lacking)
 
-    assert {:ok, %{merged: "story/x"}} = promote(from_remote)
-
-    assert_received {:git, @sub, ["fetch", "--quiet", "origin", @new_pin]}
+    assert_received {:git, @sub, @origin_fetch_args}
     assert_received {:git, @sub, ["checkout", "--quiet", @new_pin]}
     assert_receive :restarted, 2_000
   end
 
   test "a pinned commit that cannot be fetched refuses the promote, rolls back, and never restarts" do
-    failing = %{
-      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
-    }
+    failing = @unfetchable
 
     assert {:error, %{reason: reason, stuck_on_main: false, submodule: submodule}} =
              promote(failing)
@@ -240,11 +244,12 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   # a plain failure, never as landed, with enough named in the reason (the
   # submodule path, the commit it wanted, what the fetch returned) to act on.
   test "a pinned commit that cannot be fetched and cannot be rolled back is never marked landed, and names why" do
-    stuck = %{
-      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128},
-      {@main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]} =>
+    stuck =
+      Map.put(
+        @unfetchable,
+        {@main, ["-c", "submodule.recurse=false", "reset", "--keep", @base]},
         {"error: Your local changes to '.code_my_spec' would be overwritten by checkout", 1}
-    }
+      )
 
     assert {:error, %{reason: reason, stuck_on_main: true, submodule: submodule}} = promote(stuck)
 
@@ -259,9 +264,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   test "a main that moved since the merge is not reset, and the refusal says so" do
     Process.put(:later_head, @moved)
 
-    failing = %{
-      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
-    }
+    failing = @unfetchable
 
     assert {:error, %{reason: reason, stuck_on_main: false}} = promote(failing)
 

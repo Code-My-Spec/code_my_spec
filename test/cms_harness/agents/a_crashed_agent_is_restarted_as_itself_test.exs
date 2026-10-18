@@ -13,7 +13,6 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.Agents.Engine.Keeper
-  alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarnessTest.Machine
 
@@ -50,7 +49,7 @@ defmodule CmsHarness.Agents.ACrashedAgentIsRestartedAsItselfTest do
   # after it) and then for Liveness to have taken the watch it cast.
   defp restarted(id, root) do
     assert_receive {:agent_liveness, :up, ^id, ^root, nil}, 2_000
-    {:ok, pid} = State.whereis(id)
+    {:ok, pid} = CmsHarness.Agents.whereis(id)
     _ = :sys.get_state(pid)
     _ = Liveness.present(root)
     pid

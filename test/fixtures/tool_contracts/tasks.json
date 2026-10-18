@@ -40,11 +40,11 @@
   },
   {
     "name": "assign_subagent",
-    "description": "Assign a registered sub-agent to an open task (Story 704 / Rule 4).\n\nAtomically updates `Task.agent_id`: if the sub-agent currently owns a\ndifferent task on this session, that task's `agent_id` is cleared and\nthe target task's `agent_id` is set in the **same** `Repo.update` —\nno partial-failure window where the sub-agent ends up unassigned\nfrom their old task while not landing on the new one.\n\nErrors when:\n- the `agent_id` is not currently active in `session.subagents`\n  (filtered through `Session.active_subagents/2`, so TTL-expired\n  registrations are rejected the same way a fully unknown id is)\n- the `task_id` is not on the session\n",
+    "description": "Assign a registered sub-agent to an open task (Story 704 / Rule 4).\n\nAtomically updates `Task.agent_id`: if the sub-agent currently owns a\ndifferent task on this session, that task's `agent_id` is cleared and\nthe target task's `agent_id` is set in the **same** `Repo.update` —\nno partial-failure window where the sub-agent ends up unassigned\nfrom their old task while not landing on the new one.\n\n`agent_id` is the Task tool's own result from spawning that sub-agent,\nnot something to go look up — 50ddc827: `list_session_subagents` (the\ntool that *would* answer \"who is registered\") is not every role's to\ncall, and the id is already yours from the spawn, every time.\n\nErrors when:\n- the `agent_id` is not currently active in `session.subagents`\n  (filtered through `Session.active_subagents/2`, so TTL-expired\n  registrations are rejected the same way a fully unknown id is)\n- the `task_id` is not on the session\n",
     "input_schema": {
       "properties": {
         "agent_id": {
-          "description": "Registered sub-agent id",
+          "description": "The sub-agent's id, from the Task tool's own result when you spawned it — not something to look up elsewhere",
           "type": "string"
         },
         "session_id": {

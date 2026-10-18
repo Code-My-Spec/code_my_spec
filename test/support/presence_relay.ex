@@ -13,7 +13,6 @@ defmodule CodeMySpecTest.PresenceRelay do
 
   use GenServer
 
-  alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Presence
@@ -49,7 +48,8 @@ defmodule CodeMySpecTest.PresenceRelay do
     }
 
     # Its first up may have gone out before this subscribed.
-    {:ok, if(match?({:ok, _}, State.whereis(agent.id)), do: track(state), else: state)}
+    {:ok,
+     if(match?({:ok, _}, CmsHarness.Agents.whereis(agent.id)), do: track(state), else: state)}
   end
 
   @impl true

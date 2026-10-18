@@ -15,7 +15,6 @@ defmodule CmsHarness.AgentsTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.Agents
-  alias CmsHarness.Agents.Engine
 
   @moduletag :tmp_dir
 
@@ -134,12 +133,12 @@ defmodule CmsHarness.AgentsTest do
 
       assert {:ok, %{agent_id: ^id}} = Agents.launch(req)
       assert id in Agents.running()
-      assert Engine.running?(id)
+      assert CmsHarness.Agents.running?(id)
 
       assert :ok = Agents.halt(id)
       refute id in Agents.running()
 
-      refute Engine.running?(id),
+      refute CmsHarness.Agents.running?(id),
              "a stop that leaves the process running is the defect this whole " <>
                "story exists for — the row said stopped and the thing kept going"
     end
@@ -153,9 +152,9 @@ defmodule CmsHarness.AgentsTest do
 
       :ok = Agents.halt(a["agent_id"])
 
-      refute Engine.running?(a["agent_id"])
+      refute CmsHarness.Agents.running?(a["agent_id"])
 
-      assert Engine.running?(b["agent_id"]),
+      assert CmsHarness.Agents.running?(b["agent_id"]),
              "a stop that catches a sibling is indistinguishable from this one at " <>
                "the call site and is worse than having no stop at all"
 

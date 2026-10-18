@@ -234,7 +234,8 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   defp resume_ready(scope, agent, [task | _] = ready, {header, detail}, opts) do
-    notice = with_detail("#{header}; #{resume_instruction(scope, ready)}", detail)
+    outcome = Keyword.get(opts, :outcome)
+    notice = with_detail("#{header}; #{resume_instruction(scope, ready, outcome)}", detail)
     subject = Keyword.get(opts, :subject) || {"task", task.id}
     wake_with_notice(scope, agent, notice, :blocker_resolved, subject)
   end
@@ -277,18 +278,54 @@ defmodule CodeMySpec.Agents.Work do
 
   # The exact call that resumes each task: an id alone sends agents looking for
   # which entity it was on.
-  defp resume_instruction(scope, tasks) do
+  defp resume_instruction(scope, tasks, outcome \\ nil) do
     "resume " <>
-      Enum.map_join(tasks, "; ", fn task ->
-        case start_args(scope, task) do
-          nil ->
-            "task #{task.id} only after inspecting its recorded requirement; entity identity is unavailable"
-
-          args ->
-            "task #{task.id} with `start_task(#{args})`"
-        end
-      end) <> "."
+      Enum.map_join(tasks, "; ", &resume_clause(scope, &1, outcome)) <> "."
   end
+
+  defp resume_clause(scope, task, outcome) do
+    case start_args(scope, task) do
+      nil -> unavailable_clause(task, outcome)
+      args -> resume_or_cancel(task, args, outcome)
+    end
+  end
+
+  # 6f2d593e: a dismissed tap-out means nobody decided -- it is not the
+  # human saying "go ahead". One that named why the agent tapped out (the
+  # task's own `blocked_reason`, b872a0b3: a SpecStub for a component
+  # already deleted) must not be answered with a flat order to resume
+  # anyway; the choice is handed back to whoever can judge whether that
+  # reason still holds. Applies whether or not the task carries enough
+  # entity info to build `start_task` args -- that only changes HOW to
+  # resume, not whether resuming at all was ever decided.
+  defp resume_or_cancel(%{id: id, blocked_reason: reason}, args, :dismissed)
+       when is_binary(reason) and reason != "" do
+    "task #{id} with `start_task(#{args})` only if your own reason for tapping out " <>
+      "(\"#{reason}\") no longer applies -- `cancel_task(\"#{id}\")` instead if it does"
+  end
+
+  defp resume_or_cancel(%{id: id}, args, :dismissed) do
+    "task #{id} with `start_task(#{args})`, or `cancel_task(\"#{id}\")` if it should not resume " <>
+      "-- nobody decided this one, so the call is yours"
+  end
+
+  defp resume_or_cancel(%{id: id}, args, _outcome), do: "task #{id} with `start_task(#{args})`"
+
+  defp unavailable_clause(%{id: id, blocked_reason: reason}, :dismissed)
+       when is_binary(reason) and reason != "" do
+    "task #{id} only after inspecting its recorded requirement (entity identity is " <>
+      "unavailable) and only if your own reason for tapping out (\"#{reason}\") no longer " <>
+      "applies -- `cancel_task(\"#{id}\")` instead if it does"
+  end
+
+  defp unavailable_clause(%{id: id}, :dismissed) do
+    "task #{id} only after inspecting its recorded requirement; entity identity is " <>
+      "unavailable -- or `cancel_task(\"#{id}\")` if it should not resume, since nobody " <>
+      "decided this one"
+  end
+
+  defp unavailable_clause(%{id: id}, _outcome),
+    do: "task #{id} only after inspecting its recorded requirement; entity identity is unavailable"
 
   defp start_args(_scope, %{issue_id: issue_id} = task) when is_binary(issue_id),
     do:

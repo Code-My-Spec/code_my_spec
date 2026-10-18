@@ -3,6 +3,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.FleetHolds
 
   @sources ~w(spex exunit credo compiler)
 
@@ -61,6 +62,12 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
           {:error,
            "Cannot request #{source}: no harness is connected for this working copy " <>
              "and this server has no local analysis executor. Reconnect its harness and retry."}
+
+        # 783f3709: a hold reaches here at the point of admission, not only
+        # as a queued instruction offer, so an agent mid-run finds out at its
+        # very next attempt rather than at its next turn boundary.
+        {:error, {:held, hold}} ->
+          {:error, FleetHolds.refusal(hold)}
 
         {:error, reason} ->
           {:error, "Could not admit #{source}: #{inspect(reason)}"}

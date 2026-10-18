@@ -8,6 +8,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysisTest do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.RunsRepository
 
@@ -104,6 +105,38 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysisTest do
     assert match?({:error, _}, response)
     assert text(response) =~ "no harness is connected"
     assert RunsRepository.latest_full_runs(scope) == %{}
+  end
+
+  test "a fleet hold refuses admission, naming why, and lifting lets it proceed", %{
+    scope: scope,
+    frame: frame
+  } do
+    assert :ok = HarnessRegistry.register_executor(scope.active_working_copy_id)
+    {:ok, _hold} = FleetHolds.place(scope, "load 40, five agents running tests")
+
+    held_response =
+      ToolLibrary.run(
+        "start_analysis",
+        %{source: "compiler"},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:error, _}, held_response)
+    assert text(held_response) =~ "fleet hold is in force"
+    assert text(held_response) =~ "load 40, five agents running tests"
+    assert RunsRepository.latest_full_runs(scope) == %{}
+
+    {:ok, _} = FleetHolds.lift(scope)
+
+    lifted_response =
+      ToolLibrary.run(
+        "start_analysis",
+        %{source: "compiler"},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, lifted_response)
+    assert_receive {:run_analysis, [%{"source" => "compiler"}]}
   end
 
   test "an invalid source returns an error without opening a run", %{scope: scope, frame: frame} do

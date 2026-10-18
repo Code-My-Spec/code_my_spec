@@ -21,7 +21,6 @@ defmodule CodeMySpec.Problems do
 
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
-  defdelegate watermark(scope), to: ProblemRepository
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
 
@@ -52,7 +51,5 @@ defmodule CodeMySpec.Problems do
   defdelegate from_test_failure(test_error), to: ProblemConverter
 
   # Renderer functions
-  defdelegate render_stop_response(blocking, advisory, opts \\ []), to: ProblemRenderer
-  defdelegate advisory_assignment_note(advisory, assignment), to: ProblemRenderer
   defdelegate truncate_to_cap(text, opts \\ []), to: ProblemRenderer
 end

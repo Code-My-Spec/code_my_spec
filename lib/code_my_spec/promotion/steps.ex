@@ -873,9 +873,8 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc """
   Check out, in `root`'s own `.code_my_spec`, the commit the merge just pinned.
 
-  Runs only when the merge moved the gitlink. The pinned commit usually exists
-  only in the promoting copy's submodule, so it is fetched from `source`'s
-  `HEAD` — a bare SHA is refused ("not our ref") unless it is a ref tip.
+  Runs only when the merge moved the gitlink. The pinned commit is fetched by
+  sha from `source`'s submodule, then from the docs remote.
 
   On failure the merge is rolled back (`reset --keep` to `before`, and the tag
   it minted deleted), so the refusal leaves main as it found it and a retry
@@ -957,57 +956,35 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   defp ensure_present(env, sub, source, pinned) do
-    case git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
-      {_, 0} ->
-        :ok
-
-      _ ->
-        with {:ok, _} <- fetch_pinned(env, sub, source, pinned),
-             {_, 0} <- git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
-          :ok
-        else
-          {:error, _, _} = error ->
-            error
-
-          {_, _} ->
-            {:error, pinned,
-             "fetched #{pinned} from #{Path.join(source, @submodule)}, which git did not provide"}
-        end
-    end
+    if present?(env, sub, pinned), do: :ok, else: fetch_pinned(env, sub, source, pinned)
   end
 
-  # The promoting copy first, then the submodule's own remote. A pin is pushed
-  # to the docs remote before it is committed, but the copy that promotes it
-  # (the gate copy, for a batch) need not have fetched it. A failure reports
-  # the copy's answer, the one a reader can act on.
+  # The gate copy never moves its own submodule (`@leave_submodules`), so a
+  # batch's pin is usually missing from it. `submodule_pointer/3` already
+  # proved the pin is on the docs remote, so that is the fallback.
   defp fetch_pinned(env, sub, source, pinned) do
-    case sub_git(env, sub, fetch_pinned_args(source, pinned), pinned) do
-      {:ok, _} = fetched ->
-        fetched
-
-      from_source ->
-        case sub_git(env, sub, ["fetch", "--quiet", "origin", pinned], pinned) do
-          {:ok, _} = fetched -> fetched
-          _ -> from_source
-        end
+    with {:error, _, from_source} <- fetch_from(env, sub, Path.join(source, @submodule), pinned),
+         {:error, _, from_origin} <- fetch_from(env, sub, "origin", pinned) do
+      {:error, pinned, "#{from_source}; and from the docs remote: #{from_origin}"}
     end
   end
 
-  # `pinned` is rarely `source`'s submodule ref tip by the time this runs --
-  # the gate copy keeps building later batches in the same checkout, moving
-  # its own HEAD on -- so the fetch has to name the exact commit, not
-  # whatever ref `source` happens to be on right now. A bare SHA that is not
-  # a ref tip is refused ("not our ref") unless told the server may serve
-  # one it can still reach.
-  defp fetch_pinned_args(source, pinned) do
-    [
-      "-c",
-      "uploadpack.allowReachableSHA1InWant=true",
-      "fetch",
-      "--quiet",
-      Path.join(source, @submodule),
-      pinned
-    ]
+  defp fetch_from(env, sub, from, pinned) do
+    with {:ok, _} <- sub_git(env, sub, fetch_pinned_args(from, pinned), pinned) do
+      if present?(env, sub, pinned),
+        do: :ok,
+        else: {:error, pinned, "fetched #{pinned} from #{from}, which git did not provide"}
+    end
+  end
+
+  defp present?(env, sub, pinned),
+    do: match?({_, 0}, git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]))
+
+  # `pinned` is rarely `from`'s ref tip by the time this runs, so the fetch
+  # names the exact commit. A bare SHA that is not a ref tip is refused ("not
+  # our ref") unless told the server may serve one it can still reach.
+  defp fetch_pinned_args(from, pinned) do
+    ["-c", "uploadpack.allowReachableSHA1InWant=true", "fetch", "--quiet", from, pinned]
   end
 
   defp sub_git(env, sub, args, pinned) do
@@ -1024,9 +1001,9 @@ defmodule CodeMySpec.Promotion.Steps do
      %{
        reason:
          "the merge moved #{root}'s #{@submodule} to #{pinned}, but that commit " <>
-           "could not be fetched from #{Path.join(source, @submodule)} and checked " <>
-           "out: #{why}. #{undone} The application was not restarted. Make sure " <>
-           "#{pinned} is committed in the promoting copy's #{@submodule}, then promote again.",
+           "could not be fetched from #{Path.join(source, @submodule)} or the docs " <>
+           "remote and checked out: #{why}. #{undone} The application was not restarted. " <>
+           "Make sure #{pinned} is pushed to the docs remote, then promote again.",
        # Only true when `root` is stuck on *our own* merge commit with no
        # rollback: the one shape a caller must never read as "something
        # else moved main" and gate again, which finds this commit already

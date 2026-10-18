@@ -37,6 +37,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
@@ -1396,6 +1397,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            "exit_status" => run.exit_status,
            "stats" => run.stats || %{}
          }}
+
+      # 783f3709: the agent's own `mix test`/`mix spex` routes through here,
+      # so a hold has to be said plainly rather than folded into the generic
+      # transport-failure wording below.
+      {:error, {:held, hold}} ->
+        {:error, %{"reason" => "held", "message" => FleetHolds.refusal(hold)}}
 
       {:error, reason} ->
         Logger.warning("[HarnessProject] #{source} run for the agent failed: #{inspect(reason)}")

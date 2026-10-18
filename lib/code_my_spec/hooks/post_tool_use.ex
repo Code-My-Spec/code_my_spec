@@ -3,9 +3,9 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   The PostToolUse hook.
 
   Persists every Write/Edit/MultiEdit/NotebookEdit invocation as a `FileEdit`
-  keyed on `(external_session_id, agent_id, file_path)`, so the stop hook can
-  scope its block decision to files this session and agent actually touched
-  rather than every file dirty on disk — which leaks across parallel sessions.
+  keyed on `(external_session_id, agent_id, file_path)`, so a stop knows which
+  files this session and agent actually touched rather than every file dirty on
+  disk — which leaks across parallel sessions.
 
   `agent_id` is `nil` for main-agent edits and a UUID for Task-spawned
   sub-agent edits.
@@ -21,9 +21,8 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   deleted in the same turn would be dropped from attribution by a check that
   ran a moment too late.
 
-  Nothing downstream is harmed by an over-broad record. Attribution only ever
-  *narrows* the stop hook's blocking scope, and a path with no file has no
-  problems to match, so a phantom entry scopes nothing in.
+  Nothing downstream is harmed by an over-broad record: a path with no file
+  matches nothing.
 
   ## Bash commands that rewrite the tree without a Write/Edit
 
@@ -41,7 +40,6 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   require Logger
 
   alias CodeMySpec.FileEdits
-  alias CodeMySpec.Hooks.AnalysisAlert
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
 
@@ -60,20 +58,9 @@ defmodule CodeMySpec.Hooks.PostToolUse do
     mark_active(scope, params)
     track_git_rewrite(scope, params)
 
-    # The delivery point. Analyzer results used to reach an agent only at its
-    # next stop, which is one turn late and free if the agent never stops —
-    # see `AnalysisAlert` for the incident that cost a database.
-    #
-    # Every tool call carries it, not only the ones that write: scoping to edits
-    # would reintroduce a "which tools count" judgement, and whichever tool is
-    # the exception becomes the blind spot.
-    # The agent, not just the session. A Task-spawned subagent shares its
-    # parent's session id — this module's own file-edit key says so — so passing
-    # the session alone let one silence the other.
-    case AnalysisAlert.check(scope, params["session_id"], params["agent_id"]) do
-      nil -> {200, %{}}
-      alert -> {200, %{"systemMessage" => alert}}
-    end
+    # No annotation: problems are information that gates at promotion, and a
+    # line on every tool call was a nudge (John, 2026-10-18).
+    {200, %{}}
   end
 
   # Every tool call means this session is doing work: touch its updated_at
@@ -105,8 +92,7 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   # far longer than that; one sat in a single browser call for 1800s the day
   # this was written.
   #
-  # Here rather than in `track_edit/1` for the reason the comment above
-  # `AnalysisAlert.check/3` already gives: scoping to the tools that write
+  # Here rather than in `track_edit/1`: scoping to the tools that write
   # reintroduces a "which tools count" judgement, and whichever tool is the
   # exception becomes the blind spot. A sub-agent reading files is alive too.
   #

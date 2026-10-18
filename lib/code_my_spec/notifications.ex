@@ -791,35 +791,68 @@ defmodule CodeMySpec.Notifications do
           {:ok, PermissionRequest.t()} | {:error, term()}
   def dismiss_permission_request(id) do
     case Repo.get(PermissionRequest, id) do
-      nil ->
-        {:error, :not_found}
-
-      %{status: "pending"} = request ->
-        request
-        |> PermissionRequest.changeset(%{status: "expired"})
-        |> Repo.update()
-        |> case do
-          {:ok, updated} ->
-            Phoenix.PubSub.broadcast(
-              CodeMySpec.PubSub,
-              "permission_request:#{id}",
-              {:permission_decided, %{id: id, decision: :expired}}
-            )
-
-            broadcast_request_changed(updated)
-            deliver_decision_to_agent(updated)
-            release_dismissed_tap_out(updated)
-
-            {:ok, updated}
-
-          error ->
-            error
-        end
-
-      %{status: status} ->
-        {:error, {:already_resolved, status}}
+      nil -> {:error, :not_found}
+      %{status: "pending"} = request -> expire_permission_request(request)
+      %{status: status} -> {:error, {:already_resolved, status}}
     end
   end
+
+  defp expire_permission_request(%{id: id} = request) do
+    request
+    |> PermissionRequest.changeset(%{status: "expired"})
+    |> Repo.update()
+    |> case do
+      {:ok, updated} ->
+        Phoenix.PubSub.broadcast(
+          CodeMySpec.PubSub,
+          "permission_request:#{id}",
+          {:permission_decided, %{id: id, decision: :expired}}
+        )
+
+        broadcast_request_changed(updated)
+        deliver_decision_to_agent(updated)
+        release_dismissed_tap_out(updated)
+
+        {:ok, updated}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  Retire a pending, task-less tap-out once its agent has, in fact, resumed.
+
+  `Agents.Waiting` stops treating a task-less tap-out as holding the whole
+  agent the moment it gains an active task — "An agent still holding a task
+  is not idle on it." Nothing used to tell the permission row that: it sat
+  `"pending"`, still claiming "it cannot be woken" (`OpenQuestion`), while
+  the agent it named was demonstrably taking turns. d2044280 caught two
+  agents read as frozen pending a decision that had, in effect, already
+  stopped applying.
+
+  Called wherever a task is handed back to an agent — a fresh claim or a
+  resume — so the retirement follows the same event that already freed it
+  to work, rather than a second decision nobody is positioned to make. A
+  tap-out naming a task is untouched: it holds only that task (story 1080),
+  so working on a different one is not the contradiction this fixes.
+  """
+  @spec retire_resumed_tap_out(Agent.t() | term()) :: :ok
+  def retire_resumed_tap_out(%Agent{id: agent_id}) when is_binary(agent_id) do
+    PermissionRequest
+    |> where(
+      [p],
+      p.agent_id == ^agent_id and p.status == "pending" and p.tool_name == "tap_out" and
+        is_nil(p.task_id)
+    )
+    |> Repo.one()
+    |> case do
+      nil -> :ok
+      request -> with {:ok, _} <- expire_permission_request(request), do: :ok
+    end
+  end
+
+  def retire_resumed_tap_out(_owner), do: :ok
 
   # Nobody deciding is not a verdict on the task, and nothing else would ever
   # clear its block — it is released to be resumed, never cancelled.

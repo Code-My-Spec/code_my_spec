@@ -54,6 +54,10 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
   def handle_event("save", %{"server" => params}, socket) do
     case Servers.update_server(socket.assigns.server, resolve(params, socket.assigns.custom?)) do
       {:ok, server} ->
+        # a654ed04: saving this one field is the whole link now â a label
+        # matching an unlinked project environment points it here, a changed
+        # or cleared label releases whatever it used to match.
+        :ok = Servers.sync_linked_environments(socket.assigns.current_scope, server)
         notify_parent(server)
 
         {:noreply,

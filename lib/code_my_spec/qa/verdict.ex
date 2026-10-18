@@ -36,16 +36,17 @@ defmodule CodeMySpec.Qa.Verdict do
   def complete_check(%Scope{active_project_id: nil}, _story), do: verdict(false)
 
   def complete_check(%Scope{active_project_id: project_id} = scope, story) do
-    QaAttempt
-    |> where([a], a.story_id == ^story.id)
-    |> join(:inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
-    |> where([a], not a.stale)
-    |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
-    |> limit(1)
-    |> preload(:invalidations)
-    |> Repo.one()
-    |> valid_for_story?(scope, story)
-    |> verdict()
+    attempt =
+      QaAttempt
+      |> where([a], a.story_id == ^story.id)
+      |> join(:inner, [a], s in assoc(a, :story), on: s.project_id == ^project_id)
+      |> where([a], not a.stale)
+      |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
+      |> limit(1)
+      |> preload(:invalidations)
+      |> Repo.one()
+
+    attempt |> valid_for_story?(scope, story) |> verdict(scope, story, attempt)
   end
 
   @doc """
@@ -60,10 +61,11 @@ defmodule CodeMySpec.Qa.Verdict do
   def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
     case ctx[:qa_latest_by_story] do
       latest when is_map(latest) ->
-        latest
-        |> Map.get(story.id)
+        attempt = Map.get(latest, story.id)
+
+        attempt
         |> valid_for_story?(scope, story, ctx[:qa_submission_snapshots])
-        |> verdict()
+        |> verdict(scope, story, attempt)
 
       _ ->
         complete_check(scope, story)
@@ -82,6 +84,53 @@ defmodule CodeMySpec.Qa.Verdict do
   @spec verdict(boolean()) :: {boolean(), map()}
   def verdict(true), do: {true, %{status: "QA passed — valid DB attempt exists"}}
   def verdict(false), do: {false, %{reason: "No valid QA pass attempt in DB for this story"}}
+
+  @doc """
+  Same as `verdict/1`, but on `false` also checks whether `attempt` (the
+  story's latest non-stale attempt) was a `:partial` or `:fail` that cited an
+  issue still open on a *different* story — one re-triaged away from this
+  story since (story 1116, criterion 2196). An issue still owned by this
+  story is left to the ordinary submitted/ready_for_qa gate, whose
+  resubmission already releases the wait (criterion 2100) without the issue
+  resolving; only re-triage severs that link, so only a cross-story citation
+  holds `qa_complete` here, the way `DevopsSetupChecker` holds `deploy`: the
+  node carries `waiting_on` so it is not offered again until the issue
+  resolves.
+  """
+  @spec verdict(boolean(), Scope.t(), map(), QaAttempt.t() | nil) :: {boolean(), map()}
+  def verdict(true, _scope, _story, _attempt), do: verdict(true)
+
+  def verdict(false, scope, story, attempt) do
+    case blocking_issue(scope, story, attempt) do
+      nil ->
+        verdict(false)
+
+      issue ->
+        {false,
+         %{
+           reason:
+             "QA is withheld: issue #{issue.id}, cited by the last partial/fail attempt, is " <>
+               "still open on story #{issue.story_id}",
+           waiting_on: "cross_story_issue_block",
+           blocking_issue_id: issue.id
+         }}
+    end
+  end
+
+  defp blocking_issue(scope, story, %QaAttempt{status: status, issue_ids: issue_ids})
+       when status in [:partial, :fail] do
+    issue_ids
+    |> Enum.map(&Issues.get_issue(scope, &1))
+    |> Enum.find(&cross_story_blocker?(&1, story))
+  end
+
+  defp blocking_issue(_scope, _story, _attempt), do: nil
+
+  defp cross_story_blocker?(%{status: status, story_id: issue_story_id}, %{id: story_id})
+       when status in [:incoming, :accepted],
+       do: issue_story_id != story_id
+
+  defp cross_story_blocker?(_issue, _story), do: false
 
   @doc """
   True iff the **most-recent** attempt on the story is `status: :pass` and

@@ -113,8 +113,6 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
     @impl_path "lib/example_context.ex"
 
     setup ctx do
-      Fixtures.set_analyzer_mode(ctx.scope, :credo, :block_all)
-
       :ok =
         Environments.write_file(ctx.environment, @impl_path, "defmodule ExampleContext do\nend\n")
 
@@ -123,14 +121,6 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
       Fixtures.fresh_analysis_runs(ctx.scope, ["credo"])
       Fixtures.record_agent_edit(ctx.agent.id, @impl_path)
       :ok
-    end
-
-    # Instrument check: without a tap-out this tree does produce a decision.
-    test "names the finding to an agent that has not tapped out", ctx do
-      StopDecision.deliver(ctx.scope, ctx.agent, [])
-
-      assert_receive {:agent_dispatch, _id, _ref, message}, 2_000
-      assert message =~ "credo"
     end
 
     test "says nothing to an idle agent whose tap-out waits", ctx do

@@ -152,6 +152,13 @@ defmodule CmsHarness.Web.AnalysisController do
     )
   end
 
+  # 783f3709: a fleet hold refuses the run outright, before anything executes
+  # -- named plainly rather than read as the transport failure the generic
+  # clause below would otherwise report.
+  defp reply(conn, {:error, %{"reason" => "held", "message" => message}}) do
+    fail(conn, 409, message)
+  end
+
   defp reply(conn, {:error, reason}) do
     fail(
       conn,

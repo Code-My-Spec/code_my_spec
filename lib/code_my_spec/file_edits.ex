@@ -9,9 +9,8 @@ defmodule CodeMySpec.FileEdits do
   ## Agents that have no session
 
   An agent running under Alloy fires no hooks, so nothing ever calls
-  `track_edit/3` for it and its edits were invisible — which is why
-  `block_changed` could never narrow on that path and why every finding on the
-  tree had to be treated as its own. `track_agent_edit/2` records for that case.
+  `track_edit/3` for it and a stop could not tell which files it changed.
+  `track_agent_edit/2` records for that case.
 
   `external_session_id` is NOT NULL and its unique index is
   `(external_session_id, file_path)`, so a session-less row still needs a value

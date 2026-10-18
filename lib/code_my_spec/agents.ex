@@ -2582,11 +2582,11 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  # What this agent wrote, as it writes it: `block_changed` narrows findings to
+  # What this agent wrote, as it writes it: a stop's in-process validators read
   # the files the stopping agent touched, and an agent under Alloy fires no
   # PostToolUse. Recorded on the call, not the result (a failed write often
-  # still changed the file). Only `write` and `edit`: recording reads would make
-  # an agent answerable for every file it looked at.
+  # still changed the file). Only `write` and `edit`: recording reads would
+  # count every file it looked at as changed.
   @writing_tools ~w(write edit)
 
   defp record_edit(%Agent{id: agent_id}, %{"tool" => %{"name" => name, "path" => path}})

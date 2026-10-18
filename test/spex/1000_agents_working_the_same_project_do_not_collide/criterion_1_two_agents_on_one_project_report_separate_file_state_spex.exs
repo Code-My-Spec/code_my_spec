@@ -7,9 +7,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   Files, problems and components are projections of a working copy but were keyed
   by project, so two agents on one project wrote the same rows. The visible cost
-  is an agent's stop hook reporting work it never did: a failing test recorded by
-  one checkout blocks the other, and the only compliant response available to the
-  blocked agent is to fix code it does not own.
+  is an agent being shown work it never did: a failing test recorded by one
+  checkout listed as the other's, and the only compliant response available to
+  that agent is to fix code it does not own.
 
   Surfaces, and both are needed because the criterion spans both.
 
@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   Registering one over HTTP would be asserting against a mechanism the product
   does not use for this.
 
-  What each agent is *told* arrives through its stop hook, keyed by
-  `x-harness-id`. That is the thing the criterion says must differ.
+  What each agent *has* is its problems page, filtered to its working copy with
+  `?harness=`. That is the thing the criterion says must differ. A stop no longer
+  reports problems at all; they gate at promotion.
 
   Hooks live on `CodeMySpecLocalWeb`; the channel lives on `CodeMySpecWeb`.
   `@endpoint` is what makes channels work and simultaneously makes `~p` hook
@@ -68,15 +69,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       # harness exists — the sync targets the most recently active working copy,
       # so establishing the rival first would file these files under it.
       given_ :synced_context_component
-      given_ :on_configuration_page
-
-      given_ "the project blocks on failing tests", context do
-        context.config_live
-        |> form("[data-test='configuration-form']", configuration: %{exunit: "block_all"})
-        |> render_submit()
-
-        {:ok, context}
-      end
 
       given_ "two agents are serving the same project from different working copies",
              context do
@@ -162,24 +154,17 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
         HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
         HarnessHooks.land_analysis(context, "exunit", fixture_path("exunit.json"))
 
-        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
-
-        {:ok, Map.put(context, :first_agent_stop, response)}
+        {:ok, context}
       end
 
       then_ "that failure appears only in that agent's problems", context do
-        assert context.first_agent_stop["decision"] == "block",
-               "the agent that ran the failing test should be held by it, got: " <>
-                 inspect(context.first_agent_stop)
-
-        assert (context.first_agent_stop["reason"] || "") =~ @test_path,
-               "expected the failing test in this agent's own block, got: " <>
-                 inspect(context.first_agent_stop["reason"])
+        assert problems_page(context, context.harness.working_copy_id) =~ @test_path,
+               "expected the failing test among this agent's own problems"
 
         {:ok, context}
       end
 
-      then_ "the other agent's stop hook reports nothing about it", context do
+      then_ "the other agent's problems say nothing about it", context do
         # The second checkout is real and empty — its own stop still runs the
         # real pipeline (a real `mix compile` plus a real recursive `mix spex`,
         # see criterion 3059's note) unless driven the same way the first
@@ -197,22 +182,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
           Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
         )
 
-        other =
-          HarnessHooks.post_hook(context.second, "stop", %{
-            "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}"
-          })
-
-        refute other["decision"] == "block",
-               "the second agent was held by a failure from a checkout it does not have. " <>
-                 "Got: #{inspect(other)}"
-
-        # Named file rather than the word "exunit": the allow message lists the
-        # analyzers it just enqueued, so matching on the source name would fire
-        # on a healthy response and report a leak that is not there.
-        refute inspect(other) =~ @test_path,
-               "the second agent was told about a failing test in a file its working copy " <>
+        refute problems_page(context, context.second.harness.working_copy_id) =~ @test_path,
+               "the second agent is shown a failing test in a file its working copy " <>
                  "does not contain. The only compliant response available to it is to fix " <>
-                 "code it never touched. Got: #{inspect(other)}"
+                 "code it never touched."
 
         {:ok, context}
       end
@@ -220,4 +193,11 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   end
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
+
+  defp problems_page(context, copy_id) do
+    {:ok, _view, html} =
+      live(context.conn, "/app/projects/#{context.project.id}/problems?harness=#{copy_id}")
+
+    html
+  end
 end

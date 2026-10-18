@@ -77,7 +77,8 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
           },
           who_uses: %{
             type: "string",
-            description: "A few words naming who uses this day to day, in the visitor's own terms."
+            description:
+              "A few words naming who uses this day to day, in the visitor's own terms."
           }
         },
         required: ["question", "needs_sign_in", "separate_copies", "who_uses"]
@@ -133,7 +134,7 @@ defmodule CodeMySpec.Intake.Shaper.Llm do
 
   @doc false
   # Public so the `false` case can be asserted against the real mapping rather
-  # than a stub of it — same reason `Validation.session_paths_for_test/3` is.
+  # than a stub of it.
   # The bug was here and a test that stubbed the shaper would have skipped it.
   @spec to_attrs_for_test(map()) :: map()
   def to_attrs_for_test(object), do: to_attrs(object)

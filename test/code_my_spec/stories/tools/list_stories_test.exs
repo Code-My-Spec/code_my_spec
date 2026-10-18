@@ -258,5 +258,52 @@ defmodule CodeMySpec.Stories.Tools.ListStoriesTest do
 
       assert content =~ "No stories found"
     end
+
+    # 79873d5a: a project_id argument was silently dropped (undeclared in the
+    # schema), so a caller naming a different project read as "this tool
+    # ignored my argument and answered for its own project" -- indistinguishable
+    # from success. Same shape as the epic-filter regression above.
+    test "project_id is declared in the schema, so it survives the transport" do
+      assert %{"project_id" => _} =
+               CodeMySpec.Tools.input_schema(CodeMySpec.Stories.Tools.ListStories)["properties"]
+    end
+
+    test "a project_id naming a different project is refused, not silently answered for the bound one" do
+      scope = full_scope_fixture()
+      _story = story_fixture(scope, %{title: "This connection's own story"})
+
+      other_project_id = Ecto.UUID.generate()
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{project_id: other_project_id},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert {:error, message} = response
+      assert message =~ other_project_id
+      assert message =~ scope.active_project_id
+      refute message =~ "This connection's own story"
+    end
+
+    test "a project_id matching the connection's own project behaves exactly as omitting it" do
+      scope = full_scope_fixture()
+      _story = story_fixture(scope, %{title: "A story in this project"})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "list_stories",
+          %{project_id: scope.active_project_id},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      {_, content} = response
+
+      assert content =~ "A story in this project"
+    end
   end
 end

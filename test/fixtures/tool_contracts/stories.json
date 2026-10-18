@@ -244,6 +244,10 @@
           "description": "Stories to skip for pagination (default: 0)",
           "type": "integer"
         },
+        "project_id": {
+          "description": "Must match this connection's own project, or the call is refused — a session's tools cannot read a different project's stories (79873d5a)",
+          "type": "string"
+        },
         "ready_for_dev": {
           "description": "Filter by readiness. Pass false to see the parked backlog \u2014 the stories the development graph hides (optional)",
           "type": "boolean"

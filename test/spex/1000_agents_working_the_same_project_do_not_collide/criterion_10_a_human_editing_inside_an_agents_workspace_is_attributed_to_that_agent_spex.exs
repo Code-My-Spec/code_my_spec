@@ -9,33 +9,24 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
   and must not be recorded. Here, an edit in a served copy is *that agent's*, even
   though no agent made it — because the agent is the working copy, not the
   process. An operator fixing a typo by hand has changed what that checkout
-  contains, and the next stop hook has to evaluate the tree as it now is.
+  contains, and its file state has to describe the tree as it now is.
 
   Attributing by working copy rather than by author is what makes that work. The
   alternative — tracking only edits an agent's own tools made — would leave the
   agent's file state describing a tree that no longer exists, and its analyzers
   reporting on code that is not there.
 
-  Surfaces, both of them, because "by hand" is what makes this criterion
-  different from every other one about file state.
-
   A hand edit fires **no hook**. Nobody called Write, so no PostToolUse records
   it, and any spec that posts one to stand in for the operator is asserting
   against an agent's edit wearing an operator's name. The only thing that sees a
   hand edit is the harness watching the working copy — so the channel is the
-  `when_`, and the stop hook is where the consequence has to show up.
-
-  Which is exactly where the risk lives: attribution narrows a stop's blocking
-  set to files the session recorded through PostToolUse, and a hand edit has no
-  such record. If that narrowing were the only rule, the operator's change would
-  be invisible to the gate.
+  `when_`, and the agent's files page is where the consequence has to show up.
   """
 
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -86,30 +77,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
                "an edit made by hand inside a served working copy was not recorded against " <>
                  "the agent serving it. The agent's file state now describes a tree that no " <>
                  "longer exists, and its analyzers will report on code that is not there."
-
-        {:ok, context}
-      end
-
-      then_ "that agent's stop hook evaluates it like any other change", context do
-        # Shown by blocking, not by a run: analysis is explicit, so a stop reads
-        # recorded findings and starts nothing. Under `:block_changed` a finding
-        # blocks only when its file is in the task's changed set. The session
-        # recorded no edits, so only the checkout's own change window can put the
-        # hand edit there.
-        Fixtures.set_analyzer_mode(context.scope, :credo, :block_changed)
-
-        Fixtures.record_problem(context.scope, "credo", %{
-          file_path: @path,
-          working_copy_id: context.scope.active_working_copy_id
-        })
-
-        stop =
-          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
-
-        assert stop["decision"] == "block" and (stop["reason"] || "") =~ @path,
-               "a finding on the file the operator edited did not hold this agent, so " <>
-                 "the hand edit was not treated as this checkout's change. An edit nobody's " <>
-                 "tool made is still that checkout's. Got: #{inspect(stop)}"
 
         {:ok, context}
       end

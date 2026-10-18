@@ -24,6 +24,7 @@ defmodule CodeMySpec.Agents.Tools.AgentWorkResponses do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.RoleProfile
 
   @doc "Every agent on the project, with what it holds."
   @spec listing([AgentWork.t()], [Agent.t()]) :: CodeMySpec.Tools.Tool.result()
@@ -73,7 +74,8 @@ defmodule CodeMySpec.Agents.Tools.AgentWorkResponses do
   def text([]), do: "agents: none running on this project."
 
   def text(work) do
-    "#{length(work)} agent(s) running.\n\n" <> Enum.map_join(work, "\n", &entry/1)
+    "#{length(work)} agent(s) running.\n\n" <>
+      Enum.map_join(work, "\n", &entry/1) <> unstaffed_problems(work)
   end
 
   @doc "Why the fleet could not be read."
@@ -185,18 +187,70 @@ defmodule CodeMySpec.Agents.Tools.AgentWorkResponses do
   # The findings themselves, not a count. "3 problems" against an agent is the
   # same errand one step later: the main agent still has to go and find out
   # whether they block the task it holds.
+  #
+  # 7333963c: a problem belongs to the working copy, not to whichever agent
+  # happens to be running on it. `RoleProfile.holds_problems?/1` is the same
+  # test `Menu` already uses to decide whether a role is ever offered
+  # `list_problems` at all -- an agent that can't act on a finding gets none
+  # printed against it here either, so its row never reads as ignoring a
+  # backlog that was never its to clear. `unstaffed_problems/1` is where that
+  # copy's count surfaces instead: once, keyed to the checkout, not repeated
+  # under every agent who cannot do anything about it.
   defp problems(%AgentWork{problems: []}), do: "problems on this copy: none — it is clean"
 
-  defp problems(%AgentWork{problems: found}) do
-    lines =
-      found
-      |> Enum.take(10)
-      |> Enum.map_join("\n    ", fn problem ->
-        "[#{problem.source}] #{problem.file_path}:#{problem.line} #{headline(problem.message)}"
-      end)
+  defp problems(%AgentWork{role: role, problems: found}) do
+    if RoleProfile.holds_problems?(role) do
+      lines =
+        found
+        |> Enum.take(10)
+        |> Enum.map_join("\n    ", fn problem ->
+          "[#{problem.source}] #{problem.file_path}:#{problem.line} #{headline(problem.message)}"
+        end)
 
-    "problems on this copy: #{length(found)}\n    #{lines}#{more(found)}"
+      "problems on this copy: #{length(found)}\n    #{lines}#{more(found)}"
+    else
+      "problems on this copy: not #{role}'s to act on — see the project-wide note below if nobody here can"
+    end
   end
+
+  # Same family as 4849f20b: a fact about the checkout, not about whichever
+  # agent is standing on it. Printed once per copy, and only for a copy where
+  # every present agent's role is one `problems/1` above already declined to
+  # speak for -- a copy with a coding or main agent on it already shows its
+  # findings under that agent's own entry, so repeating the count here would
+  # just be the same fact said twice.
+  defp unstaffed_problems(work) do
+    case unstaffed_copies(work) do
+      [] ->
+        ""
+
+      list ->
+        "\nProblems on a checkout nobody present can act on (`list_problems`):\n" <>
+          Enum.map_join(list, "\n", &unstaffed_line/1) <> "\n"
+    end
+  end
+
+  defp unstaffed_copies(work) do
+    work
+    |> Enum.reject(&is_nil(&1.working_copy_id))
+    |> Enum.group_by(& &1.working_copy_id)
+    |> Enum.filter(fn {_copy_id, agents} -> none_can_act?(agents) end)
+    |> Enum.map(&copy_problems/1)
+    |> Enum.filter(fn {_copy_id, _root, problems} -> problems != [] end)
+  end
+
+  defp none_can_act?(agents), do: Enum.all?(agents, &(not RoleProfile.holds_problems?(&1.role)))
+
+  # Every agent in a group shares one working copy, and `WorkRepository`
+  # keys `problems` by that same copy id -- so every member here already
+  # carries the identical list; the first one speaks for the group.
+  defp copy_problems({copy_id, [first | _]}), do: {copy_id, first.working_copy_root, first.problems}
+
+  defp unstaffed_line({copy_id, root, problems}),
+    do: "  working copy: #{copy_id}#{copy_root_suffix(root)} — #{length(problems)} problem(s)"
+
+  defp copy_root_suffix(nil), do: ""
+  defp copy_root_suffix(root), do: " #{root}"
 
   # One line per finding. A failure message can carry a whole rendered page, and
   # on metric_flow (2026-09-27) one filled the 24,000-character answer cap by

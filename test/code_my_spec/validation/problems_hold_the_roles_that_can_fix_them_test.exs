@@ -1,22 +1,22 @@
 defmodule CodeMySpec.Validation.ProblemsHoldTheRolesThatCanFixThemTest do
   @moduledoc """
-  A directive nobody can act on is the thing this module exists to stop.
+  Problems are information in the menu, never a class of work (John,
+  2026-10-18): they gate at promotion. So no role is held by them, and only a
+  role that can fix them is told how many there are.
 
-  Requirements were scoped by role — story 538's R10, so a coding agent is not
-  held open by product's queue — and problems never were. So every role was
-  held by every project error.
-
-  On 2026-09-06 the war-epic QA agent said so, four times in fifteen minutes:
-  "`list_problems` is not available to this QA role, so I cannot inspect the 47
-  Spex findings." It could not read them, could not fix them, and could not
-  stop. John: "it shouldn't get blocked by problems."
+  Before that, problems were a class scoped to the roles that fix code. On
+  2026-09-06 a QA agent said, four times in fifteen minutes, that it could not
+  read the 47 Spex findings holding it, could not fix them and could not stop.
+  The scoping survives as who sees the count.
   """
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProblemsFixtures
 
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
+  alias CodeMySpec.Sessions.Task
 
   setup do
     scope = full_scope_fixture()
@@ -29,41 +29,41 @@ defmodule CodeMySpec.Validation.ProblemsHoldTheRolesThatCanFixThemTest do
 
   defp live_classes(scope, role), do: scope |> Menu.live(role) |> Keyword.keys()
 
-  test "a coding agent is held — it fixes code", %{scope: scope} do
-    assert :problems in live_classes(scope, :coding)
+  # An open task, so the menu has a class to render the count beside.
+  defp holding_a_task do
+    %Agent{
+      tasks: [
+        %Task{
+          id: Ecto.UUID.generate(),
+          status: :active,
+          requirement_name: "implementation_file",
+          started_at: DateTime.utc_now()
+        }
+      ]
+    }
+  end
+
+  test "problems are no role's class of work", %{scope: scope} do
+    for role <- [:coding, :main, :qa, :product, nil] do
+      refute :problems in live_classes(scope, role), "#{inspect(role)} was held by problems"
+    end
+  end
+
+  test "nothing directs any role to the problems", %{scope: scope} do
+    for role <- [:coding, :qa, nil] do
+      refute Menu.render(scope, false, role) =~ ~r/Next:[^\n]*list_problems/
+    end
+  end
+
+  test "a coding agent is told the count, as information", %{scope: scope} do
+    menu = Menu.render(scope, false, :coding, holding_a_task())
+
+    assert menu =~ "For information: 1 problem is recorded"
+    refute menu =~ ~r/Next:[^\n]*list_problems/
   end
 
   # a31f1cd6 step 4b, John: "holds_problems is coding only".
-  test "main is not held — fixing the tree is coding's", %{scope: scope} do
-    refute :problems in live_classes(scope, :main)
-  end
-
-  # The report. QA tests one story; a compile error somewhere else is not a
-  # move it has.
-  test "QA is not held", %{scope: scope} do
-    refute :problems in live_classes(scope, :qa)
-  end
-
-  test "product is not held — it writes specs", %{scope: scope} do
-    refute :problems in live_classes(scope, :product)
-  end
-
-  # Every caller outside the loop: the project's own count, which is what a
-  # person asking about the tree wants.
-  test "no role counts the project's problems", %{scope: scope} do
-    assert :problems in live_classes(scope, nil)
-  end
-
-  # The whole point is that the refusal stops. A QA agent with nothing else
-  # live must be allowed to end its turn.
-  test "a QA agent with only problems outstanding is not refused", %{scope: scope} do
-    assert Menu.render(scope, false, :qa) == ""
-  end
-
-  test "a coding agent with the same problems is still refused", %{scope: scope} do
-    menu = Menu.render(scope, false, :coding)
-
-    assert menu =~ "problem"
-    assert menu =~ "list_problems"
+  test "QA is not told — a compile error elsewhere is not a move it has", %{scope: scope} do
+    refute Menu.render(scope, false, :qa, holding_a_task()) =~ "For information"
   end
 end

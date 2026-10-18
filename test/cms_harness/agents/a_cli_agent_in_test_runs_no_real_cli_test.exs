@@ -14,7 +14,6 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.Agents
-  alias CmsHarness.Agents.Engine
 
   @moduletag :tmp_dir
 
@@ -40,7 +39,7 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
     sessions_before = codex_sessions()
 
     assert {:ok, first} =
-             Engine.send_message(
+             CmsHarness.Agents.send_message(
                id,
                Ecto.UUID.generate(),
                "Reply with the single word: ready.",
@@ -49,7 +48,7 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
              )
 
     assert {:ok, second} =
-             Engine.send_message(
+             CmsHarness.Agents.send_message(
                id,
                Ecto.UUID.generate(),
                "Reply with the single word: again.",
@@ -57,8 +56,8 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
                await: true
              )
 
-    for result <- [first, second] do
-      assert result.status == :completed, "the recorded turn did not complete: #{inspect(result)}"
+    for said <- [first, second] do
+      refute said =~ "the turn failed", "the recorded turn did not complete: #{said}"
     end
 
     recording? = System.get_env("SPEX_CASSETTE_MODE") == "record"
