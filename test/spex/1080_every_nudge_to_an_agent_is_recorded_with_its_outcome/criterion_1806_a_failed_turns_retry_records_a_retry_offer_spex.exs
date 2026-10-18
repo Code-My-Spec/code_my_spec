@@ -37,9 +37,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1806Spex do
         {:ok, Map.put(context, :notice, retry_notice(context))}
       end
 
-      then_ "it is told about the failure, with my request", context do
+      # The request comes back on the retry ladder's next rung (criterion 2174).
+      then_ "it is told about the failure", context do
         assert context.notice =~ @failure
-        assert context.notice =~ "Make me a help page."
         {:ok, context}
       end
 

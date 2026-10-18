@@ -2400,6 +2400,7 @@ defmodule CodeMySpec.Agents do
         "(#{agent.working_copy})"
 
   @failed_turn "Your last turn failed: "
+  @carry_on "\n\nPick up where the thread leaves off."
 
   defp reoffer_failed_turn(conversation, agent, failure) do
     request = Conversations.last_request_text(conversation)
@@ -2413,22 +2414,45 @@ defmodule CodeMySpec.Agents do
         "operator"
       )
     else
-      send_off_channel(
-        agent,
-        failed_turn_notice(failure, request),
-        {:retry, {"failed_turn", nil}}
-      )
+      send_off_channel(agent, @failed_turn <> failure <> @carry_on, {:retry, {"failed_turn", nil}})
     end
 
     :ok
   end
 
-  defp failed_turn_notice(failure, nil),
-    do: @failed_turn <> failure <> "\n\nPick up where the thread leaves off."
+  # A retry offer's ladder (criterion 2174): the notice first, then the error
+  # with the request it was on, re-sent when a turn ends having ignored it.
+  defp escalate_retry(agent) do
+    agent.id |> Offers.to_escalate(:retry, :detail) |> resend_retry(agent)
+  end
 
-  defp failed_turn_notice(failure, request) do
+  defp resend_retry(nil, _agent), do: :ok
+
+  # Climbs only on the notice itself: a retry that failed again was answered
+  # with "not re-sent" (criterion 1807), which ended that turn too.
+  defp resend_retry(%CodeMySpec.Agents.Offer{messages: [%{message: notice} | _]}, agent) do
+    resend_retry(notice, Conversations.request_since?(notice), agent)
+  end
+
+  defp resend_retry(%CodeMySpec.Agents.Offer{}, _agent), do: :ok
+
+  defp resend_retry(_notice, true, _agent), do: :ok
+
+  defp resend_retry(notice, false, agent) do
+    failure_line = notice |> Conversations.Message.text() |> String.replace_suffix(@carry_on, "")
+
+    send_off_channel(
+      agent,
+      retry_detail(failure_line, Conversations.request_before(notice)),
+      {:retry, {"failed_turn", nil}}
+    )
+  end
+
+  defp retry_detail(failure_line, nil), do: failure_line <> @carry_on
+
+  defp retry_detail(failure_line, request) do
     """
-    #{@failed_turn}#{failure}
+    #{failure_line}
 
     What it did before it failed is above, and may have taken effect; check \
     before redoing any of it. The request was:
@@ -2532,6 +2556,7 @@ defmodule CodeMySpec.Agents do
 
         # Settled before the stop menu, which may make new offers of its own.
         :ok = Offers.settle_turn(agent)
+        :ok = escalate_retry(agent)
         tell_main_held_back(scope, agent)
         tell_main_undelivered_instructions(scope, agent)
 

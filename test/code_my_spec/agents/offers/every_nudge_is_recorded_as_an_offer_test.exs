@@ -320,7 +320,6 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       id = agent.id
       assert_receive {:agent_dispatch, ^id, _ref, notice}, 2_000
       assert notice =~ @failure
-      assert notice =~ "Make me a help page."
 
       assert [offer] = Offers.list_for_agent(agent.id)
       assert {offer.kind, offer.subject_type} == {:retry, "failed_turn"}

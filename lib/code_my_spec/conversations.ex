@@ -588,6 +588,39 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
+  `last_request_text/1` as it stood just before `message`: what a failed turn
+  was answering, once the notice about it has been said since.
+  """
+  @spec request_before(Message.t()) :: String.t() | nil
+  def request_before(%Message{conversation_id: conversation_id, inserted_at: at, id: id}) do
+    Message
+    |> where(
+      [m],
+      m.conversation_id == ^conversation_id and m.role in [:user, :operator] and
+        m.inserted_at <= ^at and m.id != ^id
+    )
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      message -> Message.text(message)
+    end
+  end
+
+  @doc "Whether anything has been said to the agent since `message`."
+  @spec request_since?(Message.t()) :: boolean()
+  def request_since?(%Message{conversation_id: conversation_id, inserted_at: at, id: id}) do
+    Message
+    |> where(
+      [m],
+      m.conversation_id == ^conversation_id and m.role in [:user, :operator] and
+        m.inserted_at >= ^at and m.id != ^id
+    )
+    |> Repo.exists?()
+  end
+
+  @doc """
   Everything a restarted agent needs to carry on, in the order it was said.
 
   The whole conversation while it is short enough, and from the last checkpoint

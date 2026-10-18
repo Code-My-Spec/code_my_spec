@@ -94,7 +94,8 @@ defmodule CodeMySpec.Agents.Offers do
     # Keyed on the blocking set's own hash (`problem_key/1`), never on a task
     # or requirement id, so it cannot collide with another kind's subject_key
     # in `standing/1`'s per-key grouping (criterion 2168).
-    {:problems, "problem_set"} => [:detail]
+    {:problems, "problem_set"} => [:detail],
+    {:retry, "failed_turn"} => [:detail]
   }
 
   @type subject :: {String.t(), term()}
@@ -738,6 +739,27 @@ defmodule CodeMySpec.Agents.Offers do
   @doc "The ladder for one offer kind, or nil when that kind never escalates."
   @spec ladder({atom(), String.t()}) :: [atom()] | nil
   def ladder(key), do: Map.get(@ladders, key)
+
+  @doc """
+  The agent's latest `kind` offer when its turn just left it ignored with
+  `step` as its next rung, messages preloaded: the rung to send now. A kind
+  sent again on an event of its own (`:retry`) has no other turn end to climb
+  at. Otherwise nil.
+  """
+  @spec to_escalate(Ecto.UUID.t(), Offer.kind(), atom()) :: Offer.t() | nil
+  def to_escalate(agent_id, kind, step) do
+    from(o in Offer,
+      where: o.agent_id == ^agent_id and o.kind == ^kind,
+      order_by: [desc: o.inserted_at, desc: o.id],
+      limit: 1,
+      preload: [messages: :message]
+    )
+    |> Repo.one()
+    |> escalation(to_string(step))
+  end
+
+  defp escalation(%Offer{status: :ignored, next_step: step} = offer, step), do: offer
+  defp escalation(_offer, _step), do: nil
 
   @doc "This subject's next rung on its kind's ladder, or nil off it or unignored."
   @spec rung(Ecto.UUID.t(), atom(), String.t(), term()) :: atom() | nil
