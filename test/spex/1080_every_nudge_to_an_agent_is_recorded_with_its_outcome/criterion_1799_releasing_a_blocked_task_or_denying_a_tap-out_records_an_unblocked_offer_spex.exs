@@ -11,7 +11,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
