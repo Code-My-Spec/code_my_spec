@@ -48,8 +48,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion2165Spex do
         {:ok, context}
       end
 
+      # Newest first: that turn end hands out a fresh menu, so the one the
+      # coder was handed is the oldest.
       then_ "the menu offer is accepted and closed", context do
-        assert [%{status: "claimed"} | _] = offers(context, context.coder, %{kind: "menu"}),
+        assert %{status: "claimed"} =
+                 context |> offers(context.coder, %{kind: "menu"}) |> List.last(),
                listing(context)
 
         {:ok, context}

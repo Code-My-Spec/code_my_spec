@@ -21,8 +21,8 @@ defmodule CodeMySpec.Agents.Offers do
       included; a task-scoped `tap_out` on it, or a claim then cancel, is
       `:declined`. A questions-only offer (main) wants a waiting question
       answered, escalated or put to the user.
-    * `:problems`, `:menu`, `:retry`, `:answer`, `:stalled` — any tool call
-      after delivery. An answer's text is in the delivered message, so it wants
+    * `:problems` — a write (`write`, `edit` or `bash`) after delivery.
+    * `:menu`, `:retry`, `:answer`, `:stalled` — any tool call after delivery. An answer's text is in the delivered message, so it wants
       no fetch. `:stalled` is main told a teammate stalled, on `agent:<id>`.
     * `:unblocked` — `start_task` on the released task, on `task:<id>`.
       Read from the call, not from where the task is at
@@ -73,6 +73,9 @@ defmodule CodeMySpec.Agents.Offers do
 
   # What main can do with a waiting question it was offered.
   @question_moves ~w(answer_notification escalate_question ask_user_question)
+
+  # What writes, by an Alloy agent's tool names or Claude Code's.
+  @writes ~w(write edit multiedit bash)
 
   # What main can do to re-assign a team-free copy: a story, or an issue.
   @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)
@@ -1053,8 +1056,12 @@ defmodule CodeMySpec.Agents.Offers do
   defp outcome(%Offer{kind: :instruction}, _agent, _calls),
     do: %{status: :n_a, note: "delivered/seen; instruction compliance is not inferred"}
 
+  # Criterion 2172: a problems offer is accepted by writing, not by any call;
+  # waiting for the problem list to shrink is too long a horizon.
+  defp outcome(%Offer{kind: :problems}, _agent, calls), do: claimed_if(wrote?(calls))
+
   defp outcome(%Offer{kind: kind}, _agent, calls)
-       when kind in [:problems, :menu, :retry, :answer, :stalled],
+       when kind in [:menu, :retry, :answer, :stalled],
        do: claimed_if(calls != [])
 
   defp outcome(%Offer{kind: :work, subject_type: "questions"}, _agent, calls),
@@ -1208,6 +1215,8 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   # Tools reached through `run_script` are named in its arguments.
+  defp wrote?(calls), do: Enum.any?(calls, &(String.downcase(&1.name) in @writes))
+
   defp called?(calls, tool) do
     Enum.any?(calls, fn %{name: name, arguments: arguments} ->
       String.ends_with?(name, tool) or

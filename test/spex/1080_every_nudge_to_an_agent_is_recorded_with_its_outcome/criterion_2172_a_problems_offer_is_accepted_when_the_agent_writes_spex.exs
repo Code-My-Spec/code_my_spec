@@ -64,8 +64,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion2172Spex do
           |> offers(context.coder, %{kind: "problems"})
           |> Enum.filter(&String.starts_with?(&1.subject, "problem_set:"))
 
-        assert [%{status: "open"}] = refused,
+        # The read-only turn ignored it, so the next rung stands open (2168).
+        refute Enum.any?(refused, &(&1.status == "claimed")),
                "a read-only call alone accepted the problems offer:\n" <> listing(context)
+
+        assert [%{id: open_id}] = Enum.filter(refused, &(&1.status == "open")), listing(context)
 
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.coder)
 
@@ -76,16 +79,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion2172Spex do
           })
 
         :ok = HarnessHooks.end_turn(context, context.coder)
-        {:ok, context}
+        {:ok, Map.put(context, :open_id, open_id)}
       end
 
       then_ "the problems offer is accepted and closed", context do
-        refused =
-          context
-          |> offers(context.coder, %{kind: "problems"})
-          |> Enum.filter(&String.starts_with?(&1.subject, "problem_set:"))
+        open_id = context.open_id
 
-        assert [%{status: "claimed"}] = refused, listing(context)
+        assert [%{status: "claimed"}] =
+                 context
+                 |> offers(context.coder, %{kind: "problems"})
+                 |> Enum.filter(&(&1.id == open_id)),
+               listing(context)
+
         {:ok, context}
       end
     end
