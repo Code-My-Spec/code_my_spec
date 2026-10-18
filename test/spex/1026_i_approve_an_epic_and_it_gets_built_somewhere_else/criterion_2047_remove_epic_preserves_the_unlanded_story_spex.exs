@@ -8,10 +8,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2047Spex do
   use CodeMySpecSpex.Case
 
   import Phoenix.LiveViewTest
-
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -32,17 +28,17 @@ defmodule CodeMySpecSpex.Story1026.Criterion2047Spex do
           |> Slice.complete()
           |> Slice.waiting(assigned: true)
 
-        answer = Slice.call(context, CreateEpic, %{name: "Epic containing current work"})
+        answer = Slice.call(context, "create_epic", %{name: "Epic containing current work"})
         [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, answer)
 
         for story <- [context.story, context.waiting] do
-          Slice.call(context, AssignStoryToEpic, %{
+          Slice.call(context, "assign_story_to_epic", %{
             story_number: story.number,
             epic_name: "Epic containing current work"
           })
         end
 
-        Slice.call(context, AssignEpicToWorkingCopy, %{
+        Slice.call(context, "assign_epic_to_working_copy", %{
           epic_id: epic_id,
           working_copy_id: context.scope.active_working_copy_id
         })

@@ -6,11 +6,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -66,15 +64,16 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
       given_ "a task is started for story A's component_linked requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "component_linked",
               entity_type: "story",
               entity_id: to_string(context.story_a.number),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(response))
@@ -86,19 +85,21 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{
               story_number: context.story_a.number,
               module_name: context.plan_component.module_name
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, evaluate_response, _frame} =
-          EvaluateTask.execute(
+        evaluate_response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, evaluate_response)}
@@ -107,8 +108,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
       then_ "the first story is linked to its surface component", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_response, _frame} =
-          GetStory.execute(%{story_number: context.story_a.number}, frame)
+        story_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_a.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(story_response) =~
                  "**Component:** #{context.plan_component.module_name}"
@@ -125,8 +130,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_b_response, _frame} =
-          GetStory.execute(%{story_number: context.story_b.number}, frame)
+        story_b_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_b.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(story_b_response) =~ "**Component:**",
                "story B should still be unlinked"

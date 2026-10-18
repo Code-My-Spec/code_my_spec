@@ -9,16 +9,13 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -38,8 +35,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
              context do
         context = given_a_staffed_checkout(context, "spex_3331")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
@@ -54,16 +58,33 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
           assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: coding.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: coding.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
-        {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
-        refute configured.isError, response_text(configured)
+        configured =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 30},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, configured), response_text(configured)
         :ok = Fixtures.start_recovery_timer(context.scope)
-        {:reply, timer, _} = Cadence.execute(%{}, frame(context))
-        refute timer.isError, response_text(timer)
+
+        timer =
+          ToolLibrary.run(
+            "cadence",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, timer), response_text(timer)
         assert response_text(timer) =~ "running: yes"
 
         {:ok,
@@ -77,16 +98,29 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
 
       when_ "the operator shortens the running cadence to one second", context do
         changed_at = DateTime.utc_now()
-        {:reply, response, _} = Cadence.execute(%{seconds: 1}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 1},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         # A graph notification is not proof that the recovery timer fired.
         # Require a newer check in the public recovery status as well.
         checked_at =
           Fixtures.await_recovery_check(
             fn ->
-              {:reply, report, _} = Cadence.execute(%{}, frame(context))
-              refute report.isError, response_text(report)
+              report =
+                ToolLibrary.run(
+                  "cadence",
+                  %{},
+                  Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+                )
+
+              assert match?({:ok, _}, report), response_text(report)
               response_text(report)
             end,
             changed_at
@@ -107,17 +141,21 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
         refute prompt =~ "The first is:"
 
         for id <- [context.main_id, context.coding_id] do
-          {:reply, tasks, _} =
-            ListTasks.execute(%{}, %Frame{assigns: %{current_scope: context.scope, agent_id: id}})
+          tasks =
+            ToolLibrary.run("list_tasks", %{}, %{scope: context.scope, agent_id: id})
 
-          refute tasks.isError, response_text(tasks)
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.coding_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.coding_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.coding_conversation
         {:ok, context}
       end

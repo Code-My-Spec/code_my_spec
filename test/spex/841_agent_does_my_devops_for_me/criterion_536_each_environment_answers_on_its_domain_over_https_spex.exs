@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -50,8 +51,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
         # run before the request in `when_`.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        _response =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         # What setup actually provisioned, carried into the scenario.
         # `environment_hosts/1` read `context[:environments]` and nothing ever

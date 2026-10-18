@@ -19,10 +19,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,13 +50,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
       end
 
       given_ "an issue needing triage, claimable for product's role", context do
-        {:reply, filed, _} =
-          CreateIssue.execute(
-            %{title: "Receipts print the wrong total", description: "Seen in QA", severity: "medium"},
-            %Frame{assigns: %{current_scope: context.scope}}
+        filed =
+          ToolLibrary.run(
+            "create_issue",
+            %{
+              title: "Receipts print the wrong total",
+              description: "Seen in QA",
+              severity: "medium"
+            },
+            tool_context(%Frame{assigns: %{current_scope: context.scope}})
           )
 
-        refute filed.isError, response_text(filed)
+        assert match?({:ok, _}, filed), response_text(filed)
 
         # Filing the issue pushes it to product at once (now idle-by-admission,
         # holding only its blocked task). That push lands off-process, so wait
@@ -108,20 +110,22 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
   defp asked_about_design(context) do
     frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.product}}
 
-    {:reply, started, _} =
-      StartTask.execute(
+    started =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "three_amigos_complete",
           entity_type: "story",
           entity_id: to_string(context.story.number)
         },
-        frame
+        tool_context(frame)
       )
 
-    refute started.isError, response_text(started)
+    assert match?({:ok, _}, started), response_text(started)
 
-    {:reply, asked, _} =
-      AskUserQuestion.execute(
+    asked =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           task_id: extract_task_id!(started),
           questions: [
@@ -131,26 +135,26 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
             }
           ]
         },
-        frame
+        tool_context(frame)
       )
 
-    refute asked.isError, response_text(asked)
+    assert match?({:ok, _}, asked), response_text(asked)
     context
   end
 
   # Main's cadence timer fires once.
   defp check_in(context) do
-    {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
-    refute configured.isError, response_text(configured)
+    configured = ToolLibrary.run("cadence", %{seconds: 30}, tool_context(frame(context)))
+    assert match?({:ok, _}, configured), response_text(configured)
     :ok = Fixtures.start_recovery_timer(context.scope)
 
     changed_at = DateTime.utc_now()
-    {:reply, response, _} = Cadence.execute(%{seconds: 1}, frame(context))
-    refute response.isError, response_text(response)
+    response = ToolLibrary.run("cadence", %{seconds: 1}, tool_context(frame(context)))
+    assert match?({:ok, _}, response), response_text(response)
 
     Fixtures.await_recovery_check(
       fn ->
-        {:reply, report, _} = Cadence.execute(%{}, frame(context))
+        report = ToolLibrary.run("cadence", %{}, tool_context(frame(context)))
         response_text(report)
       end,
       changed_at
@@ -158,4 +162,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
 
     context
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

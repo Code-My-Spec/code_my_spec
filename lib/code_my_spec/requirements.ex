@@ -350,12 +350,13 @@ defmodule CodeMySpec.Requirements do
   How many of a story's requirements are satisfied, at the scope's working copy.
 
   Counted over the same slice `story_graph/2` returns, so the cockpit's pie and
-  the working copy status page's graph cannot disagree.
+  the working copy status page's graph cannot disagree, but read from that
+  slice's rows alone.
   """
   @spec story_progress(Scope.t(), integer()) :: {non_neg_integer(), non_neg_integer()}
   def story_progress(%Scope{} = scope, story_id) do
-    case story_graph(scope, story_id) do
-      {:ok, graph} -> StoryGraph.progress(graph)
+    case StoryGraph.read_progress(scope, story_id) do
+      {:ok, progress} -> progress
       _ -> {0, 0}
     end
   end

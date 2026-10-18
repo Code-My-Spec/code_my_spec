@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,8 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -80,8 +80,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
         HeldProvider.await_request()
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.agent_id)
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
-        {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
-        refute available.isError, response_text(available)
+
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         assert response_text(available) =~ "bdd_specs_exist"
         HeldProvider.release()
         :ok = Machine.await_idle(context.agent_id)
@@ -107,8 +114,18 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 2
 
-        {:reply, available, _} = GetNextRequirement.execute(%{}, context.agent_frame)
-        refute available.isError, response_text(available)
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         after_text = response_text(available)
 
         # Criterion 2158's offer-id note makes every action-requesting
@@ -137,8 +154,18 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
 
         refute after_offer_id == before_offer_id
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

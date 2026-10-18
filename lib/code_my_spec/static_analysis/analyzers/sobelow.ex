@@ -179,7 +179,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
   # ran — the same reasoning `CredoRun` uses for exit > 1 with no output.
   @doc false
   # Public so the "could not read" branches can be asserted without a sobelow
-  # run — the same reason `CredoRun.reproduce_command/0` is. Nothing downstream
+  # run. Nothing downstream
   # fails if one of them regresses to `{:ok, []}`; it just quietly reports a
   # clean sweep.
   def parse_output_for_test(output), do: parse_json_output(output)

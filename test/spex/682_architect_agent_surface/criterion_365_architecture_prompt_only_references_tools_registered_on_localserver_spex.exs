@@ -33,13 +33,14 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   # Snake-case tokens that legitimately appear in the prompt but are
@@ -108,6 +109,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
             "lib/my_orphan_context.ex",
             """
             defmodule MyOrphanContext do
+              alias CodeMySpec.ToolLibrary
               @moduledoc false
             end
             """
@@ -139,15 +141,16 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "architecture_designed",
               entity_type: "project",
               entity_id: to_string(context.project.id),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :prompt, response_text(response))}

@@ -29,12 +29,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3306Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -76,15 +76,21 @@ defmodule CodeMySpecSpex.Story1056.Criterion3306Spex do
       when_ "the main agent restarts one of them", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.target.id, reason: "it stopped answering"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
-        {:reply, view, _frame} = ListAgentWork.execute(%{}, frame)
+        view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :view, response_text(view))}
       end

@@ -6,13 +6,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -69,8 +70,15 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
         # The team must already be on the copy for `assign_team` to find and
         # stamp it -- it refuses with no team to assign when none is there yet.
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
-        refute resp.isError, inspect(resp)
+
+        resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, resp), inspect(resp)
 
         {:ok,
          context

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2175Spex do
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -25,21 +25,22 @@ defmodule CodeMySpecSpex.Story1080.Criterion2175Spex do
   end
 
   spex "An answer offer's rungs climb from the answer to the answer with its task",
-       criterion: 2175 do
+    criterion: 2175 do
     scenario "the coder ignores the first delivery of the answer" do
       given_ "a coder blocked a held task on a question", context do
         context = coder_holding_a_task(context)
 
-        {:reply, reply, _} =
-          AskUserQuestion.execute(
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
             },
-            agent_frame(context, context.coder)
+            tool_context(agent_frame(context, context.coder))
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :blocker, Fixtures.question_id_from(response_text(reply)))}
       end
 
@@ -66,4 +67,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2175Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

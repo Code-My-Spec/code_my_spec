@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2157Spex do
       end
 
       then_ "it is refused, and the message still reaches the agent", ctx do
-        assert ctx.response.isError
+        assert match?({:error, _}, ctx.response)
         assert H.text_of(ctx.response) =~ "No agent with that id is on this project"
         HeldProvider.release()
         H.await(fn -> Enum.any?(HeldProvider.seen(), &(&1 =~ "NOT-YOURS")) end)

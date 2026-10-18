@@ -26,13 +26,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -45,14 +43,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _happy, _frame} =
-          AddScenario.execute(
+        _happy =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -60,11 +60,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _failure, _frame} =
-          AddScenario.execute(
+        _failure =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -72,7 +73,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -83,18 +84,19 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         for n <- 1..3 do
-          {:reply, response, _frame} =
-            AddQuestion.execute(
+          response =
+            ToolLibrary.run(
+              "add_question",
               %{
                 story_number: context.story.number,
                 text: "Open question number #{n} that nobody can answer right now"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
           # Loudly fail if question creation didn't succeed —
           # silent failures here would let the readiness assertion lie.
-          assert_question_created(response.isError, response, n)
+          assert_question_created(response, n)
         end
 
         {:ok, context}
@@ -105,10 +107,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
       when_ "the agent calls evaluate_task on the Three Amigos task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}
@@ -131,8 +134,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5897Spex do
     end
   end
 
-  defp assert_question_created(true, response, n),
-    do: raise("AddQuestion #{n} failed: #{inspect(response)}")
-
-  defp assert_question_created(_isError, _response, _n), do: :ok
+  defp assert_question_created({:error, text}, n), do: raise("AddQuestion #{n} failed: #{text}")
+  defp assert_question_created({:ok, _text}, _n), do: :ok
 end

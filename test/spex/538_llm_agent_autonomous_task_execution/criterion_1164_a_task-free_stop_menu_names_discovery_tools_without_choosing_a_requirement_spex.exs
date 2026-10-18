@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,8 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -70,11 +70,25 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
         assert {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
-        {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
-        refute available.isError, response_text(available)
+
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0
-        {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, Map.merge(context, %{agent_id: agent.id, agent_frame: agent_frame, story: story})}
       end
@@ -111,8 +125,18 @@ defmodule CodeMySpecSpex.Story538.Criterion3104Spex do
         refute prompt =~ context.component.module_name
         refute prompt =~ "Context design review file exists"
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

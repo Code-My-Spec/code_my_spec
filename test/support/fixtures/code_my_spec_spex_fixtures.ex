@@ -1102,6 +1102,8 @@ defmodule CodeMySpecSpex.Fixtures do
   # orchestrator action carries its sentence plus optional count, tool and kind
   # parts. There is no flat `body`, and reading one raises `KeyError` at exactly
   # the moment the feature starts working, which reads as the feature failing.
+  defp message_text({_status, text}) when is_binary(text), do: text
+
   defp message_text(%{content: parts}) when is_list(parts) do
     # Every part that carries text, not only the ones typed "text". An
     # orchestrator action puts its sentence in one part and the call it wants
@@ -2819,21 +2821,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Set an analyzer's blocking mode.
-
-  `:block_all` isolates the question a freshness scenario is asking. The default
-  is `:block_changed`, which additionally scopes blocking to files touched this
-  turn — real behaviour, and a different rule; leaving it on would make a
-  freshness scenario pass or fail for reasons that have nothing to do with
-  freshness.
-  """
-  def set_analyzer_mode(%Scope{} = scope, field, mode) do
-    CodeMySpec.Configurations.get_or_create(scope)
-    {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
-    config
-  end
-
-  @doc """
   The question id out of what `AskUserQuestion` answered.
 
   The tool reports it in prose — "Question id: <uuid>" — because its reader is
@@ -2902,23 +2889,6 @@ defmodule CodeMySpecSpex.Fixtures do
       module_name: "#{scope.active_project.module_name}.Calculator",
       type: "schema"
     })
-  end
-
-  @doc "The stop hook's blocking decision, as the hook itself asks for it."
-  # Drops the block key. `validate_stop/3` returns `{:error, reason, key}` — the
-  # key is R8's repeat identity for the finding set, not something a spec has an
-  # opinion about, and every one of these asserts on the reason.
-  #
-  # A stop never starts or ingests analysis (John, 2026-10-04). Recorded outputs
-  # in `opts` (`:compile_output_file` and friends) are landed as a completed run
-  # first, by `land_outputs/2`, and the stop then reads what that run persisted.
-  def validate_stop(scope, opts \\ [])
-
-  def validate_stop(%Scope{} = scope, opts) do
-    case CodeMySpec.Validation.validate_stop(scope, nil, land_outputs(scope, opts)) do
-      {:error, reason, _key} -> {:error, reason}
-      other -> other
-    end
   end
 
   @output_file_sources [
@@ -3288,7 +3258,7 @@ defmodule CodeMySpecSpex.Fixtures do
     request
     |> Map.put_new(
       "direct_tools",
-      ToolIndex.carried(ToolRegistry.registry())
+      ToolIndex.carried_definitions(ToolRegistry.registry())
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
@@ -4858,6 +4828,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Issues (QA triage / fix scenarios) --
   defdelegate issue_fixture(scope, attrs \\ %{}), to: IssuesFixtures
+  defdelegate resolved_issue_fixture(scope, issue, resolution \\ "Fixed."), to: IssuesFixtures
+  defdelegate retriaged_issue_fixture(scope, issue, story_id), to: IssuesFixtures
 
   # -- QA Attempts --
   defdelegate passed_qa_attempt(scope, opts \\ []), to: QaFixtures

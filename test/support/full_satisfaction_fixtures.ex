@@ -49,7 +49,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -261,7 +260,11 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     parent = context.component.module_name
 
     for child <- ["Booking", "Slot"],
-        do: ComponentGraphHelpers.design!(context, "#{parent}.#{child}", [], parent: parent, type: "schema")
+        do:
+          ComponentGraphHelpers.design!(context, "#{parent}.#{child}", [],
+            parent: parent,
+            type: "schema"
+          )
 
     :ok = Fixtures.settle_graph(context.scope)
     context

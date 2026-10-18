@@ -14,9 +14,7 @@ defmodule CodeMySpecSpex.OfferHelpers do
   import ExUnit.Assertions
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -25,11 +23,18 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @spec listing(map(), map()) :: String.t()
   def listing(context, filters \\ %{}) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = ListOffers.execute(filters, frame)
 
-    if response.isError,
-      do: raise("list_offers refused: " <> response_text(response)),
-      else: response_text(response)
+    response =
+      ToolLibrary.run(
+        "list_offers",
+        filters,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    case response do
+      {:ok, text} -> text
+      {:error, text} -> raise("list_offers refused: " <> text)
+    end
   end
 
   @doc """
@@ -97,7 +102,14 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @doc "The `start_task` arguments `get_next_requirement` names for this agent."
   @spec next_task(map(), String.t()) :: map()
   def next_task(context, agent_id) do
-    {:reply, response, _} = GetNextRequirement.execute(%{}, agent_frame(context, agent_id))
+    frame = agent_frame(context, agent_id)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     [_, name, type, id] =
       Regex.run(
@@ -111,7 +123,17 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @doc "Read off `list_tasks` rather than the row: the id the agent itself is shown."
   @spec held_task_id(map(), String.t()) :: String.t()
   def held_task_id(context, agent_id) do
-    {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame(context, agent_id))
+    tasks =
+      ToolLibrary.run(
+        "list_tasks",
+        %{},
+        Map.put(
+          agent_frame(context, agent_id).assigns,
+          :scope,
+          agent_frame(context, agent_id).assigns[:current_scope]
+        )
+      )
+
     [_, task_id] = Regex.run(~r/([0-9a-f]{8}-[0-9a-f-]{27})/, response_text(tasks))
     task_id
   end

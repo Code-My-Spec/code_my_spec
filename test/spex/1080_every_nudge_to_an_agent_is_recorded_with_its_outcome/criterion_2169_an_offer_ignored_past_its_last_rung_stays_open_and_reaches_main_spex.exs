@@ -10,10 +10,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
 
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
-  alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -83,11 +83,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
       then_ "the offer is not withdrawn: it stays open, but is not pushed again", context do
         id = context.coder
 
-        refute_receive {:work_turn_requested, ^id, _ref, _again}, 1_000,
-                        "work ignored past its last rung was pushed to the agent again"
+        refute_receive {:work_turn_requested, ^id, _ref, _again},
+                       1_000,
+                       "work ignored past its last rung was pushed to the agent again"
 
         recorded =
-          Enum.filter(offers(context, context.coder, %{kind: "work"}), &(&1.subject == context.subject))
+          Enum.filter(
+            offers(context, context.coder, %{kind: "work"}),
+            &(&1.subject == context.subject)
+          )
 
         assert [%{status: "open"} | _] = recorded, listing(context)
 

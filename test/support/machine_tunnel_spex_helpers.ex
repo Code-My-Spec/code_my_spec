@@ -26,10 +26,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 4]
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
-  alias CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Req.Test
 
@@ -356,21 +353,18 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   # ── The developer's tools ──
 
   @doc "Turn a copy's address on, as that copy's agent asks to share its app."
-  def turn_on(context, copy), do: tool(ShareCopyApp, %{}, as_copy(context, copy))
+  def turn_on(context, copy), do: tool("share_copy_app", %{}, as_copy(context, copy))
 
   @doc "Turn a copy's address off."
-  def turn_off(context, copy), do: tool(UnshareCopyApp, %{}, as_copy(context, copy))
+  def turn_off(context, copy), do: tool("unshare_copy_app", %{}, as_copy(context, copy))
 
   @doc "Offboard a copy, as an operator does."
   def offboard(context, copy),
-    do: tool(OffboardWorkingCopy, %{working_copy_id: copy.id}, context.scope)
+    do: tool("offboard_working_copy", %{working_copy_id: copy.id}, context.scope)
 
   defp as_copy(context, copy), do: %{context.scope | active_working_copy_id: copy.id}
 
-  defp tool(module, params, scope) do
-    {:reply, response, _frame} = module.execute(params, %Frame{assigns: %{current_scope: scope}})
-    response
-  end
+  defp tool(name, params, scope), do: ToolLibrary.run(name, params, %{scope: scope})
 
   @doc "The public address the Working Copies page shows for a copy, or nil when it shows none."
   def shown_address(context, copy) do

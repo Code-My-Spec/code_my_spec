@@ -19,10 +19,10 @@ defmodule CodeMySpecSpex.Story1051.Criterion3206Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -53,15 +53,16 @@ defmodule CodeMySpecSpex.Story1051.Criterion3206Spex do
       when_ "it calls a tool after each restart", context do
         rounds =
           Enum.map(1..@restarts, fn n ->
-            {:reply, reply, _frame} =
-              RestartAgent.execute(
+            reply =
+              ToolLibrary.run(
+                "restart_agent",
                 %{agent_id: context.agent_id, reason: "restart #{n} of #{@restarts}"},
-                frame(context)
+                Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
               )
 
             %{
               n: n,
-              refused: reply.isError,
+              refused: match?({:error, _}, reply),
               reply: response_text(reply),
               call: tool_call(context.agent_id),
               tools: carried_tools(context.agent_id)

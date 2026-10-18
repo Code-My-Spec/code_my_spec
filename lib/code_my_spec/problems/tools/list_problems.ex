@@ -10,13 +10,10 @@ defmodule CodeMySpec.Problems.Tools.ListProblems do
   @impl true
   def description do
     """
-    The findings behind the alert, for the agent that wants them.
+    The findings recorded in this working copy, for the agent that wants them.
 
-    `Hooks.AnalysisAlert` puts a count and an age on every tool call and stops
-    there — a finding list on every call is noise the model learns to skip, which
-    costs the signal a second time and more permanently than never sending it. So
-    the alert pushes the fact and this pulls the detail, and the split only works
-    because asking is one tool call.
+    Nothing pushes them: problems gate at promotion, and a stop or a tool call
+    never carries them. A stop's menu mentions the count; this is the detail.
 
     ## Paginated, and not optionally
 

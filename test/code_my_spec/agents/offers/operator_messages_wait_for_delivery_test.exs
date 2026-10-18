@@ -234,7 +234,9 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
     assert offer.status == :n_a
   end
 
-  test "unconfirmed transport leaves the durable message pending without accusing the agent",
+  # An unreachable machine is a definite refusal (criterion 2042): the message
+  # failed, the offer is undelivered, and no turn end makes it ignored.
+  test "a machine that cannot be reached settles the instruction undelivered, not ignored",
        ctx do
     CodeMySpecTest.AgentTransportRouter.route(ctx, CodeMySpecTest.UnreachableMachine)
 
@@ -242,12 +244,12 @@ defmodule CodeMySpec.Agents.Offers.OperatorMessagesWaitForDeliveryTest do
              Agents.message_agent(ctx.scope, ctx.agent.id, "Inspect this.")
 
     assert [offer] = Offers.list_for_agent(ctx.agent.id)
-    assert offer.status == :open
+    assert offer.status == :undelivered
     assert [link] = offer.messages
-    assert Repo.get!(Message, link.message_id).delivery == :pending
+    assert Repo.get!(Message, link.message_id).delivery == :failed
     assert :ok = Offers.settle_turn(ctx.agent)
     assert [settled] = Offers.list_for_agent(ctx.agent.id)
-    assert settled.status == :open
+    assert settled.status == :undelivered
   end
 
   test "the development route also queues and measures its instruction", ctx do

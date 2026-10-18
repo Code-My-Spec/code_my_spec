@@ -16,14 +16,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   import Phoenix.ChannelTest
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Analysis.RunsRepository
-  alias CodeMySpec.FileEdits
-  alias CodeMySpec.Files
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -1004,28 +1001,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert problem.file_path == "lib/demo/broken.ex"
     end
 
-    # The acceptance test, in process. The wire version of it is the e2e run.
-    test "a project whose code will not compile has its next stop BLOCKED",
-         %{channel: channel, scope: scope} do
-      run_id = dispatch_compiler(channel)
-
-      ref = push(channel, "analysis_result", compiler_result(run_id, [broken_file_diagnostic()]))
-      assert_reply ref, :ok, _recorded, 5_000
-
-      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
-      assert_reply ref, :ok, decision, 5_000
-
-      assert decision["decision"] == "block", """
-      A working copy that does not compile got a green light.
-
-      This is the defect the analyzer path was built for: before it, the harness
-      ran nothing, so the stop hook consulted persisted Problems, found none, and
-      answered `{}` — from a set of facts nobody had gathered.
-      """
-
-      assert decision["reason"] =~ "broken.ex"
-    end
-
     test "a run the harness could not do fails rather than completing empty",
          %{channel: channel, scope: scope} do
       run_id = dispatch_compiler(channel)
@@ -1155,95 +1130,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
         push(channel, "analysis_result", compiler_result(999_999, [broken_file_diagnostic()]))
 
       assert_reply ref, :error, %{"reason" => "unknown_run"}, 5_000
-    end
-
-    # How `unknown_run` was actually being produced, end to end.
-    #
-    # `SubagentStop` matched `{:error, reason}` while `Validation.validate_stop/3`
-    # returns `{:error, reason, blocking_key}`, so a sub-agent stopping with
-    # anything to block on raised `CaseClauseError` *inside the channel process*.
-    # The channel died, `terminate/2` read that as the harness going away and
-    # failed every run it had open — while the harness, which never went
-    # anywhere, was still running them. Those analyzers finished, sent their
-    # results, and were told `unknown_run` because the rows were no longer
-    # `:running`.
-    #
-    # Self-sustaining: nothing could refresh, so the stale finding that crashed
-    # the stop was still there to crash the next one. Observed as seven channel
-    # closes and eleven rejected results in one evening.
-    test "a sub-agent stopping with problems blocks, rather than killing the channel",
-         %{channel: channel, scope: scope} do
-      Process.flag(:trap_exit, true)
-
-      # Credo, not the compiler: a compiler run in flight would supersede the
-      # compiler finding and the stop would rightly allow.
-      push(channel, "analysis_run", %{"source" => "credo", "args" => []})
-      assert_push "run_analysis", %{"runs" => [_run]}, 5_000
-
-      # A compiler error blocks unconditionally — no mode, no changed-file
-      # scoping to arrange. What matters is only that something blocks.
-      problem_fixture(scope, %{
-        source: "compiler",
-        severity: :error,
-        file_path: "lib/demo/broken.ex"
-      })
-
-      # And that it is *this sub-agent's*, which used to be true by default and
-      # is not any more.
-      #
-      # A session with no recorded edits now has every attributable finding
-      # demoted to advisory — a session that wrote nothing cannot own one
-      # (`76008385`). This test had no edits, so its compiler error stopped
-      # blocking and the assertion below failed.
-      #
-      # Recording the edit rather than relaxing the assertion, because "block"
-      # is not what this test is about: it is the vehicle for reaching the
-      # `{:error, reason, blocking_key}` clause that `SubagentStop` used to
-      # crash on. Accepting "allow" would leave the test passing while the crash
-      # path it exists to cover went unexercised.
-      #
-      # The File row is needed as well as the edit: `verify_against_ledger/3`
-      # answers `nil` for recorded paths that join no file in the project, and
-      # `nil` blocks everything — which would also make this pass, for the wrong
-      # reason and via the wrong branch.
-      {:ok, _} =
-        Files.upsert_file_metadata(scope, %{
-          path: "lib/demo/broken.ex",
-          role: :implementation,
-          mtime: DateTime.utc_now(),
-          size: 1,
-          fingerprint: "subagent-stop-blocks"
-        })
-
-      :ok = FileEdits.track_edit("s1", "lib/demo/broken.ex", "a1")
-
-      ref =
-        push(channel, "hook_decision", %{
-          "hook" => "subagent-stop",
-          "payload" => %{"session_id" => "s1", "agent_id" => "a1"}
-        })
-
-      assert_reply ref, :ok, decision, 5_000
-
-      assert decision["decision"] == "block",
-             "the sub-agent has an unresolved compiler error in a file it edited, and must be told so"
-
-      assert decision["reason"] =~ "broken.ex"
-
-      # The run opened above. The harness is still holding it, so nothing here
-      # may close it — closing it is what made its result unrecordable.
-      assert Analysis.runs_in_flight?(scope), """
-      The stop swept the runs the harness is still working on.
-
-      They can only be closed when their executor provably cannot answer. A
-      decision made *on* this channel is not that: the harness is on the other
-      end of it, still running the analyzers, and every result it sends back
-      will now be refused as `unknown_run`.
-      """
-
-      assert Process.alive?(channel.channel_pid),
-             "a hook that cannot decide must answer, not crash — the channel is the harness's " <>
-               "only route to this server, and it takes the run ledger down with it"
     end
   end
 

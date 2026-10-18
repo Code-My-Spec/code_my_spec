@@ -1,0 +1,160 @@
+defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest do
+  @moduledoc """
+  `get_next_requirement` offers nothing `start_task` would refuse.
+
+  metric_flow's coding agent tapped out of its only task on 2026-09-27. Every
+  nudge after that asked `get_next_requirement`, which offered the blocked task
+  back; `start_task` refused it ("Task ... is blocked") and the agent spun
+  (467310a7). `Work.withheld?/3` is the definition both now share.
+  """
+  use CodeMySpecTest.DataCase, async: true
+
+  alias CodeMySpec.ToolLibrary
+
+  import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias Anubis.Server.Frame
+  alias Anubis.Server.Response
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Notifications
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
+
+  setup do
+    scope = full_scope_fixture()
+    {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
+    scope = %{scope | active_working_copy_id: copy.id}
+    story_fixture(scope)
+    Requirements.recompute(scope)
+
+    role =
+      Enum.find(
+        [:product, :main, :coding, :qa],
+        &(Requirements.actionable_for_role(scope, &1) != [])
+      )
+
+    [node | _] = Requirements.actionable_for_role(scope, role)
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: to_string(role),
+        continuous: true,
+        status: :running,
+        working_copy: "/tmp/withheld-#{System.unique_integer([:positive])}",
+        working_copy_id: copy.id
+      })
+
+    AgentPresence.present(agent)
+
+    frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+    %{scope: scope, agent: agent, frame: frame, node: node}
+  end
+
+  defp claim(ctx) do
+    started =
+      ToolLibrary.run(
+        "start_task",
+        %{
+          entity_type: ctx.node.entity_type,
+          entity_id: to_string(ctx.node.entity_id),
+          requirement_name: ctx.node.name
+        },
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, started), text(started)
+    [_, task_id] = Regex.run(~r/([0-9a-f]{8}-[0-9a-f-]{27})/, text(started))
+    task_id
+  end
+
+  test "its own task blocked on a pending tap_out is not offered", ctx do
+    task_id = claim(ctx)
+
+    tapped =
+      ToolLibrary.run(
+        "tap_out",
+        %{task_id: task_id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, tapped), text(tapped)
+
+    next =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    refute text(next) =~ "requirement_name=`#{ctx.node.name}`", """
+    The agent was offered the task it tapped out of. `start_task` refuses it —
+    "is blocked; its blocker has not been resolved" — so every nudge spins.
+
+    #{text(next)}
+    """
+  end
+
+  test "its own active task is still offered, since start_task resumes it", ctx do
+    _task_id = claim(ctx)
+
+    next =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    assert text(next) =~ "requirement_name=`#{ctx.node.name}`"
+  end
+
+  # e96115a9: the same tap-out has to be somewhere a main agent can settle it.
+  test "the pending tap_out is listed and answer_notification settles it", ctx do
+    task_id = claim(ctx)
+
+    _ =
+      ToolLibrary.run(
+        "tap_out",
+        %{task_id: task_id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    request = Notifications.get_pending_tap_out_request(ctx.agent.id, task_id)
+    main = %Frame{assigns: %{current_scope: ctx.scope}}
+
+    listed =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
+    assert text(listed) =~ request.id
+
+    decided =
+      ToolLibrary.run(
+        "answer_notification",
+        %{notification_id: request.id, decision: "allow"},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, decided), text(decided)
+
+    after_ =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
+    refute text(after_) =~ request.id
+  end
+
+  defp text({_status, text}) when is_binary(text), do: text
+
+  defp text(response), do: hd(Response.to_protocol(response)["content"])["text"]
+end

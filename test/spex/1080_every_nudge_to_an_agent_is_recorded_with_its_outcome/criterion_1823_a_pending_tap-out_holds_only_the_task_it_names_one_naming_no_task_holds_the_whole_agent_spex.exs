@@ -7,12 +7,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1823Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers, only: [coding_work_waiting: 1, agent_frame: 2]
   import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -34,28 +33,30 @@ defmodule CodeMySpecSpex.Story1080.Criterion1823Spex do
 
         # Project work, so claiming it does not bind the coder to a story
         # (criterion 1752: a bound agent is offered nothing outside its story).
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "issues_resolved",
               entity_type: "project",
               entity_id: to_string(context.scope.active_project_id)
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, Map.put(context, :task_id, extract_task_id!(started))}
       end
 
       when_ "it taps out of that task and ends its turn", context do
-        {:reply, tapped, _} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{task_id: context.task_id, reason: "The bug cannot be reproduced"},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         :ok = Fixtures.end_turn(context.scope, context.coder, [])
         :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
@@ -79,10 +80,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1823Spex do
       end
 
       when_ "it taps out naming no task and ends its turn", context do
-        {:reply, tapped, _} =
-          TapOut.execute(%{reason: "Nothing here is mine to do"}, context.frame)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "Nothing here is mine to do"},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         :ok = Fixtures.end_turn(context.scope, context.coder, [])
         :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}

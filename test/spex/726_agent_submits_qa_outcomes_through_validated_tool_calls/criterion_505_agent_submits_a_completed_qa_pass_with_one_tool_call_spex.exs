@@ -10,14 +10,15 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
   evaluate_task; no rename dance.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -49,8 +50,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
@@ -60,10 +62,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
               ],
               issue_ids: [context.finding.id]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, Map.put(context, :submit_response, response)}
       end
 

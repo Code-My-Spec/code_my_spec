@@ -18,12 +18,13 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.PromotionHelpers
   import CodeMySpecSpex.ReadyForQaHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
@@ -101,7 +102,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         # itself leave the spec stale and the gate reopened.
         :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
         :ok = sync_story_specs_to_local_copy(context, story)
-        refute set_active_story(context, story).isError
+        assert {:ok, _} = set_active_story(context, story)
         commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
 
         :ok =
@@ -129,7 +130,12 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
       then_ "the finished team waits for Main — nothing is offered to it", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 
@@ -141,15 +147,20 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
       when_ "a new criterion is added and Main assigns the revision to this team", context do
         response = add_criterion(context, context.story, "It also works on Tuesdays")
-        refute response.isError, inspect(response)
-        refute set_active_story(context, context.story).isError
+        assert match?({:ok, _}, response), inspect(response)
+        assert {:ok, _} = set_active_story(context, context.story)
         {:ok, context}
       end
 
       then_ "the story no longer reads as complete", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

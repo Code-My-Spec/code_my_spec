@@ -53,22 +53,14 @@ defmodule CodeMySpec.Hooks.SubagentStop do
       agent_id: agent_id
     }
 
-    case Validation.validate_stop(scope, task,
-           session_id: session_id,
-           agent_id: agent_id,
-           requested_by: requested_by
-         ) do
-      {:error, reason, _blocking_key} ->
-        Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
-          cms_decision: "block",
-          cms_blocking: Stop.blocking_summary(reason)
-        )
+    {:ok, _result} =
+      Validation.validate_stop(scope, task,
+        session_id: session_id,
+        agent_id: agent_id,
+        requested_by: requested_by
+      )
 
-        {200, %{"decision" => "block", "reason" => reason}}
-
-      {:ok, _result} ->
-        {200, decide_after_validation(scope, session, task, req_id)}
-    end
+    {200, decide_after_validation(scope, session, task, req_id)}
   end
 
   # A stop never waits on analysis (John, 2026-10-04): in-flight runs change

@@ -7,13 +7,12 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -60,17 +59,18 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(first.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -82,15 +82,35 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
       end
 
       when_ "the agent requests tap-out for its active task", context do
-        {:reply, response, _} = TapOut.execute(%{task_id: context.task_id}, context.agent_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "tap_out",
+            %{task_id: context.task_id},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         [_, request_id] = Regex.run(~r/request_id=`([a-f0-9-]+)`/, response_text(response))
         {:ok, Map.put(context, :request_id, request_id)}
       end
 
       then_ "the task is blocked immediately and continuous intent remains on", context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[blocked]"
@@ -100,25 +120,41 @@ defmodule CodeMySpecSpex.Story704.Criterion1875Spex do
       end
 
       when_ "the agent deliberately claims unrelated component work", context do
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id)
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, Map.put(context, :second_task_id, extract_task_id!(started))}
       end
 
       then_ "only the new task is active and the original request still awaits a decision",
             context do
         assert context.second_task_id != context.task_id
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ context.second_task_id
         refute response_text(tasks) =~ context.task_id

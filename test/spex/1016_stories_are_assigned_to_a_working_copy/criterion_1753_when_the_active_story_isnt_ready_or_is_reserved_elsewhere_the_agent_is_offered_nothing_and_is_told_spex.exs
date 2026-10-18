@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1753Spex do
       when_ "the story is marked not ready for development", context do
         CodeMySpecSpex.StorySliceHelpers.call(
           context,
-          CodeMySpec.McpServers.Stories.Tools.UpdateStory,
+          "update_story",
           %{story_number: context.story.number, ready_for_dev: false}
         )
 

@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story1055.Criterion3289Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -20,9 +21,13 @@ defmodule CodeMySpecSpex.Story1055.Criterion3289Spex do
   spex "No agent's conversation is closed to the main agent", criterion: 1259 do
     scenario "No agent's conversation is closed to the main agent" do
       given_ "agents of every role are running across the project's working copies", context do
-        coding = Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/copy-a")
+        coding =
+          Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/copy-a")
+
         qa = Fixtures.running_agent(context.scope, role: "qa", working_copy: "/tmp/copy-b")
-        product = Fixtures.running_agent(context.scope, role: "product", working_copy: "/tmp/copy-c")
+
+        product =
+          Fixtures.running_agent(context.scope, role: "product", working_copy: "/tmp/copy-c")
 
         :ok = Fixtures.agent_said(context.scope, coding, "Coding agent turn")
         :ok = Fixtures.agent_said(context.scope, qa, "QA agent turn")
@@ -36,8 +41,12 @@ defmodule CodeMySpecSpex.Story1055.Criterion3289Spex do
 
         responses =
           Enum.map([context.coding, context.qa, context.product], fn agent ->
-            {:reply, response, _frame} =
-              ReadAgentConversation.execute(%{"agent_id" => agent.id}, frame)
+            response =
+              ToolLibrary.run(
+                "read_agent_conversation",
+                %{"agent_id" => agent.id},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
 
             {agent, response}
           end)
@@ -47,7 +56,7 @@ defmodule CodeMySpecSpex.Story1055.Criterion3289Spex do
 
       then_ "it is not refused", context do
         for {agent, response} <- context.responses do
-          refute response.isError,
+          assert match?({:ok, _}, response),
                  "expected #{agent.role} agent on #{agent.working_copy} to be readable, got: #{inspect(response)}"
         end
 

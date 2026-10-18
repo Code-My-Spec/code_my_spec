@@ -5,18 +5,16 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
 
   Register an external session through its hook, ask through MCP, answer on
   the question page, and collect the reply through MCP. No question, task,
-  or answer is seeded; both task and durable-agent listings remain empty.
+  or answer is seeded; the task listing stays empty, and the only agent is the
+  one the session itself joined as (story 1122) — none is staffed for it.
   """
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -32,54 +30,79 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
     :ok
   end
 
-  spex "An external session asks and polls without acquiring a task or durable agent",
+  spex "An external session asks and polls without acquiring a task",
     criterion: 1474 do
     scenario "The existing session question round trip survives work-management changes" do
       given_ "a live harness serves the checkout", context do
         {:ok, HarnessHooks.ensure_live_harness(context)}
       end
 
-      given_ "a registered external session has no task or durable agent", context do
+      given_ "a registered external session holds no task and is its own only agent", context do
         session_id = "spex-3576-#{System.unique_integer([:positive])}"
 
         HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, tasks, _} = ListTasks.execute(%{session_id: session_id}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        {:reply, agents, _} = ListAgents.execute(%{}, frame)
-        refute agents.isError, response_text(agents)
-        assert response_text(agents) == "No agents are running on this project."
-        {:ok, Map.merge(context, %{session_id: session_id, frame: frame})}
+
+        {:ok, agents} =
+          ToolLibrary.data(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert [%{"provider" => "claude-code", "role" => "main"}] = agents, inspect(agents)
+
+        {:ok, Map.merge(context, %{session_id: session_id, frame: frame, agents_before: agents})}
       end
 
       when_ "the session asks without a task link", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{question: @question, options: [%{label: @answer}, %{label: "Change it"}]}
               ]
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
         {:ok, Map.put(context, :question_id, question_id)}
       end
 
       then_ "the session can list and poll its unanswered question", context do
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.frame)
-        refute questions.isError, response_text(questions)
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         assert response_text(questions) =~ context.question_id
         assert response_text(questions) =~ @question
 
-        {:reply, pending, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        pending =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute pending.isError, response_text(pending)
+        assert match?({:ok, _}, pending), response_text(pending)
         assert response_text(pending) =~ "Still waiting on the user"
         {:ok, context}
       end
@@ -97,25 +120,47 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
 
       then_ "polling returns the saved answer without creating a task or staffing an agent",
             context do
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ "The user replied"
         assert response_text(answer) =~ @answer
 
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.frame)
-        refute questions.isError, response_text(questions)
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         refute response_text(questions) =~ context.question_id
 
-        {:reply, tasks, _} =
-          ListTasks.execute(%{session_id: context.session_id}, context.frame)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: context.session_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute tasks.isError, response_text(tasks)
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        {:reply, agents, _} = ListAgents.execute(%{}, context.frame)
-        refute agents.isError, response_text(agents)
-        assert response_text(agents) == "No agents are running on this project."
+
+        {:ok, agents} =
+          ToolLibrary.data(
+            "list_agents",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert Enum.map(agents, & &1["id"]) == Enum.map(context.agents_before, & &1["id"]),
+               "answering staffed an agent: #{inspect(agents)}"
+
         {:ok, context}
       end
     end

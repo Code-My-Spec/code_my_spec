@@ -33,11 +33,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Stories
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
   end
 
   spex "A released task still unsatisfied upstream is not resumed, and says what it waits on",
-       criterion: 1868 do
+    criterion: 1868 do
     scenario "the story's three-amigos seal is undone while its design task is blocked" do
       given_ "a coder started bdd_specs_exist, actionable, and blocked it on a question",
              context do
@@ -65,29 +65,31 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            frame
+            tool_context(frame)
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
             },
-            frame
+            tool_context(frame)
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         blocker = Fixtures.question_id_from(response_text(asked))
         {:ok, Map.merge(context, %{coder: coder.id, task_id: task_id, blocker: blocker})}
       end
@@ -97,9 +99,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
         :ok = Fixtures.unseal_three_amigos(context.scope, story)
         :ok = GraphWatcher.settle(context.scope)
 
-        {:ok, agent} = CodeMySpec.Agents.AgentsRepository.fetch_agent(context.scope, context.coder)
+        {:ok, agent} =
+          AgentsRepository.fetch_agent(context.scope, context.coder)
 
-        assert CodeMySpec.Agents.Work.claimable_work(context.scope, agent) == [],
+        assert Work.claimable_work(context.scope, agent) == [],
                "bdd_specs_exist was still claimable right after three_amigos_complete was withdrawn"
 
         {:ok, context}
@@ -117,7 +120,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
         # Task.Supervisor.start_child), hence the retry.
         notice =
           eventually(fn ->
-            {:reply, response, _frame} = ReadAgentConversation.execute(%{agent_id: id}, frame)
+            response =
+              ToolLibrary.run("read_agent_conversation", %{agent_id: id}, tool_context(frame))
+
             text = response_text(response)
             assert text =~ "is not ready to resume", text
             text
@@ -138,7 +143,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
         {:ok, context}
       end
 
-      then_ "once three_amigos_complete returns, the same task is offered to start_task", context do
+      then_ "once three_amigos_complete returns, the same task is offered to start_task",
+            context do
         story = Stories.get_story_by_number!(context.scope, context.story.number)
         :ok = Fixtures.seal_three_amigos(context.scope, story)
         :ok = GraphWatcher.settle(context.scope)
@@ -150,4 +156,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

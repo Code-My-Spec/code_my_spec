@@ -9,8 +9,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
   invalidation event with its reason.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed history)
-  - `CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt` (seed
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed history)
+  - `CodeMySpec.Qa.Tools.InvalidateQaAttempt` (seed
     invalidation event)
   - `CodeMySpecLocalWeb.StoryLive` at
     `/projects/:project_name/stories/:id` (the render surface)
@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,27 +33,29 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
 
         attempt_ids =
           for marker <- ["alpha", "beta", "gamma"] do
-            {:reply, response, _frame} =
-              SubmitQaResult.execute(
+            response =
+              ToolLibrary.run(
+                "submit_qa_result",
                 %{
                   task_id: context.task_id,
                   status: "pass",
                   scenarios: [%{name: marker, status: "pass", observation: marker}],
                   issue_ids: []
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError
+            assert match?({:ok, _}, response)
             extract_attempt_id!(response_text(response))
           end
 
         [_, middle_id, _] = attempt_ids
 
-        {:reply, _invalidate, _frame} =
-          InvalidateQaAttempt.execute(
+        _invalidate =
+          ToolLibrary.run(
+            "invalidate_qa_attempt",
             %{attempt_id: middle_id, reason: "Test probe was incomplete"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :attempt_ids, attempt_ids)}

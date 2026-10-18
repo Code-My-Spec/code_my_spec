@@ -6,6 +6,8 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -16,11 +18,6 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.Issues.Tools.SetActiveIssue
-  alias CodeMySpec.McpServers.Issues.Tools.UnassignIssue
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
@@ -82,13 +79,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-      {:reply, response, _} =
-        AssignIssueToWorkingCopy.execute(
+      response =
+        ToolLibrary.run(
+          "assign_issue_to_working_copy",
           %{issue_id: issue.id, working_copy_id: copy_id},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
 
       for member <- team do
         updated = reload(member)
@@ -157,18 +155,19 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
     main = agent(ctx.scope, :main, copy_id)
     main_frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: main.id}}
 
-    {:reply, requested, _} =
-      AssignIssueToWorkingCopy.execute(
+    requested =
+      ToolLibrary.run(
+        "assign_issue_to_working_copy",
         %{
           issue_id: ctx.issue.id,
           working_copy_id: copy_id,
           rework: true,
           reason: "The submitted fix fails the named regression files."
         },
-        main_frame
+        Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
       )
 
-    refute requested.isError
+    assert match?({:ok, _}, requested)
     updated = Issues.get_issue(ctx.scope, ctx.issue.id)
 
     assert updated.status == :accepted
@@ -184,13 +183,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-    {:reply, started, _} =
-      StartTask.execute(
+    started =
+      ToolLibrary.run(
+        "start_task",
         %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute started.isError
+    assert match?({:ok, _}, started)
     assert TaskOwner.find_task(reload(coding), completed.id).status == :completed
     assert TaskOwner.active_task(reload(coding)).id != completed.id
   end
@@ -251,13 +251,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
     {:ok, _} = Issues.set_awaiting_role(ctx.scope, assigned, :qa)
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-    {:reply, refused, _} =
-      AssignIssueToWorkingCopy.execute(
+    refused =
+      ToolLibrary.run(
+        "assign_issue_to_working_copy",
         %{issue_id: ctx.issue.id, working_copy_id: copy_id, rework: true, reason: "Try again"},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    assert refused.isError
+    assert match?({:error, _}, refused)
     assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
   end
 
@@ -496,13 +497,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       # A non-priority bag member must be claimable through the real task tool.
       frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-      {:reply, response, _} =
-        StartTask.execute(
+      response =
+        ToolLibrary.run(
+          "start_task",
           %{requirement_name: "fix_issue", entity_type: "issue", entity_id: second.id},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
       assert Enum.any?(reload(coding).tasks, &(&1.issue_id == second.id and &1.status == :active))
       {:ok, _} = Agents.prioritize_issue(ctx.scope, copy_id, second.id)
       assert reload(coding).issue_id == second.id
@@ -515,13 +517,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       coding = agent(ctx.scope, :coding, copy_id)
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-      {:reply, response, _} =
-        SetActiveIssue.execute(
+      response =
+        ToolLibrary.run(
+          "set_active_issue",
           %{working_copy_id: copy_id, issue_id: ctx.issue.id},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert reload(coding).issue_id == nil
     end
 
@@ -577,10 +580,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy_id)
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-      {:reply, response, _} =
-        UnassignIssue.execute(%{issue_id: ctx.issue.id}, frame)
+      response =
+        ToolLibrary.run(
+          "unassign_issue",
+          %{issue_id: ctx.issue.id},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
       assert reload(coding).issue_id == second.id
       assert Enum.map(Agents.assigned_issues(ctx.scope, copy_id), & &1.id) == [second.id]
     end
@@ -632,9 +639,10 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
       {:ok, %{"issues" => [row], "matched" => 1, "returned" => 1}} =
-        ListIssues.script_result(
+        ToolLibrary.data(
+          "list_issues",
           %{working_copy_id: copy_id, severity: "all"},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert row["id"] == ctx.issue.id

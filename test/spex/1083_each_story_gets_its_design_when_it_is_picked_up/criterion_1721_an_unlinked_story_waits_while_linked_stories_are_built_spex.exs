@@ -6,9 +6,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -51,20 +51,37 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
         {:ok, Map.merge(context, %{story_a: story_a, story_b: story_b})}
       end
 
-      when_ "the copy's team is pointed at each story in turn and asks what to do next", context do
+      when_ "the copy's team is pointed at each story in turn and asks what to do next",
+            context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _activated_a, _frame} =
-          SetActiveStory.execute(%{story_number: context.story_a.number}, frame)
+        _activated_a =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: context.story_a.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, response_a, _frame} =
-          GetNextRequirement.execute(%{story_number: context.story_a.number}, frame)
+        response_a =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{story_number: context.story_a.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, _activated_b, _frame} =
-          SetActiveStory.execute(%{story_number: context.story_b.number}, frame)
+        _activated_b =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: context.story_b.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, response_b, _frame} =
-          GetNextRequirement.execute(%{story_number: context.story_b.number}, frame)
+        response_b =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{story_number: context.story_b.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          Map.merge(context, %{

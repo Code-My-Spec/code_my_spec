@@ -15,12 +15,13 @@ defmodule CodeMySpecSpex.Story1023.Criterion977Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -62,14 +63,18 @@ defmodule CodeMySpecSpex.Story1023.Criterion977Spex do
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} =
-          TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is asked to stop before anything forces it", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "stopping an agent that was cooperating reported an error — a graceful " <>
                  "wind-down should succeed, not look like a forced kill. Got: " <>
                  response_text(context.reply)

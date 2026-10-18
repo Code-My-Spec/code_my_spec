@@ -9,13 +9,12 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -34,16 +33,29 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
              context do
         context = given_a_feature_checkout(context, "spex_3546")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         id = start_agent(context)
         on_exit(fn -> Machine.stop_agent(id) end)
         assert {:ok, %{busy?: false}} = Machine.status(id)
         assert Fixtures.role_queue_size(context.scope, id) == 0
 
-        {:reply, conversation, _} = ReadAgentConversation.execute(%{agent_id: id}, frame(context))
-        refute conversation.isError, response_text(conversation)
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -56,13 +68,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
 
       when_ "the main agent enables continuous work and repeats that intent", context do
         for _ <- 1..2 do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
               %{agent_id: context.agent_id, continuous: true},
-              frame(context)
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
             )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         {:ok, context}
@@ -74,10 +87,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
         assert Enum.sort(Machine.running()) == context.agents_before
         assert listing(context) =~ context.agent_id
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         {:ok, context}
       end

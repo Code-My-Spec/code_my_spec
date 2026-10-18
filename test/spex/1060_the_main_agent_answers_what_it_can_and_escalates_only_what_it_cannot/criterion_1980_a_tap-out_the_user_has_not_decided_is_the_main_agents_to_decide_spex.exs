@@ -15,16 +15,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,13 +42,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-1980")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "this task's work should not exist — the component was already removed"},
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok = Fixtures.age_permission(scope, permission_id, Cadence.interval(scope) + 60)
@@ -65,19 +63,33 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
 
       when_ "the main agent handles its waiting work", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, digest, _frame} = CheckIn.execute(%{}, frame)
-        refute digest.isError, inspect(digest)
 
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+        digest =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, decided, _frame} =
-          AnswerNotification.execute(
+        assert match?({:ok, _}, digest), inspect(digest)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        decided =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.permission_id,
               decision: "deny",
-              answer: "the component this task would have built was already removed; nothing left to do"
+              answer:
+                "the component this task would have built was already removed; nothing left to do"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context |> Map.put(:decided, decided) |> Map.put(:listing, listing)}
@@ -100,7 +112,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
       end
 
       then_ "it approves or denies the tap-out, with its reason", context do
-        refute context.decided.isError,
+        assert match?({:ok, _}, context.decided),
                """
                The main agent could not decide its own aged tap-out.
 
@@ -120,8 +132,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
         # that task lands. `eventually/1` is the same wait every other
         # out-of-band-arrival criterion already uses for exactly this shape.
         eventually(fn ->
-          {:reply, response, _frame} =
-            ReadAgentConversation.execute(%{agent_id: context.agent.id}, frame)
+          response =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: context.agent.id},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
 
           text = response_text(response)
 

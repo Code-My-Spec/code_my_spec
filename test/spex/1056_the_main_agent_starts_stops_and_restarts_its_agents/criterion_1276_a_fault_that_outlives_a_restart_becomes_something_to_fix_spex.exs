@@ -34,13 +34,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -77,10 +76,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
 
         frame = %Frame{assigns: %{current_scope: scope}}
 
-        {:reply, restarted, _frame} =
-          RestartAgent.execute(%{agent_id: agent.id, reason: @reason}, frame)
+        restarted =
+          ToolLibrary.run(
+            "restart_agent",
+            %{agent_id: agent.id, reason: @reason},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute restarted.isError, inspect(restarted)
+        assert match?({:ok, _}, restarted), inspect(restarted)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end
@@ -94,9 +97,20 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
         # to be managed: nothing else is looking, so the only thing that would
         # report it is the thing the report exists to prevent.
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _view, _frame} = ListAgentWork.execute(%{}, frame)
 
-        {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
+        _view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :issues, response_text(issues))}
       end

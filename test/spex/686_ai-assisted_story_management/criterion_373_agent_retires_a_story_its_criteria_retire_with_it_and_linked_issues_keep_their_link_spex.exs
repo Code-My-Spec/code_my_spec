@@ -11,9 +11,9 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpecSpex.CriterionScript
 
   setup :register_log_in_setup_account
@@ -28,15 +28,16 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Onboarding step is confusing",
               severity: "medium",
               description: "User reported the step copy was unclear.",
               story_number: story
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         [_, issue_id] = Regex.run(~r/\(ID:\s*([^\)\s]+)\)/, response_text(issue_response))
@@ -82,7 +83,14 @@ defmodule CodeMySpecSpex.Story686.Criterion373Spex do
 
       and_ "the issue keeps its link to the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetIssue.execute(%{issue_id: context.issue_id}, frame)
+
+        response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         assert body =~ "Onboarding step is confusing"

@@ -1,21 +1,9 @@
 defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
   @moduledoc """
-  A sub-agent stop must attribute findings the same way a main stop does.
-
-  `SubagentStop.handle/2` called `Validation.validate_stop(scope, task)` — two
-  arguments. `validate_stop/3` defaults `opts` to `[]`, and `session_paths/2`
-  reads the session id out of `opts`, so it took the "no session id" branch and
-  answered `nil`. `nil` renders "Attribution is unavailable for this session, so
-  nothing could be demoted and every finding blocks".
-
-  So demotion had never worked on this path for any sub-agent, in any session:
-  `log_demotions` lines carry `cms_hook=stop` and never `cms_hook=subagent_stop`.
-  Two agents sat blocked for hours on twelve findings in stories neither had
-  touched, each with a correct in-project edit recorded against its own agent id.
-
-  The main-stop path was never affected, which is what made this hard to see —
-  the same session demoted correctly on `stop` and blocked on `subagent_stop`
-  minutes apart.
+  A sub-agent stop forwards its own identity to validation and evaluates the
+  sub-agent's own task, never the session's. `SubagentStop.handle/2` once
+  called `Validation.validate_stop(scope, task)` with no opts, so nothing
+  downstream knew which session or agent was stopping.
   """
 
   # Sandbox.mode(Repo, {:shared, self()}) below is global to the Repo -- a
@@ -26,7 +14,6 @@ defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
 
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files
-  alias CodeMySpec.Validation
   alias Ecto.Adapters.SQL.Sandbox
 
   @session "subagent-stop-attribution-session"
@@ -49,20 +36,6 @@ defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
   # The opts the hook builds are the whole subject here, so they are asserted
   # against the same function the hook feeds rather than a copy of it.
   describe "the opts a sub-agent stop forwards" do
-    test "carrying the session id yields a usable attribution set", ctx do
-      paths = Validation.session_paths_for_test(ctx.scope, session_id: @session)
-
-      refute is_nil(paths),
-             "nil is the bug: it renders as 'attribution unavailable' and blocks everything"
-
-      assert MapSet.member?(paths, "lib/touched.ex")
-    end
-
-    # Pins the defaulted-opts shape the hook used to produce. If this ever stops
-    # answering nil the bug above stops being detectable by the test beneath it.
-    test "dropping them is what produced the blocking answer", ctx do
-      assert is_nil(Validation.session_paths_for_test(ctx.scope, []))
-    end
   end
 
   describe "SubagentStop" do

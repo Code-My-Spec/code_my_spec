@@ -11,11 +11,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion1988Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -44,9 +44,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion1988Spex do
         }
 
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, frame)
 
-        refute reply.isError,
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, reply),
                "the premise is a question waiting on the user, and raising it was refused:\n" <>
                  response_text(reply)
 
@@ -56,17 +62,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion1988Spex do
       end
 
       when_ "the main agent tries to answer it", context do
-        {:reply, reply, _frame} =
-          AnswerNotification.execute(
+        reply =
+          ToolLibrary.run(
+            "answer_notification",
             %{notification_id: context.question_id, answer: "Yes", basis: "record"},
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
         {:ok, Map.put(context, :answer_reply, reply)}
       end
 
       then_ "it is refused and told the question is the user's", context do
-        assert context.answer_reply.isError,
+        assert match?({:error, _}, context.answer_reply),
                "the main agent answered a question that was never routed to it:\n" <>
                  response_text(context.answer_reply)
 

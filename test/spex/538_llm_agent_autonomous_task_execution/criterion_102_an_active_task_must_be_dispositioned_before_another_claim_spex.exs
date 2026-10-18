@@ -9,15 +9,12 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -54,45 +51,68 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, available, _} = GetNextRequirement.execute(%{}, frame)
-        refute available.isError, response_text(available)
+
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
 
         Enum.each([first, second], fn story ->
-          {:reply, requirements, _} =
-            ListRequirements.execute(
+          requirements =
+            ToolLibrary.run(
+              "list_requirements",
               %{
                 entity_type: "story",
                 entity_id: to_string(story.number),
                 requirement_name: "bdd_specs_exist",
                 status: "unsatisfied"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          refute requirements.isError, response_text(requirements)
+          assert match?({:ok, _}, requirements), response_text(requirements)
           assert response_text(requirements) =~ story.title
           assert response_text(requirements) =~ "[ ] **bdd_specs_exist**"
         end)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(first.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
-        {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "[active]"
         assert response_text(tasks) =~ task_id
-        {:reply, roster, _} = ListAgents.execute(%{}, frame)
-        refute roster.isError, response_text(roster)
+
+        roster =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, roster), response_text(roster)
 
         {:ok,
          Map.merge(context, %{
@@ -113,7 +133,17 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
 
         responses =
           Enum.map([claim, Map.put(claim, :force, true)], fn params ->
-            {:reply, response, _} = StartTask.execute(params, context.agent_frame)
+            response =
+              ToolLibrary.run(
+                "start_task",
+                params,
+                Map.put(
+                  context.agent_frame.assigns,
+                  :scope,
+                  context.agent_frame.assigns[:current_scope]
+                )
+              )
+
             response
           end)
 
@@ -123,7 +153,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
       then_ "both calls refuse the claim and instruct disposition without a force escape",
             context do
         Enum.each(context.responses, fn response ->
-          assert response.isError, response_text(response)
+          assert match?({:error, _}, response), response_text(response)
           text = response |> response_text() |> String.downcase()
           assert text =~ context.task_id
           assert text =~ "active task"
@@ -137,11 +167,32 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
       end
 
       then_ "no task switch, additional task, or staffing has occurred", context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        {:reply, roster, _} = ListAgents.execute(%{}, context.agent_frame)
-        refute roster.isError, response_text(roster)
+
+        roster =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, roster), response_text(roster)
         assert response_text(roster) == context.roster_before
         {:ok, context}
       end

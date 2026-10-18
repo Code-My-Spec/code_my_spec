@@ -19,6 +19,8 @@ defmodule CmsHarness.Web do
     top_level?: true,
     deps: [
       CmsHarness,
+      # The SessionStart hook attaches a terminal agent (story 1123).
+      CmsHarness.Agents,
       CmsHarness.Channel,
       CmsHarness.Project,
       CodeMySpec.BootVersion,

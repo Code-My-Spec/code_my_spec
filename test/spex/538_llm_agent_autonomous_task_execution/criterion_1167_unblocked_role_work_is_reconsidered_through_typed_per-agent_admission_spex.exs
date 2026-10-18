@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -16,10 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -55,25 +53,27 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
         product = Fixtures.running_agent(context.scope, role: "product", continuous: false)
         product_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            product_frame
+            Map.put(product_frame.assigns, :scope, product_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
-        {:reply, parked, _} =
-          UpdateStory.execute(
+        parked =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: story.number, ready_for_dev: false},
-            product_frame
+            Map.put(product_frame.assigns, :scope, product_frame.assigns[:current_scope])
           )
 
-        refute parked.isError, response_text(parked)
+        assert match?({:ok, _}, parked), response_text(parked)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
@@ -105,19 +105,32 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
             persona_id: context.persona_id
           )
 
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: context.product_task_id}, context.product_frame)
-
-        refute evaluated.isError, response_text(evaluated)
-        assert response_text(evaluated) =~ "Passed"
-
-        {:reply, released, _} =
-          UpdateStory.execute(
-            %{story_number: context.story.number, ready_for_dev: true},
-            context.product_frame
+        evaluated =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.product_task_id},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute released.isError, response_text(released)
+        assert match?({:ok, _}, evaluated), response_text(evaluated)
+        assert response_text(evaluated) =~ "Passed"
+
+        released =
+          ToolLibrary.run(
+            "update_story",
+            %{story_number: context.story.number, ready_for_dev: true},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, released), response_text(released)
         :ok = Fixtures.settle_graph(context.scope)
         HeldProvider.await_request()
         {:ok, context}
@@ -137,13 +150,30 @@ defmodule CodeMySpecSpex.Story538.Criterion3108Spex do
 
         for id <- [context.coding_id, context.qa_id] do
           frame = %Frame{assigns: %{current_scope: context.scope, agent_id: id}}
-          {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-          refute tasks.isError, response_text(tasks)
+
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 
-        {:reply, product_tasks, _} = ListTasks.execute(%{}, context.product_frame)
-        refute product_tasks.isError, response_text(product_tasks)
+        product_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, product_tasks), response_text(product_tasks)
         assert response_text(product_tasks) =~ context.product_task_id
         assert response_text(product_tasks) =~ "[completed]"
         {:ok, context}

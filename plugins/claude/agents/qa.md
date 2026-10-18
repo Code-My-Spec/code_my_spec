@@ -1,6 +1,6 @@
 ---
 name: qa
-description: Tests a single user story by following a QA prompt, writing a brief, executing tests, and writing results with evidence
+description: Tests a single user story by starting its QA task, writing a brief, executing tests, and writing results with evidence
 tools: >-
   Read, Write, Glob, Grep,
   Bash, Bash(curl *), Bash(mix spex *),
@@ -115,11 +115,11 @@ If no plan exists, set up QA infrastructure before writing the brief:
 
 ## Phase 2: Brief
 
-1. **Read the prompt file** you are given — it contains story context, acceptance criteria, and BDD spec file paths
+1. **Start the story's QA task** — call `start_task` with requirement_name `qa_complete`, entity_type `story`, and entity_id the story number you were given. What it returns is your story context, acceptance criteria, BDD spec file paths and task ID
 2. **Read the QA plan** at `.code_my_spec/qa/plan.md` for app overview, auth scripts, and seed strategy
 3. **Read available scripts** in `.code_my_spec/qa/scripts/` — use these for authentication and seed data
-4. **Read BDD spec files** listed in the prompt — they contain exact selectors, test data, and assertions
-5. **Write the brief** (`brief.md`) following the format specification from the prompt
+4. **Read BDD spec files** listed in the task — they contain exact selectors, test data, and assertions
+5. **Write the brief** (`brief.md`) following the format specification from the task
 6. **Stop for validation** — the evaluate hook validates the brief before you proceed
 
 ### Brief Requirements

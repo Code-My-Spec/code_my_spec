@@ -14,15 +14,17 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Content
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd
+  alias CodeMySpec.Bootstrap.Tools.Content
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "install_claude_md writes the managed CLAUDE.md section between explicit markers", criterion: 453 do
+  spex "install_claude_md writes the managed CLAUDE.md section between explicit markers",
+    criterion: 453 do
     scenario "First install creates CLAUDE.md with the managed section" do
       given_ "the working directory has no CLAUDE.md", context do
         refute Environments.file_exists?(context.environment, "CLAUDE.md"),
@@ -33,7 +35,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
 
       when_ "the agent calls install_claude_md", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallClaudeMd.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_claude_md",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

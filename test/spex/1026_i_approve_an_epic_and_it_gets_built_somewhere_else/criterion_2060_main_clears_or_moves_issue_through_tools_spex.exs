@@ -7,15 +7,12 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -48,10 +45,18 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
         entries = work_entries(context)
         assert_free(entries, context.team)
 
-        {:reply, response, _} =
-          GetIssue.execute(%{issue_id: context.issue_id}, context.main_frame)
+        response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         assert response_text(response) =~ context.issue_id
         assert response_text(response) =~ ~r/accepted/i
         {:ok, context}
@@ -101,38 +106,53 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
   defp assigned_issue(context) do
     frame = %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
 
-    {:reply, created, _} =
-      CreateIssue.execute(
+    created =
+      ToolLibrary.run(
+        "create_issue",
         %{
           title: "Issue whose copy main can change",
           description: "Restore a missing notification.",
           severity: "high",
           scope: "framework"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    false = created.isError
+    {:ok, _} = created
     issue_id = extract_issue_id!(created)
-    {:reply, accepted, _} = AcceptIssue.execute(%{issue_id: issue_id}, frame)
-    false = accepted.isError
 
-    {:reply, assigned, _} =
-      AssignIssueToWorkingCopy.execute(
+    accepted =
+      ToolLibrary.run(
+        "accept_issue",
+        %{issue_id: issue_id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    {:ok, _} = accepted
+
+    assigned =
+      ToolLibrary.run(
+        "assign_issue_to_working_copy",
         %{
           issue_id: issue_id,
           working_copy_id: context.scope.active_working_copy_id
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    false = assigned.isError
+    {:ok, _} = assigned
     Map.merge(context, %{issue_id: issue_id, main_frame: frame})
   end
 
   defp work_entries(context) do
-    {:reply, response, _} = ListAgentWork.execute(%{}, context.main_frame)
-    refute response.isError, response_text(response)
+    response =
+      ToolLibrary.run(
+        "list_agent_work",
+        %{},
+        Map.put(context.main_frame.assigns, :scope, context.main_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), response_text(response)
     response |> response_text() |> String.split("Agent: ")
   end
 

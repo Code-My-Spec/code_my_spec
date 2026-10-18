@@ -9,14 +9,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3568Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -77,10 +77,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3568Spex do
         HeldProvider.await_request()
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -101,10 +105,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3568Spex do
       end
 
       then_ "the current turn is not interrupted and no redundant turn is queued", context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
@@ -126,8 +134,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3568Spex do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 2
         assert Process.alive?(context.engine_pid)
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         HeldProvider.release()
         :ok = Machine.await_idle(context.agent_id)

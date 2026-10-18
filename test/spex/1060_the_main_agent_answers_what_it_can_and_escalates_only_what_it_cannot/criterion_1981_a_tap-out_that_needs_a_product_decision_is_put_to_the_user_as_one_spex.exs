@@ -13,15 +13,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -34,7 +32,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
   end
 
   spex "A tap-out that would decide the product's behaviour goes up, not through main",
-       criterion: 1981 do
+    criterion: 1981 do
     scenario "an aged tap-out says building the task would change what the product does" do
       given_ "an aged tap-out whose reason is a product decision", context do
         reply = join_working_copy(context, "/tmp/spex-1981", "the checkout")
@@ -43,17 +41,18 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-1981")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{
               reason:
                 "building this task would change what the product does — it adds a feature " <>
                   "nobody asked for rather than fixing the bug the story describes"
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok = Fixtures.age_permission(scope, permission_id, Cadence.interval(scope) + 60)
@@ -66,24 +65,33 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
 
       when_ "the main agent handles the aged tap-out", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, digest, _frame} = CheckIn.execute(%{}, frame)
-        refute digest.isError, inspect(digest)
 
-        {:reply, escalated, _frame} =
-          EscalateQuestion.execute(
+        digest =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, digest), inspect(digest)
+
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.permission_id,
               reason: "only the user can say whether this feature should be built at all",
-              as: "This task would add a feature nobody asked for instead of fixing the bug. Build it anyway?"
+              as:
+                "This task would add a feature nobody asked for instead of fixing the bug. Build it anyway?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :escalated, escalated)}
       end
 
       then_ "it does not decide it", context do
-        refute context.escalated.isError,
+        assert match?({:ok, _}, context.escalated),
                """
                The main agent could not send its own aged tap-out up to the user.
 
@@ -97,7 +105,13 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
       then_ "the user is shown what approving or denying changes, and it waits on them, not on main",
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListNotifications.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = response_text(listing)
 

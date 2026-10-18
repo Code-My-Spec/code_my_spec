@@ -8,15 +8,14 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
 
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers, only: [coding_work_waiting: 1, next_task: 2, agent_frame: 2]
   import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Repo
   alias CodeMySpecSpex.Fixtures
 
@@ -38,13 +37,24 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   test "bound, tapped out of its only story task: offered nothing, no project work", ctx do
     task = next_task(ctx, ctx.coder)
     assert task.entity_type == "story"
-    {:reply, started, _} = StartTask.execute(task, ctx.frame)
-    refute started.isError, response_text(started)
 
-    {:reply, tapped, _} =
-      TapOut.execute(%{task_id: extract_task_id!(started), reason: "Contradicts"}, ctx.frame)
+    started =
+      ToolLibrary.run(
+        "start_task",
+        task,
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    refute tapped.isError, response_text(tapped)
+    assert match?({:ok, _}, started), response_text(started)
+
+    tapped =
+      ToolLibrary.run(
+        "tap_out",
+        %{task_id: extract_task_id!(started), reason: "Contradicts"},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, tapped), response_text(tapped)
 
     coder = Repo.get!(Agent, ctx.coder)
     assert Work.bound_story_id(coder)
@@ -54,7 +64,13 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   end
 
   defp next(ctx) do
-    {:reply, response, _} = GetNextRequirement.execute(%{}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
     response_text(response)
   end
 end

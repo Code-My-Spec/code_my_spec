@@ -27,7 +27,6 @@ defmodule CodeMySpec.Agents.StopDecision do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Problems.ProblemRenderer
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -70,11 +69,6 @@ defmodule CodeMySpec.Agents.StopDecision do
       # it. Keyed on the rendered text in its own `stuck?` slot.
       {message, :continuing} ->
         continuing(scope, agent, message, Agent.active_task(agent))
-
-      {message, key} ->
-        if stuck?(agent, key),
-          do: :ok,
-          else: send_to(scope, agent, message, {:problems, {"problem_set", problem_key(key)}})
     end
   end
 
@@ -101,42 +95,11 @@ defmodule CodeMySpec.Agents.StopDecision do
   end
 
   defp decide_with_work(%Scope{} = scope, %Agent{} = agent, opts) do
-    # The role travels with the id: whether a `block_changed` source is
-    # enforced turns on whether the agent writes code.
-    validate_opts =
-      Keyword.merge(opts, agent_id: agent.id, agent_role: agent.role, include_blocking: true)
+    validate_opts = Keyword.put(opts, :agent_id, agent.id)
 
-    case Validation.validate_stop(scope, nil, validate_opts) do
-      {:error, reason, key, blocking} ->
-        # "Next" is this agent's own role's work.
-        body =
-          problems(agent, key, reason, blocking) <>
-            Menu.render(scope, agent.continuous == true, agent.role, agent)
-
-        {body, key}
-
-      {:ok, _result} ->
-        keep_working(scope, agent)
-    end
+    {:ok, _result} = Validation.validate_stop(scope, nil, validate_opts)
+    keep_working(scope, agent)
   end
-
-  # A problems offer's ladder (criterion 2168): the count first, by source,
-  # and the first problems in detail once that was ignored.
-  defp problems(agent, key, reason, blocking) do
-    case Offers.rung(agent.id, :problems, "problem_set", problem_key(key)) do
-      :detail -> reason
-      nil -> count(blocking) <> "\n\n" <> ProblemRenderer.render_summary_by_source(blocking)
-    end
-  end
-
-  # The opening is what `AgentPerformance` classifies a stop refusal by.
-  defp count([_one]),
-    do: "Fix these problems before stopping: 1 problem to fix. `list_problems` has it."
-
-  defp count(blocking),
-    do:
-      "Fix these problems before stopping: #{length(blocking)} problems to fix. " <>
-        "`list_problems` has them."
 
   # Nothing is blocking. An agent not in the loop is told nothing (a message
   # costs it a turn). In the loop, `Menu.render/4` answering `""` is the
@@ -200,12 +163,6 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   defp blocker(%{id: id}), do: "; `evaluate_task` with task_id \"#{id}\" when it is done"
 
-  # `Validation.blocking_key/1` is a hash already; anything else is made one.
-  defp problem_key(key) when is_binary(key), do: key
-
-  defp problem_key(key),
-    do: :crypto.hash(:sha256, :erlang.term_to_binary(key)) |> Base.encode16(case: :lower)
-
   # Off this process: `deliver/3` runs inside the harness channel at turn end,
   # and the turn request calls back into that channel (a would-be deadlock).
   defp request_turn(scope, agent) do
@@ -215,8 +172,6 @@ defmodule CodeMySpec.Agents.StopDecision do
 
     :ok
   end
-
-  defp stuck?(agent, key, tag \\ :decision)
 
   defp stuck?(%Agent{} = agent, key, tag) do
     slot = {__MODULE__, tag, agent.id}

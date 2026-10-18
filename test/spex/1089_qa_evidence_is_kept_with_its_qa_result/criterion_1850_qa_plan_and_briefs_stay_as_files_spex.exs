@@ -10,14 +10,15 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
   screenshot reaches S3.
 
   Surface: `CodeMySpec.Qa.EvidenceUpload`, driving
-  `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`.
+  `CodeMySpec.Qa.Tools.SubmitQaResult`.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +29,12 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
       given_ "a brief.md and a screenshot both exist for this story", context do
         story_dir = Path.join(".code_my_spec/qa", to_string(context.story.number))
 
-        :ok = Environments.write_file(context.environment, Path.join(story_dir, "brief.md"), "# brief\n")
+        :ok =
+          Environments.write_file(
+            context.environment,
+            Path.join(story_dir, "brief.md"),
+            "# brief\n"
+          )
 
         :ok =
           Environments.write_file(
@@ -45,15 +51,16 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
       when_ "the agent submits a passing result", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}

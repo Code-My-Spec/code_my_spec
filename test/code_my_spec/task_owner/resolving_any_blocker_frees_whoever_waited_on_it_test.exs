@@ -169,6 +169,67 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
     assert_woken(ctx.agent.id, "Your blocker tap_out #{request.id} was dismissed; resume")
   end
 
+  # 6f2d593e: 29 dismissals, one batch, each telling the agent to resume the
+  # task it tapped out of -- including one whose own reason said the task was
+  # for a component already deleted. Nobody decided that dismissal; it must
+  # not read as the human saying "go ahead anyway".
+  test "a dismissed tap-out carries the agent's own reason and offers a choice, not an order",
+       ctx do
+    task = active_task(ctx.scope, ctx.agent)
+
+    {:ok, request} =
+      Notifications.request_agent_tap_out(
+        ctx.scope,
+        ctx.agent.id,
+        task.id,
+        "the component this task is for was deleted"
+      )
+
+    {:ok, _} = Notifications.dismiss_permission_request(request.id)
+
+    message =
+      assert_woken(ctx.agent.id, "Your blocker tap_out #{request.id} was dismissed; resume")
+
+    assert message =~ "the component this task is for was deleted",
+           "the agent's own reason for tapping out was dropped"
+
+    assert message =~ "only if" or message =~ "cancel_task(\"#{task.id}\")",
+           "a dismissal (nobody decided) must offer a choice, not a flat order to resume: #{message}"
+  end
+
+  test "a dismissed tap-out with no reason recorded still offers to cancel instead of resume",
+       ctx do
+    task = active_task(ctx.scope, ctx.agent)
+    {:ok, request} = Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id)
+
+    {:ok, _} = Notifications.dismiss_permission_request(request.id)
+
+    message =
+      assert_woken(ctx.agent.id, "Your blocker tap_out #{request.id} was dismissed; resume")
+
+    assert message =~ "cancel_task(\"#{task.id}\")",
+           "even with no recorded reason, a dismissal must not read as an order to resume: #{message}"
+  end
+
+  # A human saying "deny" IS the decision to keep going -- unlike a dismissal,
+  # there is somebody to attribute "go ahead" to, so this stays a plain
+  # instruction (asserted already above, "a denied tap-out releases its task
+  # and wakes the holder to resume it").
+  test "a denied tap-out, unlike a dismissal, still reads as a plain instruction", ctx do
+    task = active_task(ctx.scope, ctx.agent)
+
+    {:ok, request} =
+      Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id, "a reason given")
+
+    {:ok, _} = Notifications.resolve_permission_request(request.id, "deny", "keep at it")
+
+    message =
+      assert_woken(ctx.agent.id, "Your blocker tap_out #{request.id} was denied; resume")
+
+    refute message =~ "cancel_task(\"#{task.id}\")",
+           "a denial is the human's decision to keep going; it must not be hedged like a dismissal"
+  end
+
   test "a question answered for another agent's task wakes that agent, not the answerer",
        ctx do
     main = agent(ctx.scope, ctx.copy, "main")

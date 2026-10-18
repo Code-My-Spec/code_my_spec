@@ -18,7 +18,6 @@ defmodule CodeMySpec.Agents.RestartAgentTest do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpecTest.AgentPresence

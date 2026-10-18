@@ -10,17 +10,17 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
   partial submission carries an issue id per rule aa9a29e6.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (x2)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts`
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Issues.Tools.CreateIssue`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (x2)
+  - `CodeMySpec.Qa.Tools.ListQaAttempts`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,8 +32,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "QA-found incomplete coverage from criterion 6446 spex",
               severity: "low",
@@ -41,10 +42,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
               story_number: context.story.number,
               description: "First-pass partial submission discovered this gap."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute issue_response.isError
+        assert match?({:ok, _}, issue_response)
         issue_id = extract_issue_id(response_text(issue_response))
 
         {:ok, Map.put(context, :issue_id, issue_id)}
@@ -53,41 +54,47 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
       when_ "the agent submits partial then later submits pass on the same task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, partial_response, _frame} =
-          SubmitQaResult.execute(
+        partial_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "partial",
               scenarios: [%{name: "first_pass", status: "partial", observation: "incomplete"}],
               issue_ids: [context.issue_id]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute partial_response.isError
+        assert match?({:ok, _}, partial_response)
 
-        {:reply, pass_response, _frame} =
-          SubmitQaResult.execute(
+        pass_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "second_pass", status: "pass", observation: "complete"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute pass_response.isError
+        assert match?({:ok, _}, pass_response)
         {:ok, context}
       end
 
       then_ "both attempts are visible in history and qa_complete is satisfied", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ "first_pass"

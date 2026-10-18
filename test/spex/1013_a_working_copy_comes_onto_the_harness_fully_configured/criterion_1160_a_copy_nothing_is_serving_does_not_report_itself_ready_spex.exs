@@ -39,12 +39,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion3098Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -57,7 +58,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3098Spex do
   defp id_from([_, id]), do: id
   defp id_from(_no_match), do: ""
 
-  spex "A working copy created this way comes up with its agents already on it", criterion: 1160 do
+  spex "A working copy created this way comes up with its agents already on it",
+    criterion: 1160 do
     scenario "A copy nothing is serving does not report itself ready" do
       given_ "a machine holding this project's repository", context do
         copy = join_working_copy(context, "/tmp/spex_3098_host", "the machine with the disk")
@@ -75,8 +77,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3098Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateWorkingCopy.execute(%{label: "nobody is in there yet"}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "nobody is in there yet"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, _live, html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")

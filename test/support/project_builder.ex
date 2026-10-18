@@ -112,7 +112,11 @@ defmodule CodeMySpecSpex.ProjectBuilder do
 
   @doc "A spex file under a story and criterion."
   def spex(%__MODULE__{} = b, story_id, criterion_id, _opts \\ []) do
-    put(b, "test/spex/#{story_id}/criterion_#{criterion_id}_spex.exs", spex_source(story_id, criterion_id))
+    put(
+      b,
+      "test/spex/#{story_id}/criterion_#{criterion_id}_spex.exs",
+      spex_source(story_id, criterion_id)
+    )
   end
 
   @doc "Write an arbitrary file into the project at an exact path."

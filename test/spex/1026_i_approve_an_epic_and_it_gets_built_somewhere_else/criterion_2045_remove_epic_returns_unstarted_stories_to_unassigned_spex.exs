@@ -6,13 +6,12 @@ defmodule CodeMySpecSpex.Story1026.Criterion2045Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.WorkingCopyHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -37,8 +36,15 @@ defmodule CodeMySpecSpex.Story1026.Criterion2045Spex do
 
         copy_id = reply[:working_copy_id]
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, created, _} = CreateEpic.execute(%{name: "Unstarted queued epic"}, frame)
-        false = created.isError
+
+        created =
+          ToolLibrary.run(
+            "create_epic",
+            %{name: "Unstarted queued epic"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = created
         [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, response_text(created))
 
         stories =
@@ -50,23 +56,25 @@ defmodule CodeMySpecSpex.Story1026.Criterion2045Spex do
                 acceptance_criteria: ["It works"]
               )
 
-            {:reply, assigned, _} =
-              AssignStoryToEpic.execute(
+            assigned =
+              ToolLibrary.run(
+                "assign_story_to_epic",
                 %{story_number: story.number, epic_name: "Unstarted queued epic"},
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            false = assigned.isError
+            {:ok, _} = assigned
             story
           end
 
-        {:reply, placed, _} =
-          AssignEpicToWorkingCopy.execute(
+        placed =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: epic_id, working_copy_id: copy_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        false = placed.isError
+        {:ok, _} = placed
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies/#{copy_id}")

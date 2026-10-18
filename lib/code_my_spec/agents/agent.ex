@@ -79,6 +79,9 @@ defmodule CodeMySpec.Agents.Agent do
   @foreign_key_type :binary_id
   schema "agents" do
     field :engine, Ecto.Enum, values: @engines, default: :alloy
+    # A terminal Claude Code session's own session id (story 1122): how a
+    # resumed session finds its agent again, and how its tool calls name it.
+    field :engine_session_id, :string
     field :provider, :string
     # The model this agent started on, recorded: changing the role's setting
     # must not move an agent already running.
@@ -287,6 +290,7 @@ defmodule CodeMySpec.Agents.Agent do
     agent
     |> cast(attrs, [
       :engine,
+      :engine_session_id,
       :provider,
       :model,
       :working_copy,
@@ -335,6 +339,7 @@ defmodule CodeMySpec.Agents.Agent do
     |> foreign_key_constraint(:issue_id)
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
+    |> unique_constraint([:project_id, :engine_session_id])
   end
 
   # Required on creation only: the FK nilifies on checkout delete, and a row

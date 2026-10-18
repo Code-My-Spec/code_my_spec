@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1699Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
 
   setup :register_log_in_setup_account
@@ -28,13 +29,19 @@ defmodule CodeMySpecSpex.Story1116.Criterion1699Spex do
 
       when_ "the coder searches with no since/until named", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "the query it actually ran still carried a bounded, recent window", context do
-        refute context.reply.isError
+        assert match?({:ok, _}, context.reply)
 
         {body, params} = ClickHouseCassetteHelpers.captured_request(context.capture)
         assert body =~ "Timestamp >= {since:DateTime64}"

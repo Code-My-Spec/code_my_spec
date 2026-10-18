@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -41,8 +42,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
         # sub-agent is currently registered.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListSessionSubagents.execute(%{session_id: session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_session_subagents",
+            %{session_id: session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 
@@ -64,8 +69,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
       then_ "the registry entry is absent from list_session_subagents", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListSessionSubagents.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_session_subagents",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

@@ -12,8 +12,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2178Spex do
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,26 +30,31 @@ defmodule CodeMySpecSpex.Story1080.Criterion2178Spex do
       given_ "a coder offered work asked to leave the loop", context do
         context = offered_work(context)
 
-        {:reply, reply, _} =
-          TapOut.execute(%{reason: "Nothing for me here."}, agent_frame(context, context.coder))
+        reply =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "Nothing for me here."},
+            tool_context(agent_frame(context, context.coder))
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, request_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(reply))
         {:ok, Map.put(context, :request, request_id)}
       end
 
       when_ "the request is denied", context do
-        {:reply, reply, _} =
-          AnswerNotification.execute(
+        reply =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.request,
               decision: "deny",
               answer: "There is work: take it."
             },
-            frame(context)
+            tool_context(frame(context))
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, context}
       end
 
@@ -67,4 +71,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2178Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

@@ -9,16 +9,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -44,14 +42,28 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
       given_ "a continuous task-free coding agent has no eligible work", context do
         context = given_a_staffed_checkout(context, "spex_2416")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         assert Fixtures.role_queue_size(context.scope, agent.id) == 0
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         base_url = HeldProvider.start()
         HeldProvider.hold()
@@ -62,10 +74,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
         # the boundary being tested. The local engine is ready for admission.
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -87,19 +103,43 @@ defmodule CodeMySpecSpex.Story1017.Criterion2416Spex do
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         refute response_text(conversation) =~ ~r/\b\d+\s+(?:open\s+)?questions?\b/i
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.agent_frame)
-        refute questions.isError, response_text(questions)
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         refute response_text(questions) =~ ~r/\b[1-9]\d*\s+open questions?\b/i
 
         {:ok, view, _} = live(context.conn, context.conversation_path)

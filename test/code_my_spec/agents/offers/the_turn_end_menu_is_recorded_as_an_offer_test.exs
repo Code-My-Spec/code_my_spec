@@ -17,7 +17,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -107,7 +106,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       scope = put_fixture_environment(%{ctx.scope | cwd: tmp}, Environment.new(:local, tmp))
 
       Configurations.get_or_create(scope)
-      {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
       for path <- [@mine, @spex_path] do
         File.mkdir_p!(Path.join(tmp, Path.dirname(path)))
@@ -128,36 +126,6 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
       fresh_analysis_runs_fixture(scope)
 
       %{scope: scope}
-    end
-
-    test "a refused stop records a problems offer on the problem set", ctx do
-      agent = agent(ctx, "coding", true)
-      :ok = FileEdits.track_agent_edit(agent.id, @mine)
-
-      expected = StopDecision.decide(ctx.scope, agent)
-      :ok = StopDecision.deliver(ctx.scope, agent, [])
-
-      # `decide/2` and `deliver/3` each render the run's age, a second apart at worst.
-      assert without_ages(dispatched(agent.id)) == without_ages(expected)
-      assert expected =~ "Fix these problems"
-
-      assert [offer] = Offers.list_for_agent(agent.id)
-      assert {offer.kind, offer.subject_type} == {:problems, "problem_set"}
-      assert is_binary(offer.subject_key)
-      assert linked_texts(offer) == [expected]
-    end
-
-    test "the same refusal again supersedes the open offer", ctx do
-      agent = agent(ctx, "coding", true)
-      :ok = FileEdits.track_agent_edit(agent.id, @mine)
-
-      :ok = StopDecision.deliver(ctx.scope, agent, [])
-      dispatched(agent.id)
-      :ok = StopDecision.deliver(ctx.scope, agent, [])
-      dispatched(agent.id)
-
-      assert [%{status: :superseded}, %{status: :open, attempt: 2}] =
-               Offers.list_for_agent(agent.id)
     end
   end
 
@@ -186,6 +154,4 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     assert dispatched(agent.id) =~ "no blocking problems"
     assert Offers.list_for_agent(agent.id) == []
   end
-
-  defp without_ages(text), do: String.replace(text, ~r/finished \d+s ago/, "finished _ ago")
 end

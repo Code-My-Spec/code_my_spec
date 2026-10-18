@@ -15,14 +15,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -73,7 +73,13 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2008")
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, _resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
+
+        _resp =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context |> Map.put(:scope, scope) |> Map.put(:story, story) |> Map.put(:agent, agent)}
@@ -82,13 +88,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
       when_ "the agent is restarted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, restarted, _frame} =
-          RestartAgent.execute(
+        restarted =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent.id, reason: "stuck on a stale read"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute restarted.isError, inspect(restarted)
+        assert match?({:ok, _}, restarted), inspect(restarted)
         {:ok, context}
       end
 

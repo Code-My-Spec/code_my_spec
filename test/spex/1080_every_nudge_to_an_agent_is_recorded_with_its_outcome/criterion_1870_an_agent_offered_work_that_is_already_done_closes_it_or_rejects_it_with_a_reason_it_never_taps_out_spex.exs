@@ -24,9 +24,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.Agents.Tools.RejectOffer
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -41,7 +39,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
   end
 
   spex "Already-done work closes its own offer, without reject_offer or tap_out",
-       criterion: 1870 do
+    criterion: 1870 do
     scenario "the work is satisfied before the coder ever acts on it" do
       given_ "a coder is offered work it has not yet claimed", context do
         context = offered_work(context)
@@ -53,13 +51,19 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
       end
 
       when_ "the coder calls start_task on that same, now-satisfied work", context do
-        {:reply, result, _} = StartTask.execute(context.work, agent_frame(context, context.coder))
+        result =
+          ToolLibrary.run(
+            "start_task",
+            context.work,
+            tool_context(agent_frame(context, context.coder))
+          )
+
         {:ok, Map.put(context, :result, result)}
       end
 
       then_ "it is refused, told the work is already satisfied and its offer is closed",
             context do
-        assert context.result.isError, response_text(context.result)
+        assert match?({:error, _}, context.result), response_text(context.result)
         assert response_text(context.result) =~ "already satisfied", response_text(context.result)
 
         assert response_text(context.result) =~ "the offer of it is closed",
@@ -79,7 +83,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
   end
 
   spex "The coder can reject an already-satisfied offer itself, with a reason",
-       criterion: 1870 do
+    criterion: 1870 do
     scenario "the coder calls reject_offer instead of start_task" do
       given_ "a coder is offered work it has not yet claimed", context do
         context = offered_work(context)
@@ -92,7 +96,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
 
       when_ "it calls reject_offer with a reason instead of start_task", context do
         assert {:ok, _text} =
-                 RejectOffer.call(
+                 ToolLibrary.run(
+                   "reject_offer",
                    %{reason: "already satisfied"},
                    %{agent_id: context.coder, scope: context.scope}
                  )
@@ -111,7 +116,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
   end
 
   spex "Tapping out instead does not close or decline the already-satisfied offer",
-       criterion: 1870 do
+    criterion: 1870 do
     scenario "the coder taps out instead of resolving the offer" do
       given_ "a coder is offered work it has not yet claimed", context do
         context = offered_work(context)
@@ -122,14 +127,16 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
         {:ok, FullSatisfactionFixtures.apply_qa_readiness_transition(context)}
       end
 
-      when_ "it taps out instead of calling start_task, reject_offer, or anything else", context do
-        {:reply, reply, _} =
-          TapOut.execute(
+      when_ "it taps out instead of calling start_task, reject_offer, or anything else",
+            context do
+        reply =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "I should not be the one to do this"},
-            agent_frame(context, context.coder)
+            tool_context(agent_frame(context, context.coder))
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, context}
       end
 
@@ -141,4 +148,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

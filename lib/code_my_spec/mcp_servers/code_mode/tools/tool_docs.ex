@@ -15,6 +15,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.ToolIndex
+  alias CodeMySpec.Agents.ToolSets
   alias CodeMySpec.CodeMode
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.LocalServer
@@ -39,7 +40,10 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        {:reply, Response.tool() |> Response.text(docs(scope, params, carried(frame))), frame}
+        {:reply,
+         Response.tool()
+         |> Response.text(docs(scope, params, carried(frame), scriptable_grant(frame))),
+         frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}
@@ -59,9 +63,26 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
     with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
          scope <- frame.assigns[:current_scope],
          {:ok, _agent} <- Agents.fetch_agent(scope, agent_id) do
-      ToolIndex.carried(%{direct: LocalServer.__components__()})
+      ToolIndex.carried(%{direct: LocalServer.registrations()})
     else
       _ -> :all
+    end
+  end
+
+  # A different question from `carried/1`: that one is about the direct
+  # surface, the same for every agent we run regardless of role. This is
+  # about `run_script`'s own gate (`ToolSets.for_role/1`), which a tool can
+  # sit inside the full scriptable catalog and still be refused by at call
+  # time -- 50ddc827: reading `list_session_subagents`'s schema here looked
+  # like permission to call it, for a role `ToolSets` does not grant it to.
+  # `nil` means unrestricted, the same convention `ToolSets.for_role/1` uses.
+  defp scriptable_grant(frame) do
+    with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],
+         scope <- frame.assigns[:current_scope],
+         {:ok, agent} <- Agents.fetch_agent(scope, agent_id) do
+      ToolSets.for_role(agent.role)
+    else
+      _ -> nil
     end
   end
 
@@ -70,13 +91,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # eighty-five tools undiscoverable — an agent has no other way to learn that
   # `browser_wait_for_text` exists. So they are named, and named as belonging
   # somewhere else, which is the part a bare listing would get wrong.
-  defp docs(scope, params, carried) do
+  defp docs(scope, params, carried, grant) do
     machine = Layer.machine_catalog(scope, nil, @docs_timeout)
 
     case requested_names(params) do
       [] -> CodeMode.docs(Layer.catalog(scope), opts(params)) <> machine_note(machine)
-      [one] -> page(scope, machine, one, carried)
-      many -> Enum.map_join(many, "\n\n---\n\n", &page(scope, machine, &1, carried))
+      [one] -> page(scope, machine, one, carried, grant)
+      many -> Enum.map_join(many, "\n\n---\n\n", &page(scope, machine, &1, carried, grant))
     end
   end
 
@@ -104,13 +125,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
   # A name in neither is said so plainly. That is the whole point of asking: an
   # agent that guessed needs to hear it guessed, and the catalog it used to get
   # back reads as an answer.
-  defp page(scope, machine, name, carried) do
+  defp page(scope, machine, name, carried, grant) do
     cond do
       Map.has_key?(machine, name) ->
         machine_page(machine, name)
 
       Map.has_key?(Layer.catalog(scope), name) ->
-        CodeMode.docs(Layer.catalog(scope), name: name)
+        CodeMode.docs(Layer.catalog(scope), name: name) <> grant_note(name, grant)
 
       direct?(name) ->
         direct_page(name, carried)
@@ -118,6 +139,17 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
       true ->
         "`#{name}` is not a tool on this project or this machine. " <>
           "Call `tool_docs` with `search` to find what is."
+    end
+  end
+
+  defp grant_note(_name, nil), do: ""
+
+  defp grant_note(name, grant) when is_list(grant) do
+    if name in grant do
+      ""
+    else
+      "\n\nNot available to your role: `run_script` refuses this call from here. " <>
+        "Reading the schema above is not permission to call it."
     end
   end
 

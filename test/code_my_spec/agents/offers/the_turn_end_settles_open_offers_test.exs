@@ -154,24 +154,16 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
     end
   end
 
-  # Criterion 2172: accepted by a write, not by any call.
   describe "a problems offer" do
-    test "is claimed when the agent wrote after it", ctx do
+    test "is claimed when the agent used tools after it", ctx do
       offered = offer(ctx, :problems, {"problem_set", "abc"})
-      called(ctx, "edit")
+      called(ctx, "edit_file")
       end_turn(ctx)
       assert settled(offered).status == :claimed
     end
 
-    test "is not claimed by a read-only call", ctx do
-      offered = offer(ctx, :problems, {"problem_set", "abc"})
-      called(ctx, "read")
-      end_turn(ctx)
-      assert settled(offered).status == :ignored
-    end
-
     test "is ignored when the only tool calls came before it", ctx do
-      called(ctx, "edit")
+      called(ctx, "edit_file")
       offered = offer(ctx, :problems, {"problem_set", "abc"})
       end_turn(ctx)
       assert settled(offered).status == :ignored
@@ -280,7 +272,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
 
     test "the attempt count starts over after a claim", ctx do
       offer(ctx, :problems, {"problem_set", "abc"})
-      called(ctx, "edit")
+      called(ctx, "edit_file")
       end_turn(ctx)
 
       assert %{attempt: 1} = offer(ctx, :problems, {"problem_set", "abc"})

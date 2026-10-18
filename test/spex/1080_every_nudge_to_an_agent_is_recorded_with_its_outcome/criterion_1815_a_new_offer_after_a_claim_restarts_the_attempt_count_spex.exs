@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1815Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -62,10 +62,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1815Spex do
             context do
         id = context.coder
 
-        {:reply, cancelled, _} =
-          CancelTask.execute(%{task_id: context.task_id}, agent_frame(context, id))
+        cancelled =
+          ToolLibrary.run(
+            "cancel_task",
+            %{task_id: context.task_id},
+            tool_context(agent_frame(context, id))
+          )
 
-        refute cancelled.isError, response_text(cancelled)
+        assert match?({:ok, _}, cancelled), response_text(cancelled)
 
         :ok = Fixtures.end_turn(context.scope, id)
         context = put_to_work(context)
@@ -98,4 +102,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1815Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

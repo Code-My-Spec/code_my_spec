@@ -8,14 +8,10 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   a story branch — because certifying reads a real tree and a real HEAD.
   """
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
@@ -57,8 +53,15 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
   def complete_ready_for_qa(context) do
     frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coder.id}}
-    {:reply, response, _frame} = EvaluateTask.execute(%{task_id: context.task_id}, frame)
-    {response.isError == true, response_text(response)}
+
+    response =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: context.task_id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    {match?({:error, _}, response), response_text(response)}
   end
 
   @doc "The commit the story is stamped ready for QA at, or nil."
@@ -68,8 +71,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def story_requirements(context, story) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ShowStoryRequirements.execute(%{story: to_string(story.number)}, frame)
+    response =
+      ToolLibrary.run(
+        "show_story_requirements",
+        %{story: to_string(story.number)},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response_text(response)
   end
@@ -81,8 +88,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def add_criterion(context, story, text) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      AddCriterion.execute(%{story_number: story.number, description: text}, frame)
+    response =
+      ToolLibrary.run(
+        "add_criterion",
+        %{story_number: story.number, description: text},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end
@@ -91,8 +102,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def set_active_story(context, story) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      SetActiveStory.execute(%{story_number: story.number}, frame)
+    response =
+      ToolLibrary.run(
+        "set_active_story",
+        %{story_number: story.number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end
@@ -101,8 +116,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def retire_criterion(context, criterion) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      RetireCriterion.execute(%{criterion_number: criterion.number}, frame)
+    response =
+      ToolLibrary.run(
+        "retire_criterion",
+        %{criterion_number: criterion.number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end

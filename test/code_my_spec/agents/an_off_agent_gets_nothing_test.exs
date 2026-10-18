@@ -9,6 +9,8 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
@@ -20,11 +22,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -64,6 +62,8 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     %{scope: scope, copy: copy, agent: agent, frame: %Frame{assigns: %{current_scope: scope}}}
   end
 
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
   end
@@ -90,10 +90,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
 
   describe "turning off" do
     test "the tool records who, when and why, and ends the process", ctx do
-      {:reply, response, _} =
-        TurnOffAgent.execute(%{agent_id: ctx.agent.id, reason: @reason}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "turn_off_agent",
+          %{agent_id: ctx.agent.id, reason: @reason},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError, text(response)
+      assert match?({:ok, _}, response), text(response)
 
       agent = Repo.get(Agent, ctx.agent.id)
       assert agent.status == :stopped
@@ -103,9 +107,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     end
 
     test "a reason is optional", ctx do
-      {:reply, response, _} = TurnOffAgent.execute(%{agent_id: ctx.agent.id}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "turn_off_agent",
+          %{agent_id: ctx.agent.id},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError, text(response)
+      assert match?({:ok, _}, response), text(response)
       assert Agent.off?(Repo.get(Agent, ctx.agent.id))
     end
 
@@ -135,10 +144,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     test "the message_agent tool says it is off and how to get it back", ctx do
       off_but_running(ctx)
 
-      {:reply, response, _} =
-        MessageAgent.execute(%{agent_id: ctx.agent.id, message: "hi"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "message_agent",
+          %{agent_id: ctx.agent.id, message: "hi"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ @refusal
     end
 
@@ -164,10 +177,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     test "the main agent's restart_agent refuses it, naming who and why", ctx do
       off(ctx)
 
-      {:reply, response, _} =
-        RestartAgent.execute(%{agent_id: ctx.agent.id, reason: "it is stopped"}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "restart_agent",
+          %{agent_id: ctx.agent.id, reason: "it is stopped"},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ @refusal
       assert Agent.off?(Repo.get(Agent, ctx.agent.id))
     end
@@ -189,9 +206,14 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
     test "the main agent's turn_on_agent starts it and clears the record", ctx do
       off(ctx)
 
-      {:reply, response, _} = TurnOnAgent.execute(%{agent_id: ctx.agent.id}, ctx.frame)
+      response =
+        ToolLibrary.run(
+          "turn_on_agent",
+          %{agent_id: ctx.agent.id},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
 
-      refute response.isError, text(response)
+      assert match?({:ok, _}, response), text(response)
 
       agent = Repo.get(Agent, ctx.agent.id)
       assert Agents.on_duty?(agent)

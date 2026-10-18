@@ -35,10 +35,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion3096Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
 
   setup :register_log_in_setup_account
@@ -61,8 +62,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3096Spex do
       when_ "the agent asks for a working copy there", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateWorkingCopy.execute(%{label: "doomed", root: context.root}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "doomed", root: context.root},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

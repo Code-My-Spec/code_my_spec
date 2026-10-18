@@ -20,6 +20,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Provisioning.EnvironmentRepository,
       CodeMySpec.Stories,
       CodeMySpec.ToolLibrary,
+      CodeMySpec.Tools,
       CodeMySpec.Activity,
       CodeMySpec.Agents,
       CodeMySpec.Agents.RoleProfile,

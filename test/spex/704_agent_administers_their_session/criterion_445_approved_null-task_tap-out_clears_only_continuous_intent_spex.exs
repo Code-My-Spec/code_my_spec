@@ -9,14 +9,14 @@ defmodule CodeMySpecSpex.Story704.Criterion1876Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -51,8 +51,15 @@ defmodule CodeMySpecSpex.Story704.Criterion1876Spex do
         other_agent = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
 
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (2)"
         assert response_text(tasks) =~ "[active]"
         assert response_text(tasks) =~ "[completed]"
@@ -74,15 +81,35 @@ defmodule CodeMySpecSpex.Story704.Criterion1876Spex do
       end
 
       when_ "the agent explicitly requests whole-agent tap-out with task_id null", context do
-        {:reply, response, _} = TapOut.execute(%{task_id: nil}, context.agent_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "tap_out",
+            %{task_id: nil},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         [_, request_id] = Regex.run(~r/request_id=`([a-f0-9-]+)`/, response_text(response))
         {:ok, Map.put(context, :request_id, request_id)}
       end
 
       then_ "the pending request has not changed tasks or continuous intent", context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")
@@ -100,8 +127,19 @@ defmodule CodeMySpecSpex.Story704.Criterion1876Spex do
             context do
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='false']")
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         {:ok, other_view, _} = live(context.conn, context.other_conversation_path)
         assert has_element?(other_view, "[data-test='toggle-agent-working'][data-working='true']")

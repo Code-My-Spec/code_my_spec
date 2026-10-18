@@ -16,9 +16,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,13 +29,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
     :ok
   end
 
-  spex "Main escalates a teammate's question instead of answering or re-asking it", criterion: 1871 do
+  spex "Main escalates a teammate's question instead of answering or re-asking it",
+    criterion: 1871 do
     scenario "a coder asks something only the user can decide" do
       given_ "a coder asked a question, and main holding the resulting offer", context do
         context = coder_holding_a_task(context)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               questions: [
@@ -47,10 +47,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
                 }
               ]
             },
-            agent_frame(context, context.coder)
+            tool_context(agent_frame(context, context.coder))
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         question_id = Fixtures.question_id_from(response_text(asked))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -58,33 +58,44 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
       when_ "main escalates it to the user, unable to decide it itself", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coder}}
 
-        {:reply, escalated, _} =
-          EscalateQuestion.execute(
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               reason: "This is a product decision, not an engineering one."
             },
-            frame
+            tool_context(frame)
           )
 
         {:ok, Map.put(context, :escalated, escalated)}
       end
 
       then_ "the question moves to the user rather than being answered or reassigned", context do
-        refute context.escalated.isError, response_text(context.escalated)
-        assert response_text(context.escalated) =~ "Sent to the user", response_text(context.escalated)
+        assert match?({:ok, _}, context.escalated), response_text(context.escalated)
+
+        assert response_text(context.escalated) =~ "Sent to the user",
+               response_text(context.escalated)
+
         {:ok, context}
       end
 
       then_ "main does not ask the user the same question again itself", context do
-        {:reply, open, _} =
-          ListNotifications.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        open =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            tool_context(%Frame{assigns: %{current_scope: context.scope}})
+          )
 
-        refute open.isError, response_text(open)
+        assert match?({:ok, _}, open), response_text(open)
         matches = Regex.scan(~r/refund window/, response_text(open))
         assert length(matches) == 1, "the question was duplicated:\n" <> response_text(open)
         {:ok, context}
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

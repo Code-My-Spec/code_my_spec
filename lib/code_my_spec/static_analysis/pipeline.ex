@@ -108,15 +108,9 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # -- Analyzer resolution --
 
-  # Analyzer atom → ProjectConfiguration field that gates it.
-  # Atoms not in this map are always eligible. Gating `spex_stale` is safe:
-  # `start_analysis` and an agent's own `mix spex` still record spex runs.
-  @config_gated_analyzers %{
-    credo: :credo,
-    exunit_stale: :exunit,
-    spex_stale: :spex,
-    validate_qa: :qa_validation
-  }
+  # Analyzer atom → ProjectConfiguration field that gates it. Atoms not in
+  # this map are always eligible.
+  @config_gated_analyzers %{validate_qa: :qa_validation}
 
   @doc """
   Resolve which analyzers to run.

@@ -6,13 +6,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3070Spex do
 
   use CodeMySpecSpex.Case, async: true
 
-  alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The :server step pauses instead of creating for an unlinked environment", criterion: 1142 do
+  spex "The :server step pauses instead of creating for an unlinked environment",
+    criterion: 1142 do
     scenario "running the step for a project with no linked server pauses it" do
       given_ "Hetzner is connected and this project has never linked a server", context do
         CodeMySpecSpex.Fixtures.connect_hetzner(context.scope)
@@ -28,7 +29,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3070Spex do
 
       when_ "the project's devops agent runs the :server step", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :response, response)}
       end
 

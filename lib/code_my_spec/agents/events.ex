@@ -90,7 +90,8 @@ defmodule CodeMySpec.Agents.Events do
   def handle_event(@task_released, _measurements, meta, _config) do
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       Work.wake_released(meta.scope, meta.agent, meta.released, meta.header, meta.detail,
-        subject: meta.subject
+        subject: meta.subject,
+        outcome: meta.outcome
       )
     end)
 

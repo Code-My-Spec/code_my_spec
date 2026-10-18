@@ -11,6 +11,8 @@ defmodule CodeMySpec.Requirements.AReleasedStoryBringsItsRequirementsTest do
 
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   # `/app/projects/.../stories` is a cloud-app route; the case's default
   # endpoint is the local app, where `live/2` answers 404.
   @endpoint CodeMySpecWeb.Endpoint
@@ -19,7 +21,6 @@ defmodule CodeMySpec.Requirements.AReleasedStoryBringsItsRequirementsTest do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.Stories
@@ -66,13 +67,14 @@ defmodule CodeMySpec.Requirements.AReleasedStoryBringsItsRequirementsTest do
     # difference between that spex and the passing case above.
     frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-    {:reply, response, _frame} =
-      CreateStory.execute(
+    response =
+      ToolLibrary.run(
+        "create_story",
         %{title: "Released from the page", description: "created via the tool"},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
 
     story =
       ctx.scope

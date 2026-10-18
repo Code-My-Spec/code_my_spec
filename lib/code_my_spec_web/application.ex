@@ -115,6 +115,9 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Files.ReconcileRegistry,
         # One setup run per project; provisioning calls providers from here.
         CodeMySpec.Provisioning.RunLock,
+        # One app start/restart/stop run per working copy; a second would
+        # overlap the first's own _build directory otherwise (issue f2977826).
+        CodeMySpec.WorkingCopies.AppRunLock,
         # Timers for agents the provider refused until a named time: the held
         # turn end runs then. Re-armed on a harness reconnect.
         CodeMySpec.Agents.RefusalWake,
@@ -134,7 +137,6 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.LocalServer,
          transport: :streamable_http, session_idle_timeout: to_timeout(hour: 4)},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
-        {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},

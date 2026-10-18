@@ -34,10 +34,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
 
@@ -49,7 +50,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
   defp id_from([_, id]), do: id
   defp id_from(_no_match), do: ""
 
-  spex "The harness does the work on disk and the server does the work on the record", criterion: 1162 do
+  spex "The harness does the work on disk and the server does the work on the record",
+    criterion: 1162 do
     scenario "One call, two halves" do
       given_ "a machine holding this project's repository", context do
         copy = join_working_copy(context, "/tmp/spex_3100_host", "the machine with the disk")
@@ -66,8 +68,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3100Spex do
       when_ "an agent calls the tool that creates a working copy", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateWorkingCopy.execute(%{label: "one call"}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "one call"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

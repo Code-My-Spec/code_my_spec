@@ -7,14 +7,10 @@ defmodule CodeMySpecSpex.Story1091.Criterion2081Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
-
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,29 +20,38 @@ defmodule CodeMySpecSpex.Story1091.Criterion2081Spex do
       given_ "the bag holds issue A, submitted to QA, and issue B, still awaiting coding", ctx do
         ctx = ctx |> a_promotable_project() |> an_issue_assigned_to_the_team()
 
-        {:reply, created, _frame} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "A second, unrelated defect",
               description: "Still waiting on a fix.",
               severity: "high",
               scope: "framework"
             },
-            ctx.main_frame
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
           )
 
-        refute created.isError
+        assert match?({:ok, _}, created)
         issue_b = extract_issue_id!(created)
-        {:reply, accepted, _frame} = AcceptIssue.execute(%{issue_id: issue_b}, ctx.main_frame)
-        refute accepted.isError
 
-        {:reply, assigned, _frame} =
-          AssignIssueToWorkingCopy.execute(
-            %{issue_id: issue_b, working_copy_id: ctx.scope.active_working_copy_id},
-            ctx.main_frame
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: issue_b},
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
           )
 
-        refute assigned.isError
+        assert match?({:ok, _}, accepted)
+
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
+            %{issue_id: issue_b, working_copy_id: ctx.scope.active_working_copy_id},
+            Map.put(ctx.main_frame.assigns, :scope, ctx.main_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, assigned)
 
         ctx =
           the_coder_fixes_it(
@@ -59,18 +64,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion2081Spex do
       end
 
       when_ "coding and QA each ask for their next eligible work", ctx do
-        {:reply, qa_offer, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{
-            assigns: %{current_scope: ctx.scope, agent_id: ctx.qa.id}
-          })
+        qa_offer =
+          ToolLibrary.run("get_next_requirement", %{}, %{scope: ctx.scope, agent_id: ctx.qa.id})
 
-        {:reply, coder_offer, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{
-            assigns: %{current_scope: ctx.scope, agent_id: ctx.coder.id}
-          })
+        coder_offer =
+          ToolLibrary.run("get_next_requirement", %{}, %{scope: ctx.scope, agent_id: ctx.coder.id})
 
-        refute qa_offer.isError
-        refute coder_offer.isError
+        assert match?({:ok, _}, qa_offer)
+        assert match?({:ok, _}, coder_offer)
         {:ok, Map.merge(ctx, %{qa_offer: qa_offer, coder_offer: coder_offer})}
       end
 

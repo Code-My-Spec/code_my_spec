@@ -48,7 +48,6 @@ defmodule CmsHarness.Project.ChannelClient do
 
   require Logger
 
-  alias CmsHarness.Agents.Engine
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Channel
@@ -112,7 +111,7 @@ defmodule CmsHarness.Project.ChannelClient do
   def init(project) do
     socket =
       new_socket()
-      |> assign(:project, project)
+      |> assign(:project, refresh_identity(project))
       |> assign(:topic, "harness_project:#{project.id}")
       |> assign(:joined, false)
       |> assign(:refused, nil)
@@ -125,6 +124,29 @@ defmodule CmsHarness.Project.ChannelClient do
 
     :ok = Liveness.subscribe()
     {:ok, socket, {:continue, :connect}}
+  end
+
+  # 1a8e6318: `Project.Supervisor`'s child spec closes over the `project`
+  # struct `ProjectIdentity.resolve/1` returned once, at copy-serve time --
+  # before anything had joined, so its `working_copy_id` is still nil then.
+  # A later join writes the issued id to disk (`persist_issued_identity/2`)
+  # and into *this process's* socket assigns, never back into the
+  # supervisor's frozen argument. So a `:rest_for_one` restart of this child
+  # re-`init/1`s from that same stale struct and presents `nil` again,
+  # minting a fresh row even though the id this copy was issued is sitting
+  # on disk. Re-reading it here, every init, closes that gap without
+  # resolving the whole identity again -- `id` and `root` do not change
+  # after a copy starts being served, only `working_copy_id` can move from
+  # nil to issued underneath this frozen argument. Nothing on disk (not yet
+  # issued, or an unreadable file) leaves the passed struct exactly as given.
+  defp refresh_identity(%{root: root} = project) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{working_copy_id: id}} when is_binary(id) and id != "" ->
+        %{project | working_copy_id: id}
+
+      _ ->
+        project
+    end
   end
 
   @impl Slipstream
@@ -245,7 +267,7 @@ defmodule CmsHarness.Project.ChannelClient do
     report_agents_present(socket)
 
     for id <- Liveness.present(socket.assigns.project.root) do
-      case Engine.whereis(id) do
+      case CmsHarness.Agents.whereis(id) do
         {:ok, pid} -> send(pid, :mailbox_ready)
         _ -> :ok
       end
@@ -1676,14 +1698,19 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @impl Slipstream
-  def handle_info(:reconnect, socket) do
-    case Config.socket_url(socket.assigns.project.root) do
-      {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
-        {:noreply, arm_join_deadline(socket)}
+  # One connection at a time. A topic close leaves the connection up, and
+  # dialing beside it leaked a websocket per close: the new join evicted the old
+  # channel, whose death came back here as another close, and so on — 195
+  # sockets from one harness and hooks refused every few seconds (2026-10-18).
+  # So a connected socket is dropped and `handle_disconnect/2` dials once it is
+  # gone, and a reconnect armed before a join that has since landed does nothing.
+  def handle_info(:reconnect, %{assigns: %{joined: true}} = socket), do: {:noreply, socket}
 
-      {:error, _} ->
-        {:noreply, socket}
+  def handle_info(:reconnect, socket) do
+    if Slipstream.Socket.connected?(socket) do
+      {:noreply, transport().disconnect(socket)}
+    else
+      dial(socket)
     end
   end
 
@@ -1826,7 +1853,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: {:reply, {:error, :not_connected}, socket}
 
   def handle_call({:mailbox, params}, from, socket) do
-    case Engine.whereis(params["agent_id"]) do
+    case CmsHarness.Agents.whereis(params["agent_id"]) do
       {:ok, pid} when pid == elem(from, 0) -> mailbox_request(params, from, socket)
       _ -> {:reply, {:error, :stale_engine}, socket}
     end
@@ -2266,8 +2293,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # Upgraded: drop the socket, and `handle_disconnect/2` retries as for any
-  # drop. (A rejoin after a refusal dials with the old socket still up, so this
-  # may drop that one instead; the next dial still recovers.) Not upgraded:
+  # drop. Not upgraded:
   # Slipstream holds no handle to drop and will send no disconnect, so the
   # stalled connection is abandoned and the same retry runs.
   defp abandon_dial(socket) do
@@ -2283,6 +2309,17 @@ defmodule CmsHarness.Project.ChannelClient do
     if Slipstream.Socket.connected?(socket),
       do: "the socket upgraded, the join was never answered",
       else: "the websocket upgrade was never answered"
+  end
+
+  defp dial(socket) do
+    case Config.socket_url(socket.assigns.project.root) do
+      {:ok, uri} ->
+        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
+        {:noreply, arm_join_deadline(socket)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
   end
 
   defp schedule_rejoin(socket) do

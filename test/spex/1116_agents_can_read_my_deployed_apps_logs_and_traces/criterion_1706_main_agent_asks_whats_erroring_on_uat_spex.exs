@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1706Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.ErrorSummary
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -33,14 +34,20 @@ defmodule CodeMySpecSpex.Story1116.Criterion1706Spex do
 
       when_ "main asks what's erroring on uat", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = ErrorSummary.execute(%{}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "error_summary",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it sees the error grouped with its count, with no query written", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful summary: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful summary: #{text}"
         assert text =~ "4x"
         assert text =~ "500 rendering /app/overview"
 

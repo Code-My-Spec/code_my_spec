@@ -9,14 +9,15 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
 
   Surfaces:
   - `CodeMySpec.Environments` (seed the brief)
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,15 +42,16 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
       when_ "the agent calls submit_qa_result with status pass", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}
@@ -57,7 +59,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
 
       then_ "the call succeeds and the brief content is not referenced in the response",
             context do
-        refute context.submit_response.isError
+        assert match?({:ok, _}, context.submit_response)
 
         # And an attempt to show for it. Every assertion in this scenario is a
         # refute, so a reply carrying no error and no attempt satisfies all of

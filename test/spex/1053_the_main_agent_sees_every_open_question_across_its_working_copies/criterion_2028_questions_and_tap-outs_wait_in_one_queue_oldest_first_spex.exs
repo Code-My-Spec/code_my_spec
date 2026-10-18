@@ -19,14 +19,13 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.Main.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,7 +38,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
   end
 
   spex "A question and a tap-out share one queue, ordered by when each was raised",
-       criterion: 2028 do
+    criterion: 2028 do
     scenario "an aged tap-out, raised first, comes back before a question raised after it" do
       given_ "a coding agent's tap-out aged past one recovery interval", context do
         reply = join_working_copy(context, "/tmp/spex-2028", "the checkout")
@@ -48,13 +47,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
         tapper = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2028")
         tapper_frame = %Frame{assigns: %{current_scope: scope, agent_id: tapper.id}}
 
-        {:reply, tapped, _} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "this task's work should not exist — the component was already removed"},
-            tapper_frame
+            Map.put(tapper_frame.assigns, :scope, tapper_frame.assigns[:current_scope])
           )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok =
@@ -64,11 +64,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
       end
 
       given_ "a second coding agent's question, raised after the tap-out", context do
-        asker = Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/spex-2028")
+        asker =
+          Fixtures.running_agent(context.scope, role: "coding", working_copy: "/tmp/spex-2028")
+
         asker_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: asker.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -77,18 +80,25 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
                 }
               ]
             },
-            asker_frame
+            Map.put(asker_frame.assigns, :scope, asker_frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
 
         {:ok, Map.put(context, :question_id, Fixtures.question_id_from(response_text(asked)))}
       end
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame)
-        refute inbox.isError, response_text(inbox)
+
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         {:ok, Map.put(context, :listing, response_text(inbox))}
       end
 

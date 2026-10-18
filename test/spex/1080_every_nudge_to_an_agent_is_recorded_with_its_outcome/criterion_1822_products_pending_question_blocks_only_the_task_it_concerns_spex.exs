@@ -11,15 +11,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -54,17 +51,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
         :ok = Fixtures.start_turn(context.scope, product.id)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -76,8 +74,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
 
       given_ "product asked the user a question about that design and ended its turn",
              context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.design_task,
               questions: [
@@ -87,27 +86,32 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
                 }
               ]
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
         flush_transport()
         {:ok, context}
       end
 
       when_ "an issue is filed that needs triage", context do
-        {:reply, filed, _} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Receipts print the wrong total",
               description: "Seen twice in QA",
               severity: "medium"
             },
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
-        refute filed.isError, response_text(filed)
+        assert match?({:ok, _}, filed), response_text(filed)
         :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
@@ -119,23 +123,48 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
       end
 
       then_ "and is offered triage, which it can start while its design waits", context do
-        {:reply, next, _} = GetNextRequirement.execute(%{}, context.product_frame)
-        refute next.isError, response_text(next)
+        next =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, next), response_text(next)
         assert response_text(next) =~ "issues_triaged", response_text(next)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "issues_triaged",
               entity_type: "project",
               entity_id: to_string(context.project.id)
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.product_frame)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
+
         assert response_text(tasks) =~ ~r/\[blocked\][^\n]*#{context.design_task}/
         {:ok, context}
       end

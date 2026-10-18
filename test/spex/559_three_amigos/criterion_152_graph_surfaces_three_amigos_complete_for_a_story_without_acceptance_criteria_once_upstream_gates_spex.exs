@@ -23,10 +23,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5885Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,7 +41,14 @@ defmodule CodeMySpecSpex.Story559.Criterion5885Spex do
       # before computing the actionable set.
       when_ "the agent calls list_requirements", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListRequirements.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "list_requirements",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :response, response)}
       end
 

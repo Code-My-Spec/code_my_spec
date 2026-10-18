@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5913Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.StartStoryInterview
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,9 +22,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5913Spex do
       when_ "the agent calls start_story_interview", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = StartStoryInterview.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "start_story_interview",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected start_story_interview to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :session_response, response)}

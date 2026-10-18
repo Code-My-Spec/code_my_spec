@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3214Spex do
       end
 
       then_ "the question reaches the user", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                """
                The main agent could not hand a product decision up, so the
                question stops with the one party that must not decide it.

@@ -247,8 +247,13 @@ defmodule CodeMySpecSpex.HarnessHooks do
   is sent as-is: making it project-relative is the harness's job.
   """
   @spec post_hook(map(), String.t(), map()) :: map()
-  def post_hook(%{harness: %{working_copy_id: id, root: root}}, hook, payload \\ %{}) do
-    LiveHarness.post_hook(id, hook, Map.put_new(payload, "cwd", root))
+  def post_hook(
+        %{harness: %{working_copy_id: id, root: root}},
+        hook,
+        payload \\ %{},
+        headers \\ []
+      ) do
+    LiveHarness.post_hook(id, hook, Map.put_new(payload, "cwd", root), headers)
   end
 
   @doc """

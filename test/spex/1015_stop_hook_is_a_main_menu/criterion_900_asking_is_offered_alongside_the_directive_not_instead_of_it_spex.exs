@@ -31,8 +31,8 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
 
   ## Surface
 
-  `POST /api/hooks/stop`, routed by `x-harness-id`, with a genuine problem from
-  story 555's `pipeline_compile_error` fixtures.
+  `POST /api/hooks/stop`, routed by `x-harness-id`, with an unfinished
+  implementation task, the refusal a stop has now that problems never block.
 
   Expected red: today the only tool call any refusal names is `create_issue`, in
   the harness-friction footer — the escape hatch rather than the work.
@@ -43,38 +43,26 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.HarnessHooks
-
-  @impl_path "lib/example_context.ex"
-  @fixture_dir "test/fixtures/validation/pipeline_compile_error"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "The offer to ask survives a directive about something else", criterion: 900 do
-    scenario "problems are the live class and no question is pending" do
+    scenario "an unfinished task is the live class and no question is pending" do
       given_ :synced_context_component
-      given_ :context_implementation_task_started
-
-      given_ "a problem is outstanding", context do
-        :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
-        :ok = record_edit(context, @impl_path)
-        {:ok, context}
-      end
+      given_ :unfinished_implementation_task_started
 
       when_ "the agent attempts to stop", context do
-        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
-
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the directive is still the problem one", context do
+      then_ "the directive is still the unfinished task", context do
         reason = context.response["reason"] || ""
 
-        assert reason =~ "list_problems",
+        assert reason =~ "evaluate_task",
                "the offer is additional to the directive, so the directive must " <>
                  "still be there. Got:\n#{reason}"
 
@@ -93,14 +81,5 @@ defmodule CodeMySpecSpex.Story1015.Criterion2403Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
-
-  defp broken_impl do
-    """
-    defmodule ExampleContext do
-      # missing `end`
-    """
   end
 end

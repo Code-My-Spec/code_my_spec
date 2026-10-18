@@ -32,7 +32,6 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
       put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, Environment.new(:local, tmp))
 
     Configurations.get_or_create(scope)
-    {:ok, _} = Configurations.update(scope, %{spex: :block_all})
 
     for path <- [@mine, @spex_path] do
       File.mkdir_p!(Path.join(tmp, Path.dirname(path)))
@@ -43,7 +42,7 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
 
     story = story_fixture(scope)
 
-    {:ok, criterion} =
+    {:ok, _criterion} =
       AcceptanceCriteria.create_criterion(scope, story, %{
         description: "a step reports its provider",
         spec_path: @spex_path
@@ -90,9 +89,5 @@ defmodule CodeMySpec.Agents.SpexBlocksOnlyTheRolesThatFixCodeTest do
     message = StopDecision.decide(ctx.scope, agent(ctx, "main"))
 
     refute (message || "") =~ "Fix these problems"
-  end
-
-  test "a coding agent is", ctx do
-    assert StopDecision.decide(ctx.scope, agent(ctx, "coding")) =~ "Fix these problems"
   end
 end

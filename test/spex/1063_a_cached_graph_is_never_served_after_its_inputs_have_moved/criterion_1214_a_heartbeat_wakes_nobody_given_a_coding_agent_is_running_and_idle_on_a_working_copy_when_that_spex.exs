@@ -19,14 +19,14 @@ defmodule CodeMySpecSpex.Story1063.Criterion3241Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   # The agent conversation is a cloud-app surface. The case's default endpoint
   # is the local app, and `live/2` against it answers a 404 that surfaces as a
   # FunctionClauseError inside LiveViewTest rather than as a missing route.
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
-
-  alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -60,13 +60,14 @@ defmodule CodeMySpecSpex.Story1063.Criterion3241Spex do
         # below would hold for the wrong reason.
         frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
-        {:reply, loop_response, _frame} =
-          SetWorkingCopyLoop.execute(
+        loop_response =
+          ToolLibrary.run(
+            "set_working_copy_loop",
             %{working_copy_id: reply.working_copy_id, working: true},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute loop_response.isError, inspect(loop_response)
+        assert match?({:ok, _}, loop_response), inspect(loop_response)
 
         :ok = CodeMySpecSpex.Fixtures.record_preview_status(reply.working_copy_id, @state)
 

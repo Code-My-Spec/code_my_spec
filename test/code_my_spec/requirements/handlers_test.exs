@@ -17,7 +17,9 @@ defmodule CodeMySpec.Requirements.HandlersTest do
   use CodeMySpecSpex.Case, async: true
 
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
+  import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Requirements.DispatchChecker
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.Requirement
@@ -102,6 +104,36 @@ defmodule CodeMySpec.Requirements.HandlersTest do
       {satisfied, details} = normalized(IssuesChecker.story_triaged?(ctx.scope, %{id: clean.id}))
       assert satisfied
       assert story_sweep.default_details == details
+    end
+  end
+
+  describe "work_dispatched" do
+    test "agrees with the checker on a shipped story's accepted fix, verdict and wording", ctx do
+      story = create_story(ctx.scope, title: "Shipped", description: "promoted with a fix owed")
+
+      {1, _} =
+        CodeMySpec.Repo.update_all(
+          from(s in CodeMySpec.Stories.Story, where: s.id == ^story.id),
+          set: [promoted_version: "2.0.11", ready_for_dev: false]
+        )
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(ctx.scope, %{
+          title: "the shipped story still breaks",
+          description: "accepted, on no team",
+          severity: :high,
+          story_id: story.id
+        })
+
+      {:ok, _} = CodeMySpec.Issues.accept_issue(ctx.scope, issue)
+
+      sw = sweep(ctx.scope, "work_dispatched")
+      {satisfied, details} = normalized(DispatchChecker.dispatched?(ctx.scope, nil))
+
+      refute satisfied
+      assert sw.default == satisfied
+      assert sw.default_details == details
+      assert details["reason"] =~ "accepted fixes"
     end
   end
 

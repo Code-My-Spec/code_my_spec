@@ -8,10 +8,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7950Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -23,38 +22,44 @@ defmodule CodeMySpecSpex.Story686.Criterion7950Spex do
       given_ "the story \"#{@title}\" is not ready for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               description:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, response), "expected create_story to succeed"
 
         {:ok,
          context |> Map.put(:frame, frame) |> Map.put(:story_number, story_number!(response))}
       end
 
       when_ "the agent marks it ready for development", context do
-        {:reply, response, _frame} =
-          UpdateStory.execute(
+        response =
+          ToolLibrary.run(
+            "update_story",
             %{story_number: context.story_number, ready_for_dev: true},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected update_story to accept ready_for_dev, got: #{inspect(response)}"
 
         {:ok, context}
       end
 
       then_ "the story is ready for development", context do
-        {:reply, response, _frame} =
-          GetStory.execute(%{story_number: context.story_number}, context.frame)
+        response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_number},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

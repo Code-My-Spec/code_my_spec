@@ -121,10 +121,10 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     for await? <- [false, true] do
       assert {:error, :withdrawn} =
-               Engine.send_message(id, "withdrawn", "never run", 100, await: await?)
+               CmsHarness.Agents.send_message(id, "withdrawn", "never run", 100, await: await?)
     end
 
-    assert {:ok, %{busy?: false}} = Engine.status(id)
+    assert {:ok, %{busy?: false}} = CmsHarness.Agents.status(id)
     refute_receive {:holding_turn, _}
   end
 
@@ -136,7 +136,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     # Only the server mailbox may retain the second instruction.
     assert {:error, :busy} = Machine.send_message(agent, "ref-b", "second")
-    assert {:ok, %{busy?: true}} = Engine.status(agent)
+    assert {:ok, %{busy?: true}} = CmsHarness.Agents.status(agent)
 
     send(plug_pid, :release)
 
@@ -150,10 +150,10 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     assert_receive {:event, %{event: :turn_started, ref: "running"}}
 
     for ref <- ["one", "two", "three"] do
-      assert {:error, :busy} = Engine.send_message(agent, ref, ref, 1)
+      assert {:error, :busy} = CmsHarness.Agents.send_message(agent, ref, ref, 1)
     end
 
-    assert {:ok, %{busy?: true}} = Engine.status(agent)
+    assert {:ok, %{busy?: true}} = CmsHarness.Agents.status(agent)
     send(plug_pid, :release)
     assert_receive {:event, %{event: :turn_ended}}, 5_000
     refute_received {:event, %{event: :turn_started}}
@@ -171,7 +171,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     assert_receive {:holding_turn, execution}, 5_000
     assert {:timeout, _} = Task.await(caller)
     assert {:error, :busy} = Machine.send_message(agent, "waiting", "second")
-    assert {:ok, %{busy?: true}} = Engine.status(agent)
+    assert {:ok, %{busy?: true}} = CmsHarness.Agents.status(agent)
     assert Process.alive?(execution)
     refute_received {:event, %{event: :turn_started, ref: "waiting"}}
 
@@ -204,7 +204,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     refute Process.alive?(execution)
     assert_receive {:event, %{event: :turn_failed}}, 5_000
     assert_receive {:event, %{event: :turn_ended}}, 5_000
-    assert {:ok, %{busy?: false}} = Engine.status(agent)
+    assert {:ok, %{busy?: false}} = CmsHarness.Agents.status(agent)
     assert {:ok, history} = Engine.history(agent)
     assert inspect(history) =~ "first"
     assert inspect(history) =~ "queued instruction"

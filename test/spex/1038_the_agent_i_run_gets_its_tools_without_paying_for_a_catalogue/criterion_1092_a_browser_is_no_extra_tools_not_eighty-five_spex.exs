@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3017Spex do
         {:ok,
          context
          |> Map.put(:agent_id, id)
-         |> Map.put(:carried, id |> Fixtures.agent_tools() |> Enum.map(& &1.name()))}
+         |> Map.put(:carried, Fixtures.agent_tools(id))}
       end
 
       then_ "it carries one tool for them, not their list", context do

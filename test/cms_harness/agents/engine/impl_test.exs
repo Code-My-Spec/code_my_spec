@@ -7,7 +7,8 @@ defmodule CmsHarness.Agents.Engine.ImplTest do
   defp entry(ref), do: %{ref: ref, message: ref, timeout: 1_000}
 
   test "an absent agent is not running, including before the registry starts" do
-    assert {:error, :not_running} = State.whereis("absent-#{System.unique_integer([:positive])}")
+    assert {:error, :not_running} =
+             CmsHarness.Agents.whereis("absent-#{System.unique_integer([:positive])}")
   end
 
   test "work availability cannot queue beside an active turn" do

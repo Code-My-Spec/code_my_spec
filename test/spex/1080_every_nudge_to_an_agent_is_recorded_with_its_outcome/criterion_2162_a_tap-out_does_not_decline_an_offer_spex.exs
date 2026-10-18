@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -34,18 +34,22 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
       end
 
       when_ "it calls tap_out on that task", context do
-        {:reply, reply, _} =
-          TapOut.execute(
+        reply =
+          ToolLibrary.run(
+            "tap_out",
             %{task_id: context.task_id, reason: "I should not be the one to do this"},
-            agent_frame(context, context.coder)
+            tool_context(agent_frame(context, context.coder))
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, context}
       end
 
       then_ "the offer is not settled as declined", context do
-        refute Enum.any?(offers(context, context.coder, %{kind: "work"}), &(&1.status == "declined")),
+        refute Enum.any?(
+                 offers(context, context.coder, %{kind: "work"}),
+                 &(&1.status == "declined")
+               ),
                listing(context)
 
         {:ok, context}
@@ -59,4 +63,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

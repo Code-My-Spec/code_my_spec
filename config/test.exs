@@ -294,6 +294,10 @@ config :code_my_spec,
 # wants a server still gets one — this is only the fallback, which is the leak.
 config :code_my_spec, :harness_server_url, "http://127.0.0.1:1"
 
+# A terminal agent reads Claude Code's own agent list (`claude agents --json`);
+# a test says what is on it instead of running `claude` (stories 1123, 1124).
+config :code_my_spec, :claude_sessions, {CmsHarnessTest.ClaudeSessions, :list, []}
+
 # A harness announcing its machine reaches `CodeMySpecWeb.Endpoint` in-process
 # rather than over the network — the real router, plug pipeline, controller and
 # sandbox, with only the socket removed.
@@ -438,6 +442,7 @@ config :code_my_spec, analysis_mode: :inline
 config :code_my_spec, harness_secret: "test-harness-secret"
 config :code_my_spec, :allow_spex_clock, true
 config :code_my_spec, :provisioning_run_async, false
+config :code_my_spec, :working_copies_app_run_async, false
 
 # Provider OAuth client creds, so a spex recording can refresh a short-lived
 # access token mid-run (Resend's live ~15 min, and verifying a sending domain
@@ -590,8 +595,8 @@ config :code_my_spec, CodeMySpec.Observability.ClickHouseClient,
 
 # list_projects calls the server's own /api/projects over HTTP rather than
 # querying this database, so it is pinned like every client above.
-config :code_my_spec, CodeMySpec.McpServers.Bootstrap.Tools.ListProjects,
-  plug: {Req.Test, CodeMySpec.McpServers.Bootstrap.Tools.ListProjects}
+config :code_my_spec, CodeMySpec.Bootstrap.Tools.ListProjects,
+  plug: {Req.Test, CodeMySpec.Bootstrap.Tools.ListProjects}
 
 config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
 config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}

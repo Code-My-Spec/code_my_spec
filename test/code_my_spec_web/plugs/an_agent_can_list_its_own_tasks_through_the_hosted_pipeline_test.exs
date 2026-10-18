@@ -24,9 +24,8 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCanListItsOwnTasksThroughTheHostedPipelineT
 
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecWeb.Plugs.AgentScope
 
   defp hosted_list_tasks(scope, agent) do
@@ -37,21 +36,15 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCanListItsOwnTasksThroughTheHostedPipelineT
       |> Plug.Conn.put_req_header("x-agent-id", agent.id)
       |> AgentScope.call([])
 
-    {:reply, reply, _frame} = ListTasks.execute(%{}, %Frame{assigns: conn.assigns})
+    {_status, text} =
+      ToolLibrary.run(
+        "list_tasks",
+        %{},
+        Map.put(conn.assigns, :scope, conn.assigns[:current_scope])
+      )
 
-    response_text(reply)
+    text
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 
   defp agent_for(scope, copy_id) do
     {:ok, agent} =

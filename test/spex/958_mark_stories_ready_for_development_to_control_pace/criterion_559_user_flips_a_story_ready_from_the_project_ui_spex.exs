@@ -8,8 +8,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7945Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,17 +22,18 @@ defmodule CodeMySpecSpex.Story958.Criterion7945Spex do
       given_ "the story \"#{@title}\" is not ready for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               description:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, response), "expected create_story to succeed"
 
         {:ok, index_live, html} =
           live(context.conn, "/app/projects/#{context.project.id}/stories")

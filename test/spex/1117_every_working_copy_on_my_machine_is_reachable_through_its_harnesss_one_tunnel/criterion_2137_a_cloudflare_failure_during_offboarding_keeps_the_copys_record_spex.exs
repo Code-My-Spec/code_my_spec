@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2137Spex do
         context = johns_mac(context)
         copy = serving_copy(context, "/workspace/feature", context.mac, "http://127.0.0.1:41370")
         response = turn_on(context, copy)
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
 
         {:ok, Map.merge(context, %{copy: copy, address: address_in(response)})}
       end
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2137Spex do
       end
 
       then_ "the offboard is refused", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                "the offboard went ahead although Cloudflare refused to remove the copy's route"
 
         {:ok, context}

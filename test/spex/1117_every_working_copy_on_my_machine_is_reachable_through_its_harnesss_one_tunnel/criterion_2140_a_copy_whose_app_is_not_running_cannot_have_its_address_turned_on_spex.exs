@@ -56,7 +56,8 @@ defmodule CodeMySpecSpex.Story1117.Criterion2140Spex do
       end
 
       then_ "he is told the copy's app is not running", context do
-        assert context.response.isError, "a copy with no app serving was given an address"
+        assert match?({:error, _}, context.response),
+               "a copy with no app serving was given an address"
 
         assert response_text(context.response) =~ ~r/not (running|serving)/i,
                "the refusal does not say the app is not running: " <>

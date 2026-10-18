@@ -1,0 +1,650 @@
+[
+  {
+    "name": "add_criterion",
+    "description": "Adds a new acceptance criterion to a story.\n\nUse get_story to see existing criteria before adding.\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "The acceptance criterion text",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "description",
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "analyze_story_linkage",
+    "description": "Analyze story-component linkage in the project.\n\nReturns a report showing unlinked stories, broken links, linked stories\ngrouped by component, and orphan components with no stories.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_epic_to_working_copy",
+    "description": "Say which checkout an epic is built on.\n\nIts own action, deliberately. John: *\"I think for the time being we should\nkeep this flexible so let's have these as separate actions \u2014 creating the\nworking copy and assigning an epic to a working copy.\"*\n\nSo approving an epic is agreement, and this is placement, and neither implies\nthe other. That leaves room for the decision to be made by whoever is best\nplaced to make it: *\"if there's an appropriate working copy and agent then it\nshould get assigned that, or maybe the agent wants a fresh working copy ...\nthe user should be able to decide where to assign it or the agent should be\nable to decide.\"*\n\nCall `list_working_copies` first. A copy with no `root` has no disk behind it\nand is refused here rather than accepted and discovered later \u2014 that failure\nalready has an issue of its own (28e838cc), where an epic reported it was\nbeing built on a directory that did not exist.\n\n## What it writes\n\nThe epic's **stories**, not the epic. An epic has no place in the requirement\ngraph \u2014 nothing in `RequirementCalculator` or `Predicates` mentions one \u2014 so a\ncopy recorded on the epic was never consulted when deciding what an agent is\noffered. The column named a routing nothing performed, and an agent told to\nrelease an epic looked for the step that would do it and found none.\n\nThe binding lives on `stories.working_copy_id`, which is the grain\n`get_next_requirement` actually reads. John: *\"an epic is just basically a\nconvenience measure to act on multiple stories ... these assignments need to\ngo into the story because that's how the graph works.\"*\n\nSo this stays one call and one act, and it now has an effect: the epic's\nstories go to that checkout, its agents are offered them, and no other copy\nis.\n\n## What this does not do\n\nIt does not start an agent. Assigning and starting are separate for the same\nreason approving and assigning are: an epic can sit on a checkout that already\nhas an agent working, and giving it one of its own would be a second agent\nnobody asked for.\n",
+    "input_schema": {
+      "properties": {
+        "epic_id": {
+          "description": "Id of the epic to place",
+          "type": "string"
+        },
+        "working_copy_id": {
+          "description": "Id of the checkout to build it on, from list_working_copies",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "epic_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_story_to_epic",
+    "description": "Moves a story into an epic.\n\nA story belongs to at most one epic, so this is a move rather than an add \u2014\nthe story leaves whatever epic it was in. Omit `epic_name` to remove the\nstory from its epic entirely.\n\nAssignment does not change readiness.\n",
+    "input_schema": {
+      "properties": {
+        "epic_name": {
+          "description": "Destination epic name. Omit to remove the story from its epic.",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "assign_story_to_working_copy",
+    "description": "Add a story on a working copy's queue.",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story to add",
+          "type": "integer"
+        },
+        "working_copy_id": {
+          "description": "Working copy whose queue to edit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "clear_story_component",
+    "description": "Removes the component link from a story.\n\nUse this when a story is no longer satisfied by its assigned component.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_epic",
+    "description": "Creates an epic \u2014 a named collection of user stories.\n\nEpics are **organizational only**. Putting a story in an epic does not\nrelease it for development; that is `ready_for_dev` on the story itself.\nUse `set_epic_stories_ready` to release a whole epic in one go.\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "What this epic covers (optional)",
+          "type": "string"
+        },
+        "name": {
+          "description": "Epic name (e.g., 'Gods and Religion')",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "create_story",
+    "description": "Creates a user story.\n\nThe story sentence and the agent's working notes are separate fields:\n`story` holds \"As a [role], I want [goal] so that [value]\" and nothing\nelse; `notes` is where mechanism, dependencies and caveats go.\n\nNew stories are **not ready for development** \u2014 they produce no\nrequirements until released. Use `update_story` with\n`ready_for_dev: true`, or release a whole epic at once.\n\nAcceptance criteria are NOT created here \u2014 they emerge from Three\nAmigos as rule-bearing scenarios, never invented up-front. Run\n`start_three_amigos_session` after creating the story.\n\nExample:\n  title: \"User Login\"\n  story: \"As a user, I want to log in so I can access my account\"\n  notes: \"Blocked on the identity provider migration\"\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "Legacy alias for `story`. Prefer `story`; the two are kept in sync.",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Working notes for the agent \u2014 mechanism, dependencies, caveats (optional)",
+          "type": "string"
+        },
+        "priority": {
+          "description": "Priority order (1 = highest). Lower numbers are higher priority.",
+          "type": "integer"
+        },
+        "story": {
+          "description": "User story in 'As a [role], I want [goal] so that [value]' format. The role MUST be a real human (user, admin, manager) - never a system, API, or service. Keep it to the sentence \u2014 mechanism, dependencies and caveats belong in `notes`. Either `story` or `description` must be given; they are kept in sync.",
+          "type": "string"
+        },
+        "title": {
+          "description": "Story title (e.g., 'User Login Feature')",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_criterion",
+    "description": "Reads one acceptance criterion by its number, retired or active.\n\nRetired criteria are not listed by `get_story`; this is how to read one.\n",
+    "input_schema": {
+      "properties": {
+        "criterion_number": {
+          "description": "Criterion number",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "criterion_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_story",
+    "description": "Gets a single story by number with full details including acceptance criteria.\n\nUse list_story_titles to find story numbers if you don't know them.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "link_criterion_to_rule",
+    "description": "Links an existing acceptance criterion to a Three Amigos rule.\n\nUpdates `Criterion.rule_id` only \u2014 the criterion's description, kind,\nbody, and verification status are untouched. Use after `add_criterion`\nto associate the new criterion with the rule it belongs under (the\n`add_criterion` tool itself only creates the criterion at story level\nand leaves `rule_id` nil).\n\nCannot relink verified (locked) criteria. Returns an error if the\nrule_id does not reference an existing rule on this project.\n",
+    "input_schema": {
+      "properties": {
+        "criterion_number": {
+          "description": "Criterion number to relink (from get_story)",
+          "type": "integer"
+        },
+        "rule_id": {
+          "description": "Rule UUID to attach the criterion to (from list_rules)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_number",
+        "rule_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_epics",
+    "description": "Lists the active project's epics with their story counts and how many of\neach epic's stories are released for development.\n\nThis is a backlog tool \u2014 it reaches stories the development graph hides.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_project_tags",
+    "description": "Lists all tags used in the project.\n\nShows all available tags that have been applied to stories or components.\nUse this to see what organizational categories exist.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_stories",
+    "description": "Lists stories in a project with pagination.\n\nReturns full story details including criteria. For a lightweight\nlist of just titles, use list_story_titles instead.\n",
+    "input_schema": {
+      "properties": {
+        "epic": {
+          "description": "Filter to one epic, by slug or id as printed by list_epics \u2014 the stories that epic contains (optional)",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max stories to return (default: 20, max: 100)",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Stories to skip for pagination (default: 0)",
+          "type": "integer"
+        },
+        "project_id": {
+          "description": "Must match this connection's own project, or the call is refused — a session's tools cannot read a different project's stories (79873d5a)",
+          "type": "string"
+        },
+        "ready_for_dev": {
+          "description": "Filter by readiness. Pass false to see the parked backlog \u2014 the stories the development graph hides (optional)",
+          "type": "boolean"
+        },
+        "search": {
+          "description": "Filter by title or description (case-insensitive)",
+          "type": "string"
+        },
+        "tag": {
+          "description": "Filter by tag name",
+          "type": "string"
+        },
+        "without_epic": {
+          "description": "Pass true to see only stories not yet assigned to any epic \u2014 useful when grouping stories into epics (optional)",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_story_titles",
+    "description": "Lists story titles in a project (lightweight).\n\nReturns just number, title, and component_id - no criteria or full descriptions.\nUse this for quick lookups, selection lists, or when you need to find a story number.\n\nFrom a script this answers with records rather than the listing, so the\ntitles can be filtered and counted without parsing prose.\n",
+    "input_schema": {
+      "properties": {
+        "search": {
+          "description": "Filter by title (case-insensitive)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "move_criterion",
+    "description": "Moves an acceptance criterion from its current story to a different story.\n\nCannot move verified (locked) criteria - they are protected from changes.\nAny existing rule link is cleared during the move, since BDD rules are\nstory-scoped and would otherwise point across story boundaries.\nUse get_story to see criterion numbers and their verification status.\n",
+    "input_schema": {
+      "properties": {
+        "criterion_number": {
+          "description": "Criterion number to move (from get_story)",
+          "type": "integer"
+        },
+        "target_story_number": {
+          "description": "Number of the story to move the criterion to",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "criterion_number",
+        "target_story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "propose_epic",
+    "description": "Send an epic to the user for approval.\n\nThe main agent's half of the hand-off, and the only way work on an epic ever\nstarts. Approving it is the user's act, on the epics screen \u2014 John: *\"the\nagent sending it and the meatbags approving it are two different things.\"*\nThis tool does the sending and nothing else: no working copy is chosen, no\nagent is started, nothing is spent.\n\n## When to call it\n\nWhen the `work_dispatched` requirement is unsatisfied. That happens only when\nnothing is being built *and* there are ready stories nobody has been given \u2014\nthe one state that wants you to act. If something is already underway, leave\nit alone; an agent working on a story is a reason not to assign more.\n\nGroup the ready stories into an epic with `create_epic` and\n`assign_story_to_epic` first, then propose it.\n\n## What the user sees\n\nThe epic appears on their epics screen with a control to agree to it, and the\nscreen updates while they are looking at it. Until they agree, nothing\nhappens \u2014 an epic they ignore changes nothing.\n",
+    "input_schema": {
+      "properties": {
+        "epic_id": {
+          "description": "Id of the epic to send for approval",
+          "type": "string"
+        }
+      },
+      "required": [
+        "epic_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "release_story_from_working_copy",
+    "description": "Free a story from whatever working copy holds it, with nowhere new to go\nyet -- the explicit reassign path `set_active_story` names when a story is\nheld elsewhere (3f824f74): free it here, then select it on the copy that\nshould take it.\n\nMain agent only, the same restriction `set_active_story` places on naming\nanother copy's `working_copy_id` -- this reaches across copies the same\nway.\n",
+    "input_schema": {
+      "properties": {
+        "force": {
+          "description": "Free it even though the copy holding it has it as its team's active story. Without this, that refuses -- the team there may be mid-work on it.",
+          "type": "boolean"
+        },
+        "story_number": {
+          "description": "Story to free.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "restore_criterion",
+    "description": "Brings a retired acceptance criterion back, under the same number.\n\nA spec file that names the number covers it again.\n",
+    "input_schema": {
+      "properties": {
+        "criterion_number": {
+          "description": "Criterion number to restore (from get_criterion)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "criterion_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "restore_story",
+    "description": "Brings a retired story back under its number, with the criteria that were\nretired with it.\n\nThe story comes back parked. Release it with\n`update_story(ready_for_dev: true)` to put it back to work.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "retire_criterion",
+    "description": "Retires an acceptance criterion. There is no delete.\n\nA retired criterion keeps its number, which is never given to another, and\ndrops out of its story's coverage. `restore_criterion` brings it back.\nA spec file naming it is not touched; delete it if it no longer applies.\n",
+    "input_schema": {
+      "properties": {
+        "criterion_number": {
+          "description": "Criterion number to retire (from get_story)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "criterion_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "retire_story",
+    "description": "Retires a user story. There is no delete.\n\nA retired story keeps its number, which is never given to another story,\nleaves the backlog and the graph, and its criteria retire with it. Linked\nissues keep their link.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "set_active_story",
+    "description": "Select the story the team on the current working copy works on.\n\nWhoever calls it \u2014 a team member, the main agent, a session \u2014 the story goes\nto the whole team, the copy's coding and QA agents, who see it through\ntogether (a31f1cd6, `Agents.assign_team/3`).\n\nThe main agent steers a feature copy's team by naming it with\n`working_copy_id`; anyone else selects for their own copy only. The main copy\nitself is never given a story: work is promoted to it, not done on it.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Number of the story for this copy's team to work on. It must be ready for development and not assigned to another copy. Every coding and QA agent on the copy takes it; the story they held before is released. Omit to clear it.",
+          "type": "integer"
+        },
+        "working_copy_id": {
+          "description": "Id of the feature copy whose team takes the story, from list_working_copies. Only the main agent may name another copy; everyone else selects for their own.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "set_epic_stories_ready",
+    "description": "Releases (or parks) every story currently in an epic, in one shot.\n\nThis is a **bulk edit of the stories**, not a property of the epic. Stories\nadded to the epic afterwards are unaffected and stay parked \u2014 the epic\ncarries no readiness of its own and nothing cascades later.\n",
+    "input_schema": {
+      "properties": {
+        "epic_name": {
+          "description": "Epic whose stories to stamp",
+          "type": "string"
+        },
+        "ready_for_dev": {
+          "description": "true to release the epic's stories for development, false to park them",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ready_for_dev",
+        "epic_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "set_story_component",
+    "description": "Links a story to the component that implements it, by module name.\n",
+    "input_schema": {
+      "properties": {
+        "module_name": {
+          "description": "Component module name, e.g. \"MyApp.Accounts\"",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "module_name",
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_story_interview",
+    "description": "Starts a guided story interview with the PM \u2014 develop and refine bare\nuser stories through structured questioning. Acceptance criteria are\nout of scope; those land later in a Three Amigos session\n(see `start_three_amigos_session`).\n\nDelegates prompt building to `CodeMySpec.AgentTasks.StoryInterview`.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_story_review",
+    "description": "Starts a story-level review with the PM \u2014 evaluate completeness and\nquality of existing bare user stories. Acceptance criteria are not\nreviewed here; those are produced and reviewed during Three Amigos.\n\nDelegates prompt building to `CodeMySpec.AgentTasks.StoryInterview`.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "start_three_amigos_session",
+    "description": "Starts a Three Amigos / Example Mapping session on a single story.\n\nReturns the protocol prompt the agent uses to drive the workshop with\nthe PM \u2014 persona linkage, rules (blue cards), scenarios (green cards),\nand questions (red cards). Delegates prompt building to\n`CodeMySpec.AgentTasks.ThreeAmigos`.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "tag_stories",
+    "description": "Adds a tag to multiple stories at once.\n\nUseful for bulk categorization when organizing stories by domain.\n\n## Tag naming\n\nTags can be simple (`notifications`, `urgent`) or use colon syntax for\ntyped/namespaced tags (`epic:verification-flow`, `persona:driver`).\n\nThe colon syntax is useful for organizing stories into categories that\ncan be filtered, e.g., `list_stories(tag: \"persona:driver\")`.\n",
+    "input_schema": {
+      "properties": {
+        "story_numbers": {
+          "description": "Story numbers to tag",
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "tag": {
+          "description": "Tag name to apply to all stories",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tag",
+        "story_numbers"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "triage_issues",
+    "description": "Starts a triage session for incoming external issues.\n\nFetches incoming issues and story titles, then returns a structured\nprompt guiding through triage decisions:\n- Obvious bug \u2192 accept the issue\n- Requires story change \u2192 update/create story, accept with story_number\n- Not valid \u2192 dismiss with reason\n",
+    "input_schema": {
+      "properties": {
+        "min_severity": {
+          "description": "Minimum severity to triage: critical, high, medium (default), low, info",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "unassign_epic_from_working_copy",
+    "description": "Remove a epic on a working copy's queue.",
+    "input_schema": {
+      "properties": {
+        "epic_id": {
+          "description": "Epic to remove",
+          "type": "string"
+        },
+        "working_copy_id": {
+          "description": "Working copy whose queue to edit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "epic_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "unassign_story_from_working_copy",
+    "description": "Remove a story on a working copy's queue.",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story to remove",
+          "type": "integer"
+        },
+        "working_copy_id": {
+          "description": "Working copy whose queue to edit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "working_copy_id",
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_epic",
+    "description": "Renames an epic or rewrites what it says it covers.\n\nAn epic's description is where the decisions that hold across its stories\nlive \u2014 the shared rules, the things each story has to answer. That is exactly\nthe text that goes stale first, because deciding to drop a story is a decision\n*about* the epic, and until now the only way to correct it was to build a\nsecond epic beside the first and move everything into it.\n\nRenaming keeps the slug the epic already had. A slug that moves breaks every\nlink anybody saved to it, and a name is a label rather than an identity.\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "New description (optional)",
+          "type": "string"
+        },
+        "epic_name": {
+          "description": "Current epic name or slug",
+          "type": "string"
+        },
+        "name": {
+          "description": "New name (optional)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "epic_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "update_story",
+    "description": "Updates a user story.\n\nA story's criteria are not touched here. They change only through the\ncriterion tools (`add_criterion`, `retire_criterion`), so each keeps\nits number for life.\n\n## Tags\n\nTags can be simple (`urgent`) or namespaced (`epic:auth`, `persona:admin`).\nUse `list_stories(tag: \"...\")` to filter by tag.\n",
+    "input_schema": {
+      "properties": {
+        "description": {
+          "description": "New description in 'As a [role], I want [goal] so that [value]' format. Role must be a real human, not a system or technical component (optional)",
+          "type": "string"
+        },
+        "epic_id": {
+          "description": "Move the story into this epic, or pass null to take it out. Prefer `assign_story_to_epic`, which takes the epic's name (optional)",
+          "type": "string"
+        },
+        "notes": {
+          "description": "Working notes \u2014 mechanism, dependencies, caveats (optional)",
+          "type": "string"
+        },
+        "priority": {
+          "description": "Priority order (1 = highest). Lower numbers are higher priority. (optional)",
+          "type": "integer"
+        },
+        "ready_for_dev": {
+          "description": "Release the story for development, or park it. Parked stories produce no requirements in the development graph (optional)",
+          "type": "boolean"
+        },
+        "story": {
+          "description": "User-story sentence in 'As a [role], I want [goal] so that [value]' format. Keep it to the sentence \u2014 mechanism and caveats belong in `notes` (optional)",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number (list_story_titles shows them)",
+          "type": "integer"
+        },
+        "tags": {
+          "description": "Replace all tags with these (optional)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "New title (optional)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  }
+]

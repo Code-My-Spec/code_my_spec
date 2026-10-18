@@ -23,11 +23,10 @@ defmodule CodeMySpecSpex.Story1050.Criterion3203Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -63,18 +62,20 @@ defmodule CodeMySpecSpex.Story1050.Criterion3203Spex do
       end
 
       given_ "a finding the QA agent filed", context do
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "the ledger rounds the wrong way on refunds",
               description: "found while testing the refund path",
               severity: "medium",
               scope: "qa"
             },
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute filed.isError, "the premise is a finding that exists: #{response_text(filed)}"
+        assert match?({:ok, _}, filed),
+               "the premise is a finding that exists: #{response_text(filed)}"
 
         :ok = Fixtures.settle_graph(context.scope)
 
@@ -82,13 +83,18 @@ defmodule CodeMySpecSpex.Story1050.Criterion3203Spex do
       end
 
       when_ "the coding agent asks to see the QA agent's findings", context do
-        {:reply, reply, _frame} = ListIssues.execute(%{}, frame(context))
+        reply =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
         {:ok, context |> Map.put(:reply, reply) |> Map.put(:text, response_text(reply))}
       end
 
       then_ "it can read them", context do
-        refute context.reply.isError, "the read was refused outright: #{context.text}"
+        assert match?({:ok, _}, context.reply), "the read was refused outright: #{context.text}"
 
         assert context.text =~ "the ledger rounds the wrong way on refunds",
                """

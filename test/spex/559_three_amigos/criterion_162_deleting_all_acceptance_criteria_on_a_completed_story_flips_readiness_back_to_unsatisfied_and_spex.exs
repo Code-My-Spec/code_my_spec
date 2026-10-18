@@ -21,14 +21,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -41,14 +38,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _happy, _frame} =
-          AddScenario.execute(
+        _happy =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -56,11 +55,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _failure, _frame} =
-          AddScenario.execute(
+        _failure =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -77,8 +77,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
       when_ "the PM retires every acceptance criterion on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         criterion_ids =
           Regex.scan(~r/\(criterion ([^)]+)\)/, response_text(get_response))
@@ -88,8 +92,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
                "expected at least one acceptance criterion to retire, got none"
 
         for id <- criterion_ids do
-          {:reply, _resp, _frame} =
-            RetireCriterion.execute(%{criterion_number: id}, frame)
+          _resp =
+            ToolLibrary.run(
+              "retire_criterion",
+              %{criterion_number: id},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
         end
 
         {:ok, context}
@@ -97,7 +105,13 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
       then_ "list_requirements shows three_amigos_complete unsatisfied for the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListRequirements.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "list_requirements",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

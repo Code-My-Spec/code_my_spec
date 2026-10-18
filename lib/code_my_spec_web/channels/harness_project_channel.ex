@@ -37,6 +37,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.AgentTasks.SkillRouter
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Drafts
@@ -1397,6 +1398,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            "stats" => run.stats || %{}
          }}
 
+      # 783f3709: the agent's own `mix test`/`mix spex` routes through here,
+      # so a hold has to be said plainly rather than folded into the generic
+      # transport-failure wording below.
+      {:error, {:held, hold}} ->
+        {:error, %{"reason" => "held", "message" => FleetHolds.refusal(hold)}}
+
       {:error, reason} ->
         Logger.warning("[HarnessProject] #{source} run for the agent failed: #{inspect(reason)}")
         {:error, %{"reason" => inspect(reason)}}
@@ -2063,6 +2070,21 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {:ok, %{working_copy_id: copy_id} = agent} when copy_id == scope.active_working_copy_id ->
         TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, %{
           "model" => agent.model,
+          "usage" => usage
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
+  # A terminal session's turn, totalled from its transcript at the turn's end
+  # (story 1124); the model is the transcript's own.
+  defp record_turn_usage(scope, agent_id, %{"kind" => "turn_usage", "usage" => %{} = usage}) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{working_copy_id: copy_id} = agent} when copy_id == scope.active_working_copy_id ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, %{
+          "model" => usage["model"] || agent.model,
           "usage" => usage
         })
 

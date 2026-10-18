@@ -6,11 +6,10 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
@@ -47,27 +46,33 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, task_response, _frame} =
-          StartTask.execute(
+        task_response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "component_linked",
               entity_type: "story",
               entity_id: to_string(story.number),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(task_response))
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: story.number, module_name: component.module_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _evaluate_response, _frame} =
-          EvaluateTask.execute(%{task_id: task_id, session_id: session_id}, frame)
+        _evaluate_response =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: task_id, session_id: session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.merge(context, %{component: component, story: story})}
       end

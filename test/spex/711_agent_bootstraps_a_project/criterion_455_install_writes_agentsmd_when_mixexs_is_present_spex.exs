@@ -15,20 +15,23 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   @app_name_atom :spex_bootstrap_app
 
-  spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name", criterion: 455 do
+  spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name",
+    criterion: 455 do
     scenario "Install writes AGENTS.md when mix.exs is present" do
       given_ "the working directory has a mix.exs declaring an app name", context do
         mix_exs = """
         defmodule SpexBootstrapApp.MixProject do
+          alias CodeMySpec.ToolLibrary
           use Mix.Project
           def project, do: [app: :#{@app_name_atom}, version: "0.0.1"]
         end
@@ -41,7 +44,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
 
       when_ "the agent calls install_agents_md", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallAgentsMd.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_agents_md",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

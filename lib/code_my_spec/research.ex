@@ -36,7 +36,7 @@ defmodule CodeMySpec.Research do
   providers; with none set, `search/2` refuses in a way that names them.
   """
 
-  use Boundary, top_level?: true, deps: []
+  use Boundary, top_level?: true, deps: [CodeMySpec.Tools], exports: [Tools]
 
   alias CodeMySpec.Research.{Fetch, Page, Result, Search}
 

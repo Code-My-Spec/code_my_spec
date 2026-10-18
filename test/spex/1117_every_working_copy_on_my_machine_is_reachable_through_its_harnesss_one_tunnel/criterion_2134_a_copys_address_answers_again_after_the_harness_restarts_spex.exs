@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2134Spex do
         context = johns_mac(context)
         copy = serving_copy(context, "/workspace/feature", context.mac, "http://127.0.0.1:41340")
         response = turn_on(context, copy)
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
 
         {:ok, Map.merge(context, %{copy: copy, address: address_in(response)})}
       end

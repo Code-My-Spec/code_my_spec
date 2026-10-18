@@ -22,10 +22,11 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -61,8 +62,9 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "test_spec_alignment",
               entity_type: "component",
@@ -70,7 +72,7 @@ defmodule CodeMySpecSpex.Story555.Criterion5102Spex do
               session_id: external_id,
               agent_id: agent_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :session_id, external_id)}

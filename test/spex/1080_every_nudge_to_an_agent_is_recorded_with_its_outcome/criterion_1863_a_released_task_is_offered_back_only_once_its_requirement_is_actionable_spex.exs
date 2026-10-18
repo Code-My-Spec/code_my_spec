@@ -13,13 +13,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1863Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers, only: [heard: 2]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.ReadyForQaHelpers, only: [add_criterion: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,14 +41,24 @@ defmodule CodeMySpecSpex.Story1080.Criterion1863Spex do
           questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
         }
 
-        {:reply, reply, _} = AskUserQuestion.execute(params, agent_frame(context, context.coder))
-        refute reply.isError, response_text(reply)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :question, Fixtures.question_id_from(response_text(reply)))}
       end
 
       given_ "the story gained a criterion that has no spec yet", context do
         reply = add_criterion(context, context.story, "A booking can be cancelled")
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, context}
       end
 

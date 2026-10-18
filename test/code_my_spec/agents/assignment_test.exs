@@ -9,14 +9,11 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
@@ -49,21 +46,23 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     agent
   end
 
-  defp call(tool, scope, params, agent) do
-    {:reply, response, _frame} = tool.execute(params, %Frame{assigns: assigns(scope, agent)})
-    {response.isError, hd(Response.to_protocol(response)["content"])["text"]}
+  defp call(name, scope, params, agent) do
+    name |> ToolLibrary.run(params, Map.put(assigns(scope, agent), :scope, scope)) |> flagged()
   end
+
+  defp flagged({:ok, text}), do: {false, text}
+  defp flagged({:error, text}), do: {true, text}
 
   defp assigns(scope, nil), do: %{current_scope: scope}
   defp assigns(scope, agent), do: %{current_scope: scope, agent_id: agent.id}
 
   defp pick(scope, story, agent \\ nil) do
-    {false, text} = call(SetActiveStory, scope, %{story_number: story && story.number}, agent)
+    {false, text} = call("set_active_story", scope, %{story_number: story && story.number}, agent)
     text
   end
 
   defp next(scope, agent \\ nil) do
-    {false, text} = call(GetNextRequirement, scope, %{}, agent)
+    {false, text} = call("get_next_requirement", scope, %{}, agent)
     text
   end
 
@@ -193,7 +192,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     scope = %{ctx.scope | active_working_copy_id: other.id}
 
     assert {true, text} =
-             call(SetActiveStory, scope, %{story_number: ctx.first.number}, nil)
+             call("set_active_story", scope, %{story_number: ctx.first.number}, nil)
 
     assert text =~ "No coding or QA agent"
   end
@@ -313,7 +312,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
         working_copy_id: ctx.scope.active_working_copy_id
       }
 
-      {false, _text} = call(SetActiveStory, ctx.main_scope, params, ctx.main)
+      {false, _text} = call("set_active_story", ctx.main_scope, params, ctx.main)
 
       assert reload(ctx.coding).story_id == ctx.first.id
       assert reload(ctx.qa).story_id == ctx.first.id
@@ -325,14 +324,14 @@ defmodule CodeMySpec.Agents.AssignmentTest do
                Agents.assign_team(ctx.main_scope, ctx.main_copy.id, ctx.first.id)
 
       params = %{story_number: ctx.first.number}
-      assert {true, text} = call(SetActiveStory, ctx.main_scope, params, ctx.main)
+      assert {true, text} = call("set_active_story", ctx.main_scope, params, ctx.main)
       assert text =~ "feature copies"
     end
 
     test "only main may name another copy", ctx do
       params = %{story_number: ctx.first.number, working_copy_id: ctx.main_copy.id}
 
-      assert {true, text} = call(SetActiveStory, ctx.scope, params, ctx.coding)
+      assert {true, text} = call("set_active_story", ctx.scope, params, ctx.coding)
       assert text =~ "Only the main agent"
       assert reload(ctx.coding).story_id == nil
     end
@@ -416,7 +415,7 @@ defmodule CodeMySpec.Agents.AssignmentTest do
     retire(ctx.coding)
     retire(ctx.qa)
 
-    assert {false, text} = call(SetActiveStory, ctx.scope, %{}, nil)
+    assert {false, text} = call("set_active_story", ctx.scope, %{}, nil)
     assert text =~ "is free"
     assert placement(ctx.first) == nil
   end

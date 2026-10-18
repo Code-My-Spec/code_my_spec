@@ -8,14 +8,13 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -33,8 +32,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
       given_ "continuous coding and QA agents are idle with only QA work available", context do
         context = given_a_staffed_checkout(context, "spex_3562")
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: true)
@@ -49,10 +55,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
           assert {:ok, %{busy?: false}} = Machine.status(id)
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: coding.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: coding.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -65,10 +75,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
 
       when_ "the main agent reconsiders continuous work for both roles", context do
         for id <- [context.qa_id, context.coding_id] do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(%{agent_id: id, continuous: true}, frame(context))
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
+              %{agent_id: id, continuous: true},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         HeldProvider.await_request()
@@ -81,10 +95,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3562Spex do
         assert {:ok, %{busy?: false}} = Machine.status(context.coding_id)
         assert Machine.history(context.coding_id) == context.coding_history
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.coding_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.coding_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.coding_conversation
         {:ok, context}
       end

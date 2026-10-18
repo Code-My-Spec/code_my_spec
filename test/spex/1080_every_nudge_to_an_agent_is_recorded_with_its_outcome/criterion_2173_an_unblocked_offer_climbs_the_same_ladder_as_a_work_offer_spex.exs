@@ -12,9 +12,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2173Spex do
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -41,22 +39,23 @@ defmodule CodeMySpecSpex.Story1080.Criterion2173Spex do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = agent_frame(context, coder.id)
 
-        {:reply, first, _} = StartTask.execute(next_task(context, coder.id), frame)
-        refute first.isError, response_text(first)
+        first = ToolLibrary.run("start_task", next_task(context, coder.id), tool_context(frame))
+        assert match?({:ok, _}, first), response_text(first)
 
-        {:reply, reply, _} =
-          AskUserQuestion.execute(
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: extract_task_id!(first),
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
             },
-            frame
+            tool_context(frame)
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
 
-        {:reply, other, _} = StartTask.execute(next_task(context, coder.id), frame)
-        refute other.isError, response_text(other)
+        other = ToolLibrary.run("start_task", next_task(context, coder.id), tool_context(frame))
+        assert match?({:ok, _}, other), response_text(other)
 
         {:ok,
          Map.merge(context, %{
@@ -74,10 +73,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion2173Spex do
         :ok = discard_pushes(id)
         :ok = user_answers(context, context.blocker, "Left")
 
-        {:reply, cancelled, _} =
-          CancelTask.execute(%{task_id: context.other_task_id}, agent_frame(context, id))
+        cancelled =
+          ToolLibrary.run(
+            "cancel_task",
+            %{task_id: context.other_task_id},
+            tool_context(agent_frame(context, id))
+          )
 
-        refute cancelled.isError, response_text(cancelled)
+        assert match?({:ok, _}, cancelled), response_text(cancelled)
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)
         :ok = Fixtures.end_turn(context.scope, id)
         assert_receive {:work_turn_requested, ^id, _ref, first}, 2_000
@@ -125,4 +128,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2173Spex do
       0 -> :ok
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

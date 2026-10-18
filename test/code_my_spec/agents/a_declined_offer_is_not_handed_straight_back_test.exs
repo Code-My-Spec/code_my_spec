@@ -307,7 +307,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
     # registration, and passes) has no live transport registered for a
     # second dispatch to land on -- standing/held? already proves the work
     # itself is unblocked; that is what this test is for.
-    assert CodeMySpec.Agents.Work.claimable_work(ctx.scope, reload(ctx.scope, ctx.agent)) != [],
+    assert Work.claimable_work(ctx.scope, reload(ctx.scope, ctx.agent)) != [],
            "the same work was not claimable again after a single claim-cancel"
   end
 

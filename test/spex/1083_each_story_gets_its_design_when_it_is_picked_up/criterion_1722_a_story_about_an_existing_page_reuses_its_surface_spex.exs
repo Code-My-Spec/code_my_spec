@@ -6,12 +6,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -43,20 +40,27 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, before_response, _frame} = ListComponents.execute(%{}, frame)
+
+        before_response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         session_id = "spex-#{System.unique_integer([:positive])}"
         post_hook(context, "/api/hooks/session-start", %{"session_id" => session_id})
 
-        {:reply, task_response, _frame} =
-          StartTask.execute(
+        task_response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "component_linked",
               entity_type: "story",
               entity_id: to_string(story.number),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(task_response))
@@ -74,16 +78,18 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
       when_ "the architect designs a story that adds a field to the Billing page", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{story_number: context.story.number, module_name: context.billing.module_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, evaluate_response, _frame} =
-          EvaluateTask.execute(
+        evaluate_response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, evaluate_response)}
@@ -92,8 +98,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
       then_ "the story is linked to the existing Billing component", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        story_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(story_response) =~ "**Component:** #{context.billing.module_name}"
 
@@ -102,7 +112,13 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
 
       then_ "no new surface component was created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, after_response, _frame} = ListComponents.execute(%{}, frame)
+
+        after_response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(after_response) == context.components_before,
                "expected the component list to be unchanged by reusing an existing surface"

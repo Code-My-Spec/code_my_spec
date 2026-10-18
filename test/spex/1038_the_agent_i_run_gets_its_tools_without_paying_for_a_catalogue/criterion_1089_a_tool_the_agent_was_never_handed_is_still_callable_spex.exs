@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3014Spex do
     scenario "A tool the agent was never handed is still callable" do
       given_ "a tool the agent does not carry", context do
         id = running_agent(context)
-        carried = id |> Fixtures.agent_tools() |> Enum.map(& &1.name())
+        carried = Fixtures.agent_tools(id)
 
         refute "list_stories" in carried,
                "the premise is a tool the agent was not handed, and it is holding " <>

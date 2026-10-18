@@ -12,16 +12,8 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   import ExUnit.Assertions
   import CodeMySpecSpex.TaskResponseHelpers
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.PromotionHelpers
 
@@ -41,7 +33,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
     main_frame = %Frame{assigns: %{current_scope: main_scope, agent_id: main.id}}
 
     created =
-      call(main_frame, CreateIssue, %{
+      call(main_frame, "create_issue", %{
         title: "An agent notification is lost",
         description: "Restore delivery so the waiting agent receives its notification.",
         severity: "high",
@@ -49,9 +41,9 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
       })
 
     issue_id = extract_issue_id!(created)
-    call(main_frame, AcceptIssue, %{issue_id: issue_id})
+    call(main_frame, "accept_issue", %{issue_id: issue_id})
 
-    call(main_frame, AssignIssueToWorkingCopy, %{
+    call(main_frame, "assign_issue_to_working_copy", %{
       issue_id: issue_id,
       working_copy_id: context.scope.active_working_copy_id
     })
@@ -75,7 +67,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
     # (John, 2026-10-11): a clean analyzer run at HEAD, or it stays pending.
     Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    call(frame(context, context.coder), EvaluateTask, %{task_id: task_id})
+    call(frame(context, context.coder), "evaluate_task", %{task_id: task_id})
     context
   end
 
@@ -83,7 +75,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   def qa_passes_it(context) do
     task_id = take(context, context.qa, "qa_complete")
 
-    call(frame(context, context.qa), SubmitIssueQaResult, %{
+    call(frame(context, context.qa), "submit_issue_qa_result", %{
       issue_id: context.issue_id,
       task_id: task_id,
       status: "pass",
@@ -102,24 +94,32 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
 
   @doc "What the coder is offered next, as it reads it."
   def the_coder_is_offered(context),
-    do: call(frame(context, context.coder), GetNextRequirement, %{})
+    do: call(frame(context, context.coder), "get_next_requirement", %{})
 
   @doc "The coder takes `promote_issue` and completes it. Returns the task's answer."
   def the_coder_promotes_it(context) do
     task_id = take(context, context.coder, "promote_issue")
 
-    {:reply, response, _} =
-      EvaluateTask.execute(%{task_id: task_id}, frame(context, context.coder))
+    response =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: task_id},
+        Map.put(
+          frame(context, context.coder).assigns,
+          :scope,
+          frame(context, context.coder).assigns[:current_scope]
+        )
+      )
 
     response_text(response)
   end
 
   @doc "The issue as main reads it."
-  def the_issue(context), do: call(context.main_frame, GetIssue, %{issue_id: context.issue_id})
+  def the_issue(context), do: call(context.main_frame, "get_issue", %{issue_id: context.issue_id})
 
   @doc "Whether every teammate reads `Assignment: none` in main's listing."
   def the_team_is_free?(context) do
-    entries = context.main_frame |> call(ListAgentWork, %{}) |> String.split("Agent: ")
+    entries = context.main_frame |> call("list_agent_work", %{}) |> String.split("Agent: ")
 
     Enum.all?(context.team, fn agent ->
       entry = Enum.find(entries, &String.starts_with?(&1, agent.id <> "\n"))
@@ -129,7 +129,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
 
   # The agent's next offer must be `requirement` on this issue; it starts it.
   defp take(context, agent, requirement) do
-    offer = call(frame(context, agent), GetNextRequirement, %{})
+    offer = call(frame(context, agent), "get_next_requirement", %{})
 
     assert offer =~ "entity_id=`#{context.issue_id}`",
            "#{agent.role} was not offered issue #{context.issue_id}. Got: #{offer}"
@@ -138,7 +138,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
            "#{agent.role} was not offered #{requirement}. Got: #{offer}"
 
     started =
-      call(frame(context, agent), StartTask, %{
+      call(frame(context, agent), "start_task", %{
         requirement_name: requirement,
         entity_type: "issue",
         entity_id: context.issue_id
@@ -150,9 +150,12 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   defp frame(context, agent),
     do: %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-  defp call(frame, tool, params) do
-    {:reply, response, _frame} = tool.execute(params, frame)
-    refute response.isError, response_text(response)
-    response_text(response)
+  defp call(frame, name, params) when is_binary(name) do
+    context = Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+
+    case ToolLibrary.run(name, params, context) do
+      {:ok, text} -> text
+      {:error, text} -> flunk("#{name} refused: #{text}")
+    end
   end
 end

@@ -103,8 +103,6 @@ defmodule CodeMySpecSpex.GraphGivens do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.ComponentHelpers
@@ -522,11 +520,14 @@ defmodule CodeMySpecSpex.GraphGivens do
 
     rule_statement = "#{module_name} behaves correctly"
 
-    {:reply, _r, _f} =
-      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
+    _r =
+      ToolLibrary.run("add_rule", %{story_number: story.number, statement: rule_statement}, %{
+        scope: frame.assigns.current_scope
+      })
 
-    {:reply, _r, _f} =
-      AddScenario.execute(
+    _r =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -535,11 +536,12 @@ defmodule CodeMySpecSpex.GraphGivens do
           body:
             "Given the user opens the page\nWhen they take an action\nThen the action succeeds"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    {:reply, _r, _f} =
-      AddScenario.execute(
+    _r =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -548,7 +550,7 @@ defmodule CodeMySpecSpex.GraphGivens do
           body:
             "Given the user is logged out\nWhen they take an action\nThen they are redirected to login"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     # Sealed, because `three_amigos_complete` reads the seal now. This helper

@@ -16,13 +16,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
 
   alias CodeMySpec.McpServers.CodeMode, as: CodeModeLayer
 
-  alias CodeMySpec.McpServers.{
-    ArchitectureServer,
-    ComponentsServer,
-    IssuesServer,
-    LocalServer,
-    ScriptableTools
-  }
+  alias CodeMySpec.McpServers.{ComponentsServer, LocalServer, ScriptableTools}
+  alias CodeMySpec.ToolLibrary
 
   # Namespaces registered on their own server, outside the engineering
   # agent's surface entirely — a live checkout, not "presumably served by
@@ -47,7 +42,7 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
   # absent from both sides of every assertion below.
   defp all_tool_modules do
     {:ok, modules} = :application.get_key(:code_my_spec, :modules)
-    Enum.filter(modules, &tool_module?/1)
+    Enum.filter(modules, &tool_module?/1) ++ ToolLibrary.tools()
   end
 
   defp tool_module?(mod) do
@@ -132,9 +127,10 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
 
       when_ "checked against every server an engineering agent can reach", context do
         registered =
-          [LocalServer, ScriptableTools, ComponentsServer, ArchitectureServer, IssuesServer]
-          |> Enum.flat_map(& &1.__components__())
-          |> MapSet.new(& &1.handler)
+          [LocalServer, ScriptableTools, ComponentsServer]
+          |> Enum.flat_map(& &1.registrations())
+          # A component carries its module as `:handler`, a library tool as `:tool`.
+          |> MapSet.new(&(Map.get(&1, :handler) || Map.get(&1, :tool)))
 
         {:ok, Map.put(context, :registered_anywhere, registered)}
       end
@@ -147,8 +143,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3002Spex do
           end)
 
         assert orphaned == [],
-               "registered on none of LocalServer/ScriptableTools/ComponentsServer/" <>
-                 "ArchitectureServer/IssuesServer, and not in @out_of_scope_namespaces — " <>
+               "registered on none of LocalServer/ScriptableTools/ComponentsServer, " <>
+                 "and not in @out_of_scope_namespaces — " <>
                  "no route reaches these at all: " <> inspect(orphaned)
 
         {:ok, context}

@@ -1,0 +1,35 @@
+[
+  {
+    "name": "await_analysis",
+    "description": "A tombstone for a tool that was removed, because the name outlives the tool.\n\n`await_analysis` could not work and was deleted: MCP caps a request at 30s and\na sweep runs 200-590s, so the tool never returned for the case it existed to\nserve. `LocalServer` has said \"No AwaitAnalysis here\" ever since.\n\nRemoving it from the server did not remove it from agents. A client fetches\nthe tool list once, at session start, and a session here runs for hours — so\na registry listing `await_analysis` outlives the tool by however long that\nsession lasts, and `ToolSearch` hands back its schema on request. What the\nagent then gets from calling it is\n\n    MCP error -32602: Invalid params\n\nbecause Anubis puts \"Tool not found: await_analysis\" in `data.message` while\nthe top-level `message` stays the generic one, and the top-level is what the\nclient shows. The useful sentence is on the wire and nobody reads it. \"Invalid\nparams\" against a schema with no params reads as *the agent built the call\nwrong*, so the natural next move is to invent arguments — which is exactly\nwhere `ba6904d6` went.\n\nSo this answers instead. It is not a working tool and its description says so\nfirst, which is what stops a *new* session picking it up: the cost of carrying\na tombstone is that it appears in the list, and that is only worth paying if\nreading the entry is enough to not call it.\n\nModelled on `sync_project`, which the report singles out as the right shape —\na refusal that teaches rather than one that just fails.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_analysis_output",
+    "description": "Read retained analyzer stdout/stderr without starting another run.\n\nSupply run_id, or source to select its latest run in this working copy\n(including partial, failed, and running runs). The JSON response identifies\nthe run and carries an unmodified output slice. Continue with that run_id\nand next_offset, never source, to keep pages tied to the same run.\n\nOffsets count Unicode codepoints. Concatenating output slices reconstructs\nthe retained text exactly. This cannot recover output discarded before it\nreached the ledger. output_available distinguishes missing output from an\nempty string; neither a missing exit status nor missing output means success.\n",
+    "input_schema": {
+      "properties": {
+        "limit": {
+          "description": "Codepoints to return. Default and maximum: 2000.",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "Zero-based Unicode codepoint offset. Default: 0.",
+          "type": "integer"
+        },
+        "run_id": {
+          "description": "Retained run ID. Supply this or source, not both.",
+          "type": "integer"
+        },
+        "source": {
+          "description": "Select the latest compiler, credo, exunit, or spex run.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  }
+]

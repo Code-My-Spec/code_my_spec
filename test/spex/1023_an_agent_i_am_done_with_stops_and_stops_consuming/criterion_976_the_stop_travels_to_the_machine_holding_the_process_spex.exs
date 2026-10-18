@@ -22,10 +22,11 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
 
@@ -76,12 +77,19 @@ defmodule CodeMySpecSpex.Story1023.Criterion2881Spex do
 
       when_ "I stop the agent on one of them", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.target.id}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.target.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "only that machine's process is ended", context do
-        refute context.reply.isError
+        assert match?({:ok, _}, context.reply)
 
         refute running?(context.here.id),
                "the agent that was asked to stop is still running"

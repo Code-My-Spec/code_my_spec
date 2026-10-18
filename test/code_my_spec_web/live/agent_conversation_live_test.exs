@@ -258,6 +258,34 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              )
     end
 
+    test "a finished delivery's old diagnostic is not listed as waiting", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, message} =
+        Conversations.add_message(conversation, :operator, "earlier note", "operator", [],
+          delivery: :delivered,
+          delivery_ref: Ecto.UUID.generate()
+        )
+
+      entry = Mailbox.admit(agent, message, :operator_message)
+
+      entry
+      |> Ecto.Changeset.change(
+        state: :interrupted,
+        diagnostic: "Owning engine was replaced. Consumed work may have side effects."
+      )
+      |> Repo.update!()
+
+      {:ok, view, _} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='agent-pending-message']")
+      refute render(view) =~ "Owning engine was replaced"
+    end
+
     test "unowned historical pending messages have no withdrawal control", %{
       conn: conn,
       scope: scope,
@@ -489,6 +517,63 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
         )
 
       assert render(view) =~ "move to the next requirement"
+    end
+
+    test "the same message delivered twice does not duplicate on screen", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, message} = Conversations.add_agent_message(conversation, nil, "assistant", "hello")
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      # A redelivered broadcast (e.g. after a reconnect) rather than a second
+      # write -- `upsert/2` is supposed to replace, not append, when the id
+      # already appears.
+      send(view.pid, {:new_message, message})
+
+      assert render(view) =~ "hello"
+    end
+
+    test "a message that arrives out of order is not duplicated when older turns load", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+      {:ok, oldest} = Conversations.add_agent_message(conversation, nil, "assistant", "oldest")
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      {:ok, newer} = Conversations.add_agent_message(conversation, nil, "assistant", "newer")
+      assert render(view) =~ "newer"
+
+      # A write that lands after `oldest` but is stamped earlier than it --
+      # clock skew between writers, or a slow insert finally landing. `upsert/2`
+      # appends to the end of `@messages` regardless of its own timestamp, so
+      # this message is now both "on screen" (at the tail) and, by its
+      # timestamp, exactly what `load_older`'s `before:` cursor asks for.
+      late =
+        newer
+        |> Ecto.Changeset.change(inserted_at: DateTime.add(oldest.inserted_at, -1, :second))
+        |> Repo.update!()
+
+      send(view.pid, {:new_message, late})
+      assert render(view) =~ "newer"
+
+      html = render_hook(view, "load_older", %{})
+      assert html =~ "newer"
+
+      occurrences =
+        html
+        |> String.split("id=\"turn-group-#{late.id}\"")
+        |> length()
+        |> Kernel.-(1)
+
+      assert occurrences == 1,
+             "expected turn-group-#{late.id} to render once, found #{occurrences} times"
     end
 
     test "an epic created while the dynamic tab is open switches it to epics, live", %{
@@ -937,6 +1022,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       header = "header [data-test='story-progress']"
       row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
 
+      render_async(view)
       {done, total} = slice_progress(scope, project, story)
       assert has_element?(view, header <> "[data-done='#{done}'][data-total='#{total}']")
       assert has_element?(view, row <> "[data-done='#{done}'][data-total='#{total}']")
@@ -949,6 +1035,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       send(view.pid, {:graph_updated, project.id})
       render(view)
+      render_async(view)
 
       {done, total} = slice_progress(scope, project, story)
       assert {done, total} != before or total == 0

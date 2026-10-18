@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1804Spex do
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
 
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1804Spex do
           )
 
         {:reply, _reply, _} =
-          CodeMySpec.McpServers.LocalServer.handle_tool_call(
+          LocalServer.handle_tool_call(
             "reject_offer",
             %{reason: "already promoted at v2.0.307"},
             agent_frame(context, context.coder)

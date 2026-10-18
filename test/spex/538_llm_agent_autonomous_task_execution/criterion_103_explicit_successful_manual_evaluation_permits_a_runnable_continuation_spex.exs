@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -17,10 +19,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -68,20 +66,28 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
-        {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "[active]"
         assert response_text(tasks) =~ task_id
@@ -102,8 +108,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
             "The specification files are ready. Please evaluate your current task."
           )
 
-        {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
-        refute available.isError, response_text(available)
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0
 
         base_url = HeldProvider.start()
@@ -124,17 +136,35 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
       when_ "the agent explicitly evaluates the ready task", context do
         Fixtures.deliver_manifest(context.scope)
 
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: context.task_id}, context.agent_frame)
+        evaluated =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.task_id},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
 
-        refute evaluated.isError, response_text(evaluated)
+        assert match?({:ok, _}, evaluated), response_text(evaluated)
         assert response_text(evaluated) =~ "Passed"
         {:ok, context}
       end
 
       then_ "the task is completed without selecting its successor", context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[completed]"
@@ -159,8 +189,18 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
         refute prompt =~ "Context design review file exists"
         refute prompt =~ context.component.module_name
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.completed_tasks
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")

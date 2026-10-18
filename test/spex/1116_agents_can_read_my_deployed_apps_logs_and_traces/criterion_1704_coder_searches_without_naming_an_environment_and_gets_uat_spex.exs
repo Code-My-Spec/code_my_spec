@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1704Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -22,11 +23,16 @@ defmodule CodeMySpecSpex.Story1116.Criterion1704Spex do
     scenario "the coder searches without naming env" do
       given_ "uat and prod have different telemetry configured, each with its own line",
              context do
-        uat_username = ClickHouseCassetteHelpers.configure!(context.scope, environment: "uat").username
-        prod_username = ClickHouseCassetteHelpers.configure!(context.scope, environment: "prod").username
+        uat_username =
+          ClickHouseCassetteHelpers.configure!(context.scope, environment: "uat").username
+
+        prod_username =
+          ClickHouseCassetteHelpers.configure!(context.scope, environment: "prod").username
 
         ClickHouseCassetteHelpers.stub_rows_by_username(%{
-          uat_username => [%{"Timestamp" => "t", "SeverityText" => "INFO", "Body" => "uat's own line"}],
+          uat_username => [
+            %{"Timestamp" => "t", "SeverityText" => "INFO", "Body" => "uat's own line"}
+          ],
           prod_username => [%{"Body" => "WRONG CONNECTION — prod's data, not uat's"}]
         })
 
@@ -35,14 +41,20 @@ defmodule CodeMySpecSpex.Story1116.Criterion1704Spex do
 
       when_ "the coder searches logs without naming an environment", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it read uat, not prod", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful uat read: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful uat read: #{text}"
         assert text =~ "uat's own line"
         refute text =~ "WRONG CONNECTION"
 

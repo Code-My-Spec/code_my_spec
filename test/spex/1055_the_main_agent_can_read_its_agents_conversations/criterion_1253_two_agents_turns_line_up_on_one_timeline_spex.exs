@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1055.Criterion3283Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -36,17 +37,18 @@ defmodule CodeMySpecSpex.Story1055.Criterion3283Spex do
       when_ "the main agent reads their turns together", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(
+        response =
+          ToolLibrary.run(
+            "read_agent_conversation",
             %{"agent_ids" => [context.first.id, context.second.id]},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the turns appear in time order across both agents", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected a combined timeline, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

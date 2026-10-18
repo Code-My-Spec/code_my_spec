@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2160Spex do
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
 
+  alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2160Spex do
           )
 
         {:reply, _reply, _} =
-          CodeMySpec.McpServers.LocalServer.handle_tool_call(
+          LocalServer.handle_tool_call(
             "reject_offer",
             %{reason: "not mine to resolve"},
             agent_frame(context, context.coder)

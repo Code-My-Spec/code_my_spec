@@ -70,6 +70,36 @@ defmodule CodeMySpecWeb.ProvisioningLive.Components.SecretsForm do
         {@secret_error}
       </p>
 
+      <div class="divider"></div>
+      <h4 class="font-semibold text-sm">Bulk import</h4>
+      <p class="opacity-70 text-xs mt-1">
+        Already has its own secrets, like <code>SECRET_KEY_BASE</code> from a live app?
+        Paste them here, one <code>KEY=value</code> per line -- comments and blank lines
+        are skipped. Nothing here is minted fresh over a key that already exists, so
+        importing an existing <code>SECRET_KEY_BASE</code> first keeps every signed-in
+        user's session valid.
+      </p>
+      <form
+        data-test="secrets-import-form"
+        phx-submit="import_secrets"
+        class="mt-2 flex flex-col gap-2 items-start"
+      >
+        <textarea
+          name="import[dotenv]"
+          data-test="secrets-import-dotenv"
+          class="textarea textarea-bordered textarea-sm font-mono w-full"
+          rows="6"
+          placeholder="SECRET_KEY_BASE=...\nOTHER_KEY=..."
+        ></textarea>
+        <label class="form-control w-40">
+          <span class="label-text text-xs">Environment</span>
+          <select name="import[environment]" class="select select-bordered select-sm">
+            <option :for={environment <- @environments} value={environment}>{environment}</option>
+          </select>
+        </label>
+        <.button type="submit" data-test="import-secrets">Import into the repo</.button>
+      </form>
+
       <div class="mt-4 flex flex-col gap-1">
         <div
           :for={recipient <- @sops_recipients}

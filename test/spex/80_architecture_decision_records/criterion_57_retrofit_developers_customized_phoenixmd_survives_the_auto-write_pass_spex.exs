@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -48,15 +49,16 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
       when_ "the agent calls start_task for the technical_strategy task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "technical_strategy",
               entity_type: "project",
               entity_id: to_string(context.project.id),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}

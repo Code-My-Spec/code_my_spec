@@ -11,13 +11,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1862Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers, only: [start_agent_task: 3]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,8 +38,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1862Spex do
           questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
         }
 
-        {:reply, reply, _} = AskUserQuestion.execute(params, agent_frame(context, context.coder))
-        refute reply.isError, response_text(reply)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, reply), response_text(reply)
         :ok = user_answers(context, Fixtures.question_id_from(response_text(reply)), "Left")
         id = context.coder
         assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
@@ -58,13 +67,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1862Spex do
 
         context = start_agent_task(context, context.coder, context.task)
 
-        {:reply, tapped, _} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{task_id: context.task_id, reason: "Stuck again."},
-            agent_frame(context, context.coder)
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
           )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, context}
       end

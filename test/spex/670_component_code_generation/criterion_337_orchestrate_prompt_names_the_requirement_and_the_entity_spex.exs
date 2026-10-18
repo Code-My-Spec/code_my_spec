@@ -20,11 +20,12 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @impl_path "lib/example_context.ex"
@@ -57,7 +58,12 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
       when_ "the agent calls get_next_requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :prompt, TaskResponseHelpers.response_text(response))}
       end

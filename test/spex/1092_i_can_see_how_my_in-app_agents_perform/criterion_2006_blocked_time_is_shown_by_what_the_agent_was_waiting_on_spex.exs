@@ -9,14 +9,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2006Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,23 +41,28 @@ defmodule CodeMySpecSpex.Story1092.Criterion2006Spex do
 
         asking_1 = %Frame{assigns: %{current_scope: scope, agent_id: tapped_agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(%{reason: "this task's premise does not hold"}, asking_1)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "this task's premise does not hold"},
+            Map.put(asking_1.assigns, :scope, asking_1.assigns[:current_scope])
+          )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
 
         asking_agent =
           Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2006")
 
         asking_2 = %Frame{assigns: %{current_scope: scope, agent_id: asking_agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{questions: [%{question: "Which environment should this target?", options: []}]},
-            asking_2
+            Map.put(asking_2.assigns, :scope, asking_2.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context

@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
   # The widget message travels over a real socket, and `connect/3` reads this.
   @endpoint CodeMySpecWeb.Endpoint
@@ -81,15 +82,19 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
         # something has to make it true.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        _response =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent asks whether setup is complete", context do
-        {:reply, response, _frame} =
-          DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("devops_status", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

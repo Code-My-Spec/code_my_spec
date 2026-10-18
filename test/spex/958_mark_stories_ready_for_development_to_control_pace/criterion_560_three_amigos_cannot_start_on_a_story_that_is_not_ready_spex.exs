@@ -12,9 +12,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,17 +26,18 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
       given_ "the story \"#{@title}\" is not ready for development", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               description:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, response), "expected create_story to succeed"
 
         {:ok, context}
       end
@@ -44,7 +45,12 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
       when_ "the agent asks for the next requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :next_body, response_text(response))}
       end

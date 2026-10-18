@@ -21,8 +21,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -39,7 +38,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
   end
 
   spex "A third claim-cancel cycle holds the work back and tells main once; one cycle returns it",
-       criterion: 2220 do
+    criterion: 2220 do
     scenario "a coder claims and cancels the same work three times in a row" do
       given_ "coding work waiting, a continuous coder, and a continuous main mid-turn", context do
         context = FullSatisfactionFixtures.apply_up_to_analysis(context)
@@ -67,7 +66,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
             context do
         id = context.coder
 
-        assert_receive {:work_turn_requested, ^id, _ref, _again}, 2_000,
+        assert_receive {:work_turn_requested, ^id, _ref, _again},
+                       2_000,
                        "a single claim-cancel did not return the work to be offered again"
 
         [_fresh, cycle_one | _] = offers(context, id, %{kind: "work"})
@@ -83,7 +83,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
             context do
         id = context.coder
 
-        assert_receive {:work_turn_requested, ^id, _ref, _again}, 2_000,
+        assert_receive {:work_turn_requested, ^id, _ref, _again},
+                       2_000,
                        "a second claim-cancel did not return the work to be offered again"
 
         [_fresh, cycle_two, cycle_one | _] = offers(context, id, %{kind: "work"})
@@ -100,8 +101,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
             context do
         id = context.coder
 
-        refute_receive {:work_turn_requested, ^id, _ref, _again}, 1_000,
-                        "work escalated after a third claim-cancel cycle was pushed again"
+        refute_receive {:work_turn_requested, ^id, _ref, _again},
+                       1_000,
+                       "work escalated after a third claim-cancel cycle was pushed again"
 
         # `next_step` (the raw field driving the escalation) isn't on the
         # text listing `offers/2` parses -- `note` is what that listing
@@ -128,14 +130,25 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
   # cycle's already-cancelled task once a second task exists on the agent.
   # Reading the id straight off this call's own reply sidesteps that.
   defp claim_and_cancel(context, id) do
-    {:reply, started, _} = StartTask.execute(next_task(context, id), agent_frame(context, id))
-    refute started.isError, response_text(started)
+    started =
+      ToolLibrary.run(
+        "start_task",
+        next_task(context, id),
+        tool_context(agent_frame(context, id))
+      )
+
+    assert match?({:ok, _}, started), response_text(started)
     task_id = extract_task_id!(started)
 
-    {:reply, cancelled, _} = CancelTask.execute(%{task_id: task_id}, agent_frame(context, id))
-    refute cancelled.isError, response_text(cancelled)
+    cancelled =
+      ToolLibrary.run("cancel_task", %{task_id: task_id}, tool_context(agent_frame(context, id)))
+
+    assert match?({:ok, _}, cancelled), response_text(cancelled)
 
     :ok = Fixtures.end_turn(context.scope, id)
     put_to_work(context)
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

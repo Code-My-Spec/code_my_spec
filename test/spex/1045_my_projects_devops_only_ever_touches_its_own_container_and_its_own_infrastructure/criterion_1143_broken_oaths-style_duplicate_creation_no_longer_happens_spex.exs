@@ -11,13 +11,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3071Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "An unlinked environment never causes a new dedicated server to be created", criterion: 1143 do
+  spex "An unlinked environment never causes a new dedicated server to be created",
+    criterion: 1143 do
     scenario "the provider's create-server endpoint is never called" do
       given_ "Hetzner is connected, the account already owns a shared server, and this project has never linked to it",
              context do
@@ -44,7 +45,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3071Spex do
 
       when_ "the project's own devops setup runs its :server step", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        _response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, context}
       end
 

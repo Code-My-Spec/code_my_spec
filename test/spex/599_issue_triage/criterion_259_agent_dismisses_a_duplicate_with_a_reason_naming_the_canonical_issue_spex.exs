@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
 
   alias CodeMySpecSpex.Fixtures
 
@@ -44,8 +43,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
       given_ "the agent has already accepted the canonical issue", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          AcceptIssue.execute(%{issue_id: context.canonical.id}, frame)
+        _response =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.canonical.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context}
       end
@@ -54,10 +57,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         reason = "duplicate of issue #{context.canonical.id}"
 
-        {:reply, response, _frame} =
-          DismissIssue.execute(
+        response =
+          ToolLibrary.run(
+            "dismiss_issue",
             %{issue_id: context.duplicate.id, reason: reason},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :dismiss_response, response)}
@@ -66,8 +70,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
       then_ "the duplicate's status becomes :dismissed", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.duplicate.id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.duplicate.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 
@@ -89,8 +97,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5333Spex do
       then_ "the canonical issue remains :accepted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.canonical.id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.canonical.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

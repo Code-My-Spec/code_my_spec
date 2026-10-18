@@ -8,11 +8,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy: 3]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,12 +54,23 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
 
       when_ "the coding agent messages the QA agent directly", context do
         params = %{agent_id: context.qa_id, message: "Can you re-run the spex for this one?"}
-        {:reply, reply, _frame} = MessageAgent.execute(params, context.coder_frame)
+
+        reply =
+          ToolLibrary.run(
+            "message_agent",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
         {:ok, Map.put(context, :message_reply, reply)}
       end
 
       then_ "it is delivered", context do
-        refute context.message_reply.isError,
+        assert match?({:ok, _}, context.message_reply),
                "a teammate on the same working copy refused a direct message:\n" <>
                  response_text(context.message_reply)
 
@@ -82,12 +94,23 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
 
       when_ "the coding agent tries to message the main agent directly", context do
         params = %{agent_id: context.main_id, message: "Can you take a look at this?"}
-        {:reply, reply, _frame} = MessageAgent.execute(params, context.coder_frame)
+
+        reply =
+          ToolLibrary.run(
+            "message_agent",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
         {:ok, Map.put(context, :message_reply, reply)}
       end
 
       then_ "it is refused, and told to ask instead", context do
-        assert context.message_reply.isError,
+        assert match?({:error, _}, context.message_reply),
                "messaging the main agent directly was allowed, with no question in the way"
 
         assert response_text(context.message_reply) =~ ~r/ask_user_question/i,
@@ -127,12 +150,23 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
 
       when_ "the coding agent tries to message that QA agent", context do
         params = %{agent_id: context.other_qa_id, message: "Can you take a look at this?"}
-        {:reply, reply, _frame} = MessageAgent.execute(params, context.coder_frame)
+
+        reply =
+          ToolLibrary.run(
+            "message_agent",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
         {:ok, Map.put(context, :message_reply, reply)}
       end
 
       then_ "it is refused, and told to ask instead", context do
-        assert context.message_reply.isError,
+        assert match?({:error, _}, context.message_reply),
                "messaging an agent on another working copy was allowed, with no question in the way"
 
         assert response_text(context.message_reply) =~ ~r/ask_user_question/i,

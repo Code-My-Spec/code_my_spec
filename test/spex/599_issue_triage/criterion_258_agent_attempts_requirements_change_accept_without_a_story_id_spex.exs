@@ -15,9 +15,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
 
   alias CodeMySpecSpex.Fixtures
 
@@ -36,10 +36,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AcceptIssue.execute(
+        response =
+          ToolLibrary.run(
+            "accept_issue",
             %{issue_id: context.issue.id, category: "requirements_change"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :accept_response, response)}
@@ -60,8 +61,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5332Spex do
       then_ "the issue's status remains :incoming", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue.id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

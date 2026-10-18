@@ -20,10 +20,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,7 +40,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               name: "Driver",
               headline: "Fleet driver attempting card transactions"
             },
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         driver_id = extract_persona_id(create_response)
@@ -52,7 +49,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: driver_id, story_number: context.story.number},
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -62,14 +59,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _happy, _frame} =
-          AddScenario.execute(
+        _happy =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -77,11 +76,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               kind: "happy_path",
               body: "Given context\nWhen action\nThen happy outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _failure, _frame} =
-          AddScenario.execute(
+        _failure =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               kind: "failure_path",
               body: "Given context\nWhen action\nThen failure outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -100,10 +100,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
       when_ "the agent calls evaluate_task on the Three Amigos task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

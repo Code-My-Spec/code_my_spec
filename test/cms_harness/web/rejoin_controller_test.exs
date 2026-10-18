@@ -20,7 +20,6 @@ defmodule CmsHarness.Web.RejoinControllerTest do
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
-  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
   alias CmsHarnessTest.Machine

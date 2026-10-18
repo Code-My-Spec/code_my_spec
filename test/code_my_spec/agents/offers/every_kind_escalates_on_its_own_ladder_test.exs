@@ -35,7 +35,7 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   end
 
   describe "the ladder as data (2057)" do
-    # A notice's ladder (problems, retry) stops at its detail; one that hands
+    # A notice's ladder (retry, menu) stops at its detail; one that hands
     # out work ends in held back (story 1080, 2026-10-13).
     test "each kind has its own ladder", _ctx do
       ladders = Offers.ladders()
@@ -44,8 +44,8 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
         assert List.last(ladders[key]) == :held_back, "#{inspect(key)}: #{inspect(ladders)}"
       end
 
-      assert ladders[{:problems, "problem_set"}] == [:detail]
       assert ladders[{:retry, "failed_turn"}] == [:detail]
+      assert ladders[{:menu, "menu"}] == [:detail]
 
       assert length(ladders[{:work, "requirement"}]) == 3,
              "requirement work takes three ignored offers (1739-1741)"

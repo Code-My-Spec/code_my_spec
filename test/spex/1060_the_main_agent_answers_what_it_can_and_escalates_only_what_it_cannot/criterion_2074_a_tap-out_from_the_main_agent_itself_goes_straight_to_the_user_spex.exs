@@ -12,13 +12,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2074Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -31,7 +32,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2074Spex do
   end
 
   spex "The main agent's own tap-out goes straight to the user, with no other agent to route it through",
-       criterion: 2074 do
+    criterion: 2074 do
     scenario "the only main agent on the project taps itself out" do
       given_ "a lone running main agent, with no other main agent on the project", context do
         reply = join_working_copy(context, "/tmp/spex-2074", "the checkout")
@@ -44,13 +45,18 @@ defmodule CodeMySpecSpex.Story1060.Criterion2074Spex do
       end
 
       when_ "it taps itself out", context do
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "I cannot tell whether this is still the right task to run"},
-            context.asking_frame
+            Map.put(
+              context.asking_frame.assigns,
+              :scope,
+              context.asking_frame.assigns[:current_scope]
+            )
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
         {:ok, Map.put(context, :permission_id, permission_id)}
       end

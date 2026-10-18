@@ -9,11 +9,12 @@ defmodule CodeMySpecSpex.Story1077.Criterion4681Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -55,8 +56,12 @@ defmodule CodeMySpecSpex.Story1077.Criterion4681Spex do
       when_ "the agent evaluates its write-specs task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(%{task_id: context.task_id, session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.task_id, session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :text, response_text(response))}
       end

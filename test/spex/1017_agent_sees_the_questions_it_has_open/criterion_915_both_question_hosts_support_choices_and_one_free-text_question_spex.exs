@@ -9,11 +9,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -40,8 +40,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   spex "structured choices answered from question_page", criterion: 915 do
     scenario "Both hosts display the form and the saved answer is available through MCP" do
       given_ "the agent asks one structured choices question", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -50,10 +51,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
                 }
               ]
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(response))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -85,10 +86,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
         |> form("main [data-test='question-form']", %{"q_0" => @answer})
         |> render_submit()
 
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ @answer
         assert response_text(answer) =~ "The user replied"
         assert render(context.question_page) =~ "Answer sent."
@@ -101,8 +106,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   spex "structured choices answered from conversation" do
     scenario "Both hosts display the form and the saved answer is available through MCP" do
       given_ "the agent asks one structured choices question", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -111,10 +117,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
                 }
               ]
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(response))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -146,10 +152,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
         |> form("main [data-test='question-form']", %{"q_0" => @answer})
         |> render_submit()
 
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ @answer
         assert response_text(answer) =~ "The user replied"
         assert render(context.question_page) =~ "Answer sent."
@@ -162,13 +172,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   spex "free text answered from question_page" do
     scenario "Both hosts display the form and the saved answer is available through MCP" do
       given_ "the agent asks one free text question", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{questions: [%{question: @question, options: []}]},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(response))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -200,10 +211,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
         |> form("main [data-test='question-form']", %{"q_0" => @answer})
         |> render_submit()
 
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ @answer
         assert response_text(answer) =~ "The user replied"
         assert render(context.question_page) =~ "Answer sent."
@@ -216,13 +231,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   spex "free text answered from conversation" do
     scenario "Both hosts display the form and the saved answer is available through MCP" do
       given_ "the agent asks one free text question", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{questions: [%{question: @question, options: []}]},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(response))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -254,10 +270,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
         |> form("main [data-test='question-form']", %{"q_0" => @answer})
         |> render_submit()
 
-        {:reply, answer, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute answer.isError, response_text(answer)
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ @answer
         assert response_text(answer) =~ "The user replied"
         assert render(context.question_page) =~ "Answer sent."

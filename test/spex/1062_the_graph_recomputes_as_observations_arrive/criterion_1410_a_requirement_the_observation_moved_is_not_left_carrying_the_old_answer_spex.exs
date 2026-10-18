@@ -52,12 +52,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.{AcceptIssue, CreateIssue}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -69,18 +70,19 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "something is wrong on this story",
               description: "filed at the severity the graph gates on",
               severity: "medium",
               story_number: story.number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute filed.isError, inspect(filed)
+        assert match?({:ok, _}, filed), inspect(filed)
 
         before = read_settled_graph(context)
 
@@ -94,10 +96,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3493Spex do
       when_ "the issue is accepted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, accepted, _frame} =
-          AcceptIssue.execute(%{issue_id: context.issue_id}, frame)
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute accepted.isError, inspect(accepted)
+        assert match?({:ok, _}, accepted), inspect(accepted)
 
         {:ok, Map.put(context, :after, read_settled_graph(context))}
       end

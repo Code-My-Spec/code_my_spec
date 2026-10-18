@@ -10,13 +10,13 @@ defmodule CodeMySpecSpex.Story1047.Criterion3549Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -40,8 +40,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3549Spex do
       given_ "a continuous task-free coding agent has no eligible work", context do
         context = given_a_staffed_checkout(context, "spex_3549")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         assert Fixtures.role_queue_size(context.scope, agent.id) == 0
@@ -54,10 +61,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3549Spex do
         # the boundary being tested. The local engine is ready for admission.
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -77,10 +88,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3549Spex do
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         {:ok, context}
       end

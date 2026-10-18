@@ -12,8 +12,7 @@ defmodule CodeMySpecSpex.ComponentHelpers do
   creation.
   """
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
+  alias CodeMySpec.Components.Tools.CreateComponent
   alias CodeMySpecSpex.Fixtures
 
   @doc """
@@ -23,15 +22,16 @@ defmodule CodeMySpecSpex.ComponentHelpers do
   """
   @spec create(map(), keyword() | map()) :: term()
   def create(scope, attrs) do
-    frame = %Frame{assigns: %{current_scope: scope}}
     params = attrs |> Enum.into(%{})
 
-    {:reply, response, _frame} = CreateComponent.execute(params, frame)
+    # The tool's own call, past argument validation, as this helper always did:
+    # fixtures build component types (`repository`) agents cannot ask for.
+    response = CreateComponent.call(params, %{scope: scope})
 
     # Asserts its own success: a refused create used to come back as `nil` here
     # and fail somewhere later that had nothing to do with it.
-    if response.isError,
-      do: raise("create_component refused #{inspect(params)}: #{inspect(response.content)}")
+    if match?({:error, _}, response),
+      do: raise("create_component refused #{inspect(params)}: #{elem(response, 1)}")
 
     Fixtures.get_component_by_module_name(scope, params.module_name)
   end

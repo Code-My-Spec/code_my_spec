@@ -13,10 +13,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.ListProjectTags
-  alias CodeMySpec.McpServers.Stories.Tools.TagStories
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -49,9 +48,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
           tag: context.tag
         }
 
-        {:reply, response, _frame} = TagStories.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "tag_stories",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected tag_stories to succeed, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :tag_response, response)}
@@ -60,7 +64,13 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
       then_ "list_project_tags now includes the new tag", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} = ListProjectTags.execute(%{}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_project_tags",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(list_response)
 
         assert body =~ context.tag,
@@ -72,8 +82,12 @@ defmodule CodeMySpecSpex.Story686.Criterion5912Spex do
       then_ "get_story shows the tag on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

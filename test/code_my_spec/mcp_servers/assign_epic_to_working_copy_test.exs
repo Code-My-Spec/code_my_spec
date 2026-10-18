@@ -29,13 +29,14 @@ defmodule CodeMySpec.McpServers.AssignEpicToWorkingCopyTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.WorkingCopies
@@ -97,11 +98,12 @@ defmodule CodeMySpec.McpServers.AssignEpicToWorkingCopyTest do
     copy = rooted(copy, nil)
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    assert {:reply, response, ^frame} =
-             AssignEpicToWorkingCopy.execute(
-               %{epic_id: epic.id, working_copy_id: copy.id},
-               frame
-             )
+    response =
+      ToolLibrary.run(
+        "assign_epic_to_working_copy",
+        %{epic_id: epic.id, working_copy_id: copy.id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     assert rendered(response) =~ "no checkout on disk",
            "the refusal has to name what is wrong with the choice, or the caller " <>

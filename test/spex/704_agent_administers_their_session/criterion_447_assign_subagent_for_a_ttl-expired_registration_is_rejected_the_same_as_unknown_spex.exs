@@ -17,12 +17,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6102Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AssignSubagent
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -59,19 +58,24 @@ defmodule CodeMySpecSpex.Story704.Criterion6102Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _, _} =
-          StartTask.execute(
+        _ =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, list_resp, _frame} =
-          ListTasks.execute(%{session_id: session_id, status: "active"}, frame)
+        list_resp =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: session_id, status: "active"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         [_, task_id] =
           list_resp
@@ -89,14 +93,15 @@ defmodule CodeMySpecSpex.Story704.Criterion6102Spex do
       when_ "the agent calls assign_subagent with the TTL-expired agent_id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AssignSubagent.execute(
+        response =
+          ToolLibrary.run(
+            "assign_subagent",
             %{
               session_id: context.session_id,
               agent_id: context.agent_id,
               task_id: context.task_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok,
@@ -107,7 +112,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6102Spex do
       end
 
       then_ "the response is an error naming the (now-expired) agent_id", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                "expected isError to be true for an expired agent_id, got: #{inspect(context.response)}"
 
         assert context.response_text =~ context.agent_id,
@@ -119,8 +124,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6102Spex do
       and_ "no Task in list_tasks carries the expired agent_id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListTasks.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

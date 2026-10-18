@@ -1,0 +1,316 @@
+[
+  {
+    "name": "adopt_repository",
+    "description": "Adopt an existing GitHub repository as a project's remote, by its real name.\n\n`run_devops_setup`'s repository step derives the name it looks for from the\nproject's own display name — lowercase, non-alphanumeric runs collapsed to\na single dash — and only reaches the adopt-vs-create decision once a repo\nof that exact derived name is found. A real repo named any other way\n(underscores, or a different word entirely) is a lookup miss, not a\ncollision: setup would silently create a second, empty, unrelated\nrepository and push the current working tree into it, never considering\nthe real one.\n\nThis runs the same repository step by the repository's own real name\ninstead of a guessed one, so it reaches the real repo directly and adopts\nit — same push-and-prove behavior `run_devops_setup` would otherwise do,\njust aimed correctly.\n\n## `owner` is the other half of \"the real repo\"\n\nA name alone still is not enough when the repository lives in an\norganisation rather than the connected account's own login.\n`Repository.ensure/3` looks up `owner || authenticated_owner(scope)` — the\nauthenticated user's own account — when nothing else is said, and this\ntool had no way to say otherwise. Found live: a project whose real\nrepository is `Code-My-Spec/broken-oaths` adopted `johns10/broken-oaths`\ninstead — a *different*, genuinely existing repository that happened to\nshare the name under the account the OAuth token authenticates as — and\nfailed the push with \"origin already points at\nhttps://github.com/Code-My-Spec/broken-oaths.git, not\nhttps://github.com/johns10/broken-oaths.git\", which reads as the wrong\nrepository having been *found*, not as a parameter that was silently never\noffered. `owner` here is passed straight through as `Repository.ensure/3`'s\nown `:owner` opt, which already worked for both a personal account and an\norganisation login — the gap was only ever this tool's schema.\n\n`push/3`'s default branch is `\"main\"`, which the repository step never\noverrides — a real checkout whose default branch is anything else (a\npre-existing `master`, for instance) would push nothing, since `git push\norigin main` has no local `main` to push. Safe (it fails cleanly rather\nthan pushing the wrong content), but still a step that would otherwise\nfail for no reason a caller could see, so this exposes the same override\n`push/3` already supports.\n\nOnly pushes what is already committed — `ensure_commit/1` stages and\ncommits only when the checkout has no commit at all yet, and the one other\ncommit this can make (`commit_owner_patch/1`) touches only the generated CI\nworkflow file, explicitly, never a broad `add -A`. Uncommitted local\nchanges and untracked files in the working tree are not staged, committed,\nor pushed as a side effect of adopting.\n\n## Returns when the run starts, not when it finishes\n\nA push is normally seconds, but a slow network, a large repository, or\nGitHub itself can run this well past the code-mode sandbox's 30s wall\nclock (issue 4f7929e4) — this used to hold `RunLock` and wait for the real\npush inline, on the stated bet that \"a push is seconds, not minutes\",\nwhich is a considered bet, not a guarantee. The spawned task claims this\nproject's own lock and only then acks, the same handshake\n`run_provisioning_step` uses: the reply is \"started\" or \"already running\";\nan agent that started it is messaged the outcome, any other caller watches\n`devops_status`.\n",
+    "input_schema": {
+      "properties": {
+        "branch": {
+          "description": "The checkout's actual default branch, if it isn't \"main\" (e.g. \"master\").",
+          "type": "string"
+        },
+        "owner": {
+          "description": "The account or organisation the repository actually lives under, if it is not the connected account's own login (e.g. \"Code-My-Spec\").",
+          "type": "string"
+        },
+        "repository_name": {
+          "description": "The GitHub repository's exact name, e.g. \"market_my_spec\" — not a guess.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "devops_status",
+    "description": "Whether the infrastructure this account is supposed to have actually exists.\n\nAnswers three separate questions, because conflating them is what made\n\"is devops setup done?\" unanswerable:\n\n- **missing** — a step whose resources are not there. This is what decides\n  whether `devops_setup` is complete.\n- **dangling** — a resource that exists and points at nothing, usually a DNS\n  record left over from a destroyed server. Not a completion problem; it is\n  cleanup, and it does not block the requirement.\n- **unreachable** — a provider that could not be read. This is the absence of\n  an answer, not a verdict. Do not treat it as \"not done\".\n\nRead from the providers, not from a record file. Setup completion used to be\ndecided by grepping a markdown file for the words \"verified\" and \"prod\",\nwhich an agent could satisfy by writing prose.\n\n## Never sees past the one project it is connected to\n\n`Resources.report/1` is deliberately account-wide — the cross-project\ndangling checks need to see everything, and that is right for `/app/\nresources`, a human looking at their own whole account. It is wrong for\nthis tool: a caller reaching it through the harness is scoped to one\nproject's work, and has no business learning what devops state, missing\nsteps, or dangling resources some *other* project in the same account\ncarries. Confirmed live, twice: first a project whose own devops was\nstill `:off` got back a different project's checklist entirely; then,\nonce devops was turned on, that *same* other project kept appearing in\nfull detail beside the real answer, because the underlying call was still\n`Resources.report/1`. This uses `Resources.project_report/2` instead,\nwhich never runs `deployable/1` or asks a provider for anything beyond\nthe one project it is given — there is no account-wide data left to leak,\non or off.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "ensure_environment",
+    "description": "Create or update a deployment environment row for a project.\n\n`provisioning_environments` are rows, not an enum — a project starts with\nnone and gets `prod`/`uat`/whatever it needs added. `EnvironmentRepository.\nlist/1` only seeds the initial `prod`+`uat` pair when a project's row set is\ncompletely empty, so a project that already has one legacy row (adopted\nbefore its devops level was set, or left over from an earlier drill) never\ngets a later-needed one created automatically — `permitted_environment_rows/1`\nthen filters that lone row out for a devops level it doesn't match, and every\nstep that fans out over environments finds none (`402f9439`).\n\nThis is the manual escape hatch: name the environment a project needs and\nit exists, the same shape `ProvisioningLive`'s own environment form writes.\nHost/server/IP are filled in by the domain/server steps as they provision,\nnot required here — an empty environment is a valid starting point.\n",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "description": "Environment name, e.g. \"uat\" or \"prod\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "ensure_server_access_key",
+    "description": "The account's SSH public key, minted if it doesn't exist yet.\n\nFor a box CodeMySpec creates itself, `Servers.access_key/1` uploads this\nkey to the provider as part of creation and nothing else is needed. For a\nbox the account already owned before linking it — the case this tool is\nfor — there is no provider API that retrofits an SSH key onto an\nalready-existing server. The account owner adds this text to that box's\n`authorized_keys` once, by hand; after that, every project's server step\nreaches it the same way it reaches a box CodeMySpec built from scratch.\n\nOnly the public key is ever returned. The private half stays in\n`AccountSecrets` and never leaves the server.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "generate_deploy_files",
+    "description": "Write the deploy artifacts a project is missing, onto its own checkout.\n\nThe same write `ProvisioningLive`'s \"Generate deploy files\" button performs\n— `DeployArtifacts.generate/2`, which never overwrites a file already there.\nExists as its own tool, not folded into `run_devops_setup`, because it is not\nan ordered step: nothing in the sequence runs it, `devops_status`'s\ndeploy-readiness audit only reads what it should have produced, and an agent\nthat has just read \"missing lib/<app>/release.ex\" from that audit needs a way\nto put it there without a browser.\n\nWrites onto the checkout of whichever project this call is connected to —\nno `project_id` parameter, so there is nothing for a caller to name (or\nmis-name) a different project's tree with.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "import_age_key",
+    "description": "Record an environment's age key when it was generated on a real checkout\nthis server cannot reach, rather than minted here.\n\n`.sops.yaml` and an environment's `envs/*.enc.env` are files that live in\nand get committed to a project's own working tree — real local-filesystem\nwork, the same category as `:repository`'s git push, and just as\nunreachable through the light harness for a project with no checkout on\nthis side. When that local work happens somewhere that *does* have a real\ncheckout instead (a developer's own machine, a harness with a live\nregistration), the private half of the key it generated still has to land\nhere — or the next thing on this side that needs to decrypt (`:deploy`,\nanother secret write) mints a *different* key under the same name, and\nevery ciphertext already committed under the real one becomes unreadable\nto it.\n",
+    "input_schema": {
+      "properties": {
+        "environment": {
+          "description": "Environment name, e.g. \"prod\" or \"uat\".",
+          "type": "string"
+        },
+        "private_key": {
+          "description": "The environment's private age key (AGE-SECRET-KEY-...), as generated by age-keygen.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment",
+        "private_key"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "link_server",
+    "description": "Point a project's environment at a server the account already owns.\n\n`provisioning_environments` used to only ever get a server the setup step\ncreated for it — `server_name`/`ip` filled in as it went. An account-level\nserver (`/app/servers`, story 879) can predate any project that ends up on\nit, or serve more than one at once, and nothing connected the two. This is\nthat connection: once linked, the server step resolves this environment's\nbox by the linked server's real name instead of deriving one from the\nproject, so setup finds the box that's actually there rather than one that\nwas never going to exist under a guessed name.\n\nLink the account's server first (`/app/servers`, or however it's linked)\nbefore calling this — it only points an environment at a server this\naccount already has a record of.\n",
+    "input_schema": {
+      "properties": {
+        "environment": {
+          "description": "Environment name, e.g. \"prod\" or \"uat\".",
+          "type": "string"
+        },
+        "server_name": {
+          "description": "Name of a server already linked to this account, e.g. \"fuellytics-prod\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_name",
+        "environment"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "provider_request",
+    "description": "Make an arbitrary Hetzner, Cloudflare or Resend API call on the agent's\nbehalf, without the agent ever holding the credential.\n\n`Hetzner`/`Cloudflare`/`Resend` each already resolve their own credential\nserver-side and make the authenticated call — that's the same \"agent asks,\nserver acts\" shape every other provisioning tool here already uses. This\nis that plumbing, generalized: the fixed provisioning-step tools\n(`run_devops_setup`, `ensure_environment`, ...) cover the sequence; this\ncovers everything that doesn't fit the sequence — inspecting what's\nalready on a shared box before adopting it, attaching a firewall to a\nserver that already exists, confirming something reached the provider at\nall.\n\nReads are unrestricted. A mutating method (POST/PUT/PATCH/DELETE) without\n`confirm: true` is refused outright — this exists to make destructive\naction against a real account deliberate, not a thing an agent can do by\nconstructing the wrong path on a whim. Every mutating call, confirmed or\nrefused, is logged with enough detail to reconstruct what happened and why.\n",
+    "input_schema": {
+      "properties": {
+        "body": {
+          "description": "JSON body for a mutating request.",
+          "type": "object"
+        },
+        "confirm": {
+          "description": "Required (true) for POST/PUT/PATCH/DELETE. Ignored for GET.",
+          "type": "boolean"
+        },
+        "method": {
+          "description": "HTTP method: GET, POST, PUT, PATCH, DELETE.",
+          "type": "string"
+        },
+        "params": {
+          "description": "Query parameters for a GET request.",
+          "type": "object"
+        },
+        "path": {
+          "description": "Path relative to the provider's API base, e.g. \"/servers\" or \"/zones\".",
+          "type": "string"
+        },
+        "provider": {
+          "description": "\"hetzner\", \"cloudflare\", or \"resend\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "provider",
+        "method"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "provision_account_server",
+    "description": "Bring up (or adopt) one account-owned server: the box itself, its shared\nregistry container, and its shared database container — ready for any\nproject to link an environment onto afterward.\n\nThis is the account-level half of the hard line stories 989/990 drew:\nserver and box-wide container creation live here, never in a project's own\ndevops step (`run_provisioning_step`/`run_devops_setup`), which refuses to\nreach `Hetzner.create_server` under any circumstance\n(`Steps.server_creation_gate/3`). Once this tool has run, a project points\nan environment at the result with `link_server` — this tool never touches a\nproject or an environment itself.\n\nIdempotent both ways — a name the provider already has is adopted, not\nduplicated (`Hetzner.ensure_server/3`), and a name this account has already\nlinked stays linked (`Server.link/2`'s own `on_conflict: :nothing`). Safe to\ncall again for a box whose registry or database came up short the first\ntime; both container checks start from \"is this already true\" before doing\nanything.\n\n## Returns when the run starts, not when it finishes\n\nCreating a box, waiting for it to boot over SSH, and checking its registry\nand database containers can run well past the code-mode sandbox's 30s wall\nclock (issue 4f7929e4) — this used to call `Steps.provision_account_server/3`\nsynchronously and risk a `:brutal_kill` mid-creation, with no cleanup able\nto run. The name is still linked synchronously, so a caller can trust it is\non file the moment this returns; then a spawned task claims this account's\nown lock and only then acks, the same handshake `run_provisioning_step`\nuses. The reply is \"started\" or \"already running\"; an agent that started it\nis messaged the outcome, any other caller calls this tool again to check.\n\nThe lock is the ACCOUNT's, not a project's: the box, its registry and its\ndatabase are shared by every project the account has, so two projects\nracing to provision the same account's server must share one lock rather\nthan each getting their own and racing the provider directly.\n\n## Not yet restricted by identity\n\nNothing today restricts *who* may call this the way `server_creation_gate`\nrestricts what a project-scoped step may do. A dedicated account-level\nagent — with its own tool set excluding this from every project-scoped\ncaller structurally, not just by convention — was part of the original\ndesign for this split and was cut from this round of work as unnecessary\nscope. Until something like it exists, this tool is reachable the same way\nevery other devops tool is: by whatever session is connected, through code\nmode. The refusal that actually matters — no project-scoped path reaches\ncreate-server — holds regardless, enforced in `Steps.ex` itself rather than\nby who is allowed to call this tool.\n",
+    "input_schema": {
+      "properties": {
+        "name": {
+          "description": "The server's name at the provider — an existing box to adopt as the account's, or a new one to create under this name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "query_telemetry",
+    "description": "Read back the calling project's own collected logs and traces.\n\nScoped to the project the call resolves to -- never another project's,\neven when two projects share a telemetry host on the same server. That\nisolation is `CodeMySpec.Telemetry.query/3`'s own contract; this tool\nonly adapts the MCP params into it.\n",
+    "input_schema": {
+      "properties": {
+        "environment": {
+          "description": "Environment name, e.g. \"prod\" or \"uat\".",
+          "type": "string"
+        },
+        "since_days": {
+          "description": "How many days back to read. Defaults to the retention window (14 days) -- nothing older could have survived it anyway.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "environment"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_database_url",
+    "description": "The connection string `:server` already minted for this environment's\ndatabase.\n\n`Database.serve/3` mints and stores this project's role/database\ncredential in `ProjectSecrets` the moment it provisions the container and\ntenant — before the step ever reaches the part that writes it into\n`envs/*.enc.env`, which is real local-filesystem work a project with no\ncheckout on this side cannot complete (the same wall `:repository` hits).\nThis is the read half of that gap: the credential already exists, and a\ncaller with a real checkout elsewhere needs the value itself to encrypt it\nthere, rather than this server minting it a second time somewhere it\ncannot commit anything.\n\n## The value is unverified\n\nThis reads `ProjectSecrets` alone — it does not check that the role or\ndatabase the credential names still exists on the box. `serve/3`'s own\n`sync_password/2` runs unconditionally on every `:server` step, so \"run\n:server, then read this\" is always current; read on its own after the box\nhas been touched independently (recreated, restored, migrated to a new\nserver) can hand back a credential for a tenant that no longer exists,\nwith nothing here to say so.\n",
+    "input_schema": {
+      "properties": {
+        "environment": {
+          "description": "Environment name, e.g. \"prod\" or \"uat\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_project_file",
+    "description": "Read a file from a project's own checkout.\n\nRead-only counterpart to `generate_deploy_files`. `devops_status`'s audit can\nsay a file is misconfigured (`force_ssl` without a health exclusion, say) but\nnever shows the content — and `DeployArtifacts.generate/2` deliberately never\noverwrites a file that already exists, so a misconfigured (as opposed to\nmissing) artifact has no automated fix. Seeing the real content is the step\nbefore deciding how to fix it by hand.\n",
+    "input_schema": {
+      "properties": {
+        "path": {
+          "description": "Path relative to the project root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "read_registry_credential",
+    "description": "The self-hosted registry's address, image path, and credential for this\nproject.\n\n`:server` already minted and stored this project's registry credential in\n`ProjectSecrets` (`Registry.credential/1`) the moment it provisioned the\nregistry container. A caller with a real checkout this server cannot reach\n— updating a hand-written `config/deploy.yml` to point at the self-hosted\nregistry instead of ghcr.io, or logging in to push/pull by hand — needs\nthe actual values, not a second credential minted somewhere it could never\ncommit a config change to use it.\n\n## The address is per environment, not per project\n\nTwo environments can live on two different boxes with two different real\nregistry addresses — `Registry.default_host/0`'s \"localhost:5000\" is only\never right for a registry bound to loopback, not true of a shared box's\ncontainer today. `environment` resolves the same way\n`DeployArtifacts`/`ProvisioningLive`'s own generated configs do\n(`Steps.registry_address/3`: this server's own adopted network, never one\nderived from the project's name), so the address is real rather than a\nproject-wide placeholder.\n",
+    "input_schema": {
+      "properties": {
+        "environment": {
+          "description": "Environment name, e.g. \"prod\" or \"uat\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "run_devops_setup",
+    "description": "Build the infrastructure that is missing, for the project this call is\nconnected to.\n\nThis provisions **real resources in real accounts** — servers, DNS records,\nbuckets, sending domains — and they cost money and change where mail and\ntraffic go. It is the same run the provisioning page's per-project button\nperforms.\n\nNo `project_id` parameter, on purpose. This used to take one, and\nseparately accepted omitting it entirely as a bulk \"build every project\nwhose devops level is not off\" mode — either shape let a caller name (or\nfail to name) a *different* project than the one this call is actually\nconnected to, sometimes triggering real, costed provisioning on projects\nnobody asked to touch. Found during an audit prompted by a real,\nunrelated cross-project leak in `devops_status`. The only project this\ntool can ever act on now is `Validators.devops_project/1`'s answer —\nwhichever project the connection itself identifies (the harness's own\n`X-Project-ID` header, or the configured project for stdio) — the same\nfix applied to every other devops tool.\n\nThe sequence is ordered and halts on the first failure, which is deliberate —\nthe ordering *is* the dependency model. A step that pauses is waiting on a\ndecision only a person can make (a credential that cannot be minted through\nan API, an apex that is already serving a live site); read what it says\nrather than retrying it.\n\nCall `devops_status` first. If it reports a provider unreachable, the answer\nis unknown rather than \"not done\", and running setup on that basis may build\nthings that already exist.\n\n## This returns as soon as the run starts, not when it finishes\n\nA real run can take minutes — deploy alone has measured ~167s — which is\nlonger than this tool's own transport waits for a reply. Calling and then\nwaiting for a definitive \"complete\" here will time out even when the run is\nproceeding normally; call `devops_status` afterward to watch it converge\ninstead of retrying this call. Retrying while a run is still going does not\nstart a second one — the project is locked for the run's duration and the\nretry is told a run is already in progress, rather than racing the first\nrun's writes against the same provider.\n\nAn agent that started the run is messaged how it ended instead, and is not\nnudged meanwhile (`Starter`, `Agents.Waiting`).\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "run_provisioning_step",
+    "description": "Run one named provisioning step directly, skipping the sequence's own\nhalt-on-first-failure ordering.\n\n`run_devops_setup` walks `Sequence.for_options/1` in order and halts at the\nfirst step that is not done. That stops being useful when an earlier step is\nblocked for a reason unrelated to later ones — `:repository` and `:secrets`\nneed a local checkout the light harness cannot provide, while provider-API\nsteps (`:server`, `:domain`, `:dns`, …) can still be verified. This bypasses\nordering only: the step is the same `Provisioning.run_step/3`, verified\nagainst the provider first, under the same `RunLock`, and a step that cannot\nrun yet is still that step's to refuse.\n\n## Confirmations an agent can give\n\n`inbound_probe_to`, `confirm_apex_repoint` and `confirm_inbound_mx_repoint`\ncarry the answers a step pauses for, so an agent with no person at the\nconsole can supply them. `:server` never creates a server here: an unlinked\nenvironment's step always pauses; only `Steps.provision_account_server/3`,\nthrough the account-level tool, creates one.\n\n## Returns when the step starts, not when it finishes\n\nA step can outlive the caller's transport and the code-mode sandbox's 30s\nwall clock (`:deploy` takes minutes). The spawned task claims `RunLock` and\nonly then acks, so the reply is \"started\" or \"already running\". An agent\nthat started the step is messaged its outcome; any other caller watches\n`devops_status`.\n\nSee knowledge/tools, \"run_provisioning_step\".\n",
+    "input_schema": {
+      "properties": {
+        "confirm_apex_repoint": {
+          "description": "For the \"dns\" step only: the apex already resolves somewhere, and this run would repoint it at a server it just created — which takes down whatever is live there today. The step pauses and names the current and new address instead of doing this silently; set this to true once that repoint is actually wanted, and call the step again.",
+          "type": "boolean"
+        },
+        "confirm_inbound_mx_repoint": {
+          "description": "For the \"inbound\" step only: the domain already has an MX record, and publishing Resend's here would replace rather than add to it — which can silently redirect or break mail that already routes through the existing one. The step pauses and names the current record instead of doing this silently; set this to true once that replacement is actually wanted, and call the step again.",
+          "type": "boolean"
+        },
+        "environment": {
+          "description": "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended.",
+          "type": "string"
+        },
+        "force": {
+          "description": "Skip verification and run the step unconditionally, even if the provider already reports it satisfied. A step's own claim of \"satisfied\" can be narrower than everything its run actually does — e.g. \"server\" only checks the box and DATABASE_URL exist, not that the box's docker daemon trusts the registry it should. Every step's run is idempotent, so this is safe to use whenever a step reports done but something it should have set up still isn't.",
+          "type": "boolean"
+        },
+        "inbound_probe_to": {
+          "description": "For the \"inbound\" step only: an address on the project's own domain to prove receiving works (e.g. \"sam@example.com\"). Resend accepts mail only to addresses configured for the domain, so this cannot be guessed.",
+          "type": "string"
+        },
+        "step": {
+          "description": "One of: repository, server, secrets, domain, dns, tls, deploy, email, inbound, storage, backups, content, widget, callback_credential, monitoring, telemetry.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "save_provider_credential",
+    "description": "Save one provider credential — a Hetzner, Cloudflare or Resend API key —\non the agent's behalf.\n\nFor the case `ProviderRequest`'s own \"agent asks, server acts\" shape\ndoesn't cover: an agent that has *obtained* a credential (from the\nperson it's working with, from a setup wizard elsewhere) and needs it on\nfile before the provisioning steps that read it can run. The value is\nwritten straight through to `Credentials.put_value/3` — the same write\nthe console's own credentials form makes — and never echoed back.\n",
+    "input_schema": {
+      "properties": {
+        "key": {
+          "description": "Catalogue key, e.g. \"hetzner_api_token\", \"cloudflare_api_token\", \"resend_api_key\".",
+          "type": "string"
+        },
+        "value": {
+          "description": "The credential's value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value",
+        "key"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "write_project_file",
+    "description": "Overwrite a file in a project's own checkout.\n\n`DeployArtifacts.generate/2` deliberately never touches a file that already\nexists — a project that customised its Dockerfile did so for a reason. That\nis right for *scaffolding* a missing artifact and wrong for *fixing* one\n`devops_status`'s audit has already named as misconfigured (`force_ssl`\nwithout a health exclusion, say): there, the file exists, is wrong, and\nregenerating from the template would silently discard whatever else the\nproject put there. This is the deliberate, explicit override for that case —\nread the real content with `read_project_file` first, change only what needs\nchanging, and write the whole file back.\n",
+    "input_schema": {
+      "properties": {
+        "content": {
+          "description": "Full file content — this replaces whatever is there.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path relative to the project root.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "type": "object"
+    }
+  }
+]

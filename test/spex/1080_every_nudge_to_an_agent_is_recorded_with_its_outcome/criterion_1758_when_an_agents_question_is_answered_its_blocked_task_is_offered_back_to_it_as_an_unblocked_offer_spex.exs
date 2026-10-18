@@ -11,17 +11,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers, only: [offers: 3, listing: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -56,8 +52,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
             acceptance_criteria: ["Receipts are readable"]
           )
 
-        {:reply, started, _} = start_design(context, other)
-        refute started.isError, response_text(started)
+        started = start_design(context, other)
+        assert match?({:ok, _}, started), response_text(started)
         :ok = Fixtures.drain_background_work()
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.product_id)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
@@ -79,8 +75,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
       end
 
       then_ "and the answered design cannot be resumed beside the active one", context do
-        {:reply, refused, _} = start_design(context)
-        assert refused.isError
+        refused = start_design(context)
+        assert match?({:error, _}, refused)
         assert response_text(refused) =~ "beside your active task"
         assert active(context) == [context.other_task]
         {:ok, context}
@@ -105,18 +101,31 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
       end
 
       when_ "it triages the issue, finishes the task, and ends its turn", context do
-        {:reply, dismissed, _} =
-          DismissIssue.execute(
+        dismissed =
+          ToolLibrary.run(
+            "dismiss_issue",
             %{issue_id: context.issue, reason: "Duplicate of a known receipts bug"},
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute dismissed.isError, response_text(dismissed)
+        assert match?({:ok, _}, dismissed), response_text(dismissed)
 
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: context.triage_task}, context.product_frame)
+        evaluated =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.triage_task},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
 
-        refute evaluated.isError, response_text(evaluated)
+        assert match?({:ok, _}, evaluated), response_text(evaluated)
         :ok = Fixtures.drain_background_work()
         :ok = Fixtures.put_agent_mid_turn(context.scope, context.product_id)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
@@ -137,8 +146,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
       end
 
       then_ "and resuming it makes it the one active task", context do
-        {:reply, resumed, _} = start_design(context)
-        refute resumed.isError, response_text(resumed)
+        resumed = start_design(context)
+        assert match?({:ok, _}, resumed), response_text(resumed)
         assert active(context) == [context.design_task]
         {:ok, context}
       end
@@ -160,12 +169,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
     context = Map.merge(context, %{product_id: product.id, product_frame: frame, story: story})
 
     :ok = Fixtures.start_turn(context.scope, product.id)
-    {:reply, started, _} = start_design(context)
-    refute started.isError, response_text(started)
+    started = start_design(context)
+    assert match?({:ok, _}, started), response_text(started)
     design_task = extract_task_id!(started)
 
-    {:reply, asked, _} =
-      AskUserQuestion.execute(
+    asked =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           task_id: design_task,
           questions: [
@@ -175,13 +185,19 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
             }
           ]
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute asked.isError, response_text(asked)
+    assert match?({:ok, _}, asked), response_text(asked)
     :ok = Fixtures.end_turn(context.scope, product.id, [])
 
-    {:reply, tasks, _} = ListTasks.execute(%{}, frame)
+    tasks =
+      ToolLibrary.run(
+        "list_tasks",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     [_, question] = Regex.run(~r/blocked on question `([0-9a-f-]+)`/, response_text(tasks))
     Map.merge(context, %{design_task: design_task, question: question})
   end
@@ -191,44 +207,60 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
     context = asked_about_design(context)
     frame = context.product_frame
 
-    {:reply, filed, _} =
-      CreateIssue.execute(
+    filed =
+      ToolLibrary.run(
+        "create_issue",
         %{title: "Receipts print the wrong total", description: "Seen in QA", severity: "medium"},
-        %Frame{assigns: %{current_scope: context.scope}}
+        %{scope: context.scope}
       )
 
-    refute filed.isError, response_text(filed)
+    assert match?({:ok, _}, filed), response_text(filed)
     [issue | _] = Regex.run(~r/[0-9a-f]{8}-[0-9a-f-]{27}/, response_text(filed))
 
-    {:reply, triage, _} =
-      StartTask.execute(
+    triage =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "issues_triaged",
           entity_type: "project",
           entity_id: to_string(context.project.id)
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute triage.isError, response_text(triage)
+    assert match?({:ok, _}, triage), response_text(triage)
     flush_transport()
 
     Map.merge(context, %{issue: issue, triage_task: extract_task_id!(triage)})
   end
 
   defp start_design(context, story \\ nil) do
-    StartTask.execute(
+    ToolLibrary.run(
+      "start_task",
       %{
         requirement_name: "three_amigos_complete",
         entity_type: "story",
         entity_id: to_string((story || context.story).number)
       },
-      context.product_frame
+      Map.put(
+        context.product_frame.assigns,
+        :scope,
+        context.product_frame.assigns[:current_scope]
+      )
     )
   end
 
   defp active(context) do
-    {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.product_frame)
+    tasks =
+      ToolLibrary.run(
+        "list_tasks",
+        %{status: "active"},
+        Map.put(
+          context.product_frame.assigns,
+          :scope,
+          context.product_frame.assigns[:current_scope]
+        )
+      )
 
     ~r/`([0-9a-f-]{36})`/
     |> Regex.scan(response_text(tasks), capture: :all_but_first)

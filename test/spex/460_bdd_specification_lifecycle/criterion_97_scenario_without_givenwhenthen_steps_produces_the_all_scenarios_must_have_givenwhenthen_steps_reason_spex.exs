@@ -16,18 +16,20 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Scenario with no steps → 'All scenarios must have Given/When/Then steps' feedback", criterion: 97 do
+  spex "Scenario with no steps → 'All scenarios must have Given/When/Then steps' feedback",
+    criterion: 97 do
     scenario "stepless scenario → feedback names the criterion + the literal reason" do
       given_ :synced_context_component
 
@@ -47,8 +49,13 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
       given_ "a spec file exists with a scenario that has no Given/When/Then steps", context do
         [criterion] = context.story.criteria
         spec_path = Fixtures.spec_file_path(context.story, criterion)
+
         :ok =
-          Environments.write_file(context.environment, spec_path, stepless_spec_content(criterion.id))
+          Environments.write_file(
+            context.environment,
+            spec_path,
+            stepless_spec_content(criterion.id)
+          )
 
         Fixtures.deliver_manifest(context.scope)
 
@@ -58,10 +65,11 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
       when_ "the agent calls evaluate_task on the active task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

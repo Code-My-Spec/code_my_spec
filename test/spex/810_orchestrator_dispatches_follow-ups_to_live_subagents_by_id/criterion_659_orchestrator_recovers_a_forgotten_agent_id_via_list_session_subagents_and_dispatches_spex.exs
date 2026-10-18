@@ -17,8 +17,9 @@ defmodule CodeMySpecSpex.Story810.Criterion6530Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -51,8 +52,12 @@ defmodule CodeMySpecSpex.Story810.Criterion6530Spex do
       when_ "the orchestrator calls list_session_subagents", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListSessionSubagents.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_session_subagents",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :prompt, TaskResponseHelpers.response_text(response))}
       end

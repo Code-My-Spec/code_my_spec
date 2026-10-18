@@ -15,8 +15,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1960Spex do
 
   use CodeMySpecSpex.Case
 
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
+  alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,8 +39,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1960Spex do
       end
 
       when_ "the agent asks whether the infrastructure exists", context do
-        {:reply, response, _frame} =
-          DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("devops_status", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

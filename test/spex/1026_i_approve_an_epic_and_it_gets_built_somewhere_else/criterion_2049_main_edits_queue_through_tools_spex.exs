@@ -7,14 +7,13 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
   alias CodeMySpecSpex.WorkingCopyHelpers
@@ -116,8 +115,15 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
     copy_id = reply[:working_copy_id]
     frame = %Frame{assigns: %{current_scope: context.main_scope, agent_id: context.main.id}}
     epic_name = "Tool-managed epic #{System.unique_integer([:positive])}"
-    {:reply, created, _} = CreateEpic.execute(%{name: epic_name}, frame)
-    false = created.isError
+
+    created =
+      ToolLibrary.run(
+        "create_epic",
+        %{name: epic_name},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    {:ok, _} = created
     [_, epic_id] = Regex.run(~r/ID: ([^,\s]+)/, response_text(created))
 
     stories =
@@ -129,13 +135,14 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
             acceptance_criteria: ["It works"]
           )
 
-        {:reply, assigned, _} =
-          AssignStoryToEpic.execute(
+        assigned =
+          ToolLibrary.run(
+            "assign_story_to_epic",
             %{story_number: story.number, epic_name: epic_name},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        false = assigned.isError
+        {:ok, _} = assigned
         story
       end
 
@@ -155,13 +162,14 @@ defmodule CodeMySpecSpex.Story1026.Criterion2049Spex do
   defp place_epic(false, _frame, _epic_id, _copy_id), do: :ok
 
   defp place_epic(true, frame, epic_id, copy_id) do
-    {:reply, placed, _} =
-      AssignEpicToWorkingCopy.execute(
+    placed =
+      ToolLibrary.run(
+        "assign_epic_to_working_copy",
         %{epic_id: epic_id, working_copy_id: copy_id},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    false = placed.isError
+    {:ok, _} = placed
   end
 
   defp subject(context, :story), do: "story_number = #{context.selected.number}"

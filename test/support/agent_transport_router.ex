@@ -148,7 +148,8 @@ defmodule CodeMySpecTest.AgentTransportRouter do
 
   @impl true
   def request_work_turn(copy, agent, ref, message, timeout),
-    do: transport(agent.project_id, agent.id).request_work_turn(copy, agent, ref, message, timeout)
+    do:
+      transport(agent.project_id, agent.id).request_work_turn(copy, agent, ref, message, timeout)
 
   @impl true
   def stop_agent(copy, agent, timeout),

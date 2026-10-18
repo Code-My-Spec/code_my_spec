@@ -58,7 +58,7 @@ defmodule CodeMySpec.McpServers.AgentLifecycleIsMainOnlyTest do
 
   test "none of the five is on the spine or carried directly" do
     spine = Enum.map(LocalServer.registrations(), & &1.name)
-    carried = [role: :main] |> Engine.tools() |> Enum.map(& &1.name())
+    carried = [role: :main] |> Engine.tools() |> Enum.map(&Engine.tool_name/1)
 
     for name <- @lifecycle do
       refute name in spine, "`#{name}` is on the spine"

@@ -7,10 +7,8 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
 
   import ExUnit.Assertions
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -46,8 +44,14 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
         %{number: number} -> %{issue_id: issue.id, category: "bug", story_number: number}
       end
 
-    {:reply, reply, _} = AcceptIssue.execute(params, frame(context))
-    refute reply.isError, response_text(reply)
+    reply =
+      ToolLibrary.run(
+        "accept_issue",
+        params,
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, reply), response_text(reply)
     context
   end
 
@@ -55,8 +59,15 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
   @spec qa_plan_missing(map()) :: map()
   def qa_plan_missing(context) do
     :ok = CodeMySpec.Environments.delete_file(context.environment, ".code_my_spec/qa/plan.md")
-    {:reply, reply, _} = SyncProject.execute(%{}, frame(context))
-    refute reply.isError, response_text(reply)
+
+    reply =
+      ToolLibrary.run(
+        "sync_project",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, reply), response_text(reply)
     context
   end
 
@@ -75,7 +86,7 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
   def start_project(context, agent, name) do
     Slice.attempt(
       context,
-      StartTask,
+      "start_task",
       %{
         requirement_name: name,
         entity_type: "project",

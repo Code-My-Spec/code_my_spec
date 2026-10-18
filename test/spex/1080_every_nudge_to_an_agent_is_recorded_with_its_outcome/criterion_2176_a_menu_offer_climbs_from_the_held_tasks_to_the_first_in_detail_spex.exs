@@ -10,8 +10,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
 
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -39,25 +38,26 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = agent_frame(context, coder.id)
 
-        {:reply, first, _} = StartTask.execute(next_task(context, coder.id), frame)
-        refute first.isError, TaskResponseHelpers.response_text(first)
+        first = ToolLibrary.run("start_task", next_task(context, coder.id), tool_context(frame))
+        assert match?({:ok, _}, first), TaskResponseHelpers.response_text(first)
         task_id = TaskResponseHelpers.extract_task_id!(first)
 
         # One active task at a time: the first is held blocked on a question
         # while the coder takes the other beside it.
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
             },
-            frame
+            tool_context(frame)
           )
 
-        refute asked.isError, TaskResponseHelpers.response_text(asked)
+        assert match?({:ok, _}, asked), TaskResponseHelpers.response_text(asked)
 
-        {:reply, second, _} = StartTask.execute(next_task(context, coder.id), frame)
-        refute second.isError, TaskResponseHelpers.response_text(second)
+        second = ToolLibrary.run("start_task", next_task(context, coder.id), tool_context(frame))
+        assert match?({:ok, _}, second), TaskResponseHelpers.response_text(second)
         other_task_id = TaskResponseHelpers.extract_task_id!(second)
 
         {:ok,
@@ -90,4 +90,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
       end
     end
   end
+
+  # A tool runs from a frame's assigns, with the scope under the key ToolLibrary reads.
+  defp tool_context(%{assigns: assigns}), do: Map.put(assigns, :scope, assigns[:current_scope])
 end

@@ -1,12 +1,14 @@
 defmodule CodeMySpec.Hooks.SessionStart do
   @moduledoc """
-  The SessionStart hook — find or create the session this agent is working in.
+  The SessionStart hook — find or create the session this agent is working in,
+  and the agent a terminal session is (story 1122).
 
   Entirely a database operation, so there is nothing here that needs the
   machine the agent is running on. A harness with no database of its own can
   only forward it.
   """
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
 
@@ -20,17 +22,18 @@ defmodule CodeMySpec.Hooks.SessionStart do
   @spec handle(CodeMySpec.Users.Scope.t(), map()) :: {pos_integer(), map()}
   def handle(scope, params) do
     case Map.get(params, "session_id") do
-      id when is_binary(id) and id != "" -> create(scope, id)
+      id when is_binary(id) and id != "" -> create(scope, id, params["messaging"])
       _ -> {400, %{error: "session_id is required"}}
     end
   end
 
-  defp create(scope, session_id) do
+  defp create(scope, session_id, messaging) do
     case Sessions.find_or_create_session(scope, session_id) do
       {:ok, session} ->
         {200,
          %{session_id: session.id, status: to_string(session.status)}
-         |> maybe_warn_co_occupant(scope, session)}
+         |> maybe_warn_co_occupant(scope, session)
+         |> introduce(Agents.register_terminal(scope, session_id), messaging)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {422, %{error: inspect(changeset.errors)}}
@@ -39,6 +42,32 @@ defmodule CodeMySpec.Hooks.SessionStart do
         {422, %{error: inspect(reason)}}
     end
   end
+
+  # The agent hears who it is: its id and the role it joined as, which it
+  # settles with the person, and — when its harness found messages cannot
+  # reach it directly — why they arrive when it stops (story 1123).
+  # Registration failing leaves the session working.
+  defp introduce(body, {:ok, agent}, messaging) do
+    body
+    |> Map.put(:agent_id, agent.id)
+    |> Map.put(:hookSpecificOutput, %{
+      hookEventName: "SessionStart",
+      additionalContext:
+        "You are agent #{agent.id} on this project, registered as its #{agent.role} agent. " <>
+          "Main is the default; ask the person which role you should take (main, coding, " <>
+          "qa or product) and set it with `set_my_role` if it is not main." <>
+          reached(messaging)
+    })
+  end
+
+  defp introduce(body, _not_registered, _messaging), do: body
+
+  defp reached(%{"delivery" => "stop_hook", "why" => why}),
+    do:
+      " Messages from main and your team cannot reach this session directly, because " <>
+        why <> ", so they are handed to you when you stop."
+
+  defp reached(_messaging), do: ""
 
   # Another agent is already working here, said to the agent rather than to a log.
   #

@@ -39,10 +39,9 @@ defmodule CodeMySpecSpex.Story1016.Criterion2398Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
-  alias CodeMySpec.McpServers.Stories.Tools.ListStoryTitles
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -69,13 +68,18 @@ defmodule CodeMySpecSpex.Story1016.Criterion2398Spex do
         theirs = join_working_copy(context, "/tmp/spex_2398_their_copy", @their_label)
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, created, _frame} =
-          CreateEpic.execute(%{name: @epic_name, description: "Theirs to build"}, frame)
+        created =
+          ToolLibrary.run(
+            "create_epic",
+            %{name: @epic_name, description: "Theirs to build"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, _placed, _frame} =
-          AssignEpicToWorkingCopy.execute(
+        _placed =
+          ToolLibrary.run(
+            "assign_epic_to_working_copy",
             %{epic_id: epic_id(created), working_copy_id: theirs.working_copy_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -87,7 +91,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2398Spex do
       end
 
       when_ "the agent browses its available backlog", context do
-        {:ok, Map.put(context, :backlog, Slice.call(context, ListStoryTitles, %{}))}
+        {:ok, Map.put(context, :backlog, Slice.call(context, "list_story_titles", %{}))}
       end
 
       then_ "both stories remain discoverable", context do

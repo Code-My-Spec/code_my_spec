@@ -3,8 +3,8 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
   import ExUnit.Assertions
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpecSpex.Fixtures
 
   def frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
@@ -18,14 +18,28 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
   end
 
   def report(context) do
-    {:reply, result, _} = CheckIn.execute(%{}, frame(context))
-    refute result.isError, response_text(result)
+    result =
+      ToolLibrary.run(
+        "check_in",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, result), response_text(result)
     Map.put(context, :report, response_text(result))
   end
 
-  def call(context, tool, params) do
-    {:reply, result, _} = tool.execute(params, frame(context))
-    refute result.isError, response_text(result)
-    response_text(result)
+  # A library tool by name (`ToolLibrary`); an MCP component by module.
+  def call(context, name, params) when is_binary(name) do
+    frame = frame(context)
+
+    case ToolLibrary.run(
+           name,
+           params,
+           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+         ) do
+      {:ok, text} -> text
+      {:error, text} -> flunk("#{name} refused: #{text}")
+    end
   end
 end

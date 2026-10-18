@@ -1,8 +1,6 @@
 defmodule CodeMySpecSpex.Story1116.Criterion2094Spex do
   @moduledoc "The assigned story supplies the issue work."
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.StoryIssueBagHelpers, as: Bag
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -55,7 +53,7 @@ defmodule CodeMySpecSpex.Story1116.Criterion2094Spex do
       when_ "coding submits the chosen fix and finishes its task", context do
         context = Bag.submit(context, context.selected)
 
-        Slice.call(context, EvaluateTask, %{task_id: extract_task_id!(context.prompt)}, %{
+        Slice.call(context, "evaluate_task", %{task_id: extract_task_id!(context.prompt)}, %{
           agent_id: context.coding.id
         })
 
