@@ -37,10 +37,10 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     CmsHarness.Web.PermissionController => :loopback,
     CodeMySpec.Workspaces.Runner.Docker => :loopback,
     # QA's probe of an MCP server it was pointed at; its tests start that server.
-    CodeMySpec.McpServers.Qa.Tools.CallMcpServer => :loopback,
+    CodeMySpec.Qa.Tools.CallMcpServer => :loopback,
     # Same shape, one call: trades a deploy key for a token at whatever copy
     # url the caller named; its tests start that server too.
-    CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken => :loopback,
+    CodeMySpec.Qa.Tools.GetLocalAppToken => :loopback,
 
     # Stubbable through a differently-named knob rather than `{Req.Test, Mod}`.
     # Fine, but it means this file cannot check them — if one of these grows a
@@ -91,8 +91,8 @@ defmodule CodeMySpec.HttpClientsAreStubbableTest do
     # will reach the internet — give it a plug rather than adding it here.
     CodeMySpec.Auth.OAuthClient => :unreached,
     CodeMySpec.IndexNow => :unreached,
-    CodeMySpec.McpServers.Bootstrap.Tools.InitProject => :unreached,
-    CodeMySpec.McpServers.Bootstrap.Tools.ListProjects => :unreached,
+    CodeMySpec.Bootstrap.Tools.InitProject => :unreached,
+    CodeMySpec.Bootstrap.Tools.ListProjects => :unreached,
     CodeMySpec.Notifications.NotificationClient => :unreached,
     CodeMySpec.Transcripts.Player => :unreached,
     CodeMySpec.Transcripts.Replayer => :unreached

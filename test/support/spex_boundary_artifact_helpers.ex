@@ -56,19 +56,27 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
     end
 
     unless :framework_denied in skip do
-      :ok = Environments.write_file(env, @denied_calls_relpath, "# Framework: spex denied calls\n")
+      :ok =
+        Environments.write_file(env, @denied_calls_relpath, "# Framework: spex denied calls\n")
     end
 
     unless :framework_send in skip do
-      :ok = Environments.write_file(env, @no_send_relpath, "# Framework: no direct send in spex\n")
+      :ok =
+        Environments.write_file(env, @no_send_relpath, "# Framework: no direct send in spex\n")
     end
 
     unless :local_check in skip do
-      :ok = Environments.write_file(env, @local_check_relpath, "# Project-local: spex whole-module denies\n")
+      :ok =
+        Environments.write_file(
+          env,
+          @local_check_relpath,
+          "# Project-local: spex whole-module denies\n"
+        )
     end
 
     unless :bridge in skip do
-      :ok = Environments.write_file(env, @bridge_relpath, "defmodule MyAppSpex.Fixtures do\nend\n")
+      :ok =
+        Environments.write_file(env, @bridge_relpath, "defmodule MyAppSpex.Fixtures do\nend\n")
     end
 
     unless :plan in skip do

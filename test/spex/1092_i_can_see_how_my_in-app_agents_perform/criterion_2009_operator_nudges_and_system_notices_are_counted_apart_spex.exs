@@ -11,13 +11,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
@@ -72,13 +73,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
       when_ "the operator sends it one message", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, sent, _frame} =
-          MessageAgent.execute(
+        sent =
+          ToolLibrary.run(
+            "message_agent",
             %{agent_id: context.agent.id, message: "double-check the migration order"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute sent.isError, inspect(sent)
+        assert match?({:ok, _}, sent), inspect(sent)
         {:ok, context}
       end
 

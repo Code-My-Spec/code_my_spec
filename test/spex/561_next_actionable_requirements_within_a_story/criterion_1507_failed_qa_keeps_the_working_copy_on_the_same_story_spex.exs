@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3609Spex do
           Regex.run(~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/, finding)
 
         result =
-          Slice.call(context, CodeMySpec.McpServers.Qa.Tools.SubmitQaResult, %{
+          Slice.call(context, "submit_qa_result", %{
             task_id: context.qa_task_id,
             status: "fail",
             issue_ids: [issue_id],

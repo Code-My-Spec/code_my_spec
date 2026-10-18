@@ -35,7 +35,13 @@ defmodule CodeMySpecSpex.Story1116.Criterion1698Spex do
 
       when_ "the coder searches with a row cap smaller than what happened", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        reply = ToolLibrary.run("query_logs", %{limit: 2}, %{scope: frame.assigns.current_scope})
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{limit: 2},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end

@@ -14,9 +14,10 @@ defmodule CodeMySpecSpex.Story1089.Criterion1848Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Qa.QaAttempts
 
   setup :register_log_in_setup_account
@@ -37,15 +38,16 @@ defmodule CodeMySpecSpex.Story1089.Criterion1848Spex do
       when_ "the agent submits a passing result", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, Map.put(context, :attempt_id, extract_attempt_id!(response))}

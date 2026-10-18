@@ -270,9 +270,15 @@ defmodule CodeMySpec.McpServers.CodeMode do
       |> Map.take([:session_id, :agent_id])
       |> Map.put(:scope, frame.assigns.current_scope)
 
-    if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
-      do: tool.script_result(params, context),
-      else: tool.call(params, context)
+    result =
+      if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
+        do: tool.script_result(params, context),
+        else: tool.call(params, context)
+
+    case result do
+      {:error, reason} -> {:error, describe(reason)}
+      ok -> ok
+    end
   end
 
   defp execute(tool, params, frame) do

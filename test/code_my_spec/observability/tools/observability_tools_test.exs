@@ -38,7 +38,12 @@ defmodule CodeMySpec.Observability.ToolsTest do
 
   describe "query_logs" do
     test "an unconfigured project is told to provision telemetry, not given a stack trace", ctx do
-      response = ToolLibrary.run("query_logs", %{}, %{scope: ctx.frame.assigns.current_scope})
+      response =
+        ToolLibrary.run(
+          "query_logs",
+          %{},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        )
 
       assert match?({:error, _}, response)
       assert text(response) =~ "provisioning step"
@@ -51,7 +56,12 @@ defmodule CodeMySpec.Observability.ToolsTest do
         %{"Timestamp" => "t", "SeverityText" => "ERROR", "Body" => "boom", "TraceId" => "abc"}
       ])
 
-      response = ToolLibrary.run("query_logs", %{}, %{scope: ctx.frame.assigns.current_scope})
+      response =
+        ToolLibrary.run(
+          "query_logs",
+          %{},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        )
 
       assert match?({:ok, _}, response)
       assert text(response) =~ "boom"
@@ -98,7 +108,12 @@ defmodule CodeMySpec.Observability.ToolsTest do
         }
       ])
 
-      response = ToolLibrary.run("slow_spans", %{}, %{scope: ctx.frame.assigns.current_scope})
+      response =
+        ToolLibrary.run(
+          "slow_spans",
+          %{},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        )
 
       assert match?({:ok, _}, response)
       assert text(response) =~ "1850ms"
@@ -107,7 +122,12 @@ defmodule CodeMySpec.Observability.ToolsTest do
 
   describe "error_summary" do
     test "an unconfigured project is told to provision telemetry", ctx do
-      response = ToolLibrary.run("error_summary", %{}, %{scope: ctx.frame.assigns.current_scope})
+      response =
+        ToolLibrary.run(
+          "error_summary",
+          %{},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        )
 
       assert match?({:error, _}, response)
       assert text(response) =~ "provisioning step"

@@ -23,7 +23,12 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutputTest do
   end
 
   defp response(params, frame),
-    do: ToolLibrary.run("get_analysis_output", params, %{scope: frame.assigns.current_scope})
+    do:
+      ToolLibrary.run(
+        "get_analysis_output",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+      )
 
   defp page(params, frame) do
     assert {:ok, text} = response(params, frame)

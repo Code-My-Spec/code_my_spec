@@ -18,12 +18,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -53,15 +52,17 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
         ]
 
         for {rule_statement, scenarios} <- rules do
-          {:reply, _add_rule, _frame} =
-            AddRule.execute(
+          _add_rule =
+            ToolLibrary.run(
+              "add_rule",
               %{story_number: context.story.number, statement: rule_statement},
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns.current_scope)
             )
 
           for {kind, title, body} <- scenarios do
-            {:reply, _add_scenario, _frame} =
-              AddScenario.execute(
+            _add_scenario =
+              ToolLibrary.run(
+                "add_scenario",
                 %{
                   story_number: context.story.number,
                   rule_statement: rule_statement,
@@ -69,7 +70,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
                   kind: kind,
                   body: body
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
               )
           end
         end
@@ -80,8 +81,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5899Spex do
       when_ "the agent calls get_story_gherkin", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          GetStoryGherkin.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run("get_story_gherkin", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         {:ok, Map.put(context, :gherkin_response, response)}
       end

@@ -13,11 +13,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2213Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -34,8 +35,15 @@ defmodule CodeMySpecSpex.Story1023.Criterion2213Spex do
                  "no replacement proves nothing"
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = RetireAgent.execute(%{"agent_id" => main.id}, frame)
-        refute reply.isError, "firing the main agent itself failed"
+
+        reply =
+          ToolLibrary.run(
+            "retire_agent",
+            %{"agent_id" => main.id},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
+        assert match?({:ok, _}, reply), "firing the main agent itself failed"
 
         {:ok, Map.put(context, :main, main)}
       end

@@ -18,10 +18,11 @@ defmodule CodeMySpecSpex.Story1023.Criterion2885Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -42,7 +43,14 @@ defmodule CodeMySpecSpex.Story1023.Criterion2885Spex do
 
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
         {:ok, Map.put(context, :reply, reply)}
       end
 
@@ -56,7 +64,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2885Spex do
       end
 
       then_ "and the stop does not wait on it indefinitely while the meter runs", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "the stop reported an error rather than insisting"
 
         {:ok, context}

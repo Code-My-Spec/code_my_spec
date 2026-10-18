@@ -7,6 +7,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import Phoenix.ChannelTest
@@ -18,7 +20,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
@@ -111,8 +112,9 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         [_, issue_1_id] = Regex.run(~r/\(ID: ([0-9a-f-]{36})\)/, response_text(issue_1))
 
-        {:reply, round_1, _frame} =
-          SubmitQaResult.execute(
+        round_1 =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: task_id,
               status: "fail",
@@ -121,10 +123,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
               ],
               issue_ids: [issue_1_id]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns.current_scope)
           )
 
-        refute round_1.isError, inspect(round_1)
+        assert match?({:ok, _}, round_1), inspect(round_1)
 
         {:reply, accepted_1, _frame} =
           AcceptIssue.execute(%{issue_id: issue_1_id, category: "bug"}, asking)
@@ -169,18 +171,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
         [_, issue_2_id] = Regex.run(~r/\(ID: ([0-9a-f-]{36})\)/, response_text(issue_2))
 
-        {:reply, round_2, _frame} =
-          SubmitQaResult.execute(
+        round_2 =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: task_id,
               status: "fail",
               scenarios: [%{name: "save", status: "fail", observation: "save button now errors"}],
               issue_ids: [issue_2_id]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns.current_scope)
           )
 
-        refute round_2.isError, inspect(round_2)
+        assert match?({:ok, _}, round_2), inspect(round_2)
 
         {:reply, accepted_2, _frame} =
           AcceptIssue.execute(%{issue_id: issue_2_id, category: "bug"}, asking)
@@ -212,18 +215,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         refute resumed_2.isError, inspect(resumed_2)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(resumed_2))
 
-        {:reply, round_3, _frame} =
-          SubmitQaResult.execute(
+        round_3 =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: task_id,
               status: "pass",
               scenarios: [%{name: "save", status: "pass", observation: "saves correctly now"}],
               issue_ids: []
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns.current_scope)
           )
 
-        refute round_3.isError, inspect(round_3)
+        assert match?({:ok, _}, round_3), inspect(round_3)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:story, story)}
       end

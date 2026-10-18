@@ -8,13 +8,14 @@ defmodule CodeMySpecSpex.Story726.Criterion6441Spex do
   well-formed payload returns success with an attempt id in the
   response.
 
-  Surface: `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
+  Surface: `CodeMySpec.Qa.Tools.SubmitQaResult`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,22 +34,23 @@ defmodule CodeMySpecSpex.Story726.Criterion6441Spex do
       when_ "the agent calls submit_qa_result with task_id and status pass", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, Map.put(context, :submit_response, response)}
       end
 
       then_ "the response is successful and contains an attempt id", context do
-        refute context.submit_response.isError,
+        assert match?({:ok, _}, context.submit_response),
                "expected non-error response, got:\n#{inspect(context.submit_response)}"
 
         text = response_text(context.submit_response)

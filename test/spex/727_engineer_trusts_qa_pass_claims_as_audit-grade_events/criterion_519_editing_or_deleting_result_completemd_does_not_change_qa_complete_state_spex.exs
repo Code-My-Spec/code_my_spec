@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
   malice) cannot move the requirement off "satisfied."
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed the pass)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed the pass)
   - `CodeMySpec.Environments.write_file/3` (write the file)
   - `CodeMySpec.Environments` delete via `write_file` rewrite or
     direct filesystem cleanup helper
@@ -20,9 +20,10 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,18 +35,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, submit_response, _frame} =
-          SubmitQaResult.execute(
+        submit_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute submit_response.isError
+        assert match?({:ok, _}, submit_response)
 
         result_path = ".code_my_spec/qa/#{context.story.id}/result_complete.md"
         :ok = Environments.write_file(context.environment, result_path, "# legacy file\n")

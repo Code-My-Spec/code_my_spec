@@ -10,16 +10,17 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
   qa_complete stays satisfied.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed)
-  - `CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt` (rejected)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed)
+  - `CodeMySpec.Qa.Tools.InvalidateQaAttempt` (rejected)
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
     (qa_complete unchanged)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,18 +31,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
       given_ "a story with a passed QA attempt", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, submit_response, _frame} =
-          SubmitQaResult.execute(
+        submit_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute submit_response.isError
+        assert match?({:ok, _}, submit_response)
         attempt_id = extract_attempt_id!(response_text(submit_response))
 
         {:ok, Map.put(context, :attempt_id, attempt_id)}
@@ -50,10 +52,11 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
       when_ "the engineer calls invalidate_qa_attempt with an empty reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          InvalidateQaAttempt.execute(
+        response =
+          ToolLibrary.run(
+            "invalidate_qa_attempt",
             %{attempt_id: context.attempt_id, reason: ""},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, Map.put(context, :invalidate_response, response)}
@@ -61,7 +64,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
 
       then_ "the tool returns a structured error naming the missing reason",
             context do
-        assert context.invalidate_response.isError,
+        assert match?({:error, _}, context.invalidate_response),
                "expected error response, got: #{inspect(context.invalidate_response)}"
 
         text = response_text(context.invalidate_response)

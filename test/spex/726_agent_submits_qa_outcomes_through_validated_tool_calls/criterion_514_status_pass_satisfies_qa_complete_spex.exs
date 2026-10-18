@@ -8,14 +8,15 @@ defmodule CodeMySpecSpex.Story726.Criterion6449Spex do
   the qa_complete requirement.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,18 +35,19 @@ defmodule CodeMySpecSpex.Story726.Criterion6449Spex do
       when_ "the agent submits with status pass", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, context}
       end
 

@@ -12,15 +12,17 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
 
   Surfaces:
   - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
   - `CodeMySpec.McpServers.Issues.Tools.ListIssues`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.{CreateIssue, ListIssues}
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -53,18 +55,19 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
         refute issue_response.isError
         issue_id = extract_issue_id!(response_text(issue_response))
 
-        {:reply, submit_response, _frame} =
-          SubmitQaResult.execute(
+        submit_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "probe", status: "pass", observation: "found one"}],
               issue_ids: [issue_id]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute submit_response.isError
+        assert match?({:ok, _}, submit_response)
 
         {:ok,
          context |> Map.put(:issue_id, issue_id) |> Map.put(:submit_response, submit_response)}

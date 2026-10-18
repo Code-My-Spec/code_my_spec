@@ -1,7 +1,6 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2114Spex do
   @moduledoc "Settled and off agents are counts with a detail lookup"
   use CodeMySpecSpex.Case
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
@@ -21,7 +20,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion2114Spex do
         context = Compact.fleet(context, 25)
 
         for agent <- Enum.take(context.agents, 5) do
-          Compact.call(context, TurnOffAgent, %{agent_id: agent.id, reason: "Operator hold"})
+          Compact.call(context, "turn_off_agent", %{agent_id: agent.id, reason: "Operator hold"})
         end
 
         {:ok, context}

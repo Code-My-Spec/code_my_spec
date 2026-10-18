@@ -47,20 +47,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
   component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
   component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
-  component(CodeMySpec.McpServers.BddRules.Tools.AddRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.UpdateRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.DeleteRule)
-  component(CodeMySpec.McpServers.BddRules.Tools.ListRules)
-  component(CodeMySpec.McpServers.BddRules.Tools.AddScenario)
-  component(CodeMySpec.McpServers.BddRules.Tools.UpdateScenario)
-  component(CodeMySpec.McpServers.BddRules.Tools.AddQuestion)
-  component(CodeMySpec.McpServers.BddRules.Tools.ListQuestions)
-  component(CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion)
-  component(CodeMySpec.McpServers.BddRules.Tools.GetStoryGherkin)
-  component(CodeMySpec.McpServers.Qa.Tools.SubmitQaResult)
-  component(CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult)
-  component(CodeMySpec.McpServers.Qa.Tools.ListQaAttempts)
-  component(CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt)
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
   component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
@@ -78,12 +64,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
   component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
   component(CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InitProject)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallRules)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallCredoChecks)
-  component(CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd)
   component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
   component(CodeMySpec.McpServers.Stories.Tools.RetireStory)
@@ -170,7 +150,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion)
   component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
-  component(CodeMySpec.McpServers.Agents.Tools.ListAgents)
   # The performance page as Markdown, for an agent to plan improvements from.
 
   # The main agent's view across its working copies, and the one act it can
@@ -188,10 +167,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)
   # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
   # any of these.
-  component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.TurnOffAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.TurnOnAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.RetireAgent)
   component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
   component(CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous)
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
@@ -202,12 +177,10 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.MainAgent.Tools.CheckIn)
   component(CodeMySpec.McpServers.MainAgent.Tools.Cadence)
 
+  component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
+
   # Agents are given work by role rather than spawned on request, so what one
   # needs of another is a message, not a handle on its lifecycle.
-  component(CodeMySpec.McpServers.Agents.Tools.MessageAgent)
-  component(CodeMySpec.McpServers.Agents.Tools.WithdrawMessage)
-  component(CodeMySpec.McpServers.Qa.Tools.CallMcpServer)
-  component(CodeMySpec.McpServers.Qa.Tools.GetLocalAppToken)
   # Story 1116 ("1082"): every agent role reads its own project's deployed
   # logs and traces. Granted to every role in `RoleProfile`, not main-only.
 

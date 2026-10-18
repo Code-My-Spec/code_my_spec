@@ -23,12 +23,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -57,26 +57,42 @@ defmodule CodeMySpecSpex.Story1023.Criterion2880Spex do
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
+        listing =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         agent_id =
           ~r/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/
           |> Regex.run(response_text(listing))
           |> agent_id_match(listing)
 
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => agent_id}, frame)
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => agent_id},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, context |> Map.put(:reply, reply) |> Map.put(:agent_id, agent_id)}
       end
 
       then_ "it stops being listed as starting", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "an agent that never came up could not be cancelled: " <>
                  "#{response_text(context.reply)}. That leaves a row the operator " <>
                  "can neither use nor remove, still claiming a lane on the page."
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, after_stop, _frame} = ListAgents.execute(%{}, frame)
+
+        after_stop =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         refute response_text(after_stop) =~ context.agent_id,
                "the agent is still listed after being stopped. " <>

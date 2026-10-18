@@ -69,8 +69,12 @@ defmodule CodeMySpecTest.DataCase do
       |> MapSet.difference(before)
 
     cond do
-      Enum.empty?(still_running) -> :ok
-      System.monotonic_time(:millisecond) >= deadline -> :ok
+      Enum.empty?(still_running) ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        :ok
+
       true ->
         Process.sleep(10)
         await_background_work(before, deadline)

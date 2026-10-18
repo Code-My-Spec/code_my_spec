@@ -7,13 +7,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -60,10 +61,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2034Spex do
               "double-check the index",
               "re-run the suite"
             ] do
-          {:reply, sent, _frame} =
-            MessageAgent.execute(%{agent_id: agent.id, message: reason}, frame)
+          sent =
+            ToolLibrary.run(
+              "message_agent",
+              %{agent_id: agent.id, message: reason},
+              Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            )
 
-          refute sent.isError, inspect(sent)
+          assert match?({:ok, _}, sent), inspect(sent)
         end
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:story, story)}

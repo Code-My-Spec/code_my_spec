@@ -126,8 +126,6 @@ defmodule CodeMySpecSpex.SharedGivens do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentGraphHelpers
@@ -217,16 +215,19 @@ defmodule CodeMySpecSpex.SharedGivens do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: context.persona_id, story_number: story.number},
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
     rule_statement = "Example context behaves as expected"
 
-    {:reply, _response, _frame} =
-      AddRule.execute(%{story_number: story.number, statement: rule_statement}, frame)
+    _response =
+      ToolLibrary.run("add_rule", %{story_number: story.number, statement: rule_statement}, %{
+        scope: frame.assigns.current_scope
+      })
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -235,11 +236,12 @@ defmodule CodeMySpecSpex.SharedGivens do
           body:
             "Given the user opens the page\nWhen they click the button\nThen the action succeeds"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
-    {:reply, _response, _frame} =
-      AddScenario.execute(
+    _response =
+      ToolLibrary.run(
+        "add_scenario",
         %{
           story_number: story.number,
           rule_statement: rule_statement,
@@ -248,7 +250,7 @@ defmodule CodeMySpecSpex.SharedGivens do
           body:
             "Given the user is logged out\nWhen they click the button\nThen they are redirected to login"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
     # Sealed, because `three_amigos_complete` reads the seal now. Third copy of
@@ -490,7 +492,7 @@ defmodule CodeMySpecSpex.SharedGivens do
           name: "Founder #{unique}",
           headline: "Solo founder shipping a product without hiring"
         },
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
     persona_id = extract_persona_id(create_response)
@@ -538,7 +540,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       ToolLibrary.run(
         "link_persona_to_story",
         %{persona_id: persona_id, story_number: story.number},
-        %{scope: frame.assigns.current_scope}
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
     {:ok,

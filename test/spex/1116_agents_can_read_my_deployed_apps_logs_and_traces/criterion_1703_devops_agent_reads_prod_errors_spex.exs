@@ -45,7 +45,11 @@ defmodule CodeMySpecSpex.Story1116.Criterion1703Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         reply =
-          ToolLibrary.run("error_summary", %{env: "prod"}, %{scope: frame.assigns.current_scope})
+          ToolLibrary.run(
+            "error_summary",
+            %{env: "prod"},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end

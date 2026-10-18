@@ -15,10 +15,11 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Content
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd
+  alias CodeMySpec.Bootstrap.Tools.Content
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,7 +28,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
   @user_below "\n## Custom Footer\n\nHand-written notes from the user.\n"
   @stale_managed "Old managed section content that should be replaced."
 
-  spex "install_claude_md writes the managed CLAUDE.md section between explicit markers", criterion: 454 do
+  spex "install_claude_md writes the managed CLAUDE.md section between explicit markers",
+    criterion: 454 do
     scenario "Re-install replaces the managed section but preserves user-written content" do
       given_ "CLAUDE.md exists with user-written content above and below the managed markers",
              context do
@@ -45,7 +47,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
 
       when_ "the agent calls install_claude_md again", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallClaudeMd.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_claude_md",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

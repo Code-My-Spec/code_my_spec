@@ -9,11 +9,12 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
@@ -91,8 +92,15 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "[active]"
         assert response_text(tasks) =~ task_id
-        {:reply, roster, _} = ListAgents.execute(%{}, frame)
-        refute roster.isError, response_text(roster)
+
+        roster =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
+        assert match?({:ok, _}, roster), response_text(roster)
 
         {:ok,
          Map.merge(context, %{
@@ -140,8 +148,19 @@ defmodule CodeMySpecSpex.Story538.Criterion1493Spex do
         {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        {:reply, roster, _} = ListAgents.execute(%{}, context.agent_frame)
-        refute roster.isError, response_text(roster)
+
+        roster =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, roster), response_text(roster)
         assert response_text(roster) == context.roster_before
         {:ok, context}
       end

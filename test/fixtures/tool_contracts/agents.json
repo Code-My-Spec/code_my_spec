@@ -1,0 +1,112 @@
+[
+  {
+    "name": "list_agents",
+    "description": "What is running on this project, and on which working copy.\n\nNothing could answer this before: an agent was started by hand with\n`docker exec -d`, supervised by a bash loop, and the application found out a\nrun had ended by noticing it stopped reporting.\n\nThis is what the server was told. The device's own answer arrives over the\nharness channel as `agents_running`, which is a projection of Presence on the\nlane topics — a lane is joined for exactly as long as it is alive. So a row\nhere that the harness has stopped reporting is already marked stopped by the\ntime anybody asks.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "message_agent",
+    "description": "Give a running agent a message and return its delivery disposition.\n\nWithout this an agent could be started, listed and stopped, and never asked\nto do anything — it came up idle and stayed idle until somebody stopped it.\nIt cost nothing, which is why nothing complained, and it also did nothing.\n\nThis is the capability the engine change was chosen for. Delivering a message\nto a detached `pi` process would have meant a named pipe with a writer inside\nthe agent's own process group so it never saw EOF, plus a protocol nobody had\nwritten down. To a supervised process it is a call, and this is the surface\non top of it.\n\nWait only for admission: an idle agent starts, and a busy agent queues the\nmessage for its next turn boundary. The response arrives in the agent's\nconversation. Queuing does not count as delivery when judging its Offer.\n\n`send_now` stops a busy agent's running turn so the message is its next one\n(story 1051); the agent keeps what it did up to its last completed tool call.\nFor a correction to work in progress, use it: queued, the message waits out\nthe very work it corrects. A queued message's id is in the reply, so\n`withdraw_message` can take it back until the agent has it.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Id of the agent to send this to",
+          "type": "string"
+        },
+        "message": {
+          "description": "What to tell the agent — an instruction, a question, or the next piece of work",
+          "type": "string"
+        },
+        "send_now": {
+          "description": "Stop a busy agent's running turn so this message is its next one, instead of waiting for the turn to end. The agent keeps what it did up to its last completed tool call. Use it to correct work in progress.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "message",
+        "agent_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "retire_agent",
+    "description": "Retire an agent: end it for good and free its seat.\n\nNot the same as `turn_off_agent` (39af5611). Off keeps the agent's seat and\ncan be undone with `turn_on_agent`; retired cannot be undone. A retired agent\nnever runs or receives anything again, and `start_agent` may put a new agent\nin its seat. Its conversation stays for history.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Id of the agent to retire",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Optional. Why it is being retired.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "turn_off_agent",
+    "description": "Turn one agent off.\n\nThe only way to stop an agent on purpose (39af5611), and it replaced\n`stop_agent` so there is one. Off is a shutdown, not a note: the process is\nended, and until somebody calls `turn_on_agent` nothing is delivered to it\nand nothing restarts it. Who turned it off, when, and the optional reason are\nshown to the main agent in `check_in` and `list_agent_work`.\n\nOne agent, and only one. A stop that reaps the whole tree, or kills by name\nand catches a sibling, is worse than having no stop at all.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Id of the agent to turn off",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Optional. Why, e.g. \"held until the spec-binding fix lands\".",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "turn_on_agent",
+    "description": "Turn an agent that is off back on, and start it.\n\nThe only way back from `turn_off_agent` (39af5611). `start_agent`,\n`restart_agent` and `message_agent` refuse an agent that is off rather than\nturning it on, so turning one on is always a decision somebody made here.\nSomebody turned it off for a reason: `list_agent_work` shows it. Only turn it\non when that reason no longer applies.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Id of the agent to turn on",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "withdraw_message",
+    "description": "Take back a message sent with `message_agent` that the agent has not picked\nup yet (story 1051).\n\nThe cockpit's Withdraw, for main and the operator: the same mailbox claim\ndecides it, so a withdrawal and the agent taking the message have one\nwinner. Only agents on the caller's own project are reachable.\n",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "description": "Id of the agent the message was sent to",
+          "type": "string"
+        },
+        "message_id": {
+          "description": "The message id `message_agent` replied with",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "message_id"
+      ],
+      "type": "object"
+    }
+  }
+]

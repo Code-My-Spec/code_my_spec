@@ -22,11 +22,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -49,7 +50,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
@@ -65,7 +71,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion2873Spex do
       end
 
       then_ "and the agent no longer shows as running", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "stopping reported an error: #{response_text(context.reply)}"
 
         # "Turned off" since v2.0.372: off is the intent, and the process going

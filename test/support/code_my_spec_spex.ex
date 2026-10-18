@@ -45,6 +45,7 @@ defmodule CodeMySpecSpex do
       CodeMySpec.Intake,
       CodeMySpec.Issues,
       CodeMySpec.McpServers,
+      CodeMySpec.Bootstrap.Tools,
       CodeMySpec.ToolLibrary,
       # A zero-dep leaf exporting only path constants. `ProjectBuilder` has to
       # write where the scanner looks, and hardcoding `.code_my_spec/spec`
