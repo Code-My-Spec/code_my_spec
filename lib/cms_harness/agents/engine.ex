@@ -7,7 +7,6 @@ defmodule CmsHarness.Agents.Engine do
   The process is `Engine.Server`; its state transitions live in `Engine.Impl`.
   """
 
-  alias Alloy.Agent.Server, as: AlloyServer
   alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Engine.Server
 
@@ -17,13 +16,7 @@ defmodule CmsHarness.Agents.Engine do
   def agent_tools(agent_id), do: optional_call(agent_id, :tools, [])
   def mcp_client(agent_id), do: optional_call(agent_id, :mcp_client, nil)
 
-  def history(agent_id) do
-    with {:ok, alloy} <- call(agent_id, :alloy) do
-      {:ok, AlloyServer.messages(alloy)}
-    end
-  catch
-    :exit, {:timeout, _} -> {:error, :busy}
-  end
+  def history(agent_id), do: call(agent_id, :history)
 
   defdelegate stop(agent_id), to: Impl
   defdelegate tools(opts), to: Impl

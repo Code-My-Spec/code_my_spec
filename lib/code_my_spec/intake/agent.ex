@@ -140,10 +140,10 @@ defmodule CodeMySpec.Intake.Agent do
   # call — for a dev box that would otherwise need its own funded Anthropic
   # key just to run an intake conversation. `provider/2` still builds an
   # `:api_key` entry for this branch (there is no separate lookup path per
-  # provider), but `Alloy.Provider.ClaudeCode` has no such config field and
+  # provider), but `AlloyClaudeCode` has no such config field and
   # ignores it — it authenticates the same way the local `claude` CLI always
   # does.
-  defp resolve_provider("claude_code:" <> model_name), do: {Alloy.Provider.ClaudeCode, model_name}
+  defp resolve_provider("claude_code:" <> model_name), do: {AlloyClaudeCode, model_name}
   # No prefix, or one neither provider owns: falls back to Anthropic with the
   # string as given, the same as the default model's own prefix.
   defp resolve_provider(model_name), do: {Alloy.Provider.Anthropic, model_name}

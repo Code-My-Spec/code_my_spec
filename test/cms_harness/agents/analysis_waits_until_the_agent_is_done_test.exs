@@ -18,16 +18,40 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
   # A plain assistant message with no tool calls, so a turn is one round trip
   # and ends as soon as the plug returns.
+  # A streamed reply: the engine runs its turns through `Alloy.stream/3`, and
+  # Alloy's Anthropic stream reads server-sent events.
   defp reply_body do
-    Jason.encode!(%{
-      "id" => "msg_1",
-      "type" => "message",
-      "role" => "assistant",
-      "model" => "claude-opus-5",
-      "content" => [%{"type" => "text", "text" => "ok"}],
-      "stop_reason" => "end_turn",
-      "usage" => %{"input_tokens" => 1, "output_tokens" => 1}
-    })
+    [
+      %{
+        "type" => "message_start",
+        "message" => %{
+          "id" => "msg_1",
+          "type" => "message",
+          "role" => "assistant",
+          "model" => "claude-opus-5",
+          "content" => [],
+          "usage" => %{"input_tokens" => 1, "output_tokens" => 0}
+        }
+      },
+      %{
+        "type" => "content_block_start",
+        "index" => 0,
+        "content_block" => %{"type" => "text", "text" => ""}
+      },
+      %{
+        "type" => "content_block_delta",
+        "index" => 0,
+        "delta" => %{"type" => "text_delta", "text" => "ok"}
+      },
+      %{"type" => "content_block_stop", "index" => 0},
+      %{
+        "type" => "message_delta",
+        "delta" => %{"stop_reason" => "end_turn"},
+        "usage" => %{"output_tokens" => 1}
+      },
+      %{"type" => "message_stop"}
+    ]
+    |> Enum.map_join("", &"event: #{&1["type"]}\ndata: #{Jason.encode!(&1)}\n\n")
   end
 
   # The first request parks until released; later ones answer at once. The plug
@@ -40,7 +64,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
       hold_first_turn(counter, test_pid, :counters.get(counter, 1))
 
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.put_resp_content_type("text/event-stream")
       |> Plug.Conn.resp(200, reply_body())
     end
   end
@@ -163,7 +187,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     agent = start_agent(root, gated_plug(self()), self())
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
 
-    :sys.replace_state(:sys.get_state(engine).alloy, fn state ->
+    :sys.replace_state(engine, fn state ->
       %{state | provider_state: %{session_marker: "preserve-this-session"}}
     end)
 
@@ -185,8 +209,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     assert inspect(history) =~ "first"
     assert inspect(history) =~ "queued instruction"
     assert inspect(history) =~ "interrupted"
-    replacement = :sys.get_state(engine).alloy
-    assert :sys.get_state(replacement).provider_state.session_marker == "preserve-this-session"
+    assert :sys.get_state(engine).provider_state.session_marker == "preserve-this-session"
   end
 
   for mode <- [:direct, :supervised] do
@@ -232,6 +255,43 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     end
   end
 
+  # A turned-off Claude Code agent's `claude -p` kept editing its copy for ten
+  # minutes: stopping an agent closed its ports, which does not end the
+  # programs behind them, and its loop ran on in a task nothing linked.
+  for mode <- [:direct, :supervised] do
+    @tag ownership_mode: mode
+    test "stopping an agent mid-turn stops its #{mode} subprocess", %{
+      root: root,
+      ownership_mode: mode
+    } do
+      test_pid = self()
+      counter = :counters.new(1, [])
+      gated = gated_plug(test_pid)
+
+      plug = fn conn ->
+        start_first_subprocess(counter, test_pid, mode, :counters.get(counter, 1))
+        gated.(conn)
+      end
+
+      agent = start_agent(root, plug, self())
+      assert {:ok, :started} = Machine.send_message(agent, "running", "first")
+      assert_receive {:owned_subprocess, os_pid}, 5_000
+
+      on_exit(fn ->
+        System.cmd("/bin/kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+      end)
+
+      assert_receive {:holding_turn, _execution}, 5_000
+
+      :ok = Machine.stop_agent(agent)
+
+      {_output, status} =
+        System.cmd("/bin/kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
+      assert status != 0, "the agent stopped and its turn's subprocess kept running"
+    end
+  end
+
   defp start_first_subprocess(counter, test_pid, mode, 0) do
     :counters.add(counter, 1, 1)
     start_owned_subprocess(test_pid, mode)
@@ -266,7 +326,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   test "a settle with an empty queue announces", %{root: root} do
     plug = fn conn ->
       conn
-      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.put_resp_content_type("text/event-stream")
       |> Plug.Conn.resp(200, reply_body())
     end
 

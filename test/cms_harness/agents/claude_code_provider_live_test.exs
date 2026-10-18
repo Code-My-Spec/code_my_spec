@@ -1,7 +1,7 @@
 defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
   @moduledoc """
   Proof that `"claude-code"` works as a real provider through the actual
-  `CmsHarness.Agents` entry point — not `Alloy.Provider.ClaudeCode.complete/3`
+  `CmsHarness.Agents` entry point — not `AlloyClaudeCode.complete/3`
   called directly, which only proves the library, not the wiring.
 
   Hits the real, installed `claude` CLI — requires a working, authenticated
@@ -82,20 +82,53 @@ defmodule CmsHarness.Agents.ClaudeCodeProviderLiveTest do
 
   test "a second turn on the same agent carries the first turn's context forward",
        %{root: root} do
-    # This proves the wiring holds a conversation together across turns:
-    # one Engine, one Alloy.Agent.Server, and (per Alloy.Provider.ClaudeCode's
-    # own moduledoc and live test suite) --resume underneath so the second
-    # turn is a real prompt-cache hit rather than the full transcript being
-    # re-sent - that specific cost claim already has a live assertion with
-    # direct visibility into response_metadata.cache_read_input_tokens at
-    # the Alloy layer, where it belongs. This test only needs to prove the
-    # content actually carries across two real `Agents.send_message/5` calls
-    # through this harness's own entry point.
-    assert {:ok, %{agent_id: id}} = Agents.launch(request(root))
+    # One engine holds the conversation, and hands each turn's provider state
+    # to the next: the second turn resumes the first turn's Claude Code session
+    # rather than starting a new one with the whole transcript. A fresh session
+    # would also recall the codeword, so the session id is what proves it.
+    assert {:ok, %{agent_id: id, pid: engine}} = Agents.launch(request(root))
     on_exit(fn -> Agents.halt(id) end)
 
-    assert {:ok, _} = execute(id, "Remember the codeword MANGO-31. Reply with just ONE.")
-    assert {:ok, text} = execute(id, "What was the codeword?")
-    assert text =~ "MANGO-31"
+    assert {:ok, _} = execute(id, "My favourite fruit is the mangosteen. Reply with just ONE.")
+    assert %{session_id: session} = :sys.get_state(engine).provider_state
+    assert is_binary(session)
+
+    assert {:ok, text} = execute(id, "What is my favourite fruit?")
+    assert text =~ ~r/mangosteen/i
+
+    assert :sys.get_state(engine).provider_state.session_id == session,
+           "the second turn started a new Claude Code session instead of resuming the first"
+  end
+
+  # The engine streams whenever someone is watching: text arrives as
+  # `:text_delta` envelopes, handed to `on_draft` (the conversation page's live
+  # draft) rather than reported as steps.
+  test "a watched turn streams its reply as text deltas", %{root: root} do
+    test_pid = self()
+
+    {:ok, %{agent_id: id}} =
+      Agents.launch(%{
+        "agent_id" => "claude-code-live-#{System.unique_integer([:positive])}",
+        "provider" => "claude-code",
+        "working_copy" => root,
+        "on_register" => fn _, _ -> :ok end,
+        "on_consume" => fn _, _, _ -> :ok end,
+        "on_event" => fn _id, envelope -> send(test_pid, {:event, envelope}) end,
+        "on_draft" => fn _id, envelope -> send(test_pid, {:draft, envelope}) end,
+        "role" => "coding"
+      })
+
+    on_exit(fn -> Agents.halt(id) end)
+
+    assert {:ok, :started} =
+             Agents.send_message(
+               id,
+               Ecto.UUID.generate(),
+               "Write two short sentences about rivers."
+             )
+
+    assert_receive {:event, %{event: :turn_ended}}, 170_000
+    assert_received {:draft, %{event: :text_delta, payload: delta}} when is_binary(delta)
+    assert_received {:event, %{event: :message, text: text}} when is_binary(text)
   end
 end
