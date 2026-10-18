@@ -65,6 +65,7 @@ defmodule CodeMySpec.Provisioning.Tools.TheRunReturnsAtOnceAndIsMessagedLaterTes
         engine: :alloy,
         role: "main",
         status: :running,
+        working_copy: scope.cwd,
         working_copy_id: scope.active_working_copy_id
       })
 
