@@ -99,7 +99,8 @@ defmodule CodeMySpec.Agents.Offers do
     # or requirement id, so it cannot collide with another kind's subject_key
     # in `standing/1`'s per-key grouping (criterion 2168).
     {:problems, "problem_set"} => [:detail],
-    {:retry, "failed_turn"} => [:detail]
+    {:retry, "failed_turn"} => [:detail],
+    {:menu, "menu"} => [:detail]
   }
 
   @type subject :: {String.t(), term()}

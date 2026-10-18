@@ -8,10 +8,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 2]
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
 
+  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.TaskResponseHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -26,23 +28,40 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
 
   spex "A menu offer's rungs climb from the held tasks to the first in detail", criterion: 2176 do
     scenario "a coder holds two tasks and ignores the first rung of the menu" do
-      given_ "a coder holding two tasks, an accepted issue beside its story work", context do
-        context = coder_holding_a_task(context)
-        context = issue_accepted(context, context.story)
+      given_ "a coder holding two tasks: one blocked on a question, the next it took", context do
+        context =
+          context
+          |> coding_work_waiting()
+          |> FullSatisfactionFixtures.apply_two_components_to_implement()
+          |> start_session()
+          |> put_to_work()
 
-        {:reply, started, _} =
-          StartTask.execute(
+        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        frame = agent_frame(context, coder.id)
+
+        {:reply, first, _} = StartTask.execute(next_task(context, coder.id), frame)
+        refute first.isError, TaskResponseHelpers.response_text(first)
+        task_id = TaskResponseHelpers.extract_task_id!(first)
+
+        # One active task at a time: the first is held blocked on a question
+        # while the coder takes the other beside it.
+        {:reply, asked, _} =
+          AskUserQuestion.execute(
             %{
-              requirement_name: "issues_resolved",
-              entity_type: "project",
-              entity_id: to_string(context.scope.active_project_id)
+              task_id: task_id,
+              questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]
             },
-            agent_frame(context, context.coder)
+            frame
           )
 
-        refute started.isError, TaskResponseHelpers.response_text(started)
-        other_task_id = TaskResponseHelpers.extract_task_id!(started)
-        {:ok, Map.put(context, :other_task_id, other_task_id)}
+        refute asked.isError, TaskResponseHelpers.response_text(asked)
+
+        {:reply, second, _} = StartTask.execute(next_task(context, coder.id), frame)
+        refute second.isError, TaskResponseHelpers.response_text(second)
+        other_task_id = TaskResponseHelpers.extract_task_id!(second)
+
+        {:ok,
+         Map.merge(context, %{coder: coder.id, task_id: task_id, other_task_id: other_task_id})}
       end
 
       when_ "its turn ends, and it ignores the first rung of the menu", context do
@@ -64,7 +83,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
       then_ "the next rung gives the detail of the first held task", context do
         id = context.coder
         assert_receive {:agent_dispatch, ^id, _ref, second}, 2_000
-        assert second =~ context.task_id, second
+        # The menu names every held task each time; the detail is what is new.
+        refute context.first =~ "in detail: task", context.first
+        assert second =~ "in detail: task #{context.task_id}", second
         {:ok, context}
       end
     end

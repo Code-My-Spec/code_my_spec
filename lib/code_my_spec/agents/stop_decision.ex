@@ -163,10 +163,42 @@ defmodule CodeMySpec.Agents.StopDecision do
   # held, and every item on it is "carry on". Recording each item would claim
   # the agent was offered choices the menu does not ask it to make.
   defp continuing(scope, agent, message, task) do
+    message = message <> menu_detail(agent, task)
+
     if stuck?(agent, message, :continuing),
       do: :ok,
       else: send_to(scope, agent, message, {:menu, {"menu", task.id}})
   end
+
+  # A menu offer's ladder (criterion 2176): the held tasks, then the first of
+  # them in detail once that was ignored.
+  defp menu_detail(agent, task) do
+    case Offers.rung(agent.id, :menu, "menu", task.id) do
+      :detail -> agent |> first_held() |> held_in_detail()
+      nil -> ""
+    end
+  end
+
+  defp first_held(%Agent{tasks: tasks}),
+    do: Enum.find(tasks || [], &(&1.status in [:active, :blocked, :prepared]))
+
+  defp held_in_detail(nil), do: ""
+
+  defp held_in_detail(task) do
+    "\n\nThe first task you hold, in detail: task #{task.id}, `#{task.requirement_name}`" <>
+      on_component(task) <> ", #{task.status}" <> blocker(task) <> "."
+  end
+
+  defp on_component(%{component_module_name: module}) when is_binary(module), do: " on #{module}"
+  defp on_component(_task), do: ""
+
+  defp blocker(%{status: :blocked, blocker_type: type, blocker_id: id, blocker_resolved_at: nil}),
+    do: " on #{type} #{id}, until that is resolved"
+
+  defp blocker(%{status: :blocked, blocker_type: type, blocker_id: id}),
+    do: " on #{type} #{id}, which is resolved: resume it with `start_task`"
+
+  defp blocker(%{id: id}), do: "; `evaluate_task` with task_id \"#{id}\" when it is done"
 
   # `Validation.blocking_key/1` is a hash already; anything else is made one.
   defp problem_key(key) when is_binary(key), do: key

@@ -251,6 +251,22 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     Map.put(context, :component, component)
   end
 
+  @doc """
+  Two children of the story's component, designed and not yet written: two
+  pieces of coding work open at once on the active story, where everything
+  else here leaves one. Records only, so it runs beside a live harness.
+  """
+  @spec apply_two_components_to_implement(map()) :: map()
+  def apply_two_components_to_implement(context) do
+    parent = context.component.module_name
+
+    for child <- ["Booking", "Slot"],
+        do: ComponentGraphHelpers.design!(context, "#{parent}.#{child}", [], parent: parent, type: "schema")
+
+    :ok = Fixtures.settle_graph(context.scope)
+    context
+  end
+
   # 9. Story linked to component, with criterion
   defp apply_story(context) do
     story =
