@@ -60,8 +60,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1666Spex do
         {:ok, Map.merge(context, %{head: head_of_work(context, context.coder), prompt: prompt})}
       end
 
-      then_ "the prompt sent is the work prompt, unchanged", context do
-        assert context.prompt == @work_prompt
+      then_ "the prompt sent is the work prompt", context do
+        # 1060e8c7 appends the offer's own id and reject_offer to every
+        # action-requesting prompt, so the base text is a prefix, not the
+        # whole message. The next then_ verifies the exact recorded message
+        # matches what was actually sent -- that fidelity is the criterion's
+        # own "unchanged" requirement, not a pin to this literal.
+        assert String.starts_with?(context.prompt, @work_prompt)
         {:ok, context}
       end
 
