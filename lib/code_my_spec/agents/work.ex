@@ -192,7 +192,14 @@ defmodule CodeMySpec.Agents.Work do
         |> Conversations.record_sent_to_agent(notice)
         |> Offers.record_or_link(agent, notice_kind(event, subject), subject)
 
-        if agent.working_copy_id, do: consider_copy(scope, agent.working_copy_id, event)
+        # Exclude this agent: it was just told directly above, on its own
+        # thread. Without the exclusion, `consider_copy` finds this same
+        # agent idle with this same released-but-still-blocked task still
+        # claimable (`offer/2`'s `released_tasks/2`) and pushes it a second,
+        # detail-less turn on the very offer just opened for it.
+        if agent.working_copy_id,
+          do: consider_copy(scope, agent.working_copy_id, event, agent.id)
+
         :ok
     end
   end
