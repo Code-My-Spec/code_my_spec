@@ -115,6 +115,9 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Files.ReconcileRegistry,
         # One setup run per project; provisioning calls providers from here.
         CodeMySpec.Provisioning.RunLock,
+        # One app start/restart/stop run per working copy; a second would
+        # overlap the first's own _build directory otherwise (issue f2977826).
+        CodeMySpec.WorkingCopies.AppRunLock,
         # Timers for agents the provider refused until a named time: the held
         # turn end runs then. Re-armed on a harness reconnect.
         CodeMySpec.Agents.RefusalWake,
