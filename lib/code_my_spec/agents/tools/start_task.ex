@@ -7,6 +7,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Components
   alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.Agents.Tools.TaskResponses, as: TasksMapper
@@ -266,6 +267,13 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     end)
   end
 
+  defp not_held(scope) do
+    case FleetHolds.active(scope) do
+      nil -> :ok
+      hold -> {:error, FleetHolds.refusal(hold)}
+    end
+  end
+
   defp handle_existing(nil, scope, owner, requirement, agent_id, context) do
     # Whose work it is first: a claim outside the caller's role, story or team
     # is refused for that, whatever state the work is in.
@@ -273,7 +281,11 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
          :ok <- story_may_claim(scope, owner, requirement),
          :ok <- team_may_claim(scope, owner, requirement),
          :ok <- not_already_done(scope, owner, requirement),
-         :ok <- qa_eligible_to_start(scope, owner, requirement) do
+         :ok <- qa_eligible_to_start(scope, owner, requirement),
+         # 783f3709: only a NEW claim reaches this clause (the `nil` match
+         # above) -- resuming a task the owner already holds matches
+         # `handle_existing/6` further down and never checks the hold.
+         :ok <- not_held(scope) do
       create_and_activate(scope, owner, requirement, agent_id, context)
     else
       {:error, reason} -> TasksMapper.error(reason)

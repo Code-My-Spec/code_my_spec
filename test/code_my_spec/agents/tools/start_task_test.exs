@@ -349,6 +349,57 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
   # Helpers
   # ---------------------------------------------------------------------------
 
+  # 783f3709: a hold stops a NEW claim only. Work an agent already holds --
+  # mid-run when the hold was placed -- must finish and must be resumable.
+  describe "a fleet hold" do
+    alias CodeMySpec.Analysis.FleetHolds
+
+    test "refuses a new claim, naming why, and lifting lets it proceed" do
+      {scope, session, _component, req_params} = setup_requirement()
+      params = Map.put(req_params, :session_id, session.id)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      {:ok, _hold} = FleetHolds.place(scope, "load 40, five agents running tests")
+
+      held_response =
+        ToolLibrary.run("start_task", params, Map.put(frame.assigns, :scope, scope))
+
+      assert match?({:error, _}, held_response)
+      assert response_text(held_response) =~ "fleet hold is in force"
+      assert response_text(held_response) =~ "load 40, five agents running tests"
+      assert Sessions.get_session(scope, session.id).tasks == []
+
+      {:ok, _} = FleetHolds.lift(scope)
+
+      lifted_response =
+        ToolLibrary.run("start_task", params, Map.put(frame.assigns, :scope, scope))
+
+      assert match?({:ok, _}, lifted_response)
+      updated_session = Sessions.get_session(scope, session.id)
+      assert [%{status: :active}] = updated_session.tasks
+    end
+
+    test "does not disturb resuming a task already claimed before the hold" do
+      {scope, session, _component, req_params} = setup_requirement()
+      params = Map.put(req_params, :session_id, session.id)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      first =
+        ToolLibrary.run("start_task", params, Map.put(frame.assigns, :scope, scope))
+
+      assert match?({:ok, _}, first)
+
+      {:ok, _hold} = FleetHolds.place(scope, "load 40")
+
+      resumed =
+        ToolLibrary.run("start_task", params, Map.put(frame.assigns, :scope, scope))
+
+      assert match?({:ok, _}, resumed)
+      updated_session = Sessions.get_session(scope, session.id)
+      assert [%{status: :active}] = updated_session.tasks
+    end
+  end
+
   defp durable_agent(scope) do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{

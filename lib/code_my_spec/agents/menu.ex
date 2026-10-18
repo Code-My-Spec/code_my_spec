@@ -153,15 +153,25 @@ defmodule CodeMySpec.Agents.Menu do
 
   # Tools are named, never "call"ed: some are reachable only through a script.
   # `list_requirements` only to a role that carries it.
-  defp directive(_scope, {:requirements, _count} = class_count, role, _owner) do
-    listing =
-      if role == nil or RoleProfile.carries?(role, "list_requirements"),
-        do: "`list_requirements` or ",
-        else: ""
+  defp directive(scope, {:requirements, count} = class_count, role, _owner) do
+    case CodeMySpec.Analysis.FleetHolds.active(scope) do
+      nil ->
+        listing =
+          if role == nil or RoleProfile.carries?(role, "list_requirements"),
+            do: "`list_requirements` or ",
+            else: ""
 
-    plain(class_count) <>
-      " Use #{listing}`get_next_requirement` to inspect available work, " <>
-      "then choose a task with `start_task`. No requirement has been selected for you."
+        plain(class_count) <>
+          " Use #{listing}`get_next_requirement` to inspect available work, " <>
+          "then choose a task with `start_task`. No requirement has been selected for you."
+
+      hold ->
+        # 783f3709: work is live, but claiming it is refused while a hold
+        # stands -- said here so the agent does not spend a call finding
+        # that out from `start_task` itself.
+        "\n\nNext: #{label(:requirements, count)} waits — " <>
+          CodeMySpec.Analysis.FleetHolds.refusal(hold)
+    end
   end
 
   defp directive(_scope, class_count, _role, _owner), do: plain(class_count)
