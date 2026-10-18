@@ -7,10 +7,11 @@ defmodule CodeMySpecSpex.Story1052.Criterion2076Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -40,13 +41,25 @@ defmodule CodeMySpecSpex.Story1052.Criterion2076Spex do
         params = %{
           to: "user",
           questions: [
-            %{"question" => "Is this covered?", "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}
+            %{
+              "question" => "Is this covered?",
+              "options" => [%{"label" => "Yes"}, %{"label" => "No"}]
+            }
           ]
         }
 
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, context.coder_frame)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(reply))
         {:ok, Map.merge(context, %{question_id: question_id, ask_reply: reply})}
       end

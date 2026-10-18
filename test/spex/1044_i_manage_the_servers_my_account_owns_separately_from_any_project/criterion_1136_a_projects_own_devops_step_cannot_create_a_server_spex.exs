@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep
+  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -43,7 +43,12 @@ defmodule CodeMySpecSpex.Story1044.Criterion3062Spex do
           assigns: %{current_scope: context.scope}
         }
 
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

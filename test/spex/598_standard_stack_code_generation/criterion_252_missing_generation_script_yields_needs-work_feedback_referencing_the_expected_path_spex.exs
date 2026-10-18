@@ -11,10 +11,11 @@ defmodule CodeMySpecSpex.Story598.Criterion5303Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -40,10 +41,11 @@ defmodule CodeMySpecSpex.Story598.Criterion5303Spex do
       when_ "the agent calls evaluate_task for the code_generation task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}

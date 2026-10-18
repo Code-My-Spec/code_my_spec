@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3561Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -52,10 +50,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3561Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -67,13 +69,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3561Spex do
 
       when_ "the main agent repeatedly reaffirms continuous intent", context do
         for _ <- 1..3 do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
               %{agent_id: context.agent_id, continuous: true},
-              frame(context)
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
             )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         {:ok, context}
@@ -84,10 +87,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3561Spex do
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         {:ok, context}
       end

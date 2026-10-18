@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1055.Criterion3284Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -24,10 +25,14 @@ defmodule CodeMySpecSpex.Story1055.Criterion3284Spex do
         agent = Fixtures.running_agent(context.scope, role: "coding")
 
         :ok = Fixtures.agent_tool_call(context.scope, agent, "call-1", "check_status", %{})
-        :ok = Fixtures.agent_tool_result(context.scope, agent, "call-1", "check_status", @result_text)
+
+        :ok =
+          Fixtures.agent_tool_result(context.scope, agent, "call-1", "check_status", @result_text)
 
         :ok = Fixtures.agent_tool_call(context.scope, agent, "call-2", "check_status", %{})
-        :ok = Fixtures.agent_tool_result(context.scope, agent, "call-2", "check_status", @result_text)
+
+        :ok =
+          Fixtures.agent_tool_result(context.scope, agent, "call-2", "check_status", @result_text)
 
         {:ok, Map.put(context, :agent, agent)}
       end
@@ -35,14 +40,18 @@ defmodule CodeMySpecSpex.Story1055.Criterion3284Spex do
       when_ "the main agent reads those turns", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ReadAgentConversation.execute(%{"agent_id" => context.agent.id}, frame)
+        response =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "both results are shown", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected both results, got: #{inspect(context.response)}"
 
         body = response_text(context.response)

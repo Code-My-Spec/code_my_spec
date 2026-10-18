@@ -1,5 +1,7 @@
 defmodule CodeMySpec.Qa.IssueQaResumesTest do
   use CodeMySpecTest.DataCase, async: true
+
+  alias CodeMySpec.ToolLibrary
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures
   alias CodeMySpec.Agents
@@ -230,13 +232,26 @@ defmodule CodeMySpec.Qa.IssueQaResumesTest do
 
   test "the supported tool denies coding and authorizes designated main", ctx do
     alias Anubis.Server.Frame
-    alias CodeMySpec.McpServers.MainAgent.Tools.ResumeIssueQa
     coding_frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: ctx.coder.id}}
-    {:reply, denied, _} = ResumeIssueQa.execute(ctx.attrs, coding_frame)
-    assert denied.isError
+
+    denied =
+      ToolLibrary.run(
+        "resume_issue_qa",
+        ctx.attrs,
+        Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
+      )
+
+    assert match?({:error, _}, denied)
     main_frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: ctx.main.id}}
-    {:reply, allowed, _} = ResumeIssueQa.execute(ctx.attrs, main_frame)
-    refute allowed.isError
+
+    allowed =
+      ToolLibrary.run(
+        "resume_issue_qa",
+        ctx.attrs,
+        Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, allowed)
     assert Issues.get_issue(ctx.scope, ctx.issue.id).awaiting_role == :qa
   end
 

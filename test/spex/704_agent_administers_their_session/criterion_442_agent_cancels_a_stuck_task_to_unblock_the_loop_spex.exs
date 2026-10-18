@@ -14,12 +14,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -41,21 +40,26 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _, _} =
-          StartTask.execute(
+        _ =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         # Capture the new task's id via the public list_tasks surface
         # rather than reaching into Sessions directly.
-        {:reply, list_resp, _frame} =
-          ListTasks.execute(%{session_id: session_id, status: "active"}, frame)
+        list_resp =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: session_id, status: "active"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         list_text = TaskResponseHelpers.response_text(list_resp)
         [_, task_id] = Regex.run(~r/`([0-9a-f-]+)`/, list_text)
@@ -66,21 +70,26 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
       when_ "the agent calls cancel_task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CancelTask.execute(
+        response =
+          ToolLibrary.run(
+            "cancel_task",
             %{session_id: context.session_id, task_id: context.task_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, "expected cancel_task to succeed"
+        assert match?({:ok, _}, response), "expected cancel_task to succeed"
         {:ok, context}
       end
 
       then_ "the cancelled task no longer appears in active task queries", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListTasks.execute(%{session_id: context.session_id, status: "active"}, frame)
+        response =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: context.session_id, status: "active"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 
@@ -94,8 +103,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6097Spex do
            context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListTasks.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

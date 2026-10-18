@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -94,10 +92,18 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
           on_exit(fn -> Machine.stop_agent(agent.id) end)
         end
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: second.id}, frame(context.second))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: second.id},
+            Map.put(
+              frame(context.second).assigns,
+              :scope,
+              frame(context.second).assigns[:current_scope]
+            )
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -109,13 +115,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
 
       when_ "eligibility is reconsidered for both coding agents", context do
         for {id, copy} <- [{context.first_id, context}, {context.second_id, context.second}] do
-          {:reply, response, _} =
-            SetAgentContinuous.execute(
+          response =
+            ToolLibrary.run(
+              "set_agent_continuous",
               %{agent_id: id, continuous: true},
-              frame(copy)
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
             )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         HeldProvider.await_request()
@@ -127,10 +134,18 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
         assert {:ok, %{busy?: false}} = Machine.status(context.second_id)
         assert length(HeldProvider.seen()) == 1
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.second_id}, frame(context.second))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.second_id},
+            Map.put(
+              frame(context.second).assigns,
+              :scope,
+              frame(context.second).assigns[:current_scope]
+            )
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.second_conversation
         {:ok, context}
       end

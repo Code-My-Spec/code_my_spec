@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,8 +51,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: agent.id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, Map.put(context, :agent_id, agent.id)}
       end
@@ -63,16 +67,17 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
         1..2
         |> Task.async_stream(
           fn _ ->
-            SetAgentContinuous.execute(
+            ToolLibrary.run(
+              "set_agent_continuous",
               %{agent_id: context.agent_id, continuous: true},
-              frame(context)
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
             )
           end,
           max_concurrency: 2,
           timeout: 10_000
         )
-        |> Enum.each(fn {:ok, {:reply, response, _}} ->
-          refute response.isError, response_text(response)
+        |> Enum.each(fn {:ok, response} ->
+          assert match?({:ok, _}, response), response_text(response)
         end)
 
         HeldProvider.await_request()
@@ -82,8 +87,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
       then_ "one turn is running and no second turn is queued or task assigned", context do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

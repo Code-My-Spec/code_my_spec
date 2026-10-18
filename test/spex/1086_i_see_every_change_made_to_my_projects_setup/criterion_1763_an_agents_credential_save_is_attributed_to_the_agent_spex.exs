@@ -10,13 +10,13 @@ defmodule CodeMySpecSpex.Story1086.Criterion1763Spex do
   `SaveProviderCredential`, the MCP tool that lets an agent put a Hetzner,
   Cloudflare or Resend key on file without a person at the console form.
 
-  Surface: `CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential`,
+  Surface: `CodeMySpec.Provisioning.Tools.SaveProviderCredential`,
   driving `CodeMySpec.Activity`.
   """
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential
+  alias CodeMySpec.ToolLibrary
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -36,10 +36,11 @@ defmodule CodeMySpecSpex.Story1086.Criterion1763Spex do
           assigns: %{current_scope: context.scope, agent_id: context.agent.id}
         }
 
-        {:reply, _response, _frame} =
-          SaveProviderCredential.execute(
+        _response =
+          ToolLibrary.run(
+            "save_provider_credential",
             %{key: "hetzner_api_token", value: "hetzner-secret-value"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -51,7 +52,8 @@ defmodule CodeMySpecSpex.Story1086.Criterion1763Spex do
 
         document = activity_view |> render() |> Floki.parse_document!()
 
-        entries = Floki.find(document, "[data-test='activity-entry'][data-kind='credential_save']")
+        entries =
+          Floki.find(document, "[data-test='activity-entry'][data-kind='credential_save']")
 
         assert entries != [], "the agent's credential save never reached Activity"
 

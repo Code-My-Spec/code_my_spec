@@ -20,7 +20,6 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Conversations
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.Repo
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -82,10 +81,14 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   end
 
   test "read_agent_conversation given a conversation id reads that agent's conversation", ctx do
-    {:reply, response, _} =
-      ReadAgentConversation.execute(%{agent_id: ctx.conversation.id}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: ctx.conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    refute response.isError, text(response)
+    assert match?({:ok, _}, response), text(response)
     assert text(response) =~ "the coding agent's own words"
   end
 
@@ -121,10 +124,14 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   test "a conversation from another account is not found", ctx do
     {_other_scope, other_agent, other_conversation} = agent_with_conversation("not yours")
 
-    {:reply, read, _} =
-      ReadAgentConversation.execute(%{agent_id: other_conversation.id}, ctx.frame)
+    read =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: other_conversation.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
-    assert read.isError
+    assert match?({:error, _}, read)
     refute text(read) =~ "not yours"
 
     off =
@@ -141,7 +148,12 @@ defmodule CodeMySpec.Agents.AConversationIdNamesItsAgentTest do
   test "not-found says plainly that nothing has that id, not that it is elsewhere", ctx do
     missing = Ecto.UUID.generate()
 
-    {:reply, read, _} = ReadAgentConversation.execute(%{agent_id: missing}, ctx.frame)
+    read =
+      ToolLibrary.run(
+        "read_agent_conversation",
+        %{agent_id: missing},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
 
     off =
       ToolLibrary.run(

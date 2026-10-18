@@ -22,10 +22,10 @@ defmodule CodeMySpecSpex.Story1052.Criterion3215Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.QuestionRoutingHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -82,7 +82,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion3215Spex do
       end
 
       then_ "and it is either with the user or visibly waiting to go there", context do
-        {:reply, listed, _frame} = ListUserQuestions.execute(%{}, frame(context))
+        listed =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
         inbox = response_text(listed)
         waiting = open_questions(context)
 

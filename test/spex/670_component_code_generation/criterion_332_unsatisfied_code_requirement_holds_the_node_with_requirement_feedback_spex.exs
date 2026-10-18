@@ -13,12 +13,13 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 4]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   @module_name "ExampleNoImpl"
@@ -50,15 +51,16 @@ defmodule CodeMySpecSpex.Story670.Criterion5587Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :session_id, session_id)}

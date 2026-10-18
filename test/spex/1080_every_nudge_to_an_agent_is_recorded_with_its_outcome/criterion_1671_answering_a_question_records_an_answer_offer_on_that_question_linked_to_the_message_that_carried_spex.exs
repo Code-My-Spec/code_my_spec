@@ -10,13 +10,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1671Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers, only: [start_session: 1]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -82,8 +83,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1671Spex do
       ]
     }
 
-    {:reply, reply, _} = AskUserQuestion.execute(params, frame)
-    refute reply.isError, response_text(reply)
+    reply =
+      ToolLibrary.run(
+        "ask_user_question",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, reply), response_text(reply)
     Fixtures.question_id_from(response_text(reply))
   end
 

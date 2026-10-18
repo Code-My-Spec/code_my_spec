@@ -13,7 +13,6 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -146,8 +145,14 @@ defmodule CodeMySpecSpex.Story1026.Criterion2060Spex do
   end
 
   defp work_entries(context) do
-    {:reply, response, _} = ListAgentWork.execute(%{}, context.main_frame)
-    refute response.isError, response_text(response)
+    response =
+      ToolLibrary.run(
+        "list_agent_work",
+        %{},
+        Map.put(context.main_frame.assigns, :scope, context.main_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), response_text(response)
     response |> response_text() |> String.split("Agent: ")
   end
 

@@ -9,10 +9,10 @@ defmodule CodeMySpecWeb.ASessionTapOutReachesAPersonTest do
   """
   use CodeMySpecTest.ConnCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpec.SessionsFixtures
-
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -28,8 +28,15 @@ defmodule CodeMySpecWeb.ASessionTapOutReachesAPersonTest do
 
   defp tap_out(scope, external_id) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
-    {:reply, response, _} = TapOut.execute(%{session_id: external_id, reason: "done"}, frame)
-    refute response.isError, TaskResponseHelpers.response_text(response)
+
+    response =
+      ToolLibrary.run(
+        "tap_out",
+        %{session_id: external_id, reason: "done"},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), TaskResponseHelpers.response_text(response)
     [_, id] = Regex.run(~r/request_id=`([^`]+)`/, TaskResponseHelpers.response_text(response))
     id
   end

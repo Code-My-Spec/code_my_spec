@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,8 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -76,8 +76,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
       then_ "the graph has admitted one turn without claiming work", context do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end
@@ -85,23 +92,34 @@ defmodule CodeMySpecSpex.Story1048.Criterion3567Spex do
       when_ "the agent explicitly chooses the context review", context do
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, claimed, _} =
-          StartTask.execute(
+        claimed =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute claimed.isError, response_text(claimed)
+        assert match?({:ok, _}, claimed), response_text(claimed)
         {:ok, Map.put(context, :agent_frame, agent_frame)}
       end
 
       then_ "only the selected requirement is now an active task", context do
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "**bdd_specs_exist**"
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)

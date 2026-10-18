@@ -72,6 +72,20 @@ defmodule CodeMySpec.Tools do
   def error(reason), do: {:error, inspect(reason)}
 
   @doc """
+  The project a tool acts on: always the one the call is connected to, never
+  one a caller names in a parameter, so a wrong argument cannot reach a
+  different project in the same account.
+  """
+  @spec connected_project(map()) :: {:ok, struct()} | {:error, String.t()}
+  def connected_project(%{active_project: %{} = project}), do: {:ok, project}
+
+  def connected_project(_scope),
+    do:
+      {:error,
+       "no project is connected to this call — this tool acts on whichever project the " <>
+         "connection itself identifies, not one named in a parameter"}
+
+  @doc """
   The reply a tool that needs the project's files gives when this machine has
   none, saying what to do instead rather than only what failed.
   """

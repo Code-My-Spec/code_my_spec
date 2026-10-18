@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story704.Criterion6094Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -63,8 +64,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6094Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, mcp_response, _frame} =
-          ListSessionSubagents.execute(%{session_id: context.session_id}, frame)
+        mcp_response =
+          ToolLibrary.run(
+            "list_session_subagents",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          Map.merge(context, %{

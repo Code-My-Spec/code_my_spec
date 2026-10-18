@@ -6,9 +6,10 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.McpServers.Devops.Tools.{LinkServer, RunProvisioningStep}
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -20,7 +21,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
   # connection to a TEST-NET address and hang.
   setup :fake_working_directory
 
-  spex "A project whose environments are already linked behaves exactly as before", criterion: 1146 do
+  spex "A project whose environments are already linked behaves exactly as before",
+    criterion: 1146 do
     scenario "the :server step finds the linked server and proceeds, no pause" do
       given_ "the project's prod environment is already linked to an existing server",
              context do
@@ -45,18 +47,33 @@ defmodule CodeMySpecSpex.Story1045.Criterion3074Spex do
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "prod", server_name: "already-there-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "prod", server_name: "already-there-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "uat", server_name: "already-there-uat-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "uat", server_name: "already-there-uat-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context}
       end
 
       when_ "the project's devops agent runs the :server step", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :response, response)}
       end
 

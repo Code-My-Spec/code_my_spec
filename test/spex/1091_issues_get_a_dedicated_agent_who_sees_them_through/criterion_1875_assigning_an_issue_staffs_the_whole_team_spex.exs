@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -86,8 +83,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
         assert match?({:ok, _}, context.assignment_response),
                response_text(context.assignment_response)
 
-        {:reply, response, _frame} = ListAgentWork.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         entries = response |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do
@@ -122,35 +129,48 @@ defmodule CodeMySpecSpex.Story1091.Criterion1875Spex do
       end
 
       when_ "the coder claims the offered fix", context do
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: context.fix_requirement,
               entity_type: "issue",
               entity_id: context.issue_id
             },
-            context.coder_frame
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :start_response, response)}
       end
 
       then_ "the coder receives a task for the fix", context do
-        refute context.start_response.isError, response_text(context.start_response)
+        assert match?({:ok, _}, context.start_response), response_text(context.start_response)
         {:ok, Map.put(context, :fix_task_id, extract_task_id!(context.start_response))}
       end
 
       when_ "the coder submits the fix by completing its task", context do
         Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(%{task_id: context.fix_task_id}, context.coder_frame)
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.fix_task_id},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
         {:ok, Map.put(context, :completion_response, response)}
       end
 
       then_ "QA is offered testing for the same issue", context do
-        refute context.completion_response.isError,
+        assert match?({:ok, _}, context.completion_response),
                response_text(context.completion_response)
 
         response =

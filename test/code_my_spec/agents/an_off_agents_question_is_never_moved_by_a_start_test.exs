@@ -23,6 +23,8 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
@@ -31,7 +33,6 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.Notifications
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
@@ -60,7 +61,9 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
   # one or every start fails validation on a field the caller did supply.
   defp with_root(copy, label) do
     copy
-    |> Ecto.Changeset.change(root: "/workspace/off-handoff-#{label}-#{System.unique_integer([:positive])}")
+    |> Ecto.Changeset.change(
+      root: "/workspace/off-handoff-#{label}-#{System.unique_integer([:positive])}"
+    )
     |> CodeMySpec.Repo.update!()
   end
 
@@ -189,7 +192,14 @@ defmodule CodeMySpec.Agents.AnOffAgentsQuestionIsNeverMovedByAStartTest do
     CodeMySpecTest.AgentPresence.present(bystander)
 
     frame = %Frame{assigns: %{current_scope: ctx.scope}}
-    {:reply, reply, _frame} = ListAgentWork.execute(%{}, frame)
+
+    reply =
+      ToolLibrary.run(
+        "list_agent_work",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     listing = response_text(reply)
 
     refute owner(request).agent_id == bystander.id,

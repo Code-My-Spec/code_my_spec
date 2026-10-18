@@ -6,12 +6,13 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -26,12 +27,25 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
 
   defp let_the_interval_pass(context) do
     changed_at = DateTime.utc_now()
-    {:reply, response, _} = Cadence.execute(%{seconds: 1}, frame(context))
-    refute response.isError, response_text(response)
+
+    response =
+      ToolLibrary.run(
+        "cadence",
+        %{seconds: 1},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), response_text(response)
 
     Fixtures.await_recovery_check(
       fn ->
-        {:reply, report, _} = Cadence.execute(%{}, frame(context))
+        report =
+          ToolLibrary.run(
+            "cadence",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
         response_text(report)
       end,
       changed_at
@@ -56,8 +70,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
 
-        {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
-        refute configured.isError, response_text(configured)
+        configured =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 30},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, configured), response_text(configured)
         :ok = Fixtures.start_recovery_timer(context.scope)
         {:ok, Map.put(context, :main_id, main.id)}
       end
@@ -90,8 +110,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion1609Spex do
         assert {:ok, _} = Machine.start_agent(main.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(main.id) end)
 
-        {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
-        refute configured.isError, response_text(configured)
+        configured =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 30},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, configured), response_text(configured)
         :ok = Fixtures.start_recovery_timer(context.scope)
         {:ok, Map.put(context, :main_id, main.id)}
       end

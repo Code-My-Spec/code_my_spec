@@ -36,14 +36,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -68,8 +68,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "foreign key behaviour",
               questions: [
@@ -79,10 +80,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -93,8 +94,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
       when_ "the main agent passes it up", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EscalateQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: context.question_id,
               reason: "only the user can say what should happen to a customer's invoices",
@@ -102,10 +104,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
                 "When someone deletes a customer, should their invoices go too, or should " <>
                   "we refuse to delete a customer who still has any?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context}
       end

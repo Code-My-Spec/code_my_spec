@@ -1,15 +1,16 @@
 defmodule CodeMySpec.AgentTasks.ArchitectureDesignStoryIdentityTest do
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.ComponentsFixtures
 
-  alias Anubis.Server.{Frame, Response}
+  alias Anubis.Server.{Frame}
   alias CodeMySpec.AgentTasks.ArchitectureDesign
   alias CodeMySpec.Agents.{Agent, AgentsRepository}
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.{Directives, RequirementGraph}
   alias CodeMySpecTest.AgentPresence
@@ -54,18 +55,18 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignStoryIdentityTest do
     AgentPresence.present(agent)
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: agent.id}}
 
-    assert {:reply, response, _} =
-             StartTask.execute(
-               %{
-                 entity_type: "story",
-                 entity_id: to_string(Directives.entity_ref(offered)),
-                 requirement_name: "component_linked"
-               },
-               frame
-             )
+    response =
+      ToolLibrary.run(
+        "start_task",
+        %{
+          entity_type: "story",
+          entity_id: to_string(Directives.entity_ref(offered)),
+          requirement_name: "component_linked"
+        },
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
-    refute response.isError
-    prompt = hd(Response.to_protocol(response)["content"])["text"]
+    assert {:ok, prompt} = response
     assert prompt =~ ctx.target.title
     refute prompt =~ ctx.other.title
 

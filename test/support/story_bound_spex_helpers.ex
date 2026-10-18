@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -87,7 +86,7 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
   def start_project(context, agent, name) do
     Slice.attempt(
       context,
-      StartTask,
+      "start_task",
       %{
         requirement_name: name,
         entity_type: "project",

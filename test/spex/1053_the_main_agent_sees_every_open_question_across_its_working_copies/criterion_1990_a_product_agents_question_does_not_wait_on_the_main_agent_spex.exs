@@ -13,12 +13,12 @@ defmodule CodeMySpecSpex.Story1053.Criterion1990Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,8 +39,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion1990Spex do
         product = Fixtures.running_agent(scope, role: "product", working_copy: "/tmp/spex-1990")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: product.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               about: "criteria",
               questions: [
@@ -50,10 +51,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion1990Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
 
         {:ok,
          context
@@ -64,8 +65,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion1990Spex do
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame)
-        refute inbox.isError, response_text(inbox)
+
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         {:ok, Map.put(context, :listing, response_text(inbox))}
       end
 

@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -95,10 +96,19 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
         # minutes and Resend issues a token good for about fifteen — so a
         # single pass lost Resend partway and halted at email. Against fakes
         # there is no token, no expiry, and nothing to resume from.
-        {:reply, run, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        run =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
+        status =
+          ToolLibrary.run(
+            "devops_status",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context

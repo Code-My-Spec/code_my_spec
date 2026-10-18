@@ -10,14 +10,13 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.CheckInReport
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.Machinery
-  alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
+  alias CodeMySpec.Agents.Tools.AgentWorkResponses, as: AgentWorkMapper
   alias CodeMySpec.Notifications
 
   defp off_agent(overrides \\ %{}) do
@@ -65,13 +64,7 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
   end
 
   test "list_agent_work names it even with nothing running" do
-    text =
-      []
-      |> AgentWorkMapper.listing([off_agent()])
-      |> Response.to_protocol()
-      |> Map.fetch!("content")
-      |> hd()
-      |> Map.fetch!("text")
+    {:ok, text} = AgentWorkMapper.listing([], [off_agent()])
 
     assert text =~ @line
     assert text =~ "turn_on_agent"

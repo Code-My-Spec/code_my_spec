@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
   start it, stop it, message it — and it is deliberately without an opinion
   about whether starting is a good idea. The opinion is the main agent's, and
   `CodeMySpec.Agents.Main` is where its opinions live. So
-  `McpServers.MainAgent.Tools.RestartAgent`, taking the agent and the reason.
+  `Agents.Tools.RestartAgent`, taking the agent and the reason.
 
   A stop-then-start pair was the other option and is wrong for a reason already
   written into `Agents.restart_agent/2`: starting afresh inserts a new row, and
@@ -49,12 +49,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -97,7 +97,13 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
         :ok = CodeMySpecSpex.Fixtures.age_agent_messages(scope, agent, 3 * 60 * 60)
 
         frame = %Frame{assigns: %{current_scope: scope}}
-        {:reply, view, _frame} = ListAgentWork.execute(%{}, frame)
+
+        view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(view) =~ ~r/last said/i,
                "the premise is an agent the main agent can see has stopped:\n" <>
@@ -111,20 +117,21 @@ defmodule CodeMySpecSpex.Story1056.Criterion3290Spex do
         # a person to do it" is this call working at all.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{
               agent_id: context.agent.id,
               reason: "it has held a task for three hours in silence"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the agent is restarted", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                """
                The main agent could not restart an agent it can plainly see is
                broken.

@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   alias CodeMySpec.ToolLibrary
 
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -162,14 +161,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
 
     task =
       Task.async(fn ->
-        StartTask.execute(
+        ToolLibrary.run(
+          "start_task",
           %{
             requirement_name: "qa_complete",
             entity_type: "story",
             entity_id: to_string(context.story.number),
             session_id: session_id
           },
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
       end)
 
@@ -191,7 +191,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
       1_000 -> flunk("ensure_app_running_result was never acknowledged")
     end
 
-    {:reply, response, _frame} = Task.await(task, 5_000)
+    response = Task.await(task, 5_000)
     text = response_text(response)
 
     {text, extract_task_id(text)}

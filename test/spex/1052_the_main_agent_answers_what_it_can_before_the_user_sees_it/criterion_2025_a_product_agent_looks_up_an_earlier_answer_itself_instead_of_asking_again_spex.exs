@@ -13,11 +13,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -30,7 +31,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
   end
 
   spex "A product agent looks up an earlier answer itself instead of asking again",
-       criterion: 2025 do
+    criterion: 2025 do
     scenario "the user already decided whether refunds older than ninety days are covered" do
       given_ "the user has already answered a question about this exact case", context do
         question_id =
@@ -57,8 +58,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.product_id}}
 
-        {:reply, reply, _frame} =
-          SearchAnswers.execute(%{query: "refunds older than ninety days"}, frame)
+        reply =
+          ToolLibrary.run(
+            "search_answers",
+            %{query: "refunds older than ninety days"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :search_reply, reply)}
       end
@@ -75,7 +80,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2025Spex do
       end
 
       then_ "it finds the user's earlier decision rather than coming up empty", context do
-        refute context.search_reply.isError,
+        assert match?({:ok, _}, context.search_reply),
                "the search itself was refused:\n" <> response_text(context.search_reply)
 
         text = response_text(context.search_reply)

@@ -32,12 +32,12 @@ defmodule CodeMySpecSpex.Story1058.Criterion3328Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -79,17 +79,18 @@ defmodule CodeMySpecSpex.Story1058.Criterion3328Spex do
       when_ "the main agent could do that work itself", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          TakeOverWork.execute(
+        response =
+          ToolLibrary.run(
+            "take_over_work",
             %{agent_id: context.agent.id, task_id: context.task.id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it leaves the work with the agent whose job it is", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                The main agent took work off an agent that was capable of it.
 
@@ -109,7 +110,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3328Spex do
 
       then_ "and the task is still the agent's", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, view, _frame} = ListAgentWork.execute(%{}, frame)
+
+        view =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         entry =
           response_text(view)

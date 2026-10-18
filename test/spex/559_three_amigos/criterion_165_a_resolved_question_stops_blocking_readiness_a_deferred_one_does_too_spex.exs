@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -105,10 +104,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
       when_ "the agent calls evaluate_task on the Three Amigos task", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

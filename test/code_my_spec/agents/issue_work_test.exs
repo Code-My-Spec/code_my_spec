@@ -24,8 +24,6 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Task
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -115,14 +113,24 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     frame = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
     params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
 
-    {:reply, started, _} = StartTask.execute(params, frame)
-    refute started.isError
+    started =
+      ToolLibrary.run(
+        "start_task",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, started)
     [task] = reload(coding).tasks
 
-    {:reply, evaluated, _} =
-      EvaluateTask.execute(%{task_id: task.id}, frame)
+    evaluated =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: task.id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
-    refute evaluated.isError
+    assert match?({:ok, _}, evaluated)
     assert [%{id: task_id, status: :completed}] = reload(coding).tasks
     assert task_id == task.id
     assert Issues.get_issue(scope, ctx.issue.id).awaiting_role == :qa
@@ -134,8 +142,14 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
     assert issue_id == ctx.issue.id
 
-    {:reply, duplicate, _} = StartTask.execute(params, frame)
-    assert duplicate.isError
+    duplicate =
+      ToolLibrary.run(
+        "start_task",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:error, _}, duplicate)
     assert [%{id: ^task_id, status: :completed}] = reload(coding).tasks
   end
 
@@ -156,19 +170,39 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     coding_frame = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
     fix_params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
 
-    {:reply, started, _} = StartTask.execute(fix_params, coding_frame)
-    refute started.isError
+    started =
+      ToolLibrary.run(
+        "start_task",
+        fix_params,
+        Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, started)
     [fix_task] = reload(coding).tasks
-    {:reply, evaluated, _} = EvaluateTask.execute(%{task_id: fix_task.id}, coding_frame)
-    refute evaluated.isError
+
+    evaluated =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: fix_task.id},
+        Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, evaluated)
 
     assert Issues.get_issue(scope, ctx.issue.id).awaiting_role == :qa
     assert Issues.get_issue(scope, ctx.issue.id).qa_ready_commit == @head
 
     qa_frame = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
     qa_params = %{requirement_name: "qa_complete", entity_type: "issue", entity_id: ctx.issue.id}
-    {:reply, started_qa, _} = StartTask.execute(qa_params, qa_frame)
-    refute started_qa.isError
+
+    started_qa =
+      ToolLibrary.run(
+        "start_task",
+        qa_params,
+        Map.put(qa_frame.assigns, :scope, qa_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, started_qa)
     [qa_task] = reload(qa).tasks
 
     submitted =
@@ -201,11 +235,25 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
     # The coder reworks it and certifies at a new commit.
     recertify_at(scope, copy_id, @head2)
-    {:reply, started2, _} = StartTask.execute(fix_params, coding_frame)
-    refute started2.isError
+
+    started2 =
+      ToolLibrary.run(
+        "start_task",
+        fix_params,
+        Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, started2)
     rework_task = Enum.find(reload(coding).tasks, &(&1.status != :completed))
-    {:reply, evaluated2, _} = EvaluateTask.execute(%{task_id: rework_task.id}, coding_frame)
-    refute evaluated2.isError
+
+    evaluated2 =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: rework_task.id},
+        Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, evaluated2)
 
     issue = Issues.get_issue(scope, ctx.issue.id)
     assert issue.awaiting_role == :qa

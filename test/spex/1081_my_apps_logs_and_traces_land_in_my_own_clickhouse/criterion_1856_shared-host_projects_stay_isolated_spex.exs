@@ -5,16 +5,17 @@ defmodule CodeMySpecSpex.Story1081.Criterion1856Spex do
 
   Twin of criterion 1714.
 
-  Surface: `CodeMySpec.McpServers.Devops.Tools.QueryTelemetry`, driving
+  Surface: `CodeMySpec.Provisioning.Tools.QueryTelemetry`, driving
   `CodeMySpec.Telemetry`.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.QueryTelemetry
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -49,7 +50,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1856Spex do
         await_console_step(servers_view, :server)
 
         {:ok, view_a, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         run_console_step(view_a, :telemetry)
         await_console_step(view_a, :telemetry)
@@ -59,13 +63,19 @@ defmodule CodeMySpecSpex.Story1081.Criterion1856Spex do
 
       when_ "each project's agents query telemetry", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = QueryTelemetry.execute(%{environment: "uat"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "query_telemetry",
+            %{environment: "uat"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "each sees only its own project's logs and traces", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "expected querying telemetry to succeed: #{inspect(context.response)}"
 
         body = response_text(context.response)

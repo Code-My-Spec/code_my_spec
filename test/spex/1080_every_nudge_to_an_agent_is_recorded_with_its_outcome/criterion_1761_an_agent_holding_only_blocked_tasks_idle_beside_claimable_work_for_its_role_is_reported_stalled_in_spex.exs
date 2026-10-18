@@ -17,10 +17,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -76,10 +72,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
         :ok = Fixtures.start_turn(context.scope, product(context).id)
         context = asked_about_design(context)
 
-        {:reply, tapped, _} =
-          TapOut.execute(%{reason: "Nothing more I can design until answered"}, context.frame)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "Nothing more I can design until answered"},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
-        refute tapped.isError, response_text(tapped)
+        assert match?({:ok, _}, tapped), response_text(tapped)
         {:ok, end_turn(context)}
       end
 
@@ -114,20 +114,22 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
         acceptance_criteria: ["The stated behavior is specified"]
       )
 
-    {:reply, started, _} =
-      StartTask.execute(
+    started =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "three_amigos_complete",
           entity_type: "story",
           entity_id: to_string(story.number)
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute started.isError, response_text(started)
+    assert match?({:ok, _}, started), response_text(started)
 
-    {:reply, asked, _} =
-      AskUserQuestion.execute(
+    asked =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           task_id: extract_task_id!(started),
           questions: [
@@ -137,10 +139,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
             }
           ]
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute asked.isError, response_text(asked)
+    assert match?({:ok, _}, asked), response_text(asked)
     Map.merge(context, %{product_id: product.id, frame: frame})
   end
 
@@ -163,10 +165,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
 
   # The product's entry in list_agent_work, from its id to the next agent's.
   defp product_line(context) do
-    {:reply, work, _} =
-      ListAgentWork.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+    work =
+      ToolLibrary.run("list_agent_work", %{}, %{scope: context.scope})
 
-    refute work.isError, response_text(work)
+    assert match?({:ok, _}, work), response_text(work)
     text = response_text(work)
     [_, entry] = String.split(text, context.product_id, parts: 2)
     entry

@@ -8,16 +8,17 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
   answers by that same window, the way `CodeMySpecSpex.Case.stage_certificate/1`
   answers TLS reachability without a live host.
 
-  Surface: `CodeMySpec.McpServers.Devops.Tools.QueryTelemetry`, driving
+  Surface: `CodeMySpec.Provisioning.Tools.QueryTelemetry`, driving
   `CodeMySpec.Telemetry`'s retention.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.QueryTelemetry
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -49,7 +50,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
         await_console_step(servers_view, :server)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         run_console_step(view, :telemetry)
         await_console_step(view, :telemetry)
@@ -60,8 +64,12 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
       when_ "Sam queries logs from 15 days ago", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          QueryTelemetry.execute(%{environment: "uat", since_days: 15}, frame)
+        response =
+          ToolLibrary.run(
+            "query_telemetry",
+            %{environment: "uat", since_days: 15},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :old_response, response)}
       end
@@ -69,14 +77,18 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
       when_ "Sam queries logs from 13 days ago", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          QueryTelemetry.execute(%{environment: "uat", since_days: 13}, frame)
+        response =
+          ToolLibrary.run(
+            "query_telemetry",
+            %{environment: "uat", since_days: 13},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :recent_response, response)}
       end
 
       then_ "none are returned from 15 days ago", context do
-        refute context.old_response.isError,
+        assert match?({:ok, _}, context.old_response),
                "expected the query to succeed: #{inspect(context.old_response)}"
 
         body = response_text(context.old_response)
@@ -86,7 +98,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1719Spex do
       end
 
       then_ "logs from 13 days ago are returned", context do
-        refute context.recent_response.isError,
+        assert match?({:ok, _}, context.recent_response),
                "expected the query to succeed: #{inspect(context.recent_response)}"
 
         body = response_text(context.recent_response)

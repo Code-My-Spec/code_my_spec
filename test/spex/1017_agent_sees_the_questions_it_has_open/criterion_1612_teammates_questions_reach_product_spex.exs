@@ -9,13 +9,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -63,17 +63,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
         context = put_to_work(context)
         coder_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            coder_frame
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -91,20 +92,26 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
         # asked inside it.
         :ok = Fixtures.start_turn(context.scope, context.product.id)
 
-        {:reply, designing, _} =
-          StartTask.execute(
+        designing =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(context.owed.number)
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute designing.isError, response_text(designing)
+        assert match?({:ok, _}, designing), response_text(designing)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -113,10 +120,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
                 }
               ]
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         # Its turn ends with the question still open.
         :ok = Fixtures.end_turn(context.scope, context.product.id, [])
         flush_transport()
@@ -124,8 +135,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
       end
 
       when_ "the coder asks product about a criterion", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.coder_task,
               about: "criteria",
@@ -133,10 +145,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
                 %{question: "Does criterion 944 still mean a full refund?", options: []}
               ]
             },
-            context.coder_frame
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         {:ok, context}
       end
 

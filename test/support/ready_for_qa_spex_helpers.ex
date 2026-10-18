@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
@@ -57,8 +56,15 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   """
   def complete_ready_for_qa(context) do
     frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coder.id}}
-    {:reply, response, _frame} = EvaluateTask.execute(%{task_id: context.task_id}, frame)
-    {response.isError == true, response_text(response)}
+
+    response =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: context.task_id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    {match?({:error, _}, response), response_text(response)}
   end
 
   @doc "The commit the story is stamped ready for QA at, or nil."

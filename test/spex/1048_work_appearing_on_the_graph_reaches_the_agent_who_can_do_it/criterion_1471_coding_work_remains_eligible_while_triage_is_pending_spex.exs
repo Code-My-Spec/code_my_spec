@@ -18,8 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -143,30 +141,56 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
 
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.coding_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end
 
       when_ "coding chooses its available context review", context do
-        {:reply, claimed, _} =
-          StartTask.execute(
+        claimed =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute claimed.isError, response_text(claimed)
+        assert match?({:ok, _}, claimed), response_text(claimed)
         {:ok, context}
       end
 
       then_ "coding owns only the review and product triage remains outstanding", context do
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.coding_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "**bdd_specs_exist**"
         refute response_text(tasks) =~ "issues_triaged"

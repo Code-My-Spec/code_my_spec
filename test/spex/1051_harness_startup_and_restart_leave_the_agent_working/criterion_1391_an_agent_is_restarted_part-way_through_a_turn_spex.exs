@@ -19,10 +19,10 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers, only: [agent_knows?: 2, running?: 1]
   import CodeMySpecSpex.HarnessLifecycleHelpers
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -52,13 +52,15 @@ defmodule CodeMySpecSpex.Story1051.Criterion3468Spex do
       end
 
       when_ "it comes back", context do
-        {:reply, reply, _frame} =
-          RestartAgent.execute(
+        reply =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent_id, reason: "the harness went underneath it"},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute reply.isError, "the premise is an agent that came back, and this one did not"
+        assert match?({:ok, _}, reply),
+               "the premise is an agent that came back, and this one did not"
 
         {:ok, context}
       end

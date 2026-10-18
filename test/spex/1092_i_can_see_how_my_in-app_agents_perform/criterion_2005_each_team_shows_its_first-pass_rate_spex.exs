@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
@@ -118,10 +117,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
     refute sas_resp.isError, inspect(sas_resp)
 
     Enum.each(rounds, fn round ->
-      {:reply, started, _frame} =
+      started =
         start_qa(asking, story, context.copy_socket)
 
-      refute started.isError, inspect(started)
+      assert match?({:ok, _}, started), inspect(started)
       [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
       submit_round(asking, coding, story, task_id, round)
     end)
@@ -199,13 +198,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   defp start_qa(asking, story, socket) do
     task =
       Task.async(fn ->
-        StartTask.execute(
+        ToolLibrary.run(
+          "start_task",
           %{
             requirement_name: "qa_complete",
             entity_type: "story",
             entity_id: to_string(story.number)
           },
-          asking
+          Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
         )
       end)
 

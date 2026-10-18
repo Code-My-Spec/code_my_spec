@@ -23,12 +23,12 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.RecordedAnalysis
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.StartAnalysis
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -72,13 +72,18 @@ defmodule CodeMySpecSpex.Story1050.Criterion3202Spex do
       end
 
       when_ "the coding agent runs that spex", context do
-        {:reply, reply, _frame} = StartAnalysis.execute(%{source: "spex"}, frame(context))
+        reply =
+          ToolLibrary.run(
+            "start_analysis",
+            %{source: "spex"},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
         {:ok, context |> Map.put(:reply, reply) |> Map.put(:text, response_text(reply))}
       end
 
       then_ "it is allowed to", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                """
                A coding agent was refused a spex run.
 

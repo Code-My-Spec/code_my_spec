@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
 
-  alias CodeMySpec.McpServers.MainAgent.Tools.{ListAgentWork, ListOffers}
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -110,8 +109,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
           refute text =~ "requirement_name=`"
         end
 
-        {:reply, work, _} = ListAgentWork.execute(%{}, context.main_frame)
-        refute work.isError, response_text(work)
+        work =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         entries = work |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do
@@ -131,13 +140,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
         assert delivered =~ context.scope.active_working_copy_id
         :ok = Fixtures.drain_background_work()
 
-        {:reply, response, _} =
-          ListOffers.execute(
+        response =
+          ToolLibrary.run(
+            "list_offers",
             %{agent_id: context.main.id, kind: "team_free"},
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         assert [offer] = OfferHelpers.parse(response_text(response))
         assert offer.kind == "team_free"
         refute offer.status == "undelivered"
@@ -184,8 +198,19 @@ defmodule CodeMySpecSpex.Story1091.Criterion1881Spex do
         assert match?({:ok, _}, response), response_text(response)
         assert response_text(response) =~ "entity_type=`issue`"
         assert response_text(response) =~ "entity_id=`#{context.next_issue_id}`"
-        {:reply, work, _} = ListAgentWork.execute(%{}, context.main_frame)
-        refute work.isError, response_text(work)
+
+        work =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         entries = work |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do

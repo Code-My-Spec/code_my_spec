@@ -15,7 +15,6 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -125,7 +124,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
       {error?, text} =
         Slice.attempt(
           ctx,
-          StartTask,
+          "start_task",
           %{
             requirement_name: "submitted",
             entity_type: "issue",
@@ -218,7 +217,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   defp start_project(ctx, agent, name) do
     Slice.attempt(
       ctx,
-      StartTask,
+      "start_task",
       %{
         requirement_name: name,
         entity_type: "project",

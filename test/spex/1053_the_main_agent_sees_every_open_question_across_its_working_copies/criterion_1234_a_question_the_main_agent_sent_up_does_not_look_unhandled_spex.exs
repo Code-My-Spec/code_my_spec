@@ -25,13 +25,12 @@ defmodule CodeMySpecSpex.Story1053.Criterion3264Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -57,8 +56,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3264Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "beyond what the main agent knows",
               questions: [
@@ -68,24 +68,25 @@ defmodule CodeMySpecSpex.Story1053.Criterion3264Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
         question_id = CodeMySpecSpex.Fixtures.question_id_from(response_text(asked))
 
         main = %Frame{assigns: %{current_scope: scope}}
 
-        {:reply, escalated, _frame} =
-          EscalateQuestion.execute(
+        escalated =
+          ToolLibrary.run(
+            "escalate_question",
             %{
               question_id: question_id,
               reason: "the main agent does not know which account is ours"
             },
-            main
+            Map.put(main.assigns, :scope, main.assigns[:current_scope])
           )
 
-        refute escalated.isError,
+        assert match?({:ok, _}, escalated),
                "the escalation had to happen for this to mean anything:\n" <>
                  inspect(escalated)
 
@@ -94,9 +95,15 @@ defmodule CodeMySpecSpex.Story1053.Criterion3264Spex do
 
       when_ "the main agent looks at what is waiting", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ListNotifications.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :listing, response_text(response))}
       end

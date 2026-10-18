@@ -1,7 +1,6 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2116Spex do
   @moduledoc "Attention items name a valid detail call instead of inventing an answer"
   use CodeMySpecSpex.Case
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -37,7 +36,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion2116Spex do
         refute context.report =~ "answer_notification"
 
         detail =
-          Compact.call(context, ReadAgentConversation, %{agent_id: context.attention.id, limit: 5})
+          Compact.call(context, "read_agent_conversation", %{
+            agent_id: context.attention.id,
+            limit: 5
+          })
 
         assert detail =~ "timed out"
         {:ok, context}

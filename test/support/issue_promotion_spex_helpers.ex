@@ -14,9 +14,6 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.PromotionHelpers
 
@@ -70,7 +67,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
     # (John, 2026-10-11): a clean analyzer run at HEAD, or it stays pending.
     Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-    call(frame(context, context.coder), EvaluateTask, %{task_id: task_id})
+    call(frame(context, context.coder), "evaluate_task", %{task_id: task_id})
     context
   end
 
@@ -103,8 +100,16 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   def the_coder_promotes_it(context) do
     task_id = take(context, context.coder, "promote_issue")
 
-    {:reply, response, _} =
-      EvaluateTask.execute(%{task_id: task_id}, frame(context, context.coder))
+    response =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: task_id},
+        Map.put(
+          frame(context, context.coder).assigns,
+          :scope,
+          frame(context, context.coder).assigns[:current_scope]
+        )
+      )
 
     response_text(response)
   end
@@ -114,7 +119,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
 
   @doc "Whether every teammate reads `Assignment: none` in main's listing."
   def the_team_is_free?(context) do
-    entries = context.main_frame |> call(ListAgentWork, %{}) |> String.split("Agent: ")
+    entries = context.main_frame |> call("list_agent_work", %{}) |> String.split("Agent: ")
 
     Enum.all?(context.team, fn agent ->
       entry = Enum.find(entries, &String.starts_with?(&1, agent.id <> "\n"))
@@ -133,7 +138,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
            "#{agent.role} was not offered #{requirement}. Got: #{offer}"
 
     started =
-      call(frame(context, agent), StartTask, %{
+      call(frame(context, agent), "start_task", %{
         requirement_name: requirement,
         entity_type: "issue",
         entity_id: context.issue_id
@@ -152,11 +157,5 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
       {:ok, text} -> text
       {:error, text} -> flunk("#{name} refused: #{text}")
     end
-  end
-
-  defp call(frame, tool, params) do
-    {:reply, response, _frame} = tool.execute(params, frame)
-    refute response.isError, response_text(response)
-    response_text(response)
   end
 end

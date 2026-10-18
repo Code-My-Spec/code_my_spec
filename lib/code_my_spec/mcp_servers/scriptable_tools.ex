@@ -35,23 +35,6 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
     capabilities: [:tools]
 
   component(CodeMySpec.McpServers.Health.Tools.ScriptHealth)
-  component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
-  component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
-  component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadProjectFile)
-  component(CodeMySpec.McpServers.Devops.Tools.WriteProjectFile)
-  component(CodeMySpec.McpServers.Devops.Tools.EnsureEnvironment)
-  component(CodeMySpec.McpServers.Devops.Tools.LinkServer)
-  component(CodeMySpec.McpServers.Devops.Tools.ProvisionAccountServer)
-  component(CodeMySpec.McpServers.Devops.Tools.ProviderRequest)
-  component(CodeMySpec.McpServers.Devops.Tools.EnsureServerAccessKey)
-  component(CodeMySpec.McpServers.Devops.Tools.AdoptRepository)
-  component(CodeMySpec.McpServers.Devops.Tools.RunProvisioningStep)
-  component(CodeMySpec.McpServers.Devops.Tools.QueryTelemetry)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadDatabaseUrl)
-  component(CodeMySpec.McpServers.Devops.Tools.ImportAgeKey)
-  component(CodeMySpec.McpServers.Devops.Tools.ReadRegistryCredential)
-  component(CodeMySpec.McpServers.Devops.Tools.SaveProviderCredential)
   component(CodeMySpec.McpServers.Stories.Tools.CreateStory)
   component(CodeMySpec.McpServers.Stories.Tools.UpdateStory)
   component(CodeMySpec.McpServers.Stories.Tools.RetireStory)
@@ -113,40 +96,18 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
   # was unreachable from a script even though every sibling Components tool
   # above is registered and no exclusion applies.
-  component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
   # Scriptable unlike the asking tools: it waits on nobody, and only touches the
   # caller's own question (8c91d5bc).
-  component(CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion)
-  component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   # The performance page as Markdown, for an agent to plan improvements from.
 
   # The main agent's view across its working copies, and the one act it can
   # take on what it finds there. Scripted rather than on the spine because the
   # spine is paid by every agent at connect and exactly one role calls these —
   # a coding agent has no use for its colleagues' open questions.
-  component(CodeMySpec.McpServers.MainAgent.Tools.ListNotifications)
-  component(CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ValidationHold)
-  component(CodeMySpec.McpServers.MainAgent.Tools.CompletionHandoff)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ResumeIssueQa)
   component(CodeMySpec.McpServers.MainAgent.Tools.RuntimeDiagnostics)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ListOffers)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ResetDocPackages)
+
   # The agent lifecycle. Main-only by role grant: `ToolSets` gives no other role
   # any of these.
-  component(CodeMySpec.McpServers.MainAgent.Tools.RestartAgent)
-  component(CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous)
-  component(CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery)
-  component(CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers)
-  component(CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification)
-  component(CodeMySpec.McpServers.MainAgent.Tools.TakeOverWork)
-  component(CodeMySpec.McpServers.MainAgent.Tools.ReadyStoriesWithoutEpic)
-  component(CodeMySpec.McpServers.MainAgent.Tools.CheckIn)
-  component(CodeMySpec.McpServers.MainAgent.Tools.Cadence)
 
   component(CodeMySpec.McpServers.Agents.Tools.StartAgent)
 

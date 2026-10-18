@@ -29,12 +29,13 @@ defmodule CodeMySpecSpex.Story1056.Criterion3293Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -72,13 +73,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3293Spex do
       when_ "the main agent restarts it and it stops working", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          RestartAgent.execute(
+        response =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent.id, reason: "tidying up before the next story"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         # Afterwards, and only afterwards, it cannot reach anything.
         CodeMySpecSpex.Fixtures.record_machine_tools(context.scope, [])

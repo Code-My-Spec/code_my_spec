@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3217Spex do
         answer = "the refunds epic is built on #{checkout_of(context, context.question_id)}"
         reply = main_answers(context, context.question_id, answer)
 
-        refute reply.isError,
+        assert match?({:ok, _}, reply),
                "the premise is a question the main agent handled:\n#{response_text(reply)}"
 
         {:ok, Map.put(context, :answer, answer)}

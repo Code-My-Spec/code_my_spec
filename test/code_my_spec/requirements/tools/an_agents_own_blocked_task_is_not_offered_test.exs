@@ -18,10 +18,6 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
@@ -60,25 +56,33 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
   end
 
   defp claim(ctx) do
-    {:reply, started, _} =
-      StartTask.execute(
+    started =
+      ToolLibrary.run(
+        "start_task",
         %{
           entity_type: ctx.node.entity_type,
           entity_id: to_string(ctx.node.entity_id),
           requirement_name: ctx.node.name
         },
-        ctx.frame
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
-    refute started.isError, text(started)
+    assert match?({:ok, _}, started), text(started)
     [_, task_id] = Regex.run(~r/([0-9a-f]{8}-[0-9a-f-]{27})/, text(started))
     task_id
   end
 
   test "its own task blocked on a pending tap_out is not offered", ctx do
     task_id = claim(ctx)
-    {:reply, tapped, _} = TapOut.execute(%{task_id: task_id}, ctx.frame)
-    refute tapped.isError, text(tapped)
+
+    tapped =
+      ToolLibrary.run(
+        "tap_out",
+        %{task_id: task_id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, tapped), text(tapped)
 
     next =
       ToolLibrary.run(
@@ -111,18 +115,42 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
   # e96115a9: the same tap-out has to be somewhere a main agent can settle it.
   test "the pending tap_out is listed and answer_notification settles it", ctx do
     task_id = claim(ctx)
-    {:reply, _, _} = TapOut.execute(%{task_id: task_id}, ctx.frame)
+
+    _ =
+      ToolLibrary.run(
+        "tap_out",
+        %{task_id: task_id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
     request = Notifications.get_pending_tap_out_request(ctx.agent.id, task_id)
     main = %Frame{assigns: %{current_scope: ctx.scope}}
 
-    {:reply, listed, _} = ListNotifications.execute(%{}, main)
+    listed =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
     assert text(listed) =~ request.id
 
-    {:reply, decided, _} =
-      AnswerNotification.execute(%{notification_id: request.id, decision: "allow"}, main)
+    decided =
+      ToolLibrary.run(
+        "answer_notification",
+        %{notification_id: request.id, decision: "allow"},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
 
-    refute decided.isError, text(decided)
-    {:reply, after_, _} = ListNotifications.execute(%{}, main)
+    assert match?({:ok, _}, decided), text(decided)
+
+    after_ =
+      ToolLibrary.run(
+        "list_notifications",
+        %{},
+        Map.put(main.assigns, :scope, main.assigns[:current_scope])
+      )
+
     refute text(after_) =~ request.id
   end
 

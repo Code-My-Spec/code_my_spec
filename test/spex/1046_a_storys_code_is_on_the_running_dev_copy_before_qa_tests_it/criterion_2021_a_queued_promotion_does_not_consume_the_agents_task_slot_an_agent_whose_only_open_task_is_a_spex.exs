@@ -21,8 +21,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion2021Spex do
   import CodeMySpecSpex.PromotionHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -69,24 +67,35 @@ defmodule CodeMySpecSpex.Story1046.Criterion2021Spex do
       when_ "the agent claims the other story's work", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.agent_id}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(context.other_story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.merge(context, %{response: response, agent_frame: frame})}
       end
 
       then_ "the claim succeeds rather than being refused for an open task", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
-        {:reply, tasks, _frame} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "bdd_specs_exist"
 
         {:ok, context}

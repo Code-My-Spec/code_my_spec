@@ -11,11 +11,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1874Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers, only: [start_agent_task: 3]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -39,10 +39,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1874Spex do
         context = start_agent_task(context, context.coder, task)
         task_id = held_task_id(context, context.coder)
 
-        {:reply, cancelled, _} =
-          CancelTask.execute(%{task_id: task_id}, agent_frame(context, context.coder))
+        cancelled =
+          ToolLibrary.run(
+            "cancel_task",
+            %{task_id: task_id},
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
+          )
 
-        refute cancelled.isError, response_text(cancelled)
+        assert match?({:ok, _}, cancelled), response_text(cancelled)
         :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, context}
       end

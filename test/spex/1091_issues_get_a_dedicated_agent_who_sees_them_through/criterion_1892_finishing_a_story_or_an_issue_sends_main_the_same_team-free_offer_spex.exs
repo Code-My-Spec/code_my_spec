@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
   import CodeMySpecSpex.PromotionHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
@@ -107,10 +106,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
         assert Enum.any?(notices, &(&1 =~ context.issue_id))
         :ok = Fixtures.drain_background_work()
 
-        {:reply, response, _frame} =
-          ListOffers.execute(%{agent_id: context.main.id, kind: "team_free"}, context.main_frame)
+        response =
+          ToolLibrary.run(
+            "list_offers",
+            %{agent_id: context.main.id, kind: "team_free"},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
 
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         offers = OfferHelpers.parse(response_text(response))
 
         assert length(offers) == 2,

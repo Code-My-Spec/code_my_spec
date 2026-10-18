@@ -17,9 +17,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -54,17 +51,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
         :ok = Fixtures.start_turn(context.scope, product.id)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -76,8 +74,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
 
       given_ "product asked the user a question about that design and ended its turn",
              context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.design_task,
               questions: [
@@ -87,10 +86,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
                 }
               ]
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         :ok = Fixtures.end_turn(context.scope, context.product_id, [])
         flush_transport()
         {:ok, context}
@@ -134,19 +137,34 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
         assert match?({:ok, _}, next), response_text(next)
         assert response_text(next) =~ "issues_triaged", response_text(next)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "issues_triaged",
               entity_type: "project",
               entity_id: to_string(context.project.id)
             },
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.product_frame)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
+          )
+
         assert response_text(tasks) =~ ~r/\[blocked\][^\n]*#{context.design_task}/
         {:ok, context}
       end

@@ -1,0 +1,93 @@
+defmodule CodeMySpec.Agents.Tools.WorkAlreadyDoneIsRefusedTest do
+  @moduledoc """
+  `start_task` refuses a requirement that is already satisfied, even when the
+  graph still offers it (67e6b5cb).
+
+  The graph lags a write that does not announce. The 1118 `story_promoted`
+  repeats offered done work over and over, and eval probe 1870's agent spent a
+  turn on a story already certified. Asking the story itself, before taking the
+  work, is what ends that.
+  """
+  use CodeMySpecTest.DataCase, async: true
+
+  alias CodeMySpec.ToolLibrary
+
+  import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.DevicesFixtures
+  import CodeMySpec.StoriesFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Offers
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.WorkingCopies
+  alias CodeMySpecTest.AgentPresence
+
+  setup do
+    scope = full_scope_fixture()
+    {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
+    scope = %{scope | active_working_copy_id: copy.id}
+    story = story_fixture(scope, %{ready_for_dev: true})
+    Requirements.recompute(scope)
+    %{scope: scope, story: story}
+  end
+
+  defp coder(ctx) do
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "product",
+        continuous: true,
+        status: :running,
+        working_copy: "/tmp/done-#{System.unique_integer([:positive])}",
+        working_copy_id: ctx.scope.active_working_copy_id
+      })
+
+    AgentPresence.present(agent)
+
+    agent
+  end
+
+  defp start(ctx, agent \\ nil) do
+    agent = agent || coder(ctx)
+    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: agent.id}}
+
+    response =
+      ToolLibrary.run(
+        "start_task",
+        %{
+          entity_type: "story",
+          entity_id: to_string(ctx.story.number),
+          requirement_name: "component_linked"
+        },
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    {match?({:error, _}, response), elem(response, 1)}
+  end
+
+  test "work done behind the graph's back is refused, pointing at reject_offer", ctx do
+    component = component_fixture(ctx.scope)
+
+    # Linked without announcing, so the graph still offers it — the stale offer.
+    {:ok, _} = ctx.story |> Ecto.Changeset.change(component_id: component.id) |> Repo.update()
+
+    agent = coder(ctx)
+
+    offered =
+      Offers.record(nil, agent, :work, {"requirement", "story:#{ctx.story.id}:component_linked"})
+
+    assert {true, text} = start(ctx, agent)
+    assert text =~ "already satisfied"
+    assert text =~ "the offer of it is closed"
+
+    assert %{status: :declined, reason: "already satisfied"} =
+             CodeMySpec.Repo.get!(CodeMySpec.Agents.Offer, offered.id)
+  end
+
+  test "work not yet done is started as before", ctx do
+    assert {false, _text} = start(ctx)
+  end
+end

@@ -9,13 +9,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
   """
 
   use CodeMySpecSpex.Case
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -85,24 +81,28 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
         true = offer_text =~ "entity_id=`#{issue_id}`"
         [_, fix_requirement] = Regex.run(~r/requirement_name=`([^`]+)`/, offer_text)
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: fix_requirement,
               entity_type: "issue",
               entity_id: issue_id
             },
-            coder_frame
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
           )
 
-        false = started.isError
-
+        {:ok, _} = started
         Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-        {:reply, submitted, _} =
-          EvaluateTask.execute(%{task_id: extract_task_id!(started)}, coder_frame)
+        submitted =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: extract_task_id!(started)},
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
 
-        false = submitted.isError
+        {:ok, _} = submitted
 
         qa_offer =
           ToolLibrary.run(
@@ -117,17 +117,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
         true = qa_offer_text =~ "entity_id=`#{issue_id}`"
         [_, qa_requirement] = Regex.run(~r/requirement_name=`([^`]+)`/, qa_offer_text)
 
-        {:reply, qa_started, _} =
-          StartTask.execute(
+        qa_started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: qa_requirement,
               entity_type: "issue",
               entity_id: issue_id
             },
-            qa_frame
+            Map.put(qa_frame.assigns, :scope, qa_frame.assigns[:current_scope])
           )
 
-        false = qa_started.isError
+        {:ok, _} = qa_started
 
         before_qa =
           ToolLibrary.run(
@@ -210,8 +211,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
       end
 
       then_ "both teammates remain bound to the same issue on their copy", context do
-        {:reply, response, _} = ListAgentWork.execute(%{}, context.main_frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         entries = response |> response_text() |> String.split("Agent: ")
 
         for agent <- context.team do

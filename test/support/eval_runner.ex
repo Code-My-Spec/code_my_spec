@@ -35,8 +35,6 @@ defmodule CodeMySpec.Support.EvalRunner do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
@@ -931,16 +929,13 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp put_in_loop(agent_id, world, criterion) do
-    case SetAgentContinuous.execute(
-           %{agent_id: agent_id, continuous: true},
-           frame(world)
-         ) do
-      {:reply, %{isError: true} = r, _} ->
-        {:error, {:continuous, text(r)}}
+    params = %{agent_id: agent_id, continuous: true}
 
-      {:reply, r, _} ->
-        said = text(r)
+    case tool_library().run("set_agent_continuous", params, %{scope: world.scope}) do
+      {:error, said} ->
+        {:error, {:continuous, said}}
 
+      {:ok, said} ->
         cond do
           not (said =~ "Nothing was requested") -> :ok
           # For a criterion measuring an idle agent, being sent nothing is the
@@ -1280,17 +1275,16 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp aim(world, agent_id, requirement) do
-    case StartTask.execute(
-           %{
-             requirement_name: requirement.name,
-             entity_type: to_string(requirement.entity_type),
-             entity_id: to_string(entity_ref(world, requirement)),
-             agent_id: agent_id
-           },
-           frame(world)
-         ) do
-      {:reply, %{isError: true} = r, _} -> {:error, {:hand_a_task, text(r)}}
-      {:reply, _r, _} -> confirm_held(world, agent_id)
+    params = %{
+      requirement_name: requirement.name,
+      entity_type: to_string(requirement.entity_type),
+      entity_id: to_string(entity_ref(world, requirement)),
+      agent_id: agent_id
+    }
+
+    case tool_library().run("start_task", params, %{scope: world.scope}) do
+      {:error, text} -> {:error, {:hand_a_task, text}}
+      {:ok, _text} -> confirm_held(world, agent_id)
     end
   end
 
@@ -1379,11 +1373,15 @@ defmodule CodeMySpec.Support.EvalRunner do
   # Story 1080's denial probe: the agent asks to leave the loop with no task,
   # and a person declines, saying there is work. The denial is the turn.
   defp tap_out_denied(world, agent_id) do
-    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: agent_id}}
+    context = %{scope: world.scope, agent_id: agent_id}
 
-    with {:reply, %{isError: false} = r, _} <-
-           tap_out().execute(%{reason: "I do not see anything for me to do."}, frame),
-         [_, request_id] <- Regex.run(~r/request_id=`([0-9a-f-]{36})`/, text(r)),
+    with {:ok, text} <-
+           tool_library().run(
+             "tap_out",
+             %{reason: "I do not see anything for me to do."},
+             context
+           ),
+         [_, request_id] <- Regex.run(~r/request_id=`([0-9a-f-]{36})`/, text),
          {:ok, _} <-
            notifications().resolve_permission_request(
              request_id,
@@ -1397,7 +1395,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   end
 
   defp offers, do: Module.concat([CodeMySpec, Agents, Offers])
-  defp tap_out, do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, TapOut])
+  defp tool_library, do: Module.concat([CodeMySpec, ToolLibrary])
 
   # Story 1080's questions probe: main's copy is the main copy, and a coder
   # there asks something only the user can decide. The question is what main
@@ -1426,14 +1424,11 @@ defmodule CodeMySpec.Support.EvalRunner do
       ]
     }
 
-    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: coder.id}}
+    context = %{scope: world.scope, agent_id: coder.id}
 
-    case ask_user_question().execute(params, frame) do
-      {:reply, %{isError: true} = r, _} ->
-        {:error, {:teammate_asks, text(r)}}
-
-      {:reply, _r, _} ->
-        :ok
+    case tool_library().run("ask_user_question", params, context) do
+      {:error, text} -> {:error, {:teammate_asks, text}}
+      {:ok, _text} -> :ok
     end
   end
 
@@ -1527,11 +1522,11 @@ defmodule CodeMySpec.Support.EvalRunner do
       ]
     }
 
-    frame = %Frame{assigns: %{current_scope: world.scope, agent_id: agent_id}}
+    context = %{scope: world.scope, agent_id: agent_id}
 
-    case ask_user_question().execute(params, frame) do
-      {:reply, %{isError: true} = r, _} -> {:error, {:released_task, text(r)}}
-      {:reply, r, _} -> {:ok, fixtures().question_id_from(text(r))}
+    case tool_library().run("ask_user_question", params, context) do
+      {:error, text} -> {:error, {:released_task, text}}
+      {:ok, text} -> {:ok, fixtures().question_id_from(text)}
     end
   end
 
@@ -1543,9 +1538,6 @@ defmodule CodeMySpec.Support.EvalRunner do
       other -> {:error, {:released_task, other}}
     end
   end
-
-  defp ask_user_question,
-    do: Module.concat([CodeMySpec, McpServers, Tasks, Tools, AskUserQuestion])
 
   defp notifications, do: Module.concat([CodeMySpec, Notifications])
 

@@ -19,7 +19,6 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.WorkingCopies
@@ -70,7 +69,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
 
     test "product can start it, recorded against the story", ctx do
       {error?, text} =
-        call(StartTask, ctx.main_scope, ctx.product, %{
+        call("start_task", ctx.main_scope, ctx.product, %{
           requirement_name: "story_issues_triaged",
           entity_type: "story",
           entity_id: to_string(ctx.story.number)
@@ -90,7 +89,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
       ctx.story |> Ecto.Changeset.change(epic_id: epic.id) |> Repo.update!()
 
       {false, _text} =
-        call(StartTask, ctx.main_scope, ctx.product, %{
+        call("start_task", ctx.main_scope, ctx.product, %{
           requirement_name: "story_issues_triaged",
           entity_type: "story",
           entity_id: to_string(ctx.story.number)
@@ -125,7 +124,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
       assert offered?(ctx.main_scope, ctx.product, "three_amigos_complete", ctx.story)
 
       {error?, text} =
-        call(StartTask, ctx.main_scope, ctx.product, %{
+        call("start_task", ctx.main_scope, ctx.product, %{
           requirement_name: "three_amigos_complete",
           entity_type: "story",
           entity_id: to_string(ctx.story.number)
@@ -146,7 +145,7 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
 
     test "coding cannot start product's work on it from another copy", ctx do
       {error?, _text} =
-        call(StartTask, ctx.other_scope, ctx.coding, %{
+        call("start_task", ctx.other_scope, ctx.coding, %{
           requirement_name: "three_amigos_complete",
           entity_type: "story",
           entity_id: to_string(ctx.story.number)

@@ -21,10 +21,11 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -46,15 +47,16 @@ defmodule CodeMySpecSpex.Story555.Criterion5103Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "qa_integration_plan",
               entity_type: "project",
               entity_id: to_string(context.scope.active_project_id),
               session_id: external_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :session_id, external_id)}

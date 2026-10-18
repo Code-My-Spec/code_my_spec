@@ -19,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
   import CodeMySpecSpex.AgentPerformanceHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -58,13 +57,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
       when_ "the agent is restarted before that offer is delivered", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, restarted, _frame} =
-          RestartAgent.execute(
+        restarted =
+          ToolLibrary.run(
+            "restart_agent",
             %{agent_id: context.agent.id, reason: "stuck mid-turn"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute restarted.isError, inspect(restarted)
+        assert match?({:ok, _}, restarted), inspect(restarted)
         {:ok, context}
       end
 

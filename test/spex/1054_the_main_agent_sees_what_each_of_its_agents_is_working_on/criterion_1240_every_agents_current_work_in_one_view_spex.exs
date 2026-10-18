@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3270Spex do
   questions and charge every caller that wants the cheap one for the expensive
   one, which is the same argument that kept questions off it in story 1053.
 
-  So `CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork`, beside
+  So `CodeMySpec.Agents.Tools.ListAgentWork`, beside
   `list_open_questions` on the same server. The main agent's view across its
   agents is one context's job, and this is the second half of it.
 
@@ -40,11 +40,12 @@ defmodule CodeMySpecSpex.Story1054.Criterion3270Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -90,9 +91,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3270Spex do
         # line: asking per agent would satisfy the words and lose the claim.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListAgentWork.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :view, response_text(response))}
       end

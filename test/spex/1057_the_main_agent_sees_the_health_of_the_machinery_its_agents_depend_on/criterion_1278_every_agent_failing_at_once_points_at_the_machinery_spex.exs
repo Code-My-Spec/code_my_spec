@@ -38,11 +38,12 @@ defmodule CodeMySpecSpex.Story1057.Criterion3310Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -74,9 +75,15 @@ defmodule CodeMySpecSpex.Story1057.Criterion3310Spex do
 
       when_ "the main agent looks at the machinery", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = CheckMachinery.execute(%{}, frame)
 
-        refute response.isError, inspect(response)
+        response =
+          ToolLibrary.run(
+            "check_machinery",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

@@ -20,8 +20,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Devops.Starter
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
+  alias CodeMySpec.Provisioning.Tools.Starter
   alias CodeMySpec.Notifications
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -162,8 +161,14 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
       coding = agent(ctx, :coding)
       frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-      {:reply, reply, _} = TapOut.execute(%{reason: "blocked"}, frame)
-      refute reply.isError
+      reply =
+        ToolLibrary.run(
+          "tap_out",
+          %{reason: "blocked"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert match?({:ok, _}, reply)
 
       assert asked(main, :teammate_question) == :ok
 

@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3559Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,9 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3559Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -84,17 +83,34 @@ defmodule CodeMySpecSpex.Story1048.Criterion3559Spex do
           entity_id: to_string(context.story.number)
         }
 
-        {:reply, claimed, _} = StartTask.execute(claim, winner_frame)
-        refute claimed.isError, response_text(claimed)
+        claimed =
+          ToolLibrary.run(
+            "start_task",
+            claim,
+            Map.put(winner_frame.assigns, :scope, winner_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, claimed), response_text(claimed)
         :ok = Fixtures.settle_graph(context.scope)
-        {:reply, winner_tasks, _} = ListTasks.execute(%{}, winner_frame)
-        refute winner_tasks.isError, response_text(winner_tasks)
+
+        winner_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(winner_frame.assigns, :scope, winner_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, winner_tasks), response_text(winner_tasks)
         assert response_text(winner_tasks) =~ "# Tasks (1)"
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -107,26 +123,62 @@ defmodule CodeMySpecSpex.Story1048.Criterion3559Spex do
       end
 
       when_ "the agent attempts to claim the now-owned requirement", context do
-        {:reply, result, _} = StartTask.execute(context.claim, context.loser_frame)
+        result =
+          ToolLibrary.run(
+            "start_task",
+            context.claim,
+            Map.put(
+              context.loser_frame.assigns,
+              :scope,
+              context.loser_frame.assigns[:current_scope]
+            )
+          )
+
         {:ok, Map.put(context, :claim_result, result)}
       end
 
       then_ "the losing claim is refused and only the winner owns a task", context do
-        assert context.claim_result.isError, response_text(context.claim_result)
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.loser_frame)
-        refute tasks.isError, response_text(tasks)
+        assert match?({:error, _}, context.claim_result), response_text(context.claim_result)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.loser_frame.assigns,
+              :scope,
+              context.loser_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        {:reply, winner_tasks, _} = ListTasks.execute(%{}, context.winner_frame)
-        refute winner_tasks.isError, response_text(winner_tasks)
+
+        winner_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.winner_frame.assigns,
+              :scope,
+              context.winner_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, winner_tasks), response_text(winner_tasks)
         assert response_text(winner_tasks) == context.winner_tasks
         {:ok, context}
       end
 
       then_ "the refused claim creates no retry turn or message", context do
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1

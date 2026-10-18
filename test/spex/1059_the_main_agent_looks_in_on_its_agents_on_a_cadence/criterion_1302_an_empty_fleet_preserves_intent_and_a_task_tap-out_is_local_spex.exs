@@ -13,13 +13,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -59,19 +52,36 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
             on_exit(fn -> Machine.stop_agent(agent.id) end)
             assert {:ok, %{busy?: false}} = Machine.status(agent.id)
             agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-            {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-            refute tasks.isError, response_text(tasks)
+
+            tasks =
+              ToolLibrary.run(
+                "list_tasks",
+                %{},
+                Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, tasks), response_text(tasks)
             assert response_text(tasks) == "No tasks."
 
-            {:reply, conversation, _} =
-              ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+            conversation =
+              ToolLibrary.run(
+                "read_agent_conversation",
+                %{agent_id: agent.id},
+                Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+              )
 
-            refute conversation.isError, response_text(conversation)
+            assert match?({:ok, _}, conversation), response_text(conversation)
             %{agent: agent, frame: agent_frame, conversation: response_text(conversation)}
           end)
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame(context))
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
 
         {:ok,
          Map.merge(context, %{
@@ -83,8 +93,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
 
       when_ "three recovery checks inspect the unchanged fleet", context do
         for _ <- 1..3 do
-          {:reply, response, _} = CheckIn.execute(%{}, frame(context))
-          refute response.isError, response_text(response)
+          response =
+            ToolLibrary.run(
+              "check_in",
+              %{},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, response), response_text(response)
         end
 
         {:ok, context}
@@ -98,14 +114,25 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
         for snapshot <- context.agents do
           assert {:ok, %{busy?: false}} = Machine.status(snapshot.agent.id)
           assert Fixtures.role_queue_size(context.scope, snapshot.agent.id) == 0
-          {:reply, tasks, _} = ListTasks.execute(%{}, snapshot.frame)
-          refute tasks.isError, response_text(tasks)
+
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{},
+              Map.put(snapshot.frame.assigns, :scope, snapshot.frame.assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
 
-          {:reply, conversation, _} =
-            ReadAgentConversation.execute(%{agent_id: snapshot.agent.id}, frame(context))
+          conversation =
+            ToolLibrary.run(
+              "read_agent_conversation",
+              %{agent_id: snapshot.agent.id},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
 
-          refute conversation.isError, response_text(conversation)
+          assert match?({:ok, _}, conversation), response_text(conversation)
           assert response_text(conversation) == snapshot.conversation
 
           {:ok, view, _} =
@@ -114,8 +141,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
           assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")
         end
 
-        {:reply, inbox, _} = ListNotifications.execute(%{}, frame(context))
-        refute inbox.isError, response_text(inbox)
+        inbox =
+          ToolLibrary.run(
+            "list_notifications",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, inbox), response_text(inbox)
         assert response_text(inbox) == context.inbox_before
         {:ok, context}
       end
@@ -134,22 +167,37 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
             acceptance_criteria: ["The export format is agreed"]
           )
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               entity_type: "story",
               entity_id: to_string(story.number),
               requirement_name: "three_amigos_complete"
             },
-            main.frame
+            Map.put(main.frame.assigns, :scope, main.frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
-        {:reply, cadence, _} = Cadence.execute(%{seconds: 1200}, main.frame)
-        refute cadence.isError, response_text(cadence)
-        {:reply, tapped, _} = TapOut.execute(%{task_id: task_id}, main.frame)
-        refute tapped.isError, response_text(tapped)
+
+        cadence =
+          ToolLibrary.run(
+            "cadence",
+            %{seconds: 1200},
+            Map.put(main.frame.assigns, :scope, main.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, cadence), response_text(cadence)
+
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{task_id: task_id},
+            Map.put(main.frame.assigns, :scope, main.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tapped), response_text(tapped)
 
         {:ok,
          Map.merge(context, %{
@@ -160,11 +208,32 @@ defmodule CodeMySpecSpex.Story1059.Criterion3334Spex do
       end
 
       then_ "the task is blocked without changing cadence or continuous intent", context do
-        {:reply, cadence, _} = Cadence.execute(%{}, context.main.frame)
-        refute cadence.isError, response_text(cadence)
+        cadence =
+          ToolLibrary.run(
+            "cadence",
+            %{},
+            Map.put(
+              context.main.frame.assigns,
+              :scope,
+              context.main.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, cadence), response_text(cadence)
         assert response_text(cadence) == context.cadence_before
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.main.frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.main.frame.assigns,
+              :scope,
+              context.main.frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[blocked]"
 

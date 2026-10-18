@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -16,10 +18,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -65,21 +63,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
                 persona_id: context.persona_id
               )
 
-            {:reply, started, _} =
-              StartTask.execute(
+            started =
+              ToolLibrary.run(
+                "start_task",
                 %{
                   requirement_name: "bdd_specs_exist",
                   entity_type: "story",
                   entity_id: to_string(story.number)
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute started.isError, response_text(started)
+            assert match?({:ok, _}, started), response_text(started)
             task_id = extract_task_id!(started)
 
-            {:reply, asked, _} =
-              AskUserQuestion.execute(
+            asked =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   task_id: task_id,
                   questions: [
@@ -89,10 +89,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute asked.isError, response_text(asked)
+            assert match?({:ok, _}, asked), response_text(asked)
             [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
             %{id: question_id, task_id: task_id, text: "Which #{title} should we use?"}
           end)
@@ -115,8 +115,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
 
       then_ "a fresh listing recovers both unanswered questions in their original ask order",
             context do
-        {:reply, listed, _} = ListUserQuestions.execute(%{}, context.restarted_frame)
-        refute listed.isError, response_text(listed)
+        listed =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(
+              context.restarted_frame.assigns,
+              :scope,
+              context.restarted_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, listed), response_text(listed)
         text = response_text(listed)
         assert text =~ "2 open questions"
         [first, second] = context.questions
@@ -134,8 +144,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
 
       then_ "the same two tasks remain blocked and restarting has not requested a model turn",
             context do
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.restarted_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.restarted_frame.assigns,
+              :scope,
+              context.restarted_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         text = response_text(tasks)
         assert text =~ "# Tasks (2)"
         assert length(Regex.scan(~r/\[blocked\]/, text)) == 2

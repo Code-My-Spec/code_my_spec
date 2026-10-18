@@ -6,16 +6,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
-  alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -54,8 +52,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
         assert :ok = Machine.stop_agent(quiet.id)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: main.id}}
         quiet_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: quiet.id}}
-        {:reply, tasks, _} = ListTasks.execute(%{}, quiet_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(quiet_frame.assigns, :scope, quiet_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ task.id
 
         {:ok,
@@ -71,19 +76,38 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
       end
 
       when_ "recovery inspects the fleet", context do
-        {:reply, response, _} = CheckIn.execute(%{}, context.frame)
-        refute response.isError, response_text(response)
+        response =
+          ToolLibrary.run(
+            "check_in",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
         {:ok, context}
       end
 
       then_ "work and machinery evidence identify the silent agent", context do
-        {:reply, work, _} = ListAgentWork.execute(%{}, context.frame)
-        refute work.isError, response_text(work)
+        work =
+          ToolLibrary.run(
+            "list_agent_work",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         assert response_text(work) =~ context.quiet_id
         assert response_text(work) =~ "implementation_file"
         assert response_text(work) =~ ~r/last said|silent|stale/i
-        {:reply, machinery, _} = CheckMachinery.execute(%{}, context.frame)
-        refute machinery.isError, response_text(machinery)
+
+        machinery =
+          ToolLibrary.run(
+            "check_machinery",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, machinery), response_text(machinery)
 
         assert response_text(machinery) =~
                  ~r/not.running|unavailable|unreachable|not answering|missing|down/i
@@ -95,11 +119,29 @@ defmodule CodeMySpecSpex.Story1059.Criterion3319Spex do
             context do
         assert {:error, :not_running} = Machine.status(context.quiet_id)
         assert Machine.running() == context.running_ids
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.quiet_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.quiet_frame.assigns,
+              :scope,
+              context.quiet_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
-        {:reply, main_tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute main_tasks.isError, response_text(main_tasks)
+
+        main_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, main_tasks), response_text(main_tasks)
         assert response_text(main_tasks) == "No tasks."
         assert {:ok, %{busy?: false}} = Machine.status(context.main_id)
         assert HeldProvider.seen() == []

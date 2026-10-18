@@ -41,8 +41,6 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -65,8 +63,9 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "needs a QA result recorded",
               questions: [
@@ -78,10 +77,10 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -93,22 +92,23 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
       when_ "the main agent handles that request", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AnswerNotification.execute(
+        response =
+          ToolLibrary.run(
+            "answer_notification",
             %{
               notification_id: context.question_id,
               answer: "submitting the QA result you asked for",
               on_behalf_of: "coding",
               tool: "submit_qa_result"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it does not act as a way around the role's limits", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                """
                The main agent performed, on a coding agent's behalf, something
                that agent is deliberately not given.

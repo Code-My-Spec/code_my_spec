@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3555Spex do
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -62,10 +61,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3555Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: agent.id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
 
         {:ok,
          Map.merge(context, %{
@@ -93,10 +96,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3555Spex do
         assert match?({:ok, _}, work), response_text(work)
         assert response_text(work) =~ "bdd_specs_exist"
 
-        {:reply, conversation, _} =
-          ReadAgentConversation.execute(%{agent_id: context.agent_id}, frame(context))
+        conversation =
+          ToolLibrary.run(
+            "read_agent_conversation",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
 
-        refute conversation.isError, response_text(conversation)
+        assert match?({:ok, _}, conversation), response_text(conversation)
         assert response_text(conversation) == context.conversation_before
         assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Machine.history(context.agent_id) == context.history_before

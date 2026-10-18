@@ -10,11 +10,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [frame: 1]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
-  alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -155,18 +155,37 @@ defmodule CodeMySpecSpex.Story1080.Criterion1756Spex do
   # Main's cadence timer fires once. Main is mid-turn, so the stall arrives as
   # its own notice rather than inside a check-in turn.
   defp check_in(context) do
-    {:reply, configured, _} = Cadence.execute(%{seconds: 30}, frame(context))
-    refute configured.isError, response_text(configured)
+    configured =
+      ToolLibrary.run(
+        "cadence",
+        %{seconds: 30},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, configured), response_text(configured)
     :ok = Fixtures.start_recovery_timer(context.scope)
     :ok = never_starts(context)
 
     changed_at = DateTime.utc_now()
-    {:reply, response, _} = Cadence.execute(%{seconds: 1}, frame(context))
-    refute response.isError, response_text(response)
+
+    response =
+      ToolLibrary.run(
+        "cadence",
+        %{seconds: 1},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), response_text(response)
 
     Fixtures.await_recovery_check(
       fn ->
-        {:reply, report, _} = Cadence.execute(%{}, frame(context))
+        report =
+          ToolLibrary.run(
+            "cadence",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
         response_text(report)
       end,
       changed_at

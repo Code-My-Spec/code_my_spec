@@ -6,9 +6,10 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.McpServers.Devops.Tools.{LinkServer, RunProvisioningStep}
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -48,8 +49,12 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "uat", server_name: "steady-uat-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "uat", server_name: "steady-uat-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context}
       end
@@ -57,7 +62,14 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
       when_ "the project's devops agent runs the :server step before anything is linked",
             context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :first_response, response)}
       end
 
@@ -77,15 +89,26 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _link_response, _frame} =
-          LinkServer.execute(%{environment: "prod", server_name: "shared-fleet-box"}, frame)
+        _link_response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "prod", server_name: "shared-fleet-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context}
       end
 
       when_ "the project's devops agent runs the same :server step again", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :second_response, response)}
       end
 
