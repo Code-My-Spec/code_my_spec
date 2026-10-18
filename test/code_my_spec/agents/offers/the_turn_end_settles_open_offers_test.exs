@@ -370,7 +370,10 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
         end
 
       assert steps == ["detail", "alternatives", "held_back"]
-      assert %{ignored: 3, held?: true} = Offers.standing(ctx.agent.id)[@node]
+
+      # Reaching held_back by being ignored is not a decline (criterion 2169,
+      # product's ruling on 1ef7cfe3) -- held? stays false.
+      assert %{ignored: 3, held?: false} = Offers.standing(ctx.agent.id)[@node]
     end
 
     test "a claim starts the ladder over", ctx do

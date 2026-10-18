@@ -658,8 +658,9 @@ defmodule CodeMySpec.Agents.Work do
   # Released and still claimable: one the graph no longer offers would be
   # refused by `start_task`, and offering it first would hide the rest.
   #
-  # And not held back: a released task ignored to the end of its ladder, or
-  # declined, is not offered again, as requirement work is not.
+  # And not held back: a released task the agent explicitly declined is not
+  # offered again, as requirement work is not. One merely ignored past its
+  # own ladder is not declined (no implicit decline) and keeps being offered.
   defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
     standing = Offers.standing(agent.id)
 
@@ -925,8 +926,9 @@ defmodule CodeMySpec.Agents.Work do
     |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name})
   end
 
-  # Claimable work less what is held back from this agent (ignored to the end
-  # of its ladder, or declined): a teammate is still offered it.
+  # Claimable work less what this agent explicitly declined (reject_offer):
+  # a teammate is still offered it. Ignored past its own ladder is not a
+  # decline and is not held back here -- it escalates to main instead.
   defp offerable(scope, agent) do
     standing = Offers.standing(agent.id)
 
@@ -1139,17 +1141,17 @@ defmodule CodeMySpec.Agents.Work do
   @doc """
   Whether a task at `agent`'s checkout withholds `node` from it: another
   agent's live task, its own blocked on an unresolved blocker, or its own
-  open offer for the same work that `Offers.standing/1` already reads as
-  held back.
+  open offer for the same work that `Offers.standing/1` reads as declined.
 
-  The second half is criterion 2163: a declined offer holds the work back
+  The last half is criterion 2163: a declined offer holds the work back
   from the agent that declined it, alone, until main acts -- reassigns it,
-  gives the agent other work, or offers it again -- and an offer ignored past
-  its own ladder holds back the same way. `standing`'s `held?` was already
-  used to keep a fresh offer from being made (`offerable/2`); this is the
-  same flag, now also read here so the held-back work does not stay on
-  `get_next_requirement`/`start_task`'s own list for the agent that cannot
-  take it, which is what kept requeuing it after a decline (7ae5d2a0).
+  gives the agent other work, or offers it again. `standing`'s `held?` is
+  the same signal `offerable/2` already uses to keep a fresh offer from
+  being made; this is read here too, so the held-back work does not stay
+  on `get_next_requirement`/`start_task`'s own list for the agent that
+  cannot take it (7ae5d2a0). An offer merely ignored past its own ladder is
+  not a decline (criterion 2169, product's ruling on 1ef7cfe3) -- `held?`
+  does not cover it, so it keeps being offered while it escalates to main.
 
   Its own active task is not withheld -- `start_task` resumes that.
   """

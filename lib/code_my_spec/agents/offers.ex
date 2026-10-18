@@ -621,24 +621,19 @@ defmodule CodeMySpec.Agents.Offers do
   # never does, and a row is only laddered when its whole key is.
   defp laddered?({_key, kind, type, _status}), do: Map.has_key?(@ladders, {kind, type})
 
-  # Newest first, up to the last claim. `ignored` is how many settled ignored
-  # offers stand since then; `held?` is that count reaching the subject's own
-  # ladder length, or a decline since. Each offer is read by
-  # the ladder for its own kind, so two kinds can share a subject key.
+  # Newest first, up to the last claim. `ignored` is how many settled
+  # ignored offers stand since then, for rung selection; `held?` is a
+  # decline since -- and only that. Per product's ruling on 1ef7cfe3: an
+  # offer ignored past its own ladder is not a decline ("no implicit
+  # decline"), so exhausting a ladder must not hold work back the way
+  # reject_offer does. It stays open and escalates to main (criterion
+  # 2169); the agent keeps being offered it. Each offer is read by the
+  # ladder for its own kind, so two kinds can share a subject key.
   defp streak(settled) do
     recent = Enum.take_while(settled, fn {_kind, _type, status} -> status != :claimed end)
 
     ignored = Enum.count(recent, fn {_kind, _type, status} -> status == :ignored end)
-
-    held? =
-      Enum.any?(recent, fn {kind, type, status} ->
-        case {status, ladder({kind, type})} do
-          {:declined, _ladder} -> true
-          {:ignored, nil} -> false
-          {:ignored, steps} -> ignored >= length(steps)
-          _other -> false
-        end
-      end)
+    held? = Enum.any?(recent, fn {_kind, _type, status} -> status == :declined end)
 
     %{ignored: ignored, held?: held?}
   end

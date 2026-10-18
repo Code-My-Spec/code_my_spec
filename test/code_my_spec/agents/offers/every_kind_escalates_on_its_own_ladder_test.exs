@@ -9,8 +9,14 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   `kind: :work` match).
 
   Two kinds, one ladder each, is what separates this from the special case it
-  replaces: a requirement offer still takes three ignored offers to be held
-  back, a denial offer takes one. Held back is always the last rung.
+  replaces: a requirement offer still takes three ignored offers to reach its
+  own last rung, a denial offer takes one.
+
+  `held?` itself is narrower than reaching that last rung (product's ruling on
+  1ef7cfe3, criterion 2169 vs 2160/2163): it is only ever a decline. Ignoring a
+  kind to the end of its own ladder escalates to main
+  (`HeldBackFromAnAgentReachesMainTest`), it does not set `held?` -- these
+  tests check `ignored` reaching each kind's own ladder length, per key.
   """
 
   use CodeMySpecSpex.Case, async: true
@@ -69,14 +75,15 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
       %{agent: agent}
     end
 
-    test "a denial offer is held back after its one rung", ctx do
+    test "a denial offer reaches its one-rung ladder on the first ignore", ctx do
       key = "r-#{System.unique_integer([:positive])}"
       ignored(ctx, :denial, "tap_out", key, 1)
 
-      assert %{held?: true} = Offers.standing(ctx.agent.id)[key]
+      assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key],
+             "reaching a ladder's last rung by being ignored is not a decline"
     end
 
-    test "a requirement offer is not held back until its third", ctx do
+    test "a requirement offer's ignored count climbs toward its three-rung ladder", ctx do
       key = "story:1:component_spec"
 
       ignored(ctx, :work, "requirement", key, 1)
@@ -86,42 +93,42 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
       assert %{ignored: 2, held?: false} = Offers.standing(ctx.agent.id)[key]
 
       ignored(ctx, :work, "requirement", key, 3)
-      assert %{ignored: 3, held?: true} = Offers.standing(ctx.agent.id)[key]
+
+      assert %{ignored: 3, held?: false} = Offers.standing(ctx.agent.id)[key],
+             "ignored to the end of its ladder, still not a decline (criterion 2169)"
     end
 
-    test "an unblocked task offer is held back after its second", ctx do
+    test "an unblocked task offer reaches its two-rung ladder on the second ignore", ctx do
       key = "t-#{System.unique_integer([:positive])}"
 
       ignored(ctx, :unblocked, "task", key, 1)
       assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key]
 
       ignored(ctx, :unblocked, "task", key, 2)
-      assert %{held?: true} = Offers.standing(ctx.agent.id)[key]
+      assert %{ignored: 2, held?: false} = Offers.standing(ctx.agent.id)[key]
     end
 
     test "standing/1 reports the laddered kinds, not one hard-coded pair", ctx do
       key = "r-#{System.unique_integer([:positive])}"
       ignored(ctx, :denial, "tap_out", key, 1)
 
-      assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
+      assert %{ignored: 1} = Offers.standing(ctx.agent.id)[key],
              "a denial offer's standing is not read: standing/1 filters to work offers"
     end
 
-    test "two kinds under one subject key count on their own ladders", ctx do
+    test "two kinds under one subject key both stay un-held, merely ignored", ctx do
       key = "t-#{System.unique_integer([:positive])}"
 
-      # One ignored notification of a released task: its ladder is two, so it is
-      # not held back yet. The tap-out notice sharing the key is ignored once and
-      # its ladder is one, so it is. The shorter ladder must not be borrowed by
-      # the longer subject, nor the longer by the shorter.
+      # An unblocked task notice (ladder length two) and a tap-out denial
+      # notice (ladder length one) can share a subject key. Neither kind's
+      # own ignore -- however many, however short its own ladder -- is a
+      # decline, so standing/1's held? stays false for the shared key either
+      # way (criterion 2169).
       ignored(ctx, :unblocked, "task", key, 1)
-
-      assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key]
+      assert %{held?: false} = Offers.standing(ctx.agent.id)[key]
 
       ignored(ctx, :denial, "tap_out", key, 1)
-
-      assert %{held?: true} = Offers.standing(ctx.agent.id)[key],
-             "the denial notice's one rung did not hold its own subject back"
+      assert %{held?: false} = Offers.standing(ctx.agent.id)[key]
     end
   end
 
