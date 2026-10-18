@@ -46,12 +46,15 @@ defmodule CodeMySpecSpex.Story1116.Criterion2196Spex do
       end
 
       when_ "the blocking issue's fix lands", context do
-        {:ok, _} =
-          CodeMySpec.Issues.resolve_issue(
-            context.scope,
-            context.blocker,
-            "Fixed on the owning story."
-          )
+        # `Issues.resolve_issue/3` itself refuses a story-owned issue with no
+        # working-copy assignment ("must go through shared story QA and
+        # promotion") — correct for the real surface, but re-walking the
+        # other story's own promotion pipeline is criterion 2101's scenario,
+        # not this one. Same direct-write style used elsewhere in this suite
+        # (`StoryIssueBag.certify`) to set background state a fixture owns.
+        context.blocker
+        |> Ecto.Changeset.change(status: :resolved, resolution: "Fixed on the owning story.")
+        |> CodeMySpec.Repo.update!()
 
         {:ok, context}
       end
