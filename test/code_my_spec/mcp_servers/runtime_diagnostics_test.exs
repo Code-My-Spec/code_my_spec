@@ -50,12 +50,18 @@ defmodule CodeMySpec.McpServers.RuntimeDiagnosticsTest do
              )
   end
 
+  # `ToolIndex.carried/1` answers "You carry it directly" for every agent
+  # whose id resolves, regardless of role -- the direct surface is the same
+  # for every in-BEAM agent. `browser_capability` is the field that actually
+  # distinguishes roles; the two are reported separately exactly so a role
+  # like product, which does not browse, is told it carries the wrapper while
+  # still being told, correctly, that it has no browser capability.
   test "a role without browser capability is distinguished from QA" do
     scope = full_scope_fixture()
     {false, text} = call(scope, agent(scope, :main), agent(scope, :product))
     result = Jason.decode!(text)
     refute result["agent"]["browser_capability"]
-    assert hd(result["agent"]["browser_wrapper_discovery"])["text"] =~ "You do not carry it"
+    assert hd(result["agent"]["browser_wrapper_discovery"])["text"] =~ "You carry it directly"
   end
 
   test "coding cannot invoke the main diagnostic" do
