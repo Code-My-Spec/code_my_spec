@@ -41,7 +41,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
         context = context |> start_session() |> put_to_work()
         id = coder.id
         assert_receive {:work_turn_requested, ^id, _ref, _first}, 2_000
-        {:ok, Map.merge(context, %{coder: id, main_id: main.id})}
+
+        # Issue 38686d5d: FullSatisfactionFixtures.apply_up_to_analysis builds
+        # a real fixture story ("Reservations user story"), which can leave
+        # more than one requirement actionable for this role. The scenario's
+        # own subject is whichever one was actually offered first -- pin it,
+        # rather than assume a fresh agent's offer list holds only one row.
+        [offered] = offers(context, id, %{kind: "work", status: "open"})
+        {:ok, Map.merge(context, %{coder: id, main_id: main.id, subject: offered.subject})}
       end
 
       when_ "it ignores every rung of that offer", context do
@@ -79,8 +86,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion2169Spex do
         refute_receive {:work_turn_requested, ^id, _ref, _again}, 1_000,
                         "work ignored past its last rung was pushed to the agent again"
 
-        assert [%{status: "open"} | _] = offers(context, context.coder, %{kind: "work"}),
-               listing(context)
+        recorded =
+          Enum.filter(offers(context, context.coder, %{kind: "work"}), &(&1.subject == context.subject))
+
+        assert [%{status: "open"} | _] = recorded, listing(context)
 
         {:ok, context}
       end
