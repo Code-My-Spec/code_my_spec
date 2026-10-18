@@ -713,16 +713,6 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  # An answer offer's second rung is the answer with the task it unblocks
-  # (criterion 2175): the first said the answer, this repeats it beside the task.
-  defp answer([%{blocker_type: :question, blocker_id: id}]),
-    do: answer_text(Notifications.answer_detail(id))
-
-  defp answer(_tasks), do: ""
-
-  defp answer_text(nil), do: ""
-  defp answer_text(text), do: "\n\n" <> text
-
   # Matches TaskOwner.resolved_header/1's own format for {:tap_out, id, :denied}
   # exactly, so a later rung of the same offer (this path) reads the same as
   # the first delivery (resume_ready/4, via wake_released/wake_with_notice) --
@@ -739,11 +729,21 @@ defmodule CodeMySpec.Agents.Work do
     case rung(agent, :work, "requirement", key) do
       :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
       :alternatives -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
-      _first -> prompt(agent)
+      _first -> prompt(agent) <> "\n\n" <> offered(scope, agent, key)
     end
   end
 
   defp offer_prompt_body(_scope, agent, _subject), do: prompt(agent)
+
+  # An answer offer's second rung is the answer with the task it unblocks
+  # (criterion 2175): the first said the answer, this repeats it beside the task.
+  defp answer([%{blocker_type: :question, blocker_id: id}]),
+    do: answer_text(Notifications.answer_detail(id))
+
+  defp answer(_tasks), do: ""
+
+  defp answer_text(nil), do: ""
+  defp answer_text(text), do: "\n\n" <> text
 
   defp append_offer_note(body, {"tap_out", _id}, _offer), do: body
 
@@ -782,6 +782,15 @@ defmodule CodeMySpec.Agents.Work do
         If it is not yours to do, call `reject_offer` with your reason rather than leaving it.
         """
         |> String.trim()
+    end
+  end
+
+  # The first names the work by its id (criterion 2167), as `list_offers` and
+  # `reject_offer` know it.
+  defp offered(scope, agent, key) do
+    case Enum.find(offerable(scope, agent), &(node_key(agent, &1) == key)) do
+      nil -> "Offered: `requirement:#{key}`."
+      node -> "Offered: `requirement:#{key}` — `#{node.name}` on #{entity(node)}."
     end
   end
 
