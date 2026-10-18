@@ -8,6 +8,8 @@ defmodule CodeMySpec.Hooks.SessionStart do
   only forward it.
   """
 
+  require Logger
+
   alias CodeMySpec.Agents
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
@@ -60,7 +62,15 @@ defmodule CodeMySpec.Hooks.SessionStart do
     })
   end
 
-  defp introduce(body, _not_registered, _messaging), do: body
+  # Never silent (issue 945c8a01): a session that did not join is the one thing
+  # nobody would otherwise notice.
+  defp introduce(body, {:error, reason}, _messaging) do
+    Logger.warning(
+      "[SessionStart] a terminal session did not register as an agent: #{inspect(reason)}"
+    )
+
+    body
+  end
 
   defp reached(%{"delivery" => "stop_hook", "why" => why}),
     do:
