@@ -375,7 +375,13 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       # 2169, product's correction on 3e9a96e9) -- declined? stays false --
       # but it does stop this agent being pushed the same work again
       # (criterion 1741), the same as a decline does, so held? is true.
-      assert %{ignored: 3, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[@node]
+      #
+      # Main's correction on a01ffadb: the third, held_back offer settles
+      # :open, not :ignored, so streak/1's ignored count no longer includes
+      # it -- 2, not 3, is the number of settled :ignored rows standing
+      # upon. Exhaustion itself is read from that open row's own attempt
+      # reaching the ladder's length, which is what makes held? true here.
+      assert %{ignored: 2, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[@node]
     end
 
     test "a claim starts the ladder over", ctx do

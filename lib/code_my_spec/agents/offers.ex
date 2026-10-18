@@ -608,10 +608,13 @@ defmodule CodeMySpec.Agents.Offers do
         o.status in [:claimed, :declined, :ignored, :open]
     )
     |> order_by([o], desc: o.inserted_at)
-    |> select([o], {o.subject_key, o.kind, o.subject_type, o.status, o.attempt})
+    |> select([o], {o.subject_key, o.kind, o.subject_type, o.status, o.attempt, o.outcome_at})
     |> Repo.all()
     |> Enum.filter(&laddered?/1)
-    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2), elem(&1, 3), elem(&1, 4)})
+    |> Enum.group_by(
+      &elem(&1, 0),
+      &{elem(&1, 1), elem(&1, 2), elem(&1, 3), elem(&1, 4), elem(&1, 5)}
+    )
     |> Map.new(fn {key, settled} -> {key, streak(settled)} end)
   end
 
@@ -619,7 +622,8 @@ defmodule CodeMySpec.Agents.Offers do
 
   # The row's own kind decides whether it escalates: a kind not in `@ladders`
   # never does, and a row is only laddered when its whole key is.
-  defp laddered?({_key, kind, type, _status, _attempt}), do: Map.has_key?(@ladders, {kind, type})
+  defp laddered?({_key, kind, type, _status, _attempt, _outcome_at}),
+    do: Map.has_key?(@ladders, {kind, type})
 
   # Newest first, up to the last claim. `ignored` is how many settled
   # ignored offers stand since then, for rung selection. Two different
@@ -640,14 +644,30 @@ defmodule CodeMySpec.Agents.Offers do
   # that. Each offer is read by the ladder for its own kind, so two kinds
   # can share a subject key.
   defp streak(settled) do
-    recent = Enum.take_while(settled, fn {_kind, _type, status, _attempt} -> status != :claimed end)
+    recent =
+      Enum.take_while(settled, fn {_kind, _type, status, _attempt, _outcome_at} ->
+        status != :claimed
+      end)
 
-    ignored = Enum.count(recent, fn {_kind, _type, status, _attempt} -> status == :ignored end)
-    declined? = Enum.any?(recent, fn {_kind, _type, status, _attempt} -> status == :declined end)
+    ignored =
+      Enum.count(recent, fn {_kind, _type, status, _attempt, _outcome_at} -> status == :ignored end)
 
+    declined? =
+      Enum.any?(recent, fn {_kind, _type, status, _attempt, _outcome_at} -> status == :declined end)
+
+    # An :ignored row has already been through a turn end. An :open row has
+    # not, unless outcome_at is set -- which only happens once it has been
+    # left open by outcome/3's own exhaustion branch (criterion 2169). A
+    # freshly created, never-yet-settled :open row (outcome_at nil) is the
+    # offer about to be delivered for the first time, even when its attempt
+    # already equals the ladder's length -- the last rung is delivered once
+    # before the agent not taking it counts as exhaustion (main's correction
+    # on 21eb9860, which itself corrects a01ffadb's first cut).
     exhausted? =
-      Enum.any?(recent, fn {kind, type, status, attempt} ->
-        status in [:open, :ignored] and
+      Enum.any?(recent, fn {kind, type, status, attempt, outcome_at} ->
+        settled_once? = status == :ignored or (status == :open and not is_nil(outcome_at))
+
+        settled_once? and
           case ladder({kind, type}) do
             nil -> false
             steps -> attempt >= length(steps)

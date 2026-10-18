@@ -251,7 +251,13 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
       turn_ended(ctx.scope, ctx.agent)
     end
 
-    assert %{ignored: 3, held?: true} = Offers.standing(id)[held]
+    # Main's correction (a01ffadb, refined on 21eb9860): the third ignore
+    # reaches the ladder's last rung and settles :open, not :ignored (the
+    # offer that is "held_back" stays open until main acts) -- so the
+    # settled-:ignored count standing/1 reports is 2, not 3. held? is still
+    # true: exhaustion is read from that open row's own attempt, which is
+    # what the push-suppression refute_receive right below depends on.
+    assert %{ignored: 2, held?: true} = Offers.standing(id)[held]
 
     refute_receive {:work_turn_requested, ^id, _ref, _prompt},
                    1_000,
