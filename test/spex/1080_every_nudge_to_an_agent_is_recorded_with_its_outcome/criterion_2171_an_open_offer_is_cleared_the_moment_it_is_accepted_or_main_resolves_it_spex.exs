@@ -43,15 +43,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion2171Spex do
         {:ok, context}
       end
 
+      # Holding the task now, its next offer is the turn-end menu on it.
       then_ "and the agent can be offered its next work without a refusal", context do
         id = context.coder
+        assert_receive {:agent_dispatch, ^id, _ref, "Your turn is done" <> _}, 2_000
 
-        receive do
-          {:work_turn_requested, ^id, _ref, _prompt} -> :ok
-        after
-          2_000 -> flunk("no next offer followed the cleared one")
-        end
-
+        assert [%{status: "open"}] = offers(context, id, %{kind: "menu"}), listing(context)
         {:ok, context}
       end
     end
