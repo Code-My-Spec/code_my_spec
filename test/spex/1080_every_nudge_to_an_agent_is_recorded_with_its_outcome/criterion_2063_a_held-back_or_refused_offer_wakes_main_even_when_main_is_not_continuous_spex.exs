@@ -49,9 +49,17 @@ defmodule CodeMySpecSpex.Story1080.Criterion2063Spex do
 
       then_ "main is woken the moment it settles, not left for its next scheduled turn",
             context do
+        # Wake.decide/3's own @not_continuous table maps :offer_held_back to
+        # :wake (citing this criterion), so a held-back/refused report to
+        # main travels the same transport call an operator's message does --
+        # Agents.dispatch_message, not Work.offer_turn_with -- and arrives as
+        # {:agent_dispatch, ...}, not {:work_turn_requested, ...} (which is
+        # for work main could claim, not a report). That dispatch is what
+        # wakes a non-continuous main: the same delivery an operator message
+        # uses to start one of its turns.
         main_id = context.main_id
-        assert_receive {:work_turn_requested, ^main_id, _ref, prompt}, 2_000
-        assert prompt =~ context.coder, prompt
+        assert_receive {:agent_dispatch, ^main_id, _ref, notice}, 2_000
+        assert notice =~ context.coder, notice
         {:ok, context}
       end
     end
