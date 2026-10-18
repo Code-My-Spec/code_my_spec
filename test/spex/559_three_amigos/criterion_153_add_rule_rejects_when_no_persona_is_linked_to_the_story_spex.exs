@@ -25,9 +25,9 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.ListRules
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -49,20 +49,21 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
       when_ "the agent calls add_rule on that story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AddRule.execute(
+        response =
+          ToolLibrary.run(
+            "add_rule",
             %{
               story_number: context.story.number,
               statement: "Suspended cards cannot be used"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}
       end
 
       then_ "the MCP response surfaces a persona-linkage validation error", context do
-        assert context.add_response.isError == true,
+        assert match?({:error, _}, context.add_response),
                "expected the response to be flagged as an error, got #{inspect(context.add_response)}"
 
         body = response_text(context.add_response)
@@ -76,11 +77,10 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
       then_ "the rule does not appear in list_rules for the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListRules.execute(
-            %{story_number: context.story.number},
-            frame
-          )
+        list_response =
+          ToolLibrary.run("list_rules", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         body = response_text(list_response)
 

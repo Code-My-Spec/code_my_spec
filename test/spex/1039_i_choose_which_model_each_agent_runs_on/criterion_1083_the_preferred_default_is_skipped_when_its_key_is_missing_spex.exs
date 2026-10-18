@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpecSpex.Fixtures
 
@@ -74,7 +75,14 @@ defmodule CodeMySpecSpex.Story1039.Criterion3008Spex do
   # A copy holds one agent per role; retiring this one frees the seat for the next.
   defp stop(response, frame) do
     agent_id = response_field(response, "Agent")
-    {:reply, reply, _} = RetireAgent.execute(%{"agent_id" => agent_id}, frame)
-    refute reply.isError, response_text(reply)
+
+    reply =
+      ToolLibrary.run(
+        "retire_agent",
+        %{"agent_id" => agent_id},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, reply), response_text(reply)
   end
 end

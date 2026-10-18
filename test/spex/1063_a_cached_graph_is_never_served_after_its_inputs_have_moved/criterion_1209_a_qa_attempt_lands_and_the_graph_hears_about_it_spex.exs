@@ -18,10 +18,11 @@ defmodule CodeMySpecSpex.Story1063.Criterion3235Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -47,15 +48,16 @@ defmodule CodeMySpecSpex.Story1063.Criterion3235Spex do
       when_ "the agent submits the QA result", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          SubmitQaResult.execute(
+        _response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}

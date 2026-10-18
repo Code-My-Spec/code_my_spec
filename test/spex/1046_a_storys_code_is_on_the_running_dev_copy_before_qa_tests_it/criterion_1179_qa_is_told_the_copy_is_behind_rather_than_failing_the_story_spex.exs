@@ -31,11 +31,12 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -86,7 +87,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion3172Spex do
 
   defp ask_for_next_work(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     Map.put(context, :response, response)
   end
 

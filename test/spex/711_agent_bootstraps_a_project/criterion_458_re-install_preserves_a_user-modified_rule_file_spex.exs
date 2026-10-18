@@ -16,9 +16,10 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallRules
   alias CodeMySpecSpex.Fixtures
 
   @rules_dir ".code_my_spec/rules"
@@ -27,7 +28,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/", criterion: 458 do
+  spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/",
+    criterion: 458 do
     scenario "Re-install preserves a user-modified rule file" do
       given_ "elixir.md in the project's rules dir holds user-written content distinct from the framework default",
              context do
@@ -53,7 +55,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
 
       when_ "the agent calls install_rules", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallRules.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_rules",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story682.Criterion5830Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -47,7 +48,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5830Spex do
       given_ "we record the current component count", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListComponents.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         before_count = count_components_in_response(response)
 
         {:ok, Map.put(context, :before_count, before_count)}
@@ -82,7 +89,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5830Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListComponents.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         after_count = count_components_in_response(response)
 
         assert after_count == context.before_count,

@@ -10,15 +10,16 @@ defmodule CodeMySpecSpex.Story726.Criterion6442Spex do
   recorded.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (rejection)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (observe nothing
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (rejection)
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (observe nothing
     was recorded)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,14 +38,15 @@ defmodule CodeMySpecSpex.Story726.Criterion6442Spex do
       when_ "the agent calls submit_qa_result without a status field", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :submit_response, response)}
@@ -52,7 +54,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6442Spex do
 
       then_ "the tool returns a structured error naming the missing status field",
             context do
-        assert context.submit_response.isError,
+        assert match?({:error, _}, context.submit_response),
                "expected error response, got: #{inspect(context.submit_response)}"
 
         text = response_text(context.submit_response)
@@ -66,10 +68,14 @@ defmodule CodeMySpecSpex.Story726.Criterion6442Spex do
       and_ "no attempt record was created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         refute text =~ "smoke",

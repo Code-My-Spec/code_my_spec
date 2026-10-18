@@ -199,16 +199,5 @@ defmodule CodeMySpec.McpServers.Validators do
   rather than only what failed.
   """
   @spec no_working_copy_message(String.t()) :: String.t()
-  def no_working_copy_message(tool) do
-    """
-    `#{tool}` needs the project's files, and this server does not have them.
-
-    The working copy lives on the harness — that is the design, not a \
-    misconfiguration. Write the file there yourself; the harness syncs it back \
-    and the requirement will clear on the next evaluation.
-
-    (If you expected this server to hold the project, it was started without \
-    CMS_MCP_WORKING_DIR.)\
-    """
-  end
+  defdelegate no_working_copy_message(tool), to: CodeMySpec.Tools
 end

@@ -8,6 +8,8 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
   import CodeMySpec.UsersFixtures
@@ -22,7 +24,6 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
@@ -170,8 +171,9 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     refute started_qa.isError
     [qa_task] = reload(qa).tasks
 
-    {:reply, submitted, _} =
-      SubmitIssueQaResult.execute(
+    submitted =
+      ToolLibrary.run(
+        "submit_issue_qa_result",
         %{
           issue_id: ctx.issue.id,
           task_id: qa_task.id,
@@ -179,10 +181,10 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
           issue_ids: [ctx.issue.id],
           scenarios: [%{name: "Delivery", status: "fail", observation: "Still broken"}]
         },
-        qa_frame
+        Map.put(qa_frame.assigns, :scope, qa_frame.assigns[:current_scope])
       )
 
-    refute submitted.isError
+    assert match?({:ok, _}, submitted)
 
     issue = Issues.get_issue(scope, ctx.issue.id)
     assert issue.awaiting_role == :coding

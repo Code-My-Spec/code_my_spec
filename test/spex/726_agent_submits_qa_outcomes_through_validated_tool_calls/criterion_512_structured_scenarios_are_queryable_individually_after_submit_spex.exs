@@ -9,14 +9,15 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
   individually in `list_qa_attempts`.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Qa.Tools.ListQaAttempts`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,8 +36,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
       when_ "the agent submits with three scenarios (name + status + observation)", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
@@ -47,10 +49,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
               ],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, context}
       end
 
@@ -58,10 +60,14 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ "alpha_scenario"

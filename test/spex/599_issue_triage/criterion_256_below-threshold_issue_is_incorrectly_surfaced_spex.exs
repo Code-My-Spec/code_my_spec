@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
@@ -64,8 +65,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5330Spex do
       when_ "the agent calls list_issues for the low severity", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListIssues.execute(%{status: "incoming", severity: "low"}, frame)
+        response =
+          ToolLibrary.run(
+            "list_issues",
+            %{status: "incoming", severity: "low"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :low_list_text, response_text(response))}
       end

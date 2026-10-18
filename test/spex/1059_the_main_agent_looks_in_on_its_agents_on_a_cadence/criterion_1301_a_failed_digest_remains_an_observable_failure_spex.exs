@@ -5,14 +5,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
@@ -60,12 +60,25 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
 
       then_ "the recorded failure names the unavailable source rather than claiming all is well",
             context do
-        {:reply, issues, _} = ListIssues.execute(%{}, context.frame)
-        refute issues.isError, response_text(issues)
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, issues), response_text(issues)
         assert response_text(issues) =~ ~r/check.in.*could not|digest.*fail/i
         [_, issue_id] = Regex.run(~r/ID: ([a-f0-9-]+)/, response_text(issues))
-        {:reply, issue, _} = GetIssue.execute(%{issue_id: issue_id}, context.frame)
-        refute issue.isError, response_text(issue)
+
+        issue =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: issue_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, issue), response_text(issue)
         assert response_text(issue) =~ "analyzer ledger"
         assert response_text(issue) =~ ~r/did not answer|unavailable|failed/i
         {:ok, context}

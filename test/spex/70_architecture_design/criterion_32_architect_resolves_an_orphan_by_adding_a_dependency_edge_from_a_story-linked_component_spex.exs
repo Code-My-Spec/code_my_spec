@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -141,11 +142,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5658Spex do
       then_ "execution records the transitively-linked dependency", context do
         app = context.project.module_name || "MyApp"
 
-        {:reply, listed, _frame} =
-          ListComponents.execute(
-            %{},
-            %Frame{assigns: %{current_scope: context.scope}}
-          )
+        listed =
+          ToolLibrary.run("list_components", %{}, %{scope: context.scope})
 
         for module_name <- ["#{app}.SharedKit"] do
           assert response_text(listed) =~ module_name,

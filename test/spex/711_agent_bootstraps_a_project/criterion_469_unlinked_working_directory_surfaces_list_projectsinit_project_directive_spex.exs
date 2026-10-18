@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6255Spex do
     1. Call `list_projects` to see what's available.
     2. Then `init_project` with the chosen project_id.
 
-  Surface: `CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement`.
+  Surface: `CodeMySpec.Requirements.Tools.GetNextRequirement`.
   When no project resolves from the frame's working_dir,
   `validate_local_scope/1` errors and the tool falls back to
   `Init.command/2`. ExCliVcr replays `init_all_prereqs_pass.json` so the
@@ -18,15 +18,17 @@ defmodule CodeMySpecSpex.Story711.Criterion6255Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
 
-  spex "An unlinked working directory surfaces the link-project directive through MCP", criterion: 469 do
+  spex "An unlinked working directory surfaces the link-project directive through MCP",
+    criterion: 469 do
     scenario "Unlinked working directory surfaces list_projects→init_project directive" do
       given_ "a working directory that satisfies the Phoenix shape but no project row points at it",
              context do
@@ -50,7 +52,13 @@ defmodule CodeMySpecSpex.Story711.Criterion6255Spex do
 
         prompt_text =
           use_cmd_cassette "init_all_prereqs_pass", record: :none do
-            {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+            response =
+              ToolLibrary.run(
+                "get_next_requirement",
+                %{},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
+
             response_text(response)
           end
 

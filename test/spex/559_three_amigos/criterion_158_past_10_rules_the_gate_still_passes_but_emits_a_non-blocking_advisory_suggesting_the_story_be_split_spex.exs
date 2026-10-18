@@ -16,11 +16,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
@@ -36,14 +36,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
         for n <- 1..15 do
           statement = "Rule number #{n}"
 
-          {:reply, _add_rule, _frame} =
-            AddRule.execute(
+          _add_rule =
+            ToolLibrary.run(
+              "add_rule",
               %{story_number: context.story.number, statement: statement},
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          {:reply, _happy, _frame} =
-            AddScenario.execute(
+          _happy =
+            ToolLibrary.run(
+              "add_scenario",
               %{
                 story_number: context.story.number,
                 rule_statement: statement,
@@ -51,11 +53,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
                 kind: "happy_path",
                 body: "Given context\nWhen action\nThen happy outcome"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          {:reply, _failure, _frame} =
-            AddScenario.execute(
+          _failure =
+            ToolLibrary.run(
+              "add_scenario",
               %{
                 story_number: context.story.number,
                 rule_statement: statement,
@@ -63,7 +66,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5891Spex do
                 kind: "failure_path",
                 body: "Given context\nWhen action\nThen failure outcome"
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
         end
 

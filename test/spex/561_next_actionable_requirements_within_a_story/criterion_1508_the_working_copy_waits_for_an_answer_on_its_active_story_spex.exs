@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3610Spex do
 
       when_ "the agent asks what to work on", context do
         response =
-          Slice.call(context, CodeMySpec.McpServers.BddRules.Tools.AddQuestion, %{
+          Slice.call(context, "add_question", %{
             story_number: context.story.number,
             text: "Must a booking have a customer?"
           })
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3610Spex do
         assert blocked =~ "Must a booking have a customer?"
         refute blocked =~ "requirement_name=`"
 
-        Slice.call(context, CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion, %{
+        Slice.call(context, "resolve_question", %{
           question_id: question_id,
           resolution: "Yes, every booking needs a customer"
         })

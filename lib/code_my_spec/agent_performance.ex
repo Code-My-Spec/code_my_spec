@@ -24,6 +24,7 @@ defmodule CodeMySpec.AgentPerformance do
       CodeMySpec.Repo,
       CodeMySpec.Sessions,
       CodeMySpec.Stories,
+      CodeMySpec.Tools,
       CodeMySpec.Users.Scope
     ],
     exports: :all

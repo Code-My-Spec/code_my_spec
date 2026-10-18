@@ -10,8 +10,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1698Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -23,7 +24,10 @@ defmodule CodeMySpecSpex.Story1116.Criterion1698Spex do
       given_ "telemetry is configured and a busy hour has more lines than the cap", context do
         conn = ClickHouseCassetteHelpers.configure!(context.scope)
 
-        rows = for n <- 1..3, do: %{"Timestamp" => "t", "SeverityText" => "INFO", "Body" => "line #{n}"}
+        rows =
+          for n <- 1..3,
+              do: %{"Timestamp" => "t", "SeverityText" => "INFO", "Body" => "line #{n}"}
+
         ClickHouseCassetteHelpers.stub_rows_for_username(conn.username, rows)
 
         {:ok, context}
@@ -31,14 +35,20 @@ defmodule CodeMySpecSpex.Story1116.Criterion1698Spex do
 
       when_ "the coder searches with a row cap smaller than what happened", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{limit: 2}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{limit: 2},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is told the result was cut off, trimmed to the cap", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful, truncated search: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful, truncated search: #{text}"
         assert text =~ "truncated" or text =~ "cut off" or text =~ "narrow"
         assert text =~ "2 log line(s)"
 

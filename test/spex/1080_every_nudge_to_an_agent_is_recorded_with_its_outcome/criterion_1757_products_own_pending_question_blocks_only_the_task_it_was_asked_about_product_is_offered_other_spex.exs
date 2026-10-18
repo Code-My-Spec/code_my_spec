@@ -11,12 +11,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -97,17 +97,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
       end
 
       when_ "an issue is filed that needs triage", context do
-        {:reply, filed, _} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Receipts print the wrong total",
               description: "Seen twice in QA",
               severity: "medium"
             },
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
-        refute filed.isError, response_text(filed)
+        assert match?({:ok, _}, filed), response_text(filed)
         :ok = Fixtures.settle_graph(context.scope)
         {:ok, context}
       end
@@ -119,8 +120,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1757Spex do
       end
 
       then_ "and is offered triage, which it can start while its design waits", context do
-        {:reply, next, _} = GetNextRequirement.execute(%{}, context.product_frame)
-        refute next.isError, response_text(next)
+        next =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, next), response_text(next)
         assert response_text(next) =~ "issues_triaged", response_text(next)
 
         {:reply, started, _} =

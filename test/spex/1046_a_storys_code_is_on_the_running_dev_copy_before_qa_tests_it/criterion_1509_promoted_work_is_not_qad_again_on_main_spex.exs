@@ -25,6 +25,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -32,8 +34,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.PromotionHelpers
@@ -109,21 +109,29 @@ defmodule CodeMySpecSpex.Story1046.Criterion1509Spex do
 
   defp ask_for_next_work(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     response_text(response)
   end
 
   defp qa_complete_status(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{
           entity_type: "story",
           entity_id: to_string(context.story.number),
           requirement_name: "qa_complete"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

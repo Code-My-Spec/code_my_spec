@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1051.Criterion2156Spex do
       end
 
       then_ "it is refused as already delivered", ctx do
-        assert ctx.response.isError
+        assert match?({:error, _}, ctx.response)
         assert H.text_of(ctx.response) =~ "already has this message"
         {:ok, ctx}
       end

@@ -20,8 +20,9 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -65,7 +66,14 @@ defmodule CodeMySpecSpex.Story810.Criterion6529Spex do
 
       when_ "the orchestrator calls get_next_requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :prompt, TaskResponseHelpers.response_text(response))}
       end
 

@@ -20,8 +20,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
@@ -124,8 +125,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
             proposal
           )
 
-        {:reply, executed, _frame} =
-          ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        executed =
+          ToolLibrary.run("execute_proposal", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :execute_response, executed)}
       end
@@ -147,7 +148,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         # deletion error, and `list_components` still lists the component.
         body = response_text(context.execute_response)
 
-        refute context.execute_response.isError,
+        assert match?({:ok, _}, context.execute_response),
                "applying a proposal that omits a persisted component was refused: " <>
                  inspect(body)
 

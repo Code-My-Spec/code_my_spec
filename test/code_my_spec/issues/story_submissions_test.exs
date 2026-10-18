@@ -1,6 +1,8 @@
 defmodule CodeMySpec.Issues.StorySubmissionsTest do
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.IssuesFixtures
@@ -138,14 +140,27 @@ defmodule CodeMySpec.Issues.StorySubmissionsTest do
 
   test "tool requires the authenticated coding owner", ctx do
     alias Anubis.Server.Frame
-    alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
     params = %{issue_id: ctx.issue.id, revision: "a", evidence: "tested"}
     frame = %Frame{assigns: %{current_scope: ctx.scope}}
-    {:reply, denied, _} = SubmitStoryIssue.execute(params, frame)
-    assert denied.isError
+
+    denied =
+      ToolLibrary.run(
+        "submit_story_issue",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:error, _}, denied)
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: ctx.agent.id}}
-    {:reply, submitted, _} = SubmitStoryIssue.execute(params, frame)
-    refute submitted.isError
+
+    submitted =
+      ToolLibrary.run(
+        "submit_story_issue",
+        params,
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, submitted)
   end
 
   test "evaluate_task closes a submitted inherited issue task through its own evaluator", ctx do

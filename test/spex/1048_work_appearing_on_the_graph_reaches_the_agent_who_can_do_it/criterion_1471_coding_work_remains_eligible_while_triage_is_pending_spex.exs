@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,8 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -57,24 +57,32 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
           )
 
         for n <- 1..3 do
-          {:reply, filed, _} =
-            CreateIssue.execute(
+          filed =
+            ToolLibrary.run(
+              "create_issue",
               %{
                 title: "Pending product triage #{n} for criterion 3573",
                 description: "An unrelated incoming issue must not block coding",
                 severity: "medium"
               },
-              frame(context)
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
             )
 
-          refute filed.isError, response_text(filed)
+          assert match?({:ok, _}, filed), response_text(filed)
         end
 
         :ok = Fixtures.watch_graph(context.scope)
         product = Fixtures.running_agent(context.scope, role: "product", continuous: false)
         product_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
-        {:reply, triage, _} = GetNextRequirement.execute(%{}, product_frame)
-        refute triage.isError, response_text(triage)
+
+        triage =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(product_frame.assigns, :scope, product_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, triage), response_text(triage)
         assert response_text(triage) =~ "issues_triaged"
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         assert Fixtures.role_queue_size(context.scope, agent.id) == 0
@@ -104,13 +112,33 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
 
       then_ "coding receives one turn for its own work while triage stays with product",
             context do
-        {:reply, coding, _} = GetNextRequirement.execute(%{}, context.coding_frame)
-        refute coding.isError, response_text(coding)
+        coding =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, coding), response_text(coding)
         assert response_text(coding) =~ "bdd_specs_exist"
         refute response_text(coding) =~ "issues_triaged"
 
-        {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)
-        refute product.isError, response_text(product)
+        product =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, product), response_text(product)
         assert response_text(product) =~ "issues_triaged"
 
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
@@ -143,8 +171,18 @@ defmodule CodeMySpecSpex.Story1048.Criterion3573Spex do
         assert response_text(tasks) =~ "**bdd_specs_exist**"
         refute response_text(tasks) =~ "issues_triaged"
 
-        {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)
-        refute product.isError, response_text(product)
+        product =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, product), response_text(product)
         assert response_text(product) =~ "issues_triaged"
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1

@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3554Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers,
     only: [given_a_staffed_checkout: 2, frame: 1, listing: 1]
 
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3554Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -74,8 +75,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3554Spex do
       end
 
       then_ "the graph offers work without staffing or starting a process", context do
-        {:reply, work, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute work.isError, response_text(work)
+        work =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, work), response_text(work)
         assert response_text(work) =~ "bdd_specs_exist"
         assert listing(context) == "No agents are running on this project."
         assert Machine.running() == context.running_before

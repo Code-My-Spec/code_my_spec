@@ -10,9 +10,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
 
   alias CodeMySpecSpex.Fixtures
 
@@ -30,10 +30,11 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
       when_ "the agent calls dismiss_issue with an empty reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          DismissIssue.execute(
+        response =
+          ToolLibrary.run(
+            "dismiss_issue",
             %{issue_id: context.issue.id, reason: ""},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :dismiss_response, response)}
@@ -51,8 +52,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5334Spex do
       then_ "the issue's status remains :incoming", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue.id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

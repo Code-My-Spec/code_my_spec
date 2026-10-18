@@ -15,14 +15,16 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallAgentsMd
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name", criterion: 456 do
+  spex "install_agents_md writes .code_my_spec/AGENTS.md derived from the project's mix.exs app name",
+    criterion: 456 do
     scenario "Install errors with a project-root directive when mix.exs is absent" do
       given_ "the working directory has no mix.exs", context do
         refute Environments.file_exists?(context.environment, "mix.exs"),
@@ -33,7 +35,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
 
       when_ "the agent calls install_agents_md", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallAgentsMd.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_agents_md",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

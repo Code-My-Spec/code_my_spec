@@ -11,9 +11,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
           })
 
         response = submit_result(context, task_id, "fail", [issue.id])
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
         {:ok, issue} = Issues.accept_issue(context.scope, issue)
 
         {:ok,
@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
 
       when_ "the fix is retested and passes", context do
         response = submit_result(context, context.second_task_id, "pass", [])
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
 
         {:ok, Map.put(context, :pass_response, response)}
       end
@@ -200,8 +200,9 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   defp submit_result(context, task_id, status, issue_ids) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: status,
@@ -210,7 +211,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
           ],
           issue_ids: issue_ids
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response
@@ -219,14 +220,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   defp qa_complete_status(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{
           entity_type: "story",
           entity_id: to_string(context.story.number),
           requirement_name: "qa_complete"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

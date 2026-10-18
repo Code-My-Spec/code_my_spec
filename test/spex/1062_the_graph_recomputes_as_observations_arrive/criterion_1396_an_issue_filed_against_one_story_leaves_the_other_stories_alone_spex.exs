@@ -7,13 +7,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_issue_id!: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -49,26 +49,28 @@ defmodule CodeMySpecSpex.Story1062.Criterion3476Spex do
       when_ "an issue is filed against the first story and accepted", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "something is wrong on this story",
               description: "filed against one story and not the other",
               severity: "high",
               story_number: context.touched_number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute filed.isError, inspect(filed)
+        assert match?({:ok, _}, filed), inspect(filed)
 
-        {:reply, accepted, _frame} =
-          AcceptIssue.execute(
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
             %{issue_id: extract_issue_id!(filed), story_number: context.touched_number},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute accepted.isError, inspect(accepted)
+        assert match?({:ok, _}, accepted), inspect(accepted)
 
         {:ok,
          context

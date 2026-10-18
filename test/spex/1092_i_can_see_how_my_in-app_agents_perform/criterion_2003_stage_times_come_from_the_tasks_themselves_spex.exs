@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
@@ -42,13 +43,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
 
         frame = %Frame{assigns: %{current_scope: scope}}
 
-        {:reply, created, _frame} =
-          CreateComponent.execute(
+        created =
+          ToolLibrary.run(
+            "create_component",
             %{name: "Example2003", type: "context", module_name: "CodeMySpecSpex.Example2003"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute created.isError, inspect(created)
+        assert match?({:ok, _}, created), inspect(created)
         component = Fixtures.get_component_by_module_name(scope, "CodeMySpecSpex.Example2003")
 
         story =

@@ -1,0 +1,76 @@
+[
+  {
+    "name": "analyze_stories",
+    "description": "MCP tool for analyzing user stories grouped by tags.\n\nStories should be tagged first using add_story_tag or tag_stories tools.\nThis tool then groups stories by their tags to inform architecture design.\n\nReturns a structured view of stories organized by domain/feature tags.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "check_architecture",
+    "description": "Compares the planned architecture against live code and reports where\nthey disagree: an unplanned dependency, a planned dependency the code\nnever uses, a planned component with no code, or code with no planned\nowner (story 1085).\n\nAlways runnable, including when this project's `architecture` setting is\n`:off` — off only changes what the stop hook then does with a finding\n(nothing blocks), not whether a check can be requested.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "execute_proposal",
+    "description": "Manually executes the architecture proposal at `.code_my_spec/architecture/proposal.md`.\n\nIn patch mode the architect can choose between two paths: the small\nincremental tools (`create_component`, `set_story_component`) for one-off\nadditions, or rewriting `proposal.md` for larger restructures. When the\narchitect picks the rewrite path, this tool applies the rewritten proposal\n— reads the file, validates it, and creates/updates components and links.\n\nReturns success when the proposal is valid and execution completes, or an\nerror response with feedback when validation fails.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "regenerate_proposal",
+    "description": "Rewrite `proposal.md` from the architecture that actually exists.\n\nThe round trip was half built. `Proposal.from_markdown/2` turns the document\ninto components and has an MCP tool driving it; `ProposalProjector.project/1`\nturns components back into the document and had no caller anywhere — written,\ntested in shape, and unreachable.\n\nThat gap is what makes revision mode awkward. A project with 910 components\nand no `proposal.md` is not undesigned; it is designed and undocumented, and\nthe only way to get a document describing it was to write one by hand. This\nproduces it from the database instead, which is the one source that already\nagrees with the spec stubs the graph is built from.\n\nWrites through the environment for the selected working copy, including a\nremote harness when the server does not hold the checkout.\n\nNot automatic. Regenerating discards whatever the file said, and a proposal\nunder active edit is worth more than one that matches the database, so the\noverwrite is something a caller asks for rather than something a task does on\nits way past.\n",
+    "input_schema": {
+      "properties": {
+        "confirm": {
+          "description": "Must be true. Regenerating replaces proposal.md with the current architecture, discarding any unexecuted edits.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_architecture_overview",
+    "description": "Returns the component overview organized by context.\n\nShows all components grouped by parent context with types, descriptions,\nand dependency listings.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_namespace_hierarchy",
+    "description": "The project's components as a module-namespace tree: the first thing to read\nfor an architectural overview. Two levels by default; `prefix` and `depth`\nopen one subtree further. A node cut off by the depth shows `(+N)`, the\ncomponents below it.\n",
+    "input_schema": {
+      "properties": {
+        "depth": {
+          "description": "Levels to show below the prefix (from the top without one). Default 2.",
+          "type": "integer"
+        },
+        "descriptions": {
+          "description": "Include descriptions. Default true.",
+          "type": "boolean"
+        },
+        "prefix": {
+          "description": "Only this namespace, e.g. MyApp.Accounts.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "validate_dependency_graph",
+    "description": "Validates the component dependency graph for circular dependencies.\n\nReturns validation result indicating success or detailed list of detected cycles.\nCircular dependencies violate clean architecture principles and make code\nharder to test and maintain.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  }
+]

@@ -222,6 +222,17 @@ defmodule CodeMySpec.Issues.Issue do
 
   def devops_only?(_issue), do: false
 
+  @doc """
+  Whether this is a fix waiting for a team: accepted, blocking at `threshold`,
+  on no copy yet, and one coding can make. A story's graph offers exactly
+  these, and dispatch counts a story holding one as work.
+  """
+  @spec fix_offered?(t(), atom()) :: boolean()
+  def fix_offered?(%__MODULE__{} = issue, threshold),
+    do:
+      issue.status == :accepted and is_nil(issue.assigned_working_copy_id) and
+        blocking?(issue, threshold) and not devops_only?(issue)
+
   defp validate_transition(changeset, from, to) do
     allowed = Map.get(@valid_transitions, from, [])
 

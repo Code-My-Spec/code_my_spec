@@ -24,6 +24,8 @@ defmodule CodeMySpec.Requirements.Handlers do
   """
 
   alias CodeMySpec.Deploys
+  alias CodeMySpec.Epics
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Promotion.RunningCopy
   alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Requirements.ArchitectureChecker
@@ -177,7 +179,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     # Files for proposal.md, components for whether any is authored.
     "architecture_designed" => [:files, :architecture],
     "stories_exist" => [:stories],
-    "work_dispatched" => [:stories]
+    "work_dispatched" => [:stories, :issues]
   }
 
   # Rollups no event carries the answer to, settled by calling the
@@ -597,7 +599,7 @@ defmodule CodeMySpec.Requirements.Handlers do
         PersonasChecker.complete?(scope, scope.active_project, profiles.personas)
 
       {DispatchChecker, :dispatched?} ->
-        DispatchChecker.verdict(dispatch_state(profiles.stories))
+        DispatchChecker.verdict(dispatch_state(profiles))
 
       {SpexBoundaryChecker, :complete?} ->
         # `verdict_from_paths/2` is the same function `complete?/2` calls once it
@@ -619,19 +621,19 @@ defmodule CodeMySpec.Requirements.Handlers do
     end
   end
 
-  # `Epics.dispatch_state/1`'s three answers, from the profile.
-  #
-  # Unsatisfied only when nothing is in progress and unassigned work exists —
-  # the one state that wants the main agent to act. Ready matters: an unshaped
-  # story is work waiting to be shaped, not work waiting to be assigned.
-  defp dispatch_state(%{epic_in_progress?: true}), do: {:nothing_to_assign, :in_progress}
+  # `Epics.dispatch_state/1`'s three answers, from the profiles.
+  defp dispatch_state(%{stories: %{epic_in_progress?: true}}),
+    do: {:nothing_to_assign, :in_progress}
 
-  defp dispatch_state(%{stories: stories}) do
-    case Enum.filter(stories, &(&1.ready_for_dev == true and is_nil(&1.epic_id))) do
-      [] -> {:nothing_to_assign, :all_assigned}
-      unassigned -> {:work_to_assign, unassigned}
-    end
-  end
+  defp dispatch_state(%{stories: %{stories: stories}, issues: issues}),
+    do:
+      Epics.awaiting_dispatch(
+        stories,
+        Enum.filter(
+          issues.accepted,
+          &(not is_nil(&1.story_id) and Issue.fix_offered?(&1, issues.threshold))
+        )
+      )
 
   # The four locations `SpexBoundaryChecker` asks about, out of the files the
   # profile already read. Over-matching is harmless — every gap re-tests with

@@ -18,13 +18,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
-  alias CodeMySpec.McpServers.BddRules.Tools.ResolveQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
 
   setup :register_log_in_setup_account
@@ -38,14 +36,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _happy, _frame} =
-          AddScenario.execute(
+        _happy =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -53,11 +53,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _failure, _frame} =
-          AddScenario.execute(
+        _failure =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -65,7 +66,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -76,21 +77,24 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
 
         question_ids =
           for n <- 1..3 do
-            {:reply, response, _frame} =
-              AddQuestion.execute(
+            response =
+              ToolLibrary.run(
+                "add_question",
                 %{
                   story_number: context.story.number,
                   text: "Open question #{n}"
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
             extract_question_id(response)
           end
 
         for qid <- Enum.take(question_ids, 2) do
-          {:reply, _resolve_response, _frame} =
-            ResolveQuestion.execute(%{question_id: qid}, frame)
+          _resolve_response =
+            ToolLibrary.run("resolve_question", %{question_id: qid}, %{
+              scope: frame.assigns.current_scope
+            })
         end
 
         {:ok, context}

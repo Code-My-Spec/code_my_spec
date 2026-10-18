@@ -2,8 +2,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion2083Spex do
   @moduledoc "Story assignment replaces issue work without losing unfinished issues or history."
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -18,7 +16,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2083Spex do
         issues = for _ <- 1..2, do: Fixtures.issue_fixture(ctx.scope, %{status: :accepted})
 
         for issue <- issues do
-          Slice.call(ctx, AssignIssueToWorkingCopy, %{
+          Slice.call(ctx, "assign_issue_to_working_copy", %{
             issue_id: issue.id,
             working_copy_id: ctx.scope.active_working_copy_id
           })
@@ -47,12 +45,12 @@ defmodule CodeMySpecSpex.Story1016.Criterion2083Spex do
 
       then_ "the team holds only the story and the unfinished issues remain available", ctx do
         bag =
-          Slice.call(ctx, ListIssues, %{
+          Slice.call(ctx, "list_issues", %{
             working_copy_id: ctx.scope.active_working_copy_id,
             severity: "all"
           })
 
-        open = Slice.call(ctx, ListIssues, %{status: "accepted", severity: "all"})
+        open = Slice.call(ctx, "list_issues", %{status: "accepted", severity: "all"})
 
         for issue <- ctx.issues do
           refute bag =~ issue.id

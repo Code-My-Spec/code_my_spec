@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
-  alias CodeMySpec.McpServers.Components.Tools.GetComponent
-  alias CodeMySpec.McpServers.Components.Tools.UpdateComponent
   alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
@@ -26,7 +25,13 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
   defp frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
 
   defp type_of(context, id) do
-    {:reply, reply, _frame} = GetComponent.execute(%{component_id: id}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "get_component",
+        %{component_id: id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     response_text(reply)
   end
 
@@ -38,17 +43,18 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
       end
 
       when_ "the agent creates an infrastructure component", context do
-        {:reply, reply, _frame} =
-          CreateComponent.execute(
+        reply =
+          ToolLibrary.run(
+            "create_component",
             %{name: "Repo", module_name: "#{context.app}.Repo", type: "infrastructure"},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is created as infrastructure", context do
-        refute context.reply.isError, response_text(context.reply)
+        assert match?({:ok, _}, context.reply), response_text(context.reply)
         assert response_text(context.reply) =~ "infrastructure"
         {:ok, context}
       end
@@ -71,13 +77,14 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
       when_ "the agent sets each authorable type in turn", context do
         seen =
           for type <- @types do
-            {:reply, reply, _frame} =
-              UpdateComponent.execute(
+            reply =
+              ToolLibrary.run(
+                "update_component",
                 %{component_id: context.component.id, type: type},
-                frame(context)
+                Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
               )
 
-            {type, reply.isError, type_of(context, context.component.id)}
+            {type, match?({:error, _}, reply), type_of(context, context.component.id)}
           end
 
         {:ok, Map.put(context, :seen, seen)}
@@ -86,9 +93,11 @@ defmodule CodeMySpecSpex.Story682.Criterion1618Spex do
       # What `tools/list` hands an agent. The enum was enforced there, not in
       # `execute/2`, so an agent never got to send any other type.
       then_ "both tools advertise every one of them", context do
-        for tool <- [CreateComponent, UpdateComponent] do
-          assert get_in(tool.input_schema(), ["properties", "type", "enum"]) == @types,
-                 "#{inspect(tool)} does not offer every authorable type"
+        schemas = Map.new(ToolLibrary.registrations(), &{&1.name, &1.input_schema})
+
+        for name <- ["create_component", "update_component"] do
+          assert get_in(schemas[name], ["properties", "type", "enum"]) == @types,
+                 "#{name} does not offer every authorable type"
         end
 
         {:ok, context}

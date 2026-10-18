@@ -44,11 +44,12 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
@@ -125,7 +126,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
 
       then_ "an issue describes the missing capability", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{scope: "framework"}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{scope: "framework"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issues) =~ ~r/epic/i,
                """
@@ -150,7 +157,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3329Spex do
 
       then_ "and it can be triaged like any other work", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{status: "incoming"}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{status: "incoming"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issues) =~ ~r/epic/i,
                """

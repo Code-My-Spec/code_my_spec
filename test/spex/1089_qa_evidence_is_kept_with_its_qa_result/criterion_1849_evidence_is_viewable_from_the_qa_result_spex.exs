@@ -22,11 +22,12 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,15 +47,16 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :attempt_id, extract_attempt_id!(response))}
@@ -79,7 +81,10 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
 
       then_ "and the story's own QA history names it at that same URL", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/stories/#{context.story.number}")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/stories/#{context.story.number}"
+          )
 
         document = Floki.parse_document!(render(view))
         link = Floki.find(document, "[data-test='qa-evidence-link']")

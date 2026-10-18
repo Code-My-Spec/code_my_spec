@@ -16,11 +16,22 @@ defmodule CodeMySpec.ToolLibrary do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Agents,
+      CodeMySpec.Components.Tools,
+      CodeMySpec.Issues.Tools,
+      CodeMySpec.Architecture.Tools,
+      CodeMySpec.Requirements.Tools,
+      CodeMySpec.Bootstrap.Tools,
+      CodeMySpec.Agents.Tools,
+      CodeMySpec.Qa.Tools,
+      CodeMySpec.BddRules.Tools,
+      CodeMySpec.AgentPerformance,
+      CodeMySpec.Analysis,
       CodeMySpec.Embeddings,
       CodeMySpec.Knowledge,
+      CodeMySpec.Observability,
       CodeMySpec.Personas,
       CodeMySpec.Problems.Tools,
+      CodeMySpec.Research,
       CodeMySpec.Tools
     ]
 
@@ -33,7 +44,19 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Personas.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
-        CodeMySpec.Embeddings.Tools.all() ++ CodeMySpec.Problems.Tools.all()
+        CodeMySpec.Embeddings.Tools.all() ++
+        CodeMySpec.Problems.Tools.all() ++
+        CodeMySpec.Observability.Tools.all() ++
+        CodeMySpec.Research.Tools.all() ++
+        CodeMySpec.Analysis.Tools.all() ++
+        CodeMySpec.AgentPerformance.Tools.all() ++
+        CodeMySpec.Components.Tools.all() ++
+        CodeMySpec.Issues.Tools.all() ++
+        CodeMySpec.Architecture.Tools.all() ++
+        CodeMySpec.Requirements.Tools.all() ++
+        CodeMySpec.Bootstrap.Tools.all() ++
+        CodeMySpec.Qa.Tools.all() ++
+        CodeMySpec.BddRules.Tools.all()
 
   @doc "Every tool, described for a surface."
   @spec registrations() :: [map()]
@@ -53,6 +76,27 @@ defmodule CodeMySpec.ToolLibrary do
   def run(name, args, context) do
     case fetch(name) do
       {:ok, tool} -> Tools.run(tool, args, context)
+      :error -> {:error, "no tool named #{name}"}
+    end
+  end
+
+  @doc """
+  Runs the tool named `name` for its data: `script_result/2` when the tool has
+  one, as a script would get it, else the text `call/2` answers.
+  """
+  @spec data(String.t(), map(), Tools.context()) :: {:ok, term()} | {:error, term()}
+  def data(name, args, context) do
+    with {:ok, tool} <- fetch_or_refuse(name),
+         {:ok, params} <- Tools.validate(tool, args) do
+      if function_exported?(Code.ensure_loaded!(tool), :script_result, 2),
+        do: tool.script_result(params, context),
+        else: tool.call(params, context)
+    end
+  end
+
+  defp fetch_or_refuse(name) do
+    case fetch(name) do
+      {:ok, tool} -> {:ok, tool}
       :error -> {:error, "no tool named #{name}"}
     end
   end

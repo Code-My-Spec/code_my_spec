@@ -38,14 +38,13 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
@@ -67,17 +66,19 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
       end
 
       given_ "an issue is outstanding", context do
-        {:reply, response, _frame} =
-          CreateIssue.execute(
+        response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "A second class of work is live",
               description: "Filed so the stop hook has more than one class to report.",
               severity: "medium"
             },
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
-        refute response.isError, "the issue must really exist for its count to mean anything"
+        assert match?({:ok, _}, response),
+               "the issue must really exist for its count to mean anything"
 
         {:ok, context}
       end
@@ -96,10 +97,10 @@ defmodule CodeMySpecSpex.Story1015.Criterion2390Spex do
         # warmed here is stale by the time the menu renders. On any stop that
         # follows work — nearly all of them — requirements is unknowable without
         # the recompute that deadlocks.
-        {:reply, response, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        response =
+          ToolLibrary.run("get_next_requirement", %{}, %{scope: context.scope})
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the graph must compute for requirements to be a live class at all"
 
         {:ok, context}

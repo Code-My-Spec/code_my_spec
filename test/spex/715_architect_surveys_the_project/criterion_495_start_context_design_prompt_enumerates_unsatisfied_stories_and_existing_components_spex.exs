@@ -16,8 +16,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6312Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.StartContextDesign
   alias CodeMySpecSpex.StoryHelpers
 
   import CodeMySpecSpex.SharedGivens
@@ -25,7 +26,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6312Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "start_context_design returns a design-conversation prompt enumerating unsatisfied stories and existing components", criterion: 495 do
+  spex "start_context_design returns a design-conversation prompt enumerating unsatisfied stories and existing components",
+    criterion: 495 do
     scenario "start_context_design prompt enumerates unsatisfied stories and existing components" do
       given_ :synced_context_component
 
@@ -42,7 +44,14 @@ defmodule CodeMySpecSpex.Story715.Criterion6312Spex do
 
       when_ "the agent calls start_context_design", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = StartContextDesign.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "start_context_design",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

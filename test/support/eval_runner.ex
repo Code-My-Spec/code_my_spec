@@ -36,7 +36,6 @@ defmodule CodeMySpec.Support.EvalRunner do
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -1276,8 +1275,8 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   # A story is handed to `start_task` by its number.
   defp entity_ref(world, requirement) do
-    [numbered] = StoryRefs.number_nodes(world.scope, [requirement])
-    StoryRefs.entity_ref(numbered)
+    [numbered] = CodeMySpec.Requirements.Directives.number_nodes(world.scope, [requirement])
+    CodeMySpec.Requirements.Directives.entity_ref(numbered)
   end
 
   defp aim(world, agent_id, requirement) do

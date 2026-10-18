@@ -15,8 +15,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -163,11 +164,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5289Spex do
       then_ "execution records the new components", context do
         app = context.project.module_name || "MyApp"
 
-        {:reply, listed, _frame} =
-          ListComponents.execute(
-            %{},
-            %Frame{assigns: %{current_scope: context.scope}}
-          )
+        listed =
+          ToolLibrary.run("list_components", %{}, %{scope: context.scope})
 
         for module_name <- [
               "#{app}Web.FeatureOneLive",

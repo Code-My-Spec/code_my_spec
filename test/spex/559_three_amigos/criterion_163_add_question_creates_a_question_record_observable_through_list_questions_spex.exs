@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddQuestion
-  alias CodeMySpec.McpServers.BddRules.Tools.ListQuestions
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,26 +33,29 @@ defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
       when_ "the agent calls add_question on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AddQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "add_question",
             %{
               story_number: context.story.number,
               text: "Does suspension affect mid-transaction cards or only new transactions?"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}
       end
 
       then_ "the question is returned by list_questions for the story", context do
-        refute context.add_response.isError == true,
+        assert match?({:ok, _}, context.add_response),
                "expected add_question to succeed, got #{inspect(context.add_response)}"
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQuestions.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run("list_questions", %{story_number: context.story.number}, %{
+            scope: frame.assigns.current_scope
+          })
 
         body = response_text(list_response)
 

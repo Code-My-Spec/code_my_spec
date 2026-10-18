@@ -14,21 +14,30 @@ defmodule CodeMySpecSpex.Story715.Criterion6302Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview
 
   import CodeMySpecSpex.GraphGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "show_architecture_overview renders markdown grouped by parent context via OverviewProjector", criterion: 485 do
+  spex "show_architecture_overview renders markdown grouped by parent context via OverviewProjector",
+    criterion: 485 do
     scenario "show_architecture_overview groups components under their parent context headers" do
       given_ :context_with_three_children
 
       when_ "the agent calls show_architecture_overview", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ShowArchitectureOverview.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "show_architecture_overview",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

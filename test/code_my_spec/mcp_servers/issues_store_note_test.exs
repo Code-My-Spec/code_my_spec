@@ -15,7 +15,9 @@ defmodule CodeMySpec.McpServers.IssuesStoreNoteTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.Issues.Tools.Responses, as: IssuesMapper
+
+  defp text({_status, text}) when is_binary(text), do: text
 
   defp text(response) do
     Enum.map_join(response.content, "\n", fn

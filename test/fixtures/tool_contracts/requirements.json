@@ -1,0 +1,129 @@
+[
+  {
+    "name": "get_next_requirement",
+    "description": "Discover the next orchestration wave for the story the working copy's team\n(its coding and QA agents) holds.\n\nDiscovery never selects another story. An explicit story must agree with that\nassignment. Use `start_task` on offered requirements.\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Optional story number; must match your active story",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_requirements",
+    "description": "List project requirements with their satisfaction status — filterable.\n\n**The default is every requirement, satisfied and not, one row each, capped at\n100** — `status` unset, `summary: false`, `limit: 100`. Those defaults are\ndeliberate and `parse_opts/1` says why: the tool predates its filters and\nexisting callers ask it for the full picture.\n\n**For \"where is the friction\", ask for it:**\n\n    summary: true, status: \"unsatisfied\"\n\nBoth parts matter. `summary: true` alone counts *all* requirements, which on\nthis project reads `implementation_file: 900` — a number that looks like a\ncatastrophic regression and is in fact 900 satisfied requirements. An agent\nwho takes it as friction goes hunting a break that does not exist; this\nparagraph exists because that happened, off a moduledoc that claimed the\nunfiltered default was a summary of unsatisfied requirements. It is neither.\nWith both set the same project reads 55.\n\nThe size warning is still real and is the reason `summary` exists: with a 500+\ncomponent project the raw per-entity dump runs 180k+ characters and can exceed\ntool-response token limits. `limit` bounds it; the summary avoids it.\n\nThis is a read-only discovery tool — use it to understand the full picture\nof what needs doing before picking a requirement to work on.\n",
+    "input_schema": {
+      "properties": {
+        "diagnostic": {
+          "description": "When `summary: true`, break out counts into `locally failing` vs `blocked by prereqs` (clamped). Useful for triage — distinguishes real friction from cascade effects. Default: false.",
+          "type": "boolean"
+        },
+        "entity_id": {
+          "description": "Filter to one entity: a story's number or a component's id, as printed elsewhere. Combine with `entity_type` to disambiguate.",
+          "type": "string"
+        },
+        "entity_type": {
+          "description": "Filter to one entity type — `project`, `story`, or `component`.",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Cap number of per-entity rows when `summary` is false. Default: 100. Bounds the response so a 500-component project doesn't return 180k+ chars.",
+          "type": "integer"
+        },
+        "module_filter": {
+          "description": "Substring match on the component module name (e.g., `Users.` to scope into a namespace).",
+          "type": "string"
+        },
+        "requirement_name": {
+          "description": "Exact match on the requirement name (e.g., `bdd_specs_exist`, `ready_for_qa`, `implementation_file`).",
+          "type": "string"
+        },
+        "status": {
+          "description": "Filter by satisfaction status — `satisfied` or `unsatisfied`. Default: no filter (returns both).",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "A story's number — the same as entity_type `story` with entity_id set to it",
+          "type": "integer"
+        },
+        "summary": {
+          "description": "Return aggregate counts by requirement name instead of per-entity rows. Default: `false` (per-entity view, matches the historical tool shape). Pass `true` for a friction breakdown that won't blow the token budget on big projects.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_component_requirements",
+    "description": "Show all requirements for a specific component, identified by module name or ID.\n",
+    "input_schema": {
+      "properties": {
+        "component": {
+          "description": "Component module name (e.g. 'MyApp.Accounts') or component ID",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_requirement",
+    "description": "Show a single requirement by name with full details including satisfaction\nstatus, task module, and entity context.\n",
+    "input_schema": {
+      "properties": {
+        "entity_id": {
+          "description": "The entity to scope the lookup to: a story's number, or a component's id",
+          "type": "string"
+        },
+        "entity_type": {
+          "description": "Entity type filter: 'component', 'story', or 'project'",
+          "type": "string"
+        },
+        "name": {
+          "description": "The requirement name (e.g. 'spec_written', 'tests_written')",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "A story's number — the same as entity_type `story` with entity_id set to it",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "show_story_requirements",
+    "description": "Show all requirements for a specific story, identified by number or title.\n",
+    "input_schema": {
+      "properties": {
+        "story": {
+          "description": "Story title, when the number is not known",
+          "type": "string"
+        },
+        "story_number": {
+          "description": "Story number",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  {
+    "name": "sync_project",
+    "description": "Sync project files and components.\n\nPulls remote issues into the local DB, scans the filesystem, classifies\nand validates files, creates/updates components, and backfills file\nownership, then recomputes the requirement graph.\n\nThe recompute is what makes \"after sync, the graph is up to date\" true. The\nevent projection only moves rows that already exist, so a story coming back\ninto the graph (made ready, or reopened after a promotion) had no\nrequirements at all until something recomputed (2026-10-12, stories 1046 and\n1092 at 0/0).\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  }
+]

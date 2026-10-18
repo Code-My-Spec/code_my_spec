@@ -36,7 +36,8 @@ defmodule CodeMySpecSpex.Story1051.Criterion3204Spex do
     :ok
   end
 
-  spex "An agent's tools work again after its harness restarts, with nobody intervening", criterion: 1188 do
+  spex "An agent's tools work again after its harness restarts, with nobody intervening",
+    criterion: 1188 do
     scenario "Tools come back on their own after a harness restart" do
       given_ "a running agent whose tools work", context do
         context = given_a_feature_checkout(context, "spex_3204")

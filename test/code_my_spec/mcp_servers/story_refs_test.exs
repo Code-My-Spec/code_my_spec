@@ -1,11 +1,10 @@
-defmodule CodeMySpec.McpServers.StoryRefsTest do
+defmodule CodeMySpec.Stories.StoryRefsTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.McpServers.StoryRefs
   alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox
@@ -49,7 +48,7 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
 
       text =
         Directives.format_story_execution(
-          StoryRefs.number_execution(scope, %{
+          CodeMySpec.Requirements.Directives.number_execution(scope, %{
             status: :ready,
             story: nil,
             actionable: nodes,
@@ -74,6 +73,8 @@ defmodule CodeMySpec.McpServers.StoryRefsTest do
   end
 
   test "a story node that was never numbered is refused rather than named by its id" do
-    assert_raise ArgumentError, fn -> StoryRefs.entity_ref(story_node(823)) end
+    assert_raise ArgumentError, fn ->
+      CodeMySpec.Requirements.Directives.entity_ref(story_node(823))
+    end
   end
 end

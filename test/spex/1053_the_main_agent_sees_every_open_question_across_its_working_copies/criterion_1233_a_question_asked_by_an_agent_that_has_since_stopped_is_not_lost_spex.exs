@@ -26,11 +26,12 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
@@ -79,10 +80,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
       when_ "that agent is stopped", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          TurnOffAgent.execute(%{agent_id: context.agent.id}, frame)
+        response =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{agent_id: context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the agent had to actually stop for this to mean anything:\n" <>
                  inspect(response)
 

@@ -12,7 +12,6 @@ defmodule CodeMySpec.Requirements.AConfigDroppedDefinitionIsReapedTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementGraph

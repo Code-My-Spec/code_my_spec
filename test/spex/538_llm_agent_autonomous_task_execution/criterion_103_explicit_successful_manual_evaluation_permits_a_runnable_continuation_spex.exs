@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -102,8 +103,14 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
             "The specification files are ready. Please evaluate your current task."
           )
 
-        {:reply, available, _} = GetNextRequirement.execute(%{}, agent_frame)
-        refute available.isError, response_text(available)
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         assert Fixtures.role_queue_size(context.scope, agent.id) > 0
 
         base_url = HeldProvider.start()

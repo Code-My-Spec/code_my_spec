@@ -15,13 +15,15 @@ defmodule CodeMySpecSpex.Story715.Criterion6309Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing", criterion: 492 do
+  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing",
+    criterion: 492 do
     scenario "Unknown requirement/component/story reference returns a not-found error" do
       given_ "no component exists with module name `DoesNotExist.Module`", context do
         # given: already true — the project is fresh and nothing creates that
@@ -33,8 +35,12 @@ defmodule CodeMySpecSpex.Story715.Criterion6309Spex do
       when_ "the agent calls show_component_requirements with `DoesNotExist.Module`", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowComponentRequirements.execute(%{component: "DoesNotExist.Module"}, frame)
+        response =
+          ToolLibrary.run(
+            "show_component_requirements",
+            %{component: "DoesNotExist.Module"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :body, response_text(response))}
       end

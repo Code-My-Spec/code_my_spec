@@ -23,7 +23,6 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
 
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Problems
-  alias CodeMySpec.Stories
   alias CodeMySpec.Validation
 
   import CodeMySpec.ProblemsFixtures

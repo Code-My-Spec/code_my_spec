@@ -19,11 +19,12 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.RealDisk
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
@@ -72,9 +73,15 @@ defmodule CodeMySpecSpex.Story1024.Criterion2899Spex do
       when_ "it has since been stopped", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute reply.isError, "the premise is an agent that stopped, and stopping errored"
+        assert match?({:ok, _}, reply),
+               "the premise is an agent that stopped, and stopping errored"
 
         {:ok, context}
       end

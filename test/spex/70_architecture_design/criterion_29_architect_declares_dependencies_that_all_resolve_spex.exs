@@ -19,8 +19,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
@@ -119,8 +120,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
             proposal
           )
 
-        {:reply, executed, _frame} =
-          ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+        executed =
+          ToolLibrary.run("execute_proposal", %{}, %{scope: context.scope})
 
         {:ok, Map.put(context, :execute_response, executed)}
       end
@@ -140,7 +141,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
       then_ "the validator resolves every declared dependency to a known component", context do
         body = response_text(context.execute_response)
 
-        refute context.execute_response.isError,
+        assert match?({:ok, _}, context.execute_response),
                "the proposal was refused, so no dependency was resolved either way: " <>
                  inspect(body)
 

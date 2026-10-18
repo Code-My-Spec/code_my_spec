@@ -10,10 +10,11 @@ defmodule CodeMySpecSpex.Story599.Criterion1664Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -29,10 +30,14 @@ defmodule CodeMySpecSpex.Story599.Criterion1664Spex do
               do: Fixtures.issue_fixture(context.scope, %{title: title, severity: :high})
 
         for issue <- issues, String.ends_with?(issue.title, "accepted") do
-          {:reply, response, _} =
-            AcceptIssue.execute(%{issue_id: issue.id, category: "bug"}, frame)
+          response =
+            ToolLibrary.run(
+              "accept_issue",
+              %{issue_id: issue.id, category: "bug"},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
 
-          refute response.isError, inspect(response)
+          assert match?({:ok, _}, response), inspect(response)
         end
 
         {:ok, context}

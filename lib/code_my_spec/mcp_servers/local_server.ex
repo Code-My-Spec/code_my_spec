@@ -36,7 +36,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.LibraryTools
   alias CodeMySpec.McpServers.ScriptableTools
-  alias CodeMySpec.McpServers.StoryRefs
+  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.ToolLibrary
 
   use Anubis.Server,
@@ -57,9 +57,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # A tool is here for one of two reasons, and only those two.
 
   # The loop every session walks, in order. Direct because putting Lua ceremony
-  # on the most-walked path in the product buys nothing.
-  component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
-  component(CodeMySpec.McpServers.Requirements.Tools.SyncProject)
+  # on the most-walked path in the product buys nothing. `get_next_requirement`
+  # and `sync_project` are library tools, listed in `@library_tools` below.
   component(CodeMySpec.McpServers.Tasks.Tools.StartTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
   component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)
@@ -101,10 +100,10 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # made.
   component(CodeMySpec.McpServers.CodeMode.Tools.RunBrowserScript)
 
-  # Domain tools on this list (`CodeMySpec.ToolLibrary`), by the same rule as
-  # the components above: `reject_offer` is a script exclusion. Registered on
-  # each session's frame at `init/2`; see `LibraryTools`.
-  @library_tools ~w(reject_offer)
+  # Domain tools on this list (`CodeMySpec.ToolLibrary`), by the same rules as
+  # the components above: the spine, and script exclusions. Registered on each
+  # session's frame at `init/2`; see `LibraryTools`.
+  @library_tools ~w(get_next_requirement sync_project reject_offer)
 
   @doc "The library tools this server lists."
   def library_tools, do: Enum.filter(ToolLibrary.tools(), &(&1.name() in @library_tools))

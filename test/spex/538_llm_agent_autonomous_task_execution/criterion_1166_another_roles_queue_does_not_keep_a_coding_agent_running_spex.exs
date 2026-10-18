@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,8 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -62,21 +62,29 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
             persona_id: context.persona_id
           )
 
-        {:reply, filed, _} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Pending product triage for criterion 3106",
               description: "An unrelated incoming issue must not block coding",
               severity: "medium"
             },
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
-        refute filed.isError, response_text(filed)
+        assert match?({:ok, _}, filed), response_text(filed)
         product = Fixtures.running_agent(context.scope, role: "product", continuous: false)
         product_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: product.id}}
-        {:reply, triage, _} = GetNextRequirement.execute(%{}, product_frame)
-        refute triage.isError, response_text(triage)
+
+        triage =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(product_frame.assigns, :scope, product_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, triage), response_text(triage)
         assert response_text(triage) =~ "issues_triaged"
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         assert Fixtures.role_queue_size(context.scope, agent.id) == 0
@@ -111,8 +119,18 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
-        {:reply, product, _} = GetNextRequirement.execute(%{}, context.product_frame)
-        refute product.isError, response_text(product)
+        product =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns.current_scope
+            )
+          )
+
+        assert match?({:ok, _}, product), response_text(product)
         assert response_text(product) =~ "issues_triaged"
 
         {:ok, view, _} = live(context.conn, context.conversation_path)

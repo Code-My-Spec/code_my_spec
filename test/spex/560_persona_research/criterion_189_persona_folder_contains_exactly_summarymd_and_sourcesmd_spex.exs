@@ -7,11 +7,12 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
 
@@ -30,7 +31,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
       # the criterion held with the hook doing nothing at all.
       given_ "the persona folder is still empty", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, before, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        before =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :before_response, before)}
       end
@@ -62,7 +69,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
         HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :next_response, response)}
       end

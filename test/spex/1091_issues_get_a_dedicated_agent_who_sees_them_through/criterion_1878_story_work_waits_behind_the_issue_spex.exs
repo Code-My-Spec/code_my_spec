@@ -12,11 +12,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion1878Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -32,8 +30,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion1878Spex do
           assigns: %{current_scope: context.scope, agent_id: coder.id}
         }
 
-        {:reply, ready, _frame} = GetNextRequirement.execute(%{}, coder_frame)
-        false = ready.isError
+        ready =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = ready
         ready_text = response_text(ready)
         true = ready_text =~ "implementation_file"
         true = ready_text =~ "entity_type=`component`"
@@ -43,29 +47,38 @@ defmodule CodeMySpecSpex.Story1091.Criterion1878Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.main.id}
         }
 
-        {:reply, created, _frame} =
-          CreateIssue.execute(
+        created =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "The harness loses a delivered notification",
               description: "An agent never receives the notification sent to its session.",
               severity: "high",
               scope: "framework"
             },
-            main_frame
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        false = created.isError
+        {:ok, _} = created
         issue_id = extract_issue_id!(created)
-        {:reply, accepted, _frame} = AcceptIssue.execute(%{issue_id: issue_id}, main_frame)
-        false = accepted.isError
 
-        {:reply, assigned, _frame} =
-          AssignIssueToWorkingCopy.execute(
-            %{issue_id: issue_id, working_copy_id: context.scope.active_working_copy_id},
-            main_frame
+        accepted =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: issue_id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        false = assigned.isError
+        {:ok, _} = accepted
+
+        assigned =
+          ToolLibrary.run(
+            "assign_issue_to_working_copy",
+            %{issue_id: issue_id, working_copy_id: context.scope.active_working_copy_id},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = assigned
 
         {:ok,
          Map.merge(context, %{
@@ -76,12 +89,22 @@ defmodule CodeMySpecSpex.Story1091.Criterion1878Spex do
       end
 
       when_ "the coder asks for its next work", context do
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, context.coder_frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
         {:ok, Map.put(context, :work_response, response)}
       end
 
       then_ "the offer names the assigned issue and excludes the ready story work", context do
-        refute context.work_response.isError, response_text(context.work_response)
+        assert match?({:ok, _}, context.work_response), response_text(context.work_response)
         offered_work = response_text(context.work_response)
 
         assert offered_work =~ "entity_type=`issue`"

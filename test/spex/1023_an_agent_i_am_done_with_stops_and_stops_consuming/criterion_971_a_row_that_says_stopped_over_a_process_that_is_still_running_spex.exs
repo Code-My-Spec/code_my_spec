@@ -17,12 +17,12 @@ defmodule CodeMySpecSpex.Story1023.Criterion2874Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -41,18 +41,31 @@ defmodule CodeMySpecSpex.Story1023.Criterion2874Spex do
 
       when_ "I stop it", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = TurnOffAgent.execute(%{"agent_id" => context.agent.id}, frame)
+
+        reply =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => context.agent.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it is not reported as stopped", context do
-        assert context.reply.isError,
+        assert match?({:error, _}, context.reply),
                "the machine could not be reached and the stop reported success. " <>
                  "The process is still running, still spending, and the row now " <>
                  "says otherwise."
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
+
+        listing =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(listing) =~ context.agent.id,
                "the agent was dropped from the listing despite nothing having " <>

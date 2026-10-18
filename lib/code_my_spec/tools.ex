@@ -23,7 +23,8 @@ defmodule CodeMySpec.Tools do
   @type context :: %{
           required(:scope) => Scope.t(),
           optional(:session_id) => String.t(),
-          optional(:agent_id) => String.t()
+          optional(:agent_id) => String.t(),
+          optional(:working_dir) => String.t()
         }
 
   @doc "The JSON Schema for a tool's arguments, as an MCP client reads it."
@@ -70,20 +71,72 @@ defmodule CodeMySpec.Tools do
   def error(reason) when is_atom(reason), do: {:error, to_string(reason)}
   def error(reason), do: {:error, inspect(reason)}
 
-  @doc "A changeset's errors as the text an agent is shown."
+  @doc """
+  The reply a tool that needs the project's files gives when this machine has
+  none, saying what to do instead rather than only what failed.
+  """
+  @spec no_working_copy_message(String.t()) :: String.t()
+  def no_working_copy_message(tool) do
+    """
+    `#{tool}` needs the project's files, and this server does not have them.
+
+    The working copy lives on the harness — that is the design, not a \
+    misconfiguration. Write the file there yourself; the harness syncs it back \
+    and the requirement will clear on the next evaluation.
+
+    (If you expected this server to hold the project, it was started without \
+    CMS_MCP_WORKING_DIR.)\
+    """
+  end
+
+  @doc "A changeset's errors as the text an agent is shown, with a hint where one helps."
   @spec changeset_errors(Ecto.Changeset.t()) :: String.t()
   def changeset_errors(%Ecto.Changeset{} = changeset) do
-    changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
+    errors = changeset_error_map(changeset)
+
+    error_lines =
+      Enum.map_join(errors, "\n", fn {field, messages} ->
+        Enum.map_join(messages, "\n", fn msg -> "- **#{field}**: #{msg}" end)
+      end)
+
+    """
+    ## Validation Error
+
+    #{error_lines}
+
+    #{fix_guidance(errors)}
+    """
+    |> String.trim()
+  end
+
+  @doc "A changeset's errors by field, messages interpolated."
+  @spec changeset_error_map(Ecto.Changeset.t()) :: map()
+  def changeset_error_map(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
-    |> Enum.map_join("\n", fn {field, messages} ->
-      Enum.map_join(List.wrap(messages), "\n", &"- **#{field}**: #{&1}")
-    end)
-    |> then(&"## Validation Error\n\n#{&1}")
   end
+
+  defp fix_guidance(errors) do
+    hints =
+      errors
+      |> Enum.flat_map(fn {field, messages} -> Enum.map(messages, &field_hint(field, &1)) end)
+      |> Enum.reject(&is_nil/1)
+
+    if hints == [], do: "", else: "### How to fix\n#{Enum.join(hints, "\n")}"
+  end
+
+  defp field_hint(:title, "can't be blank"), do: "- Provide a non-empty title string"
+  defp field_hint(:description, "can't be blank"), do: "- Provide a description of the story"
+
+  defp field_hint(:acceptance_criteria, msg) when is_binary(msg) do
+    if String.contains?(msg, "at least"),
+      do: "- Provide at least one acceptance criterion as a list of strings"
+  end
+
+  defp field_hint(_, _), do: nil
 
   defp describe(errors) when is_list(errors), do: Enum.map_join(errors, "; ", &describe/1)
 

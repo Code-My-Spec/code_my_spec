@@ -21,12 +21,12 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, response_field: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOffAgent
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -60,15 +60,26 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
       when_ "an engineer asks what is running and stops one of them", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, listing, _frame} = ListAgents.execute(%{}, frame)
-
-        {:reply, stopped, _frame} =
-          TurnOffAgent.execute(
-            %{"agent_id" => response_field(context.first, "Agent")},
-            frame
+        listing =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, after_stop, _frame} = ListAgents.execute(%{}, frame)
+        stopped =
+          ToolLibrary.run(
+            "turn_off_agent",
+            %{"agent_id" => response_field(context.first, "Agent")},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        after_stop =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok,
          context
@@ -90,7 +101,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion2827Spex do
       end
 
       then_ "the one that was stopped is gone", context do
-        refute context.stopped.isError, response_text(context.stopped)
+        assert match?({:ok, _}, context.stopped), response_text(context.stopped)
 
         refute response_text(context.after_stop) =~ "copy-a",
                "the stopped agent is still listed as running. Got: " <>

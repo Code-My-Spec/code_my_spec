@@ -1,12 +1,11 @@
 defmodule CodeMySpecSpex.MailboxHelpers do
   @moduledoc false
   import ExUnit.Assertions
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Mailbox
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
-  alias CodeMySpec.McpServers.Agents.Tools.WithdrawMessage
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -94,13 +93,14 @@ defmodule CodeMySpecSpex.MailboxHelpers do
   def message(ctx, text, opts \\ []) do
     frame = %Frame{assigns: %{current_scope: ctx.scope}}
 
-    {:reply, response, _frame} =
-      MessageAgent.execute(
+    response =
+      ToolLibrary.run(
+        "message_agent",
         %{agent_id: ctx.agent.id, message: text, send_now: Keyword.get(opts, :send_now, false)},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
     text_of(response)
   end
 
@@ -113,10 +113,11 @@ defmodule CodeMySpecSpex.MailboxHelpers do
   def withdraw(scope, agent_id, id) do
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    {:reply, response, _frame} =
-      WithdrawMessage.execute(
+    response =
+      ToolLibrary.run(
+        "withdraw_message",
         %{agent_id: agent_id, message_id: id},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response
