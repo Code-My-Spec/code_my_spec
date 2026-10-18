@@ -238,11 +238,18 @@ defmodule CmsHarness.Web.HooksController do
          "session-start",
          conn,
          working_dir,
-         %{"messaging" => %{"delivery" => "socket"}},
+         %{"messaging" => %{"delivery" => "socket"}} = params,
          %{"agent_id" => agent_id}
        )
        when is_binary(agent_id) do
-    case CmsHarness.Agents.attach_terminal(agent_id, socket(conn), working_dir) do
+    session = %{
+      socket: socket(conn),
+      working_copy: working_dir,
+      session_id: params["session_id"],
+      transcript: params["transcript_path"]
+    }
+
+    case CmsHarness.Agents.attach_terminal(agent_id, session) do
       {:ok, _pid} ->
         :ok
 

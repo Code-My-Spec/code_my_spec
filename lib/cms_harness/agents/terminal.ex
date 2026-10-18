@@ -9,9 +9,13 @@ defmodule CmsHarness.Agents.Terminal do
   this is never busy, a written message is delivered (a `delivered` event
   settles its mailbox entry), and nothing it is sent can be interrupted.
 
-  It lives while the session's socket answers, watched by `Liveness`, so the
-  server sees a terminal agent come and go through Presence like any other.
-  The socket and its key stay on this machine; the server never sees either.
+  Its state is read from Claude Code's own agent list (`claude agents --json`,
+  story 1124): its session going busy is a turn starting, going idle the turn
+  ending, and leaving the list the agent ending — watched by `Liveness`, so
+  the server sees it come and go through Presence like any other, and an
+  exited session reads as gone rather than stalled. Where the list cannot be
+  read, the socket answering stands in for it. The socket and its key stay on
+  this machine; the server never sees either.
 
   Frames are newline-delimited JSON: an optional auth line carrying the
   session's peer token, then a user message (knowledge/harness, "Terminal
@@ -23,6 +27,7 @@ defmodule CmsHarness.Agents.Terminal do
   require Logger
 
   alias CmsHarness.Agents.Liveness
+  alias CmsHarness.Agents.Transcript
   alias CmsHarness.Channel
   alias CmsHarness.Copy.Supervisor, as: Copy
 
@@ -30,22 +35,28 @@ defmodule CmsHarness.Agents.Terminal do
   @connect_timeout_ms 2_000
 
   @doc """
-  Serve `agent_id` through the session at `socket`, in the working copy at
-  `working_copy`. Already serving it: the socket is updated, since a resumed
-  session binds a new one.
+  Serve `agent_id` through the session `session` describes: its `:socket`,
+  the `:working_copy` it runs in, and its `:session_id` and `:transcript` path
+  when known. Already serving it: the session is updated, since a resumed
+  session binds a new socket.
   """
-  @spec attach(String.t(), String.t(), String.t()) :: {:ok, pid()} | {:error, term()}
-  def attach(agent_id, socket, working_copy) do
+  @spec attach(String.t(), map()) :: {:ok, pid()} | {:error, term()}
+  def attach(agent_id, %{socket: socket, working_copy: working_copy} = session) do
     case CmsHarness.Agents.whereis(agent_id) do
       {:ok, pid} ->
-        GenServer.call(pid, {:socket, socket})
+        GenServer.call(pid, {:session, session})
         {:ok, pid}
 
       {:error, :not_running} ->
         with {:ok, _copy} <- Copy.ensure(working_copy) do
           DynamicSupervisor.start_child(
             Copy.agents(working_copy),
-            {__MODULE__, agent_id: agent_id, socket: socket, working_copy: working_copy}
+            {__MODULE__,
+             agent_id: agent_id,
+             socket: socket,
+             working_copy: working_copy,
+             session_id: session[:session_id],
+             transcript: session[:transcript]}
           )
         end
     end
@@ -65,10 +76,19 @@ defmodule CmsHarness.Agents.Terminal do
       agent_id: Keyword.fetch!(opts, :agent_id),
       socket: Keyword.fetch!(opts, :socket),
       working_copy: Path.expand(Keyword.fetch!(opts, :working_copy)),
+      session_id: Keyword.get(opts, :session_id),
+      busy?: false,
+      # Read from where it ends now: what came before is the session's own.
+      transcript: Keyword.get(opts, :transcript),
+      offset: Transcript.end_of(Keyword.get(opts, :transcript)),
+      seen: MapSet.new(),
+      tools: %{},
+      spent: [],
       generation: Ecto.UUID.generate(),
       # In-process callers (tests) may answer the mailbox themselves.
       mailbox: Keyword.get(opts, :mailbox, &Channel.mailbox/2),
-      report: Keyword.get(opts, :report, &Channel.report_turn_event/3)
+      report: Keyword.get(opts, :report, &Channel.report_turn_event/3),
+      sessions: Keyword.get(opts, :sessions, &claude_sessions/0)
     }
 
     case register(state) do
@@ -103,7 +123,23 @@ defmodule CmsHarness.Agents.Terminal do
 
   def handle_call(:status, _from, state), do: {:reply, {:ok, %{busy?: false}}, state}
   def handle_call(:interrupt, _from, state), do: {:reply, {:error, :unsupported}, state}
-  def handle_call({:socket, socket}, _from, state), do: {:reply, :ok, %{state | socket: socket}}
+
+  def handle_call({:session, session}, _from, state) do
+    transcript = session[:transcript] || state.transcript
+
+    {:reply, :ok,
+     %{
+       state
+       | socket: session.socket,
+         session_id: session[:session_id] || state.session_id,
+         transcript: transcript,
+         offset:
+           if(transcript == state.transcript,
+             do: state.offset,
+             else: Transcript.end_of(transcript)
+           )
+     }}
+  end
 
   @impl true
   def handle_info(:mailbox_ready, state) do
@@ -111,19 +147,110 @@ defmodule CmsHarness.Agents.Terminal do
     {:noreply, state}
   end
 
-  # The session gone is the agent gone: its socket stops answering when
-  # Claude Code exits, and `Liveness` reports the down.
   def handle_info(:check, state) do
+    state = read_transcript(state)
+
+    case observe(state) do
+      :gone ->
+        Logger.info("[CmsHarness] terminal agent #{state.agent_id} gone: its session ended")
+        {:stop, :normal, settle_turn(state, false)}
+
+      busy? ->
+        schedule_check()
+        {:noreply, settle_turn(state, busy?)}
+    end
+  end
+
+  # Busy, idle (`false`), or `:gone` — from Claude Code's agent list when it can
+  # be read, else from whether the socket answers (idle while it does).
+  defp observe(%{session_id: session_id} = state) when is_binary(session_id) do
+    case state.sessions.() do
+      {:ok, sessions} ->
+        case Enum.find(sessions, &(&1["sessionId"] == session_id)) do
+          nil -> :gone
+          session -> session["status"] == "busy"
+        end
+
+      :error ->
+        socket_answers(state)
+    end
+  end
+
+  defp observe(state), do: socket_answers(state)
+
+  defp socket_answers(state) do
     case connect(state.socket) do
       {:ok, conn} ->
         :gen_tcp.close(conn)
-        schedule_check()
-        {:noreply, state}
+        state.busy?
 
-      {:error, reason} ->
-        Logger.info("[CmsHarness] terminal agent #{state.agent_id} gone: #{inspect(reason)}")
-        {:stop, :normal, state}
+      {:error, _} ->
+        :gone
     end
+  end
+
+  # A turn starting is the agent's own; one ending clears it through
+  # `mailbox_ready` with no ref in flight, as an idle engine reports.
+  defp settle_turn(%{busy?: busy?} = state, busy?), do: state
+
+  defp settle_turn(state, true) do
+    report(state, %{event: :turn_started, generation: state.generation, ref: nil})
+    %{state | busy?: true}
+  end
+
+  defp settle_turn(state, false) do
+    report_spent(state)
+    report(state, %{event: :mailbox_ready, generation: state.generation, ref: nil})
+    %{state | busy?: false, spent: []}
+  end
+
+  # What the session said and did since the last look, as the steps an agent
+  # we run reports, and what its responses cost, held for the turn's end.
+  defp read_transcript(%{transcript: path} = state) when is_binary(path) do
+    read = Transcript.read(path, state.offset, state.seen, state.tools)
+    Enum.each(read.events, &report(state, &1))
+
+    %{
+      state
+      | offset: read.offset,
+        seen: read.seen,
+        tools: read.tools,
+        spent: state.spent ++ read.usage
+    }
+  end
+
+  defp read_transcript(state), do: state
+
+  defp report_spent(%{spent: []}), do: :ok
+
+  defp report_spent(%{spent: spent} = state) do
+    report(state, %{
+      event: :turn_usage,
+      usage: total(spent),
+      generation: state.generation,
+      ref: nil
+    })
+  end
+
+  @counted ~w(input_tokens output_tokens cache_read_input_tokens cache_creation_input_tokens)
+
+  defp total(spent) do
+    @counted
+    |> Map.new(fn key -> {key, spent |> Enum.map(&(&1[key] || 0)) |> Enum.sum()} end)
+    |> Map.put("model", spent |> List.last() |> Map.get("model"))
+  end
+
+  @doc "The interactive Claude Code sessions on this machine, as `claude agents --json` lists them."
+  @spec claude_sessions() :: {:ok, [map()]} | :error
+  def claude_sessions do
+    with {out, 0} <- System.cmd("claude", ["agents", "--json"], stderr_to_stdout: false),
+         {:ok, sessions} when is_list(sessions) <- Jason.decode(out) do
+      {:ok, sessions}
+    else
+      _ -> :error
+    end
+  rescue
+    ErlangError -> :error
   end
 
   defp schedule_check, do: Process.send_after(self(), :check, @check_ms)

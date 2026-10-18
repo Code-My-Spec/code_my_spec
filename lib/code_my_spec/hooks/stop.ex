@@ -17,16 +17,16 @@ defmodule CodeMySpec.Hooks.Stop do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.AgentTasks.TaskEvaluator
   alias CodeMySpec.Configurations
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
   alias CodeMySpec.Sessions
-  alias CodeMySpec.Agents
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
-  alias CodeMySpec.AgentTasks.TaskEvaluator
 
   @total_response_cap 4096
 
