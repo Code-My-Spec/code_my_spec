@@ -46,7 +46,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
 
   defp line({:error, _}, _conn, _test), do: :ok
 
-  defp start_terminal(socket) do
+  defp start_terminal(socket, extra \\ []) do
     test = self()
 
     mailbox = fn _root, params ->
@@ -61,11 +61,13 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     {:ok, pid} =
       start_supervised(
         {Terminal,
-         agent_id: id,
-         socket: socket,
-         working_copy: "/workspace/terminal",
-         mailbox: mailbox,
-         report: report}
+         [
+           agent_id: id,
+           socket: socket,
+           working_copy: "/workspace/terminal",
+           mailbox: mailbox,
+           report: report
+         ] ++ extra}
       )
 
     assert_receive {:mailbox, %{"operation" => "register", "agent_id" => ^id}}
@@ -127,5 +129,88 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     send(pid, :check)
 
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2_000
+  end
+
+  # Story 1124: the session's state is read from Claude Code's own agent list.
+  defp listed(status_fun) do
+    fn -> {:ok, status_fun.()} end
+  end
+
+  defp session(status), do: [%{"sessionId" => "cc-1", "status" => status, "pid" => 4242}]
+
+  test "its session going busy starts a turn, and going idle ends it", %{socket: socket} do
+    listen(socket)
+    status = :counters.new(1, [])
+    statuses = {"idle", "busy"}
+    now = fn -> session(elem(statuses, :counters.get(status, 1))) end
+    {_id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+
+    :counters.put(status, 1, 1)
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+
+    :counters.put(status, 1, 0)
+    send(pid, :check)
+    assert_receive {:reported, %{event: :mailbox_ready, ref: nil}}
+  end
+
+  test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do
+    listen(socket)
+    gone = :counters.new(1, [])
+    lists = {session("busy"), []}
+    now = fn -> elem(lists, :counters.get(gone, 1)) end
+    {_id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+    ref = Process.monitor(pid)
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+
+    :counters.put(gone, 1, 1)
+    send(pid, :check)
+
+    assert_receive {:reported, %{event: :mailbox_ready, ref: nil}}
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2_000
+  end
+
+  test "what its session writes in a turn is reported, and its usage when the turn ends", %{
+    dir: dir,
+    socket: socket
+  } do
+    listen(socket)
+    transcript = Path.join(dir, "s.jsonl")
+    File.write!(transcript, "")
+    status = :counters.new(1, [])
+    statuses = {"idle", "busy"}
+    now = fn -> session(elem(statuses, :counters.get(status, 1))) end
+
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(now), transcript: transcript)
+
+    :counters.put(status, 1, 1)
+
+    File.write!(
+      transcript,
+      Jason.encode!(%{
+        "type" => "assistant",
+        "message" => %{
+          "id" => "msg_1",
+          "model" => "claude-opus-5-5",
+          "usage" => %{"input_tokens" => 3, "output_tokens" => 2},
+          "content" => [%{"type" => "text", "text" => "On it."}]
+        }
+      }) <> "\n"
+    )
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :message, text: "On it."}}
+
+    :counters.put(status, 1, 0)
+    send(pid, :check)
+
+    assert_receive {:reported,
+                    %{
+                      event: :turn_usage,
+                      usage: %{"output_tokens" => 2, "model" => "claude-opus-5-5"}
+                    }}
   end
 end

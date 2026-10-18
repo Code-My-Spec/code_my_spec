@@ -104,8 +104,8 @@ defmodule CmsHarness.Agents do
   Serve a terminal Claude Code session as `agent_id`, through its inbox
   socket (story 1123). See `Agents.Terminal`.
   """
-  @spec attach_terminal(String.t(), String.t(), String.t()) :: {:ok, pid()} | {:error, term()}
-  defdelegate attach_terminal(agent_id, socket, working_copy),
+  @spec attach_terminal(String.t(), map()) :: {:ok, pid()} | {:error, term()}
+  defdelegate attach_terminal(agent_id, session),
     to: CmsHarness.Agents.Terminal,
     as: :attach
 

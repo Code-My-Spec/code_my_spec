@@ -2078,6 +2078,21 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # A terminal session's turn, totalled from its transcript at the turn's end
+  # (story 1124); the model is the transcript's own.
+  defp record_turn_usage(scope, agent_id, %{"kind" => "turn_usage", "usage" => %{} = usage}) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{working_copy_id: copy_id} = agent} when copy_id == scope.active_working_copy_id ->
+        TokenUsage.record(scope, agent.id, agent.story_id, agent.provider, %{
+          "model" => usage["model"] || agent.model,
+          "usage" => usage
+        })
+
+      _ ->
+        :ok
+    end
+  end
+
   defp record_turn_usage(_scope, _agent_id, _event), do: :ok
 
   # Tool failures on this turn are mirrored onto the agent's conversation
