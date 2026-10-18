@@ -213,4 +213,23 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
                       usage: %{"output_tokens" => 2, "model" => "claude-opus-5-5"}
                     }}
   end
+
+  test "a session's socket and status are read from Claude Code's own session registry", %{
+    dir: dir
+  } do
+    File.write!(
+      Path.join(dir, "4242.json"),
+      Jason.encode!(%{
+        "pid" => 4242,
+        "sessionId" => "cc-registry",
+        "status" => "busy",
+        "messagingSocketPath" => "/tmp/cc-socks/4242.sock"
+      })
+    )
+
+    assert %{"messagingSocketPath" => "/tmp/cc-socks/4242.sock", "status" => "busy"} =
+             Terminal.session_record("cc-registry", dir)
+
+    assert Terminal.session_record("cc-elsewhere", dir) == nil
+  end
 end

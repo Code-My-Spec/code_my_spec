@@ -213,7 +213,7 @@ defmodule CmsHarness.Web.HooksController do
   # reached and why, never the socket.
   defp with_messaging("session-start", conn, working_dir, params) do
     messaging =
-      case socket(conn) do
+      case socket(conn, params) do
         nil ->
           %{
             "delivery" => "stop_hook",
@@ -243,7 +243,7 @@ defmodule CmsHarness.Web.HooksController do
        )
        when is_binary(agent_id) do
     session = %{
-      socket: socket(conn),
+      socket: socket(conn, params),
       working_copy: working_dir,
       session_id: params["session_id"],
       transcript: params["transcript_path"]
@@ -262,10 +262,23 @@ defmodule CmsHarness.Web.HooksController do
 
   defp attach_terminal(_hook, _conn, _working_dir, _params, _decision), do: :ok
 
-  defp socket(conn) do
+  # Named in a header by a client that can, else found in Claude Code's own
+  # session registry by the session id every hook carries: Claude Code runs no
+  # HTTP hook for SessionStart, and a command hook cannot interpolate the
+  # variable on every platform.
+  defp socket(conn, params) do
     case get_req_header(conn, "x-messaging-socket") do
       [socket | _] when socket != "" -> socket
+      _ -> registered_socket(params["session_id"])
+    end
+  end
+
+  defp registered_socket(session_id) when is_binary(session_id) do
+    case CmsHarness.Agents.terminal_session(session_id) do
+      %{"messagingSocketPath" => socket} when is_binary(socket) and socket != "" -> socket
       _ -> nil
     end
   end
+
+  defp registered_socket(_session_id), do: nil
 end

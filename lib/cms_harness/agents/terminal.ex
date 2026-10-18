@@ -9,8 +9,8 @@ defmodule CmsHarness.Agents.Terminal do
   this is never busy, a written message is delivered (a `delivered` event
   settles its mailbox entry), and nothing it is sent can be interrupted.
 
-  Its state is read from Claude Code's own agent list (`claude agents --json`,
-  story 1124): its session going busy is a turn starting, going idle the turn
+  Its state is read from Claude Code's own session registry (what
+  `claude agents --json` lists, story 1124): its session going busy is a turn starting, going idle the turn
   ending, and leaving the list the agent ending — watched by `Liveness`, so
   the server sees it come and go through Presence like any other, and an
   exited session reads as gone rather than stalled. Where the list cannot be
@@ -174,14 +174,14 @@ defmodule CmsHarness.Agents.Terminal do
   defp observe(state), do: socket_answers(state)
 
   # A test hands the list in (`:sessions`); the application may name another
-  # source, asked by session id; otherwise `claude` itself.
+  # source, asked by session id; otherwise Claude Code's session registry.
   defp lookup(%{sessions: sessions}, session_id) when is_function(sessions, 0),
     do: sessions |> apply([]) |> find(session_id)
 
   defp lookup(_state, session_id) do
     case Application.get_env(:code_my_spec, :claude_sessions) do
       {module, function, args} -> apply(module, function, args ++ [session_id])
-      nil -> find(claude_sessions(), session_id)
+      nil -> from_registry(session_id)
     end
   end
 
@@ -256,17 +256,31 @@ defmodule CmsHarness.Agents.Terminal do
     |> Map.put("model", spent |> List.last() |> Map.get("model"))
   end
 
-  @doc "The interactive Claude Code sessions on this machine, as `claude agents --json` lists them."
-  @spec claude_sessions() :: {:ok, [map()]} | :error
-  def claude_sessions do
-    with {out, 0} <- System.cmd("claude", ["agents", "--json"], stderr_to_stdout: false),
-         {:ok, sessions} when is_list(sessions) <- Jason.decode(out) do
-      {:ok, sessions}
-    else
-      _ -> :error
+  @doc """
+  What Claude Code's own session registry says of `session_id`, or nil: each
+  live session writes `<pid>.json` into its config directory's `sessions/` —
+  its `cwd`, `version`, `status` (busy or idle) and, from v2.1.224,
+  `messagingSocketPath` — and removes it when it exits. The same source
+  `claude agents --json` reads, without running `claude`.
+  """
+  @spec session_record(String.t(), String.t()) :: map() | nil
+  def session_record(session_id, dir \\ sessions_dir()) when is_binary(session_id) do
+    dir
+    |> Path.join("*.json")
+    |> Path.wildcard()
+    |> Enum.find_value(fn path ->
+      with {:ok, body} <- File.read(path),
+           {:ok, %{"sessionId" => ^session_id} = record} <- Jason.decode(body),
+           do: record,
+           else: (_ -> nil)
+    end)
+  end
+
+  defp from_registry(session_id) do
+    case session_record(session_id) do
+      nil -> :gone
+      record -> {:ok, record["status"]}
     end
-  rescue
-    ErlangError -> :error
   end
 
   defp schedule_check, do: Process.send_after(self(), :check, @check_ms)
@@ -341,8 +355,13 @@ defmodule CmsHarness.Agents.Terminal do
     end
   end
 
+  # Claude Code's own config directory, unless the application names another
+  # (tests do, so nothing reads this machine's real sessions).
   defp sessions_dir do
-    config = System.get_env("CLAUDE_CONFIG_DIR") || Path.expand("~/.claude")
+    config =
+      Application.get_env(:code_my_spec, :claude_config_dir) ||
+        System.get_env("CLAUDE_CONFIG_DIR") || Path.expand("~/.claude")
+
     Path.join(config, "sessions")
   end
 

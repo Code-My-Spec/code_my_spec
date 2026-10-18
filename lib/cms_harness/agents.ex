@@ -110,6 +110,13 @@ defmodule CmsHarness.Agents do
     as: :attach
 
   @doc """
+  What Claude Code's session registry on this machine says of `session_id`,
+  or nil. See `Agents.Terminal.session_record/2`.
+  """
+  @spec terminal_session(String.t()) :: map() | nil
+  def terminal_session(session_id), do: CmsHarness.Agents.Terminal.session_record(session_id)
+
+  @doc """
   Whether a terminal session in `working_copy`, in `permission_mode`, takes
   what is written to its socket. See `Agents.Inbound`.
   """
