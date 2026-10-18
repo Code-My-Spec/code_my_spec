@@ -701,8 +701,8 @@ defmodule CodeMySpec.Agents.Work do
     |> append_offer_note(subject, offer)
   end
 
-  # A second offer of a released task carries its own rung's text, `:remind`,
-  # rather than the same sentence again.
+  # A released task climbs the work ladder (criterion 2173): its id, then its
+  # requirement's detail, then what else the agent could take.
   defp offer_prompt_body(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
     # The answer on every rung: this path and TaskOwner's notice race to make
@@ -710,8 +710,14 @@ defmodule CodeMySpec.Agents.Work do
     base = "Your blocker was released; #{resume_instruction(scope, tasks)}" <> answer(tasks)
 
     case rung(agent, :unblocked, "task", id) do
-      :remind -> base <> "\n\n" <> remind()
-      _first -> base
+      :detail ->
+        base <> "\n\n" <> remind() <> task_detail(&detail/3, scope, agent, tasks)
+
+      :alternatives ->
+        base <> "\n\n" <> remind() <> task_detail(&alternatives/3, scope, agent, tasks)
+
+      _first ->
+        base
     end
   end
 
@@ -743,6 +749,24 @@ defmodule CodeMySpec.Agents.Work do
     do: answer_text(Notifications.answer_detail(id))
 
   defp answer(_tasks), do: ""
+
+  defp task_detail(render, scope, agent, [task]) do
+    scope
+    |> offerable(agent)
+    |> Enum.find(&task_on_node?(task, &1))
+    |> node_detail(render, scope, agent)
+  end
+
+  defp task_detail(_render, _scope, _agent, _tasks), do: ""
+
+  defp node_detail(nil, _render, _scope, _agent), do: ""
+
+  defp node_detail(node, render, scope, agent) do
+    case render.(scope, agent, node_key(agent, node)) do
+      "" -> ""
+      text -> "\n\n" <> text
+    end
+  end
 
   defp answer_text(nil), do: ""
   defp answer_text(text), do: "\n\n" <> text
@@ -1185,12 +1209,12 @@ defmodule CodeMySpec.Agents.Work do
   @spec withheld?([Agent.t()], Agent.t(), map(), map()) :: boolean()
   def withheld?(owners, agent, node, standing \\ %{}) do
     held_back?(agent, node, standing) or
-      (owners
-       |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
-       |> Enum.any?(fn owner ->
-         mine? = owner.id == agent.id
-         Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
-       end))
+      owners
+      |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
+      |> Enum.any?(fn owner ->
+        mine? = owner.id == agent.id
+        Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
+      end)
   end
 
   defp held_back?(agent, node, standing) do

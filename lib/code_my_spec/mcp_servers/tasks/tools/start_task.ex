@@ -322,7 +322,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
 
     with :ok <- eligible_to_resume(scope, owner, req),
          {:ok, updated} <- TaskOwner.resume_task(scope, owner, task.id) do
-      return_prompt(TaskOwner.find_task(updated, task.id), scope, frame)
+      # Read off the task as it was: resuming clears its blocker.
+      return_resumed_prompt(
+        TaskOwner.find_task(updated, task.id),
+        answered_blocker(task),
+        scope,
+        frame
+      )
     else
       {:error, :active_task_exists} ->
         {:reply,
@@ -503,6 +509,22 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
     prompt = generate_prompt(task, scope)
     {:reply, TasksMapper.prompt_response(prompt, task), frame}
   end
+
+  # Whatever led the agent back (the offer, the menu, `get_next_requirement`),
+  # it resumes knowing what blocked the task and what the user said.
+  defp return_resumed_prompt(task, answered, scope, frame) do
+    prompt = answered <> generate_prompt(task, scope)
+    {:reply, TasksMapper.prompt_response(prompt, task), frame}
+  end
+
+  defp answered_blocker(%{blocker_type: :question, blocker_id: id}) when is_binary(id) do
+    case CodeMySpec.Notifications.answer_detail(id) do
+      nil -> ""
+      answer -> "This task was blocked on question #{id}. #{answer}\n\n"
+    end
+  end
+
+  defp answered_blocker(_task), do: ""
 
   defp maybe_assign_agent(scope, %Session{} = session, %{agent_id: nil, id: task_id}, agent_id)
        when is_binary(agent_id) do

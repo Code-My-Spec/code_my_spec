@@ -35,17 +35,23 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
   end
 
   describe "the ladder as data (2057)" do
-    test "each kind has its own ladder, ending in held back", _ctx do
+    # A notice's ladder (problems, retry) stops at its detail; one that hands
+    # out work ends in held back (story 1080, 2026-10-13).
+    test "each kind has its own ladder", _ctx do
       ladders = Offers.ladders()
 
-      assert Enum.all?(ladders, fn {_key, steps} -> List.last(steps) == :held_back end),
-             "every ladder ends in held_back: #{inspect(ladders)}"
+      for key <- [{:work, "requirement"}, {:unblocked, "task"}, {:denial, "tap_out"}] do
+        assert List.last(ladders[key]) == :held_back, "#{inspect(key)}: #{inspect(ladders)}"
+      end
+
+      assert ladders[{:problems, "problem_set"}] == [:detail]
+      assert ladders[{:retry, "failed_turn"}] == [:detail]
 
       assert length(ladders[{:work, "requirement"}]) == 3,
              "requirement work takes three ignored offers (1739-1741)"
 
-      assert length(ladders[{:unblocked, "task"}]) == 2,
-             "a released task is reminded once, then held back"
+      assert ladders[{:unblocked, "task"}] == ladders[{:work, "requirement"}],
+             "a released task climbs the work ladder (2173)"
 
       assert length(ladders[{:denial, "tap_out"}]) == 1,
              "a declined tap-out notice is held back after one rung"
@@ -97,14 +103,15 @@ defmodule CodeMySpec.Agents.Offers.EveryKindEscalatesOnItsOwnLadderTest do
              "ignored to the end of its ladder: held back from a push, still not a decline"
     end
 
-    test "an unblocked task offer reaches its two-rung ladder on the second ignore", ctx do
+    test "an unblocked task offer reaches its three-rung ladder on the third ignore", ctx do
       key = "t-#{System.unique_integer([:positive])}"
 
       ignored(ctx, :unblocked, "task", key, 1)
-      assert %{ignored: 1, held?: false} = Offers.standing(ctx.agent.id)[key]
-
       ignored(ctx, :unblocked, "task", key, 2)
-      assert %{ignored: 2, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key]
+      assert %{ignored: 2, held?: false} = Offers.standing(ctx.agent.id)[key]
+
+      ignored(ctx, :unblocked, "task", key, 3)
+      assert %{ignored: 3, held?: true, declined?: false} = Offers.standing(ctx.agent.id)[key]
     end
 
     test "standing/1 reports the laddered kinds, not one hard-coded pair", ctx do

@@ -92,7 +92,8 @@ defmodule CodeMySpec.Agents.Offers do
   @ladders %{
     {:work, "requirement"} => [:detail, :alternatives, :held_back],
     {:work, "questions"} => [:held_back],
-    {:unblocked, "task"} => [:remind, :held_back],
+    # Criterion 2173: a released task climbs the work ladder's rungs.
+    {:unblocked, "task"} => [:detail, :alternatives, :held_back],
     {:denial, "tap_out"} => [:held_back],
     # Keyed on the blocking set's own hash (`problem_key/1`), never on a task
     # or requirement id, so it cannot collide with another kind's subject_key

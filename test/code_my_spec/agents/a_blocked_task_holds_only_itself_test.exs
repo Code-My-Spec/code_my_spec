@@ -188,7 +188,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       {:ok, product} = TaskOwner.complete_task(ctx.scope, ctx.product, active.id)
 
       # The offer the last turn took nothing of: `unblocked`'s first rung is
-      # `:remind`, so the next offer of this task carries it (criterion 2057).
+      # `:detail`, so the next offer of this task carries the reminder (criterion 2173).
       %Offer{}
       |> Offer.changeset(%{
         agent_id: product_id,
