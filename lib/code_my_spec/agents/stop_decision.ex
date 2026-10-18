@@ -23,9 +23,11 @@ defmodule CodeMySpec.Agents.StopDecision do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Problems.ProblemRenderer
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation
 
@@ -101,17 +103,40 @@ defmodule CodeMySpec.Agents.StopDecision do
   defp decide_with_work(%Scope{} = scope, %Agent{} = agent, opts) do
     # The role travels with the id: whether a `block_changed` source is
     # enforced turns on whether the agent writes code.
-    validate_opts = Keyword.merge(opts, agent_id: agent.id, agent_role: agent.role)
+    validate_opts =
+      Keyword.merge(opts, agent_id: agent.id, agent_role: agent.role, include_blocking: true)
 
     case Validation.validate_stop(scope, nil, validate_opts) do
-      {:error, reason, key} ->
+      {:error, reason, key, blocking} ->
         # "Next" is this agent's own role's work.
-        {reason <> Menu.render(scope, agent.continuous == true, agent.role, agent), key}
+        body =
+          problems(agent, key, reason, blocking) <>
+            Menu.render(scope, agent.continuous == true, agent.role, agent)
+
+        {body, key}
 
       {:ok, _result} ->
         keep_working(scope, agent)
     end
   end
+
+  # A problems offer's ladder (criterion 2168): the count first, by source,
+  # and the first problems in detail once that was ignored.
+  defp problems(agent, key, reason, blocking) do
+    case Offers.rung(agent.id, :problems, "problem_set", problem_key(key)) do
+      :detail -> reason
+      nil -> count(blocking) <> "\n\n" <> ProblemRenderer.render_summary_by_source(blocking)
+    end
+  end
+
+  # The opening is what `AgentPerformance` classifies a stop refusal by.
+  defp count([_one]),
+    do: "Fix these problems before stopping: 1 problem to fix. `list_problems` has it."
+
+  defp count(blocking),
+    do:
+      "Fix these problems before stopping: #{length(blocking)} problems to fix. " <>
+        "`list_problems` has them."
 
   # Nothing is blocking. An agent not in the loop is told nothing (a message
   # costs it a turn). In the loop, `Menu.render/4` answering `""` is the

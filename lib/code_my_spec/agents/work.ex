@@ -754,20 +754,7 @@ defmodule CodeMySpec.Agents.Work do
 
   # The rung the offer being rendered now carries: the rung the last ignored
   # offer wrote. None on a first offer.
-  defp rung(agent, kind, type, key) do
-    case {Offers.ladder({kind, type}), ignored(agent, key)} do
-      {nil, _ignored} -> nil
-      {_steps, 0} -> nil
-      {steps, ignored} -> Enum.at(steps, ignored - 1)
-    end
-  end
-
-  defp ignored(agent, key) do
-    case Offers.standing(agent.id)[key] do
-      %{ignored: n} -> n
-      _none -> 0
-    end
-  end
+  defp rung(agent, kind, type, key), do: Offers.rung(agent.id, kind, type, key)
 
   # The second offer of the same work says more about it.
   defp detail(scope, agent, key) do

@@ -78,7 +78,8 @@ defmodule CodeMySpec.Validation do
   Run the full validation pipeline for a stop hook.
 
   Returns `{:ok, %{changed_files:, analysis:, advisory_note:}}` when nothing
-  blocks, or `{:error, reason, blocking_key}` when the blocking check rejects.
+  blocks, or `{:error, reason, blocking_key}` when the blocking check rejects
+  — `{:error, reason, blocking_key, blocking}` with `:include_blocking`.
 
   ## Options
 
@@ -88,6 +89,9 @@ defmodule CodeMySpec.Validation do
     are excluded from the block decision.
   - `:agent_id` - sub-agent id; nil means the main agent. Combined with
     `:session_id` for the FileEdits attribution lookup.
+  - `:include_blocking` - append the blocking `Problem` list itself as a
+    4th element on `:error`, for a caller that renders its own detail
+    from them rather than just the summary.
 
   A stop never starts, ingests or waits on analysis; it reads what runs already
   persisted. A spec that needs findings lands them as an analysis run first, and
@@ -96,6 +100,7 @@ defmodule CodeMySpec.Validation do
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
           {:ok, %{changed_files: [map()], analysis: map()}}
           | {:error, String.t(), String.t() | nil}
+          | {:error, String.t(), String.t() | nil, [Problems.Problem.t()]}
   def validate_stop(%Scope{} = scope, task, opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
@@ -567,6 +572,7 @@ defmodule CodeMySpec.Validation do
       # Computed here, from the opts that carry the identity; `decide/3` is
       # handed a freshly built list.
       internal_agent?: internal_agent?(opts),
+      include_blocking: Keyword.get(opts, :include_blocking, false),
       # The run each source's findings came from: commit, age and duration.
       answers: answers(scope, ledger_sources),
       # Why a source that has never answered could not run.
@@ -898,7 +904,15 @@ defmodule CodeMySpec.Validation do
         opts
       )
 
-    {:error, reason, blocking_key(blocking)}
+    # `:include_blocking` hands the caller the problems themselves alongside
+    # the rendered summary (criterion 2168's second rung needs the first few
+    # in detail). Every existing caller omits it and keeps matching the
+    # 3-tuple it has always gotten.
+    if Keyword.get(opts, :include_blocking) do
+      {:error, reason, blocking_key(blocking), blocking}
+    else
+      {:error, reason, blocking_key(blocking)}
+    end
   end
 
   # What is blocking, comparable across stops. Not the rendered reason: that

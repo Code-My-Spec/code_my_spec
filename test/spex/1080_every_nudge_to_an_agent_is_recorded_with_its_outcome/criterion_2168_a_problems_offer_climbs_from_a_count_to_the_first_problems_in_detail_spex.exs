@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2168Spex do
 
       then_ "the next rung gives the detail of the first few problems and says to fix them",
             context do
-        assert context.second =~ "lib/example_context", context.second
+        assert context.second =~ "test/many_failures/case_01_test.exs", context.second
         {:ok, context}
       end
     end
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2168Spex do
 
     receive do
       {:agent_dispatch, ^id, _ref, text} ->
-        matches? = text =~ "problems to fix" or text =~ "lib/example_context"
+        matches? = text =~ "problems to fix" or text =~ "test/many_failures/case_01_test.exs"
         pick_problems_dispatch(matches?, text, id, deadline)
     after
       remaining -> flunk("no problems-offer dispatch for #{id} within the window")

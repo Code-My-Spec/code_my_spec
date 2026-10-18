@@ -90,7 +90,11 @@ defmodule CodeMySpec.Agents.Offers do
     {:work, "requirement"} => [:detail, :alternatives, :held_back],
     {:work, "questions"} => [:held_back],
     {:unblocked, "task"} => [:remind, :held_back],
-    {:denial, "tap_out"} => [:held_back]
+    {:denial, "tap_out"} => [:held_back],
+    # Keyed on the blocking set's own hash (`problem_key/1`), never on a task
+    # or requirement id, so it cannot collide with another kind's subject_key
+    # in `standing/1`'s per-key grouping (criterion 2168).
+    {:problems, "problem_set"} => [:detail]
   }
 
   @type subject :: {String.t(), term()}
@@ -734,6 +738,23 @@ defmodule CodeMySpec.Agents.Offers do
   @doc "The ladder for one offer kind, or nil when that kind never escalates."
   @spec ladder({atom(), String.t()}) :: [atom()] | nil
   def ladder(key), do: Map.get(@ladders, key)
+
+  @doc "This subject's next rung on its kind's ladder, or nil off it or unignored."
+  @spec rung(Ecto.UUID.t(), atom(), String.t(), term()) :: atom() | nil
+  def rung(agent_id, kind, type, key) do
+    case {ladder({kind, type}), ignored_count(agent_id, key)} do
+      {nil, _ignored} -> nil
+      {_steps, 0} -> nil
+      {steps, ignored} -> Enum.at(steps, ignored - 1)
+    end
+  end
+
+  defp ignored_count(agent_id, key) do
+    case standing(agent_id)[key] do
+      %{ignored: n} -> n
+      _none -> 0
+    end
+  end
 
   @doc "Record one escalation for a repeated operator instruction; never withhold delivery."
   def take_instruction_attention(%Offer{kind: :instruction} = offer, record_notice)
