@@ -662,17 +662,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     # The same request a fresh start sends, with credential and conversation.
     # On duty only: an off or retired agent is never brought back.
-    running =
+    on_duty =
       scope
       |> Agents.list_on_duty()
       |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
+
+    # A terminal session is a person's process, never launched here: the
+    # harness re-attaches each one still running (story 1124).
+    {terminals, running} = Enum.split_with(on_duty, &is_binary(&1.engine_session_id))
 
     :ok = Agents.account_for_interrupted_turns(scope, running)
 
     tools = ToolRegistry.registry()
     agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
-    {:reply, {:ok, %{"agents" => agents}}, socket}
+    reattach =
+      Enum.map(terminals, &%{"agent_id" => &1.id, "session_id" => &1.engine_session_id})
+
+    {:reply, {:ok, %{"agents" => agents, "terminals" => reattach}}, socket}
   end
 
   def handle_in(
