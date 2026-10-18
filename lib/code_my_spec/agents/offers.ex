@@ -160,6 +160,48 @@ defmodule CodeMySpec.Agents.Offers do
   def current_work_offer(_agent_id), do: nil
 
   @doc """
+  Record a decline directly, with no open offer ever having existed for it:
+  `reject_offer` called with no open offer and no id, declining whatever a
+  pull (`get_next_requirement`) most recently showed (issue e6f18e57,
+  product's ruling on 7371fb26). Written declined outright, same shape as
+  any other decline, so it is held back exactly as `reject/3`'s own are.
+  """
+  @spec record_declined(Agent.t(), Offer.kind(), subject(), String.t()) :: Offer.t() | nil
+  def record_declined(%Agent{id: agent_id} = agent, kind, {type, key}, reason)
+      when is_binary(agent_id) and is_binary(reason) do
+    key = subject_key(key)
+    now = DateTime.utc_now()
+
+    serialized(agent_id, fn ->
+      attempt = agent_id |> same_subject(kind, type, key) |> attempt()
+
+      %{
+        account_id: agent.account_id,
+        project_id: agent.project_id,
+        agent_id: agent.id,
+        working_copy_id: agent.working_copy_id,
+        kind: kind,
+        subject_type: type,
+        subject_key: key,
+        attempt: attempt,
+        status: :declined,
+        reason: reason,
+        next_step: declined_step(%{kind: kind, subject_type: type}),
+        outcome_at: now,
+        template_version: Map.fetch!(@template_versions, kind)
+      }
+      |> Offer.changeset()
+      |> Repo.insert()
+    end)
+    |> case do
+      {:ok, offer} -> offer
+      {:error, _changeset} -> nil
+    end
+  end
+
+  def record_declined(_agent, _kind, _subject, _reason), do: nil
+
+  @doc """
   Every open offer on this agent is superseded, not just one of a given kind
   and subject -- a restart discards the in-flight turn those offers were
   queued for (`turn_started_at: nil`), so none of them can still be claimed
@@ -830,16 +872,23 @@ defmodule CodeMySpec.Agents.Offers do
     Enum.each(open, fn offer ->
       after_offer = Enum.filter(calls, &(DateTime.compare(&1.at, offer.inserted_at) != :lt))
 
-      settled =
-        offer
-        |> outcome(agent, after_offer)
-        |> Map.merge(%{outcome_at: now, updated_at: now})
-        |> next_step(offer)
+      case outcome(offer, agent, after_offer) do
+        # A pending tap-out (criterion 2162): left exactly as it is, still
+        # open, until main resolves it -- not settled at all.
+        nil ->
+          :ok
 
-      # Still open when written: a delivery failure marked since the read stands.
-      Offer
-      |> where([o], o.id == ^offer.id and o.status == :open)
-      |> Repo.update_all(set: Map.to_list(settled))
+        outcome ->
+          settled =
+            outcome
+            |> Map.merge(%{outcome_at: now, updated_at: now})
+            |> next_step(offer)
+
+          # Still open when written: a delivery failure marked since the read stands.
+          Offer
+          |> where([o], o.id == ^offer.id and o.status == :open)
+          |> Repo.update_all(set: Map.to_list(settled))
+      end
     end)
   end
 
@@ -881,12 +930,17 @@ defmodule CodeMySpec.Agents.Offers do
     tasks = tasks_on(agent, offer.subject_key)
 
     cond do
+      # A pending tap-out (criterion 2162): not settled at all. Declining it
+      # here would be exactly the implicit decline the criterion forbids;
+      # settling it claimed would lose the fact that it is still waiting on
+      # main. Left alone, the offer stays open on the agent until main
+      # resolves the tap-out, at which point this task is no longer blocked
+      # by a pending one and the next turn end settles it normally.
+      Enum.any?(tasks, &pending_tap_out?/1) ->
+        nil
+
       # Claimed and cancelled is declined, or the claim would reset the ladder
-      # and the agent could take and drop the same work forever. A tap-out
-      # (criterion 2162) leaves the task blocked rather than cancelled, so it
-      # never reaches this branch -- it settles as claimed below, same as any
-      # other started task, and stays open on the agent until main resolves
-      # the tap-out.
+      # and the agent could take and drop the same work forever.
       Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
         %{status: :declined, reason: "claimed and cancelled"}
 
@@ -1040,6 +1094,11 @@ defmodule CodeMySpec.Agents.Offers do
     do: DateTime.compare(at, since) != :lt
 
   defp cancelled_since?(_task, _since), do: false
+
+  defp pending_tap_out?(%{status: :blocked, blocker_type: :tap_out, blocker_resolved_at: nil}),
+    do: true
+
+  defp pending_tap_out?(_task), do: false
 
   defp same_subject(agent_id, kind, type, nil) do
     where(

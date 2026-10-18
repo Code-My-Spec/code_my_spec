@@ -129,7 +129,11 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert settled(offered).status == :ignored
     end
 
-    test "is declined, with the reason, when its task was tapped out", ctx do
+    # Criterion 2162: a tap-out does not decline an offer, and it "stays open
+    # on the agent until it is accepted, refused with reject_offer, or
+    # resolved by main" -- so while it is pending (blocker_resolved_at nil)
+    # it is not settled at all, not even as claimed.
+    test "is left open, not declined, while its task's tap-out is pending", ctx do
       offered = offer(ctx, :work, {"requirement", @node})
       now = DateTime.utc_now()
 
@@ -146,7 +150,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
 
       end_turn(ctx)
 
-      assert %{status: :declined, reason: "this belongs to another story"} = settled(offered)
+      assert %{status: :open} = settled(offered)
     end
   end
 
