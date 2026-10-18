@@ -57,6 +57,7 @@ defmodule CmsHarness.Agents.Engine do
   def running, do: State.running()
   def running?(agent_id), do: match?({:ok, _}, State.whereis(agent_id))
   defdelegate tools(opts), to: Impl
+  defdelegate tool_name(tool), to: Impl
 
   # Kept public for the harness lifecycle tests; normal callers use `stop/1`.
   defdelegate terminate(reason, state), to: Server

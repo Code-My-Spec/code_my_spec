@@ -167,7 +167,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   which is the whole subject here.
   """
   @spec carried_tools(String.t()) :: [String.t()]
-  def carried_tools(agent_id), do: agent_id |> Fixtures.agent_tools() |> Enum.map(& &1.name())
+  def carried_tools(agent_id), do: Fixtures.agent_tools(agent_id)
 
   @doc """
   Run a script as that agent, through the tool it carries.

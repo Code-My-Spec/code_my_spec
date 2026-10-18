@@ -3273,7 +3273,7 @@ defmodule CodeMySpecSpex.Fixtures do
     request
     |> Map.put_new(
       "direct_tools",
-      ToolIndex.carried(ToolRegistry.registry())
+      ToolIndex.carried_definitions(ToolRegistry.registry())
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])

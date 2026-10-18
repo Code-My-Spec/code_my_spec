@@ -81,9 +81,9 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
       "tool_reach" => ToolIndex.reach(agent, tools),
-      # The tools the engine carries directly, by MCP name. The harness builds
-      # its tool modules from these rather than reading the server's registry.
-      "direct_tools" => ToolIndex.carried(tools),
+      # The tools the engine carries directly, as the server registers them.
+      # The harness builds its tools from these rather than keeping copies.
+      "direct_tools" => ToolIndex.carried_definitions(tools),
       # How a tool call physically happens on this provider. See `ProviderBrief`.
       "provider_brief" => ProviderBrief.for(agent.provider),
       # Where the application is running: the main checkout's preview, whichever

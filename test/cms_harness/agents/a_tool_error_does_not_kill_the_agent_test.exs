@@ -155,6 +155,14 @@ defmodule CmsHarness.Agents.AToolErrorDoesNotKillTheAgentTest do
     answers()
   end
 
+  # A direct tool forwarding to the server, defined as the launch request
+  # defines it; there is no server here to send it.
+  @check_answer %{
+    "name" => "check_answer",
+    "description" => "Collect the answer to a question.",
+    "input_schema" => %{"type" => "object", "properties" => %{}}
+  }
+
   defp start_agent(root) do
     id = "tool-error-#{System.unique_integer([:positive])}"
     test_pid = self()
@@ -164,7 +172,8 @@ defmodule CmsHarness.Agents.AToolErrorDoesNotKillTheAgentTest do
         provider: "anthropic",
         api_key: "unused",
         req_options: [plug: provider(test_pid)],
-        on_event: fn _agent_id, envelope -> send(test_pid, {:event, envelope}) end
+        on_event: fn _agent_id, envelope -> send(test_pid, {:event, envelope}) end,
+        direct_tools: [@check_answer]
       )
 
     on_exit(fn -> Machine.stop_agent(id) end)

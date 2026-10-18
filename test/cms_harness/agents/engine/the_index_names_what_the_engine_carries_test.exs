@@ -19,18 +19,16 @@ defmodule CmsHarness.Agents.Engine.TheIndexNamesWhatTheEngineCarriesTest do
     [_, listed] = Regex.run(~r/\*\*Called directly:\*\* ([^\n]+)/, index)
 
     carried =
-      Impl.tools(direct_tools: ToolIndex.carried(ToolRegistry.registry()))
-      |> Enum.map(& &1.name())
+      Impl.tools(direct_tools: ToolIndex.carried_definitions(ToolRegistry.registry()))
+      |> Enum.map(&Impl.tool_name/1)
       |> Enum.reject(&(&1 in @core))
 
     assert Enum.sort(String.split(listed, ", ")) == Enum.sort(carried)
   end
 
-  test "every carried name resolves to a tool of that name" do
-    for name <- ToolIndex.carried(ToolRegistry.registry()) do
-      module = Impl.direct_tool(name)
-      assert Code.ensure_loaded?(module), "no harness tool module for #{name}"
-      assert module.name() == name
+  test "every carried definition builds a tool of that name" do
+    for %{"name" => name} = definition <- ToolIndex.carried_definitions(ToolRegistry.registry()) do
+      assert definition |> Impl.direct_tool() |> Impl.tool_name() == name
     end
   end
 end
