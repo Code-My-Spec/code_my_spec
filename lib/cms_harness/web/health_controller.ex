@@ -29,6 +29,10 @@ defmodule CmsHarness.Web.HealthController do
           # server has never answered this channel.
           server_replied_ago_s: Channel.server_replied_ago(root),
           joined_ago_s: Channel.joined_ago(root),
+          # A 403 is terminal (issue 62377cc3 / 620b0389): the server named
+          # a reason, and nothing here retries it on a timer. Non-nil is
+          # where a person running the harness is meant to see it.
+          terminal_refusal: Channel.terminal_refusal(root),
           # Whether this copy can run anything: without a recorded test
           # partition every analyzer run raises, while `connected` and
           # `watching` both read true. A file read, not a network call.

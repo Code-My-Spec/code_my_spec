@@ -23,7 +23,10 @@ defmodule CodeMySpecWeb.Endpoint do
   # operator chasing it read the harness's logs instead, which can only say that
   # the far side said no (`d96809d4`).
   socket("/socket", CodeMySpecWeb.UserSocket,
-    websocket: [connect_info: [:peer_data, :user_agent]],
+    websocket: [
+      connect_info: [:peer_data, :user_agent],
+      error_handler: {CodeMySpecWeb.UserSocket, :handle_connect_error, []}
+    ],
     longpoll: false
   )
 
