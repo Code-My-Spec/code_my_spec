@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
+defmodule CodeMySpec.Observability.ToolsTest do
   @moduledoc """
   The MCP wiring for story 1116 ("1082"): frame → scope → `Observability` →
   a text reply an agent can read. `ObservabilityTest` already covers the
@@ -8,10 +8,11 @@ defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.{ErrorSummary, GetTrace, QueryLogs, SlowSpans}
   alias CodeMySpec.Observability.ClickHouseClient
   alias CodeMySpec.ProjectSecrets
 
@@ -21,7 +22,9 @@ defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
   end
 
   defp configure!(scope, env \\ "uat") do
-    {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_URL", "http://ch.test", environment: env)
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_URL", "http://ch.test", environment: env)
+
     {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_USERNAME", "u", environment: env)
     {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_PASSWORD", "p", environment: env)
   end
@@ -31,31 +34,37 @@ defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
     Req.Test.stub(ClickHouseClient, fn conn -> Plug.Conn.send_resp(conn, 200, body) end)
   end
 
-  defp text(response), do: Enum.map_join(response.content, "\n", &Map.get(&1, "text", ""))
+  defp text({_status, text}), do: text
 
   describe "query_logs" do
     test "an unconfigured project is told to provision telemetry, not given a stack trace", ctx do
-      {:reply, response, _frame} = QueryLogs.execute(%{}, ctx.frame)
+      response = ToolLibrary.run("query_logs", %{}, %{scope: ctx.frame.assigns.current_scope})
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ "provisioning step"
     end
 
     test "a matching project renders its rows", ctx do
       configure!(ctx.scope)
-      stub_rows([%{"Timestamp" => "t", "SeverityText" => "ERROR", "Body" => "boom", "TraceId" => "abc"}])
 
-      {:reply, response, _frame} = QueryLogs.execute(%{}, ctx.frame)
+      stub_rows([
+        %{"Timestamp" => "t", "SeverityText" => "ERROR", "Body" => "boom", "TraceId" => "abc"}
+      ])
 
-      refute response.isError
+      response = ToolLibrary.run("query_logs", %{}, %{scope: ctx.frame.assigns.current_scope})
+
+      assert match?({:ok, _}, response)
       assert text(response) =~ "boom"
       assert text(response) =~ "trace abc"
     end
 
     test "an unparseable timestamp is refused with a clear reason", ctx do
-      {:reply, response, _frame} = QueryLogs.execute(%{since: "not-a-date"}, ctx.frame)
+      response =
+        ToolLibrary.run("query_logs", %{since: "not-a-date"}, %{
+          scope: ctx.frame.assigns.current_scope
+        })
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ "not-a-date"
     end
   end
@@ -65,9 +74,12 @@ defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
       configure!(ctx.scope)
       stub_rows([])
 
-      {:reply, response, _frame} = GetTrace.execute(%{trace_id: "ghost"}, ctx.frame)
+      response =
+        ToolLibrary.run("get_trace", %{trace_id: "ghost"}, %{
+          scope: ctx.frame.assigns.current_scope
+        })
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ "ghost"
     end
   end
@@ -86,18 +98,18 @@ defmodule CodeMySpec.McpServers.Observability.ObservabilityToolsTest do
         }
       ])
 
-      {:reply, response, _frame} = SlowSpans.execute(%{}, ctx.frame)
+      response = ToolLibrary.run("slow_spans", %{}, %{scope: ctx.frame.assigns.current_scope})
 
-      refute response.isError
+      assert match?({:ok, _}, response)
       assert text(response) =~ "1850ms"
     end
   end
 
   describe "error_summary" do
     test "an unconfigured project is told to provision telemetry", ctx do
-      {:reply, response, _frame} = ErrorSummary.execute(%{}, ctx.frame)
+      response = ToolLibrary.run("error_summary", %{}, %{scope: ctx.frame.assigns.current_scope})
 
-      assert response.isError
+      assert match?({:error, _}, response)
       assert text(response) =~ "provisioning step"
     end
   end

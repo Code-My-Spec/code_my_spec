@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.TaskResponseHelpers do
   def response_text({:ok, text}) when is_binary(text), do: text
   def response_text({:error, text}) when is_binary(text), do: text
   def response_text(text) when is_binary(text), do: text
+  def response_text({status, text}) when status in [:ok, :error] and is_binary(text), do: text
   def response_text(other), do: inspect(other)
 
   @doc """

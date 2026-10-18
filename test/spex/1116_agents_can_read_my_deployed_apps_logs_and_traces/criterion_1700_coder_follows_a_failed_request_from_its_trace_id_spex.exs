@@ -9,8 +9,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1700Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.GetTrace
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -40,7 +41,14 @@ defmodule CodeMySpecSpex.Story1116.Criterion1700Spex do
                   "StatusMessage" => "column does not exist"
                 }
               ],
-              [%{"Timestamp" => "t", "SeverityText" => "ERROR", "Body" => "Ecto.QueryError", "SpanId" => "span1"}]
+              [
+                %{
+                  "Timestamp" => "t",
+                  "SeverityText" => "ERROR",
+                  "Body" => "Ecto.QueryError",
+                  "SpanId" => "span1"
+                }
+              ]
             )
 
           Plug.Conn.send_resp(plug_conn, 200, Enum.map_join(rows, "\n", &Jason.encode!/1))
@@ -51,14 +59,18 @@ defmodule CodeMySpecSpex.Story1116.Criterion1700Spex do
 
       when_ "the coder asks for that trace", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = GetTrace.execute(%{trace_id: "the-failed-trace"}, frame)
+
+        reply =
+          ToolLibrary.run("get_trace", %{trace_id: "the-failed-trace"}, %{
+            scope: frame.assigns.current_scope
+          })
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "it gets the span and the log line emitted during it", context do
         text = TaskResponseHelpers.response_text(context.reply)
-        refute context.reply.isError, "expected a successful trace lookup: #{text}"
+        assert match?({:ok, _}, context.reply), "expected a successful trace lookup: #{text}"
         assert text =~ "GET /app"
         assert text =~ "Error"
         assert text =~ "Ecto.QueryError"

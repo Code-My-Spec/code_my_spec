@@ -6,9 +6,9 @@ defmodule CodeMySpec.AgentPerformance.ReportTest do
   """
   use CodeMySpecSpex.Case, async: true
 
-  alias Anubis.Server.Frame
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.AgentPerformance.Report
-  alias CodeMySpec.McpServers.AgentPerformance.Tools.AgentPerformanceReport
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Repo
   alias CodeMySpecSpex.Fixtures
@@ -60,19 +60,17 @@ defmodule CodeMySpec.AgentPerformance.ReportTest do
   end
 
   test "an agent gets the same report from the tool", context do
-    frame = %Frame{assigns: %{current_scope: context.scope}}
-    {:reply, reply, _frame} = AgentPerformanceReport.execute(%{}, frame)
+    {:ok, text} = ToolLibrary.run("agent_performance_report", %{}, %{scope: context.scope})
 
-    [%{"text" => text}] = reply.content
     assert text =~ "# Agent performance"
     assert text =~ "Tap-outs expired undecided"
   end
 
   test "a story number the project does not have is refused, not ignored", context do
-    frame = %Frame{assigns: %{current_scope: context.scope}}
-    {:reply, reply, _frame} = AgentPerformanceReport.execute(%{"story_number" => 999_999}, frame)
-
-    assert reply.isError
+    assert {:error, _} =
+             ToolLibrary.run("agent_performance_report", %{"story_number" => 999_999}, %{
+               scope: context.scope
+             })
   end
 
   test "the page's download hands the browser the same Markdown", context do

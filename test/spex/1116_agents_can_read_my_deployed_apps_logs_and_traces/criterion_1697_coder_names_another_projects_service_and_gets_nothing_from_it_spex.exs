@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story1116.Criterion1697Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Observability.Tools.QueryLogs
   alias CodeMySpecSpex.ClickHouseCassetteHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -35,7 +36,11 @@ defmodule CodeMySpecSpex.Story1116.Criterion1697Spex do
         other_scope = Fixtures.other_project_scope(context.scope, "another-project")
 
         ClickHouseCassetteHelpers.stub_rows_for_username(conn.username, [
-          %{"Timestamp" => "2026-10-02 08:00:00", "SeverityText" => "INFO", "Body" => "our own line"}
+          %{
+            "Timestamp" => "2026-10-02 08:00:00",
+            "SeverityText" => "INFO",
+            "Body" => "our own line"
+          }
         ])
 
         {:ok, Map.put(context, :other_scope, other_scope)}
@@ -43,13 +48,17 @@ defmodule CodeMySpecSpex.Story1116.Criterion1697Spex do
 
       when_ "the coder searches for text naming the other project's service", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, reply, _frame} = QueryLogs.execute(%{text: "another-project-web"}, frame)
+
+        reply =
+          ToolLibrary.run("query_logs", %{text: "another-project-web"}, %{
+            scope: frame.assigns.current_scope
+          })
 
         {:ok, Map.put(context, :reply, reply)}
       end
 
       then_ "the request still reached only this project's own connection", context do
-        refute context.reply.isError,
+        assert match?({:ok, _}, context.reply),
                "the request should still succeed against this project's own data: " <>
                  TaskResponseHelpers.response_text(context.reply)
 

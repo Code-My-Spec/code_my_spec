@@ -1,4 +1,4 @@
-defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
+defmodule CodeMySpec.Research.Tools.WebToolsTest do
   @moduledoc """
   What the two tools put in front of an agent.
 
@@ -17,10 +17,11 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
   # shared (`reference_req_test_stub_for_async_tests`).
   use ExUnit.Case, async: false
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.{Frame, Response}
-  alias CodeMySpec.McpServers.Research.Tools.{WebFetch, WebSearch}
+  alias Anubis.Server.Frame
   alias CodeMySpec.Repo
   alias CodeMySpec.Research
   alias Ecto.Adapters.SQL.Sandbox
@@ -31,10 +32,7 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
 
   defp frame, do: %Frame{assigns: %{current_scope: full_scope_fixture()}}
 
-  defp text(response) do
-    protocol = Response.to_protocol(response)
-    hd(protocol["content"])["text"]
-  end
+  defp text({_status, text}), do: text
 
   # Restored by `on_exit` rather than an `after`: `try` is not allowed in a test
   # file here, and teardown registered this way runs even when an assertion
@@ -68,8 +66,13 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
       end)
 
       frame = frame()
-      assert {:reply, response, ^frame} = WebSearch.execute(%{query: "ecto upsert"}, frame)
-      assert response.isError == false
+
+      response =
+        ToolLibrary.run("web_search", %{query: "ecto upsert"}, %{
+          scope: frame.assigns.current_scope
+        })
+
+      assert match?({:ok, _}, response)
 
       content = text(response)
       assert content =~ "1. Ecto upserts"
@@ -82,8 +85,13 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
       Req.Test.stub(Research, fn conn -> Req.Test.json(conn, %{"results" => []}) end)
 
       frame = frame()
-      assert {:reply, response, ^frame} = WebSearch.execute(%{query: "zxqwv"}, frame)
-      assert response.isError == false
+
+      response =
+        ToolLibrary.run("web_search", %{query: "zxqwv"}, %{
+          scope: frame.assigns.current_scope
+        })
+
+      assert match?({:ok, _}, response)
       assert text(response) =~ "No results"
     end
 
@@ -91,9 +99,13 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
       without_keys()
 
       frame = frame()
-      assert {:reply, response, ^frame} = WebSearch.execute(%{query: "anything"}, frame)
 
-      assert response.isError == true
+      response =
+        ToolLibrary.run("web_search", %{query: "anything"}, %{
+          scope: frame.assigns.current_scope
+        })
+
+      assert match?({:error, _}, response)
       message = text(response)
 
       # An agent cannot fix this; the operator reading its output can, and only
@@ -106,17 +118,22 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
     test "rejects a recency it does not understand rather than searching without it" do
       frame = frame()
 
-      assert {:reply, response, ^frame} =
-               WebSearch.execute(%{query: "x", recency: "fortnight"}, frame)
+      response =
+        ToolLibrary.run("web_search", %{query: "x", recency: "fortnight"}, %{
+          scope: frame.assigns.current_scope
+        })
 
-      assert response.isError == true
+      assert match?({:error, _}, response)
       assert text(response) =~ "day, week, month or year"
     end
 
     test "refuses a caller with no project" do
       frame = %Frame{assigns: %{current_scope: user_scope_fixture()}}
-      assert {:reply, response, ^frame} = WebSearch.execute(%{query: "x"}, frame)
-      assert response.isError == true
+
+      response =
+        ToolLibrary.run("web_search", %{query: "x"}, %{scope: frame.assigns.current_scope})
+
+      assert match?({:error, _}, response)
     end
   end
 
@@ -132,7 +149,11 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
       end)
 
       frame = frame()
-      assert {:reply, response, ^frame} = WebFetch.execute(%{url: "https://example.com/a"}, frame)
+
+      response =
+        ToolLibrary.run("web_fetch", %{url: "https://example.com/a"}, %{
+          scope: frame.assigns.current_scope
+        })
 
       content = text(response)
       assert content =~ "# A Page"
@@ -152,8 +173,12 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
 
       frame = frame()
 
-      assert {:reply, response, ^frame} =
-               WebFetch.execute(%{url: "https://example.com/long", max_output: 120}, frame)
+      response =
+        ToolLibrary.run(
+          "web_fetch",
+          %{url: "https://example.com/long", max_output: 120},
+          %{scope: frame.assigns.current_scope}
+        )
 
       # Without this line the agent has the first half of a document and no way
       # to know it, which is worse than having none of it.
@@ -170,7 +195,8 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
       frame = frame()
       url = "https://github.com/elixir-lang/elixir/blob/main/lib/elixir/lib/map.ex"
 
-      assert {:reply, response, ^frame} = WebFetch.execute(%{url: url}, frame)
+      response =
+        ToolLibrary.run("web_fetch", %{url: url}, %{scope: frame.assigns.current_scope})
 
       content = text(response)
       assert content =~ "raw.githubusercontent.com"
@@ -180,10 +206,14 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
     test "a Reddit URL says why it cannot be read, not that it failed" do
       frame = frame()
 
-      assert {:reply, response, ^frame} =
-               WebFetch.execute(%{url: "https://www.reddit.com/r/elixir/comments/abc/x/"}, frame)
+      response =
+        ToolLibrary.run(
+          "web_fetch",
+          %{url: "https://www.reddit.com/r/elixir/comments/abc/x/"},
+          %{scope: frame.assigns.current_scope}
+        )
 
-      assert response.isError == true
+      assert match?({:error, _}, response)
       message = text(response)
 
       assert message =~ "OAuth"
@@ -194,16 +224,25 @@ defmodule CodeMySpec.McpServers.Research.Tools.WebToolsTest do
 
     test "a file: URL is refused by name" do
       frame = frame()
-      assert {:reply, response, ^frame} = WebFetch.execute(%{url: "file:///etc/passwd"}, frame)
 
-      assert response.isError == true
+      response =
+        ToolLibrary.run("web_fetch", %{url: "file:///etc/passwd"}, %{
+          scope: frame.assigns.current_scope
+        })
+
+      assert match?({:error, _}, response)
       assert text(response) =~ "Only http and https"
     end
 
     test "refuses a caller with no project" do
       frame = %Frame{assigns: %{current_scope: user_scope_fixture()}}
-      assert {:reply, response, ^frame} = WebFetch.execute(%{url: "https://example.com"}, frame)
-      assert response.isError == true
+
+      response =
+        ToolLibrary.run("web_fetch", %{url: "https://example.com"}, %{
+          scope: frame.assigns.current_scope
+        })
+
+      assert match?({:error, _}, response)
     end
   end
 end
