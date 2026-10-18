@@ -5,8 +5,23 @@ defmodule CmsHarness.Agents do
   Agents running on this machine — start one, say which are running, stop one.
 
   Harness-side because the working copy is here: an agent's hundreds of file
-  and shell calls stay local. This module translates a server request into
-  `CmsHarness.Agents.Engine` options; the engine owns the loop.
+  and shell calls stay local. The server knows agents only through the channel
+  and Presence; which kind of agent it is gets decided here.
+
+  ## The agent contract
+
+  An agent on this harness is a process registered as `{:agent, id}` in
+  `CmsHarness.Registry`, watched by `Agents.Liveness`, that answers:
+
+    * `{:send, ref, text, timeout, await?}` — consume the claimed mailbox
+      message `ref` through `Channel.mailbox/2`, then reply `{:ok, :started}`
+      (or the turn's result when `await?`), or `{:error, reason}`.
+    * `{:work_available, ref, text, timeout}` — start work if idle:
+      `{:ok, :started}`, or `{:error, :busy}`.
+    * `:status` — `{:ok, %{busy?: boolean()}}`.
+    * `:interrupt` — `:ok`, `:idle`, or `{:error, reason}`.
+
+  `Engine` is the Alloy agent this harness runs itself.
   """
 
   use Boundary,
@@ -94,8 +109,20 @@ defmodule CmsHarness.Agents do
 
   @doc "Consume a claimed mailbox message; waiting for the result does not bypass consumption."
   def send_message(agent_id, ref, text, timeout \\ 180_000, opts \\ []) when is_binary(text) do
-    result = Engine.send_message(agent_id, ref, text, timeout, opts)
-    if Keyword.get(opts, :await, false), do: message_result(result), else: result
+    await? = Keyword.get(opts, :await, false)
+    result = deliver(agent_id, ref, text, timeout, await?)
+    if await?, do: message_result(result), else: result
+  end
+
+  # The agent consumes through `Channel.mailbox/2` before it replies at all, so
+  # waiting less than that round trip raises here on a consume that was merely
+  # slow, not refused.
+  defp deliver(agent_id, ref, text, timeout, await?) do
+    admission_timeout = Channel.mailbox_timeout() + 3_000
+    call_timeout = if await?, do: timeout + admission_timeout, else: admission_timeout
+    call(agent_id, {:send, ref, text, timeout, await?}, call_timeout)
+  catch
+    :exit, {:timeout, _} -> {:error, :message_timed_out}
   end
 
   defp message_result({:ok, result}), do: {:ok, said(result)}
@@ -103,21 +130,21 @@ defmodule CmsHarness.Agents do
 
   @doc "Request coalescible work on an idle engine; this carries no queued instruction."
   def request_work_turn(agent_id, ref, text, timeout \\ 180_000),
-    do: Engine.request_work_turn(agent_id, ref, text, timeout)
+    do: call(agent_id, {:work_available, ref, text, timeout})
 
   @doc """
   Stop this agent's running turn so a message sent now is its next one. It
   keeps what it did up to its last completed tool call.
   """
   @spec interrupt(String.t()) :: :ok | :idle | {:error, term()}
-  defdelegate interrupt(agent_id), to: Engine
+  def interrupt(agent_id), do: call(agent_id, :interrupt)
 
   @doc """
   Whether the agent currently has an executing turn.
   """
   @spec status(String.t()) ::
           {:ok, %{busy?: boolean()}} | {:error, :not_running}
-  defdelegate status(agent_id), to: Engine
+  def status(agent_id), do: call(agent_id, :status)
 
   @doc """
   What this agent carries, by tool name.
@@ -168,7 +195,33 @@ defmodule CmsHarness.Agents do
   were told — so it cannot disagree with what is actually alive.
   """
   @spec running() :: [String.t()]
-  defdelegate running(), to: Engine
+  def running do
+    CmsHarness.Registry
+    |> Registry.select([{{{:agent, :"$1"}, :"$2", :_}, [], [{{:"$1", :"$2"}}]}])
+    |> Enum.filter(fn {_id, pid} -> Process.alive?(pid) end)
+    |> Enum.map(fn {id, _pid} -> id end)
+  rescue
+    ArgumentError -> []
+  end
+
+  @doc "Whether `agent_id` is running here."
+  @spec running?(String.t()) :: boolean()
+  def running?(agent_id), do: match?({:ok, _}, whereis(agent_id))
+
+  @doc "The process answering the agent contract for `agent_id`, of whatever kind."
+  @spec whereis(String.t()) :: {:ok, pid()} | {:error, :not_running}
+  def whereis(agent_id) do
+    case Registry.lookup(CmsHarness.Registry, {:agent, agent_id}) do
+      [{pid, _}] -> if(Process.alive?(pid), do: {:ok, pid}, else: {:error, :not_running})
+      _ -> {:error, :not_running}
+    end
+  rescue
+    ArgumentError -> {:error, :not_running}
+  end
+
+  defp call(agent_id, message, timeout \\ 5_000) do
+    with {:ok, pid} <- whereis(agent_id), do: GenServer.call(pid, message, timeout)
+  end
 
   # Steps go per event, fire and forget, to the channel of the one copy the
   # agent runs in. See knowledge/harness, "Agents".
