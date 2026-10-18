@@ -4,6 +4,7 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptRepository do
 
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpec.Provisioning.Tools.Starter
   alias CodeMySpec.Resources
 
   @impl true
@@ -61,18 +62,17 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptRepository do
     changes and untracked files in the working tree are not staged, committed,
     or pushed as a side effect of adopting.
 
-    ## Synchronous, deliberately
+    ## Returns when the run starts, not when it finishes
 
-    `run_devops_setup` fires the sequence and returns immediately, because a
-    real run can take minutes and the MCP transport's call timeout is far
-    shorter — but that shape also means a caller never learns whether a step
-    actually ran, only that starting it was attempted. A push is seconds, not
-    minutes, so this waits for the real outcome and reports it: adopted and
-    pushed, a git/GitHub error with its own message, or a run already in
-    flight for this project (same `RunLock` `run_devops_setup` itself
-    respects, held here explicitly since calling the step directly bypasses
-    the wrapper that normally acquires it). No more guessing from an
-    unchanged `devops_status` whether anything happened.
+    A push is normally seconds, but a slow network, a large repository, or
+    GitHub itself can run this well past the code-mode sandbox's 30s wall
+    clock (issue 4f7929e4) — this used to hold `RunLock` and wait for the real
+    push inline, on the stated bet that "a push is seconds, not minutes",
+    which is a considered bet, not a guarantee. The spawned task claims this
+    project's own lock and only then acks, the same handshake
+    `run_provisioning_step` uses: the reply is "started" or "already running";
+    an agent that started it is messaged the outcome, any other caller watches
+    `devops_status`.
     """
   end
 
@@ -107,15 +107,78 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptRepository do
          {:ok, project} <- CodeMySpec.Tools.connected_project(scope) do
       scope = Resources.project_scope(scope, project)
       opts = run_opts(repository_name, params)
+      starter = Starter.new(scope, context, "repository (#{repository_name})")
 
-      RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, :repository, opts) end)
-      |> reply(repository_name, project)
+      scope
+      |> start_adopt_async(project, opts, starter, repository_name)
+      |> reply(repository_name, project, context)
     else
       {:error, reason} -> error(reason)
     end
   end
 
-  defp reply({:error, {:already_running, started_at}}, _name, _project) do
+  # `provisioning_run_async` is the same flag `run_provisioning_step` reads.
+  # `config/test.exs` pins it false, so every existing test keeps running
+  # this inline, waiting for the real push on the caller's own connection.
+  defp start_adopt_async(scope, project, opts, starter, repository_name) do
+    case Application.get_env(:code_my_spec, :provisioning_run_async, true) do
+      true ->
+        spawn_adopt_async(scope, project, opts, starter, repository_name)
+
+      _ ->
+        RunLock.with_lock(project.id, fn -> Provisioning.run_step(scope, :repository, opts) end)
+    end
+  end
+
+  # Same handshake as `RunProvisioningStep.spawn_step_async/5`: the spawned
+  # task claims `RunLock` first and only then signals, so the caller learns
+  # "running" or "refused" in milliseconds, out of reach of this call's own
+  # timeouts.
+  defp spawn_adopt_async(scope, project, opts, starter, repository_name) do
+    parent = self()
+    ref = make_ref()
+
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        RunLock.with_lock(
+          project.id,
+          fn ->
+            send(parent, {ref, :locked})
+            Provisioning.run_step(scope, :repository, opts)
+          end,
+          Starter.lock_holder(starter)
+        )
+        |> case do
+          {:error, {:already_running, _}} = refused ->
+            send(parent, {ref, refused})
+
+          finished ->
+            Starter.tell(starter, outcome_message(finished, repository_name, project.name))
+        end
+      end)
+
+    receive do
+      {^ref, :locked} -> {:ok, :started}
+      {^ref, {:error, {:already_running, _}} = refused} -> refused
+    after
+      5_000 -> {:error, :lock_handshake_timeout}
+    end
+  end
+
+  defp reply({:ok, :started}, repository_name, _project, context) do
+    ok("Adopting #{repository_name} — #{Starter.then_what(context[:agent_id])}")
+  end
+
+  # The synchronous (test-mode) outcome: `Provisioning.run_step/3`'s own result.
+  defp reply({:ok, step}, repository_name, project, _context) do
+    ok("Adopted #{repository_name} for #{project.name} — repository step is now #{step.state}.")
+  end
+
+  defp reply({:halt, _step, reason}, repository_name, _project, _context) do
+    error("could not adopt #{repository_name}: #{reason}")
+  end
+
+  defp reply({:error, {:already_running, started_at}}, _name, _project, _context) do
     since = started_at && " (started #{started_at})"
 
     error(
@@ -123,13 +186,20 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptRepository do
     )
   end
 
-  defp reply({:ok, step}, repository_name, project) do
-    ok("Adopted #{repository_name} for #{project.name} — repository step is now #{step.state}.")
+  defp reply({:error, :lock_handshake_timeout}, repository_name, _project, _context) do
+    error("could not confirm adopting #{repository_name} started — try again shortly")
   end
 
-  defp reply({:halt, _step, reason}, repository_name, _project) do
-    error("could not adopt #{repository_name}: #{reason}")
-  end
+  @doc false
+  def outcome_message({:ok, %{state: state}}, repository_name, project_name),
+    do:
+      "Adopted #{repository_name} for #{project_name} — repository step is now #{state}. " <>
+        answer()
+
+  def outcome_message({:halt, _step, reason}, repository_name, project_name),
+    do: "Could not adopt #{repository_name} for #{project_name}: #{reason}. #{answer()}"
+
+  defp answer, do: "This is the outcome of the adopt you started — act on it now."
 
   defp run_opts(repository_name, params) do
     [adopt: true, name: repository_name]
