@@ -37,7 +37,8 @@ defmodule CmsHarness.Agents.Provider do
 
   `opts[:model]` overrides each provider's default; `openai-codex` has none.
   """
-  @spec options(String.t(), credential(), keyword()) :: {:ok, keyword()} | {:error, atom()}
+  @spec options(String.t(), credential(), keyword()) ::
+          {:ok, keyword()} | {:error, atom() | {:model_not_available, String.t()}}
   def options(provider, credential, opts \\ [])
 
   # `req_options` reaches Req on the HTTP providers only (for recordings);
@@ -55,21 +56,20 @@ defmodule CmsHarness.Agents.Provider do
   # read-only sandbox and the loop never saw a tool call. See
   # knowledge/harness, "Providers".
   def options("openai-codex", credential, opts) do
-    {:ok,
-     [
-       provider:
-         {Alloy.Provider.Codex,
-          %{
-            model: Keyword.get(opts, :model),
-            workdir: Keyword.get(opts, :working_copy),
-            codex_home: codex_home(credential),
-            persist_session: true,
-            config_overrides: ["features.shell_tool=false", "features.unified_exec=false"],
-            timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
-          }
-          |> with_command_runner()},
-       max_tokens: @codex_max_tokens
-     ]}
+    config =
+      %{
+        model: Keyword.get(opts, :model),
+        workdir: Keyword.get(opts, :working_copy),
+        codex_home: codex_home(credential),
+        persist_session: true,
+        config_overrides: ["features.shell_tool=false", "features.unified_exec=false"],
+        timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
+      }
+      |> with_command_runner()
+
+    with :ok <- codex_model_available(config) do
+      {:ok, [provider: {Alloy.Provider.Codex, config}, max_tokens: @codex_max_tokens]}
+    end
   end
 
   # `chat_path` overrides `OpenAICompat`'s default `/v1/chat/completions`;
@@ -158,6 +158,41 @@ defmodule CmsHarness.Agents.Provider do
   @doc "Every provider this harness can run an agent on."
   @spec names() :: [String.t()]
   def names, do: ["anthropic", "openai-codex", "zai", "deepinfra", "claude-code"]
+
+  # A model the login cannot use fails every turn with a 400 ("… is not
+  # supported when using Codex with a ChatGPT account"), so the agent is refused
+  # at start instead. The Codex CLI caches the models the login serves in its
+  # home; with no cache nothing is known and the start goes ahead. Not against a
+  # recorded CLI, which has no login.
+  defp codex_model_available(%{command_runner: _recorded}), do: :ok
+  defp codex_model_available(%{model: nil}), do: :ok
+
+  defp codex_model_available(%{model: model, codex_home: home}) do
+    case served_models(Path.join(home, "models_cache.json")) do
+      [_ | _] = served ->
+        if model in served do
+          :ok
+        else
+          {:error,
+           {:model_not_available,
+            "Codex at #{home} does not serve the model #{inspect(model)} to this login. " <>
+              "It serves: #{Enum.join(served, ", ")}. Set the agent's model to one of those, " <>
+              "or leave it unset for the login's default."}}
+        end
+
+      [] ->
+        :ok
+    end
+  end
+
+  defp served_models(cache) do
+    with {:ok, json} <- File.read(cache),
+         {:ok, %{"models" => models}} when is_list(models) <- Jason.decode(json) do
+      for %{"slug" => slug} when is_binary(slug) <- models, do: slug
+    else
+      _ -> []
+    end
+  end
 
   # Always named rather than inherited from this BEAM's environment. A
   # credential may name a different home.
