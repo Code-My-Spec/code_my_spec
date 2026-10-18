@@ -962,20 +962,33 @@ defmodule CodeMySpec.Promotion.Steps do
         :ok
 
       _ ->
-        with {:ok, _} <-
-               sub_git(
-                 env,
-                 sub,
-                 ["fetch", "--quiet", Path.join(source, @submodule), "HEAD"],
-                 pinned
-               ),
+        with {:ok, _} <- sub_git(env, sub, fetch_pinned_args(source, pinned), pinned),
              {_, 0} <- git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
           :ok
         else
           {:error, _, _} = error -> error
-          {_, _} -> {:error, pinned, "fetched #{source}'s HEAD, which does not contain it"}
+          {_, _} ->
+            {:error, pinned,
+             "fetched #{pinned} from #{Path.join(source, @submodule)}, which git did not provide"}
         end
     end
+  end
+
+  # `pinned` is rarely `source`'s submodule ref tip by the time this runs --
+  # the gate copy keeps building later batches in the same checkout, moving
+  # its own HEAD on -- so the fetch has to name the exact commit, not
+  # whatever ref `source` happens to be on right now. A bare SHA that is not
+  # a ref tip is refused ("not our ref") unless told the server may serve
+  # one it can still reach.
+  defp fetch_pinned_args(source, pinned) do
+    [
+      "-c",
+      "uploadpack.allowReachableSHA1InWant=true",
+      "fetch",
+      "--quiet",
+      Path.join(source, @submodule),
+      pinned
+    ]
   end
 
   defp sub_git(env, sub, args, pinned) do
@@ -986,7 +999,7 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   defp roll_back(env, root, merge, pinned, source, why) do
-    undone = undo_merge(env, root, merge)
+    {status, undone} = undo_merge(env, root, merge)
 
     {:error,
      %{
@@ -994,7 +1007,13 @@ defmodule CodeMySpec.Promotion.Steps do
          "the merge moved #{root}'s #{@submodule} to #{pinned}, but that commit " <>
            "could not be fetched from #{Path.join(source, @submodule)} and checked " <>
            "out: #{why}. #{undone} The application was not restarted. Make sure " <>
-           "#{pinned} is committed in the promoting copy's #{@submodule}, then promote again."
+           "#{pinned} is committed in the promoting copy's #{@submodule}, then promote again.",
+       # Only true when `root` is stuck on *our own* merge commit with no
+       # rollback: the one shape a caller must never read as "something
+       # else moved main" and gate again, which finds this commit already
+       # an ancestor and lands it without ever having deployed it.
+       stuck_on_main: status == :stuck,
+       submodule: %{path: @submodule, wanted: pinned, detail: why}
      }}
   end
 
@@ -1008,9 +1027,10 @@ defmodule CodeMySpec.Promotion.Steps do
         reset_to(env, root, before, merge)
 
       other ->
-        "#{root} has moved to #{other || "an unreadable HEAD"} since this promote " <>
-          "left it on #{made}, so the merge was NOT rolled back; #{root} still has a " <>
-          "stale #{@submodule}."
+        {:raced,
+         "#{root} has moved to #{other || "an unreadable HEAD"} since this promote " <>
+           "left it on #{made}, so the merge was NOT rolled back; #{root} still has a " <>
+           "stale #{@submodule}."}
     end
   end
 
@@ -1025,14 +1045,20 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   defp reset_to(env, root, before, merge) do
-    case git(env, root, ["reset", "--keep", before]) do
+    # `@leave_submodules`: the same `submodule.recurse` hazard the gate's own
+    # reset guards against -- without it, this reset tries to also check out
+    # the commit it is going back to in the submodule, which is exactly the
+    # checkout that just failed, so the rollback would fail for the same
+    # reason the sync did.
+    case git(env, root, @leave_submodules ++ ["reset", "--keep", before]) do
       {_, 0} ->
         drop_tag(env, root, Map.get(merge, :version))
-        "The merge was rolled back — #{root} is back on #{before}."
+        {:rolled_back, "The merge was rolled back — #{root} is back on #{before}."}
 
       {out, _} ->
-        "Rolling the merge back also failed (#{String.trim(out)}), so #{root} " <>
-          "is still on the merged commit with a stale #{@submodule}."
+        {:stuck,
+         "Rolling the merge back also failed (#{String.trim(out)}), so #{root} " <>
+           "is still on the merged commit with a stale #{@submodule}."}
     end
   end
 
