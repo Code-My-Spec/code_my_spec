@@ -35,12 +35,12 @@ defmodule CodeMySpecSpex.EpicHelpers do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
   alias CodeMySpecSpex.MainAgentHelpers
   alias CodeMySpecSpex.StoryHelpers
 
   use CodeMySpecWeb, :verified_routes
+
+  alias CodeMySpec.ToolLibrary
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -56,8 +56,12 @@ defmodule CodeMySpecSpex.EpicHelpers do
     frame = %Frame{assigns: %{current_scope: context.scope}}
     count = Keyword.get(opts, :stories, 1)
 
-    {:reply, response, _frame} =
-      CreateEpic.execute(%{name: title, description: "Proposed for approval"}, frame)
+    response =
+      ToolLibrary.run(
+        "create_epic",
+        %{name: title, description: "Proposed for approval"},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     epic_id = extract_id(response)
 
@@ -70,10 +74,11 @@ defmodule CodeMySpecSpex.EpicHelpers do
             acceptance_criteria: ["It works"]
           )
 
-        {:reply, _resp, _frame} =
-          AssignStoryToEpic.execute(
+        _resp =
+          ToolLibrary.run(
+            "assign_story_to_epic",
             %{story_number: story.number, epic_name: title},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         story.id

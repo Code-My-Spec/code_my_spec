@@ -25,11 +25,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -97,13 +98,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
           assigns: %{current_scope: %{context.scope | active_working_copy_id: context.sibling_id}}
         }
 
-        {:reply, response, _frame} = ShareCopyApp.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "share_copy_app",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it is handed a public address rather than nothing", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "the ask was refused even though the copy was serving. Got: " <>
                  response_text(context.response)
 

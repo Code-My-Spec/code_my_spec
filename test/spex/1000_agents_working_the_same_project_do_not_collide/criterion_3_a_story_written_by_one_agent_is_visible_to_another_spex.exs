@@ -20,10 +20,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
-
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStories, UpdateStory}
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -56,18 +52,19 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
       end
 
       when_ "one agent creates a story with acceptance criteria", context do
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: "Bookings show up on a calendar",
               description:
                 "As a salon owner, I want today's bookings on a calendar, so that I know who is coming in.",
               acceptance_criteria: ["The calendar shows today by default"]
             },
-            %Frame{assigns: %{current_scope: context.first_agent}}
+            %{scope: context.first_agent}
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the first agent could not author a story: #{response_text(response)}"
 
         text = response_text(response)
@@ -79,13 +76,12 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         # authored but not yet work, and offering it would surface a story its
         # author is still writing. Marking it ready is part of authoring it, so
         # it belongs in this `when_` rather than in a fixture.
-        {:reply, released, _frame} =
-          UpdateStory.execute(
-            %{story_number: story_number, ready_for_dev: true},
-            %Frame{assigns: %{current_scope: context.first_agent}}
-          )
+        released =
+          ToolLibrary.run("update_story", %{story_number: story_number, ready_for_dev: true}, %{
+            scope: context.first_agent
+          })
 
-        refute released.isError,
+        assert match?({:ok, _}, released),
                "the first agent could not release its own story: #{response_text(released)}"
 
         {:ok,
@@ -93,8 +89,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
       end
 
       then_ "the other agent sees that story and its criteria", context do
-        {:reply, response, _frame} =
-          ListStories.execute(%{}, %Frame{assigns: %{current_scope: context.second_agent}})
+        response =
+          ToolLibrary.run("list_stories", %{}, %{scope: context.second_agent})
 
         text = response_text(response)
 

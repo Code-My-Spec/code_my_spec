@@ -18,12 +18,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.OffboardWorkingCopy
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -89,8 +89,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
           }
         }
 
-        {:reply, share_response, _frame} = ShareCopyApp.execute(%{}, share_frame)
-        refute share_response.isError, "setup failed to share the copy in the first place"
+        share_response =
+          ToolLibrary.run(
+            "share_copy_app",
+            %{},
+            Map.put(share_frame.assigns, :scope, share_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, share_response),
+               "setup failed to share the copy in the first place"
 
         {:ok, sibling} = WorkingCopies.fetch(reply.working_copy_id)
         assert sibling.preview_tunnel_id == @tunnel_id
@@ -107,14 +114,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
       when_ "an operator discards that copy", context do
         operator_frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          OffboardWorkingCopy.execute(%{working_copy_id: context.sibling_id}, operator_frame)
+        response =
+          ToolLibrary.run(
+            "offboard_working_copy",
+            %{working_copy_id: context.sibling_id},
+            Map.put(operator_frame.assigns, :scope, operator_frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the offboard is refused rather than proceeding anyway", context do
-        assert context.response.isError,
+        assert match?({:error, _}, context.response),
                "the offboard succeeded even though releasing the shared preview failed. " <>
                  "Got: " <> response_text(context.response)
 

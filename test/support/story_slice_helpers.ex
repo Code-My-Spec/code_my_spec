@@ -2,9 +2,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   @moduledoc "Surface setup and response readers for active-story execution acceptance tests."
   import ExUnit.Assertions
   alias CodeMySpec.ToolLibrary
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
 
   alias CodeMySpecSpex.{
@@ -16,7 +14,6 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   }
 
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   def base(context) do
     context
@@ -26,7 +23,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
 
   def activate(context) do
     context = staff(context)
-    call(context, SetActiveStory, %{story_number: context.story.number})
+    call(context, "set_active_story", %{story_number: context.story.number})
     context
   end
 
@@ -69,37 +66,19 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     Map.put(context, :team, team)
   end
 
-  def call(context, tool, params, assigns \\ %{})
-
-  # A library tool, by name: the path every surface takes.
-  def call(context, name, params, assigns) when is_binary(name) do
+  def call(context, name, params, assigns \\ %{}) do
     case ToolLibrary.run(name, params, tool_context(context, assigns)) do
       {:ok, text} -> text
       {:error, text} -> flunk("#{name} refused: #{text}")
     end
   end
 
-  def call(context, tool, params, assigns) do
-    frame = %Frame{assigns: Map.merge(%{current_scope: context.scope}, assigns)}
-    {:reply, response, _frame} = tool.execute(params, frame)
-    refute response.isError, response_text(response)
-    response_text(response)
-  end
-
   @doc "Call a tool and return `{error?, text}` — for a step whose refusal is the point."
-  def attempt(context, tool, params, assigns \\ %{})
-
-  def attempt(context, name, params, assigns) when is_binary(name) do
+  def attempt(context, name, params, assigns \\ %{}) do
     case ToolLibrary.run(name, params, tool_context(context, assigns)) do
       {:ok, text} -> {false, text}
       {:error, text} -> {true, text}
     end
-  end
-
-  def attempt(context, tool, params, assigns) do
-    frame = %Frame{assigns: Map.merge(%{current_scope: context.scope}, assigns)}
-    {:reply, response, _frame} = tool.execute(params, frame)
-    {response.isError, response_text(response)}
   end
 
   @doc """
@@ -191,16 +170,16 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
       buildable(context)
 
       result =
-        call(context, CodeMySpec.McpServers.Stories.Tools.CreateEpic, %{name: "Future work"})
+        call(context, "create_epic", %{name: "Future work"})
 
       [_, epic_id] = Regex.run(~r/ID: ([^,]+)/, result)
 
-      call(context, CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic, %{
+      call(context, "assign_story_to_epic", %{
         story_number: story.number,
         epic_name: "Future work"
       })
 
-      call(context, CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy, %{
+      call(context, "assign_epic_to_working_copy", %{
         epic_id: epic_id,
         working_copy_id: context.scope.active_working_copy_id
       })

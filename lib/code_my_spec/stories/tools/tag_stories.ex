@@ -1,0 +1,85 @@
+defmodule CodeMySpec.Stories.Tools.TagStories do
+  @moduledoc false
+  @behaviour CodeMySpec.Tools.Tool
+
+  alias CodeMySpec.Stories.Tools.Responses, as: StoriesMapper
+  alias CodeMySpec.Stories
+  alias CodeMySpec.Tags
+
+  @impl true
+  def name, do: "tag_stories"
+
+  @impl true
+  def description do
+    """
+    Adds a tag to multiple stories at once.
+
+    Useful for bulk categorization when organizing stories by domain.
+
+    ## Tag naming
+
+    Tags can be simple (`notifications`, `urgent`) or use colon syntax for
+    typed/namespaced tags (`epic:verification-flow`, `persona:driver`).
+
+    The colon syntax is useful for organizing stories into categories that
+    can be filtered, e.g., `list_stories(tag: "persona:driver")`.
+    """
+  end
+
+  @impl true
+  def params do
+    %{
+      tag: {:required, {:meta, :string, [description: "Tag name to apply to all stories"]}},
+      story_numbers:
+        {:required, {:meta, {:list, :integer}, [description: "Story numbers to tag"]}}
+    }
+  end
+
+  @impl true
+  def call(params, context) do
+    case CodeMySpec.Tools.project_scope(context) do
+      {:ok, scope} ->
+        results = Enum.map(params.story_numbers, &tag_one(scope, &1, params.tag))
+
+        successes = Enum.filter(results, &match?({:ok, _}, &1)) |> Enum.map(&elem(&1, 1))
+        failures = Enum.filter(results, &match?({:error, _, _}, &1))
+
+        StoriesMapper.bulk_tag_response(successes, failures, params.tag)
+
+      {:error, reason} ->
+        StoriesMapper.error(reason)
+    end
+  end
+
+  defp tag_one(scope, number, tag) do
+    case Stories.get_story_by_number(scope, number) do
+      nil -> {:error, number, :not_found}
+      story -> apply_tag(scope, story, number, tag)
+    end
+  end
+
+  defp apply_tag(scope, story, number, tag) do
+    case Tags.add_tag(scope, story, tag) do
+      {:ok, _tagging} ->
+        {:ok, number}
+
+      # Unique-constraint violation (already tagged) is the only
+      # acceptable error here. Anything else — FK violations, type
+      # errors, etc. — must surface so the caller knows the tag
+      # didn't land.
+      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+        if unique_constraint?(errors) do
+          {:ok, number}
+        else
+          {:error, number, changeset}
+        end
+    end
+  end
+
+  defp unique_constraint?(errors) do
+    Enum.any?(errors, fn
+      {_field, {_msg, opts}} -> Keyword.get(opts, :constraint) == :unique
+      _ -> false
+    end)
+  end
+end

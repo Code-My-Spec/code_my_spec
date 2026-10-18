@@ -8,9 +8,10 @@ defmodule CodeMySpecSpex.Story1032.Criterion2990Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -26,13 +27,14 @@ defmodule CodeMySpecSpex.Story1032.Criterion2990Spex do
       given_ "the project has a story", context do
         # Made through the tool an agent would use, not a fixture: the point of
         # the criterion is that the script sees what this project really has.
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{title: "Mine to see", story: "As an agent, I want to read my own project."},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
 
         {:ok, context}
       end

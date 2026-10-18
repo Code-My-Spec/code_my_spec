@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3592Spex do
       end
 
       when_ "the agent asks what to work on", context do
-        backlog = Slice.call(context, CodeMySpec.McpServers.Stories.Tools.ListStoryTitles, %{})
+        backlog = Slice.call(context, "list_story_titles", %{})
         {:ok, Map.merge(context, %{answer: Slice.next(context), backlog: backlog})}
       end
 

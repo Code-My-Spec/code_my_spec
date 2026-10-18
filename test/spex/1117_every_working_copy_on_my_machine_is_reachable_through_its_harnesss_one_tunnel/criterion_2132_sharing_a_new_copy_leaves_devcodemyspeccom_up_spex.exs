@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2132Spex do
       end
 
       then_ "dev.codemyspec.com answers throughout without an interruption", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         history = ingress_history(context.cf, @dev_tunnel)
         assert history != [], "the copy's address was never written to the machine's tunnel"

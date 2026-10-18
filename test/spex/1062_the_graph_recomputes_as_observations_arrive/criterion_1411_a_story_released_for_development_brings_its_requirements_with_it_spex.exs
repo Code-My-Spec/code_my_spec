@@ -40,11 +40,12 @@ defmodule CodeMySpecSpex.Story1062.Criterion3496Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -143,13 +144,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3496Spex do
   defp set_ready(context, ready?) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, updated, _frame} =
-      UpdateStory.execute(
+    updated =
+      ToolLibrary.run(
+        "update_story",
         %{story_number: context.story_number, ready_for_dev: ready?},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute updated.isError, inspect(updated)
+    assert match?({:ok, _}, updated), inspect(updated)
 
     read_settled_graph(context)
   end

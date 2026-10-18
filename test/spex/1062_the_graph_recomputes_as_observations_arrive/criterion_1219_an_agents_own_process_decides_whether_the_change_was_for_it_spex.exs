@@ -27,6 +27,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3249Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   # The conversation is a cloud-app surface; the case's default endpoint is the
   # local app, where `live/2` answers 404 from inside LiveViewTest.
   @endpoint CodeMySpecWeb.Endpoint
@@ -34,7 +36,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3249Spex do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -82,13 +83,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3249Spex do
         # pair reading as "routing works" when nothing was routed.
         frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
-        {:reply, loop_response, _frame} =
-          SetWorkingCopyLoop.execute(
+        loop_response =
+          ToolLibrary.run(
+            "set_working_copy_loop",
             %{working_copy_id: reply.working_copy_id, working: true},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute loop_response.isError,
+        assert match?({:ok, _}, loop_response),
                "the agents must be in the loop to be wakeable:\n" <> inspect(loop_response)
 
         :ok = CodeMySpecSpex.Fixtures.watch_graph(scope)

@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
@@ -27,36 +26,43 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
       given_ ~s(the story "#{@title}" belongs to epic "Political Systems"), context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_response, _frame} =
-          CreateStory.execute(
+        story_response =
+          ToolLibrary.run(
+            "create_story",
             %{
               title: @title,
               story:
                 "As the game world, I want each player to sit in one age so that age gaps drive politics."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute story_response.isError, "expected create_story to succeed"
+        assert match?({:ok, _}, story_response), "expected create_story to succeed"
         story_number = story_number!(story_response)
 
         epic_ids =
           Map.new(["Political Systems", "Stone Age"], fn name ->
-            {:reply, response, _frame} =
-              CreateEpic.execute(%{name: name, description: "#{name} work."}, frame)
+            response =
+              ToolLibrary.run(
+                "create_epic",
+                %{name: name, description: "#{name} work."},
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+              )
 
-            refute response.isError, "expected create_epic to succeed for #{name}"
+            assert match?({:ok, _}, response), "expected create_epic to succeed for #{name}"
 
             {name, epic_id!(response)}
           end)
 
-        {:reply, assign_response, _frame} =
-          AssignStoryToEpic.execute(
+        assign_response =
+          ToolLibrary.run(
+            "assign_story_to_epic",
             %{story_number: story_number, epic_name: "Political Systems"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute assign_response.isError, "expected the story to start in Political Systems"
+        assert match?({:ok, _}, assign_response),
+               "expected the story to start in Political Systems"
 
         story_id = Stories.get_story_by_number(context.scope, story_number).id
 

@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story561.Criterion3606Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
   alias CodeMySpecSpex.TaskResponseHelpers
   setup :register_log_in_setup_account
@@ -48,7 +47,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3606Spex do
 
         Slice.call(
           %{context | scope: other_scope},
-          SetActiveStory,
+          "set_active_story",
           %{story_number: context.waiting.number}
         )
 

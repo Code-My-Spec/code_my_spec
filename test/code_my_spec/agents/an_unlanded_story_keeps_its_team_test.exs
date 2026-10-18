@@ -98,7 +98,7 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
   test "set_active_story sticks while the story has not landed", ctx do
     ctx = unlanded(ctx)
 
-    Slice.call(ctx, CodeMySpec.McpServers.Stories.Tools.SetActiveStory, %{
+    Slice.call(ctx, "set_active_story", %{
       story_number: ctx.story.number
     })
 

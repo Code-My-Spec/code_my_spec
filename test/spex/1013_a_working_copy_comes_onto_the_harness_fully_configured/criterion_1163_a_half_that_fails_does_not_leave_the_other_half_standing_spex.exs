@@ -34,14 +34,16 @@ defmodule CodeMySpecSpex.Story1013.Criterion3101Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpec.WorkingCopies
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The harness does the work on disk and the server does the work on the record", criterion: 1163 do
+  spex "The harness does the work on disk and the server does the work on the record",
+    criterion: 1163 do
     scenario "A half that fails does not leave the other half standing" do
       given_ "the number of working copies this project has", context do
         {:ok, Map.put(context, :before, length(WorkingCopies.list_harnesses(context.scope)))}
@@ -58,7 +60,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3101Spex do
         # called has to fail this scenario, not satisfy it.
         frame = %Frame{assigns: %{current_scope: %{context.scope | active_project_id: nil}}}
 
-        {:reply, response, _frame} = CreateWorkingCopy.execute(%{label: "doomed"}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "doomed"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

@@ -11,12 +11,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7951Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateEpic
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.ListStories
-  alias CodeMySpec.McpServers.Stories.Tools.SetEpicStoriesReady
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,37 +26,40 @@ defmodule CodeMySpecSpex.Story686.Criterion7951Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, epic_response, _frame} =
-          CreateEpic.execute(
+        epic_response =
+          ToolLibrary.run(
+            "create_epic",
             %{name: "Stone Age", description: "The earliest age of play."},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute epic_response.isError,
+        assert match?({:ok, _}, epic_response),
                "expected create_epic to succeed, got: #{inspect(epic_response)}"
 
         titles =
           for n <- 1..@story_count do
             title = "Stone age story #{n}"
 
-            {:reply, response, _frame} =
-              CreateStory.execute(
+            response =
+              ToolLibrary.run(
+                "create_story",
                 %{
                   title: title,
                   story: "As a player, I want #{title} so that the stone age feels alive."
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError, "expected create_story to succeed for #{title}"
+            assert match?({:ok, _}, response), "expected create_story to succeed for #{title}"
 
-            {:reply, assign_response, _frame} =
-              AssignStoryToEpic.execute(
+            assign_response =
+              ToolLibrary.run(
+                "assign_story_to_epic",
                 %{story_number: story_number!(response), epic_name: "Stone Age"},
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute assign_response.isError,
+            assert match?({:ok, _}, assign_response),
                    "expected #{title} to be assigned to the epic, got: #{inspect(assign_response)}"
 
             title
@@ -69,25 +69,31 @@ defmodule CodeMySpecSpex.Story686.Criterion7951Spex do
       end
 
       when_ "the agent marks the epic's stories ready for development", context do
-        {:reply, response, _frame} =
-          SetEpicStoriesReady.execute(
+        response =
+          ToolLibrary.run(
+            "set_epic_stories_ready",
             %{epic_name: "Stone Age", ready_for_dev: true},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected the epic bulk-release tool to succeed, got: #{inspect(response)}"
 
         {:ok, context}
       end
 
       then_ "each of those ten stories is ready for development", context do
-        {:reply, response, _frame} =
-          ListStories.execute(%{ready_for_dev: true}, context.frame)
+        response =
+          ToolLibrary.run(
+            "list_stories",
+            %{ready_for_dev: true},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError, "expected list_stories to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected list_stories to succeed, got: #{inspect(response)}"
 
         for title <- context.story_titles do
           assert body =~ title,

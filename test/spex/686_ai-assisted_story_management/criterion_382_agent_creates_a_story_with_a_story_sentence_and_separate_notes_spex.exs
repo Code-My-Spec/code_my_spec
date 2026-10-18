@@ -12,9 +12,9 @@ defmodule CodeMySpecSpex.Story686.Criterion7948Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.CreateStory
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,25 +29,31 @@ defmodule CodeMySpecSpex.Story686.Criterion7948Spex do
       end
 
       when_ "it supplies the user-story sentence and separate working notes", context do
-        {:reply, response, _frame} =
-          CreateStory.execute(
+        response =
+          ToolLibrary.run(
+            "create_story",
             %{title: "Driver onboarding", story: @story, notes: @notes},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected create_story to accept separate story and notes fields, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :story_number, story_number!(response))}
       end
 
       then_ "both are stored on the story as distinct fields", context do
-        {:reply, response, _frame} =
-          GetStory.execute(%{story_number: context.story_number}, context.frame)
+        response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_number},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError, "expected get_story to succeed, got: #{inspect(response)}"
+        assert match?({:ok, _}, response),
+               "expected get_story to succeed, got: #{inspect(response)}"
 
         assert body =~ @story,
                "expected the user-story sentence to be stored, got: #{body}"

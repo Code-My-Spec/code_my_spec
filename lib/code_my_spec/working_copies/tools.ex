@@ -1,0 +1,33 @@
+defmodule CodeMySpec.WorkingCopies.Tools do
+  @moduledoc """
+  The tools an agent calls in this domain, for `CodeMySpec.ToolLibrary`.
+  Its own boundary, so what the tools read does not become the core's deps.
+  """
+
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec.Agents,
+      CodeMySpec.Analysis,
+      CodeMySpec.CodeMode,
+      CodeMySpec.Staffing,
+      CodeMySpec.Tools,
+      CodeMySpec.WorkingCopies,
+      CodeMySpec.Workspaces
+    ]
+
+  def all do
+    [
+      CodeMySpec.WorkingCopies.Tools.CreateWorkingCopy,
+      CodeMySpec.WorkingCopies.Tools.EnsureAppRunning,
+      CodeMySpec.WorkingCopies.Tools.ListWorkingCopies,
+      CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy,
+      CodeMySpec.WorkingCopies.Tools.RestartApp,
+      CodeMySpec.WorkingCopies.Tools.SetWorkingCopyLoop,
+      CodeMySpec.WorkingCopies.Tools.ShareCopyApp,
+      CodeMySpec.WorkingCopies.Tools.StopApp,
+      CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy,
+      CodeMySpec.WorkingCopies.Tools.UnshareCopyApp
+    ]
+  end
+end

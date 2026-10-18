@@ -12,9 +12,6 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
 
@@ -91,8 +88,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def add_criterion(context, story, text) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      AddCriterion.execute(%{story_number: story.number, description: text}, frame)
+    response =
+      ToolLibrary.run(
+        "add_criterion",
+        %{story_number: story.number, description: text},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end
@@ -101,8 +102,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def set_active_story(context, story) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      SetActiveStory.execute(%{story_number: story.number}, frame)
+    response =
+      ToolLibrary.run(
+        "set_active_story",
+        %{story_number: story.number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end
@@ -111,8 +116,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def retire_criterion(context, criterion) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      RetireCriterion.execute(%{criterion_number: criterion.number}, frame)
+    response =
+      ToolLibrary.run(
+        "retire_criterion",
+        %{criterion_number: criterion.number},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response
   end

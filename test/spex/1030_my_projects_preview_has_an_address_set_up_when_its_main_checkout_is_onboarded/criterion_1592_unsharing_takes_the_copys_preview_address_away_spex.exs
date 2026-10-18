@@ -17,12 +17,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Stories.Tools.ShareCopyApp
-  alias CodeMySpec.McpServers.Stories.Tools.UnshareCopyApp
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
@@ -88,8 +88,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
           }
         }
 
-        {:reply, share_response, _frame} = ShareCopyApp.execute(%{}, frame)
-        refute share_response.isError, "setup failed to share the copy in the first place"
+        share_response =
+          ToolLibrary.run(
+            "share_copy_app",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, share_response),
+               "setup failed to share the copy in the first place"
 
         # Drained here, not left for the `then_` below: sharing puts a config
         # too, and an `assert_receive` on "put_config" later would otherwise
@@ -103,13 +110,18 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
       end
 
       when_ "that copy's own agent asks to stop sharing it", context do
-        {:reply, response, _frame} = UnshareCopyApp.execute(%{}, context.frame)
+        response =
+          ToolLibrary.run(
+            "unshare_copy_app",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "it answers success rather than an error", context do
-        refute context.response.isError,
+        assert match?({:ok, _}, context.response),
                "unsharing a copy that was actually shared failed. Got: " <>
                  response_text(context.response)
 

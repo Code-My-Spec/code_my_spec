@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
@@ -113,8 +112,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
     qa = Fixtures.running_agent(scope, role: "qa", working_copy: "/tmp/spex-2005")
     asking = %Frame{assigns: %{current_scope: scope, agent_id: qa.id}}
 
-    {:reply, sas_resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, asking)
-    refute sas_resp.isError, inspect(sas_resp)
+    sas_resp =
+      ToolLibrary.run(
+        "set_active_story",
+        %{story_number: story.number},
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, sas_resp), inspect(sas_resp)
 
     Enum.each(rounds, fn round ->
       started =

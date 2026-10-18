@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -56,8 +55,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _activated_a, _frame} =
-          SetActiveStory.execute(%{story_number: context.story_a.number}, frame)
+        _activated_a =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: context.story_a.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         response_a =
           ToolLibrary.run(
@@ -66,8 +69,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1721Spex do
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, _activated_b, _frame} =
-          SetActiveStory.execute(%{story_number: context.story_b.number}, frame)
+        _activated_b =
+          ToolLibrary.run(
+            "set_active_story",
+            %{story_number: context.story_b.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         response_b =
           ToolLibrary.run(

@@ -18,9 +18,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
 
   import CodeMySpecSpex.IssuePromotionHelpers
   import CodeMySpecSpex.PromotionHelpers
-
-  alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -55,13 +52,12 @@ defmodule CodeMySpecSpex.Story1091.Criterion1892Spex do
         story = a_promotable_story(story_context, title: "Fix the border dispute")
         _qa = Fixtures.running_agent(context.team_a.scope, role: "qa")
 
-        {:reply, set_active, _frame} =
-          SetActiveStory.execute(
-            %{story_number: story.number},
-            %Frame{assigns: %{current_scope: context.team_a.scope}}
-          )
+        set_active =
+          ToolLibrary.run("set_active_story", %{story_number: story.number}, %{
+            scope: context.team_a.scope
+          })
 
-        refute set_active.isError, response_text(set_active)
+        assert match?({:ok, _}, set_active), response_text(set_active)
         its_analyzers_are_current(context, context.team_a)
 
         {:ok, Map.put(context, :story, story)}

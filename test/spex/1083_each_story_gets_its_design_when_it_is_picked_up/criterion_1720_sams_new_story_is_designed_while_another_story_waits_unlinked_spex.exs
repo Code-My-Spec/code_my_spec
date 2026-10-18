@@ -9,8 +9,6 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -87,13 +85,14 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          SetStoryComponent.execute(
+        _response =
+          ToolLibrary.run(
+            "set_story_component",
             %{
               story_number: context.story_a.number,
               module_name: context.plan_component.module_name
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         evaluate_response =
@@ -109,8 +108,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
       then_ "the first story is linked to its surface component", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_response, _frame} =
-          GetStory.execute(%{story_number: context.story_a.number}, frame)
+        story_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_a.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(story_response) =~
                  "**Component:** #{context.plan_component.module_name}"
@@ -127,8 +130,12 @@ defmodule CodeMySpecSpex.Story1083.Criterion1720Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, story_b_response, _frame} =
-          GetStory.execute(%{story_number: context.story_b.number}, frame)
+        story_b_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story_b.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         refute response_text(story_b_response) =~ "**Component:**",
                "story B should still be unlinked"

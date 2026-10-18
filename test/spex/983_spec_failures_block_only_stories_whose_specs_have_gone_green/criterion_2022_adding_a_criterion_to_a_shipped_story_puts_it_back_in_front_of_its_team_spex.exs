@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         # itself leave the spec stale and the gate reopened.
         :ok = ProjectStateFixtures.apply_bdd_spec_for_story(context, story)
         :ok = sync_story_specs_to_local_copy(context, story)
-        refute set_active_story(context, story).isError
+        assert {:ok, _} = set_active_story(context, story)
         commit_work(context, context.agent_root, "WORK.md", "work on story #{story.number}\n")
 
         :ok =
@@ -147,8 +147,8 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
 
       when_ "a new criterion is added and Main assigns the revision to this team", context do
         response = add_criterion(context, context.story, "It also works on Tuesdays")
-        refute response.isError, inspect(response)
-        refute set_active_story(context, context.story).isError
+        assert match?({:ok, _}, response), inspect(response)
+        assert {:ok, _} = set_active_story(context, context.story)
         {:ok, context}
       end
 

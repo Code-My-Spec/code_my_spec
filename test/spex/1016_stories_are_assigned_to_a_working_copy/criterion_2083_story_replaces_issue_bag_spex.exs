@@ -1,8 +1,6 @@
 defmodule CodeMySpecSpex.Story1016.Criterion2083Spex do
   @moduledoc "Story assignment replaces issue work without losing unfinished issues or history."
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -35,7 +33,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2083Spex do
       end
 
       when_ "Main assigns the story to the copy", ctx do
-        Slice.call(ctx, SetActiveStory, %{
+        Slice.call(ctx, "set_active_story", %{
           story_number: ctx.waiting.number,
           working_copy_id: ctx.scope.active_working_copy_id
         })

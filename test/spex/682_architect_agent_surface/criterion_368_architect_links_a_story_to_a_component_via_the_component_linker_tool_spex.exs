@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -59,13 +60,18 @@ defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
           module_name: context.module_name
         }
 
-        {:reply, response, _frame} = SetStoryComponent.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "set_story_component",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :link_response, response)}
       end
 
       then_ "the tool reports success", context do
-        refute context.link_response.isError,
+        assert match?({:ok, _}, context.link_response),
                "expected set_story_component to succeed, got: #{inspect(context.link_response)}"
 
         {:ok, context}

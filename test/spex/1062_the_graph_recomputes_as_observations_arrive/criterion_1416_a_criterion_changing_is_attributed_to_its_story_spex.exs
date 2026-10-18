@@ -33,12 +33,13 @@ defmodule CodeMySpecSpex.Story1062.Criterion3504Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -74,16 +75,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3504Spex do
       when_ "a criterion is added to the first story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, reply, _frame} =
-          AddCriterion.execute(
+        reply =
+          ToolLibrary.run(
+            "add_criterion",
             %{
               story_number: context.edited_number,
               description: "a criterion that nothing covers yet"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute reply.isError, inspect(reply)
+        assert match?({:ok, _}, reply), inspect(reply)
 
         graph = read_settled_graph(context)
 

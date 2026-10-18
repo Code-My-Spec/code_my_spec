@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2065Spex do
 
       when_ "main assigns the team that story with set_active_story", context do
         answer =
-          Slice.call(context, CodeMySpec.McpServers.Stories.Tools.SetActiveStory, %{
+          Slice.call(context, "set_active_story", %{
             story_number: context.waiting.number,
             working_copy_id: context.scope.active_working_copy_id
           })

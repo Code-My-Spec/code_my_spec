@@ -8,8 +8,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion1601Spex do
   on (a31f1cd6 step 3, John 2026-10-01).
   """
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
@@ -24,7 +22,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion1601Spex do
 
       when_ "a session selects the story", context do
         {error?, text} =
-          Slice.attempt(context, SetActiveStory, %{story_number: context.story.number})
+          Slice.attempt(context, "set_active_story", %{story_number: context.story.number})
 
         {:ok, Map.merge(context, %{error?: error?, text: text})}
       end

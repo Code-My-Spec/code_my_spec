@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2138Spex do
         for copy <- [main, maintenance] do
           response = turn_on(context, copy)
 
-          refute response.isError,
+          assert match?({:ok, _}, response),
                  "#{copy.root} was refused an address: " <> response_text(response)
         end
 

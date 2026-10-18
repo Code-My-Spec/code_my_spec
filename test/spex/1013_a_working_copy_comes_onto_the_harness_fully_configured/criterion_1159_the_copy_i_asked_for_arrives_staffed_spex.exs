@@ -27,12 +27,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
-  alias CodeMySpec.McpServers.Stories.Tools.CreateWorkingCopy
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -63,8 +64,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion3097Spex do
       when_ "I ask for a working copy for an epic", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateWorkingCopy.execute(%{label: "the war epic's copy"}, frame)
+        response =
+          ToolLibrary.run(
+            "create_working_copy",
+            %{label: "the war epic's copy"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response, response)}
       end

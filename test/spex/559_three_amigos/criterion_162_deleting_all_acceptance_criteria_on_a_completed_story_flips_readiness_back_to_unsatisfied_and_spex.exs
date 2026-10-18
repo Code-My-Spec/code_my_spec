@@ -26,8 +26,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.GetStory
-  alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -79,8 +77,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
       when_ "the PM retires every acceptance criterion on the story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetStory.execute(%{story_number: context.story.number}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_story",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         criterion_ids =
           Regex.scan(~r/\(criterion ([^)]+)\)/, response_text(get_response))
@@ -90,8 +92,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
                "expected at least one acceptance criterion to retire, got none"
 
         for id <- criterion_ids do
-          {:reply, _resp, _frame} =
-            RetireCriterion.execute(%{criterion_number: id}, frame)
+          _resp =
+            ToolLibrary.run(
+              "retire_criterion",
+              %{criterion_number: id},
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+            )
         end
 
         {:ok, context}

@@ -29,7 +29,6 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -60,10 +59,11 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
     # rather than a file. Computing first swept them before the menu could
     # count them, and criteria 3183 and 3196 went silent for it.
     switch_on = fn ->
-      {:reply, _response, _frame} =
-        SetWorkingCopyLoop.execute(
+      {:ok, _text} =
+        ToolLibrary.run(
+          "set_working_copy_loop",
           %{working_copy_id: copy_id || context.scope.active_working_copy_id, working: true},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
     end
 

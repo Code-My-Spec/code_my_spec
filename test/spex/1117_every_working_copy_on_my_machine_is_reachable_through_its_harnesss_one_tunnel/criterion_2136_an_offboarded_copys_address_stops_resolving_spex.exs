@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2136Spex do
         context = johns_mac(context)
         copy = serving_copy(context, "/workspace/feature", context.mac, "http://127.0.0.1:41360")
         response = turn_on(context, copy)
-        refute response.isError, response_text(response)
+        assert match?({:ok, _}, response), response_text(response)
 
         {:ok, Map.put(context, :copy, copy)}
       end
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2136Spex do
       end
 
       then_ "its address has no route on the tunnel and no DNS record", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         refute address_host(context.copy) in Enum.map(
                  routes(context.cf, @dev_tunnel),

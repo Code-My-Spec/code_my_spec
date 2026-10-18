@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -59,7 +58,7 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
           )
 
         context = Slice.staff(context)
-        Slice.call(context, SetActiveStory, %{story_number: story.number})
+        Slice.call(context, "set_active_story", %{story_number: story.number})
         {:ok, Map.put(context, :story, story)}
       end
 

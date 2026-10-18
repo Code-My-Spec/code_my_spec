@@ -34,10 +34,11 @@ defmodule CodeMySpecSpex.Story1065.Criterion3393Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -57,8 +58,12 @@ defmodule CodeMySpecSpex.Story1065.Criterion3393Spex do
       when_ "an agent starts the task and reads the prompt it is handed", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartThreeAmigosSession.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run(
+            "start_three_amigos_session",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
