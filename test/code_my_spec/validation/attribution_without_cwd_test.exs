@@ -26,7 +26,9 @@ defmodule CodeMySpec.Validation.AttributionWithoutCwdTest do
   still demotes nothing.
   """
 
-  use CodeMySpecTest.DataCase, async: true
+  # Sandbox.mode(Repo, {:shared, self()}) below is global to the Repo -- a
+  # concurrently-running async test can steal connection ownership mid-test.
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
 

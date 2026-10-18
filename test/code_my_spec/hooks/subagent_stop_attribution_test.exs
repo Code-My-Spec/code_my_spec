@@ -18,7 +18,9 @@ defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
   minutes apart.
   """
 
-  use CodeMySpecTest.DataCase, async: true
+  # Sandbox.mode(Repo, {:shared, self()}) below is global to the Repo -- a
+  # concurrently-running async test can steal connection ownership mid-test.
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
 
