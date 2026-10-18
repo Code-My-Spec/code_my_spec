@@ -1,9 +1,10 @@
 defmodule CodeMySpecWeb.ServerLive.ShowTest do
   @moduledoc """
-  Before this, the only way to point a project's environment at a server was
-  `link_server`, the devops MCP tool — nothing on `/app/servers` could make
-  that connection at all. Confirmed live: the `:server` step's own pause
-  message says "link one of those" with no page for Sam to go do it on.
+  a654ed04: this page used to offer a second, separate action -- pick a
+  project, then type an environment name, then submit -- to actually point a
+  project's environment at the server. That is gone now: the single
+  environment field on `/app/servers` (`ServerLive.FormComponent`) is the
+  whole link, so this page only has to show what it produced.
   """
   use CodeMySpecTest.ConnCase, async: true
 
@@ -51,35 +52,44 @@ defmodule CodeMySpecWeb.ServerLive.ShowTest do
       "server_type" => %{"name" => "cpx11"}
     }
 
-  test "linking a project's environment writes the server onto it", %{conn: conn, scope: scope} do
+  test "the old two-step link form is gone", %{conn: conn} do
     stub_hetzner(server("shared-box"))
 
     {:ok, view, html} = live(conn, ~p"/app/servers")
-    assert html =~ "shared-box"
-
     view |> element("[data-test='link-server'][phx-value-name='shared-box']") |> render_click()
 
-    other_project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Second Project")
+    {:ok, _view, html} = live(conn, ~p"/app/servers/shared-box")
 
-    {:ok, view, html} = live(conn, ~p"/app/servers/shared-box")
-    refute html =~ "Second Project (uat)"
+    refute html =~ "data-test=\"link-environment-form\"",
+           "the detail page still offers a second step to make a link that " <>
+             "the single menu on /app/servers already makes"
+  end
+
+  test "a project environment linked from the single menu shows here", %{
+    conn: conn,
+    scope: scope
+  } do
+    stub_hetzner(server("shared-box"))
+
+    project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Second Project")
+    project_scope = %{scope | active_project: project, active_project_id: project.id}
+    {:ok, _env} = EnvironmentRepository.put(project_scope, "uat", %{})
+
+    {:ok, view, _html} = live(conn, ~p"/app/servers")
+    view |> element("[data-test='link-server'][phx-value-name='shared-box']") |> render_click()
 
     view
-    |> form("[data-test='link-environment-form']", %{project_id: other_project.id})
-    |> render_change()
+    |> element("[data-test='server'][data-name='shared-box'] [data-test='edit-server']")
+    |> render_click()
 
-    html =
-      view
-      |> form("[data-test='link-environment-form']", %{
-        project_id: other_project.id,
-        environment: "uat"
-      })
-      |> render_submit()
+    view
+    |> form("[data-test='server-form']", server: %{environment: "uat"})
+    |> render_submit()
+
+    {:ok, _view, html} = live(conn, ~p"/app/servers/shared-box")
 
     assert html =~ "Second Project"
     assert html =~ "uat"
-
-    project_scope = %{scope | active_project: other_project, active_project_id: other_project.id}
     assert %{server_id: server_id} = EnvironmentRepository.get(project_scope, "uat")
     refute is_nil(server_id)
   end

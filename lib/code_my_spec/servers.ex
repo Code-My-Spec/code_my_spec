@@ -260,6 +260,81 @@ defmodule CodeMySpec.Servers do
   end
 
   @doc """
+  Make what a server is for the same action as pointing a project's
+  environment at it.
+
+  a654ed04: these used to be two screens, and the first one looked like it
+  did the second â Sam set `fuellytics -> uat` on `/app/servers` and read
+  that as done, while the project's `uat` environment still had `server_id`
+  nil and the `:server` step still couldn't find the box. There is one
+  control now, this server's `environment` field; this is what saving it
+  does besides recording the label.
+
+  Naming a label that matches an unlinked environment of this exact name,
+  anywhere in the account, links it here â every project's, since servers
+  are shared at the account, not the project. Changing the label away from
+  one unlinks whatever it used to match; clearing it unlinks everything
+  pointing here. A label that matches nothing stays exactly what it always
+  was â Sam's own words, not a link (`qa-story-812` included).
+  """
+  @spec sync_linked_environments(Scope.t(), Server.t()) :: :ok
+  def sync_linked_environments(%Scope{active_account_id: account_id} = scope, %Server{
+        id: server_id,
+        environment: name
+      })
+      when is_binary(account_id) do
+    for {project, env_name} <- stale_links(account_id, server_id, name) do
+      unlink_environment(scope, project, env_name)
+    end
+
+    if name do
+      for project <- unlinked_matches(account_id, name) do
+        link_environment(scope, project, name, server_id)
+      end
+    end
+
+    :ok
+  end
+
+  def sync_linked_environments(_scope, _server), do: :ok
+
+  # Everything currently pointing at this server under a name that no longer
+  # matches its label (including every name, when the label was cleared).
+  defp stale_links(account_id, server_id, keep_name) do
+    Environment
+    |> join(:inner, [e], p in Project, on: p.id == e.project_id)
+    |> where([e, p], p.account_id == ^account_id and e.server_id == ^server_id)
+    |> keep_name_filter(keep_name)
+    |> select([e, p], {p, e.name})
+    |> Repo.all()
+  end
+
+  defp keep_name_filter(query, nil), do: query
+  defp keep_name_filter(query, name), do: where(query, [e], e.name != ^name)
+
+  # Every project in the account with an environment of this exact name that
+  # nothing has claimed yet â the ones this label is now allowed to adopt.
+  defp unlinked_matches(account_id, name) do
+    Environment
+    |> join(:inner, [e], p in Project, on: p.id == e.project_id)
+    |> where([e, p], p.account_id == ^account_id and e.name == ^name and is_nil(e.server_id))
+    |> select([e, p], p)
+    |> Repo.all()
+  end
+
+  defp unlink_environment(scope, project, env_name),
+    do: EnvironmentRepository.put(environment_scope(scope, project), env_name, %{server_id: nil})
+
+  defp link_environment(scope, project, env_name, server_id),
+    do:
+      EnvironmentRepository.put(environment_scope(scope, project), env_name, %{
+        server_id: server_id
+      })
+
+  defp environment_scope(scope, project),
+    do: %{scope | active_project: project, active_project_id: project.id}
+
+  @doc """
   Labels to offer for a server, seeded with what setup currently supports and
   extended by whatever this account already uses.
 

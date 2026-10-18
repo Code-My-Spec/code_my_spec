@@ -297,7 +297,12 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         </div>
 
         <div :for={server <- linked(@servers)} class="mb-2">
-          <.server_row server={server} can_manage={@can_manage} retire_error={@retire_error} />
+          <.server_row
+            server={server}
+            can_manage={@can_manage}
+            retire_error={@retire_error}
+            account_id={@current_scope.active_account_id}
+          />
         </div>
 
         <p
@@ -321,7 +326,12 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
         <div :if={@show_unlinked} data-test="unlinked-servers">
           <div :for={server <- unlinked(@servers)} class="mb-2">
-            <.server_row server={server} can_manage={@can_manage} retire_error={@retire_error} />
+            <.server_row
+              server={server}
+              can_manage={@can_manage}
+              retire_error={@retire_error}
+              account_id={@current_scope.active_account_id}
+            />
           </div>
         </div>
 
@@ -344,6 +354,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
               id={@server.id}
               server={@server}
               environments={@environments}
+              current_scope={@current_scope}
               return_to={~p"/app/servers"}
             />
           </div>
@@ -359,6 +370,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   attr :server, :map, required: true
   attr :can_manage, :boolean, default: false
   attr :retire_error, :map, default: nil
+  attr :account_id, :string, default: nil
 
   defp server_row(assigns) do
     ~H"""
@@ -406,6 +418,15 @@ defmodule CodeMySpecWeb.ServerLive.Index do
             class="badge badge-primary badge-sm"
           >
             {@server.environment}
+          </span>
+          <%!--
+            a654ed04: the label above is Sam's own words and nothing points at
+            it being wrong either way; this is the actual answer to "is
+            anything relying on this box", read from the real links rather
+            than from what the label happens to say.
+          --%>
+          <span data-test="server-linked-projects" class="text-xs opacity-60">
+            {linked_projects_label(@account_id, @server.name)}
           </span>
           <span :if={@server.ip} class="text-xs opacity-70">{@server.ip}</span>
           <span :if={@server.size} class="badge badge-ghost badge-sm">{@server.size}</span>
@@ -479,6 +500,24 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   defp status_colour(%{status: nil}), do: "bg-base-content/30"
   defp status_colour(_server), do: "bg-error"
+
+  # The real answer to "does anything point at this box", read from
+  # `provisioning_environments` rather than from the purpose label above —
+  # which can say anything and link to nothing (a654ed04).
+  defp linked_projects_label(nil, _name), do: "not used by any project"
+
+  defp linked_projects_label(account_id, name) do
+    case Servers.environments_on(account_id, name) do
+      [] ->
+        "not used by any project"
+
+      entries ->
+        entries
+        |> Enum.map(&"#{&1.project.name} / #{&1.environment}")
+        |> Enum.sort()
+        |> Enum.join(", ")
+    end
+  end
 
   attr :options, :list, required: true
   attr :location, :string, default: nil
