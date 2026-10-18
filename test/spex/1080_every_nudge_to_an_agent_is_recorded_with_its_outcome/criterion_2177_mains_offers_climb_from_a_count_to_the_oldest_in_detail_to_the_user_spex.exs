@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2177Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -74,7 +75,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2177Spex do
 
       given_ "a continuous main with no graph work of its own", context do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
-        :ok = Fixtures.put_to_work(context.scope)
+        context = put_to_work(context)
         id = main.id
         assert_receive {:work_turn_requested, ^id, _ref, first}, 2_000
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)

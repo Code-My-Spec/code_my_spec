@@ -9,6 +9,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2160Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
@@ -53,7 +54,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2160Spex do
 
       when_ "the stall check and the work offer run again, the requirement still unsatisfied",
             context do
-        :ok = Fixtures.put_to_work(context.scope)
+        context = put_to_work(context)
         {:ok, context}
       end
 

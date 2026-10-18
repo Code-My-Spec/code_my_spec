@@ -1075,7 +1075,8 @@ defmodule CodeMySpec.Agents.Work do
 
   defp withholding(scope, %Agent{} = agent, opts) do
     owners = Keyword.get(opts, :owners) || AgentsRepository.list_agents(scope)
-    &withheld?(owners, agent, &1)
+    standing = Offers.standing(agent.id)
+    &withheld?(owners, agent, &1, standing)
   end
 
   defp withholding(_scope, _owner, _opts), do: fn _node -> false end
@@ -1093,18 +1094,34 @@ defmodule CodeMySpec.Agents.Work do
 
   @doc """
   Whether a task at `agent`'s checkout withholds `node` from it: another
-  agent's live task, or its own blocked on an unresolved blocker.
+  agent's live task, its own blocked on an unresolved blocker, or its own
+  open offer for the same work that `Offers.standing/1` already reads as
+  held back.
 
-  Its own active task is not withheld — `start_task` resumes that.
+  The second half is criterion 2163: a declined offer holds the work back
+  from the agent that declined it, alone, until main acts -- reassigns it,
+  gives the agent other work, or offers it again -- and an offer ignored past
+  its own ladder holds back the same way. `standing`'s `held?` was already
+  used to keep a fresh offer from being made (`offerable/2`); this is the
+  same flag, now also read here so the held-back work does not stay on
+  `get_next_requirement`/`start_task`'s own list for the agent that cannot
+  take it, which is what kept requeuing it after a decline (7ae5d2a0).
+
+  Its own active task is not withheld -- `start_task` resumes that.
   """
-  @spec withheld?([Agent.t()], Agent.t(), map()) :: boolean()
-  def withheld?(owners, agent, node) do
-    owners
-    |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
-    |> Enum.any?(fn owner ->
-      mine? = owner.id == agent.id
-      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
-    end)
+  @spec withheld?([Agent.t()], Agent.t(), map(), map()) :: boolean()
+  def withheld?(owners, agent, node, standing \\ %{}) do
+    held_back?(agent, node, standing) or
+      (owners
+       |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
+       |> Enum.any?(fn owner ->
+         mine? = owner.id == agent.id
+         Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
+       end))
+  end
+
+  defp held_back?(agent, node, standing) do
+    match?(%{held?: true}, standing[node_key(agent, node)])
   end
 
   defp holds_node?(task, mine?, node) do

@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1867Spex do
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -66,8 +67,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1867Spex do
       then_ "it resumes the same task, within that turn", context do
         refute context.resumed.isError, response_text(context.resumed)
 
-        [task] = CodeMySpec.Tasks.list_tasks(context.scope, %{id: context.task_id})
-        assert task.status in [:in_progress, :active], "the task did not resume"
+        {:reply, tasks, _} =
+          ListTasks.execute(%{status: "active"}, agent_frame(context, context.coder))
+
+        refute tasks.isError, response_text(tasks)
+
+        assert response_text(tasks) =~ context.task_id,
+               "the task did not resume:\n" <> response_text(tasks)
+
         {:ok, context}
       end
 

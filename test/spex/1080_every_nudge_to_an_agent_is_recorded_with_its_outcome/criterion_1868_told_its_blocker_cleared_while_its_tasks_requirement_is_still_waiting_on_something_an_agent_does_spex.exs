@@ -13,7 +13,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
@@ -21,6 +20,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
   alias CodeMySpec.McpServers.Components.Tools.AddDependency
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -71,14 +71,16 @@ defmodule CodeMySpecSpex.Story1080.Criterion1868Spex do
       end
 
       given_ "the component is given a new, unmet dependency", context do
-        other = CodeMySpec.ComponentsFixtures.component_fixture(context.scope)
+        other =
+          ComponentHelpers.create(context.scope,
+            name: "Other",
+            module_name: "#{context.project.module_name}.Other",
+            type: "context"
+          )
 
         {:reply, added, _} =
           AddDependency.execute(
-            %{
-              module_name: context.component.module_name,
-              depends_on_module_name: other.module_name
-            },
+            %{source_component_id: context.component.id, target_component_id: other.id},
             %Frame{assigns: %{current_scope: context.scope}}
           )
 

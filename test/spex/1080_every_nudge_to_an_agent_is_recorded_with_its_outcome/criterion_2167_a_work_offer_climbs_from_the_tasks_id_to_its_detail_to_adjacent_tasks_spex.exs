@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2167Spex do
 
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.StoryBoundHelpers, only: [coding_work_waiting: 1, issue_accepted: 2]
+  import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 2]
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox

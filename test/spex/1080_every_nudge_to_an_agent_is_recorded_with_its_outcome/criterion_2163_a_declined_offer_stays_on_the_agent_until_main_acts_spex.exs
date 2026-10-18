@@ -15,6 +15,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2163Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_issue_id!: 1, response_text: 1]
 
@@ -77,7 +78,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2163Spex do
 
     refute assigned.isError, response_text(assigned)
 
-    :ok = Fixtures.put_to_work(copy_a)
+    _ = put_to_work(%{scope: copy_a})
     id = coder_a.id
     assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
 
@@ -106,7 +107,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2163Spex do
       end
 
       when_ "the same work is offered to it again", context do
-        :ok = Fixtures.put_to_work(context.copy_a)
+        _ = put_to_work(%{scope: context.copy_a})
         id = context.coder_a
         assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
         {:ok, context}

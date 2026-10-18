@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2055Spex do
 
   import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.StoryBoundHelpers, only: [coding_work_waiting: 1, issue_accepted: 2]
+  import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 2]
 
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpecSpex.Fixtures
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2055Spex do
       end
 
       when_ "the harness looks at its work again, nothing about it changed", context do
-        :ok = Fixtures.put_to_work(context.scope)
+        context = put_to_work(context)
         id = context.coder
 
         receive do
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2055Spex do
 
       when_ "a different piece of work becomes available for it", context do
         context = issue_accepted(context, context.story)
-        :ok = Fixtures.put_to_work(context.scope)
+        context = put_to_work(context)
         {:ok, context}
       end
 

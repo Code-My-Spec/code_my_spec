@@ -9,6 +9,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1804Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1]
   import CodeMySpecSpex.OfferHelpers
 
   alias CodeMySpecSpex.Fixtures
@@ -52,7 +53,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1804Spex do
       end
 
       when_ "the harness looks at that copy's work again", context do
-        :ok = Fixtures.put_to_work(context.scope)
+        context = put_to_work(context)
         id = context.coder
 
         receive do

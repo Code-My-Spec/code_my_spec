@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.MainAgent.Tools.ListOpenQuestions
+  alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1871Spex do
 
       then_ "main does not ask the user the same question again itself", context do
         {:reply, open, _} =
-          ListOpenQuestions.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+          ListNotifications.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
 
         refute open.isError, response_text(open)
         matches = Regex.scan(~r/refund window/, response_text(open))
