@@ -605,13 +605,13 @@ defmodule CodeMySpec.Agents.Offers do
       [o],
       o.agent_id == ^agent_id and
         o.kind in ^kinds and o.subject_type in ^types and
-        o.status in [:claimed, :declined, :ignored]
+        o.status in [:claimed, :declined, :ignored, :open]
     )
     |> order_by([o], desc: o.inserted_at)
-    |> select([o], {o.subject_key, o.kind, o.subject_type, o.status})
+    |> select([o], {o.subject_key, o.kind, o.subject_type, o.status, o.attempt})
     |> Repo.all()
     |> Enum.filter(&laddered?/1)
-    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2), elem(&1, 3)})
+    |> Enum.group_by(&elem(&1, 0), &{elem(&1, 1), elem(&1, 2), elem(&1, 3), elem(&1, 4)})
     |> Map.new(fn {key, settled} -> {key, streak(settled)} end)
   end
 
@@ -619,34 +619,39 @@ defmodule CodeMySpec.Agents.Offers do
 
   # The row's own kind decides whether it escalates: a kind not in `@ladders`
   # never does, and a row is only laddered when its whole key is.
-  defp laddered?({_key, kind, type, _status}), do: Map.has_key?(@ladders, {kind, type})
+  defp laddered?({_key, kind, type, _status, _attempt}), do: Map.has_key?(@ladders, {kind, type})
 
   # Newest first, up to the last claim. `ignored` is how many settled
   # ignored offers stand since then, for rung selection. Two different
   # things read this, per product's correction on 3e9a96e9 (which itself
-  # corrects 1ef7cfe3): `held?` is true for EITHER an explicit decline OR
-  # an offer ignored to the end of its own ladder -- both stop this agent
-  # from being pushed the same work again (criterion 1741's throttle,
-  # which a literal reading of 2169 would otherwise reopen). `declined?`
-  # is narrower, an explicit decline alone: only that closes the offer and
-  # holds the work back from `claimable_work` (get_next_requirement,
-  # start_task). An offer merely ignored to its last rung stays open,
-  # escalated to main once (criterion 2169), and a pull still shows and
-  # can claim it -- `held?` must not gate that. Each offer is read by the
-  # ladder for its own kind, so two kinds can share a subject key.
+  # corrects 1ef7cfe3) and main's correction on a01ffadb: `held?` is true for
+  # EITHER an explicit decline OR an offer whose own attempt has reached the
+  # last rung of its ladder -- both stop this agent from being pushed the
+  # same work again (criterion 1741's throttle, which a literal reading of
+  # 2169 would otherwise reopen). Exhaustion is read from that row's own
+  # attempt number directly, not from counting settled `:ignored` rows --
+  # the row at the last rung stays `:open` (outcome/3 leaves it unsettled,
+  # criterion 2169), and `:open` is now included in the query above so that
+  # row is still seen here. `declined?` is narrower, an explicit decline
+  # alone: only that closes the offer and holds the work back from
+  # `claimable_work` (get_next_requirement, start_task). An offer merely
+  # exhausted by ignoring stays open, escalated to main once (criterion
+  # 2169), and a pull still shows and can claim it -- `held?` must not gate
+  # that. Each offer is read by the ladder for its own kind, so two kinds
+  # can share a subject key.
   defp streak(settled) do
-    recent = Enum.take_while(settled, fn {_kind, _type, status} -> status != :claimed end)
+    recent = Enum.take_while(settled, fn {_kind, _type, status, _attempt} -> status != :claimed end)
 
-    ignored = Enum.count(recent, fn {_kind, _type, status} -> status == :ignored end)
-    declined? = Enum.any?(recent, fn {_kind, _type, status} -> status == :declined end)
+    ignored = Enum.count(recent, fn {_kind, _type, status, _attempt} -> status == :ignored end)
+    declined? = Enum.any?(recent, fn {_kind, _type, status, _attempt} -> status == :declined end)
 
     exhausted? =
-      Enum.any?(recent, fn {kind, type, status} ->
-        case {status, ladder({kind, type})} do
-          {:ignored, nil} -> false
-          {:ignored, steps} -> ignored >= length(steps)
-          _other -> false
-        end
+      Enum.any?(recent, fn {kind, type, status, attempt} ->
+        status in [:open, :ignored] and
+          case ladder({kind, type}) do
+            nil -> false
+            steps -> attempt >= length(steps)
+          end
       end)
 
     %{ignored: ignored, held?: declined? or exhausted?, declined?: declined?}
@@ -902,11 +907,16 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   # The ladder's next rung, written on the offer it follows, read from the
-  # offer's own attempt. A kind not in `@ladders` never escalates.
+  # offer's own attempt. A kind not in `@ladders` never escalates. `:open` is
+  # included alongside `:ignored` for criterion 2169's exhausted-but-open
+  # offer (main's correction on a01ffadb) -- its own rung at the last
+  # attempt is "held_back", the same name an :ignored row at that attempt
+  # would get.
   defp next_step(
-         %{status: :ignored} = settled,
+         %{status: status} = settled,
          %Offer{kind: kind, subject_type: type, attempt: attempt}
-       ) do
+       )
+       when status in [:ignored, :open] do
     case ladder({kind, type}) do
       nil -> settled
       steps -> Map.put(settled, :next_step, step_name(Enum.at(steps, attempt - 1)))
@@ -953,10 +963,22 @@ defmodule CodeMySpec.Agents.Offers do
       Enum.any?(tasks, &cancelled_since?(&1, offer.inserted_at)) ->
         %{status: :declined, reason: "claimed and cancelled"}
 
+      Enum.any?(tasks, &(started_since?(&1, offer.inserted_at) or start_called?(calls, &1))) ->
+        %{status: :claimed}
+
+      # Criterion 2169, main's correction on a01ffadb: an offer whose attempt
+      # has reached its own ladder's last rung settles :open, not :ignored
+      # like every earlier rung -- standing/1 reads exhaustion from this
+      # row's own attempt number directly (not from counting settled
+      # :ignored rows), so staying :open here does not break held?/
+      # push-suppression (1741). next_step/2 below still annotates it
+      # "held_back" so unreported_held_back/1 (which reads next_step alone,
+      # not status) still escalates it to main exactly once.
+      exhausted_by_ignoring?(offer) ->
+        %{status: :open}
+
       true ->
-        claimed_if(
-          Enum.any?(tasks, &(started_since?(&1, offer.inserted_at) or start_called?(calls, &1)))
-        )
+        %{status: :ignored}
     end
   end
 
@@ -981,6 +1003,13 @@ defmodule CodeMySpec.Agents.Offers do
   # both naming the copy with `working_copy_id`.
   defp outcome(%Offer{kind: :team_free, subject_key: copy_id}, _agent, calls),
     do: claimed_if(assigned_to_copy?(calls, copy_id))
+
+  defp exhausted_by_ignoring?(%Offer{kind: kind, subject_type: type, attempt: attempt}) do
+    case ladder({kind, type}) do
+      nil -> false
+      steps -> attempt >= length(steps)
+    end
+  end
 
   defp claimed_if(true), do: %{status: :claimed}
   defp claimed_if(false), do: %{status: :ignored}
