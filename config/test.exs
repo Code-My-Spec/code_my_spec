@@ -438,6 +438,7 @@ config :code_my_spec, analysis_mode: :inline
 config :code_my_spec, harness_secret: "test-harness-secret"
 config :code_my_spec, :allow_spex_clock, true
 config :code_my_spec, :provisioning_run_async, false
+config :code_my_spec, :working_copies_app_run_async, false
 
 # Provider OAuth client creds, so a spex recording can refresh a short-lived
 # access token mid-run (Resend's live ~15 min, and verifying a sending domain
