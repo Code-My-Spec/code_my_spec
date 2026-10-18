@@ -131,7 +131,11 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
       frame = %Frame{assigns: %{current_scope: user_scope_fixture()}}
 
       response =
-        ToolLibrary.run("web_search", %{query: "x"}, %{scope: frame.assigns.current_scope})
+        ToolLibrary.run(
+          "web_search",
+          %{query: "x"},
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        )
 
       assert match?({:error, _}, response)
     end
@@ -177,7 +181,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_fetch",
           %{url: "https://example.com/long", max_output: 120},
-          %{scope: frame.assigns.current_scope}
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
         )
 
       # Without this line the agent has the first half of a document and no way
@@ -196,7 +200,11 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
       url = "https://github.com/elixir-lang/elixir/blob/main/lib/elixir/lib/map.ex"
 
       response =
-        ToolLibrary.run("web_fetch", %{url: url}, %{scope: frame.assigns.current_scope})
+        ToolLibrary.run(
+          "web_fetch",
+          %{url: url},
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        )
 
       content = text(response)
       assert content =~ "raw.githubusercontent.com"
@@ -210,7 +218,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_fetch",
           %{url: "https://www.reddit.com/r/elixir/comments/abc/x/"},
-          %{scope: frame.assigns.current_scope}
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
         )
 
       assert match?({:error, _}, response)

@@ -21,6 +21,8 @@ defmodule CodeMySpec.McpServers.EveryScriptableListToolReturnsATableTest do
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
 
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response) do
     response |> Response.to_protocol() |> Map.get("content") |> hd() |> Map.get("text")
   end
@@ -154,7 +156,7 @@ defmodule CodeMySpec.McpServers.EveryScriptableListToolReturnsATableTest do
           "expires_in" => 3600
         })
 
-      Req.Test.stub(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects, fn conn ->
+      Req.Test.stub(CodeMySpec.Bootstrap.Tools.ListProjects, fn conn ->
         Req.Test.json(conn, %{"projects" => [%{"id" => "proj-1", "name" => "Demo"}]})
       end)
 

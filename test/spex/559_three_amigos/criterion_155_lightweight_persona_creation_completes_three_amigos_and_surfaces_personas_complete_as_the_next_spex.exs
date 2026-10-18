@@ -49,8 +49,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
@@ -117,7 +115,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               name: "Ops Lead",
               headline: "Operations lead managing fleet driver issues"
             },
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, Map.put(context, :persona_id, extract_persona_id(create_response))}
@@ -130,7 +128,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: context.story.number},
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, context}
@@ -141,17 +139,19 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule_response, _frame} =
-          AddRule.execute(
+        _add_rule_response =
+          ToolLibrary.run(
+            "add_rule",
             %{
               "story_number" => context.story.number,
               "statement" => rule_statement
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, _happy_response, _frame} =
-          AddScenario.execute(
+        _happy_response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               "story_number" => context.story.number,
               "rule_statement" => rule_statement,
@@ -163,11 +163,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               Then the purchase is declined
               """
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, _failure_response, _frame} =
-          AddScenario.execute(
+        _failure_response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               "story_number" => context.story.number,
               "rule_statement" => rule_statement,
@@ -179,7 +180,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
               Then the purchase is declined for safety
               """
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, context}

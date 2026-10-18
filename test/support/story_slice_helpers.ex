@@ -1,6 +1,7 @@
 defmodule CodeMySpecSpex.StorySliceHelpers do
   @moduledoc "Surface setup and response readers for active-story execution acceptance tests."
   import ExUnit.Assertions
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
@@ -69,7 +70,17 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     Map.put(context, :team, team)
   end
 
-  def call(context, tool, params, assigns \\ %{}) do
+  def call(context, tool, params, assigns \\ %{})
+
+  # A library tool, by name: the path every surface takes.
+  def call(context, name, params, assigns) when is_binary(name) do
+    case ToolLibrary.run(name, params, tool_context(context, assigns)) do
+      {:ok, text} -> text
+      {:error, text} -> flunk("#{name} refused: #{text}")
+    end
+  end
+
+  def call(context, tool, params, assigns) do
     frame = %Frame{assigns: Map.merge(%{current_scope: context.scope}, assigns)}
     {:reply, response, _frame} = tool.execute(params, frame)
     refute response.isError, response_text(response)
@@ -77,7 +88,16 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   @doc "Call a tool and return `{error?, text}` — for a step whose refusal is the point."
-  def attempt(context, tool, params, assigns \\ %{}) do
+  def attempt(context, tool, params, assigns \\ %{})
+
+  def attempt(context, name, params, assigns) when is_binary(name) do
+    case ToolLibrary.run(name, params, tool_context(context, assigns)) do
+      {:ok, text} -> {false, text}
+      {:error, text} -> {true, text}
+    end
+  end
+
+  def attempt(context, tool, params, assigns) do
     frame = %Frame{assigns: Map.merge(%{current_scope: context.scope}, assigns)}
     {:reply, response, _frame} = tool.execute(params, frame)
     {response.isError, response_text(response)}
@@ -272,4 +292,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     {:ok, _} = CodeMySpec.Stories.mark_story_promoted(context.scope, story, "2.0.44")
     context
   end
+
+  defp tool_context(context, assigns),
+    do: assigns |> Map.take([:agent_id, :session_id]) |> Map.put(:scope, context.scope)
 end

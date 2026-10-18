@@ -38,7 +38,11 @@ defmodule CodeMySpecSpex.Story1116.Criterion1705Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         reply =
-          ToolLibrary.run("query_logs", %{level: "ERROR"}, %{scope: frame.assigns.current_scope})
+          ToolLibrary.run(
+            "query_logs",
+            %{level: "ERROR"},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end

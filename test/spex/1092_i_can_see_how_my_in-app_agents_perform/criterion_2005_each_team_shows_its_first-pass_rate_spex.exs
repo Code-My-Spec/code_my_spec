@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import Phoenix.ChannelTest
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
@@ -132,18 +133,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
   end
 
   defp submit_round(asking, _coding, _story, task_id, %{status: "pass", note: note}) do
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: "pass",
           scenarios: [%{name: "it works", status: "pass", observation: note}],
           issue_ids: []
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns.current_scope)
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
   end
 
   defp submit_round(asking, coding, story, task_id, %{status: "fail", note: note}) do
@@ -155,18 +157,19 @@ defmodule CodeMySpecSpex.Story1092.Criterion2005Spex do
 
     [_, issue_id] = Regex.run(~r/\(ID: ([0-9a-f-]{36})\)/, response_text(issue))
 
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: "fail",
           scenarios: [%{name: "it works", status: "fail", observation: note}],
           issue_ids: [issue_id]
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns.current_scope)
       )
 
-    refute response.isError, inspect(response)
+    assert match?({:ok, _}, response), inspect(response)
 
     {:reply, accepted, _} = AcceptIssue.execute(%{issue_id: issue_id, category: "bug"}, asking)
     refute accepted.isError, inspect(accepted)

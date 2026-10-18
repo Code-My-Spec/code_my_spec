@@ -31,7 +31,13 @@ defmodule CodeMySpecSpex.Story1116.Criterion1702Spex do
 
       when_ "the coder searches its logs", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        reply = ToolLibrary.run("query_logs", %{}, %{scope: frame.assigns.current_scope})
+
+        reply =
+          ToolLibrary.run(
+            "query_logs",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end

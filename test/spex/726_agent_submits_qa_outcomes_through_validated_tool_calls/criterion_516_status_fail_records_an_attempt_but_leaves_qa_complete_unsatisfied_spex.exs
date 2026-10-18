@@ -11,16 +11,17 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
 
   Surfaces:
   - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult`
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts`
+  - `CodeMySpec.Qa.Tools.SubmitQaResult`
+  - `CodeMySpec.Qa.Tools.ListQaAttempts`
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -52,28 +53,33 @@ defmodule CodeMySpecSpex.Story726.Criterion6451Spex do
       when_ "the agent submits with status fail referencing the issue id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "fail",
               scenarios: [%{name: "smoke", status: "fail", observation: "blocking defect"}],
               issue_ids: [context.issue_id]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, context}
       end
 
       then_ "the attempt is in history with status fail", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ "fail"

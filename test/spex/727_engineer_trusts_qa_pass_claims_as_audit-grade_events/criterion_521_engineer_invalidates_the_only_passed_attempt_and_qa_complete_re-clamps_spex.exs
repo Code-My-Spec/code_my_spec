@@ -11,18 +11,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
   engineer id, timestamp, and reason.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (seed)
-  - `CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt` (the action)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed)
+  - `CodeMySpec.Qa.Tools.InvalidateQaAttempt` (the action)
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
     (observe re-clamp)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (observe
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (observe
     preservation + invalidation metadata)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,32 +35,34 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
       given_ "a story with one passed QA attempt and qa_complete satisfied", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, earlier, _} =
-          SubmitQaResult.execute(
+        earlier =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        false = earlier.isError
+        {:ok, _} = earlier
         earlier_id = extract_attempt_id!(response_text(earlier))
 
-        {:reply, submit_response, _frame} =
-          SubmitQaResult.execute(
+        submit_response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute submit_response.isError
+        assert match?({:ok, _}, submit_response)
         submit_text = response_text(submit_response)
         attempt_id = extract_attempt_id!(submit_text)
 
@@ -69,13 +72,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
       when_ "the engineer invalidates the attempt with a reason", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, invalidate_response, _frame} =
-          InvalidateQaAttempt.execute(
+        invalidate_response =
+          ToolLibrary.run(
+            "invalidate_qa_attempt",
             %{attempt_id: context.attempt_id, reason: "Shallow probe; needs redo"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute invalidate_response.isError
+        assert match?({:ok, _}, invalidate_response)
         {:ok, context}
       end
 
@@ -96,10 +100,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6456Spex do
            context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ context.earlier_id

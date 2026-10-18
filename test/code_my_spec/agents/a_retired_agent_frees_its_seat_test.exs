@@ -10,6 +10,8 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IntegrationsFixtures
@@ -23,8 +25,6 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
-  alias CodeMySpec.McpServers.Agents.Tools.TurnOnAgent
   alias CodeMySpec.Repo
   alias CodeMySpec.Staffing
   alias CodeMySpec.Stories.Story
@@ -77,6 +77,8 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     %{scope: scope, copy: copy, agent: agent, frame: %Frame{assigns: %{current_scope: scope}}}
   end
 
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
   end
@@ -87,9 +89,14 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
   end
 
   test "the retire_agent tool records who, when and why, and ends the process", ctx do
-    {:reply, response, _} = RetireAgent.execute(%{agent_id: ctx.agent.id}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "retire_agent",
+        %{agent_id: ctx.agent.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+      )
 
-    refute response.isError, text(response)
+    assert match?({:ok, _}, response), text(response)
 
     agent = Repo.get(Agent, ctx.agent.id)
     assert agent.status == :stopped
@@ -216,8 +223,14 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
 
     assert {:error, {:retired, _}} = Agents.turn_on_agent(ctx.scope, ctx.agent.id)
 
-    {:reply, response, _} = TurnOnAgent.execute(%{agent_id: ctx.agent.id}, ctx.frame)
-    assert response.isError
+    response =
+      ToolLibrary.run(
+        "turn_on_agent",
+        %{agent_id: ctx.agent.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+      )
+
+    assert match?({:error, _}, response)
     assert text(response) =~ "this agent is retired (retired by Harness at"
     assert Agent.retired?(Repo.get(Agent, ctx.agent.id))
   end
@@ -239,8 +252,14 @@ defmodule CodeMySpec.Agents.ARetiredAgentFreesItsSeatTest do
     assert Agent.retired?(retired)
     assert is_binary(machine)
 
-    {:reply, response, _} = RetireAgent.execute(%{agent_id: ctx.agent.id}, ctx.frame)
-    refute response.isError, text(response)
+    response =
+      ToolLibrary.run(
+        "retire_agent",
+        %{agent_id: ctx.agent.id},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+      )
+
+    assert match?({:ok, _}, response), text(response)
     assert text(response) =~ "couldn't be reached, so its process may still be running"
 
     assert Agents.empty_seats([Repo.get(Agent, ctx.agent.id)], [:coding]) == [:coding]

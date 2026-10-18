@@ -10,19 +10,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
+  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
+  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
+  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
+  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
 
-  alias CodeMySpec.McpServers.Issues.Tools.{
-    AcceptIssue,
-    AssignIssueToWorkingCopy,
-    CreateIssue,
-    GetIssue
-  }
-
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.{EvaluateTask, StartTask}
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -146,8 +145,9 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
         false = finding.isError
         finding_id = extract_issue_id!(finding)
 
-        {:reply, response, _} =
-          SubmitIssueQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_issue_qa_result",
             %{
               issue_id: context.issue_id,
               task_id: context.qa_task_id,
@@ -161,14 +161,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion1880Spex do
               ],
               issue_ids: [finding_id]
             },
-            context.qa_frame
+            Map.put(context.qa_frame.assigns, :scope, context.qa_frame.assigns.current_scope)
           )
 
         {:ok, Map.put(context, :qa_response, response)}
       end
 
       then_ "the failed attempt is recorded and the original issue remains open", context do
-        refute context.qa_response.isError, response_text(context.qa_response)
+        assert match?({:ok, _}, context.qa_response), response_text(context.qa_response)
         assert is_binary(extract_attempt_id!(context.qa_response))
 
         {:reply, response, _} =

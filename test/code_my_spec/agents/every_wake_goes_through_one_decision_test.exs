@@ -6,6 +6,8 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import Ecto.Query
@@ -19,7 +21,6 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Agents.Tools.MessageAgent
   alias CodeMySpec.McpServers.Devops.Starter
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Notifications
@@ -237,17 +238,18 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
 
       frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: main.id}}
 
-      {:reply, response, _frame} =
-        MessageAgent.execute(%{agent_id: coding.id, message: "use postgres"}, frame)
+      response =
+        ToolLibrary.run(
+          "message_agent",
+          %{agent_id: coding.id, message: "use postgres"},
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        )
 
-      refute response.isError
+      assert {:ok, text} = response
       coding_id = coding.id
       assert_received {:agent_dispatch, ^coding_id, ref, "use postgres"}
       assert is_binary(ref)
       refute_received {:agent_message, _, _}
-
-      text =
-        response |> Response.to_protocol() |> Map.fetch!("content") |> Enum.map_join(& &1["text"])
 
       assert text =~ request.id
       assert text =~ "answer_notification"
@@ -258,10 +260,15 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
       coding = agent(ctx, :coding)
       frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: main.id}}
 
-      {:reply, response, _frame} =
-        MessageAgent.execute(%{agent_id: coding.id, message: "carry on"}, frame)
+      response =
+        ToolLibrary.run(
+          "message_agent",
+          %{agent_id: coding.id, message: "carry on"},
+          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        )
 
-      refute response |> Response.to_protocol() |> inspect() =~ "answer_notification"
+      assert {:ok, text} = response
+      refute text =~ "answer_notification"
     end
   end
 end

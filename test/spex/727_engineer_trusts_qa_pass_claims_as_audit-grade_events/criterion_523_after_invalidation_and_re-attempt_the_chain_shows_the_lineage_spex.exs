@@ -11,15 +11,16 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
   parent links observable via `list_qa_attempts`.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (write x3)
-  - `CodeMySpec.McpServers.Qa.Tools.InvalidateQaAttempt`
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (observe chain)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (write x3)
+  - `CodeMySpec.Qa.Tools.InvalidateQaAttempt`
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (observe chain)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,30 +34,32 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
 
         attempt_ids =
           for marker <- ["first", "second"] do
-            {:reply, response, _frame} =
-              SubmitQaResult.execute(
+            response =
+              ToolLibrary.run(
+                "submit_qa_result",
                 %{
                   task_id: context.task_id,
                   status: "pass",
                   scenarios: [%{name: marker, status: "pass", observation: marker}],
                   issue_ids: []
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
               )
 
-            refute response.isError
+            assert match?({:ok, _}, response)
             extract_attempt_id!(response_text(response))
           end
 
         [_first_id, second_id] = attempt_ids
 
-        {:reply, invalidate_response, _frame} =
-          InvalidateQaAttempt.execute(
+        invalidate_response =
+          ToolLibrary.run(
+            "invalidate_qa_attempt",
             %{attempt_id: second_id, reason: "Discovered a missed probe"},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute invalidate_response.isError
+        assert match?({:ok, _}, invalidate_response)
 
         {:ok, Map.put(context, :prior_attempt_ids, attempt_ids)}
       end
@@ -64,18 +67,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
       when_ "the agent submits a third attempt", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "third", status: "pass", observation: "third"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         third_id = extract_attempt_id!(response_text(response))
 
         {:ok, Map.put(context, :third_id, third_id)}
@@ -85,10 +89,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6458Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         text = response_text(response)
 
         [first_id, second_id] = context.prior_attempt_ids

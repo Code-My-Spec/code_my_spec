@@ -1,0 +1,58 @@
+[
+  {
+    "name": "init_project",
+    "description": "Link this working directory to a CodeMySpec project.\n\nFetches project details from the server and creates/updates the local\ndatabase record with `local_path` set to the working directory.\n",
+    "input_schema": {
+      "properties": {
+        "project_id": {
+          "description": "UUID of the project to link (from list_projects)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "project_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "install_agents_md",
+    "description": "Generate and write .code_my_spec/AGENTS.md for the project.\n\nDetects the app name from mix.exs and writes a project-specific agent guide.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "install_claude_md",
+    "description": "Create or update the managed section in CLAUDE.md at the project root.\n\nPreserves existing content — only the managed section (between HTML comment\nmarkers) is created or updated. Idempotent.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "install_credo_checks",
+    "description": "Install Credo custom checks into the project.\n\nCreates `.code_my_spec/credo_checks/{framework,local}/` and copies the\nframework checks shipped in the harness's `priv/credo_checks/` into\nthe project's `framework/` directory. The `local/` directory is left\nempty for project-specific checks.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "install_rules",
+    "description": "Copy default rule files into the project's .code_my_spec/rules/ directory.\n\nOnly copies files that don't already exist, preserving user customizations.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_projects",
+    "description": "List available CodeMySpec projects.\n\nReturns the projects accessible to the authenticated user. Use the\nproject_id from the results to call `init_project` and link your\nworking directory.\n",
+    "input_schema": {
+      "properties": {},
+      "type": "object"
+    }
+  }
+]

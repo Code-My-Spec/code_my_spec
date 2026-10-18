@@ -15,9 +15,10 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Bootstrap.Tools.InstallRules
   alias CodeMySpecSpex.Fixtures
 
   @rules_dir ".code_my_spec/rules"
@@ -25,7 +26,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/", criterion: 457 do
+  spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/",
+    criterion: 457 do
     scenario "First install copies every framework rule into .code_my_spec/rules/" do
       given_ "the working directory has no .code_my_spec/rules/ directory", context do
         # Absent and present-but-empty both mean "no rules installed yet", which
@@ -48,7 +50,14 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
 
       when_ "the agent calls install_rules", context do
         frame = %Frame{assigns: %{working_dir: context.scope.cwd, current_scope: context.scope}}
-        {:reply, response, _frame} = InstallRules.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "install_rules",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
         {:ok, Map.put(context, :install_response, response)}
       end
 

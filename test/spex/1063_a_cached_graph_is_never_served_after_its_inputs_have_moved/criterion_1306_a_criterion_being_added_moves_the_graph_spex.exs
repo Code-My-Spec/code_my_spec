@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ProjectStateFixtures
 
@@ -46,16 +44,17 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: story.number},
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, rule_response, _frame} =
-          AddRule.execute(
+        rule_response =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: story.number, statement: "The thing holds."},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute rule_response.isError, inspect(rule_response)
+        assert match?({:ok, _}, rule_response), inspect(rule_response)
 
         before = read_settled_graph(context)
 
@@ -77,8 +76,9 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
       when_ "a scenario is added under that rule", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AddScenario.execute(
+        response =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.new_story.number,
               rule_statement: "The thing holds.",
@@ -86,10 +86,10 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
               kind: "happy_path",
               body: "Given a thing\nWhen it is used\nThen it holds"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the criterion must really be added for this to mean anything:\n" <>
                  inspect(response)
 

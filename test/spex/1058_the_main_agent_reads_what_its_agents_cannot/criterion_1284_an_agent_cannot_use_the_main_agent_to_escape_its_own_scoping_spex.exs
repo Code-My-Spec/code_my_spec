@@ -35,12 +35,13 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Qa.Tools.ListQaAttempts
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -133,8 +134,12 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
       then_ "and the reason the role does not carry it still holds", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, attempts, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        attempts =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         refute response_text(attempts) =~ ~r/\bpass(ed|ing)?\b/i,
                """

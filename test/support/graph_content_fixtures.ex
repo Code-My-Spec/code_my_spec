@@ -294,7 +294,9 @@ defmodule CodeMySpecSpex.GraphContentFixtures do
 
   defp liveview_component_spec_content(module_name, opts) do
     deps = Keyword.get(opts, :dependencies, [])
-    description = Keyword.get(opts, :description, "Test liveview_component for graph topology specs.")
+
+    description =
+      Keyword.get(opts, :description, "Test liveview_component for graph topology specs.")
 
     """
     # #{module_name}

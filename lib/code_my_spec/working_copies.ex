@@ -240,6 +240,27 @@ defmodule CodeMySpec.WorkingCopies do
 
   def environment(_scope), do: nil
 
+  @doc """
+  The environment a tool that touches files uses: the caller's working copy,
+  else the directory a stdio server was started in, else nil. Nil means the
+  tool must not touch a filesystem; see `McpServers.Validators.mcp_working_dir/1`
+  for why guessing is worse than refusing.
+  """
+  @spec tool_environment(Scope.t() | nil) :: Environment.t() | nil
+  def tool_environment(%Scope{active_working_copy_id: id} = scope) when not is_nil(id),
+    do: environment(scope)
+
+  def tool_environment(_scope) do
+    case configured_working_dir() do
+      nil -> nil
+      dir -> Environment.new(:local, dir)
+    end
+  end
+
+  @doc "The working directory a stdio server was started in (`CMS_MCP_WORKING_DIR`), or nil."
+  @spec configured_working_dir() :: String.t() | nil
+  def configured_working_dir, do: Application.get_env(:code_my_spec, :mcp_working_dir)
+
   @doc "The name of the machine a working copy is on, or nil when it has none on record."
   @spec machine_name(term()) :: String.t() | nil
   def machine_name(working_copy_id) do

@@ -43,9 +43,9 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   import ExUnit.Assertions
   import Phoenix.ChannelTest, only: [subscribe_and_join: 4]
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
-  alias CodeMySpec.McpServers.Agents.Tools.RetireAgent
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.ListIssues
@@ -231,7 +231,13 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec stop(map(), String.t()) :: :ok
   def stop(context, agent_id) do
-    {:reply, _response, _} = RetireAgent.execute(%{agent_id: agent_id}, frame(context))
+    _response =
+      ToolLibrary.run(
+        "retire_agent",
+        %{agent_id: agent_id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns.current_scope)
+      )
+
     :ok
   end
 
@@ -900,6 +906,8 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   @doc "A frame carrying this scope, as a connected agent's call arrives with."
   @spec frame(map()) :: Frame.t()
   def frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
+
+  defp text({_status, text}) when is_binary(text), do: text
 
   defp text(response) do
     response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")

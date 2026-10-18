@@ -21,11 +21,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.AddRule
-  alias CodeMySpec.McpServers.BddRules.Tools.AddScenario
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
@@ -41,14 +41,16 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         rule_statement = "Suspended cards cannot be used for purchases"
 
-        {:reply, _add_rule, _frame} =
-          AddRule.execute(
+        _add_rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, _happy, _frame} =
-          AddScenario.execute(
+        _happy =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -56,11 +58,12 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, _failure, _frame} =
-          AddScenario.execute(
+        _failure =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.story.number,
               rule_statement: rule_statement,
@@ -68,7 +71,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5895Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
         {:ok, context}

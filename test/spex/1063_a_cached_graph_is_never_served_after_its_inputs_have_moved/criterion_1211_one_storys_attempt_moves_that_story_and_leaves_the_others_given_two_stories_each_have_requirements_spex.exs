@@ -19,10 +19,11 @@ defmodule CodeMySpecSpex.Story1063.Criterion3237Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -49,18 +50,19 @@ defmodule CodeMySpecSpex.Story1063.Criterion3237Spex do
       when_ "a QA attempt is recorded against the first story only", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "the attempt must really be recorded for this scenario to mean anything:\n" <>
                  inspect(response)
 

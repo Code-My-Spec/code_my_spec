@@ -1,0 +1,88 @@
+defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
+  @moduledoc false
+  @behaviour CodeMySpec.Tools.Tool
+
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Bootstrap.Tools.Content
+  alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
+
+  @impl true
+  def name, do: "install_claude_md"
+
+  @impl true
+  def description do
+    """
+    Create or update the managed section in CLAUDE.md at the project root.
+
+    Preserves existing content — only the managed section (between HTML comment
+    markers) is created or updated. Idempotent.
+    """
+  end
+
+  @impl true
+  def params do
+    %{}
+  end
+
+  @impl true
+  def call(_params, context) do
+    env = CodeMySpec.WorkingCopies.tool_environment(context.scope)
+
+    case install(env) do
+      :ok ->
+        BootstrapMapper.install_success("CLAUDE.md")
+
+      {:error, :no_working_copy} ->
+        BootstrapMapper.error(CodeMySpec.Tools.no_working_copy_message("install_claude_md"))
+
+      {:error, reason} ->
+        BootstrapMapper.error("Failed to install CLAUDE.md: #{inspect(reason)}")
+    end
+  end
+
+  @doc """
+  Create or refresh the managed section in `CLAUDE.md`. Public because
+  `init_project` runs it directly — see
+  `CodeMySpec.Bootstrap.Tools.Installers`.
+  """
+  # No working copy here. Refusing is the whole point: the previous behaviour
+  # was to root a `:local` environment at the server's own checkout and write
+  # there, reporting success. See `WorkingCopies.tool_environment/1`.
+  def install(nil), do: {:error, :no_working_copy}
+
+  def install(env) do
+    app_name = extract_app_name(env)
+    managed_section = Content.claude_md_content(app_name)
+    start_marker = Content.claude_md_start_marker()
+
+    case Environments.read_file(env, "CLAUDE.md") do
+      {:ok, existing} ->
+        if String.contains?(existing, start_marker) do
+          updated = replace_managed_section(existing, managed_section)
+          Environments.write_file(env, "CLAUDE.md", updated)
+        else
+          Environments.write_file(env, "CLAUDE.md", existing <> "\n" <> managed_section)
+        end
+
+      {:error, :enoent} ->
+        Environments.write_file(env, "CLAUDE.md", managed_section)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp extract_app_name(env) do
+    case Environments.read_file(env, "mix.exs") do
+      {:ok, content} -> Content.extract_app_name_from_source(content)
+      _ -> nil
+    end
+  end
+
+  defp replace_managed_section(content, managed_section) do
+    start_marker = Content.claude_md_start_marker()
+    end_marker = Content.claude_md_end_marker()
+    pattern = ~r/#{Regex.escape(start_marker)}.*#{Regex.escape(end_marker)}/s
+    String.replace(content, pattern, String.trim_trailing(managed_section))
+  end
+end

@@ -34,7 +34,13 @@ defmodule CodeMySpecSpex.Story1116.Criterion1706Spex do
 
       when_ "main asks what's erroring on uat", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        reply = ToolLibrary.run("error_summary", %{}, %{scope: frame.assigns.current_scope})
+
+        reply =
+          ToolLibrary.run(
+            "error_summary",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
         {:ok, Map.put(context, :reply, reply)}
       end

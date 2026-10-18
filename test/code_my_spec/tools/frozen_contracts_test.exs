@@ -26,8 +26,20 @@ defmodule CodeMySpec.Tools.FrozenContractsTest do
         |> Enum.sort_by(& &1.name)
         |> Jason.encode!()
         |> Jason.decode!()
+        |> normalize()
 
-      assert actual == Enum.sort_by(original, & &1["name"])
+      assert actual == original |> Enum.sort_by(& &1["name"]) |> normalize()
     end
   end
+
+  # `required` is a set in JSON Schema; its order follows map iteration.
+  defp normalize(%{"required" => required} = map) when is_list(required),
+    do:
+      map
+      |> Map.put("required", Enum.sort(required))
+      |> Map.new(fn {k, v} -> {k, normalize(v)} end)
+
+  defp normalize(map) when is_map(map), do: Map.new(map, fn {k, v} -> {k, normalize(v)} end)
+  defp normalize(list) when is_list(list), do: Enum.map(list, &normalize/1)
+  defp normalize(other), do: other
 end

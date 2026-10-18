@@ -6,8 +6,6 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Qa.Tools.ListQaAttempts
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -139,7 +137,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
     text =
       call(
         context,
-        SubmitQaResult,
+        "submit_qa_result",
         %{
           task_id: Map.fetch!(context, review_key),
           status: status,
@@ -155,7 +153,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   end
 
   def history(context),
-    do: call(context, ListQaAttempts, %{story_number: context.story.number}, :qa)
+    do: call(context, "list_qa_attempts", %{story_number: context.story.number}, :qa)
 
   def qa_requirements(context),
     do:

@@ -9,10 +9,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Agents.Tools.ListAgents
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
@@ -48,8 +49,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
         {:reply, tasks, _} = ListTasks.execute(%{session_id: session_id}, frame)
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        {:reply, agents, _} = ListAgents.execute(%{}, frame)
-        refute agents.isError, response_text(agents)
+
+        agents =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
+
+        assert match?({:ok, _}, agents), response_text(agents)
         assert response_text(agents) == "No agents are running on this project."
         {:ok, Map.merge(context, %{session_id: session_id, frame: frame})}
       end
@@ -113,8 +121,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
 
         refute tasks.isError, response_text(tasks)
         assert response_text(tasks) == "No tasks."
-        {:reply, agents, _} = ListAgents.execute(%{}, context.frame)
-        refute agents.isError, response_text(agents)
+
+        agents =
+          ToolLibrary.run(
+            "list_agents",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns.current_scope)
+          )
+
+        assert match?({:ok, _}, agents), response_text(agents)
         assert response_text(agents) == "No agents are running on this project."
         {:ok, context}
       end

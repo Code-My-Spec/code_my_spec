@@ -1,0 +1,175 @@
+[
+  {
+    "name": "call_mcp_server",
+    "description": "An MCP server driven as a client, so a QA agent can test one rather than use it.\n\nEvery other tool an agent carries *is* a capability. This one is an\ninstrument: it reaches whatever it is pointed at, and the agent is an\nordinary caller of it — its own headers, its own session, and whatever the\nfar side decides that caller may do.\n\n## Why this is not \"grant QA the tools it needs to test\"\n\nStory 1008 is the fleet — agents starting, stopping, resolving their tools —\nand `50eac6ab` records a QA session that could not test it: `list_agents`,\n`list_agent_work` and `list_working_copies` all answered \"is not a tool a qa\nagent carries\". The obvious fix is to add those three to the qa role. It was\ntried and rejected, and the reasoning generalises:\n\nGranting a tool to the role that tests it conflates the tools an agent **works\nwith** and the surface it is **testing**. Three tools for this story, the issue\ntools for the next, provisioning for the one after — and the role converges on\neverything, at which point scoping it means nothing.\n\nIt also tests the wrong thing. An agent holding a tool exercises its *own*\ndispatch of it. The defects that matter live a layer out: whether the tool is\nmounted on the HTTP scope at all, whether the token identifies the caller,\nwhether `X-Project-ID` scopes it. `50eac6ab`'s own finding was that\n`StartAgent` and `RestartAgent` \"are not mounted on the hosted /mcp HTTP scope\nat all\" — which no amount of carrying them would have revealed. John's call,\n2026-09-15.\n\n## Why it is scriptable and not a tool the agent carries\n\nStory 1038's criterion 3015: an agent carries code mode's two ways in and\n`tool_docs`, and nothing else. Every direct tool is a schema the model re-reads\non every turn to learn something it could have looked up once. A first version\nof this was a third direct tool and 3015 caught it, correctly. Reached from\n`run_script` it costs nothing until it is used, and `tool_docs` names it.\n\n## One client per call, deliberately\n\n`CmsHarness.Mcp` holds a long-lived session per agent because an agent uses\nits tools all turn. A probe is the opposite: each call should be a fresh\ncaller, because a warm session is exactly what a mounting or auth test must\nnot inherit. So a client is started, used and stopped, under a name unique to\nthe call.\n\nThat also sidesteps two traps `Mcp.Transport.Anubis` documents at length and\npays for at runtime — a leaked client holding a registered name, and Anubis\nkeying an ETS table on `client_info[\"name\"]` so two sessions sharing one name\ncannot both work. Unique names have neither problem.\n\nNothing here speaks MCP by hand: `anubis_mcp` does the handshake, holds the\nsession id and correlates replies.\n",
+    "input_schema": {
+      "properties": {
+        "arguments": {
+          "description": "Arguments for the tool. Defaults to none.",
+          "type": "object"
+        },
+        "headers": {
+          "description": "Request headers, e.g. Authorization or X-Project-ID. Sent on the session.",
+          "type": "object"
+        },
+        "path": {
+          "description": "MCP path on that server. Defaults to /mcp.",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "Milliseconds for the call. Defaults to 30000.",
+          "type": "integer"
+        },
+        "tool": {
+          "description": "Tool to call. Omit to list what the server offers.",
+          "type": "string"
+        },
+        "url": {
+          "description": "Base URL of the MCP server, e.g. http://localhost:4004",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "get_local_app_token",
+    "description": "Mint a short-lived access token for the caller's own copy's own running\napp instance, so it can be handed to `call_mcp_server` as that instance's\n`Authorization` header.\n\nb3005df9: a change whose deliverable is served by the harness itself (a new\nMCP tool, a `tool_docs` entry, a knowledge doc, a prompt) had no live route\nfor QA to exercise before promotion -- `run_script`/`tool_docs` are served\nby the harness on *main's* checkout, and the change exists only on this\ncopy until it lands. John's decision (question 0e26edb8): QA verifies such\na change by calling the *copy's own* `/mcp/harness` -- the same route, but\nserved by the app instance `ensure_app_running` started for this copy,\ncompiled from this copy's own code.\n\nReaching that instance over HTTP is not the gap: every non-main copy's app\nruns on `localhost` on this same machine (`AppInstance.database_name/1`'s\nown moduledoc: a clone of main's dev database, not a disposable copy with\nnothing in it), so the deploy key on this project's row was cloned right\nalong with it, and `call_mcp_server` can already reach any `localhost` URL.\nThe gap is auth: `/mcp/harness` sits behind `require_oauth_token`\n(`CodeMySpecWeb.Router`'s `:mcp_protected` pipeline), and nothing before\nthis handed an agent a token good against that one instance's own,\nseparate `AccessTokens` table.\n\nThis does exactly what `CmsHarness.Token` already does for the harness\nitself -- trade the project's deploy key for a token at `POST\n/api/sprite/token` (`CodeMySpecWeb.SpriteTokenController`) -- except\nagainst the URL the caller names instead of the fixed server the harness\nalways talks to, and it hands the *resulting* token back rather than\nholding it. The deploy key itself is read here and never returned: this\ntool's whole point is that the caller never needs to see it, the same\nshape `SpriteTokenController`'s own moduledoc gives for why a sprite\ntrades its key for a token rather than presenting it everywhere.\n",
+    "input_schema": {
+      "properties": {
+        "url": {
+          "description": "Base URL of the copy's own running app instance, from ensure_app_running.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "invalidate_qa_attempt",
+    "description": "Invalidate a prior passed QaAttempt.\n\nReserved for engineer-driven audit. Records an audit-stamped\ninvalidation event (who/when/why) and preserves the original\nattempt row unchanged. If no other valid pass remains on the\nstory, `qa_complete` re-clamps to unsatisfied.\n\nA non-empty `reason` is required — empty strings are rejected at\nthe tool boundary. The reason is what shows up in the QA history\nfor the next engineer to understand why the prior pass was\nrejected.\n",
+    "input_schema": {
+      "properties": {
+        "attempt_id": {
+          "description": "Id of the QaAttempt to invalidate (from a prior list_qa_attempts or submit_qa_result)",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Non-empty explanation of why this pass is being invalidated (e.g. 'Shallow probe; tools only, no curl' or 'Bypass attempt found')",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "attempt_id"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "list_qa_attempts",
+    "description": "List the QA attempt history for a story.\n\nReturns every attempt on the story, most-recent first. Each entry\ncarries the audit-grade fields: status, agent_id, scenarios (with\nobservations), linked issue_ids, parent_attempt_id (the chain\nback), submitted_at, and any invalidation event with its reason\nand the engineer who issued it.\n\nUse this to:\n\n- Review prior QA on a story before redoing it\n- Audit who invalidated a pass and why\n- Walk the chain of attempts after one or more invalidations\n",
+    "input_schema": {
+      "properties": {
+        "story_number": {
+          "description": "Story number whose QA history you want to read",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "story_number"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "submit_issue_qa_result",
+    "description": "Submit a QA outcome for an issue (story 1091).\n\nSingle tool call that ends an issue QA pass: writes an immutable attempt\nrow, and on `status: pass` resolves the issue and frees the team bound to\nit. The agent calling this is the one testing the issue — it travels on\nthe connection, same as `start_task` and `evaluate_task`.\n\nNon-pass submissions (`fail`, `partial`) **must** carry at least one issue\nid in `issue_ids`, filed via `create_issue` during the pass — same\ndiscipline as `submit_qa_result`'s story contract. A non-pass leaves the\nissue open and bound; the coder is offered it again.\n",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "description": "Issue ID being tested",
+          "type": "string"
+        },
+        "issue_ids": {
+          "description": "Issue ids filed via `create_issue` during this pass. REQUIRED when `status` is `partial` or `fail`. May be empty when `status` is `pass`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scenarios": {
+          "description": "Structured list of scenarios probed. Required fields in each entry: name, status, observation. %{name: string, status: 'pass'|'partial'|'fail', observation: string}.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "Outcome: 'pass' (resolves the issue and frees your team), 'partial', or 'fail'",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Your active qa_complete task id (from the start_task response on this issue)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "task_id",
+        "issue_id",
+        "scenarios"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "name": "submit_qa_result",
+    "description": "Submit a per-story QA outcome.\n\nFor issue-scoped qa_complete tasks, use `submit_issue_qa_result` with\nthe issue_id and task_id instead. This tool rejects issue tasks without\nrecording an attempt or closing the task.\n\nSingle tool call that ends a QA pass: validates the payload at the\nboundary, writes an immutable attempt row, and surfaces the new\n`attempt_id` for follow-up calls (e.g. `invalidate_qa_attempt`).\n\n## Discipline\n\nFindings flow through `create_issue` during execution — list their\nids in `issue_ids` so the attempt record links them. There is no\nfree-text \"findings\" field; the absence is intentional. The\n`scenarios` list is the structured record of what you actually\nprobed (name + status + observation per scenario).\n\nOnly `status: pass` satisfies the `qa_complete` requirement.\n`partial` and `fail` record an audit row but leave the requirement\nopen.\n\nNon-pass submissions (`fail`, `partial`) **must** carry at least one\nissue id in `issue_ids`. Findings have nowhere else to live; the\nlegacy result.md blob is not read by the harness. The tool returns\nan error if you try to submit a non-pass with an empty `issue_ids`\nlist.\n\nResubmitting on the same `task_id` is allowed and expected — each\ncall creates a new attempt; the latest is canonical.\n",
+    "input_schema": {
+      "properties": {
+        "issue_ids": {
+          "description": "List of issue ids filed via `create_issue` during this QA pass. REQUIRED when `status` is `partial` or `fail` — submissions with a non-pass status and an empty `issue_ids` list are rejected at the tool boundary. May be empty when `status` is `pass`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scenarios": {
+          "description": "Structured list of scenarios probed during this pass. Each entry: %{name: string, status: 'pass'|'partial'|'fail', observation: string}.",
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "status": {
+          "description": "Outcome: 'pass' (satisfies qa_complete), 'partial' (audit only), or 'fail' (audit only)",
+          "type": "string"
+        },
+        "task_id": {
+          "description": "Active QA task id (from the start_task response on a qa_complete requirement)",
+          "type": "string"
+        },
+        "tools_used": {
+          "description": "Which tools you actually called while gathering this evidence — e.g. ['browser_navigate', 'browser_click', 'browser_get_text']. Self-reported and not independently checked, same as the scenario observations beside it: this exists so 'did this pass drive a browser' is a query afterward instead of an inference from adjectives. Report what you called, not what the story required — an empty list on a browser-required story is itself the finding, not something to round up.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "task_id",
+        "scenarios"
+      ],
+      "type": "object"
+    }
+  }
+]

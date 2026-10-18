@@ -66,7 +66,6 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.BddRules.Tools.{AddRule, AddScenario}
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.{Fixtures, ProjectStateFixtures}
 
@@ -89,16 +88,17 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: touched.number},
-            %{scope: frame.assigns.current_scope}
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        {:reply, rule, _frame} =
-          AddRule.execute(
+        rule =
+          ToolLibrary.run(
+            "add_rule",
             %{story_number: touched.number, statement: "The thing holds."},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute rule.isError, inspect(rule)
+        assert match?({:ok, _}, rule), inspect(rule)
 
         _warm = read_settled_graph(context)
 
@@ -125,8 +125,9 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
       when_ "a scenario is added to the first story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, added, _frame} =
-          AddScenario.execute(
+        added =
+          ToolLibrary.run(
+            "add_scenario",
             %{
               story_number: context.touched_number,
               rule_statement: "The thing holds.",
@@ -134,10 +135,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3424Spex do
               kind: "happy_path",
               body: "Given a thing\nWhen it is used\nThen it holds"
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute added.isError, inspect(added)
+        assert match?({:ok, _}, added), inspect(added)
 
         {:ok, Map.put(context, :after, read_settled_graph(context))}
       end

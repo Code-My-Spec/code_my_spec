@@ -96,7 +96,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
     end
 
     test "install refuses rather than writing somewhere else" do
-      alias CodeMySpec.McpServers.Bootstrap.Tools
+      alias CodeMySpec.Bootstrap.Tools
 
       for tool <- [
             Tools.InstallAgentsMd,

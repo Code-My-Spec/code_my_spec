@@ -12,13 +12,13 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   import ExUnit.Assertions
   import CodeMySpecSpex.TaskResponseHelpers
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Issues.Tools.GetIssue
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitIssueQaResult
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   def qa_passes_it(context) do
     task_id = take(context, context.qa, "qa_complete")
 
-    call(frame(context, context.qa), SubmitIssueQaResult, %{
+    call(frame(context, context.qa), "submit_issue_qa_result", %{
       issue_id: context.issue_id,
       task_id: task_id,
       status: "pass",
@@ -149,6 +149,15 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
 
   defp frame(context, agent),
     do: %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
+
+  defp call(frame, name, params) when is_binary(name) do
+    context = Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+
+    case ToolLibrary.run(name, params, context) do
+      {:ok, text} -> text
+      {:error, text} -> flunk("#{name} refused: #{text}")
+    end
+  end
 
   defp call(frame, tool, params) do
     {:reply, response, _frame} = tool.execute(params, frame)

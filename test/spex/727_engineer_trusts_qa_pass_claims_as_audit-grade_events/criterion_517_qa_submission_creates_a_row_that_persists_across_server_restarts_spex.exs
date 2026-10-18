@@ -11,14 +11,15 @@ defmodule CodeMySpecSpex.Story727.Criterion6452Spex do
   later."
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (write)
-  - `CodeMySpec.McpServers.Qa.Tools.ListQaAttempts` (read-back)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (write)
+  - `CodeMySpec.Qa.Tools.ListQaAttempts` (read-back)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -36,18 +37,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6452Spex do
       when_ "the agent submits a QA outcome with status pass", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, Map.put(context, :submit_response, response)}
       end
 
@@ -55,10 +57,14 @@ defmodule CodeMySpecSpex.Story727.Criterion6452Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, list_response, _frame} =
-          ListQaAttempts.execute(%{story_number: context.story.number}, frame)
+        list_response =
+          ToolLibrary.run(
+            "list_qa_attempts",
+            %{story_number: context.story.number},
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          )
 
-        refute list_response.isError
+        assert match?({:ok, _}, list_response)
         text = response_text(list_response)
 
         assert text =~ "pass"

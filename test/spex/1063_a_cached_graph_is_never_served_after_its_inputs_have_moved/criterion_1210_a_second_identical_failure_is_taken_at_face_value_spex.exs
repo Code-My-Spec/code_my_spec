@@ -20,12 +20,13 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.StorySliceHelpers
 
@@ -112,21 +113,22 @@ defmodule CodeMySpecSpex.Story1063.Criterion3236Spex do
   defp submit(context, task_id, status) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      SubmitQaResult.execute(
+    response =
+      ToolLibrary.run(
+        "submit_qa_result",
         %{
           task_id: task_id,
           status: status,
           scenarios: [%{name: "smoke", status: status, observation: "the same observation"}],
           issue_ids: [context.issue_id]
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
       )
 
     # A rejected submit would make the whole scenario vacuous — "the graph did
     # not move" is trivially true if nothing was recorded. Fail here instead,
     # where the reason is visible.
-    refute response.isError,
+    assert match?({:ok, _}, response),
            "submit_qa_result was rejected, so this scenario never recorded an attempt:\n" <>
              inspect(response)
 

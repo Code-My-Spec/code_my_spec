@@ -9,15 +9,16 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
   has no influence on the requirement decision.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Qa.Tools.SubmitQaResult` (write)
+  - `CodeMySpec.Qa.Tools.SubmitQaResult` (write)
   - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
     (observe satisfaction)
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,18 +36,19 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
       when_ "the agent submits a QA outcome with status pass", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          SubmitQaResult.execute(
+        response =
+          ToolLibrary.run(
+            "submit_qa_result",
             %{
               task_id: context.task_id,
               status: "pass",
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
           )
 
-        refute response.isError
+        assert match?({:ok, _}, response)
         {:ok, context}
       end
 
