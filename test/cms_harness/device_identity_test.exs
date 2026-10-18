@@ -8,6 +8,14 @@ defmodule CmsHarness.DeviceIdentityTest do
 
   setup do
     scope = full_scope_fixture()
+
+    CodeMySpec.Repo.get_by!(CodeMySpec.Accounts.Member,
+      user_id: scope.user.id,
+      account_id: scope.active_account_id
+    )
+    |> CodeMySpec.Accounts.Member.update_role_changeset(%{role: :owner})
+    |> CodeMySpec.Repo.update!()
+
     token = "dk_device_identity_#{System.unique_integer([:positive])}"
 
     {:ok, _project} =

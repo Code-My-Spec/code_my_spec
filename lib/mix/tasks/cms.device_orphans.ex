@@ -1,189 +1,139 @@
 defmodule Mix.Tasks.Cms.DeviceOrphans do
-  @shortdoc "List (and, with --commit, remove) devices no working copy sits on"
-
+  @shortdoc "List or back up and remove devices with no working copies"
   @moduledoc """
-  Issue 2dd9a959: one real laptop with thousands of `devices` rows.
+  Uses CodeMySpec.Repo's configured database in the selected MIX_ENV.
+  Never substitutes a development database. Read-only unless --commit is given.
 
-      MIX_ENV=test mix cms.device_orphans
+      mix cms.device_orphans --account ACCOUNT_UUID
+      mix cms.device_orphans --account ACCOUNT_UUID --commit --backup backup.json
 
-  Root cause (fixed separately, `CmsHarness.Device.machine_fingerprint/0`):
-  every `Workspaces.Runner.Local`-booted workspace runs its own embedded
-  harness, with its own `device.json` that never shares the laptop's real
-  `~/.codemyspec` one by design (see `CmsHarness.Config.local_state_dir/0`).
-  Each one minted its own id from whichever network interface happened to
-  sort lowest, including several locally-administered, non-hardware
-  addresses that come and go with whatever peripheral is paired — a
-  different one most boots, so most boots announced as a brand-new machine.
+  Without --account, scans all account-owned devices. Accountless devices are
+  left alone. A commit requires a new backup file; existing files are never
+  overwritten. Backups contain every device field, including tunnel credentials,
+  and are written with owner-only permissions. Keep them secure.
 
-  This cleans up what that already produced. "Orphan" means exactly one
-  thing: zero `working_copies` reference the device, checked through
-  `WorkingCopies.ids_by_device/1` rather than a hostname guess — a
-  device sharing a hostname with a real one is not evidence either way, only
-  an empty `working_copies` list is. `destroy/2`'s own moduledoc says why
-  that check has to be exact: a device *with* working copies attached
-  cascades them away with it (migration `20260830120000`).
-
-  Read-only by default — lists what it would remove, grouped by account.
-  `--commit` backs up every row it is about to touch to a timestamped JSON
-  file in the current directory, then removes each one through
-  `CodeMySpec.Devices.destroy/2` (never a bulk query), reporting any it
-  could not.
-
-  Run under `MIX_ENV=test`: it points `CodeMySpec.Repo` at `code_my_spec_dev`
-  but builds against test artifacts, the same reasoning `cms.provisioning_leaks`
-  gives for the same seam — it never contends for the dev compile lock the
-  running `:4000` server holds.
+  Device rows are locked before checking working-copy references, preventing a
+  concurrent attachment from being cascaded away by cleanup. A failed backup
+  aborts deletion. cleanup/3 accepts a repo and scope for sandboxed tests.
   """
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query
 
-  alias CodeMySpec.Devices
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @impl Mix.Task
   def run(args) do
-    commit? = "--commit" in args
+    {opts, rest, invalid} =
+      OptionParser.parse(args, strict: [commit: :boolean, account: :string, backup: :string])
 
-    Logger.configure(level: :warning)
-    {:ok, _} = Application.ensure_all_started(:code_my_spec)
-    :ok = start_dev_repo()
+    if rest != [] or invalid != [], do: Mix.raise("Invalid cleanup arguments")
+    scope = account_scope(Keyword.get(opts, :account))
+    Mix.Task.run("app.config")
+    config = configured_repo!(Repo.config())
+    Mix.Task.run("app.start")
 
-    orphans_by_account = orphans_by_account()
-    total = orphans_by_account |> Map.values() |> List.flatten() |> length()
+    # Preserve the configured destination; only the connection pool is changed
+    # so a command-line invocation does not require an ExUnit sandbox owner.
+    {:ok, pid} =
+      Repo.start_link(
+        Keyword.merge(config, name: nil, pool: DBConnection.ConnectionPool, pool_size: 1)
+      )
 
-    if total == 0 do
-      Mix.shell().info("No orphaned devices found.")
-    else
-      report(orphans_by_account, total)
+    previous = Repo.get_dynamic_repo()
 
-      if commit? do
-        backup_path = backup!(orphans_by_account)
-        Mix.shell().info("\nBacked up #{total} rows to #{backup_path}")
-        destroy_all(orphans_by_account)
-      else
-        Mix.shell().info("\nRe-run with --commit to back up and remove these.")
-      end
+    try do
+      Repo.put_dynamic_repo(pid)
+      result = cleanup(Repo, scope, opts)
+      report(result)
+    after
+      Repo.put_dynamic_repo(previous)
+      Supervisor.stop(pid)
     end
   end
 
-  # Mirrors `Mix.Tasks.Cms.ProvisioningLeaks.start_dev_repo/0` exactly — same
-  # seam, same reasoning: a dynamically-named second connection so this never
-  # fights the running dev server for its one configured repo name.
-  defp start_dev_repo do
-    config =
-      :code_my_spec
-      |> Application.get_env(Repo, [])
-      |> Keyword.merge(
-        name: :device_orphans_dev_repo,
-        database: "code_my_spec_dev",
-        pool: DBConnection.ConnectionPool,
-        pool_size: 1,
-        log: false
-      )
-
-    case Repo.start_link(config) do
-      {:ok, _} -> Repo.put_dynamic_repo(:device_orphans_dev_repo)
-      {:error, {:already_started, _}} -> Repo.put_dynamic_repo(:device_orphans_dev_repo)
-    end
-
-    :ok
-  end
-
-  # Every account that has a device at all, including the shared, accountless
-  # case — `Devices.list_devices/1` itself answers `[]` for a scope with no
-  # account, so there is nothing to sweep there and nothing to skip either.
-  defp account_ids do
-    Repo.all(
-      from(d in "devices",
-        where: not is_nil(d.account_id),
-        distinct: true,
-        select: type(d.account_id, :binary_id)
-      )
-    )
-  end
-
-  defp orphans_by_account do
-    for account_id <- account_ids(),
-        orphans = orphans_for(account_id),
-        orphans != [],
-        into: %{},
-        do: {account_id, orphans}
-  end
-
-  defp orphans_for(account_id) do
-    devices = Devices.list_devices(%Scope{active_account_id: account_id})
-    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
-
-    Enum.filter(devices, &orphan?(Map.get(copies, &1.id, [])))
-  end
-
-  # Public and `@doc false`, the same seam `ProvisioningLeaks.leaked?/1` uses:
-  # the one fact this whole task must get right, worth proving directly
-  # against a device's copies rather than only through a live query. Zero
-  # working copies, not a hostname match — a device sharing a hostname with a
-  # real one is not evidence either way.
   @doc false
-  @spec orphan?([Ecto.UUID.t()]) :: boolean()
+  def configured_repo!(config) do
+    case Keyword.get(config, :database) do
+      database when is_binary(database) and byte_size(database) > 0 -> config
+      _ -> raise ArgumentError, "Cleanup requires an explicitly configured database"
+    end
+  end
+
+  defp account_scope(nil), do: :all
+
+  defp account_scope(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> %Scope{active_account_id: id}
+      :error -> Mix.raise("--account must be an account UUID")
+    end
+  end
+
+  @doc "List or remove orphan devices in a supplied repo and account scope."
+  def cleanup(repo, scope, opts \\ []) do
+    query = scoped_devices(scope)
+
+    if Keyword.get(opts, :commit, false) do
+      path = Keyword.fetch!(opts, :backup)
+
+      repo.transaction(fn ->
+        devices = repo.all(from d in query, order_by: d.id, lock: "FOR UPDATE")
+        orphans = without_copies(repo, devices)
+        remove_backed_up(repo, orphans, path)
+      end)
+    else
+      devices = repo.all(query) |> then(&without_copies(repo, &1))
+      {:ok, %{devices: devices, removed: 0, backup: nil}}
+    end
+  end
+
+  defp scoped_devices(:all), do: from(d in Device, where: not is_nil(d.account_id))
+
+  defp scoped_devices(%Scope{active_account_id: id}) when is_binary(id),
+    do: from(d in Device, where: d.account_id == ^id)
+
+  defp without_copies(repo, devices) do
+    ids = Enum.map(devices, & &1.id)
+
+    attached =
+      repo.all(from w in WorkingCopy, where: w.device_id in ^ids, select: w.device_id)
+      |> MapSet.new()
+
+    Enum.reject(devices, &MapSet.member?(attached, &1.id))
+  end
+
+  defp remove_backed_up(_repo, [], _path), do: %{devices: [], removed: 0, backup: nil}
+
+  defp remove_backed_up(repo, devices, path) do
+    rows = Enum.map(devices, &Map.take(&1, Device.__schema__(:fields)))
+    backup!(path, Jason.encode!(rows, pretty: true) <> "\n")
+    Enum.each(devices, &repo.delete!/1)
+    %{devices: devices, removed: length(devices), backup: path}
+  end
+
+  defp backup!(path, content) do
+    file = File.open!(path, [:write, :binary, :exclusive])
+
+    try do
+      File.chmod!(path, 0o600)
+      :ok = IO.binwrite(file, content)
+      :ok = :file.sync(file)
+    after
+      :ok = File.close(file)
+    end
+  end
+
+  @doc false
   def orphan?(copy_ids) when is_list(copy_ids), do: copy_ids == []
 
-  defp report(orphans_by_account, total) do
-    Mix.shell().info(
-      "#{total} orphaned device(s) across #{map_size(orphans_by_account)} account(s):\n"
-    )
-
-    for {account_id, devices} <- orphans_by_account do
-      Mix.shell().info("  account #{account_id} (#{length(devices)}):")
-
-      devices
-      |> Enum.group_by(& &1.hostname)
-      |> Enum.each(fn {hostname, group} ->
-        Mix.shell().info("    #{inspect(hostname)}: #{length(group)}")
-      end)
-    end
+  defp report({:ok, %{devices: devices, removed: removed, backup: backup}}) do
+    Mix.shell().info("#{length(devices)} orphaned device(s); #{removed} removed")
+    if backup, do: Mix.shell().info("Backup: #{backup}")
   end
 
-  defp backup!(orphans_by_account) do
-    path = "device_orphans_backup_#{timestamp()}.json"
-
-    rows =
-      for {account_id, devices} <- orphans_by_account,
-          device <- devices do
-        %{
-          id: device.id,
-          hostname: device.hostname,
-          label: device.label,
-          kind: device.kind,
-          account_id: account_id,
-          last_seen_at: device.last_seen_at,
-          inserted_at: device.inserted_at,
-          updated_at: device.updated_at
-        }
-      end
-
-    File.write!(path, Jason.encode!(rows, pretty: true) <> "\n")
-    path
-  end
-
-  defp timestamp, do: DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(~r/[:.]/, "-")
-
-  defp destroy_all(orphans_by_account) do
-    for {account_id, devices} <- orphans_by_account do
-      scope = %Scope{active_account_id: account_id}
-
-      for device <- devices do
-        destroy_device(scope, device)
-      end
-    end
-  end
-
-  defp destroy_device(scope, device) do
-    case Devices.destroy(scope, device) do
-      {:ok, _} -> Mix.shell().info("    removed #{device.id} (#{device.hostname})")
-      {:error, reason} -> Mix.shell().error("    FAILED  #{device.id}: #{inspect(reason)}")
-    end
-  end
+  defp report({:error, reason}), do: Mix.raise("Cleanup failed: #{inspect(reason)}")
 end
