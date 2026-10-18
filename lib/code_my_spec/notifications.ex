@@ -1222,7 +1222,11 @@ defmodule CodeMySpec.Notifications do
 
       # Released and woken through the one path every blocker takes. An
       # override of an answer whose task already moved on releases nothing.
-      {:ok, released} = TaskOwner.blocker_resolved(:question, updated.id, :answered)
+      # The answer rides in the resume notice of a task it releases (2175).
+      {:ok, released} =
+        TaskOwner.blocker_resolved(:question, updated.id, :answered,
+          detail: answered(updated)
+        )
       deliver_answer_content(updated, released > 0)
       tell_escalator(updated)
       {:ok, updated}
@@ -1302,20 +1306,21 @@ defmodule CodeMySpec.Notifications do
   # What the agent reads mid-turn. Self-contained, because it is arriving in
   # the middle of something else: a reply without its question is a line of
   # dialogue with no idea what it answers.
-  defp answer_message(%{questions: questions, answers: answers} = request, agent) do
-    body =
-      Enum.map_join(questions, "\n\n", fn question ->
-        text = MapAccess.get(question, :question)
-        "Q: #{text}\nA: #{said(answers, text)}"
-      end)
-
+  defp answer_message(request, agent) do
     """
     The user answered your question.
 
-    #{body}
+    #{answer_body(request)}
 
     #{answer_closing(request, TaskOwner.active_task(agent))}
     """
+  end
+
+  defp answer_body(%{questions: questions, answers: answers}) do
+    Enum.map_join(questions, "\n\n", fn question ->
+      text = MapAccess.get(question, :question)
+      "Q: #{text}\nA: #{said(answers, text)}"
+    end)
   end
 
   defp answer_closing(%{task_id: nil}, _active),
@@ -1478,6 +1483,20 @@ defmodule CodeMySpec.Notifications do
     |> where([p], p.agent_id == ^agent_id and p.status == "pending")
     |> Repo.exists?()
   end
+
+  @doc """
+  What the user answered to this question, as its resume notice carries it,
+  or nil when it is not answered. An answer offer's later rung repeats it.
+  """
+  @spec answer_detail(String.t()) :: String.t() | nil
+  def answer_detail(question_id) do
+    case get_question_request(question_id) do
+      %QuestionRequest{answers: answers} = request when not is_nil(answers) -> answered(request)
+      _unanswered -> nil
+    end
+  end
+
+  defp answered(request), do: "The user answered your question.\n\n" <> answer_body(request)
 
   @doc """
   Get a question request by ID, or nil.

@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Notifications
   alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -707,10 +708,20 @@ defmodule CodeMySpec.Agents.Work do
     base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
 
     case rung(agent, :unblocked, "task", id) do
-      :remind -> base <> "\n\n" <> remind()
+      :remind -> base <> answer(tasks) <> "\n\n" <> remind()
       _first -> base
     end
   end
+
+  # An answer offer's second rung is the answer with the task it unblocks
+  # (criterion 2175): the first said the answer, this repeats it beside the task.
+  defp answer([%{blocker_type: :question, blocker_id: id}]),
+    do: answer_text(Notifications.answer_detail(id))
+
+  defp answer(_tasks), do: ""
+
+  defp answer_text(nil), do: ""
+  defp answer_text(text), do: "\n\n" <> text
 
   # Matches TaskOwner.resolved_header/1's own format for {:tap_out, id, :denied}
   # exactly, so a later rung of the same offer (this path) reads the same as
