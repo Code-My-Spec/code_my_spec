@@ -69,15 +69,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       # harness exists — the sync targets the most recently active working copy,
       # so establishing the rival first would file these files under it.
       given_ :synced_context_component
-      given_ :on_configuration_page
-
-      given_ "the project blocks on failing tests", context do
-        context.config_live
-        |> form("[data-test='configuration-form']", configuration: %{exunit: "block_all"})
-        |> render_submit()
-
-        {:ok, context}
-      end
 
       given_ "two agents are serving the same project from different working copies",
              context do

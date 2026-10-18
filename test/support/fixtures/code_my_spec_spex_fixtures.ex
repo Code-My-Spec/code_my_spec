@@ -2821,21 +2821,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Set an analyzer's blocking mode.
-
-  `:block_all` isolates the question a freshness scenario is asking. The default
-  is `:block_changed`, which additionally scopes blocking to files touched this
-  turn — real behaviour, and a different rule; leaving it on would make a
-  freshness scenario pass or fail for reasons that have nothing to do with
-  freshness.
-  """
-  def set_analyzer_mode(%Scope{} = scope, field, mode) do
-    CodeMySpec.Configurations.get_or_create(scope)
-    {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
-    config
-  end
-
-  @doc """
   The question id out of what `AskUserQuestion` answered.
 
   The tool reports it in prose — "Question id: <uuid>" — because its reader is

@@ -21,7 +21,6 @@ defmodule CodeMySpec.Problems do
 
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
-  defdelegate watermark(scope), to: ProblemRepository
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
 

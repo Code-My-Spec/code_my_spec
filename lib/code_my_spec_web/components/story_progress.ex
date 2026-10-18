@@ -8,6 +8,10 @@ defmodule CodeMySpecWeb.StoryProgress do
   since a component cannot subscribe on its own. Graph updates rather than task
   completions: a task finishing changes nothing here until the graph is
   recomputed, and the recompute is what broadcasts.
+
+  The count is a full graph read, so it loads off the LiveView process. Inline,
+  each pie would hold the cockpit's join and every graph update for seconds, and
+  a join that outlasts the client's timeout reloads the page.
   """
 
   use CodeMySpecWeb, :live_component
@@ -24,11 +28,23 @@ defmodule CodeMySpecWeb.StoryProgress do
         changed?(socket, :story_id) or changed?(socket, :working_copy_id)
 
     if stale? do
-      {:ok, assign(socket, :progress, progress(socket.assigns))}
+      args = Map.take(socket.assigns, [:scope, :story_id, :working_copy_id])
+
+      {:ok,
+       socket
+       |> assign_new(:progress, fn -> {0, 0} end)
+       |> start_async(:progress, fn -> progress(args) end)}
     else
       {:ok, socket}
     end
   end
+
+  # A failed load keeps the last count rather than blanking the pie.
+  @impl true
+  def handle_async(:progress, {:ok, progress}, socket),
+    do: {:noreply, assign(socket, :progress, progress)}
+
+  def handle_async(:progress, {:exit, _reason}, socket), do: {:noreply, socket}
 
   defp progress(%{scope: scope, story_id: story_id, working_copy_id: copy_id}),
     do: Requirements.story_progress(%{scope | active_working_copy_id: copy_id}, story_id)
@@ -58,8 +74,7 @@ defmodule CodeMySpecWeb.StoryProgress do
         )
       ]}
       aria-label={"Show the requirements graph: #{@done} of #{@total} satisfied"}
-    >
-    </button>
+    ></button>
     """
   end
 

@@ -12,24 +12,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   alias CodeMySpec.WorkingCopies
 
   @doc """
-  One cheap read answering "has anything changed, and is there anything to say".
-
-  Returns `{count, latest_change}` for this working copy — a count and the most
-  recent `updated_at` across its problems, in a single indexed query.
-
-  Exists for `Analysis.Alert`, which runs before every tool call: loading
-  problems to decide whether to stay silent would tax every call.
-  """
-  @spec watermark(Scope.t()) :: {non_neg_integer(), DateTime.t() | nil}
-  def watermark(%Scope{active_project_id: project_id} = scope) do
-    Problem
-    |> where([p], p.project_id == ^project_id)
-    |> scope_to_harness(scope)
-    |> select([p], {count(p.id), max(p.updated_at)})
-    |> Repo.one()
-  end
-
-  @doc """
   Retrieves problems for the active project in scope, optionally filtered by source,
   source_type, file_path, category, or severity.
 

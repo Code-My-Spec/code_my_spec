@@ -12,9 +12,9 @@ defmodule CodeMySpecSpex.Story554.Criterion5092Spex do
   that). This spec is about what the *agent sees* — the formatter
   policy, not the persistence policy.
 
-  Reuses the `pipeline_exunit_failure` cassette + JSON fixtures.
-  Configures `exunit: dont_block` so the single exunit failure is
-  demoted to advisory and the stop is allowed.
+  Reuses the `pipeline_exunit_failure` cassette + JSON fixtures. Since
+  2026-10-18 no problem blocks a stop, so the recorded exunit failure is
+  information like any other and the stop is allowed.
   """
 
   use CodeMySpecSpex.Case
@@ -34,19 +34,8 @@ defmodule CodeMySpecSpex.Story554.Criterion5092Spex do
   setup :setup_active_project
 
   spex "Allow response contains no advisory problem text", criterion: 133 do
-    scenario "dont_block demotes the failure and the response is empty" do
+    scenario "a recorded failure does not reach the allow response" do
       given_ :synced_context_component
-      given_ :on_configuration_page
-
-      given_ "exunit is set to dont_block", context do
-        context.config_live
-        |> form("[data-test='configuration-form']",
-          configuration: %{exunit: "dont_block"}
-        )
-        |> render_submit()
-
-        {:ok, context}
-      end
 
       given_ "the agent writes a failing test file", context do
         :ok = Environments.write_file(context.environment, @test_path, failing_test())
