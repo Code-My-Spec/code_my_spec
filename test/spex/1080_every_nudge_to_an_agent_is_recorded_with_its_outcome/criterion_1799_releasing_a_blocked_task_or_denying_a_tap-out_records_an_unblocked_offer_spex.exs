@@ -63,7 +63,11 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
       end
 
       then_ "the task is not also offered as a second active task", context do
-        assert active_task_ids(context) == [context.task_id]
+        # The unblocked offer is the release -- the task itself stays :blocked
+        # until the agent resumes it with start_task, so nothing here reads
+        # as active yet. "Never as a second active task" means no duplicate
+        # was created, which an empty list already shows.
+        assert active_task_ids(context) == []
         {:ok, context}
       end
     end
@@ -104,7 +108,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1799Spex do
       end
 
       then_ "the task is not also offered as a second active task", context do
-        assert active_task_ids(context) == [context.task_id]
+        assert active_task_ids(context) == []
         {:ok, context}
       end
     end
