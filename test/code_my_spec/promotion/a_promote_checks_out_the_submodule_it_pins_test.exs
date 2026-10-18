@@ -63,6 +63,7 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   defp answer(@sub, ["status", "--porcelain"]), do: {"", 0}
   defp answer(@sub, ["cat-file", "-e", @new_pin <> "^{commit}"]), do: fetched?()
   defp answer(@sub, ["-c", _cfg, "fetch" | _]), do: fetch()
+  defp answer(@sub, ["fetch", "--quiet", "origin", @new_pin]), do: origin_fetch()
   defp answer(@sub, ["checkout", "--quiet", @new_pin]), do: checkout()
   defp answer(@sub, ["rev-parse", "HEAD"]), do: {current() <> "\n", 0}
   defp answer(cd, args), do: {"unscripted: git #{Enum.join(args, " ")} in #{cd}", 1}
@@ -83,6 +84,12 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     Process.put(:fetched_exit, 0)
     {"", 0}
   end
+
+  # The docs remote holds the pin only where a test says so.
+  defp origin_fetch, do: origin_fetch(Process.get(:origin_has_pin, false))
+
+  defp origin_fetch(true), do: fetch()
+  defp origin_fetch(false), do: {"fatal: not our ref", 128}
 
   defp checkout do
     Process.put(:sub_head, @new_pin)
@@ -149,8 +156,14 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
     Promotion.promote(scope, story.number)
   end
 
-  @fetch_args ["-c", "uploadpack.allowReachableSHA1InWant=true", "fetch", "--quiet",
-               @agent <> "/.code_my_spec", @new_pin]
+  @fetch_args [
+    "-c",
+    "uploadpack.allowReachableSHA1InWant=true",
+    "fetch",
+    "--quiet",
+    @agent <> "/.code_my_spec",
+    @new_pin
+  ]
 
   # `sub_git/4` wraps a failing command's own output with the command that
   # produced it, so the reason names what was actually run, not just what it
@@ -172,14 +185,35 @@ defmodule CodeMySpec.Promotion.APromoteChecksOutTheSubmoduleItPinsTest do
   test "a commit missing from the gate copy's submodule HEAD is still fetched by its exact sha, and lands" do
     not_at_head = %{
       {@sub,
-       ["-c", "uploadpack.allowReachableSHA1InWant=true", "fetch", "--quiet",
-        @agent <> "/.code_my_spec", "HEAD"]} =>
-        {"fatal: upload-pack: not our ref HEAD", 128}
+       [
+         "-c",
+         "uploadpack.allowReachableSHA1InWant=true",
+         "fetch",
+         "--quiet",
+         @agent <> "/.code_my_spec",
+         "HEAD"
+       ]} => {"fatal: upload-pack: not our ref HEAD", 128}
     }
 
     assert {:ok, %{merged: "story/x"}} = promote(not_at_head)
 
     assert_received {:git, @sub, @fetch_args}
+    assert_receive :restarted, 2_000
+  end
+
+  # d21bf09c: the gate copy's submodule had never fetched a pin that was on the
+  # docs remote, and every docs-pointer bump was ejected at landing.
+  test "a pinned commit the promoting copy lacks is fetched from the submodule's remote, and lands" do
+    Process.put(:origin_has_pin, true)
+
+    from_remote = %{
+      {@sub, @fetch_args} => {"fatal: upload-pack: not our ref #{@new_pin}", 128}
+    }
+
+    assert {:ok, %{merged: "story/x"}} = promote(from_remote)
+
+    assert_received {:git, @sub, ["fetch", "--quiet", "origin", @new_pin]}
+    assert_received {:git, @sub, ["checkout", "--quiet", @new_pin]}
     assert_receive :restarted, 2_000
   end
 

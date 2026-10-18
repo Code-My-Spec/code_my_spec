@@ -962,14 +962,33 @@ defmodule CodeMySpec.Promotion.Steps do
         :ok
 
       _ ->
-        with {:ok, _} <- sub_git(env, sub, fetch_pinned_args(source, pinned), pinned),
+        with {:ok, _} <- fetch_pinned(env, sub, source, pinned),
              {_, 0} <- git(env, sub, ["cat-file", "-e", "#{pinned}^{commit}"]) do
           :ok
         else
-          {:error, _, _} = error -> error
+          {:error, _, _} = error ->
+            error
+
           {_, _} ->
             {:error, pinned,
              "fetched #{pinned} from #{Path.join(source, @submodule)}, which git did not provide"}
+        end
+    end
+  end
+
+  # The promoting copy first, then the submodule's own remote. A pin is pushed
+  # to the docs remote before it is committed, but the copy that promotes it
+  # (the gate copy, for a batch) need not have fetched it. A failure reports
+  # the copy's answer, the one a reader can act on.
+  defp fetch_pinned(env, sub, source, pinned) do
+    case sub_git(env, sub, fetch_pinned_args(source, pinned), pinned) do
+      {:ok, _} = fetched ->
+        fetched
+
+      from_source ->
+        case sub_git(env, sub, ["fetch", "--quiet", "origin", pinned], pinned) do
+          {:ok, _} = fetched -> fetched
+          _ -> from_source
         end
     end
   end
