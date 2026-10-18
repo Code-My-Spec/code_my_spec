@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1825Spex do
       given_ "a continuous product, its task blocked, that has asked to stop altogether",
              context do
         context = given_a_staffed_checkout(context, "spex_1825")
-        context = FullSatisfactionFixtures.apply(context)
+        context = FullSatisfactionFixtures.apply_without_three_amigos(context)
         product = Fixtures.running_agent(context.scope, role: "product", continuous: true)
         context = Map.put(context, :product, product.id)
         context = asked_about_design(context)

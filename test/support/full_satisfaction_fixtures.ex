@@ -151,6 +151,21 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   @spec apply_up_to_analysis(map()) :: map()
   def apply_up_to_analysis(context) do
     context
+    |> apply_without_three_amigos()
+    |> apply_three_amigos_artifacts()
+    |> apply_bdd_spec_file()
+    |> ProjectStateFixtures.apply_journey_artifacts()
+  end
+
+  @doc """
+  Apply every satisfaction layer EXCEPT the story's `three_amigos_complete`
+  artifacts -- the "story created, ready for design" state a scenario needs
+  when it wants to claim and hold `three_amigos_complete` itself (e.g. to
+  block that task on a question) rather than find it already satisfied.
+  """
+  @spec apply_without_three_amigos(map()) :: map()
+  def apply_without_three_amigos(context) do
+    context
     |> ProjectStateFixtures.apply_project_setup_steps()
     |> ProjectStateFixtures.apply_technical_strategy()
     |> ProjectStateFixtures.apply_code_generation()
@@ -162,9 +177,6 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> ProjectStateFixtures.apply_qa_setup()
     |> ProjectStateFixtures.apply_persona()
     |> apply_story()
-    |> apply_three_amigos_artifacts()
-    |> apply_bdd_spec_file()
-    |> ProjectStateFixtures.apply_journey_artifacts()
   end
 
   @doc """
