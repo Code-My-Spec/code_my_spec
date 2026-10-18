@@ -434,7 +434,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     "#{String.slice(commit, 0, 12)} conflicts merging onto main (#{String.slice(base, 0, 12)}) " <>
       "or a candidate ahead of it in the queue" <>
       if(files == [], do: ".", else: ", in #{Enum.join(files, ", ")}.") <>
-      " Merge main into your copy, resolve it, and promote again."
+      " Merge main into your branch, resolve it, and promote again."
   end
 
   # -- Gate -------------------------------------------------------------------
