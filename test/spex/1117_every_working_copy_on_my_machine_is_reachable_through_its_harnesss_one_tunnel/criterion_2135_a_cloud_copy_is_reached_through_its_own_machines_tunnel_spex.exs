@@ -65,7 +65,8 @@ defmodule CodeMySpecSpex.Story1117.Criterion2135Spex do
 
       then_ "the cloud copy's address is served by the cloud box's tunnel, not the Mac's",
             context do
-        for response <- context.responses, do: refute(response.isError, response_text(response))
+        for response <- context.responses,
+            do: assert(match?({:ok, _}, response), response_text(response))
 
         mac_tunnel = tunnel_carrying(context.cf, address_host(context.on_mac))
         cloud_tunnel = tunnel_carrying(context.cf, address_host(context.on_cloud))

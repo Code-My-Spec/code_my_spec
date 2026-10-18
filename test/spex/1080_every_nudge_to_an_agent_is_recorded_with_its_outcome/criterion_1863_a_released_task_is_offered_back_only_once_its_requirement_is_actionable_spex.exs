@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1863Spex do
 
       given_ "the story gained a criterion that has no spec yet", context do
         reply = add_criterion(context, context.story, "A booking can be cancelled")
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, context}
       end
 

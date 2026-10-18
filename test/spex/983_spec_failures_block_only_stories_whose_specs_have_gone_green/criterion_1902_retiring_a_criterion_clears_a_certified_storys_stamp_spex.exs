@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1902Spex do
         story = a_promotable_story(context)
 
         response = add_criterion(context, story, "It also works on Tuesdays")
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         story = Stories.get_story(context.scope, story.id)
         [second] = Enum.reject(story.criteria, &(&1.description == "It works"))
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story983.Criterion1902Spex do
 
       when_ "the second criterion is retired", context do
         response = retire_criterion(context, context.second)
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
         {:ok, context}
       end
 

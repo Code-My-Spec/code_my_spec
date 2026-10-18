@@ -50,9 +50,9 @@ defmodule CodeMySpecSpex.Story1117.Criterion2141Spex do
         context = johns_mac(context)
         copy = serving_copy(context, "/workspace/feature", context.mac, "http://127.0.0.1:41410")
         on = turn_on(context, copy)
-        refute on.isError, response_text(on)
+        assert match?({:ok, _}, on), response_text(on)
         off = turn_off(context, copy)
-        refute off.isError, response_text(off)
+        assert match?({:ok, _}, off), response_text(off)
 
         {:ok, Map.put(context, :copy, copy)}
       end

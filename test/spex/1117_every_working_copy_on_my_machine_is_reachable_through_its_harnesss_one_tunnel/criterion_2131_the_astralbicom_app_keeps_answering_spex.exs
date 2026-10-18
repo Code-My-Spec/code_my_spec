@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2131Spex do
       end
 
       then_ "a request to an astralbi.com hostname still reaches that app", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         assert {"*.astralbi.com", "http://127.0.0.1:4010"} in routes(context.cf, @dev_tunnel),
                "the astralbi route was dropped when the machine's tunnel took on the copy's address"

@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2142Spex do
       end
 
       then_ "Metric Flow's old tunnel no longer exists", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         assert "metric-flow-old" in deleted_tunnels(context.cf),
                "Metric Flow's old tunnel is still in the Cloudflare account"

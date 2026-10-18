@@ -46,11 +46,11 @@ defmodule CodeMySpec.Stories.Tools.ReleaseStoryFromWorkingCopyTest do
   defp call(scope, params, agent) do
     context = Map.put(assigns(scope, agent), :scope, scope)
 
-    case ToolLibrary.run("release_story_from_working_copy", params, context) do
-      {:ok, text} -> {false, text}
-      {:error, text} -> {true, text}
-    end
+    "release_story_from_working_copy" |> ToolLibrary.run(params, context) |> flagged()
   end
+
+  defp flagged({:ok, text}), do: {false, text}
+  defp flagged({:error, text}), do: {true, text}
 
   defp assigns(scope, agent), do: %{current_scope: scope, agent_id: agent.id}
 

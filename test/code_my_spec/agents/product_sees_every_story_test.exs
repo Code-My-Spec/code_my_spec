@@ -13,8 +13,6 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.ToolLibrary
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu

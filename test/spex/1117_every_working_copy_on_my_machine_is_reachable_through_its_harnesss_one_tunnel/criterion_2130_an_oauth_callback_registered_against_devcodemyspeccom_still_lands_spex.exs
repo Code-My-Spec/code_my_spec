@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2130Spex do
       end
 
       then_ "the copy's address and dev.codemyspec.com are on the same tunnel", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         assert tunnel_carrying(context.cf, address_host(context.copy)) == @dev_tunnel,
                "the copy's address was put on another tunnel, not the machine's"
