@@ -73,6 +73,42 @@ defmodule CmsHarness.Channel do
   end
 
   @doc """
+  Why this project's channel stopped retrying on its own, or `nil`.
+
+  A 403 on the socket upgrade (issue 62377cc3 / 620b0389) is terminal: the
+  server refused this credential, and nothing about waiting fixes that.
+  Non-nil here is the health endpoint's way of surfacing it to a person,
+  since a harness that stopped silently is indistinguishable from one that
+  is simply quiet.
+  """
+  @spec terminal_refusal(String.t()) :: String.t() | nil
+  def terminal_refusal(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :terminal_refusal, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc """
+  Resume retrying after a terminal refusal -- the only way back, since
+  `handle_disconnect/2` never reschedules one on its own. Dialing fresh
+  re-reads the credential, so this is also what "new credentials" or
+  "re-linking" resuming means in practice: call this once they are in
+  place. A channel not in a terminal state ignores this harmlessly.
+  """
+  @spec retry_now(String.t()) :: :ok
+  def retry_now(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, :retry_now)
+      [] -> :ok
+    end
+
+    :ok
+  end
+
+  @doc """
   Seconds since the server last answered this project's channel, or `nil`.
 
   `connected?/1` is this process's belief about its socket; a reply is
