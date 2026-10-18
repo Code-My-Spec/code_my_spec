@@ -20,7 +20,7 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
 
   @mine "lib/my_app/mine.ex"
   @orphan "test/spex/nobody_owns_this/criterion_1_spex.exs"
@@ -62,24 +62,14 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
   end
 
   test "a finding with no location is not enforceable", %{scope: scope} do
-    assert Validation.enforceable(scope, red(scope, "unknown")) == [],
+    assert Blocking.enforceable(scope, red(scope, "unknown")) == [],
            "no file means no story link to have broken; it is not an orphan"
   end
 
-  test "an agent that edited something may stop over it", ctx do
-    red(ctx.scope, "unknown")
-
-    assert {:ok, _} = Validation.validate_stop(ctx.scope, nil, session_id: ctx.session),
-           "spex is attribution-exempt, so nothing else would demote this"
-  end
-
-  test "a real path whose story does not resolve still blocks", ctx do
+  test "a real path whose story does not resolve is enforceable", ctx do
     problems = red(ctx.scope, @orphan)
 
-    assert length(Validation.enforceable(ctx.scope, problems)) == 1,
+    assert length(Blocking.enforceable(ctx.scope, problems)) == 1,
            "a broken story link has to stay loud"
-
-    assert {:error, _reason, _key} =
-             Validation.validate_stop(ctx.scope, nil, session_id: ctx.session)
   end
 end

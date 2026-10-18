@@ -11,14 +11,12 @@ defmodule CodeMySpec.Agents.Menu do
 
   ## The order
 
-      1. problems       list_problems          do not start new work on a broken
-                                               tree
-      2. task           evaluate_task          finish what you already started
-      3. requirements   get_next_requirement
+      1. task           evaluate_task          finish what you already started
+      2. requirements   get_next_requirement
 
   Issues are not a class: the graph carries them per role
-  (`issues_triaged`, `issues_resolved`). Problems are, because no requirement
-  models them.
+  (`issues_triaged`, `issues_resolved`). Neither are problems: they gate at
+  promotion, so the menu only says how many there are (John, 2026-10-18).
 
   One directive leads; the rest are tallied as counts, so nothing starves
   invisibly.
@@ -42,12 +40,11 @@ defmodule CodeMySpec.Agents.Menu do
   alias CodeMySpec.Validation.Blocking
 
   @tools %{
-    problems: "list_problems",
     task: "evaluate_task",
     requirements: "get_next_requirement"
   }
 
-  @order [:problems, :task, :requirements]
+  @order [:task, :requirements]
 
   @doc """
   The menu, rendered for appending to a refusal.
@@ -63,7 +60,10 @@ defmodule CodeMySpec.Agents.Menu do
 
       [top | rest] ->
         directive(scope, top, role, owner) <>
-          tally(rest) <> offers(scope, owner) <> tap_out_offer(continuous?)
+          tally(rest) <>
+          problems_note(scope, role) <>
+          offers(scope, owner) <>
+          tap_out_offer(continuous?)
     end
   end
 
@@ -107,33 +107,16 @@ defmodule CodeMySpec.Agents.Menu do
     |> Enum.filter(fn {_class, n} -> n > 0 end)
   end
 
-  # Problems are held only by roles that can fix them
-  # (`RoleProfile.holds_problems?`); a directive nobody can act on is a wall.
-
   @doc """
-  Whether problems are this role's to fix. The one rule both the menu and the
-  stop gate read; `nil` (no agent role) is unscoped.
+  Whether problems are this role's to fix, which decides whether the menu
+  mentions them; `nil` (no agent role) is unscoped.
   """
   @spec holds_problems?(atom() | nil) :: boolean()
   defdelegate holds_problems?(role), to: RoleProfile
 
-  # The tasks the caller started and has not closed. Below problems (a task
-  # evaluated on a broken tree fails on the tree), above requirements (a second
-  # task while holding the first fills the queue with half-finished work).
+  # The tasks the caller started and has not closed. Above requirements: a
+  # second task while holding the first fills the queue with half-finished work.
   defp count(_scope, :task, _role, owner), do: length(active_tasks(owner))
-
-  # Counted through `Blocking.enforceable/2`, what the gate blocks on: a spex
-  # failure on a story still in development is expected, not a problem.
-  defp count(scope, :problems, role, _owner) do
-    if holds_problems?(role) do
-      scope
-      |> ProblemRepository.list_project_problems(severity: :error)
-      |> then(&Blocking.enforceable(scope, &1))
-      |> length()
-    else
-      0
-    end
-  end
 
   # The same answer the agent would be offered (`Work.actionable/3` with the
   # owner), so the count and the list it counts never disagree.
@@ -261,10 +244,31 @@ defmodule CodeMySpec.Agents.Menu do
 
   # Counts without tool names: the tally says what is waiting, not what to call.
   defp label(:task, n), do: open_tasks(n)
-  defp label(:problems, 1), do: "1 problem in this working copy"
-  defp label(:problems, n), do: "#{n} problems in this working copy"
   defp label(:requirements, 1), do: "1 requirement"
   defp label(:requirements, n), do: "#{n} requirements"
+
+  # Information, never a directive: problems gate at promotion. Counted through
+  # `Blocking.enforceable/2`, what promotion blocks on, and only for a role that
+  # can fix them.
+  defp problems_note(scope, role) do
+    if holds_problems?(role) do
+      scope
+      |> ProblemRepository.list_project_problems(severity: :error)
+      |> then(&Blocking.enforceable(scope, &1))
+      |> length()
+      |> problems_line()
+    else
+      ""
+    end
+  end
+
+  defp problems_line(0), do: ""
+
+  defp problems_line(n) do
+    "\n\nFor information: #{n} #{if n == 1, do: "problem is", else: "problems are"} " <>
+      "recorded in this working copy (`list_problems`). They gate at promotion, " <>
+      "not here."
+  end
 
   # The offers, every time, none conditional. A pending question is an offer,
   # never a class: as a class one stale row could hold the top of the menu.

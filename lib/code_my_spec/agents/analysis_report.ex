@@ -3,8 +3,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   Tell the agents in a working copy that their analysis has landed.
 
   The push half for internal (Alloy) agents: an agent starts a run, ends its
-  turn, and is messaged when the run lands. External (Claude Code) agents pull
-  the digest on `PostToolUse` via `Hooks.AnalysisAlert` instead.
+  turn, and is messaged when the run lands.
 
   A clean run says nothing to agents that did not ask; the agent that
   requested the run (or is waiting on it) is answered either way, because
@@ -24,7 +23,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Blocking
 
   import Ecto.Query
 
@@ -80,7 +79,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
 
   def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
       when is_binary(copy_id) do
-    blocking = Validation.blockable(scope, problems)
+    blocking = Blocking.blockable(scope, problems)
     advisory = length(problems) - length(blocking)
     findings = digest(source, length(blocking), advisory)
     askers = agent_uuids(requester_id)
@@ -203,7 +202,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   # What landed, by source, and what to do about it; `nil` when nothing blocks.
-  # Counted by `Validation.blockable/2`, the gate's own definition.
+  # Counted by `Blocking.blockable/2`, the gate's own definition.
   defp digest(_source, 0, _advisory), do: nil
 
   defp digest(source, count, advisory) do

@@ -12,7 +12,7 @@ defmodule CodeMySpec.Problems.Tools.ListProblems do
     """
     The findings behind the alert, for the agent that wants them.
 
-    `Hooks.AnalysisAlert` puts a count and an age on every tool call and stops
+    `Analysis.Alert` puts a count and an age on an agent's tool results and stops
     there — a finding list on every call is noise the model learns to skip, which
     costs the signal a second time and more permanently than never sending it. So
     the alert pushes the fact and this pulls the detail, and the split only works

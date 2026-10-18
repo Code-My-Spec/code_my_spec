@@ -37,8 +37,8 @@ defmodule CodeMySpecSpex.Story1015.Criterion2412Spex do
   ## Surface
 
   `POST /api/hooks/stop`, routed by `x-harness-id`, with continuous mode
-  enabled through the same fixture the autonomous-loop story uses, and a genuine
-  compile failure so the stop is refused on a class rather than on the loop.
+  enabled through the same fixture the autonomous-loop story uses, and an unfinished
+  implementation task so the stop is refused on a class rather than on the loop.
   """
 
   use CodeMySpecSpex.Case
@@ -46,35 +46,23 @@ defmodule CodeMySpecSpex.Story1015.Criterion2412Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
-
-  @impl_path "lib/example_context.ex"
-  @fixture_dir "test/fixtures/validation/pipeline_compile_error"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "An agent in the loop is shown the door", criterion: 905 do
-    scenario "continuous mode is on and the stop is refused on problems" do
+    scenario "continuous mode is on and the stop is refused on an unfinished task" do
       given_ :synced_context_component
-      given_ :context_implementation_task_started
+      given_ :unfinished_implementation_task_started
 
       given_ "the autonomous loop is running", context do
         :ok = Fixtures.start_continuous_mode(context.scope, context.session_id)
         {:ok, context}
       end
 
-      given_ "a problem is outstanding", context do
-        :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
-        :ok = record_edit(context, @impl_path)
-        {:ok, context}
-      end
-
       when_ "the agent attempts to stop", context do
-        HarnessHooks.land_analysis(context, "compiler", fixture_path("compile.jsonl"))
-
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
         {:ok, Map.put(context, :response, response)}
@@ -101,21 +89,14 @@ defmodule CodeMySpecSpex.Story1015.Criterion2412Spex do
         reason = context.response["reason"] || ""
         next_lines = reason |> String.split("\n") |> Enum.filter(&(&1 =~ ~r/\bnext\b/i))
 
-        refute Enum.any?(next_lines, &(&1 =~ "tap_out")),
+        # Leaving the loop, not the tool: an unfinished task's directive names
+        # `tap_out` as one way to block that task.
+        refute Enum.any?(next_lines, &(&1 =~ ~r/leave (it|the loop)|autonomous loop/i)),
                "quitting is not work and must not be ranked against work. " <>
                  "Got:\n#{Enum.join(next_lines, "\n")}"
 
         {:ok, context}
       end
     end
-  end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
-
-  defp broken_impl do
-    """
-    defmodule ExampleContext do
-      # missing `end`
-    """
   end
 end

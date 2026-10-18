@@ -49,6 +49,11 @@ defmodule CodeMySpecSpex.SharedGivens do
     implementation task with automatic validation whose evaluation trivially passes, so
     the spec can observe pipeline behavior without evaluator noise.
     Produces `context.session_id`. Requires `context.component`.
+  - `:unfinished_implementation_task_started` — designs a second context with
+    no implementation file and starts its `implementation_file` task, so the
+    task's evaluation fails and a stop is refused on an unfinished task. The
+    one refusal a stop has outside the loop now that problems never block.
+    Produces `context.session_id`. Requires `:synced_context_component`.
   - `:credo_available` — plants `deps/credo` under `context.scope.cwd`
     so the Credo analyzer's availability check passes. Pair with a
     cassette that replays `mix credo` output.
@@ -422,6 +427,28 @@ defmodule CodeMySpecSpex.SharedGivens do
           session_id: session_id
         },
         frame
+      )
+
+    {:ok, Map.put(context, :session_id, session_id)}
+  end
+
+  register_given :unfinished_implementation_task_started, context do
+    unbuilt =
+      ComponentGraphHelpers.design!(context, "MyApp.Unbuilt", [],
+        description: "A context designed but not yet written."
+      )
+
+    {context, session_id} = HarnessHooks.open_session(context)
+
+    {:reply, _response, _frame} =
+      StartTask.execute(
+        %{
+          requirement_name: "implementation_file",
+          entity_type: "component",
+          entity_id: to_string(unbuilt.id),
+          session_id: session_id
+        },
+        %Frame{assigns: %{current_scope: context.scope}}
       )
 
     {:ok, Map.put(context, :session_id, session_id)}

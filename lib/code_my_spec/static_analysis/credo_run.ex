@@ -97,32 +97,6 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @selection_args ["credo", "suggest", "--all", "--all-priorities"]
   @output_args ["--format", "json", "--no-color"]
 
-  @doc """
-  The command a human can run to see what this analyzer saw.
-
-  `mix credo` suppresses the ↓ ↘ band; this runs `--all --all-priorities`.
-  Those low-priority findings are advisory (`:info`) and block only when the
-  project's `advisory_findings` setting says so (`Validation.can_block?/2`).
-
-  Read off `@selection_args` so the hint cannot drift from the run. Output
-  flags are left out: they change the shape, not the findings.
-  """
-  @spec reproduce_command() :: String.t()
-  def reproduce_command, do: Enum.join(["mix" | @selection_args], " ")
-
-  @doc """
-  Why the obvious command disagrees, to print beside the one above.
-
-  Without it an agent whose plain `mix credo` said "found no issues" suspects a
-  stale result and stops again instead of looking.
-  """
-  @spec reproduce_note() :: String.t()
-  def reproduce_note do
-    "plain `mix credo` shows only the ↑ ↗ → band and can call these files " <>
-      "clean; this run includes ↓ ↘, which block only when the project's " <>
-      "advisory_findings setting is Block"
-  end
-
   defp build_args(opts, cwd) do
     base = @selection_args ++ @output_args
 

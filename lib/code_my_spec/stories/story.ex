@@ -101,7 +101,7 @@ defmodule CodeMySpec.Stories.Story do
     field :ready_for_dev, :boolean, default: false
     # Promoted, with the story's spex green on the certifying run: set only by
     # promotion. Decides whether this story's red spex block another copy's
-    # promote (`Validation.enforceable/2`).
+    # promote (`Blocking.enforceable/2`).
     field :specs_ready, :boolean, default: false
 
     # When and where the latch above was earned. Display data only, so a reader
