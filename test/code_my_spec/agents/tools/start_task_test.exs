@@ -400,6 +400,88 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
     end
   end
 
+  # d2044280: an agent's own `tap_out` naming no task is supposed to hold the
+  # whole agent, pending a decision -- but nothing retired the row once the
+  # agent demonstrably stopped waiting on it, which is exactly what let two
+  # agents read as frozen while they were actively taking turns.
+  describe "a resumed tap-out" do
+    alias CodeMySpec.Notifications
+    alias CodeMySpec.Notifications.PermissionRequest
+    alias CodeMySpec.Repo
+
+    test "claiming a new task retires its agent's pending, task-less tap-out" do
+      {scope, _session, _component, req_params} = setup_requirement()
+      agent = durable_agent(scope)
+      {:ok, request} = Notifications.request_agent_tap_out(scope, agent.id, nil, "stuck")
+
+      frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+      response = ToolLibrary.run("start_task", req_params, Map.put(frame.assigns, :scope, scope))
+
+      assert match?({:ok, _}, response)
+      assert Repo.get!(PermissionRequest, request.id).status == "expired"
+    end
+
+    test "resuming its own active task also retires the pending, task-less tap-out" do
+      {scope, _session, _component, req_params} = setup_requirement()
+      agent = durable_agent(scope)
+      frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+
+      assert match?(
+               {:ok, _},
+               ToolLibrary.run("start_task", req_params, Map.put(frame.assigns, :scope, scope))
+             )
+
+      {:ok, request} = Notifications.request_agent_tap_out(scope, agent.id, nil, "stuck")
+
+      # Same params again: an already-active task is returned, not re-created
+      # (`handle_existing/6`'s `:active` clause) -- resuming is the signal, not
+      # a fresh claim.
+      assert match?(
+               {:ok, _},
+               ToolLibrary.run("start_task", req_params, Map.put(frame.assigns, :scope, scope))
+             )
+
+      assert Repo.get!(PermissionRequest, request.id).status == "expired"
+    end
+
+    # A tap-out naming a task holds only that task (story 1080): a blocked
+    # task's own blocker is refused outright, so the agent is left free to
+    # claim different work instead (as it is while any task is blocked) --
+    # and doing so is not a contradiction `retire_resumed_tap_out/1` should
+    # act on.
+    test "a tap-out naming a task is untouched by claiming different work" do
+      {scope, _session, _component, req_params} = setup_requirement()
+      other_component = component_fixture(scope)
+
+      other_params = %{
+        requirement_name: "implementation_file",
+        entity_type: "component",
+        entity_id: other_component.id
+      }
+
+      CodeMySpec.Requirements.recompute(scope)
+
+      agent = durable_agent(scope)
+      frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+
+      assert match?(
+               {:ok, _},
+               ToolLibrary.run("start_task", req_params, Map.put(frame.assigns, :scope, scope))
+             )
+
+      [task] = Repo.reload!(agent).tasks
+      {:ok, request} = Notifications.request_agent_tap_out(scope, agent.id, task.id, "stuck")
+      assert Repo.reload!(agent).tasks |> hd() |> Map.get(:status) == :blocked
+
+      assert match?(
+               {:ok, _},
+               ToolLibrary.run("start_task", other_params, Map.put(frame.assigns, :scope, scope))
+             )
+
+      assert Repo.get!(PermissionRequest, request.id).status == "pending"
+    end
+  end
+
   defp durable_agent(scope) do
     {:ok, agent} =
       AgentsRepository.create_agent(scope, %{
