@@ -268,7 +268,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
          :ok <- qa_eligible_to_start(scope, owner, requirement) do
       create_and_activate(scope, owner, requirement, agent_id, frame)
     else
-      {:error, reason} -> {:reply, TasksMapper.error(reason), frame}
+      # 542e01e7: an answered blocker (or any other stale notice) can send an
+      # agent here for a requirement that stopped being eligible before the
+      # agent got around to it -- the task it was about is already gone
+      # (cancelled, superseded, claimed elsewhere), so there is nothing to
+      # resume or cancel, unlike the :blocked branch above. A bare
+      # `TasksMapper.error(:requirement_not_eligible)` rendered as the raw
+      # atom string with no way forward; this names the requirement and
+      # points at `get_next_requirement`, the same disposition the resume
+      # branch already gives.
+      {:error, :requirement_not_eligible} ->
+        {:reply,
+         TasksMapper.error(
+           "#{requirement.name} for #{requirement.entity_type} #{requirement.entity_id} is " <>
+             "not eligible work right now -- nothing was claimed. Call get_next_requirement " <>
+             "for what is actionable now."
+         ), frame}
+
+      {:error, reason} ->
+        {:reply, TasksMapper.error(reason), frame}
     end
   end
 
