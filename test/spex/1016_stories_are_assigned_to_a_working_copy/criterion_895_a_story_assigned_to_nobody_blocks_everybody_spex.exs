@@ -36,6 +36,8 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
@@ -43,7 +45,6 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.SyncProject
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpec.TempFile
   alias CodeMySpecSpex.EpicHelpers
@@ -121,7 +122,13 @@ defmodule CodeMySpecSpex.Story895.Criterion2396Spex do
         # and clears the latch out from under the scenario. Write, sync, go
         # green is also the real order of events.
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _synced, _frame} = SyncProject.execute(%{}, frame)
+
+        _synced =
+          ToolLibrary.run(
+            "sync_project",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :spex_path, path)}
       end

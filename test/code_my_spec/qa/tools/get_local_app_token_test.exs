@@ -79,7 +79,7 @@ defmodule CodeMySpec.Qa.Tools.GetLocalAppTokenTest do
         ToolLibrary.run(
           "get_local_app_token",
           %{},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert response_text(reply) =~ "url is required"
@@ -97,7 +97,7 @@ defmodule CodeMySpec.Qa.Tools.GetLocalAppTokenTest do
         ToolLibrary.run(
           "get_local_app_token",
           %{url: url},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       text = response_text(reply)
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Qa.Tools.GetLocalAppTokenTest do
         ToolLibrary.run(
           "get_local_app_token",
           %{url: url},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       text = response_text(reply)
@@ -154,7 +154,7 @@ defmodule CodeMySpec.Qa.Tools.GetLocalAppTokenTest do
         ToolLibrary.run(
           "get_local_app_token",
           %{url: "http://127.0.0.1:1"},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert response_text(reply) =~ "Could not get a token"

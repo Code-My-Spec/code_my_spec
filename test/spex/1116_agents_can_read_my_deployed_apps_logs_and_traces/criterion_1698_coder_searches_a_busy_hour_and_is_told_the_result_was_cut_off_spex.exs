@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1116.Criterion1698Spex do
           ToolLibrary.run(
             "query_logs",
             %{limit: 2},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :reply, reply)}

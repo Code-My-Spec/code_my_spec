@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
 
   setup :register_log_in_setup_account
@@ -44,7 +45,12 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
       when_ "the agent asks for the next requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :next_body, response_text(response))}
       end

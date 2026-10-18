@@ -15,8 +15,9 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   """
 
   use CodeMySpecSpex.Case, async: true
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -106,9 +107,14 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
           description: "Newly added in patch mode"
         }
 
-        {:reply, response, _frame} = CreateComponent.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_component",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected create_component to succeed, got: #{inspect(response)}"
 
         {:ok, context}

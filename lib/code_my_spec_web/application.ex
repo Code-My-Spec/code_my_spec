@@ -134,7 +134,6 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.LocalServer,
          transport: :streamable_http, session_idle_timeout: to_timeout(hour: 4)},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
-        {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},

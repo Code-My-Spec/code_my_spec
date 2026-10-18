@@ -9,13 +9,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -34,8 +35,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3546Spex do
              context do
         context = given_a_feature_checkout(context, "spex_3546")
         context = ProjectStateFixtures.apply_project_kickoff(context)
-        {:reply, response, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute response.isError, response_text(response)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, response), response_text(response)
 
         id = start_agent(context)
         on_exit(fn -> Machine.stop_agent(id) end)

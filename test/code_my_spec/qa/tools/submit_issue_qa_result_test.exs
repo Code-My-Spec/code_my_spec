@@ -117,7 +117,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitIssueQaResultTest do
       ToolLibrary.run(
         "submit_qa_result",
         params,
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     assert match?({:error, _}, response)
@@ -164,7 +164,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitIssueQaResultTest do
       ToolLibrary.run(
         "submit_issue_qa_result",
         Map.put(ctx.params, :scenarios, scenarios),
-        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
       )
 
     response

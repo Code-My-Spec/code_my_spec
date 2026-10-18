@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1116.Criterion1706Spex do
           ToolLibrary.run(
             "error_summary",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :reply, reply)}

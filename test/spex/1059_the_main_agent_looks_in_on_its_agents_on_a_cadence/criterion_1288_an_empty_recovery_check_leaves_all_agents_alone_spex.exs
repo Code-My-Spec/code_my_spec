@@ -5,6 +5,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -14,7 +16,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -34,8 +35,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
       given_ "main, coding and QA have healthy idle engines and no eligible work", context do
         context = given_a_staffed_checkout(context, "spex_3320")
         context = FullSatisfactionFixtures.apply(context)
-        {:reply, available, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute available.isError, response_text(available)
+
+        available =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, available), response_text(available)
         base_url = HeldProvider.start()
         HeldProvider.hold()
 

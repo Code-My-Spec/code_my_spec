@@ -18,11 +18,12 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -66,7 +67,12 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
       then_ "the next requirement is no longer personas_complete", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

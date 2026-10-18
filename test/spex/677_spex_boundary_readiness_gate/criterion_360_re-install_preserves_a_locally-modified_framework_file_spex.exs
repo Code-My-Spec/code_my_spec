@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
           ToolLibrary.run(
             "install_credo_checks",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :install_response, response)}

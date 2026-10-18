@@ -34,11 +34,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
@@ -96,7 +97,12 @@ defmodule CodeMySpecSpex.Story1056.Criterion3308Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, _view, _frame} = ListAgentWork.execute(%{}, frame)
 
-        {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :issues, response_text(issues))}
       end

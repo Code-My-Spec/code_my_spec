@@ -6,8 +6,9 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
@@ -43,7 +44,13 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, before_response, _frame} = ListComponents.execute(%{}, frame)
+
+        before_response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         session_id = "spex-#{System.unique_integer([:positive])}"
         post_hook(context, "/api/hooks/session-start", %{"session_id" => session_id})
@@ -102,7 +109,13 @@ defmodule CodeMySpecSpex.Story1083.Criterion1722Spex do
 
       then_ "no new surface component was created", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, after_response, _frame} = ListComponents.execute(%{}, frame)
+
+        after_response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(after_response) == context.components_before,
                "expected the component list to be unchanged by reusing an existing surface"

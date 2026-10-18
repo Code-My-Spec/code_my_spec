@@ -37,13 +37,14 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -93,18 +94,19 @@ defmodule CodeMySpecSpex.Story1062.Criterion3520Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, filed, _frame} =
-          CreateIssue.execute(
+        filed =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "something is wrong on this story",
               description: "recorded while nothing was running to apply it",
               severity: "medium",
               story_number: context.story_number
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute filed.isError, inspect(filed)
+        assert match?({:ok, _}, filed), inspect(filed)
 
         {:ok, Map.put(context, :pending_before, pending(context))}
       end

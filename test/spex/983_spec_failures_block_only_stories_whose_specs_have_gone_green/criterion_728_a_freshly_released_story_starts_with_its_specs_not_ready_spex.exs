@@ -17,10 +17,11 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpecSpex.StoryHelpers
 
   setup :register_log_in_setup_account
@@ -62,12 +63,16 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
       then_ "the story's specs are not ready", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: @title}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: @title},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected show_story_requirements to succeed, got: #{inspect(response)}"
 
         # Anchor: the released story really is producing requirements, so

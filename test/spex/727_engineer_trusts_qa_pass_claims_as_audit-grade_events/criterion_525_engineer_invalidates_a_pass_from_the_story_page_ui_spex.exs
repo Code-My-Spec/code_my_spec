@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
               scenarios: [%{name: "earlier", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, _} = earlier
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, submit_response)

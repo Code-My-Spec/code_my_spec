@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
       given_ "the working directory has a mix.exs declaring an app name", context do
         mix_exs = """
         defmodule SpexBootstrapApp.MixProject do
+          alias CodeMySpec.ToolLibrary
           use Mix.Project
           def project, do: [app: :#{@app_name_atom}, version: "0.0.1"]
         end
@@ -48,7 +49,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
           ToolLibrary.run(
             "install_agents_md",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :install_response, response)}

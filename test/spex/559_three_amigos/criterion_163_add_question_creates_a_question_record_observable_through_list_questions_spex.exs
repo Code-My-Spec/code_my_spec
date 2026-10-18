@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5896Spex do
               story_number: context.story.number,
               text: "Does suspension affect mid-transaction cards or only new transactions?"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}

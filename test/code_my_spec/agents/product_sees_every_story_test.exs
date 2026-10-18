@@ -12,13 +12,14 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -171,8 +172,15 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   end
 
   defp next(scope, agent) do
-    {false, text} = call(GetNextRequirement, scope, agent, %{})
+    {false, text} = call("get_next_requirement", scope, agent, %{})
     text
+  end
+
+  defp call(name, scope, agent, params) when is_binary(name) do
+    case ToolLibrary.run(name, params, %{scope: scope, agent_id: agent.id}) do
+      {:ok, text} -> {false, text}
+      {:error, text} -> {true, text}
+    end
   end
 
   defp call(tool, scope, agent, params) do

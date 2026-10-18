@@ -242,7 +242,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
         ToolLibrary.run(
           "message_agent",
           %{agent_id: coding.id, message: "use postgres"},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert {:ok, text} = response
@@ -264,7 +264,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
         ToolLibrary.run(
           "message_agent",
           %{agent_id: coding.id, message: "carry on"},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert {:ok, text} = response

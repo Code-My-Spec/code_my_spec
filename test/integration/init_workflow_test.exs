@@ -9,12 +9,13 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   """
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.Integration.WorkflowHelpers
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Projects
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -27,9 +28,14 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     frame = %Frame{assigns: %{working_dir: tmp_dir}}
 
     # Step 1: no project — get_next_requirement returns init checklist
-    {:reply, init_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
-    refute init_resp.isError
-    assert is_nil(init_resp.structured_content)
+    init_resp =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, init_resp)
     init_text = response_text(init_resp)
     assert init_text =~ "Initialization"
     assert init_text =~ "get_next_requirement"
@@ -49,8 +55,12 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     File.mkdir_p!(Path.join(tmp_dir, "config"))
 
     # Step 3: still init (no project in DB yet)
-    {:reply, still_init_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
-    assert is_nil(still_init_resp.structured_content)
+    still_init_resp =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()
@@ -80,8 +90,14 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # `cms new` covers it, so a generated project has nothing to do there.
     CodeMySpec.Requirements.recompute(scope)
 
-    {:reply, graph_resp, ^graph_frame} = GetNextRequirement.execute(%{}, graph_frame)
-    refute graph_resp.isError
+    graph_resp =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(graph_frame.assigns, :scope, graph_frame.assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, graph_resp)
     graph_text = response_text(graph_resp)
     assert graph_text =~ "### PersonaResearch"
     assert graph_text =~ "requirement_name=`personas_complete`"

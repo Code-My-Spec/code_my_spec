@@ -2,8 +2,6 @@ defmodule CodeMySpecSpex.Story1016.Criterion2084Spex do
   @moduledoc "A refused switch leaves issue work assigned."
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
@@ -17,7 +15,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2084Spex do
         ctx = Slice.staff(ctx)
         issue = Fixtures.issue_fixture(ctx.scope, %{status: :accepted})
 
-        Slice.call(ctx, AssignIssueToWorkingCopy, %{
+        Slice.call(ctx, "assign_issue_to_working_copy", %{
           issue_id: issue.id,
           working_copy_id: ctx.scope.active_working_copy_id
         })
@@ -37,7 +35,7 @@ defmodule CodeMySpecSpex.Story1016.Criterion2084Spex do
 
       then_ "the bag and active issue are unchanged", ctx do
         bag =
-          Slice.call(ctx, ListIssues, %{
+          Slice.call(ctx, "list_issues", %{
             working_copy_id: ctx.scope.active_working_copy_id,
             severity: "all"
           })

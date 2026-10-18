@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
                   scenarios: [%{name: marker, status: "pass", observation: marker}],
                   issue_ids: []
                 },
-                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
             assert match?({:ok, _}, response)
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
           ToolLibrary.run(
             "invalidate_qa_attempt",
             %{attempt_id: middle_id, reason: "Test probe was incomplete"},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :attempt_ids, attempt_ids)}

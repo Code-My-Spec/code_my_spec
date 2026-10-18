@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
   Surfaces:
   - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed)
   - `CodeMySpec.Qa.Tools.InvalidateQaAttempt` (rejected)
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
     (qa_complete unchanged)
   """
 
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
               scenarios: [%{name: "smoke", status: "pass", observation: "ok"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, submit_response)
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
           ToolLibrary.run(
             "invalidate_qa_attempt",
             %{attempt_id: context.attempt_id, reason: ""},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :invalidate_response, response)}

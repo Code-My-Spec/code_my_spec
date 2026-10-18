@@ -9,6 +9,8 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
 
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
@@ -21,7 +23,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Notifications
   alias CodeMySpec.Repo
@@ -76,7 +78,13 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       assert {:ok, ref} = Work.request_turn_if_runnable(ctx.scope, ctx.product, :test)
       assert is_binary(ref)
 
-      {:reply, next, _} = GetNextRequirement.execute(%{}, ctx.frame)
+      next =
+        ToolLibrary.run(
+          "get_next_requirement",
+          %{},
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+        )
+
       assert response_text(next) =~ "requirement_name=`issues_triaged`"
 
       assert {:ok, started} = start_triage(ctx)

@@ -33,7 +33,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
 
   @impl true
   def call(%{project_id: project_id}, context) do
-    case CodeMySpec.WorkingCopies.configured_working_dir() do
+    case context[:working_dir] || CodeMySpec.WorkingCopies.configured_working_dir() do
       nil ->
         BootstrapMapper.error(CodeMySpec.Tools.no_working_copy_message("init_project"))
 
@@ -51,7 +51,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
       # rather than waiting for an agent to call four MCP tools is what lets a
       # freshly generated project satisfy `project_setup` with zero model
       # turns. Best-effort: a failed install must not fail the link.
-      env = CodeMySpec.WorkingCopies.tool_environment(context.scope)
+      env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
 
       # Record the project's identity in the project itself. Without this, this
       # directory is only findable by a `local_path` lookup — a database query

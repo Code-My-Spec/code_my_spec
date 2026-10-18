@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
               slug: "workshop-persona-#{System.unique_integer([:positive])}",
               description: "Persona used to satisfy linkage."
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         persona_id = extract_persona_id(persona_response)
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{story_number: story.number, persona_id: persona_id},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         rule_statement = "Drivers must have a verified phone number."
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
               Then the account is marked verified
               """
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.merge(context, %{story: story, rule_statement: rule_statement})}
@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story686.Criterion5915Spex do
               story_number: context.story.number,
               text: "Does verification time out after 24 hours?"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response),

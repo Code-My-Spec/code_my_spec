@@ -134,7 +134,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_search",
           %{query: "x"},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert match?({:error, _}, response)
@@ -181,7 +181,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_fetch",
           %{url: "https://example.com/long", max_output: 120},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       # Without this line the agent has the first half of a document and no way
@@ -203,7 +203,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_fetch",
           %{url: url},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       content = text(response)
@@ -218,7 +218,7 @@ defmodule CodeMySpec.Research.Tools.WebToolsTest do
         ToolLibrary.run(
           "web_fetch",
           %{url: "https://www.reddit.com/r/elixir/comments/abc/x/"},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert match?({:error, _}, response)

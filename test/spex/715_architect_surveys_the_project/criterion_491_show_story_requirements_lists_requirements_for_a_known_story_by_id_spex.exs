@@ -13,8 +13,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6308Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
 
   import CodeMySpecSpex.GraphGivens
 
@@ -29,8 +30,12 @@ defmodule CodeMySpecSpex.Story715.Criterion6308Spex do
       when_ "the agent calls show_story_requirements with the story's ID as a string", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: to_string(context.story.number)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :body, response_text(response))}
       end

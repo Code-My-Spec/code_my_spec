@@ -11,11 +11,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -149,13 +150,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1761Spex do
   end
 
   defp file_issue(context) do
-    {:reply, filed, _} =
-      CreateIssue.execute(
+    filed =
+      ToolLibrary.run(
+        "create_issue",
         %{title: "Receipts print the wrong total", description: "Seen in QA", severity: "medium"},
-        %Frame{assigns: %{current_scope: context.scope}}
+        %{scope: context.scope}
       )
 
-    refute filed.isError, response_text(filed)
+    assert match?({:ok, _}, filed), response_text(filed)
     context
   end
 

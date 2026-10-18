@@ -11,13 +11,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers, only: [offers: 3, listing: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
@@ -105,13 +105,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
       end
 
       when_ "it triages the issue, finishes the task, and ends its turn", context do
-        {:reply, dismissed, _} =
-          DismissIssue.execute(
+        dismissed =
+          ToolLibrary.run(
+            "dismiss_issue",
             %{issue_id: context.issue, reason: "Duplicate of a known receipts bug"},
-            context.product_frame
+            Map.put(
+              context.product_frame.assigns,
+              :scope,
+              context.product_frame.assigns[:current_scope]
+            )
           )
 
-        refute dismissed.isError, response_text(dismissed)
+        assert match?({:ok, _}, dismissed), response_text(dismissed)
 
         {:reply, evaluated, _} =
           EvaluateTask.execute(%{task_id: context.triage_task}, context.product_frame)
@@ -191,13 +196,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
     context = asked_about_design(context)
     frame = context.product_frame
 
-    {:reply, filed, _} =
-      CreateIssue.execute(
+    filed =
+      ToolLibrary.run(
+        "create_issue",
         %{title: "Receipts print the wrong total", description: "Seen in QA", severity: "medium"},
-        %Frame{assigns: %{current_scope: context.scope}}
+        %{scope: context.scope}
       )
 
-    refute filed.isError, response_text(filed)
+    assert match?({:ok, _}, filed), response_text(filed)
     [issue | _] = Regex.run(~r/[0-9a-f]{8}-[0-9a-f-]{27}/, response_text(filed))
 
     {:reply, triage, _} =

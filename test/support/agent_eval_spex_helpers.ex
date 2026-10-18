@@ -47,8 +47,6 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Agents.Tools.StartAgent
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
   alias CodeMySpecSpex.Fixtures
@@ -235,7 +233,7 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
       ToolLibrary.run(
         "retire_agent",
         %{agent_id: agent_id},
-        Map.put(frame(context).assigns, :scope, frame(context).assigns.current_scope)
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
       )
 
     :ok
@@ -589,7 +587,13 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   """
   @spec issues_filed(map(), map()) :: String.t()
   def issues_filed(context, opts \\ %{}) do
-    {:reply, response, _} = ListIssues.execute(opts, frame(context))
+    response =
+      ToolLibrary.run(
+        "list_issues",
+        opts,
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     text(response)
   end
 
@@ -631,8 +635,14 @@ defmodule CodeMySpecSpex.AgentEvalHelpers do
   end
 
   defp issue_has_evidence?(context, id, tool, error_pattern) do
-    {:reply, response, _} = GetIssue.execute(%{issue_id: id}, frame(context))
-    refute response.isError, text(response)
+    response =
+      ToolLibrary.run(
+        "get_issue",
+        %{issue_id: id},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
+    assert match?({:ok, _}, response), text(response)
     body = text(response)
     String.contains?(body, tool) and Regex.match?(error_pattern, body)
   end

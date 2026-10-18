@@ -36,6 +36,7 @@ defmodule CodeMySpec.Bootstrap.Tools.ListProjectsTest do
   test "script_result reports the refusal rather than a table when nobody is authenticated", %{
     context: context
   } do
-    assert {:error, _reason} = ListProjects.script_result(%{}, context)
+    assert {:error, _reason} =
+             ListProjects.script_result(%{}, context)
   end
 end

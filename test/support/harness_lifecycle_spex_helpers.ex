@@ -244,7 +244,7 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   # A library tool by name (`ToolLibrary`); an MCP component by module.
   defp call(name, params, context) when is_binary(name) do
     frame = frame(context)
-    ToolLibrary.run(name, params, Map.put(frame.assigns, :scope, frame.assigns.current_scope))
+    ToolLibrary.run(name, params, Map.put(frame.assigns, :scope, frame.assigns[:current_scope]))
   end
 
   defp call(tool, params, context) do

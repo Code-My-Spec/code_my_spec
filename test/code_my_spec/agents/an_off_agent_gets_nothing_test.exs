@@ -95,7 +95,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
         ToolLibrary.run(
           "turn_off_agent",
           %{agent_id: ctx.agent.id, reason: @reason},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, response), text(response)
@@ -112,7 +112,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
         ToolLibrary.run(
           "turn_off_agent",
           %{agent_id: ctx.agent.id},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, response), text(response)
@@ -149,7 +149,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
         ToolLibrary.run(
           "message_agent",
           %{agent_id: ctx.agent.id, message: "hi"},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:error, _}, response)
@@ -207,7 +207,7 @@ defmodule CodeMySpec.Agents.AnOffAgentGetsNothingTest do
         ToolLibrary.run(
           "turn_on_agent",
           %{agent_id: ctx.agent.id},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, response), text(response)

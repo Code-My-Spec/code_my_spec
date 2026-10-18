@@ -18,8 +18,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6311Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.GraphGivens
@@ -49,7 +50,14 @@ defmodule CodeMySpecSpex.Story715.Criterion6311Spex do
 
       when_ "the agent calls validate_dependency_graph", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ValidateDependencyGraph.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "validate_dependency_graph",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

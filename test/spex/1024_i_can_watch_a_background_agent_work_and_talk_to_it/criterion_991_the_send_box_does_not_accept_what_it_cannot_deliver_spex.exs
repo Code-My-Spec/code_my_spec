@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1024.Criterion2898Spex do
           ToolLibrary.run(
             "turn_off_agent",
             %{"agent_id" => agent.id},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, reply),

@@ -17,21 +17,30 @@ defmodule CodeMySpecSpex.Story715.Criterion6313Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
 
   import CodeMySpecSpex.GraphGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "show_architecture renders a Mermaid flowchart with surface components as nodes and dependencies as edges", criterion: 496 do
+  spex "show_architecture renders a Mermaid flowchart with surface components as nodes and dependencies as edges",
+    criterion: 496 do
     scenario "show_architecture renders a Mermaid flowchart of contexts and their dependencies" do
       given_ :cross_context_dependency
 
       when_ "the agent calls show_architecture", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ShowArchitecture.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "show_architecture",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 

@@ -44,14 +44,14 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: context.persona_id, story_number: story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         rule_response =
           ToolLibrary.run(
             "add_rule",
             %{story_number: story.number, statement: "The thing holds."},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, rule_response), inspect(rule_response)
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3341Spex do
               kind: "happy_path",
               body: "Given a thing\nWhen it is used\nThen it holds"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response),

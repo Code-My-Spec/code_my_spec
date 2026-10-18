@@ -10,11 +10,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
   alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
@@ -58,8 +59,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame)
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         {:reply, started, _} =
           StartTask.execute(
@@ -174,8 +182,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame)
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         {:reply, started, _} =
           StartTask.execute(
@@ -238,8 +253,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
           )
 
         refute updated.isError, response_text(updated)
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, context.frame)
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
         {:ok, context}
       end
 
@@ -300,8 +322,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame)
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         {:reply, started, _} =
           StartTask.execute(

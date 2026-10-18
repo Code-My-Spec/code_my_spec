@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5886Spex do
               story_number: context.story.number,
               statement: "Suspended cards cannot be used"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :add_response, response)}

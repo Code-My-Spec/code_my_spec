@@ -6,9 +6,10 @@ defmodule CodeMySpecSpex.Story1085.Criterion1732Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Architecture.Tools.CheckArchitecture
   alias CodeMySpecSpex.ComponentGraphHelpers
 
   setup :register_log_in_setup_account
@@ -46,14 +47,20 @@ defmodule CodeMySpecSpex.Story1085.Criterion1732Spex do
 
       when_ "architecture is checked", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = CheckArchitecture.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "check_architecture",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :check_response, response)}
       end
 
       then_ "Sam is told the planned dependency from Billing to Accounts isn't in the code",
             context do
-        refute context.check_response.isError,
+        assert match?({:ok, _}, context.check_response),
                "expected architecture check to succeed, got: #{inspect(context.check_response)}"
 
         body = response_text(context.check_response)

@@ -32,10 +32,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
@@ -294,7 +294,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   defp ask_for_next_work(context, story_number) do
     context = activate(context, story_number)
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
+
     response_text(response)
   end
 
@@ -311,10 +318,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{entity_type: "story", entity_id: to_string(story_number), requirement_name: "deploy"},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

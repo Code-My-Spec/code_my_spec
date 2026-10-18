@@ -9,13 +9,14 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -34,8 +35,15 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
       given_ "both engines exist with continuous off and only QA has eligible work", context do
         context = given_a_staffed_checkout(context, "spex_3109_0")
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: false)
@@ -120,8 +128,15 @@ defmodule CodeMySpecSpex.Story538.Criterion3109Spex do
       given_ "both engines exist with continuous off and only QA has eligible work", context do
         context = given_a_staffed_checkout(context, "spex_3109_1")
         context = FullSatisfactionFixtures.apply_without_qa_story(context)
-        {:reply, graph, _} = GetNextRequirement.execute(%{}, frame(context))
-        refute graph.isError, response_text(graph)
+
+        graph =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, graph), response_text(graph)
 
         coding = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         qa = Fixtures.running_agent(context.scope, role: "qa", continuous: false)

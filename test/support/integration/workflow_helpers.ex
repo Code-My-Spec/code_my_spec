@@ -240,6 +240,8 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   @doc """
   Extracts the text content from an MCP tool response.
   """
+  def response_text({_status, text}) when is_binary(text), do: text
+
   def response_text(response) do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]

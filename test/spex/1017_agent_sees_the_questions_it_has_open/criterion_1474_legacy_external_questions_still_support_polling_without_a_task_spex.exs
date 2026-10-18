@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, agents), response_text(agents)
@@ -126,7 +126,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
           ToolLibrary.run(
             "list_agents",
             %{},
-            Map.put(context.frame.assigns, :scope, context.frame.assigns.current_scope)
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, agents), response_text(agents)

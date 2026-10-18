@@ -29,7 +29,7 @@ defmodule CodeMySpec.McpServers.IssuesBodyFencingTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Issues.Issue
-  alias CodeMySpec.McpServers.Issues.IssuesMapper
+  alias CodeMySpec.Issues.Tools.Responses, as: IssuesMapper
   alias CodeMySpec.Utils.MapAccess
 
   defp issue(attrs) do
@@ -56,6 +56,8 @@ defmodule CodeMySpec.McpServers.IssuesBodyFencingTest do
   # the real thing the agent receives, rather than on the string handed to
   # `Response.text/2` — the fence is only worth anything if it survives to the
   # wire.
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response) do
     response
     |> Map.get(:content, [])

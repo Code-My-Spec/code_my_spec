@@ -81,7 +81,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
         ToolLibrary.run(
           "call_mcp_server",
           %{url: "http://127.0.0.1:1", path: "/mcp", timeout: 2_000},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       text = response_text(reply)
@@ -132,7 +132,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
         ToolLibrary.run(
           "call_mcp_server",
           %{url: url, path: "/mcp", timeout: 5_000},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       text = response_text(reply)
@@ -146,7 +146,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
         ToolLibrary.run(
           "call_mcp_server",
           %{url: url, path: "/mcp", tool: "ping_tool", timeout: 5_000},
-          Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       text = response_text(reply)

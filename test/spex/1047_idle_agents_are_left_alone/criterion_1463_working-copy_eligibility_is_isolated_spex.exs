@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -72,8 +73,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3565Spex do
         second = Fixtures.running_agent(context.second.scope, role: "coding", continuous: true)
 
         for copy <- [context, context.second] do
-          {:reply, graph, _} = GetNextRequirement.execute(%{}, frame(copy))
-          refute graph.isError, response_text(graph)
+          graph =
+            ToolLibrary.run(
+              "get_next_requirement",
+              %{},
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, graph), response_text(graph)
         end
 
         assert Fixtures.role_queue_size(context.scope, first.id) > 0

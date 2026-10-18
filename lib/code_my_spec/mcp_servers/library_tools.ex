@@ -63,6 +63,7 @@ defmodule CodeMySpec.McpServers.LibraryTools do
     %{scope: scope}
     |> put_known(:session_id, params[:session_id])
     |> put_known(:agent_id, frame.assigns[:agent_id])
+    |> put_known(:working_dir, frame.assigns[:working_dir])
   end
 
   defp put_known(context, _key, nil), do: context

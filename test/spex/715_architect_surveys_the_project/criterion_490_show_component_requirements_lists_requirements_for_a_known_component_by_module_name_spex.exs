@@ -14,15 +14,17 @@ defmodule CodeMySpecSpex.Story715.Criterion6307Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements
 
   import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing", criterion: 490 do
+  spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing",
+    criterion: 490 do
     scenario "show_component_requirements lists requirements for a known component by module name" do
       given_ :synced_context_component
 
@@ -30,8 +32,12 @@ defmodule CodeMySpecSpex.Story715.Criterion6307Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowComponentRequirements.execute(%{component: "ExampleContext"}, frame)
+        response =
+          ToolLibrary.run(
+            "show_component_requirements",
+            %{component: "ExampleContext"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :body, response_text(response))}
       end

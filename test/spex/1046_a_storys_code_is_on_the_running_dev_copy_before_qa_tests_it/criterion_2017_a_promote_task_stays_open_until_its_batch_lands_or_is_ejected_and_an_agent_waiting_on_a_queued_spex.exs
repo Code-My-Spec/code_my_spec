@@ -15,9 +15,10 @@ defmodule CodeMySpecSpex.Story1046.Criterion2017Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.PromotionHelpers
 
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -91,14 +92,15 @@ defmodule CodeMySpecSpex.Story1046.Criterion2017Spex do
   defp story_promoted(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ListRequirements.execute(
+    response =
+      ToolLibrary.run(
+        "list_requirements",
         %{
           entity_type: "story",
           entity_id: to_string(context.story.number),
           requirement_name: "story_promoted"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

@@ -10,7 +10,8 @@ defmodule CodeMySpec.McpServers.StoryNumberNamesAStoryTest do
 
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.McpServers.{ComponentsServer, LocalServer, ScriptableTools, StoryRefs}
+  alias CodeMySpec.McpServers.{ComponentsServer, LocalServer, ScriptableTools}
+  alias CodeMySpec.Stories.StoryRefs
 
   defp tools do
     (LocalServer.registrations() ++

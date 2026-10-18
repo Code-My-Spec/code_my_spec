@@ -14,9 +14,9 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.CreateComponent
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -51,13 +51,18 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
           description: "Notifications domain context"
         }
 
-        {:reply, response, _frame} = CreateComponent.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_component",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :create_response, response)}
       end
 
       then_ "the tool reports success", context do
-        refute context.create_response.isError,
+        assert match?({:ok, _}, context.create_response),
                "expected create_component to succeed, got: #{inspect(context.create_response)}"
 
         {:ok, context}
@@ -66,7 +71,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
       then_ "the new component appears in list_components output", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListComponents.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         assert body =~ context.module_name,

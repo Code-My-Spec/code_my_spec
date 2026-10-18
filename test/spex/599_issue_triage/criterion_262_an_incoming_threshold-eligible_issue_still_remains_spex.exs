@@ -12,8 +12,9 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
@@ -64,7 +65,12 @@ defmodule CodeMySpecSpex.Story599.Criterion5336Spex do
       given_ "the agent has dispositioned only 1 of the 2 issues", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _r, _f} = AcceptIssue.execute(%{issue_id: context.issue_a.id}, frame)
+        _r =
+          ToolLibrary.run(
+            "accept_issue",
+            %{issue_id: context.issue_a.id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         # issue_b is intentionally left :incoming
         {:ok, context}

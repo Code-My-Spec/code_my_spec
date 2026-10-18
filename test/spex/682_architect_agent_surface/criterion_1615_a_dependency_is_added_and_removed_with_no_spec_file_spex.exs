@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story682.Criterion1615Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Components.Tools.AddDependency
-  alias CodeMySpec.McpServers.Components.Tools.RemoveDependency
-  alias CodeMySpec.McpServers.Components.Tools.ShowArchitecture
   alias CodeMySpecSpex.ComponentHelpers
 
   setup :register_log_in_setup_account
@@ -23,7 +22,13 @@ defmodule CodeMySpecSpex.Story682.Criterion1615Spex do
   defp frame(context), do: %Frame{assigns: %{current_scope: context.scope}}
 
   defp architecture(context) do
-    {:reply, reply, _frame} = ShowArchitecture.execute(%{}, frame(context))
+    reply =
+      ToolLibrary.run(
+        "show_architecture",
+        %{},
+        Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+      )
+
     response_text(reply)
   end
 
@@ -55,33 +60,35 @@ defmodule CodeMySpecSpex.Story682.Criterion1615Spex do
       end
 
       when_ "the agent adds a dependency of the first on the second", context do
-        {:reply, reply, _frame} =
-          AddDependency.execute(
+        reply =
+          ToolLibrary.run(
+            "add_dependency",
             %{source_component_id: context.web.id, target_component_id: context.accounts.id},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :added, reply)}
       end
 
       then_ "the architecture shows the edge", context do
-        refute context.added.isError, response_text(context.added)
+        assert match?({:ok, _}, context.added), response_text(context.added)
         assert architecture(context) =~ edge(context)
         {:ok, context}
       end
 
       when_ "the agent removes it", context do
-        {:reply, reply, _frame} =
-          RemoveDependency.execute(
+        reply =
+          ToolLibrary.run(
+            "remove_dependency",
             %{source_component_id: context.web.id, target_component_id: context.accounts.id},
-            frame(context)
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :removed, reply)}
       end
 
       then_ "the edge is gone", context do
-        refute context.removed.isError, response_text(context.removed)
+        assert match?({:ok, _}, context.removed), response_text(context.removed)
         refute architecture(context) =~ edge(context)
         {:ok, context}
       end

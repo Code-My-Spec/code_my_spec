@@ -23,7 +23,8 @@ defmodule CodeMySpec.Tools do
   @type context :: %{
           required(:scope) => Scope.t(),
           optional(:session_id) => String.t(),
-          optional(:agent_id) => String.t()
+          optional(:agent_id) => String.t(),
+          optional(:working_dir) => String.t()
         }
 
   @doc "The JSON Schema for a tool's arguments, as an MCP client reads it."

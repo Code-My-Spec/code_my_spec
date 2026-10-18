@@ -31,11 +31,12 @@ defmodule CodeMySpecSpex.Story1057.Criterion3312Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckMachinery
   alias CodeMySpec.McpServers.MainAgent.Tools.RestartAgent
   alias CodeMySpecSpex.Fixtures
@@ -80,7 +81,13 @@ defmodule CodeMySpecSpex.Story1057.Criterion3312Spex do
 
       then_ "it raises the fault", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, issues, _frame} = ListIssues.execute(%{}, frame)
+
+        issues =
+          ToolLibrary.run(
+            "list_issues",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(issues) =~ ~r/tool/i,
                """

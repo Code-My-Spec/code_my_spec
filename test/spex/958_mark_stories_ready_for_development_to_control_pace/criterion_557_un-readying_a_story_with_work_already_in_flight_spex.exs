@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
@@ -86,8 +87,12 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
       then_ "the graph stops offering new requirements for that story", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: @title}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: @title},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

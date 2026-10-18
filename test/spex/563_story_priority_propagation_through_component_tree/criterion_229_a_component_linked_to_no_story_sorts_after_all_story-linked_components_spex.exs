@@ -13,10 +13,11 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.ComponentGraphHelpers, only: [design!: 2, design!: 4]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -54,7 +55,14 @@ defmodule CodeMySpecSpex.Story563.Criterion5906Spex do
 
       when_ "the agent calls get_next_requirement", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        response =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end
 

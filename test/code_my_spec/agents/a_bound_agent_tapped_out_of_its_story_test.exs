@@ -8,13 +8,15 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
 
   use CodeMySpecSpex.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers, only: [coding_work_waiting: 1, next_task: 2, agent_frame: 2]
   import CodeMySpecSpex.StoryBoundHelpers, only: [issue_accepted: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Repo
@@ -54,7 +56,13 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
   end
 
   defp next(ctx) do
-    {:reply, response, _} = GetNextRequirement.execute(%{}, ctx.frame)
+    response =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
+      )
+
     response_text(response)
   end
 end

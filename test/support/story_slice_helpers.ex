@@ -4,7 +4,6 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.WorkingCopies
 
@@ -122,7 +121,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   def next(context, assigns \\ %{}) do
-    call(context, GetNextRequirement, %{}, assigns)
+    call(context, "get_next_requirement", %{}, assigns)
   end
 
   def topology(context, triples) do

@@ -11,10 +11,9 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,9 +29,14 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
           description: "Confirmation toast vanishes before it can be read."
         }
 
-        {:reply, response, _frame} = CreateIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "create_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected create_issue with no scope to succeed, got: #{inspect(response)}"
 
         {:ok,
@@ -45,8 +49,12 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
       then_ "get_issue reports the issue as :app scope", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
+        response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 
@@ -65,7 +73,13 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
       then_ "list_issues filtered by scope=app includes the issue", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListIssues.execute(%{scope: "app", severity: "all"}, frame)
+        response =
+          ToolLibrary.run(
+            "list_issues",
+            %{scope: "app", severity: "all"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         assert body =~ "Toast disappears too quickly",
@@ -85,7 +99,13 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
         # accepts framework now.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListIssues.execute(%{scope: "qa", severity: "all"}, frame)
+        response =
+          ToolLibrary.run(
+            "list_issues",
+            %{scope: "qa", severity: "all"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         refute body =~ "Toast disappears too quickly",

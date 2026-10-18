@@ -27,7 +27,7 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutputTest do
       ToolLibrary.run(
         "get_analysis_output",
         params,
-        Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
   defp page(params, frame) do

@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
 
   import ExUnit.Assertions
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetWorkingCopyLoop
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
@@ -80,7 +80,12 @@ defmodule CodeMySpecSpex.IdleAgentHelpers do
         switch_on.()
     end
 
-    {:reply, _next, _frame} = GetNextRequirement.execute(%{}, frame)
+    _next =
+      ToolLibrary.run(
+        "get_next_requirement",
+        %{},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     context
   end

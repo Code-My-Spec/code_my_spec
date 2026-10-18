@@ -34,19 +34,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
     version: "1.0.0",
     capabilities: [:tools]
 
-  component(CodeMySpec.McpServers.Issues.Tools.CreateIssue)
   component(CodeMySpec.McpServers.Health.Tools.ScriptHealth)
-  component(CodeMySpec.McpServers.Issues.Tools.ListIssues)
-  component(CodeMySpec.McpServers.Issues.Tools.GetIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.AcceptIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.DismissIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.ResolveIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.UpdateIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.AssignIssueToWorkingCopy)
-  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssueFromWorkingCopy)
-  component(CodeMySpec.McpServers.Issues.Tools.SetActiveIssue)
-  component(CodeMySpec.McpServers.Issues.Tools.UnassignIssue)
   component(CodeMySpec.McpServers.Devops.Tools.DevopsStatus)
   component(CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup)
   component(CodeMySpec.McpServers.Devops.Tools.GenerateDeployFiles)
@@ -122,27 +110,9 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   component(CodeMySpec.McpServers.Stories.Tools.StartStoryReview)
   component(CodeMySpec.McpServers.Stories.Tools.StartThreeAmigosSession)
   component(CodeMySpec.McpServers.Stories.Tools.TriageIssues)
-  component(CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph)
-  component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
-  component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
-  component(CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview)
-  component(CodeMySpec.McpServers.Architecture.Tools.ShowNamespaceHierarchy)
-  component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
-  component(CodeMySpec.McpServers.Architecture.Tools.CheckArchitecture)
-  component(CodeMySpec.McpServers.Components.Tools.CreateComponent)
-  component(CodeMySpec.McpServers.Components.Tools.UpdateComponent)
-  component(CodeMySpec.McpServers.Components.Tools.DeleteComponent)
-  component(CodeMySpec.McpServers.Components.Tools.AddDependency)
-  component(CodeMySpec.McpServers.Components.Tools.RemoveDependency)
-  component(CodeMySpec.McpServers.Components.Tools.GetComponent)
   # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
   # was unreachable from a script even though every sibling Components tool
   # above is registered and no exclusion applies.
-  component(CodeMySpec.McpServers.Components.Tools.ListComponents)
-  component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
-  component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
   # Scriptable unlike the asking tools: it waits on nobody, and only touches the
@@ -184,14 +154,21 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # Story 1116 ("1082"): every agent role reads its own project's deployed
   # logs and traces. Granted to every role in `RoleProfile`, not main-only.
 
+  # Library tools served only by `ComponentsServer`, as they were before they
+  # moved; a script never had them.
+  @components_server_only ~w(architecture_health_summary context_statistics orphaned_contexts
+                             review_context_design show_architecture start_context_design)
+
   @doc """
   Every scriptable tool: the components above, then the tools domains own
   (`CodeMySpec.ToolLibrary`), in the one shape every reader takes.
   """
   def registrations do
-    direct = Enum.map(CodeMySpec.McpServers.LocalServer.library_tools(), & &1.name())
+    elsewhere =
+      Enum.map(CodeMySpec.McpServers.LocalServer.library_tools(), & &1.name()) ++
+        @components_server_only
 
     __components__() ++
-      Enum.reject(CodeMySpec.ToolLibrary.registrations(), &(&1.name in direct))
+      Enum.reject(CodeMySpec.ToolLibrary.registrations(), &(&1.name in elsewhere))
   end
 end

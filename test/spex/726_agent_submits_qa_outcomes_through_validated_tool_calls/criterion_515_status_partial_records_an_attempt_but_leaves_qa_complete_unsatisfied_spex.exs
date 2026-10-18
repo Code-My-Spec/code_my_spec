@@ -10,10 +10,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
   submission must carry at least one linked issue_id.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
+  - `CodeMySpec.Issues.Tools.CreateIssue`
   - `CodeMySpec.Qa.Tools.SubmitQaResult`
   - `CodeMySpec.Qa.Tools.ListQaAttempts`
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,8 +31,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
       given_ "a started qa_complete task and a finding filed via create_issue", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "QA-found gap from criterion 6450 spex",
               severity: "medium",
@@ -41,10 +41,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
               story_number: context.story.number,
               description: "Discovered before the agent ran out of time."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute issue_response.isError
+        assert match?({:ok, _}, issue_response)
         issue_id = extract_issue_id(response_text(issue_response))
 
         {:ok, Map.put(context, :issue_id, issue_id)}
@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
               scenarios: [%{name: "smoke", status: "partial", observation: "ran out of time"}],
               issue_ids: [context.issue_id]
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6450Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, list_response)

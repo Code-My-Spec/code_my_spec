@@ -42,7 +42,7 @@ defmodule CodeMySpec.Observability.ToolsTest do
         ToolLibrary.run(
           "query_logs",
           %{},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:error, _}, response)
@@ -60,7 +60,7 @@ defmodule CodeMySpec.Observability.ToolsTest do
         ToolLibrary.run(
           "query_logs",
           %{},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, response)
@@ -112,7 +112,7 @@ defmodule CodeMySpec.Observability.ToolsTest do
         ToolLibrary.run(
           "slow_spans",
           %{},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, response)
@@ -126,7 +126,7 @@ defmodule CodeMySpec.Observability.ToolsTest do
         ToolLibrary.run(
           "error_summary",
           %{},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns.current_scope)
+          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
         )
 
       assert match?({:error, _}, response)

@@ -1,13 +1,6 @@
 defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   @moduledoc "Agent-facing actions for the story issue submission scenarios."
 
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
-  alias CodeMySpec.McpServers.Issues.Tools.SubmitStoryIssue
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
@@ -38,7 +31,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
     text =
       call(
         context,
-        CreateIssue,
+        "create_issue",
         %{
           title: "New finding",
           description: "A newly observed behavior",
@@ -53,10 +46,10 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
 
     case status do
       :dismissed ->
-        call(context, DismissIssue, %{issue_id: id, reason: "Nonblocking observation"}, :qa)
+        call(context, "dismiss_issue", %{issue_id: id, reason: "Nonblocking observation"}, :qa)
 
       :accepted ->
-        call(context, AcceptIssue, %{issue_id: id, category: "bug"}, :qa)
+        call(context, "accept_issue", %{issue_id: id, category: "bug"}, :qa)
     end
 
     Map.put(context, key, %{id: id})
@@ -95,7 +88,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   def submit(context, key, opts \\ []) do
     call(
       context,
-      SubmitStoryIssue,
+      "submit_story_issue",
       %{
         issue_id: Map.fetch!(context, key).id,
         revision: Keyword.get(opts, :revision, revision()),
@@ -107,13 +100,13 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
     context
   end
 
-  def next(context, role), do: call(context, GetNextRequirement, %{}, role)
+  def next(context, role), do: call(context, "get_next_requirement", %{}, role)
 
   def requirements(context),
-    do: call(context, ListRequirements, %{limit: 1000}, :coding)
+    do: call(context, "list_requirements", %{limit: 1000}, :coding)
 
   def issue_text(context, key),
-    do: call(context, GetIssue, %{issue_id: Map.fetch!(context, key).id}, :coding)
+    do: call(context, "get_issue", %{issue_id: Map.fetch!(context, key).id}, :coding)
 
   def start_fix(context, key) do
     call(
@@ -159,7 +152,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
     do:
       call(
         context,
-        ListRequirements,
+        "list_requirements",
         %{requirement_name: "qa_complete", status: "satisfied"},
         :qa
       )

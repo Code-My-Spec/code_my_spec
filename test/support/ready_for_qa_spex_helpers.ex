@@ -8,10 +8,10 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   a story branch — because certifying reads a real tree and a real HEAD.
   """
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.AgentTasks.ReadyForQa
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.McpServers.Stories.Tools.AddCriterion
   alias CodeMySpec.McpServers.Stories.Tools.RetireCriterion
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
@@ -68,8 +68,12 @@ defmodule CodeMySpecSpex.ReadyForQaHelpers do
   def story_requirements(context, story) do
     frame = %Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      ShowStoryRequirements.execute(%{story: to_string(story.number)}, frame)
+    response =
+      ToolLibrary.run(
+        "show_story_requirements",
+        %{story: to_string(story.number)},
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+      )
 
     response_text(response)
   end

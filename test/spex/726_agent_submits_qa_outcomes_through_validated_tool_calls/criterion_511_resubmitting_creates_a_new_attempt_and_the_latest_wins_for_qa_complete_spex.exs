@@ -10,10 +10,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
   partial submission carries an issue id per rule aa9a29e6.
 
   Surfaces:
-  - `CodeMySpec.McpServers.Issues.Tools.CreateIssue`
+  - `CodeMySpec.Issues.Tools.CreateIssue`
   - `CodeMySpec.Qa.Tools.SubmitQaResult` (x2)
   - `CodeMySpec.Qa.Tools.ListQaAttempts`
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,8 +32,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
              context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, issue_response, _frame} =
-          CreateIssue.execute(
+        issue_response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "QA-found incomplete coverage from criterion 6446 spex",
               severity: "low",
@@ -42,10 +42,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
               story_number: context.story.number,
               description: "First-pass partial submission discovered this gap."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute issue_response.isError
+        assert match?({:ok, _}, issue_response)
         issue_id = extract_issue_id(response_text(issue_response))
 
         {:ok, Map.put(context, :issue_id, issue_id)}
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
               scenarios: [%{name: "first_pass", status: "partial", observation: "incomplete"}],
               issue_ids: [context.issue_id]
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, partial_response)
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
               scenarios: [%{name: "second_pass", status: "pass", observation: "complete"}],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, pass_response)
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, list_response)

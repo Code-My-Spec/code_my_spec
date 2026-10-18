@@ -48,10 +48,11 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -64,7 +65,13 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
         context = FullSatisfactionFixtures.apply(context)
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        next =
+          ToolLibrary.run(
+            "get_next_requirement",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(next) =~ "All requirements satisfied",
                "the premise is false, and every assertion below is an absence that " <>

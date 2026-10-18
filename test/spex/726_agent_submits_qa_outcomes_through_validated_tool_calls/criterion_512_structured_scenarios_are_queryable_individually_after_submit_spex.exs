@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
               ],
               issue_ids: []
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
           ToolLibrary.run(
             "list_qa_attempts",
             %{story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, list_response)

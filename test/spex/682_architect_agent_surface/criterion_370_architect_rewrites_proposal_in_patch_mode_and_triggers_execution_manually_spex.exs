@@ -15,9 +15,9 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
-  alias CodeMySpec.McpServers.Components.Tools.ListComponents
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -93,13 +93,18 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
       when_ "the architect calls execute_proposal", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ExecuteProposal.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "execute_proposal",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :execute_response, response)}
       end
 
       then_ "the tool reports success", context do
-        refute context.execute_response.isError,
+        assert match?({:ok, _}, context.execute_response),
                "expected execute_proposal to succeed, got: #{inspect(context.execute_response)}"
 
         {:ok, context}
@@ -109,7 +114,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         app = context.project.module_name || "MyApp"
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListComponents.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         for module_name <- ["#{app}Web.FeatureLive", "#{app}.Feature"] do
@@ -123,7 +134,13 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
       then_ "the existing component is preserved", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = ListComponents.execute(%{}, frame)
+        response =
+          ToolLibrary.run(
+            "list_components",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         body = response_text(response)
 
         assert body =~ context.existing_module,
@@ -135,11 +152,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
       then_ "the new components are recorded", context do
         app = context.project.module_name || "MyApp"
 
-        {:reply, listed, _frame} =
-          ListComponents.execute(
-            %{},
-            %Frame{assigns: %{current_scope: context.scope}}
-          )
+        listed =
+          ToolLibrary.run("list_components", %{}, %{scope: context.scope})
 
         for module_name <- ["#{app}Web.FeatureLive", "#{app}.Feature"] do
           assert response_text(listed) =~ module_name,

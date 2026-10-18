@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
           ToolLibrary.run(
             "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _happy =
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
               kind: "happy_path",
               body: "Given...\nWhen...\nThen happy outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _failure =
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
               kind: "failure_path",
               body: "Given...\nWhen...\nThen failure outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
                   story_number: context.story.number,
                   text: "Open question #{n}"
                 },
-                Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
             extract_question_id(response)

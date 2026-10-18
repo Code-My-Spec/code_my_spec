@@ -15,10 +15,9 @@ defmodule CodeMySpecSpex.Story686.Criterion5917Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
-  alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
-  alias CodeMySpec.McpServers.Issues.Tools.GetIssue
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,14 +27,15 @@ defmodule CodeMySpecSpex.Story686.Criterion5917Spex do
       given_ "an incoming issue exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          CreateIssue.execute(
+        response =
+          ToolLibrary.run(
+            "create_issue",
             %{
               title: "Stop hook stalls on retry",
               severity: "high",
               description: "Stop hook hangs when retried after a timeout."
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         issue_id = extract_issue_id(response)
@@ -48,9 +48,14 @@ defmodule CodeMySpecSpex.Story686.Criterion5917Spex do
 
         params = %{issue_id: context.issue_id, category: "bug"}
 
-        {:reply, response, _frame} = AcceptIssue.execute(params, frame)
+        response =
+          ToolLibrary.run(
+            "accept_issue",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute response.isError,
+        assert match?({:ok, _}, response),
                "expected accept_issue to succeed without a story link, got: #{inspect(response)}"
 
         {:ok, Map.put(context, :accept_response, response)}
@@ -71,8 +76,12 @@ defmodule CodeMySpecSpex.Story686.Criterion5917Spex do
       then_ "get_issue reflects the new status and no story link", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, get_response, _frame} =
-          GetIssue.execute(%{issue_id: context.issue_id}, frame)
+        get_response =
+          ToolLibrary.run(
+            "get_issue",
+            %{issue_id: context.issue_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(get_response)
 

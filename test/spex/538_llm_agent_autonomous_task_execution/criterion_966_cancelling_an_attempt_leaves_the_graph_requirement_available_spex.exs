@@ -9,11 +9,12 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
   alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
   alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
@@ -88,18 +89,23 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
       end
 
       then_ "the agent can still discover the same requirement without claiming it", context do
-        {:reply, available, _} =
-          ListRequirements.execute(
+        available =
+          ToolLibrary.run(
+            "list_requirements",
             %{
               entity_type: "story",
               entity_id: to_string(context.story.number),
               requirement_name: "bdd_specs_exist",
               status: "unsatisfied"
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns.current_scope
+            )
           )
 
-        refute available.isError, response_text(available)
+        assert match?({:ok, _}, available), response_text(available)
         assert response_text(available) =~ "[ ] **bdd_specs_exist**"
         assert response_text(available) =~ context.story.title
 

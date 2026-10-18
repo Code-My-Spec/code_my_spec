@@ -16,13 +16,14 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpecSpex.HarnessHooks
 
   @spex_path "test/spex/example_context_spex.exs"
@@ -69,8 +70,12 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
       then_ "the story's specs are not ready", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ShowStoryRequirements.execute(%{story: to_string(context.story.number)}, frame)
+        response =
+          ToolLibrary.run(
+            "show_story_requirements",
+            %{story: to_string(context.story.number)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = response_text(response)
 

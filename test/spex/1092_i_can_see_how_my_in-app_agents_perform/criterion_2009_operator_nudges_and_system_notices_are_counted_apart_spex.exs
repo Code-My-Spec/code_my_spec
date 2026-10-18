@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
           ToolLibrary.run(
             "message_agent",
             %{agent_id: context.agent.id, message: "double-check the migration order"},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, sent), inspect(sent)

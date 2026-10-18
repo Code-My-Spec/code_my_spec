@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
 
   Surfaces:
   - `CodeMySpec.Qa.Tools.SubmitQaResult`
-  - `CodeMySpec.McpServers.Requirements.Tools.ListRequirements`
+  - `CodeMySpec.Requirements.Tools.ListRequirements`
   """
 
   use CodeMySpecSpex.Case
@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6440Spex do
               ],
               issue_ids: [context.finding.id]
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         assert match?({:ok, _}, response)

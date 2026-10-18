@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               name: "Driver",
               headline: "Fleet driver attempting card transactions"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         driver_id = extract_persona_id(create_response)
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
           ToolLibrary.run(
             "link_persona_to_story",
             %{persona_id: driver_id, story_number: context.story.number},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
           ToolLibrary.run(
             "add_rule",
             %{story_number: context.story.number, statement: rule_statement},
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _happy =
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               kind: "happy_path",
               body: "Given context\nWhen action\nThen happy outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         _failure =
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5892Spex do
               kind: "failure_path",
               body: "Given context\nWhen action\nThen failure outcome"
             },
-            Map.put(frame.assigns, :scope, frame.assigns.current_scope)
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, context}
