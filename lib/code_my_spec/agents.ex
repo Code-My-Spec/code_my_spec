@@ -1027,7 +1027,10 @@ defmodule CodeMySpec.Agents do
 
   # On duty holds a seat, whether or not its process is up this moment — one
   # being restored has not given it up.
-  defp seat_holders(scope), do: AgentsRepository.list_on_duty(scope)
+  # A terminal session holds no seat (story 1122): it may share any role, and
+  # an agent we start is never refused on its account.
+  defp seat_holders(scope),
+    do: scope |> AgentsRepository.list_on_duty() |> Enum.reject(&(&1.engine == :claude_code))
 
   # Root as well as id: a root with no row of its own is recorded under the
   # caller's copy id (`id_for/2`), and is still a different tree.
@@ -2315,6 +2318,42 @@ defmodule CodeMySpec.Agents do
     with {:ok, _} <- Mailbox.finish(scope, agent_id, ref, generation) do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
+  # A terminal session's turn ending (story 1124), read off Claude Code's own
+  # agent list: what an engine's turn end settles — the turn, a decline, its
+  # offers, what main must hear — and then its queue and its next offer. No
+  # stop menu: the session's own Stop hook is that moment.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "turn_over", "generation" => generation},
+        _opts
+      )
+      when is_binary(generation) do
+    # Not `Mailbox.ready/4`: that reads a turn ending unreported as one a
+    # restart cut, and a terminal turn always ends this way.
+    with {:ok, %Agent{engine: :claude_code, mailbox_generation: ^generation} = agent} <-
+           AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, settled} <-
+           AgentsRepository.update_agent(
+             scope,
+             agent,
+             Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, agent.turn_started_at))
+           ) do
+      {:ok, settled} = Work.record_decline(scope, settled, agent.turn_started_at)
+      :ok = Offers.settle_turn(settled)
+      tell_main_held_back(scope, settled)
+      tell_main_undelivered_instructions(scope, settled)
+      broadcast(scope, {:agent_turn, settled})
+
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+        Work.request_turn_if_runnable(scope, settled, :turn_ended)
       end)
     end
 

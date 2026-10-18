@@ -151,7 +151,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
 
     :counters.put(status, 1, 0)
     send(pid, :check)
-    assert_receive {:reported, %{event: :mailbox_ready, ref: nil}}
+    assert_receive {:reported, %{event: :turn_over, ref: nil}}
   end
 
   test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do
@@ -168,7 +168,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     :counters.put(gone, 1, 1)
     send(pid, :check)
 
-    assert_receive {:reported, %{event: :mailbox_ready, ref: nil}}
+    assert_receive {:reported, %{event: :turn_over, ref: nil}}
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2_000
   end
 

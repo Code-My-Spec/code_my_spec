@@ -71,6 +71,7 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
         |> withdrawable(reply, sent)
         |> with_pending_question(scope, context[:agent_id], agent_id(params))
         |> not_interruptible(scope, agent_id(params), MapAccess.get(params, :send_now) == true)
+        |> held_for_stop(scope, agent_id(params))
 
       response
     else
@@ -157,6 +158,23 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   end
 
   defp not_interruptible(response, _scope, _target_id, _send_now), do: response
+
+  # Story 1123: a terminal session with no live inbox — ended, too old a
+  # Claude Code, or holding cross-session messages — is handed this at its
+  # next stop, and the sender hears why it was not delivered now.
+  defp held_for_stop(response, scope, target_id) do
+    with {:ok, %{engine: :claude_code, id: id}} <- Agents.fetch_agent(scope, target_id),
+         false <- MapSet.member?(Agents.present_ids(scope), id) do
+      append(
+        response,
+        "This agent is a terminal session with no live inbox — its session has ended, its " <>
+          "Claude Code cannot take messages directly, or it holds them — so it reads this " <>
+          "when it next stops."
+      )
+    else
+      _ -> response
+    end
+  end
 
   defp append({:ok, text}, more), do: {:ok, text <> "\n" <> more}
   defp append(other, _more), do: other
