@@ -52,6 +52,24 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocsTest do
       assert body =~ "Not available to your role"
     end
 
+    # 10586b7f: a second, distinct tool (`list_agents`, main-only per
+    # RoleProfile -- staffing is main's) showed the identical gap after
+    # 50ddc827's fix landed for `list_session_subagents` alone: tool_docs is
+    # not restricted to naming one tool; the grant check has to run for
+    # whichever tool is asked about, not just the one the first report named.
+    test "a second main-only tool is also marked unavailable to coding" do
+      scope = full_scope_fixture()
+      agent = coding_agent(scope)
+      frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+
+      assert {:reply, response, ^frame} = ToolDocs.execute(%{name: "list_agents"}, frame)
+
+      body = text(response)
+
+      assert body =~ "working copy", "the real schema must still be printed"
+      assert body =~ "Not available to your role"
+    end
+
     test "carries no such note for a role the grant does not restrict" do
       scope = full_scope_fixture()
       agent = AgentsRepository.create_agent(scope, %{
