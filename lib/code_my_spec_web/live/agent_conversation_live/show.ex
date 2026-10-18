@@ -1349,6 +1349,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # each arrival is cheap.
   # See knowledge/web, "Transcripts".
   defp assign_turns(socket, messages) do
+    # A message can reach this list twice: `load_older` prepends a fresh page
+    # without checking what is already loaded, and a message whose own
+    # `inserted_at` sorts earlier than the page's current oldest (clock skew
+    # between writers, or a slow insert landing late) is still appended to
+    # the *end* by `upsert/2` when it arrives live, not re-sorted into place.
+    # `before:` then asks for exactly that timestamp again. Kept by id, first
+    # occurrence: `older ++ messages` puts the correctly-ordered copy first.
+    messages = Enum.uniq_by(messages, & &1.id)
+
     # Pending messages belong in the queue; failed and withdrawn attempts
     # remain audit records, not things the agent has received.
     messages = Enum.filter(messages, &(Map.get(&1, :delivery) in [nil, :delivered]))
