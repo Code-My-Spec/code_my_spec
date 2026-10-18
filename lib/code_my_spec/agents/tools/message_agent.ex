@@ -70,6 +70,7 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
         |> AgentsMapper.replied(reply)
         |> withdrawable(reply, sent)
         |> with_pending_question(scope, context[:agent_id], agent_id(params))
+        |> not_interruptible(scope, agent_id(params), MapAccess.get(params, :send_now) == true)
 
       response
     else
@@ -139,6 +140,24 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   defp withdrawable(response, _reply, _sent), do: response
 
   # A second line under the reply, as a second text part read before.
+  # Story 1123: a terminal session reads a message at its next tool call and
+  # nothing stops its turn, so send-now says what it did instead.
+  defp not_interruptible(response, scope, target_id, true) do
+    case Agents.fetch_agent(scope, target_id) do
+      {:ok, %{engine: :claude_code}} ->
+        append(
+          response,
+          "This agent is a terminal session: it reads this at its next tool call, " <>
+            "and its turn cannot be interrupted."
+        )
+
+      _ ->
+        response
+    end
+  end
+
+  defp not_interruptible(response, _scope, _target_id, _send_now), do: response
+
   defp append({:ok, text}, more), do: {:ok, text <> "\n" <> more}
   defp append(other, _more), do: other
 

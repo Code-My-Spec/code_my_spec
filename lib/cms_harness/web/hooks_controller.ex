@@ -28,9 +28,12 @@ defmodule CmsHarness.Web.HooksController do
 
     case conn.assigns.working_copy do
       {:ok, working_dir} ->
+        decision = decide(hook, working_dir, params)
+        attach_terminal(hook, conn, working_dir, decision)
+
         conn
         |> put_status(200)
-        |> json(decide(hook, working_dir, params))
+        |> json(decision)
 
       {:unknown_harness, id} ->
         conn
@@ -202,4 +205,28 @@ defmodule CmsHarness.Web.HooksController do
 
   # "/api/hooks/stop" -> "stop"
   defp hook_name(conn), do: List.last(conn.path_info)
+
+  # A terminal session's SessionStart names its inbox socket in a header
+  # (story 1123); the server answered with the agent it is. The socket stays
+  # here: this harness is on the session's machine and the server is not.
+  defp attach_terminal("session-start", conn, working_dir, %{"agent_id" => agent_id})
+       when is_binary(agent_id) do
+    case get_req_header(conn, "x-messaging-socket") do
+      [socket | _] when socket != "" ->
+        case CmsHarness.Agents.attach_terminal(agent_id, socket, working_dir) do
+          {:ok, _pid} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "[CmsHarness] terminal agent #{agent_id} could not attach: #{inspect(reason)}"
+            )
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp attach_terminal(_hook, _conn, _working_dir, _decision), do: :ok
 end

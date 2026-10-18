@@ -901,6 +901,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("send_now", %{"ref" => ref}, socket) do
     case Agents.send_now(socket.assigns.current_scope, socket.assigns.conversation.agent_id, ref) do
+      {:ok, {:not_interruptible, _entry}} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           "Sent. A terminal session reads it at its next tool call — it can't be interrupted."
+         )
+         |> assign(:pending, pending_for(socket.assigns.conversation))}
+
       {:ok, _entry} ->
         {:noreply, assign(socket, :pending, pending_for(socket.assigns.conversation))}
 

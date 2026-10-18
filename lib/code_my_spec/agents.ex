@@ -2212,9 +2212,17 @@ defmodule CodeMySpec.Agents do
   """
   @spec send_now(Scope.t(), Ecto.UUID.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def send_now(%Scope{} = scope, id, ref) when is_binary(ref) do
-    with {:ok, _} = sent <- Mailbox.send_now(scope, id, ref) do
-      interrupt_if_busy(scope, id)
-      sent
+    with {:ok, entry} = sent <- Mailbox.send_now(scope, id, ref) do
+      case AgentsRepository.fetch_agent(scope, id) do
+        # A terminal session reads it at its next tool call; nothing stops its
+        # turn (story 1123), and the caller says so.
+        {:ok, %Agent{engine: :claude_code}} ->
+          {:ok, {:not_interruptible, entry}}
+
+        _ ->
+          interrupt_if_busy(scope, id)
+          sent
+      end
     end
   end
 
@@ -2251,6 +2259,25 @@ defmodule CodeMySpec.Agents do
          {:ok, _} <- Mailbox.ready(scope, agent_id, generation, event["ref"]) do
       broadcast_unreferenced_ready(scope, agent_id, agent, event)
 
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        Mailbox.pump(scope, agent_id)
+      end)
+    end
+
+    :ok
+  end
+
+  # A terminal session queues what it is sent (story 1123), so a message
+  # written to its socket is delivered: its entry is settled and the next one
+  # pumped. Its turns are its own, reported from its hooks, not here.
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "delivered", "ref" => ref, "generation" => generation},
+        _opts
+      )
+      when is_binary(ref) and is_binary(generation) do
+    with {:ok, _} <- Mailbox.finish(scope, agent_id, ref, generation) do
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         Mailbox.pump(scope, agent_id)
       end)
