@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2163Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [extract_issue_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
