@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -53,8 +52,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
         on_exit(fn -> Machine.stop_agent(agent.id) end)
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
 
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: agent.id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: agent.id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, Map.put(context, :agent_id, agent.id)}
       end
@@ -82,8 +87,15 @@ defmodule CodeMySpecSpex.Story1047.Criterion3551Spex do
       then_ "one turn is running and no second turn is queued or task assigned", context do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 1
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

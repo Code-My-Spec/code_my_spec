@@ -7,11 +7,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion2075Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -26,7 +27,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2075Spex do
   end
 
   spex "Coding and QA address a question to the main agent or the product agent, never to the user",
-       criterion: 2075 do
+    criterion: 2075 do
     scenario "a QA agent asks a plain question while the main agent is not running" do
       given_ "a running product agent, no main agent, and a QA agent", context do
         product = Fixtures.running_agent(context.scope, role: "product", continuous: true)
@@ -42,13 +43,21 @@ defmodule CodeMySpecSpex.Story1052.Criterion2075Spex do
       when_ "the QA agent asks a question naming neither `to` nor `about`", context do
         params = %{
           questions: [
-            %{"question" => "Should this edge case fail loudly?", "options" => [%{"label" => "Yes"}]}
+            %{
+              "question" => "Should this edge case fail loudly?",
+              "options" => [%{"label" => "Yes"}]
+            }
           ]
         }
 
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, context.qa_frame)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(context.qa_frame.assigns, :scope, context.qa_frame.assigns[:current_scope])
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(reply))
         {:ok, Map.put(context, :question_id, question_id)}
       end

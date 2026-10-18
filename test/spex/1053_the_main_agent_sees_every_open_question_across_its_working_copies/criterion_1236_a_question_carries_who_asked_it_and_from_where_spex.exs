@@ -27,12 +27,13 @@ defmodule CodeMySpecSpex.Story1053.Criterion3266Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -65,8 +66,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3266Spex do
           assigns: %{current_scope: context.there.scope, agent_id: context.there.agent.id}
         }
 
-        {:reply, response, _frame} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "asked from the second checkout",
               questions: [
@@ -76,10 +78,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3266Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context}
       end

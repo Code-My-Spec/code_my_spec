@@ -28,13 +28,13 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -42,6 +42,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   @test_path "test/example_context_test.exs"
   @failing_test """
   defmodule ExampleContextTest do
+    alias CodeMySpec.ToolLibrary
     use ExUnit.Case
 
     test "fails on purpose" do
@@ -114,15 +115,16 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
         HarnessHooks.post_hook(context, "session-start", %{"session_id" => session_id})
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id
             },
-            %Frame{assigns: %{current_scope: context.scope}}
+            %{scope: context.scope}
           )
 
         # It writes the implementation and the test that is about to fail: the

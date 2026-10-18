@@ -32,12 +32,13 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -78,8 +79,9 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
         # project. A question with no asker cannot be shown against an agent.
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "blocked on a decision",
               questions: [
@@ -89,10 +91,10 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end

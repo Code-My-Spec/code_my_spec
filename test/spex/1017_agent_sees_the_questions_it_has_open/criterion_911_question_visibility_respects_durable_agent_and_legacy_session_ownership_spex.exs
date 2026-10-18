@@ -10,11 +10,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
@@ -61,17 +61,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
           Enum.map(context.callers, fn caller ->
             question = "#{caller.label}: which behavior should I implement?"
 
-            {:reply, asked, _} =
-              AskUserQuestion.execute(
+            asked =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   questions: [
                     %{question: question, options: [%{label: "Keep it"}, %{label: "Change it"}]}
                   ]
                 },
-                caller.frame
+                Map.put(caller.frame.assigns, :scope, caller.frame.assigns[:current_scope])
               )
 
-            refute asked.isError, response_text(asked)
+            assert match?({:ok, _}, asked), response_text(asked)
             [_, id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
             Map.merge(caller, %{question: question, question_id: id})
           end)
@@ -82,8 +83,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
       when_ "all four callers list their open questions", context do
         listings =
           Enum.map(context.callers, fn caller ->
-            {:reply, listed, _} = ListUserQuestions.execute(%{}, caller.frame)
-            refute listed.isError, response_text(listed)
+            listed =
+              ToolLibrary.run(
+                "list_user_questions",
+                %{},
+                Map.put(caller.frame.assigns, :scope, caller.frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, listed), response_text(listed)
             Map.put(caller, :listing, response_text(listed))
           end)
 

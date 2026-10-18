@@ -7,11 +7,12 @@ defmodule CodeMySpecSpex.Story1052.Criterion2122Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -24,7 +25,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2122Spex do
   end
 
   spex "A question the asking agent does not address goes to the main agent",
-       criterion: 2122 do
+    criterion: 2122 do
     scenario "a coding agent asks without naming a recipient, with the main agent running" do
       given_ "a running main agent and a coding agent", context do
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
@@ -40,13 +41,25 @@ defmodule CodeMySpecSpex.Story1052.Criterion2122Spex do
       when_ "the coding agent asks a question naming neither `to` nor `about`", context do
         params = %{
           questions: [
-            %{"question" => "Which refund window applies?", "options" => [%{"label" => "30 days"}]}
+            %{
+              "question" => "Which refund window applies?",
+              "options" => [%{"label" => "30 days"}]
+            }
           ]
         }
 
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, context.coder_frame)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(reply))
         {:ok, Map.put(context, :question_id, question_id)}
       end

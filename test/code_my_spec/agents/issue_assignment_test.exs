@@ -18,7 +18,6 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Issues
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.WorkingCopies
@@ -184,13 +183,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
 
     frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-    {:reply, started, _} =
-      StartTask.execute(
+    started =
+      ToolLibrary.run(
+        "start_task",
         %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id},
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
-    refute started.isError
+    assert match?({:ok, _}, started)
     assert TaskOwner.find_task(reload(coding), completed.id).status == :completed
     assert TaskOwner.active_task(reload(coding)).id != completed.id
   end
@@ -497,13 +497,14 @@ defmodule CodeMySpec.Agents.IssueAssignmentTest do
       # A non-priority bag member must be claimable through the real task tool.
       frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: coding.id}}
 
-      {:reply, response, _} =
-        StartTask.execute(
+      response =
+        ToolLibrary.run(
+          "start_task",
           %{requirement_name: "fix_issue", entity_type: "issue", entity_id: second.id},
-          frame
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
-      refute response.isError
+      assert match?({:ok, _}, response)
       assert Enum.any?(reload(coding).tasks, &(&1.issue_id == second.id and &1.status == :active))
       {:ok, _} = Agents.prioritize_issue(ctx.scope, copy_id, second.id)
       assert reload(coding).issue_id == second.id

@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -15,10 +17,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -81,8 +79,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
 
       when_ "coding asks its technical question and main escalates an operational follow-up",
             context do
-        {:reply, original, _} =
-          AskUserQuestion.execute(
+        original =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               questions: [
@@ -92,14 +91,19 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
                 }
               ]
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute original.isError, response_text(original)
+        assert match?({:ok, _}, original), response_text(original)
         original_id = Fixtures.question_id_from(response_text(original))
 
-        {:reply, nested, _} =
-          AskUserQuestion.execute(
+        nested =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: nil,
               questions: [
@@ -109,10 +113,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
                 }
               ]
             },
-            context.main_frame
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
           )
 
-        refute nested.isError, response_text(nested)
+        assert match?({:ok, _}, nested), response_text(nested)
         nested_id = Fixtures.question_id_from(response_text(nested))
 
         {:reply, escalated, _} =
@@ -136,13 +144,35 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
         assert response_text(inbox) =~ context.nested_id
         assert response_text(inbox) =~ ~r/waiting on the user/i
         assert response_text(inbox) =~ context.coding_id
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.coding_frame)
-        refute questions.isError, response_text(questions)
+
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         assert response_text(questions) =~ context.original_id
         assert response_text(questions) =~ context.task_id
         refute response_text(questions) =~ context.nested_id
-        {:reply, blocked, _} = ListTasks.execute(%{status: "blocked"}, context.coding_frame)
-        refute blocked.isError, response_text(blocked)
+
+        blocked =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "blocked"},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, blocked), response_text(blocked)
         assert response_text(blocked) =~ context.task_id
         assert Machine.running() == context.running_ids
 
@@ -155,28 +185,55 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
       end
 
       when_ "coding deliberately claims the unrelated story", context do
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               entity_type: "story",
               entity_id: to_string(context.other_story.number),
               requirement_name: "bdd_specs_exist"
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, Map.put(context, :other_task_id, extract_task_id!(started))}
       end
 
       then_ "only the new task is active and the original remains blocked", context do
         assert context.other_task_id != context.task_id
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.coding_frame)
-        refute active.isError, response_text(active)
+
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ context.other_task_id
         refute response_text(active) =~ context.task_id
-        {:reply, blocked, _} = ListTasks.execute(%{status: "blocked"}, context.coding_frame)
-        refute blocked.isError, response_text(blocked)
+
+        blocked =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "blocked"},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, blocked), response_text(blocked)
         assert response_text(blocked) =~ context.task_id
         {:ok, context}
       end

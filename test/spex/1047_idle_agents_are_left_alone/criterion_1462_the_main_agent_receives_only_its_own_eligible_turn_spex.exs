@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3564Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -91,8 +90,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3564Spex do
         assert length(HeldProvider.seen()) == 1
 
         for id <- [context.main_id, context.coding_id] do
-          {:reply, tasks, _} = ListTasks.execute(%{agent_id: id}, frame(context))
-          refute tasks.isError, response_text(tasks)
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{agent_id: id},
+              Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 

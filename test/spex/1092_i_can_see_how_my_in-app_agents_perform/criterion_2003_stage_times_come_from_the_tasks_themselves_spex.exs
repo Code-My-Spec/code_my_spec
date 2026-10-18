@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -67,28 +65,30 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2003")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, started, _frame} =
+        started =
           as_an_empty_checkout(socket, fn ->
-            StartTask.execute(
+            ToolLibrary.run(
+              "start_task",
               %{
                 requirement_name: "implementation_file",
                 entity_type: "component",
                 entity_id: component.id
               },
-              asking
+              Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
             )
           end)
 
-        refute started.isError, inspect(started)
+        assert match?({:ok, _}, started), inspect(started)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{task_id: task_id, reason: "need a product decision before writing this"},
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
         :ok = Fixtures.age_permission(scope, permission_id, 1_800)
 

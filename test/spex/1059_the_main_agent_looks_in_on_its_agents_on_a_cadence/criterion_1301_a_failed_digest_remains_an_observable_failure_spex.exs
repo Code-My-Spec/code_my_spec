@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -94,8 +93,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3333Spex do
 
         refute conversation.isError, response_text(conversation)
         assert response_text(conversation) == context.conversation_before
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

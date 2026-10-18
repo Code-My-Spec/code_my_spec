@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -55,8 +54,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
             on_exit(fn -> Machine.stop_agent(agent.id) end)
             assert {:ok, %{busy?: false}} = Machine.status(agent.id)
             agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-            {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame)
-            refute tasks.isError, response_text(tasks)
+
+            tasks =
+              ToolLibrary.run(
+                "list_tasks",
+                %{},
+                Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+              )
+
+            assert match?({:ok, _}, tasks), response_text(tasks)
             assert response_text(tasks) == "No tasks."
 
             {:reply, conversation, _} =
@@ -94,8 +100,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3320Spex do
         for snapshot <- context.agents do
           assert {:ok, %{busy?: false}} = Machine.status(snapshot.agent.id)
           assert Fixtures.role_queue_size(context.scope, snapshot.agent.id) == 0
-          {:reply, tasks, _} = ListTasks.execute(%{}, snapshot.frame)
-          refute tasks.isError, response_text(tasks)
+
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{},
+              Map.put(snapshot.frame.assigns, :scope, snapshot.frame.assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
 
           {:reply, conversation, _} =

@@ -54,7 +54,6 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -150,15 +149,16 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
   defp answer_one(scope, agent) do
     asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-    {:reply, asked, _frame} =
-      AskUserQuestion.execute(
+    asked =
+      ToolLibrary.run(
+        "ask_user_question",
         %{
           title: "cannot see epic membership",
           questions: [
             %{"question" => @question, "options" => [%{"label" => "A"}, %{"label" => "B"}]}
           ]
         },
-        asking
+        Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
       )
 
     question_id = Fixtures.question_id_from(response_text(asked))

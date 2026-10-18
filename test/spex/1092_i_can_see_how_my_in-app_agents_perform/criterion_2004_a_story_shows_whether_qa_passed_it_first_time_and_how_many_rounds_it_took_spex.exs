@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.ComponentHelpers
@@ -90,10 +89,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
         {:reply, resp, _frame} = SetActiveStory.execute(%{story_number: story.number}, frame)
         refute resp.isError, inspect(resp)
 
-        {:reply, started, _frame} =
+        started =
           start_qa(asking, story, socket)
 
-        refute started.isError, inspect(started)
+        assert match?({:ok, _}, started), inspect(started)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(started))
 
         issue_1 =
@@ -155,10 +154,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
             String.duplicate("b", 40)
           )
 
-        {:reply, resumed_1, _frame} =
+        resumed_1 =
           start_qa(asking, story, socket)
 
-        refute resumed_1.isError, inspect(resumed_1)
+        assert match?({:ok, _}, resumed_1), inspect(resumed_1)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(resumed_1))
 
         issue_2 =
@@ -218,10 +217,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
             String.duplicate("c", 40)
           )
 
-        {:reply, resumed_2, _frame} =
+        resumed_2 =
           start_qa(asking, story, socket)
 
-        refute resumed_2.isError, inspect(resumed_2)
+        assert match?({:ok, _}, resumed_2), inspect(resumed_2)
         [_, task_id] = Regex.run(~r/Task ID: `([0-9a-f-]{36})`/, response_text(resumed_2))
 
         round_3 =
@@ -276,13 +275,14 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
   defp start_qa(asking, story, socket) do
     task =
       Task.async(fn ->
-        StartTask.execute(
+        ToolLibrary.run(
+          "start_task",
           %{
             requirement_name: "qa_complete",
             entity_type: "story",
             entity_id: to_string(story.number)
           },
-          asking
+          Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
         )
       end)
 

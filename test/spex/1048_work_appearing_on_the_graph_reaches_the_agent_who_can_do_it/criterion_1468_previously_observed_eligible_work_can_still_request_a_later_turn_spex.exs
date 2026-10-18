@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -129,8 +128,18 @@ defmodule CodeMySpecSpex.Story1048.Criterion3570Spex do
         assert match?({:ok, _}, available), response_text(available)
         assert response_text(available) == context.available_before
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

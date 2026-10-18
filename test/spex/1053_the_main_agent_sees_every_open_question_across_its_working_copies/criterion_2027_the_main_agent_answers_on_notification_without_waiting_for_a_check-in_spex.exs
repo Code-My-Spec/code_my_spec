@@ -17,14 +17,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -49,8 +49,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
         _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-2027-main")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coding.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -59,10 +60,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
 
         {:ok,
          context
@@ -102,7 +103,13 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
 
       then_ "the asking agent sees the answer", context do
         asking = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coding.id}}
-        {:reply, response, _} = CheckAnswer.execute(%{question_id: context.question_id}, asking)
+
+        response =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
+          )
 
         assert response_text(response) =~ "/tmp/spex-2027",
                """

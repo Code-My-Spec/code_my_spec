@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -93,21 +92,22 @@ defmodule CodeMySpecSpex.Story599.Criterion1614Spex do
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "story_issues_triaged",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :started, started)}
       end
 
       then_ "product holds the triage of that story", context do
-        refute context.started.isError,
+        assert match?({:ok, _}, context.started),
                "product on the main copy could not triage a story placed elsewhere: " <>
                  response_text(context.started)
 

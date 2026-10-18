@@ -26,12 +26,13 @@ defmodule CodeMySpecSpex.Story1054.Criterion3278Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -57,9 +58,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3278Spex do
 
         frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} = TapOut.execute(%{}, frame)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute tapped.isError,
+        assert match?({:ok, _}, tapped),
                "the tap-out had to actually happen for this to mean anything:\n" <>
                  inspect(tapped)
 

@@ -6,6 +6,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.AgentProcessHelpers, only: [start_agent_with_provider: 2]
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,9 +18,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -54,8 +53,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
         HeldProvider.hold()
         assert {:ok, %{busy?: false}} = Machine.status(main.id)
         running_ids = Machine.running()
-        {:reply, tapped, _} = TapOut.execute(%{task_id: nil}, main_frame)
-        refute tapped.isError, response_text(tapped)
+
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{task_id: nil},
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tapped), response_text(tapped)
         [_, request_id] = Regex.run(~r/request_id=`([a-f0-9-]+)`/, response_text(tapped))
         {:ok, permission, _} = live(context.conn, "/app/permissions/#{request_id}")
         permission |> element("[data-test='approve-permission']") |> render_click()
@@ -75,8 +81,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
       end
 
       when_ "a coding question arrives and recovery checks run", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -85,10 +92,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
                 }
               ]
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
         for _ <- 1..2 do
@@ -177,8 +188,19 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
       then_ "one unassigned turn uses the existing agent instead of staffing another", context do
         assert {:ok, %{busy?: true}} = Machine.status(context.main_id)
         assert Machine.running() == context.running_ids
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.main_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.main_frame.assigns,
+              :scope,
+              context.main_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")

@@ -23,7 +23,6 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.McpServers.MainAgent.AgentWorkMapper
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Notifications
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphWatcher
@@ -86,15 +85,13 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
 
       assert response_text(next) =~ "requirement_name=`issues_triaged`"
 
-      assert {:ok, started} = start_triage(ctx)
-      refute started.isError, response_text(started)
+      assert {:ok, _started} = start_triage(ctx)
     end
   end
 
   describe "an answered task while another is active (1758)" do
     setup ctx do
-      assert {:ok, started} = start_triage(ctx)
-      refute started.isError, response_text(started)
+      assert {:ok, _started} = start_triage(ctx)
       question = ask(ctx.scope, Repo.get!(Agent, ctx.product.id))
 
       product =
@@ -127,9 +124,8 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
                &(&1 =~ "Finish your active task first")
              )
 
-      {:reply, refused, _} = start_triage!(ctx)
-      assert refused.isError
-      assert response_text(refused) =~ "beside your active task"
+      assert {:error, refused} = start_triage(ctx)
+      assert refused =~ "beside your active task"
       assert [_one] = active_tasks(product_id)
     end
 
@@ -147,8 +143,7 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
       assert [offer] = Offers.list(ctx.scope, agent_id: product_id, kind: :unblocked)
       assert {offer.subject_type, offer.subject_key} == {"task", ctx.blocked.id}
 
-      {:reply, resumed, _} = start_triage!(ctx)
-      refute resumed.isError, response_text(resumed)
+      assert {:ok, _resumed} = start_triage(ctx)
       assert [%{id: id}] = active_tasks(product_id)
       assert id == ctx.blocked.id
     end
@@ -387,18 +382,14 @@ defmodule CodeMySpec.Agents.ABlockedTaskHoldsOnlyItselfTest do
   end
 
   defp start_triage(ctx) do
-    {:reply, response, _} = start_triage!(ctx)
-    {:ok, response}
-  end
-
-  defp start_triage!(ctx) do
-    StartTask.execute(
+    ToolLibrary.run(
+      "start_task",
       %{
         requirement_name: "issues_triaged",
         entity_type: "project",
         entity_id: to_string(ctx.scope.active_project_id)
       },
-      ctx.frame
+      Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
     )
   end
 

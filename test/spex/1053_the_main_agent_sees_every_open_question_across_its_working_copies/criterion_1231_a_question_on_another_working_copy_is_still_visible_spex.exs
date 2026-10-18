@@ -27,12 +27,13 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -48,7 +49,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
       given_ "an agent on each of two working copies, each with a question open",
              context do
         copies =
-          for {root, label} <- [{"/tmp/spex-3261-a", "the first"}, {"/tmp/spex-3261-b", "the second"}] do
+          for {root, label} <- [
+                {"/tmp/spex-3261-a", "the first"},
+                {"/tmp/spex-3261-b", "the second"}
+              ] do
             reply = join_working_copy(context, root, label)
             scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
@@ -57,8 +61,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
 
             frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-            {:reply, response, _frame} =
-              AskUserQuestion.execute(
+            response =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   title: "a question from #{label} checkout",
                   questions: [
@@ -68,10 +73,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError, inspect(response)
+            assert match?({:ok, _}, response), inspect(response)
 
             %{label: label, scope: scope, agent: agent}
           end

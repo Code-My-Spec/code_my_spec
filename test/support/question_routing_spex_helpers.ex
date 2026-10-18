@@ -21,12 +21,11 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   import ExUnit.Assertions
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
 
   @doc "The frame a tool call from this scope is made in."
@@ -55,9 +54,19 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
     # into existence here would be the one scenario this guarantees can never
     # run.
     if Keyword.get(opts, :ensure_main_on_duty, true), do: ensure_main_on_duty(context.scope)
-    {:reply, reply, _frame} = AskUserQuestion.execute(params, asking_frame(context))
 
-    refute reply.isError,
+    reply =
+      ToolLibrary.run(
+        "ask_user_question",
+        params,
+        Map.put(
+          asking_frame(context).assigns,
+          :scope,
+          asking_frame(context).assigns[:current_scope]
+        )
+      )
+
+    assert match?({:ok, _}, reply),
            "the premise is a question that was raised, and this one was refused:\n" <>
              response_text(reply)
 
@@ -178,8 +187,16 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   """
   @spec collect(map(), String.t()) :: String.t()
   def collect(context, question_id) do
-    {:reply, reply, _frame} =
-      CheckAnswer.execute(%{question_id: question_id}, asker_frame(context, question_id))
+    reply =
+      ToolLibrary.run(
+        "check_answer",
+        %{question_id: question_id},
+        Map.put(
+          asker_frame(context, question_id).assigns,
+          :scope,
+          asker_frame(context, question_id).assigns[:current_scope]
+        )
+      )
 
     response_text(reply)
   end

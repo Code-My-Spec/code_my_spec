@@ -12,7 +12,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion1882Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.{ListTasks, StartTask}
   alias CodeMySpecSpex.{Fixtures, OfferHelpers}
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -73,14 +72,35 @@ defmodule CodeMySpecSpex.Story1091.Criterion1882Spex do
         task_args = OfferHelpers.next_task(context, coder_a.id)
         true = task_args.entity_type == "issue"
         true = task_args.entity_id == issue_id
-        {:reply, started, _} = StartTask.execute(task_args, coder_a_frame)
-        false = started.isError
+
+        started =
+          ToolLibrary.run(
+            "start_task",
+            task_args,
+            Map.put(coder_a_frame.assigns, :scope, coder_a_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = started
         task_id = extract_task_id!(started)
-        {:reply, held, _} = ListTasks.execute(%{status: "active"}, coder_a_frame)
-        false = held.isError
+
+        held =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(coder_a_frame.assigns, :scope, coder_a_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = held
         true = response_text(held) =~ task_id
-        {:reply, idle, _} = ListTasks.execute(%{status: "active"}, coder_b_frame)
-        false = idle.isError
+
+        idle =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(coder_b_frame.assigns, :scope, coder_b_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = idle
         true = response_text(idle) == "No tasks."
 
         {:ok,
@@ -142,12 +162,32 @@ defmodule CodeMySpecSpex.Story1091.Criterion1882Spex do
 
       then_ "the original open task belongs to team B's coder and no longer to team A's coder",
             context do
-        {:reply, old_tasks, _} = ListTasks.execute(%{status: "active"}, context.coder_a_frame)
-        refute old_tasks.isError, response_text(old_tasks)
+        old_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.coder_a_frame.assigns,
+              :scope,
+              context.coder_a_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, old_tasks), response_text(old_tasks)
         refute response_text(old_tasks) =~ context.task_id
 
-        {:reply, new_tasks, _} = ListTasks.execute(%{status: "active"}, context.coder_b_frame)
-        refute new_tasks.isError, response_text(new_tasks)
+        new_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.coder_b_frame.assigns,
+              :scope,
+              context.coder_b_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, new_tasks), response_text(new_tasks)
         rows = String.split(response_text(new_tasks), "\n")
         matching = Enum.filter(rows, &String.contains?(&1, "`#{context.task_id}`"))
         assert [row] = matching

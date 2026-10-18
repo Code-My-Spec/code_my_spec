@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.OfferHelpers do
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListOffers
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -114,7 +113,17 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @doc "Read off `list_tasks` rather than the row: the id the agent itself is shown."
   @spec held_task_id(map(), String.t()) :: String.t()
   def held_task_id(context, agent_id) do
-    {:reply, tasks, _} = ListTasks.execute(%{}, agent_frame(context, agent_id))
+    tasks =
+      ToolLibrary.run(
+        "list_tasks",
+        %{},
+        Map.put(
+          agent_frame(context, agent_id).assigns,
+          :scope,
+          agent_frame(context, agent_id).assigns[:current_scope]
+        )
+      )
+
     [_, task_id] = Regex.run(~r/([0-9a-f]{8}-[0-9a-f-]{27})/, response_text(tasks))
     task_id
   end

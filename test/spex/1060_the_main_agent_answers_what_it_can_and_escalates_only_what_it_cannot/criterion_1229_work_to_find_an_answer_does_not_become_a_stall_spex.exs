@@ -32,6 +32,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -40,7 +42,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.SearchAnswers
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -63,8 +64,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-3259")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "needs a policy nobody has written down",
               questions: [
@@ -74,10 +76,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context

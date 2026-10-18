@@ -14,12 +14,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -93,10 +91,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion3317Spex do
         refute prompt =~ "The first is:"
 
         for id <- [context.main_id, context.coding_id] do
-          {:reply, tasks, _} =
-            ListTasks.execute(%{}, %Frame{assigns: %{current_scope: context.scope, agent_id: id}})
+          tasks =
+            ToolLibrary.run("list_tasks", %{}, %{scope: context.scope, agent_id: id})
 
-          refute tasks.isError, response_text(tasks)
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 

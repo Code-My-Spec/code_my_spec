@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -24,8 +26,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
   alias CodeMySpec.Conversations
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
   end
 
   spex "An inspected answer citing a real read is recorded and reaches the asker",
-       criterion: 2180 do
+    criterion: 2180 do
     scenario "the main agent answers from a file it actually read this session" do
       given_ "a coding agent's question, and a main agent that already read the file it answers from",
              context do
@@ -71,18 +71,19 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "which port is dev on",
               questions: [
                 %{"question" => "Which port does dev listen on?", "options" => []}
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -121,8 +122,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
           assigns: %{current_scope: context.scope, agent_id: context.coder.id}
         }
 
-        {:reply, checked, _frame} =
-          CheckAnswer.execute(%{question_id: context.question_id}, asker_frame)
+        checked =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(asker_frame.assigns, :scope, asker_frame.assigns[:current_scope])
+          )
 
         assert response_text(checked) =~ "4004",
                """

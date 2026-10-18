@@ -26,12 +26,13 @@ defmodule CodeMySpecSpex.Story1054.Criterion3277Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -56,8 +57,9 @@ defmodule CodeMySpecSpex.Story1054.Criterion3277Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "needs a decision before it can carry on",
               questions: [
@@ -67,10 +69,10 @@ defmodule CodeMySpecSpex.Story1054.Criterion3277Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         # Quiet ever since, which is correct behaviour: an agent that asked is
         # told to stop rather than poll.

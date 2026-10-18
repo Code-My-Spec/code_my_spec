@@ -12,12 +12,13 @@ defmodule CodeMySpecSpex.Story670.Criterion5586Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
 
   @fixture_dir "test/fixtures/validation/pipeline_clean_run"
@@ -41,15 +42,16 @@ defmodule CodeMySpecSpex.Story670.Criterion5586Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :session_id, session_id)}

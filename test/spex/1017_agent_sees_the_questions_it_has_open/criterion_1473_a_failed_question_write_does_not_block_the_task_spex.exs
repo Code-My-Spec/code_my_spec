@@ -9,12 +9,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -28,14 +28,22 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
     :ok
   end
 
-  spex "A question that cannot be saved neither blocks work nor reaches the inbox", criterion: 1473 do
+  spex "A question that cannot be saved neither blocks work nor reaches the inbox",
+    criterion: 1473 do
     scenario "The failed ask leaves its active task and continuous intent unchanged" do
       given_ "the caller owns an active task and its inbox is observable", context do
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         {agent, task} = Fixtures.agent_task_fixture(context.scope, agent)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ task.id
         assert response_text(tasks) =~ "[active]"
         {:reply, inbox, _} = ListNotifications.execute(%{}, frame)
@@ -57,8 +65,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
       end
 
       when_ "the agent asks a valid question linked to its active task", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               title: "A question whose write fails",
@@ -69,7 +78,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
                 }
               ]
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
         # The existing tool logs its rescued stale-write exception. Accept
@@ -84,11 +93,17 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
       end
 
       then_ "the tool reports failure and no question or blocker has been committed", context do
-        assert context.response.isError, response_text(context.response)
+        assert match?({:error, _}, context.response), response_text(context.response)
         refute response_text(context.response) =~ ~r/Asked \d+ question/
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         refute response_text(tasks) =~ "[blocked]"
 

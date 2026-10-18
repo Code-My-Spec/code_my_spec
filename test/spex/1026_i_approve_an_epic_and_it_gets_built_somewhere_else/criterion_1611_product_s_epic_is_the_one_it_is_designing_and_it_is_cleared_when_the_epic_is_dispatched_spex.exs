@@ -10,13 +10,14 @@ defmodule CodeMySpecSpex.Story964.Criterion1611Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.EpicHelpers
   alias CodeMySpecSpex.Fixtures
@@ -62,17 +63,18 @@ defmodule CodeMySpecSpex.Story964.Criterion1611Spex do
           assigns: %{current_scope: context.main_scope, agent_id: context.product.id}
         }
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, context}
       end
 

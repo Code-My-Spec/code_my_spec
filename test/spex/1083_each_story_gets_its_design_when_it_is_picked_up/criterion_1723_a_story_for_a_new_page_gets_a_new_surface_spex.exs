@@ -11,8 +11,6 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -59,15 +57,16 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
         session_id = "spex-#{System.unique_integer([:positive])}"
         post_hook(context, "/api/hooks/session-start", %{"session_id" => session_id})
 
-        {:reply, task_response, _frame} =
-          StartTask.execute(
+        task_response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "component_linked",
               entity_type: "story",
               entity_id: to_string(story.number),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(task_response))
@@ -101,10 +100,11 @@ defmodule CodeMySpecSpex.Story1083.Criterion1723Spex do
             frame
           )
 
-        {:reply, evaluate_response, _frame} =
-          EvaluateTask.execute(
+        evaluate_response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok,

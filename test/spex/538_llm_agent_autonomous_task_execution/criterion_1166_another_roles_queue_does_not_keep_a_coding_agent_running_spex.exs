@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -115,8 +114,18 @@ defmodule CodeMySpecSpex.Story538.Criterion3106Spex do
         assert HeldProvider.seen() == []
         assert Fixtures.role_queue_size(context.scope, context.agent_id) == 0
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.coding_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
 
         product =

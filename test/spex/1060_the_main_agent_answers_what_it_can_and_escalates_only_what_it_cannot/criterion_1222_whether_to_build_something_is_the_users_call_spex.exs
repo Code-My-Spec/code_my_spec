@@ -43,13 +43,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -73,8 +74,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "a decision about the product",
               questions: [
@@ -84,10 +86,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context

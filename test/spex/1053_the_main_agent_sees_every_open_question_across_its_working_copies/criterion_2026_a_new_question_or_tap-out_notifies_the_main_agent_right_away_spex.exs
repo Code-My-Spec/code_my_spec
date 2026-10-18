@@ -18,13 +18,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -60,8 +61,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
       end
 
       when_ "coding raises a new question, and nobody ever checks in", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -70,10 +72,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
                 }
               ]
             },
-            context.coding_frame
+            Map.put(
+              context.coding_frame.assigns,
+              :scope,
+              context.coding_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         {:ok, context}
       end
 

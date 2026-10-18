@@ -15,6 +15,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -24,7 +26,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -45,13 +46,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-1980")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "this task's work should not exist — the component was already removed"},
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok = Fixtures.age_permission(scope, permission_id, Cadence.interval(scope) + 60)
@@ -75,7 +77,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1980Spex do
             %{
               notification_id: context.permission_id,
               decision: "deny",
-              answer: "the component this task would have built was already removed; nothing left to do"
+              answer:
+                "the component this task would have built was already removed; nothing left to do"
             },
             frame
           )

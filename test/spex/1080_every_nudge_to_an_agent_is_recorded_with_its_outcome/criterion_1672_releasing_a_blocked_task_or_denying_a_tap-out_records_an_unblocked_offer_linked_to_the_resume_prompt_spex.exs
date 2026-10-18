@@ -11,6 +11,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
@@ -18,8 +20,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -48,8 +48,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
           ]
         }
 
-        {:reply, reply, _} = AskUserQuestion.execute(params, frame)
-        refute reply.isError, response_text(reply)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, reply), response_text(reply)
         {:ok, Map.put(context, :blocker, Fixtures.question_id_from(response_text(reply)))}
       end
 
@@ -72,10 +78,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion1672Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.coder}}
 
-        {:reply, reply, _} =
-          TapOut.execute(%{task_id: context.task_id, reason: "This is not mine to do."}, frame)
+        reply =
+          ToolLibrary.run(
+            "tap_out",
+            %{task_id: context.task_id, reason: "This is not mine to do."},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, request_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(reply))
         {:ok, Map.put(context, :blocker, request_id)}
       end

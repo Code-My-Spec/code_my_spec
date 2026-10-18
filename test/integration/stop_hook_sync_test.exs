@@ -12,6 +12,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   """
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.Integration.WorkflowHelpers
   import CodeMySpec.UsersFixtures
 
@@ -20,7 +22,6 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Hooks.Stop
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Sessions
@@ -118,10 +119,14 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       CodeMySpec.Requirements.recompute(scope)
 
       # Start task for project_setup
-      {:reply, resp, ^frame} =
-        StartTask.execute(Map.put(req1, :session_id, session_id), frame)
+      resp =
+        ToolLibrary.run(
+          "start_task",
+          Map.put(req1, :session_id, session_id),
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
 
-      refute resp.isError
+      assert match?({:ok, _}, resp)
 
       session = Sessions.get_session(scope, session_id)
       task = Enum.find(session.tasks, &(&1.status == :active))
@@ -182,10 +187,14 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       # Start task for this requirement
       frame = %Anubis.Server.Frame{assigns: %{current_scope: scope}}
 
-      {:reply, resp, ^frame} =
-        StartTask.execute(Map.put(req_ref, :session_id, session.id), frame)
+      resp =
+        ToolLibrary.run(
+          "start_task",
+          Map.put(req_ref, :session_id, session.id),
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
 
-      refute resp.isError
+      assert match?({:ok, _}, resp)
 
       session = Sessions.get_session(scope, session.id)
       task = Enum.find(session.tasks, &(&1.status == :active))

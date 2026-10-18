@@ -14,11 +14,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -55,8 +55,9 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
         # assigned_agent claims the implementation_file task
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          StartTask.execute(
+        _response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
@@ -64,7 +65,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
               session_id: session_id,
               agent_id: assigned_agent
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok,
@@ -78,8 +79,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6093Spex do
       when_ "the agent calls list_session_subagents", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListSessionSubagents.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_session_subagents",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end

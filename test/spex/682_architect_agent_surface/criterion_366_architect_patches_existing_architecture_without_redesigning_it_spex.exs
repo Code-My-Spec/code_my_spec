@@ -19,8 +19,6 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphReadHelpers
   alias CodeMySpecSpex.StoryHelpers
@@ -82,15 +80,16 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
       given_ "a task is started for architecture_designed", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "architecture_designed",
               entity_type: "project",
               entity_id: to_string(context.project.id),
               session_id: context.session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         task_id = extract_task_id!(response_text(response))
@@ -144,10 +143,11 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
       when_ "the architect calls evaluate_task without rewriting the proposal", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :evaluate_response, response)}

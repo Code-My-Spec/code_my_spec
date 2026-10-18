@@ -15,9 +15,6 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -57,11 +54,24 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
           entity_id: to_string(story.number)
         }
 
-        {:reply, started, _} = StartTask.execute(claim, frame)
-        refute started.isError, response_text(started)
+        started =
+          ToolLibrary.run(
+            "start_task",
+            claim,
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ task_id
 
@@ -70,17 +80,36 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
       end
 
       when_ "the authenticated agent cancels its active attempt", context do
-        {:reply, response, _} =
-          CancelTask.execute(%{task_id: context.task_id}, context.agent_frame)
+        response =
+          ToolLibrary.run(
+            "cancel_task",
+            %{task_id: context.task_id},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
 
         {:ok, Map.put(context, :cancel_result, response)}
       end
 
       then_ "the only recorded attempt is cancelled and nothing replaces it automatically",
             context do
-        refute context.cancel_result.isError, response_text(context.cancel_result)
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        assert match?({:ok, _}, context.cancel_result), response_text(context.cancel_result)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[cancelled]"
@@ -109,8 +138,18 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
         assert response_text(available) =~ "[ ] **bdd_specs_exist**"
         assert response_text(available) =~ context.story.title
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "[cancelled]"
         refute response_text(tasks) =~ "[active]"
@@ -119,19 +158,49 @@ defmodule CodeMySpecSpex.Story538.Criterion2869Spex do
 
       then_ "only an explicit new claim starts a new attempt and preserves the cancelled history",
             context do
-        {:reply, started, _} = StartTask.execute(context.claim, context.agent_frame)
-        refute started.isError, response_text(started)
+        started =
+          ToolLibrary.run(
+            "start_task",
+            context.claim,
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, started), response_text(started)
         new_task_id = extract_task_id!(started)
         assert new_task_id != context.task_id
 
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute active.isError, response_text(active)
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ "# Tasks (1)"
         assert response_text(active) =~ new_task_id
         refute response_text(active) =~ context.task_id
 
-        {:reply, cancelled, _} = ListTasks.execute(%{status: "cancelled"}, context.agent_frame)
-        refute cancelled.isError, response_text(cancelled)
+        cancelled =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "cancelled"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, cancelled), response_text(cancelled)
         assert response_text(cancelled) =~ "# Tasks (1)"
         assert response_text(cancelled) =~ context.task_id
         refute response_text(cancelled) =~ new_task_id

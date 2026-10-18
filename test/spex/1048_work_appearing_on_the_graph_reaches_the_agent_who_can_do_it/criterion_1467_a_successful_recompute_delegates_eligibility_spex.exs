@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -18,7 +20,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.Stories.Tools.AssignEpicToWorkingCopy
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -116,8 +117,14 @@ defmodule CodeMySpecSpex.Story1048.Criterion3569Spex do
         end
 
         for {agent, copy} <- context.agents do
-          {:reply, tasks, _} = ListTasks.execute(%{agent_id: agent.id}, frame(copy))
-          refute tasks.isError, response_text(tasks)
+          tasks =
+            ToolLibrary.run(
+              "list_tasks",
+              %{agent_id: agent.id},
+              Map.put(frame(copy).assigns, :scope, frame(copy).assigns[:current_scope])
+            )
+
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) =~ "No tasks"
         end
 

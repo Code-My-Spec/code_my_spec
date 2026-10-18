@@ -1,11 +1,12 @@
 defmodule CodeMySpecSpex.Story1059.Criterion2115Spex do
   @moduledoc "Questions waiting on the user are counted without bodies"
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.CompactCadenceHelpers, as: Compact
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -26,8 +27,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion2115Spex do
         for agent <- context.agents do
           frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-          {:reply, response, _} =
-            AskUserQuestion.execute(
+          response =
+            ToolLibrary.run(
+              "ask_user_question",
               %{
                 questions: [
                   %{
@@ -36,10 +38,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion2115Spex do
                   }
                 ]
               },
-              frame
+              Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
             )
 
-          refute response.isError, response_text(response)
+          assert match?({:ok, _}, response), response_text(response)
 
           Compact.call(context, EscalateQuestion, %{
             question_id: Fixtures.question_id_from(response_text(response)),

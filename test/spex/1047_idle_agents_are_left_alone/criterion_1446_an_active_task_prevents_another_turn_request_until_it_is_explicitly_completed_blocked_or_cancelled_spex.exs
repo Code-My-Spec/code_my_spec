@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -40,19 +38,27 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
 
         assert match?({:ok, _}, graph_response), response_text(graph_response)
 
-        {:reply, first, _} =
-          StartTask.execute(
+        first =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute first.isError, response_text(first)
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, frame)
-        refute tasks.isError, response_text(tasks)
+        assert match?({:ok, _}, first), response_text(first)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "**implementation_file**"
 
@@ -68,14 +74,19 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
         # which "a different requirement" and "the one already held" were the
         # same call, and `start_task` answered it as the re-entry it looked
         # like rather than as the second claim this criterion is about.
-        {:reply, response, _} =
-          StartTask.execute(
+        response =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "three_amigos_complete",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
@@ -83,7 +94,7 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
 
       then_ "the tool requires completion, blocking, or cancellation with no force escape",
             context do
-        assert context.response.isError, response_text(context.response)
+        assert match?({:error, _}, context.response), response_text(context.response)
         text = context.response |> response_text() |> String.downcase()
         assert text =~ "active task"
         assert text =~ "complet"
@@ -94,8 +105,18 @@ defmodule CodeMySpecSpex.Story1047.Criterion3548Spex do
       end
 
       then_ "the existing task is still the only active task", context do
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         {:ok, context}
       end

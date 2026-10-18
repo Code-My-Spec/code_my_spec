@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.PromotionHelpers
 
@@ -103,8 +101,16 @@ defmodule CodeMySpecSpex.IssuePromotionHelpers do
   def the_coder_promotes_it(context) do
     task_id = take(context, context.coder, "promote_issue")
 
-    {:reply, response, _} =
-      EvaluateTask.execute(%{task_id: task_id}, frame(context, context.coder))
+    response =
+      ToolLibrary.run(
+        "evaluate_task",
+        %{task_id: task_id},
+        Map.put(
+          frame(context, context.coder).assigns,
+          :scope,
+          frame(context, context.coder).assigns[:current_scope]
+        )
+      )
 
     response_text(response)
   end

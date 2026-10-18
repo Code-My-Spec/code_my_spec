@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1048.Criterion3556Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -16,7 +18,6 @@ defmodule CodeMySpecSpex.Story1048.Criterion3556Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -116,8 +117,15 @@ defmodule CodeMySpecSpex.Story1048.Criterion3556Spex do
       then_ "remaining eligible work admits one new unassigned turn", context do
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert length(HeldProvider.seen()) == 2
-        {:reply, tasks, _} = ListTasks.execute(%{agent_id: context.agent_id}, frame(context))
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{agent_id: context.agent_id},
+            Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == "No tasks."
         {:ok, context}
       end

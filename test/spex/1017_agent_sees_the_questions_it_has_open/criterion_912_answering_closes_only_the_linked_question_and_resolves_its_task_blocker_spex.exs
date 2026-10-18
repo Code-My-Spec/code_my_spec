@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -16,11 +18,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -67,21 +64,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
                 persona_id: context.persona_id
               )
 
-            {:reply, started, _} =
-              StartTask.execute(
+            started =
+              ToolLibrary.run(
+                "start_task",
                 %{
                   requirement_name: "bdd_specs_exist",
                   entity_type: "story",
                   entity_id: to_string(story.number)
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute started.isError, response_text(started)
+            assert match?({:ok, _}, started), response_text(started)
             task_id = extract_task_id!(started)
 
-            {:reply, asked, _} =
-              AskUserQuestion.execute(
+            asked =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   task_id: task_id,
                   questions: [
@@ -91,10 +90,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute asked.isError, response_text(asked)
+            assert match?({:ok, _}, asked), response_text(asked)
             [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
             %{
@@ -123,16 +122,35 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
 
       then_ "only the answered question closes and both task attempts remain blocked", context do
         [first, second] = context.questions
-        {:reply, answer, _} = CheckAnswer.execute(%{question_id: first.id}, context.frame)
-        refute answer.isError, response_text(answer)
+
+        answer =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: first.id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, answer), response_text(answer)
         assert response_text(answer) =~ "Keep existing"
 
-        {:reply, pending, _} = CheckAnswer.execute(%{question_id: second.id}, context.frame)
-        refute pending.isError, response_text(pending)
+        pending =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: second.id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, pending), response_text(pending)
         assert response_text(pending) =~ "Still waiting"
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         text = response_text(tasks)
         assert text =~ "# Tasks (2)"
         assert length(Regex.scan(~r/\[blocked\]/, text)) == 2
@@ -140,8 +158,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
         assert text =~ first.task_id
         assert text =~ second.task_id
 
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.frame)
-        refute questions.isError, response_text(questions)
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         assert response_text(questions) =~ "1 open question"
         assert response_text(questions) =~ second.id
         refute response_text(questions) =~ first.id
@@ -154,17 +178,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
       when_ "the agent tries to resume the task whose question remains unanswered", context do
         [_first, second] = context.questions
 
-        {:reply, refused, _} =
-          StartTask.execute(
+        refused =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(second.story_number)
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        assert refused.isError, response_text(refused)
+        assert match?({:error, _}, refused), response_text(refused)
         assert response_text(refused) =~ ~r/block|answer/i
         {:ok, context}
       end
@@ -173,27 +198,40 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
             context do
         [first, second] = context.questions
 
-        {:reply, resumed, _} =
-          StartTask.execute(
+        resumed =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(first.story_number)
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute resumed.isError, response_text(resumed)
+        assert match?({:ok, _}, resumed), response_text(resumed)
         assert extract_task_id!(resumed) == first.task_id
 
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.frame)
-        refute active.isError, response_text(active)
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ "# Tasks (1)"
         assert response_text(active) =~ first.task_id
         refute response_text(active) =~ second.task_id
 
-        {:reply, all, _} = ListTasks.execute(%{}, context.frame)
-        refute all.isError, response_text(all)
+        all =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, all), response_text(all)
         assert response_text(all) =~ "# Tasks (2)"
         assert response_text(all) =~ second.task_id
         assert length(Regex.scan(~r/\[blocked\]/, response_text(all))) == 1

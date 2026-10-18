@@ -33,7 +33,6 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -58,8 +57,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
         frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, response, _frame} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "a question raised before stopping",
               questions: [
@@ -69,10 +69,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute response.isError, inspect(response)
+        assert match?({:ok, _}, response), inspect(response)
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end

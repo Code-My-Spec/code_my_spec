@@ -14,13 +14,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -33,7 +34,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
   end
 
   spex "An inspected answer citing nothing the main agent actually read is refused as a guess",
-       criterion: 2181 do
+    criterion: 2181 do
     scenario "the citation names a file the main agent never read this session" do
       given_ "a coding agent's question, and a main agent that never read the file it would cite",
              context do
@@ -45,18 +46,19 @@ defmodule CodeMySpecSpex.Story1060.Criterion2181Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "which port is dev on",
               questions: [
                 %{"question" => "Which port does dev listen on?", "options" => []}
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context

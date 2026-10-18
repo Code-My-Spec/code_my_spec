@@ -14,13 +14,13 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -46,8 +46,12 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
 
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          TapOut.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "tap_out",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         body = TaskResponseHelpers.response_text(response)
         [_, request_id] = Regex.run(~r/request_id=`([^`]+)`/, body)
@@ -96,8 +100,15 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         {agent, _task} = Fixtures.agent_task_fixture(context.scope, agent)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
-        {:reply, tasks, _} = ListTasks.execute(%{}, frame)
-        refute tasks.isError, TaskResponseHelpers.response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), TaskResponseHelpers.response_text(tasks)
 
         request_id =
           Fixtures.request_permission(context.scope.user.id,
@@ -125,8 +136,15 @@ defmodule CodeMySpecSpex.Story704.Criterion3587Spex do
       then_ "the saved approval leaves the agent's tasks and continuous policy alone", context do
         {:ok, view, _} = live(context.conn, "/app/permissions/#{context.request_id}")
         assert has_element?(view, "[data-test='permission-resolved']", "approved")
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.frame)
-        refute tasks.isError, TaskResponseHelpers.response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), TaskResponseHelpers.response_text(tasks)
         assert TaskResponseHelpers.response_text(tasks) == context.tasks_before
         {:ok, agent_view, _} = live(context.conn, context.conversation_path)
         assert has_element?(agent_view, "[data-test='toggle-agent-working'][data-working='true']")

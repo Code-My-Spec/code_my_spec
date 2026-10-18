@@ -9,15 +9,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -68,17 +66,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(first.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -91,8 +90,9 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
       end
 
       when_ "the agent asks a question linked to its active task", context do
-        {:reply, response, _} =
-          AskUserQuestion.execute(
+        response =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               questions: [
@@ -102,20 +102,34 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
                 }
               ]
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "only the linked task is blocked and its question is still open", context do
-        refute context.response.isError, response_text(context.response)
+        assert match?({:ok, _}, context.response), response_text(context.response)
 
         [_, question_id] =
           Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(context.response))
 
-        {:reply, tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ context.task_id
         assert response_text(tasks) =~ "[blocked]"
@@ -132,27 +146,53 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
       end
 
       then_ "the agent can deliberately claim unrelated component work", context do
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(context.component.id)
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         second_task_id = extract_task_id!(started)
         assert second_task_id != context.task_id
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute active.isError, response_text(active)
+
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ "# Tasks (1)"
         assert response_text(active) =~ second_task_id
         refute response_text(active) =~ context.task_id
 
-        {:reply, questions, _} = ListUserQuestions.execute(%{}, context.agent_frame)
-        refute questions.isError, response_text(questions)
+        questions =
+          ToolLibrary.run(
+            "list_user_questions",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, questions), response_text(questions)
         assert response_text(questions) =~ context.question_id
 
         {:ok, view, _} = live(context.conn, context.conversation_path)

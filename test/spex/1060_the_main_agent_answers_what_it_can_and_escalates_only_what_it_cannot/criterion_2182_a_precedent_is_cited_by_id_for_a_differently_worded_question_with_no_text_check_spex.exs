@@ -15,14 +15,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
   end
 
   spex "A precedent stating a general rule fits a differently worded question",
-       criterion: 2182 do
+    criterion: 2182 do
     scenario "the main agent cites a precedent whose own answer generalizes" do
       given_ "an answered question stating a general rule, and a new, differently worded question",
              context do
@@ -46,9 +46,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
         earlier =
-          Fixtures.ask_question(scope.user.id, title: "is this dead code", questions: [
-            %{"question" => @earlier, "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}
-          ])
+          Fixtures.ask_question(scope.user.id,
+            title: "is this dead code",
+            questions: [
+              %{"question" => @earlier, "options" => [%{"label" => "Yes"}, %{"label" => "No"}]}
+            ]
+          )
 
         :ok =
           Fixtures.answer_question(
@@ -62,8 +65,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2182")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "a different module, the same shape of question",
               questions: [
@@ -73,10 +77,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -93,8 +97,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
           AnswerNotification.execute(
             %{
               notification_id: context.question_id,
-              answer: "No — same reasoning as before: it may be a projection of a file " <>
-                "that lives in another checkout.",
+              answer:
+                "No — same reasoning as before: it may be a projection of a file " <>
+                  "that lives in another checkout.",
               basis: "precedent",
               precedent_id: context.earlier
             },
@@ -119,8 +124,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
           assigns: %{current_scope: context.scope, agent_id: context.agent.id}
         }
 
-        {:reply, checked, _frame} =
-          CheckAnswer.execute(%{question_id: context.question_id}, asker_frame)
+        checked =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(asker_frame.assigns, :scope, asker_frame.assigns[:current_scope])
+          )
 
         assert response_text(checked) =~ "projection",
                """

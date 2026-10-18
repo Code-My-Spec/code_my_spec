@@ -7,12 +7,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1742Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [frame: 1]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -30,10 +31,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1742Spex do
       given_ "a coder offered work asked to leave the loop", context do
         context = offered_work(context)
 
-        {:reply, reply, _} =
-          TapOut.execute(%{reason: "Nothing for me here."}, agent_frame(context, context.coder))
+        reply =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "Nothing for me here."},
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
+          )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, request_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(reply))
         :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, Map.put(context, :request, request_id)}

@@ -10,12 +10,12 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -49,11 +49,31 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
   spex "An unknown tap-out task link has no side effects", criterion: 1480 do
     scenario "an unknown task UUID" do
       given_ "both owners' tasks and the empty permission inbox are observable", context do
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
@@ -69,24 +89,50 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
       end
 
       when_ "the caller asks with an unknown task UUID", context do
-        {:reply, response, _} =
-          TapOut.execute(
+        response =
+          ToolLibrary.run(
+            "tap_out",
             %{
               task_id: "00000000-0000-4000-8000-000000000001"
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the request is refused without a permission or task mutation", context do
-        assert context.response.isError, response_text(context.response)
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        assert match?({:error, _}, context.response), response_text(context.response)
+
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before
@@ -112,11 +158,31 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
   spex "A foreign tap-out task link has no side effects" do
     scenario "another agent's active task" do
       given_ "both owners' tasks and the empty permission inbox are observable", context do
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
@@ -132,24 +198,50 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
       end
 
       when_ "the caller asks with another agent's active task", context do
-        {:reply, response, _} =
-          TapOut.execute(
+        response =
+          ToolLibrary.run(
+            "tap_out",
             %{
               task_id: context.other_task_id
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the request is refused without a permission or task mutation", context do
-        assert context.response.isError, response_text(context.response)
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        assert match?({:error, _}, context.response), response_text(context.response)
+
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before
@@ -175,11 +267,31 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
   spex "An inactive tap-out task link has no side effects" do
     scenario "the caller's completed task" do
       given_ "both owners' tasks and the empty permission inbox are observable", context do
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) =~ context.active_task_id
         assert response_text(caller_tasks) =~ context.completed_task_id
@@ -195,24 +307,50 @@ defmodule CodeMySpecSpex.Story704.Criterion3582Spex do
       end
 
       when_ "the caller asks with the caller's completed task", context do
-        {:reply, response, _} =
-          TapOut.execute(
+        response =
+          ToolLibrary.run(
+            "tap_out",
             %{
               task_id: context.completed_task_id
             },
-            context.agent_frame
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
           )
 
         {:ok, Map.put(context, :response, response)}
       end
 
       then_ "the request is refused without a permission or task mutation", context do
-        assert context.response.isError, response_text(context.response)
-        {:reply, caller_tasks, _} = ListTasks.execute(%{}, context.agent_frame)
-        {:reply, other_tasks, _} = ListTasks.execute(%{}, context.other_frame)
+        assert match?({:error, _}, context.response), response_text(context.response)
+
+        caller_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        other_tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{},
+            Map.put(
+              context.other_frame.assigns,
+              :scope,
+              context.other_frame.assigns[:current_scope]
+            )
+          )
+
         {:reply, inbox, _} = ListNotifications.execute(%{}, context.agent_frame)
-        refute caller_tasks.isError, response_text(caller_tasks)
-        refute other_tasks.isError, response_text(other_tasks)
+        assert match?({:ok, _}, caller_tasks), response_text(caller_tasks)
+        assert match?({:ok, _}, other_tasks), response_text(other_tasks)
         refute inbox.isError, response_text(inbox)
         assert response_text(caller_tasks) == context.caller_before
         assert response_text(other_tasks) == context.other_before

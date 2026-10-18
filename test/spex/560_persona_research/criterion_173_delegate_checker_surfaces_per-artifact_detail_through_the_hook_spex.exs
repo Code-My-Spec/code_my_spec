@@ -7,9 +7,9 @@ defmodule CodeMySpecSpex.Story560.Criterion5130Spex do
   """
 
   use CodeMySpecSpex.Case
-  import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpec.ToolLibrary
+  import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,10 +22,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5130Spex do
       when_ "the agent calls evaluate_task", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          EvaluateTask.execute(
+        response =
+          ToolLibrary.run(
+            "evaluate_task",
             %{task_id: context.task_id, session_id: context.session_id},
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response, response)}

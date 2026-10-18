@@ -10,14 +10,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion1607Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -56,21 +54,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion1607Spex do
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         task_id = extract_task_id!(started)
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: task_id,
               questions: [
@@ -80,10 +80,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion1607Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
         {:ok,
@@ -96,24 +96,29 @@ defmodule CodeMySpecSpex.Story1017.Criterion1607Spex do
       end
 
       when_ "the coder withdraws the question, saying why", context do
-        {:reply, withdrawn, _} =
-          WithdrawQuestion.execute(
+        withdrawn =
+          ToolLibrary.run(
+            "withdraw_question",
             %{question_id: context.question_id, reason: "product rewrote criterion 944"},
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :withdrawn, withdrawn)}
       end
 
       then_ "the withdrawal is accepted and names the task to pick back up", context do
-        refute context.withdrawn.isError, response_text(context.withdrawn)
+        assert match?({:ok, _}, context.withdrawn), response_text(context.withdrawn)
         assert response_text(context.withdrawn) =~ context.task_id
         {:ok, context}
       end
 
       then_ "and the question says it was withdrawn, and why", context do
-        {:reply, checked, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.frame)
+        checked =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         text = response_text(checked)
 
@@ -123,17 +128,18 @@ defmodule CodeMySpecSpex.Story1017.Criterion1607Spex do
       end
 
       then_ "and the task it blocked can be resumed", context do
-        {:reply, resumed, _} =
-          StartTask.execute(
+        resumed =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(context.story.number)
             },
-            context.frame
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
 
-        refute resumed.isError,
+        assert match?({:ok, _}, resumed),
                "the task stayed blocked on a question its asker withdrew: #{response_text(resumed)}"
 
         {:ok, context}

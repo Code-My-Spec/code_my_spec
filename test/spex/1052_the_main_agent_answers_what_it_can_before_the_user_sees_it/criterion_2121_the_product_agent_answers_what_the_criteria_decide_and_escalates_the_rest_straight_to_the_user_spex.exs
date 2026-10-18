@@ -7,12 +7,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -27,7 +28,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
   end
 
   spex "The product agent escalates what its criteria do not decide straight to the user",
-       criterion: 2121 do
+    criterion: 2121 do
     scenario "a coder's question about a criterion is not decided by the criteria" do
       given_ "a coder's criteria question is waiting on product", context do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
@@ -41,9 +42,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
         }
 
         coder_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
-        {:reply, reply, _frame} = AskUserQuestion.execute(params, coder_frame)
 
-        refute reply.isError, response_text(reply)
+        reply =
+          ToolLibrary.run(
+            "ask_user_question",
+            params,
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, reply), response_text(reply)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(reply))
 
         {:ok,

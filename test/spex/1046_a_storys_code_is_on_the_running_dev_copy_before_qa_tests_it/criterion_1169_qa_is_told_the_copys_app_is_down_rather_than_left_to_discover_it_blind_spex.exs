@@ -32,8 +32,6 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
-
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
@@ -122,15 +120,16 @@ defmodule CodeMySpecSpex.Story1046.Criterion1169Spex do
   defp start_qa_task(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-    {:reply, response, _frame} =
-      StartTask.execute(
+    response =
+      ToolLibrary.run(
+        "start_task",
         %{
           requirement_name: "qa_complete",
           entity_type: "story",
           entity_id: to_string(context.story.number),
           session_id: "spex-1169-#{System.unique_integer([:positive])}"
         },
-        frame
+        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
     response_text(response)

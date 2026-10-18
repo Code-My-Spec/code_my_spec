@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -20,7 +22,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -33,7 +34,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
   end
 
   spex "A QA agent's question reaches the user when the answer changes what the product should do",
-       criterion: 1986 do
+    criterion: 1986 do
     scenario "a QA agent asks whether a gap it found should actually be fixed" do
       given_ "a QA agent asking something only the user can decide", context do
         reply = join_working_copy(context, "/tmp/spex-1986", "the QA checkout")
@@ -43,8 +44,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
 
         asking = %Frame{assigns: %{current_scope: scope, agent_id: qa_agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "found a gap, not sure it is a bug",
               questions: [
@@ -55,10 +57,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -73,8 +75,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
           EscalateQuestion.execute(
             %{
               question_id: context.question_id,
-              reason: "whether a gap in the export is a bug or intended behaviour is a product call",
-              as: "Archived invoices are left out of the export. Is that a bug to fix, or how it should work?"
+              reason:
+                "whether a gap in the export is a bug or intended behaviour is a product call",
+              as:
+                "Archived invoices are left out of the export. Is that a bug to fix, or how it should work?"
             },
             frame
           )

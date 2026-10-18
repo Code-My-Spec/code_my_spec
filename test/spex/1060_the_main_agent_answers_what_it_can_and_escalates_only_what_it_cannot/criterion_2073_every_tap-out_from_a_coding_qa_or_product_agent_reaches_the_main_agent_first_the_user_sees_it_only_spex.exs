@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -43,10 +44,18 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
       end
 
       when_ "the coding agent taps out", context do
-        {:reply, tapped, _frame} =
-          TapOut.execute(%{reason: "this task's work should not exist"}, context.asking_frame)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "this task's work should not exist"},
+            Map.put(
+              context.asking_frame.assigns,
+              :scope,
+              context.asking_frame.assigns[:current_scope]
+            )
+          )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
         {:ok, Map.put(context, :permission_id, permission_id)}
       end
@@ -95,13 +104,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion2073Spex do
         coder = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2073b")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: coder.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{reason: "building this would change what the product does"},
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         {:ok, Map.merge(context, %{scope: scope, permission_id: permission_id})}

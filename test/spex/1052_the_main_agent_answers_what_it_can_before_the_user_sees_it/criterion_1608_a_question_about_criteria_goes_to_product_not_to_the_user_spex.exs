@@ -9,15 +9,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -56,17 +55,18 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
         product = Fixtures.running_agent(context.scope, role: "product", continuous: true)
         coder_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(story.number)
             },
-            coder_frame
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
 
         {:ok,
          Map.merge(context, %{
@@ -77,8 +77,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
       end
 
       when_ "the coder asks about a criterion, saying it is about criteria", context do
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: context.task_id,
               about: "criteria",
@@ -86,10 +87,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
                 %{question: "Does criterion 944 still mean a full refund?", options: []}
               ]
             },
-            context.coder_frame
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
         {:ok, Map.put(context, :question_id, question_id)}
       end
@@ -112,8 +117,16 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
 
         refute answered.isError, response_text(answered)
 
-        {:reply, checked, _} =
-          CheckAnswer.execute(%{question_id: context.question_id}, context.coder_frame)
+        checked =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
         assert response_text(checked) =~ "full refund within 30 days"
         {:ok, context}

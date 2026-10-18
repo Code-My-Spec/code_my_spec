@@ -11,6 +11,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2]
   import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
@@ -20,8 +22,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.Cadence
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -67,13 +67,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
       when_ "it starts the work, taps out of it and ends its turn", context do
         context = start_agent_task(context, context.coder, next_task(context, context.coder))
 
-        {:reply, reply, _} =
-          TapOut.execute(
+        reply =
+          ToolLibrary.run(
+            "tap_out",
             %{task_id: held_task_id(context, context.coder), reason: "Needs a product call."},
-            agent_frame(context, context.coder)
+            Map.put(
+              agent_frame(context, context.coder).assigns,
+              :scope,
+              agent_frame(context, context.coder).assigns[:current_scope]
+            )
           )
 
-        refute reply.isError, response_text(reply)
+        assert match?({:ok, _}, reply), response_text(reply)
         :ok = Fixtures.end_turn(context.scope, context.coder)
         {:ok, context}
       end
@@ -338,8 +343,18 @@ defmodule CodeMySpecSpex.Story1080.Criterion1675Spex do
       ]
     }
 
-    {:reply, reply, _} = AskUserQuestion.execute(params, agent_frame(context, agent_id))
-    refute reply.isError, response_text(reply)
+    reply =
+      ToolLibrary.run(
+        "ask_user_question",
+        params,
+        Map.put(
+          agent_frame(context, agent_id).assigns,
+          :scope,
+          agent_frame(context, agent_id).assigns[:current_scope]
+        )
+      )
+
+    assert match?({:ok, _}, reply), response_text(reply)
     Fixtures.question_id_from(response_text(reply))
   end
 

@@ -14,6 +14,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -21,8 +23,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -69,8 +69,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
 
         asking = %Frame{assigns: %{current_scope: asker_scope, agent_id: asker.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "which working copy is my epic built on",
               questions: [
@@ -83,10 +84,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -121,8 +122,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
           assigns: %{current_scope: context.scope, agent_id: context.asker.id}
         }
 
-        {:reply, response, _frame} =
-          CheckAnswer.execute(%{question_id: context.question_id}, frame)
+        response =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(response) =~ "/tmp/spex-1983-built-on",
                """

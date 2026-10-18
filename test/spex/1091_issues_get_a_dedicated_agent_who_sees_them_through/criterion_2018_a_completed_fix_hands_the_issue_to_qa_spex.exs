@@ -5,8 +5,6 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -70,8 +68,15 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
         {:ok, _} = offered
         true = response_text(offered) =~ "requirement_name=`fix_issue`"
         params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: issue_id}
-        {:reply, started, _} = StartTask.execute(params, coder_frame)
-        false = started.isError
+
+        started =
+          ToolLibrary.run(
+            "start_task",
+            params,
+            Map.put(coder_frame.assigns, :scope, coder_frame.assigns[:current_scope])
+          )
+
+        {:ok, _} = started
 
         {:ok,
          Map.merge(context, %{
@@ -86,10 +91,18 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
       when_ "the coder evaluates its fix successfully", context do
         Fixtures.fresh_analysis_runs(context.scope, ~w(compiler credo exunit spex), at_head: true)
 
-        {:reply, evaluated, _} =
-          EvaluateTask.execute(%{task_id: context.task_id}, context.coder_frame)
+        evaluated =
+          ToolLibrary.run(
+            "evaluate_task",
+            %{task_id: context.task_id},
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
 
-        refute evaluated.isError, response_text(evaluated)
+        assert match?({:ok, _}, evaluated), response_text(evaluated)
         {:ok, context}
       end
 
@@ -107,8 +120,19 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
 
         assert match?({:ok, _}, offered), response_text(offered)
         refute response_text(offered) =~ "requirement_name=`fix_issue`"
-        {:reply, duplicate, _} = StartTask.execute(context.params, context.coder_frame)
-        assert duplicate.isError, response_text(duplicate)
+
+        duplicate =
+          ToolLibrary.run(
+            "start_task",
+            context.params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:error, _}, duplicate), response_text(duplicate)
         {:ok, context}
       end
 
@@ -124,13 +148,14 @@ defmodule CodeMySpecSpex.Story1091.Criterion2018Spex do
         assert response_text(offered) =~ "requirement_name=`qa_complete`"
         assert response_text(offered) =~ "entity_id=`#{context.issue_id}`"
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{requirement_name: "qa_complete", entity_type: "issue", entity_id: context.issue_id},
-            context.qa_frame
+            Map.put(context.qa_frame.assigns, :scope, context.qa_frame.assigns[:current_scope])
           )
 
-        refute started.isError, response_text(started)
+        assert match?({:ok, _}, started), response_text(started)
         {:ok, context}
       end
     end

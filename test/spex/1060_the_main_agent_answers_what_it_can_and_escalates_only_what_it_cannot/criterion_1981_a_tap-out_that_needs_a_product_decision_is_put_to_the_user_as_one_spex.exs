@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -21,7 +23,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.CheckIn
   alias CodeMySpec.McpServers.MainAgent.Tools.EscalateQuestion
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -34,7 +35,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
   end
 
   spex "A tap-out that would decide the product's behaviour goes up, not through main",
-       criterion: 1981 do
+    criterion: 1981 do
     scenario "an aged tap-out says building the task would change what the product does" do
       given_ "an aged tap-out whose reason is a product decision", context do
         reply = join_working_copy(context, "/tmp/spex-1981", "the checkout")
@@ -43,17 +44,18 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-1981")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
             %{
               reason:
                 "building this task would change what the product does — it adds a feature " <>
                   "nobody asked for rather than fixing the bug the story describes"
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         :ok = Fixtures.age_permission(scope, permission_id, Cadence.interval(scope) + 60)
@@ -74,7 +76,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1981Spex do
             %{
               question_id: context.permission_id,
               reason: "only the user can say whether this feature should be built at all",
-              as: "This task would add a feature nobody asked for instead of fixing the bug. Build it anyway?"
+              as:
+                "This task would add a feature nobody asked for instead of fixing the bug. Build it anyway?"
             },
             frame
           )

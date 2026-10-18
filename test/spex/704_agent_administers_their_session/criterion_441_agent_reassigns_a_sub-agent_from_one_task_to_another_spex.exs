@@ -10,12 +10,11 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AssignSubagent
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -47,8 +46,9 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         # Task A: agent claims implementation work
-        {:reply, _, _} =
-          StartTask.execute(
+        _ =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
               session_id: session_id,
               agent_id: agent_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         # Task B belongs to a different component, with the same implementation requirement.
@@ -68,20 +68,25 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
             description: "Another implementation task."
           )
 
-        {:reply, _, _} =
-          StartTask.execute(
+        _ =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "implementation_file",
               entity_type: "component",
               entity_id: to_string(other.id),
               session_id: session_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         # Pull both task ids from list_tasks rather than reading the DB.
-        {:reply, list_resp, _frame} =
-          ListTasks.execute(%{session_id: session_id}, frame)
+        list_resp =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         list_text = TaskResponseHelpers.response_text(list_resp)
 
@@ -100,14 +105,15 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
       when_ "the agent calls assign_subagent with task B's id", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          AssignSubagent.execute(
+        response =
+          ToolLibrary.run(
+            "assign_subagent",
             %{
               session_id: context.session_id,
               agent_id: context.agent_id,
               task_id: context.task_b_id
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
@@ -117,8 +123,12 @@ defmodule CodeMySpecSpex.Story704.Criterion6096Spex do
             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} =
-          ListTasks.execute(%{session_id: context.session_id}, frame)
+        response =
+          ToolLibrary.run(
+            "list_tasks",
+            %{session_id: context.session_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         text = TaskResponseHelpers.response_text(response)
 

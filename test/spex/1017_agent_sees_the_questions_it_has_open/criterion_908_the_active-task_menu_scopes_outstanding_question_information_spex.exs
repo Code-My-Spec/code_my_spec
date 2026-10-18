@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   """
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.HarnessLifecycleHelpers, only: [given_a_staffed_checkout: 2, frame: 1]
   import CodeMySpecSpex.SharedGivens
   import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
@@ -17,9 +19,6 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -71,21 +70,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
         agent_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
-        {:reply, first_claim, _} =
-          StartTask.execute(
+        first_claim =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(first.number)
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute first_claim.isError, response_text(first_claim)
+        assert match?({:ok, _}, first_claim), response_text(first_claim)
         blocked_task_id = extract_task_id!(first_claim)
 
-        {:reply, question, _} =
-          AskUserQuestion.execute(
+        question =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               task_id: blocked_task_id,
               questions: [
@@ -95,22 +96,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
                 }
               ]
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute question.isError, response_text(question)
+        assert match?({:ok, _}, question), response_text(question)
 
-        {:reply, second_claim, _} =
-          StartTask.execute(
+        second_claim =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "bdd_specs_exist",
               entity_type: "story",
               entity_id: to_string(second.number)
             },
-            agent_frame
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
           )
 
-        refute second_claim.isError, response_text(second_claim)
+        assert match?({:ok, _}, second_claim), response_text(second_claim)
         active_task_id = extract_task_id!(second_claim)
         assert active_task_id != blocked_task_id
 
@@ -158,14 +160,34 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
         refute text =~ ~r/(?:must|have to) answer.*before.*(?:continu|disposition)/is
 
-        {:reply, active, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute active.isError, response_text(active)
+        active =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, active), response_text(active)
         assert response_text(active) =~ "# Tasks (1)"
         assert response_text(active) =~ context.active_task_id
         refute response_text(active) =~ context.blocked_task_id
 
-        {:reply, blocked, _} = ListTasks.execute(%{status: "blocked"}, context.agent_frame)
-        refute blocked.isError, response_text(blocked)
+        blocked =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "blocked"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, blocked), response_text(blocked)
         assert response_text(blocked) =~ "# Tasks (1)"
         assert response_text(blocked) =~ context.blocked_task_id
         refute response_text(blocked) =~ context.active_task_id

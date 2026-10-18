@@ -13,6 +13,8 @@ defmodule CodeMySpecSpex.Story1060.Criterion1982Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   @endpoint CodeMySpecWeb.Endpoint
 
   import CodeMySpecSpex.WorkingCopyHelpers
@@ -20,7 +22,6 @@ defmodule CodeMySpecSpex.Story1060.Criterion1982Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -41,10 +42,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion1982Spex do
         agent = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-1982")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, tapped, _frame} =
-          TapOut.execute(%{reason: "this task's work should not exist"}, asking)
+        tapped =
+          ToolLibrary.run(
+            "tap_out",
+            %{reason: "this task's work should not exist"},
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
+          )
 
-        refute tapped.isError, inspect(tapped)
+        assert match?({:ok, _}, tapped), inspect(tapped)
         [_, permission_id] = Regex.run(~r/request_id=`([0-9a-f-]{36})`/, response_text(tapped))
 
         {:ok,

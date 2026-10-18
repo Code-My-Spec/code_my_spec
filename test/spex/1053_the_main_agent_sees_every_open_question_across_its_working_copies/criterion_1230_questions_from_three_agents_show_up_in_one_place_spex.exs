@@ -45,12 +45,13 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -79,8 +80,9 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
 
             frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-            {:reply, response, _frame} =
-              AskUserQuestion.execute(
+            response =
+              ToolLibrary.run(
+                "ask_user_question",
                 %{
                   title: "#{role} needs a decision",
                   questions: [
@@ -90,10 +92,11 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
                     }
                   ]
                 },
-                frame
+                Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
               )
 
-            refute response.isError, "#{role} could not ask its question: #{inspect(response)}"
+            assert match?({:ok, _}, response),
+                   "#{role} could not ask its question: #{inspect(response)}"
 
             {role, agent}
           end

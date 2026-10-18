@@ -10,6 +10,8 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpec.ToolLibrary
   use ExCliVcr
 
   import CodeMySpecSpex.IdleAgentHelpers
@@ -17,7 +19,6 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -80,17 +81,18 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
           assigns: %{current_scope: context.scope, agent_id: main.id}
         }
 
-        {:reply, started, _} =
-          StartTask.execute(
+        started =
+          ToolLibrary.run(
+            "start_task",
             %{
               requirement_name: "technical_strategy",
               entity_type: "project",
               entity_id: to_string(context.scope.active_project_id)
             },
-            main_frame
+            Map.put(main_frame.assigns, :scope, main_frame.assigns[:current_scope])
           )
 
-        refute started.isError,
+        assert match?({:ok, _}, started),
                "main must hold a task, or its turn end offers work instead of a menu: " <>
                  response_text(started)
 

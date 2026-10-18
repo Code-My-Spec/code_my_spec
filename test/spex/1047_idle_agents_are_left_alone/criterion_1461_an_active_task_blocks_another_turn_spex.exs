@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
   alias CmsHarnessTest.Machine
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
   alias CodeMySpec.McpServers.MainAgent.Tools.SetAgentContinuous
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -64,13 +62,14 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
         # answer only needs to unblock the prompt build, not be meaningful.
         claim_task =
           Task.async(fn ->
-            StartTask.execute(
+            ToolLibrary.run(
+              "start_task",
               %{
                 requirement_name: "qa_complete",
                 entity_type: "story",
                 entity_id: to_string(context.story.number)
               },
-              agent_frame
+              Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
             )
           end)
 
@@ -91,11 +90,18 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
           1_000 -> flunk("ensure_app_running_result was never acknowledged")
         end
 
-        {:reply, claim, _} = Task.await(claim_task, 5_000)
+        claim = Task.await(claim_task, 5_000)
 
-        refute claim.isError, response_text(claim)
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, agent_frame)
-        refute tasks.isError, response_text(tasks)
+        assert match?({:ok, _}, claim), response_text(claim)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(agent_frame.assigns, :scope, agent_frame.assigns[:current_scope])
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) =~ "# Tasks (1)"
         assert response_text(tasks) =~ "**qa_complete**"
         assert {:ok, %{busy?: false}} = Machine.status(agent.id)
@@ -135,8 +141,19 @@ defmodule CodeMySpecSpex.Story1047.Criterion3563Spex do
         assert {:ok, %{busy?: false}} = Machine.status(context.agent_id)
         assert Machine.history(context.agent_id) == context.history_before
         assert HeldProvider.seen() == []
-        {:reply, tasks, _} = ListTasks.execute(%{status: "active"}, context.agent_frame)
-        refute tasks.isError, response_text(tasks)
+
+        tasks =
+          ToolLibrary.run(
+            "list_tasks",
+            %{status: "active"},
+            Map.put(
+              context.agent_frame.assigns,
+              :scope,
+              context.agent_frame.assigns[:current_scope]
+            )
+          )
+
+        assert match?({:ok, _}, tasks), response_text(tasks)
         assert response_text(tasks) == context.tasks_before
         {:ok, context}
       end

@@ -8,6 +8,8 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
@@ -20,7 +22,6 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpec.Notifications
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
@@ -64,6 +65,8 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
 
   defp frame(ctx, agent), do: %Frame{assigns: %{current_scope: ctx.scope, agent_id: agent.id}}
 
+  defp text({_status, text}) when is_binary(text), do: text
+
   defp text(response),
     do: response |> Response.to_protocol() |> Map.fetch!("content") |> Enum.map_join(& &1["text"])
 
@@ -77,8 +80,18 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
         extra
       )
 
-    {:reply, response, _} = AskUserQuestion.execute(params, frame(ctx, ctx.coder))
-    refute response.isError, text(response)
+    response =
+      ToolLibrary.run(
+        "ask_user_question",
+        params,
+        Map.put(
+          frame(ctx, ctx.coder).assigns,
+          :scope,
+          frame(ctx, ctx.coder).assigns[:current_scope]
+        )
+      )
+
+    assert match?({:ok, _}, response), text(response)
     [_, id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, text(response))
     Notifications.get_question_request(id)
   end

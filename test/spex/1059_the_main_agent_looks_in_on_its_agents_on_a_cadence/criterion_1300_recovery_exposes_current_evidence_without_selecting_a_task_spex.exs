@@ -22,8 +22,6 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
   alias CodeMySpec.McpServers.MainAgent.Tools.ListAgentWork
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
   alias CodeMySpec.McpServers.MainAgent.Tools.ReadAgentConversation
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.ListTasks
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -58,8 +56,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
         assert Fixtures.role_queue_size(context.scope, coding.id) == 0
         coding_frame = %Frame{assigns: %{current_scope: context.scope, agent_id: coding.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -68,10 +67,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
                 }
               ]
             },
-            coding_frame
+            Map.put(coding_frame.assigns, :scope, coding_frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
 
         base_url = HeldProvider.start()
@@ -132,10 +131,10 @@ defmodule CodeMySpecSpex.Story1059.Criterion3332Spex do
         refute prompt =~ "The first is:"
 
         for id <- [context.main_id, context.coding_id] do
-          {:reply, tasks, _} =
-            ListTasks.execute(%{}, %Frame{assigns: %{current_scope: context.scope, agent_id: id}})
+          tasks =
+            ToolLibrary.run("list_tasks", %{}, %{scope: context.scope, agent_id: id})
 
-          refute tasks.isError, response_text(tasks)
+          assert match?({:ok, _}, tasks), response_text(tasks)
           assert response_text(tasks) == "No tasks."
         end
 

@@ -1,9 +1,6 @@
 defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
   @moduledoc "Explicit issue fixes retain scope, reviewable evidence and regression guidance."
   use CodeMySpecSpex.Case
-
-  alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
@@ -41,7 +38,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
         prompt =
           Slice.call(
             context,
-            StartTask,
+            "start_task",
             %{requirement_name: "fix_issue", entity_type: "issue", entity_id: issue.id},
             %{agent_id: coder.id}
           )
@@ -80,7 +77,7 @@ defmodule CodeMySpecSpex.Story1091.Criterion2113Spex do
           agent_id: context.coder.id
         })
 
-        Slice.call(context, EvaluateTask, %{task_id: context.task_id}, %{
+        Slice.call(context, "evaluate_task", %{task_id: context.task_id}, %{
           agent_id: context.coder.id
         })
 

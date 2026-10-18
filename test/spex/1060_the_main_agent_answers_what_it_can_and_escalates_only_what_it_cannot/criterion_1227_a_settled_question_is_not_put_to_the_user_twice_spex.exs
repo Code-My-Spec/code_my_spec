@@ -38,14 +38,14 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   import CodeMySpecSpex.WorkingCopyHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
-  alias CodeMySpec.McpServers.Tasks.Tools.CheckAnswer
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -84,8 +84,9 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
         _main = Fixtures.running_agent(scope, role: "main", working_copy: "/tmp/spex-3257-main")
         asking = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
-        {:reply, asked, _frame} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               title: "the same decision again",
               questions: [
@@ -95,10 +96,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
                 }
               ]
             },
-            asking
+            Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )
 
-        refute asked.isError, inspect(asked)
+        assert match?({:ok, _}, asked), inspect(asked)
 
         {:ok,
          context
@@ -132,8 +133,12 @@ defmodule CodeMySpecSpex.Story1060.Criterion3257Spex do
           assigns: %{current_scope: context.scope, agent_id: context.agent.id}
         }
 
-        {:reply, response, _frame} =
-          CheckAnswer.execute(%{question_id: context.question_id}, frame)
+        response =
+          ToolLibrary.run(
+            "check_answer",
+            %{question_id: context.question_id},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         assert response_text(response) =~ "Keep",
                "the agent did not get the answer:\n#{response_text(response)}"

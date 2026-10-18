@@ -1,7 +1,5 @@
 defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   @moduledoc "Agent-facing actions for the story issue submission scenarios."
-
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias CodeMySpecSpex.PromotionHelpers
@@ -111,7 +109,7 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
   def start_fix(context, key) do
     call(
       context,
-      StartTask,
+      "start_task",
       %{
         requirement_name: "submitted",
         entity_type: "issue",

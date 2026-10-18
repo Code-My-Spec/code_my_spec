@@ -11,8 +11,9 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Tasks.Tools.AskUserQuestion
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -51,8 +52,9 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
       given_ "main has asked the user a question that is still open", context do
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: context.main.id}}
 
-        {:reply, asked, _} =
-          AskUserQuestion.execute(
+        asked =
+          ToolLibrary.run(
+            "ask_user_question",
             %{
               questions: [
                 %{
@@ -61,10 +63,10 @@ defmodule CodeMySpecSpex.Story1054.Criterion1604Spex do
                 }
               ]
             },
-            frame
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
-        refute asked.isError, response_text(asked)
+        assert match?({:ok, _}, asked), response_text(asked)
         {:ok, context}
       end
 

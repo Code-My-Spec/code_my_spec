@@ -96,13 +96,8 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
   # 8f26f7ba: present on `ComponentsServer` but missing here, so `list_components`
   # was unreachable from a script even though every sibling Components tool
   # above is registered and no exclusion applies.
-  component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
   # Scriptable unlike the asking tools: it waits on nobody, and only touches the
   # caller's own question (8c91d5bc).
-  component(CodeMySpec.McpServers.Tasks.Tools.WithdrawQuestion)
-  component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
-  component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   # The performance page as Markdown, for an agent to plan improvements from.
 
   # The main agent's view across its working copies, and the one act it can
