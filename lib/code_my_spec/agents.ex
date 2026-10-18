@@ -320,6 +320,101 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  A terminal Claude Code session joining as an agent (story 1122).
+
+  Found again by its own session id, so a resumed session gets its agent back
+  rather than a new one. It may take any role on any copy, even one an agent
+  already holds: the one-per-role rule is for the agents we start. Main by
+  default; the agent changes it with the person (`set_terminal_role/3`).
+  """
+  @spec register_terminal(Scope.t(), String.t(), atom()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def register_terminal(scope, session_id, role \\ :main)
+
+  def register_terminal(%Scope{active_working_copy_id: copy_id} = scope, session_id, role)
+      when is_binary(copy_id) and is_binary(session_id) and session_id != "" do
+    case AgentsRepository.get_by_engine_session(scope, session_id) do
+      %Agent{} = agent -> {:ok, agent}
+      nil -> create_terminal(scope, copy_id, session_id, role)
+    end
+  end
+
+  def register_terminal(%Scope{active_working_copy_id: nil}, _session_id, _role),
+    do: {:error, :no_working_copy}
+
+  def register_terminal(_scope, _session_id, _role), do: {:error, :session_id_required}
+
+  defp create_terminal(scope, copy_id, session_id, role) do
+    with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+         {:ok, agent} <-
+           AgentsRepository.create_agent(scope, %{
+             engine: :claude_code,
+             engine_session_id: session_id,
+             provider: "claude-code",
+             role: role,
+             working_copy_id: copy_id,
+             working_copy: copy.root,
+             # Woken idle only when the person turns this on.
+             continuous: false
+           }),
+         {:ok, _conversation} <- open_conversation(scope, agent) do
+      broadcast(scope, {:agent_started, agent})
+      {:ok, agent}
+    else
+      # Two hooks for one session racing: the other one made it.
+      {:error, %Ecto.Changeset{errors: [{:project_id, {_, [constraint: :unique] ++ _}} | _]}} ->
+        {:ok, AgentsRepository.get_by_engine_session(scope, session_id)}
+
+      error ->
+        error
+    end
+  end
+
+  @doc """
+  The id of the terminal agent a Claude Code session is, or nil: how a call
+  carrying the session id the PreToolUse hook injects names its agent.
+  """
+  @spec terminal_agent_id(Scope.t() | nil, String.t() | nil) :: Ecto.UUID.t() | nil
+  def terminal_agent_id(%Scope{} = scope, session_id)
+      when is_binary(session_id) and session_id != "" do
+    case AgentsRepository.get_by_engine_session(scope, session_id) do
+      %Agent{retired_at: nil, id: id} -> id
+      _ -> nil
+    end
+  end
+
+  def terminal_agent_id(_scope, _session_id), do: nil
+
+  @doc """
+  A terminal agent taking the role it chose with the person. Agents we start
+  keep theirs: their role is their seat.
+  """
+  @spec set_terminal_role(Scope.t(), Agent.t(), atom() | String.t()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def set_terminal_role(%Scope{} = scope, %Agent{engine: :claude_code} = agent, role) do
+    with {:ok, role} <- role_of(%{role: role}),
+         {:ok, updated} <- AgentsRepository.update_agent(scope, agent, role_attrs(agent, role)) do
+      broadcast(scope, {:agent_started, updated})
+      {:ok, updated}
+    end
+  end
+
+  def set_terminal_role(_scope, %Agent{}, _role), do: {:error, :not_a_terminal_agent}
+
+  # The old role's holdings go; the new role takes its team's, as a joining
+  # member would. Continuous is the person's and carries over.
+  defp role_attrs(%Agent{} = agent, role) do
+    Map.merge(
+      %{story_id: nil, epic_id: nil, issue_id: nil},
+      Assignment.inherit(%{
+        role: role,
+        working_copy_id: agent.working_copy_id,
+        continuous: agent.continuous
+      })
+    )
+  end
+
   # A stopped agent still holding work is resumed, not replaced: task ownership
   # is which row's list a task sits in, and moving tasks would mint new ids and
   # orphan their blockers. Only for a holder, so a role can still get a fresh

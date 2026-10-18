@@ -27,6 +27,15 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   def list_agents(%Scope{}), do: []
 
+  @doc "The project's agent for a terminal session's own session id, or nil."
+  @spec get_by_engine_session(Scope.t(), String.t()) :: Agent.t() | nil
+  def get_by_engine_session(%Scope{active_project_id: project_id}, session_id)
+      when is_binary(project_id) and is_binary(session_id) do
+    Repo.get_by(Agent, project_id: project_id, engine_session_id: session_id)
+  end
+
+  def get_by_engine_session(%Scope{}, _session_id), do: nil
+
   @doc """
   Every agent row on this machine, ignoring scope.
 
