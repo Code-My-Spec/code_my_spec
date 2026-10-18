@@ -303,10 +303,32 @@ defmodule CodeMySpec.Issues.Tools.Responses do
     """
   end
 
-  defp submission_summary(%{story_id: story_id, assigned_working_copy_id: nil, status: :accepted})
-       when not is_nil(story_id), do: "\n**Story fix:** awaiting submission"
+  defp submission_summary(
+         %{story_id: story_id, assigned_working_copy_id: nil, status: :accepted} = issue
+       )
+       when not is_nil(story_id),
+       do: "\n**Story fix:** awaiting submission#{returned_reason(issue)}"
 
   defp submission_summary(_issue), do: ""
+
+  # Issue 2816d615: a submitted fix returning to awaiting submission (a
+  # partial/failed story QA attempt reviewed it — `rework_reviewed_findings/3`
+  # scopes this to the attempt's own cited issue_ids, never a sibling fix) had
+  # no stated reason on the issue, so the coder could not tell a QA verdict's
+  # reset from an unexplained one. The reason was already recorded, on
+  # `story_submission_history`'s last entry (`StorySubmissions.rework/5`) —
+  # this only reads it.
+  defp returned_reason(%{story_submission_history: history}) when is_list(history) do
+    case List.last(history) do
+      %{"returned_ref" => ref, "reason" => reason} when is_binary(ref) and is_binary(reason) ->
+        " — returned: #{reason}"
+
+      _ ->
+        ""
+    end
+  end
+
+  defp returned_reason(_issue), do: ""
 
   defp issue_data(issue) do
     %{
