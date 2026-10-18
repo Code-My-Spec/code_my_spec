@@ -17,11 +17,12 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.IdleAgentHelpers
+  import CodeMySpecSpex.IdleAgentHelpers, only: [put_to_work: 1, start_session: 1]
   import CodeMySpecSpex.OfferHelpers
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+  import CodeMySpecSpex.TaskResponseHelpers, only: [extract_task_id!: 1, response_text: 1]
 
   alias CodeMySpec.McpServers.Tasks.Tools.CancelTask
+  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -102,9 +103,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
         refute_receive {:work_turn_requested, ^id, _ref, _again}, 1_000,
                         "work escalated after a third claim-cancel cycle was pushed again"
 
+        # `next_step` (the raw field driving the escalation) isn't on the
+        # text listing `offers/2` parses -- `note` is what that listing
+        # shows once main has been told about a held-back offer, written by
+        # the same tell_main_held_back path that reads next_step.
         [escalated | _] = offers(context, id, %{kind: "work"})
         assert escalated.status == "open"
-        assert escalated.next_step == "held_back"
+        assert escalated.note == "told_main"
         {:ok, context}
       end
 
@@ -118,9 +123,14 @@ defmodule CodeMySpecSpex.Story1080.Criterion2220Spex do
     end
   end
 
+  # Not IdleAgentHelpers.start_agent_task/3 + held_task_id/2: held_task_id's
+  # ListTasks-text regex grabs the first UUID it finds, which is the prior
+  # cycle's already-cancelled task once a second task exists on the agent.
+  # Reading the id straight off this call's own reply sidesteps that.
   defp claim_and_cancel(context, id) do
-    context = start_agent_task(context, id, next_task(context, id))
-    task_id = held_task_id(context, id)
+    {:reply, started, _} = StartTask.execute(next_task(context, id), agent_frame(context, id))
+    refute started.isError, response_text(started)
+    task_id = extract_task_id!(started)
 
     {:reply, cancelled, _} = CancelTask.execute(%{task_id: task_id}, agent_frame(context, id))
     refute cancelled.isError, response_text(cancelled)
