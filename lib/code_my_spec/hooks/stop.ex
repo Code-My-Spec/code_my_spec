@@ -121,6 +121,17 @@ defmodule CodeMySpec.Hooks.Stop do
   defp evaluate_and_decide(scope, session_id, session, req_id) do
     case maybe_evaluate(scope, session_id, session) do
       {:ok, :valid} ->
+        # cd296681: `session` is the struct `decide/2` fetched before
+        # `maybe_evaluate` ran. `:valid` here means TaskEvaluator just
+        # closed the active task without error -- including a *failed* QA
+        # attempt, which still counts as a validly-recorded evaluation --
+        # and that write never reaches this stale struct's own `tasks`
+        # association. `Work.actionable/3` and `Menu.render/4` below must
+        # see the task as TaskEvaluator just left it, not as it was before
+        # this stop hook started, or the menu reports an obstacle ("No
+        # valid QA pass attempt in DB") against a task the database
+        # already shows as completed.
+        session = session && Sessions.get_by_external_id(scope, session_id)
         maybe_continue_with_next_task(scope, session, req_id)
 
       # Already recorded by `TaskEvaluator`, so nothing to record here — doing
