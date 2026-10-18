@@ -11,7 +11,8 @@ defmodule CodeMySpecSpex.Story1045.Criterion3073Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.McpServers.Devops.Tools.{RunDevopsSetup, RunProvisioningStep}
+  alias CodeMySpec.ToolLibrary
+
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -42,13 +43,27 @@ defmodule CodeMySpecSpex.Story1045.Criterion3073Spex do
 
       when_ "the project's devops agent runs the single :server step", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _response, _frame} = RunProvisioningStep.execute(%{step: "server"}, frame)
+
+        _response =
+          ToolLibrary.run(
+            "run_provisioning_step",
+            %{step: "server"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, context}
       end
 
       when_ "it also runs the whole devops setup sequence", context do
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-        {:reply, _response, _frame} = RunDevopsSetup.execute(%{}, frame)
+
+        _response =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         {:ok, context}
       end
 

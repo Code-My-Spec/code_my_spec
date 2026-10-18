@@ -646,7 +646,7 @@ defmodule CodeMySpec.Provisioning.Resend do
   @doc """
   Make an arbitrary authenticated Resend API call.
 
-  Public so `CodeMySpec.McpServers.Devops.Tools.ProviderRequest` can make ad
+  Public so `CodeMySpec.Provisioning.Tools.ProviderRequest` can make ad
   hoc calls for an agent without the token ever leaving this process.
   """
   @spec request(Scope.t(), atom(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}

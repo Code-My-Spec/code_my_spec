@@ -20,7 +20,7 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.McpServers.Devops.Starter
+  alias CodeMySpec.Provisioning.Tools.Starter
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Notifications
   alias CodeMySpecTest.AgentPresence

@@ -11,9 +11,9 @@ defmodule CodeMySpecSpex.Story1044.Criterion3068Spex do
 
   use CodeMySpecSpex.Case
 
-  @endpoint CodeMySpecWeb.Endpoint
+  alias CodeMySpec.ToolLibrary
 
-  alias CodeMySpec.McpServers.Devops.Tools.LinkServer
+  @endpoint CodeMySpecWeb.Endpoint
   alias CodeMySpec.Provisioning.Hetzner
 
   setup :register_log_in_setup_account
@@ -40,8 +40,12 @@ defmodule CodeMySpecSpex.Story1044.Criterion3068Spex do
 
         frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          LinkServer.execute(%{environment: "prod", server_name: "in-use-box"}, frame)
+        _response =
+          ToolLibrary.run(
+            "link_server",
+            %{environment: "prod", server_name: "in-use-box"},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, context}
       end

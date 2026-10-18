@@ -14,8 +14,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1959Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,14 +28,23 @@ defmodule CodeMySpecSpex.Story841.Criterion1959Spex do
       given_ "Sam has had setup run against his own provider accounts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _response, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        _response =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent asks what infrastructure exists", context do
-        {:reply, response, _frame} = DevopsStatus.execute(%{}, context.frame)
+        response =
+          ToolLibrary.run(
+            "devops_status",
+            %{},
+            Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
+          )
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

@@ -15,8 +15,9 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.ToolLibrary
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
   # The widget message travels over a real socket, and `connect/3` reads this.
   @endpoint CodeMySpecWeb.Endpoint
@@ -90,10 +91,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
       when_ "setup is run again from what the repo holds", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, _run, _frame} =
-          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        _run =
+          ToolLibrary.run(
+            "run_devops_setup",
+            %{project_id: to_string(context.project.id)},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
 
-        {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
+        status =
+          ToolLibrary.run(
+            "devops_status",
+            %{},
+            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          )
+
         report = response_text(status)
 
         {:ok, Map.put(context, :report, report)}
