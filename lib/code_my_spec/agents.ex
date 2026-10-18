@@ -335,8 +335,17 @@ defmodule CodeMySpec.Agents do
   def register_terminal(%Scope{active_working_copy_id: copy_id} = scope, session_id, role)
       when is_binary(copy_id) and is_binary(session_id) and session_id != "" do
     case AgentsRepository.get_by_engine_session(scope, session_id) do
-      %Agent{} = agent -> {:ok, agent}
-      nil -> create_terminal(scope, copy_id, session_id, role)
+      %Agent{retired_at: nil} = agent ->
+        {:ok, agent}
+
+      # Retired is gone for good: the session joins again as a new agent, and
+      # the retired row lets go of the session id, keeping its history.
+      %Agent{} = retired ->
+        {:ok, _} = AgentsRepository.update_agent(scope, retired, %{engine_session_id: nil})
+        create_terminal(scope, copy_id, session_id, role)
+
+      nil ->
+        create_terminal(scope, copy_id, session_id, role)
     end
   end
 

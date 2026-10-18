@@ -213,4 +213,16 @@ defmodule CodeMySpec.Agents.ATerminalSessionJoinsAsAnAgentTest do
              &(CodeMySpec.Conversations.Message.text(&1) =~ "usage")
            )
   end
+
+  test "a session whose agent was retired joins again as a new agent", %{scope: scope} do
+    session = session_id()
+    {:ok, first} = Agents.register_terminal(scope, session)
+    {:ok, _} = Agents.retire_agent(scope, first.id)
+
+    assert {:ok, again} = Agents.register_terminal(scope, session)
+
+    refute again.id == first.id
+    assert is_nil(again.retired_at)
+    assert {:ok, %Agent{engine_session_id: nil}} = Agents.fetch_agent(scope, first.id)
+  end
 end
