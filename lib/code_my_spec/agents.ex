@@ -683,9 +683,20 @@ defmodule CodeMySpec.Agents do
   end
 
   # A turn handed to the harness that just died can never start; left open it
-  # would fence the agent out of the join's one sweep.
-  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent),
-    do: Offers.abandon_turns(agent.id)
+  # would fence the agent out of the join's one sweep. Idle, there was no turn
+  # to carry on -- but criterion 1801 still wants the harness's return said
+  # out loud, the same restart offer Main.attempt/4 already sends when it
+  # restarts an agent itself (:own_reply, offer: {:resume, {"restart", nil}}),
+  # here for the harness's own reconnect instead of main's explicit restart.
+  defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent) do
+    Offers.abandon_turns(agent.id)
+
+    send_to_agent(agent.id, "The harness restarted.", :own_reply,
+      offer: {:resume, {"restart", nil}}
+    )
+
+    :ok
+  end
 
   defp account_for_interrupted_turn(scope, %Agent{} = agent) do
     AgentsRepository.update_agent(scope, agent, %{turn_started_at: nil})
