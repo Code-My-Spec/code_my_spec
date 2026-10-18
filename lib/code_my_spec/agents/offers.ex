@@ -142,6 +142,24 @@ defmodule CodeMySpec.Agents.Offers do
   def open_of_kind?(_agent_id, _kind), do: false
 
   @doc """
+  This agent's current open work offer, if it holds one -- regardless of
+  subject. `Agents.Work.ensure_work_offer/2` backs a pull read
+  (`get_next_requirement`) with this same single offer rather than
+  recording a second one: one open offer is the agent's status
+  (criterion 2161).
+  """
+  @spec current_work_offer(String.t()) :: Offer.t() | nil
+  def current_work_offer(agent_id) when is_binary(agent_id) do
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.kind == :work and o.status == :open)
+    |> order_by([o], desc: o.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  def current_work_offer(_agent_id), do: nil
+
+  @doc """
   Every open offer on this agent is superseded, not just one of a given kind
   and subject -- a restart discards the in-flight turn those offers were
   queued for (`turn_started_at: nil`), so none of them can still be claimed

@@ -137,6 +137,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
 
   defp response_text(response) do
     protocol = Response.to_protocol(response)
-    hd(protocol["content"])["text"]
+    Enum.map_join(protocol["content"], "\n", & &1["text"])
   end
 end

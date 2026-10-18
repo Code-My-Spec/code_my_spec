@@ -1093,6 +1093,37 @@ defmodule CodeMySpec.Agents.Work do
     do: actionable(scope, agent.role, agent, owners: owners)
 
   @doc """
+  Backs a pull read (`get_next_requirement`) with the same single open work
+  offer a pushed turn would carry (issue e6f18e57): the agent's current open
+  offer if it already holds one -- one open offer is its status, regardless
+  of subject (criterion 2161) -- or a freshly recorded one for the head of
+  `nodes` (the same `offer_subject/2` a push names) when it holds none and
+  there is some work to back. A repeat pull for the same subject finds that
+  offer already open rather than recording a new attempt or climbing its
+  ladder. `nil` when there is nothing to offer.
+  """
+  @spec ensure_work_offer(Agent.t(), [map()]) :: Offer.t() | nil
+  def ensure_work_offer(%Agent{id: agent_id} = agent, nodes)
+      when is_binary(agent_id) and is_list(nodes) do
+    case Offers.current_work_offer(agent_id) do
+      nil ->
+        case Enum.map(nodes, &{&1.entity_type, &1.entity_id, &1.name}) do
+          [] ->
+            nil
+
+          tuples ->
+            subject = offer_subject(agent, tuples)
+            Offers.record(nil, agent, offer_kind(subject), subject)
+        end
+
+      offer ->
+        offer
+    end
+  end
+
+  def ensure_work_offer(_agent, _nodes), do: nil
+
+  @doc """
   Whether a task at `agent`'s checkout withholds `node` from it: another
   agent's live task, its own blocked on an unresolved blocker, or its own
   open offer for the same work that `Offers.standing/1` already reads as

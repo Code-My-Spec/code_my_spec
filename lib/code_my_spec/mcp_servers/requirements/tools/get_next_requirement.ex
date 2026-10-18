@@ -9,6 +9,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
 
   use Anubis.Server.Component, type: :tool
 
+  alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
@@ -46,7 +47,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
           |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
           |> then(&StoryRefs.number_execution(scope, &1))
 
-        {:reply, RequirementsMapper.story_execution_response(execution, active_subagents), frame}
+        response =
+          execution
+          |> RequirementsMapper.story_execution_response(active_subagents)
+          |> with_offer_note(ready_offer(agent, execution))
+
+        {:reply, response, frame}
 
       {:error, _reason} ->
         # No project linked — return init checklist so the agent can bootstrap
@@ -76,6 +82,25 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   # reconciles changed paths, and `FileSync.sync_changed/2` runs in the
   # validation path. The Files page's Sync button remains the
   # deliberate full pass.
+
+  # An offer only ever backs a ready wave: `:complete`/`:blocked`/
+  # `:unavailable` have nothing actionable for this role to be asked to act
+  # on, so there is nothing to back with an offer either (criteria 2158,
+  # e6f18e57).
+  defp ready_offer(%Agents.Agent{} = agent, %{status: :ready, actionable: actionable}),
+    do: Work.ensure_work_offer(agent, actionable)
+
+  defp ready_offer(_agent, _execution), do: nil
+
+  defp with_offer_note(response, nil), do: response
+
+  defp with_offer_note(response, offer) do
+    Response.text(
+      response,
+      "---\n\nThis work is backed by offer `#{offer.id}`. Complete it, or call " <>
+        "`reject_offer` with that id and a reason."
+    )
+  end
 
   defp my_agent(frame, scope) do
     with agent_id when is_binary(agent_id) <- frame.assigns[:agent_id],

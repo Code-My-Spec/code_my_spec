@@ -54,10 +54,14 @@ defmodule CodeMySpecSpex.OfferHelpers do
   end
 
   defp block(text) do
+    # `parse/1` split on "offer ", so `text` starts right after it with the
+    # offer's own id -- the one line `OfferMapper` writes with no indent.
+    [_, id] = Regex.run(~r/\A(\S+)/, text)
     [_, kind, subject, attempt] = Regex.run(~r/^  (\w+) on (\S+), attempt (\d+)$/m, text)
     [_, status] = Regex.run(~r/^  status: (\w+)/m, text)
 
     %{
+      id: id,
       kind: kind,
       subject: subject,
       attempt: String.to_integer(attempt),
@@ -182,9 +186,9 @@ defmodule CodeMySpecSpex.OfferHelpers do
     coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
     context = context |> start_session() |> put_to_work()
     id = coder.id
-    assert_receive {:work_turn_requested, ^id, _ref, _prompt}, 2_000
+    assert_receive {:work_turn_requested, ^id, _ref, prompt}, 2_000
     :ok = Fixtures.put_agent_mid_turn(context.scope, id)
-    Map.put(context, :coder, id)
+    context |> Map.put(:coder, id) |> Map.put(:prompt, prompt)
   end
 
   @doc """

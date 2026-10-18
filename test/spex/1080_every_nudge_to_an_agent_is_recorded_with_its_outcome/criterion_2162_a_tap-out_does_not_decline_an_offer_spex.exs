@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
       given_ "a coder has an open work offer for a task", context do
         context = offered_work(context)
         context = start_agent_task(context, context.coder, next_task(context, context.coder))
-        {:ok, context}
+        {:ok, Map.put(context, :task_id, held_task_id(context, context.coder))}
       end
 
       when_ "it calls tap_out on that task", context do
