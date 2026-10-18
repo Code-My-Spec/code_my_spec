@@ -27,7 +27,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion2167Spex do
     scenario "a coder ignores the same offer three turns running" do
       given_ "coding work waiting, an accepted issue on the same story, and a continuous coder",
              context do
-        context = context |> coding_work_waiting() |> issue_accepted(context.story)
+        context = coding_work_waiting(context)
+        context = issue_accepted(context, context.story)
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         context = context |> start_session() |> put_to_work()
         id = coder.id
