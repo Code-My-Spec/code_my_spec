@@ -23,4 +23,17 @@ defmodule CmsHarness.Agents.AnAgentsTestCommandIsRoutedTest do
   test "an agent with no copy is left alone" do
     assert :pass = Bash.routed("mix test", "/w/copy", nil)
   end
+
+  # 24f3668c: a second occurrence (c2fb6839) reported no run id came back at
+  # all after a client timeout, so the agent could not even name which run to
+  # ask about. `get_analysis_output`'s `source` selector needs no id -- this
+  # is the message naming that route.
+  test "a timed-out run names get_analysis_output's source selector, not just a run id" do
+    message = Bash.timed_out("wc-1")
+
+    assert message =~ "get_analysis_output"
+    assert message =~ "no run id required"
+    assert message =~ "exunit for mix test"
+    assert message =~ "/api/harnesses/wc-1/analysis/wait"
+  end
 end
