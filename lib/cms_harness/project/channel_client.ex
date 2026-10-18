@@ -112,7 +112,7 @@ defmodule CmsHarness.Project.ChannelClient do
   def init(project) do
     socket =
       new_socket()
-      |> assign(:project, project)
+      |> assign(:project, refresh_identity(project))
       |> assign(:topic, "harness_project:#{project.id}")
       |> assign(:joined, false)
       |> assign(:refused, nil)
@@ -125,6 +125,29 @@ defmodule CmsHarness.Project.ChannelClient do
 
     :ok = Liveness.subscribe()
     {:ok, socket, {:continue, :connect}}
+  end
+
+  # 1a8e6318: `Project.Supervisor`'s child spec closes over the `project`
+  # struct `ProjectIdentity.resolve/1` returned once, at copy-serve time --
+  # before anything had joined, so its `working_copy_id` is still nil then.
+  # A later join writes the issued id to disk (`persist_issued_identity/2`)
+  # and into *this process's* socket assigns, never back into the
+  # supervisor's frozen argument. So a `:rest_for_one` restart of this child
+  # re-`init/1`s from that same stale struct and presents `nil` again,
+  # minting a fresh row even though the id this copy was issued is sitting
+  # on disk. Re-reading it here, every init, closes that gap without
+  # resolving the whole identity again -- `id` and `root` do not change
+  # after a copy starts being served, only `working_copy_id` can move from
+  # nil to issued underneath this frozen argument. Nothing on disk (not yet
+  # issued, or an unreadable file) leaves the passed struct exactly as given.
+  defp refresh_identity(%{root: root} = project) do
+    case HarnessConfig.read_file(root) do
+      {:ok, %{working_copy_id: id}} when is_binary(id) and id != "" ->
+        %{project | working_copy_id: id}
+
+      _ ->
+        project
+    end
   end
 
   @impl Slipstream
