@@ -97,7 +97,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement do
   defp with_offer_note(response, offer) do
     Response.text(
       response,
-      "---\n\nThis work is backed by offer `#{offer.id}`. Complete it, or call " <>
+      "This is backed by offer `#{offer.id}`. Complete it, or call " <>
         "`reject_offer` with that id and a reason."
     )
   end

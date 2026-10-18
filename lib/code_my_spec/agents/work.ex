@@ -9,6 +9,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.IssueWork
   alias CodeMySpec.Agents.Main, as: MainAgent
+  alias CodeMySpec.Agents.Offer
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.RoleProfile
@@ -355,7 +356,7 @@ defmodule CodeMySpec.Agents.Work do
          {:ok, {waking, offered}} <-
            admit_turn(scope, current.id, event, {offer_kind(subject), subject}),
          :ok <- still_offered(scope, waking, offered, subject) do
-      turn_prompt = offer_prompt(scope, waking, subject)
+      turn_prompt = offer_prompt(scope, waking, subject, offered)
 
       # Recorded first, then sent: the transport is called directly, and a turn
       # with nothing on the transcript saying why reads as an agent starting
@@ -679,9 +680,19 @@ defmodule CodeMySpec.Agents.Work do
   defp offer_kind({"task", _id}), do: :unblocked
   defp offer_kind(_subject), do: :work
 
+  # Criterion 2158: an offer that asks the agent to act names itself and the
+  # way to refuse it, so every body below is followed by the offer's own id
+  # and `reject_offer` -- except a tap-out's own answer, which already says
+  # what happened and is not itself an action request.
+  defp offer_prompt(scope, agent, subject, offer) do
+    scope
+    |> offer_prompt_body(agent, subject)
+    |> append_offer_note(subject, offer)
+  end
+
   # A second offer of a released task carries its own rung's text, `:remind`,
   # rather than the same sentence again.
-  defp offer_prompt(scope, agent, {"task", id}) do
+  defp offer_prompt_body(scope, agent, {"task", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.id == id))
     base = "Your blocker was released; #{resume_instruction(scope, tasks)}"
 
@@ -691,14 +702,14 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  defp offer_prompt(scope, agent, {"tap_out", id}) do
+  defp offer_prompt_body(scope, agent, {"tap_out", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
     "Your tap-out was declined; #{resume_instruction(scope, tasks)}"
   end
 
   # The extra text is chosen by the offer's rung on its kind's ladder: `:remind`
   # for a released task; `:detail` and `:alternatives` for requirement work.
-  defp offer_prompt(scope, agent, {"requirement", key}) do
+  defp offer_prompt_body(scope, agent, {"requirement", key}) do
     case rung(agent, :work, "requirement", key) do
       :detail -> prompt(agent) <> "\n\n" <> detail(scope, agent, key)
       :alternatives -> prompt(agent) <> "\n\n" <> alternatives(scope, agent, key)
@@ -706,7 +717,17 @@ defmodule CodeMySpec.Agents.Work do
     end
   end
 
-  defp offer_prompt(_scope, agent, _subject), do: prompt(agent)
+  defp offer_prompt_body(_scope, agent, _subject), do: prompt(agent)
+
+  defp append_offer_note(body, {"tap_out", _id}, _offer), do: body
+
+  defp append_offer_note(body, _subject, %Offer{id: id}) do
+    body <>
+      "\n\n" <>
+      "This is backed by offer `#{id}`. Complete it, or call `reject_offer` with that id and a reason."
+  end
+
+  defp append_offer_note(body, _subject, _offer), do: body
 
   # The way out of a second notice, for a task this agent was already told it
   # could resume. The line above already names it and the call that takes it, so
