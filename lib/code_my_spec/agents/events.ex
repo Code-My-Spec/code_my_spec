@@ -193,7 +193,14 @@ defmodule CodeMySpec.Agents.Events do
         |> Conversations.record_sent_to_agent(meta.notice)
         |> Offers.record(meta.agent, :denial, meta.subject)
 
-        Work.consider_copy(meta.scope, meta.working_copy_id, :tap_out_denied)
+        # Exclude this agent: it was just told directly above, on its own
+        # thread. Without the exclusion, if the same not-admissible window
+        # clears between here and consider_copy's own read, this agent is
+        # found idle with the same work still claimable and pushed a second,
+        # detail-less turn on the very denial offer just recorded for it --
+        # the same self-nudge shape fixed in wake_with_notice/4 (criterion
+        # 1799).
+        Work.consider_copy(meta.scope, meta.working_copy_id, :tap_out_denied, meta.agent.id)
     end
   catch
     kind, reason -> log(:tap_out_denied, kind, reason)
