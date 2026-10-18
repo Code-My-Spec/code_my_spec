@@ -286,7 +286,14 @@ defmodule CodeMySpec.Provisioning.Sops do
     Environments.cmd(env, "sops", args, [stderr_to_stdout: true] ++ opts)
   end
 
-  defp parse_dotenv(output) do
+  @doc """
+  Parse `KEY=value` lines into a map, skipping comments and blank lines.
+
+  Used both to read back a decrypted file and, by `Steps.import_dotenv/3`,
+  to read an app's existing env before any of it reaches `put_secret/5`.
+  """
+  @spec parse_dotenv(String.t()) :: %{String.t() => String.t()}
+  def parse_dotenv(output) do
     output
     |> String.split("\n", trim: true)
     |> Enum.reject(&String.starts_with?(&1, "#"))
