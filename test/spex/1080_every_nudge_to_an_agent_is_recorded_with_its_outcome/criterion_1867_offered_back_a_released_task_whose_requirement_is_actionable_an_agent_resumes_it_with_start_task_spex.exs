@@ -55,11 +55,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1867Spex do
         assert_receive {:work_turn_requested, ^id, _ref, prompt}, 2_000
         assert prompt =~ "resume task #{context.task_id}", prompt
 
-        {:reply, resumed, _} =
-          StartTask.execute(
-            %{requirement_name: "ready_for_qa", entity_type: "story", entity_id: context.task_id},
-            agent_frame(context, context.coder)
-          )
+        {:reply, resumed, _} = StartTask.execute(context.task, agent_frame(context, context.coder))
+        :ok = Fixtures.end_turn(context.scope, context.coder)
 
         {:ok, Map.merge(context, %{prompt: prompt, resumed: resumed})}
       end
