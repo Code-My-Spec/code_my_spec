@@ -8,6 +8,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IdleAgentHelpers
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -28,7 +29,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2162Spex do
     scenario "a coder holding an open work offer calls tap_out on that task" do
       given_ "a coder has an open work offer for a task", context do
         context = offered_work(context)
-        context = start_agent_task(context, context.coder, context.task_id || next_task(context, context.coder))
+        context = start_agent_task(context, context.coder, next_task(context, context.coder))
         {:ok, context}
       end
 
