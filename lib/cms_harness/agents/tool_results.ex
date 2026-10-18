@@ -20,9 +20,15 @@ defmodule CmsHarness.Agents.ToolResults do
   @max_chars 2_000
 
   @impl true
-  def call(:after_tool_execution, %State{} = state) do
-    names = Map.new(state.tool_calls, &{&1[:id], &1[:name]})
-    %{state | messages_new: Enum.map(state.messages_new, &as_text(&1, names))}
+  def call(:after_tool_call, %State{} = state) do
+    case state.config.context[:current_tool_result] do
+      %{content: content} = result when not is_binary(content) and not is_list(content) ->
+        name = state.config.context[:current_tool_call][:name] || "tool"
+        {:result, %{result | content: sentence(result.is_error, name, content)}}
+
+      _text_or_blocks ->
+        state
+    end
   end
 
   def call(_hook, %State{} = state), do: state
@@ -50,25 +56,6 @@ defmodule CmsHarness.Agents.ToolResults do
 
   defp bound(text), do: String.slice(text, 0, @max_chars)
 
-  defp as_text(%Alloy.Message{content: blocks} = message, names) when is_list(blocks) do
-    %{message | content: Enum.map(blocks, &block_as_text(&1, names))}
-  end
-
-  defp as_text(message, _names), do: message
-
-  # Text and content-block lists are what a provider already knows how to send.
-  defp block_as_text(%{type: type, content: content} = block, _names)
-       when type in ["tool_result", "server_tool_result"] and
-              (is_binary(content) or is_list(content)),
-       do: block
-
-  defp block_as_text(%{type: type, content: content} = block, names)
-       when type in ["tool_result", "server_tool_result"] do
-    %{block | content: sentence(block, Map.get(names, block[:tool_use_id], "tool"), content)}
-  end
-
-  defp block_as_text(block, _names), do: block
-
-  defp sentence(%{is_error: true}, name, content), do: "#{name} failed: #{describe(content)}"
-  defp sentence(_block, _name, content), do: describe(content)
+  defp sentence(true, name, content), do: "#{name} failed: #{describe(content)}"
+  defp sentence(_is_error, _name, content), do: describe(content)
 end

@@ -11,6 +11,7 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
   """
   use ExUnit.Case, async: true
 
+  alias Alloy.Agent.Config
   alias CmsHarness.Agents
 
   @moduletag :tmp_dir
@@ -38,9 +39,9 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
 
     on_exit(fn -> Agents.halt(id) end)
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, id})
-    alloy = :sys.get_state(:sys.get_state(engine).alloy)
+    config = Config.from_opts(:sys.get_state(engine).alloy_opts)
 
-    assert alloy.config.timeout_ms >= :timer.hours(24)
-    assert alloy.config.provider_config.req_options[:receive_timeout] == :timer.minutes(10)
+    assert config.timeout_ms >= :timer.hours(24)
+    assert config.provider_config.req_options[:receive_timeout] == :timer.minutes(10)
   end
 end

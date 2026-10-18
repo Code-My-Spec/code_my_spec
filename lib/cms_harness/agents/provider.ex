@@ -44,10 +44,16 @@ defmodule CmsHarness.Agents.Provider do
   # the CLI providers are subprocesses and do not accept it.
 
   # `codex exec` runs on this machine's own Codex login and `CODEX_HOME`;
-  # nothing is minted or copied. No default model: the ChatGPT plan decides
-  # which models it serves. `workdir` is the working copy (unset, it runs in
-  # Alloy's temp dir). `ignore_user_config`: borrow the login, not the owner's
-  # plugins, MCP servers and approvers. See knowledge/harness, "Providers".
+  # nothing is minted or copied, and Alloy runs it with `--ignore-user-config`
+  # (the login, not the owner's plugins, MCP servers and approvers). No default
+  # model: the ChatGPT plan decides which models it serves. `workdir` is the
+  # working copy, which `persist_session` requires. `persist_session` resumes
+  # Codex's own thread instead of resending the transcript every turn; the
+  # engine changes `:session_generation` after a turn that failed or was
+  # stopped. `config_overrides` turn off Codex's own shell: the outer loop's
+  # tools run commands, and left on, Codex answered for them inside its
+  # read-only sandbox and the loop never saw a tool call. See
+  # knowledge/harness, "Providers".
   def options("openai-codex", credential, opts) do
     {:ok,
      [
@@ -57,7 +63,8 @@ defmodule CmsHarness.Agents.Provider do
             model: Keyword.get(opts, :model),
             workdir: Keyword.get(opts, :working_copy),
             codex_home: codex_home(credential),
-            ignore_user_config: true,
+            persist_session: true,
+            config_overrides: ["features.shell_tool=false", "features.unified_exec=false"],
             timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
           }
           |> with_command_runner()},
@@ -118,14 +125,13 @@ defmodule CmsHarness.Agents.Provider do
   end
 
   # This machine's own `claude` login; no credential is fetched. `workdir` is
-  # the working copy so `--resume` hits the prompt cache (it only does from the
-  # same directory). The timeout is wall clock on the whole call, and must
-  # outlast a silent auto-compaction. See knowledge/harness, "Providers".
+  # the working copy, one stable directory per conversation. The timeout is how
+  # long the CLI may go quiet, and must outlast a silent auto-compaction. See knowledge/harness, "Providers".
   def options("claude-code", _credential, opts) do
     {:ok,
      [
        provider:
-         {Alloy.Provider.ClaudeCode,
+         {AlloyClaudeCode,
           %{
             model: Keyword.get(opts, :model) || "claude-sonnet-5",
             workdir: Keyword.get(opts, :working_copy),
@@ -153,8 +159,8 @@ defmodule CmsHarness.Agents.Provider do
   @spec names() :: [String.t()]
   def names, do: ["anthropic", "openai-codex", "zai", "deepinfra", "claude-code"]
 
-  # Always named, so `Alloy.Provider.Codex` never builds an isolated home and
-  # copies a token into it. A credential may name a different home.
+  # Always named rather than inherited from this BEAM's environment. A
+  # credential may name a different home.
   defp codex_home(credential) do
     case fetch(credential, :codex_home) do
       {:ok, path} -> Path.expand(path)
