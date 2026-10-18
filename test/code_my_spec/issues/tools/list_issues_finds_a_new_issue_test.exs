@@ -12,7 +12,6 @@ defmodule CodeMySpec.Issues.Tools.ListIssuesFindsANewIssueTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Issues
 
   defp file(scope, title, attrs \\ %{}),

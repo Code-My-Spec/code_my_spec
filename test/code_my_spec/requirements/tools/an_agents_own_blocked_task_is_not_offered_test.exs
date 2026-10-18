@@ -20,7 +20,6 @@ defmodule CodeMySpec.Requirements.Tools.AnAgentsOwnBlockedTaskIsNotOfferedTest d
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.MainAgent.Tools.AnswerNotification
   alias CodeMySpec.McpServers.MainAgent.Tools.ListNotifications
-  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Notifications

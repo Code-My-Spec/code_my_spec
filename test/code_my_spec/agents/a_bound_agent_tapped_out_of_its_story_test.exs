@@ -16,7 +16,6 @@ defmodule CodeMySpec.Agents.ABoundAgentTappedOutOfItsStoryTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.McpServers.Tasks.Tools.TapOut
   alias CodeMySpec.Repo

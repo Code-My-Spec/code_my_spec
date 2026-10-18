@@ -25,7 +25,6 @@ defmodule CodeMySpec.Agents.TransportReachesAConnectedHarnessTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Transport
-  alias CodeMySpec.Analysis
 
   alias CodeMySpec.Analysis.HarnessRegistry
 

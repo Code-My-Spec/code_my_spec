@@ -22,7 +22,6 @@ defmodule CodeMySpec.Requirements.Tools.AnUnreleasedStorySaysSoTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Requirements.Tools.ShowStoryRequirements
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do

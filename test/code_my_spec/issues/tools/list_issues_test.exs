@@ -1,7 +1,6 @@
 defmodule CodeMySpec.Issues.Tools.ListIssuesTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Issues.Tools.ListIssues
   alias CodeMySpec.ToolLibrary
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures

@@ -8,7 +8,6 @@ defmodule CodeMySpec.Requirements.Tools.ShowRequirementTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Requirements.Tools.ShowRequirement
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do

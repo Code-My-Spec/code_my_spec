@@ -25,7 +25,6 @@ defmodule CodeMySpec.Agents.SwitchingACopyOnAsksForAScanTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Requirements.GraphWatcher
   alias Ecto.Adapters.SQL.Sandbox

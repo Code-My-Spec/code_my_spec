@@ -9,7 +9,6 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.WorkingCopies
   alias Ecto.Adapters.SQL.Sandbox
 

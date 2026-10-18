@@ -6,7 +6,6 @@ defmodule CodeMySpec.Telemetry.SetupTest do
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository}
   alias CodeMySpec.Provisioning.TelemetryStep
-  alias CodeMySpec.Telemetry
 
   test "default setup reaches the installer and does not publish a failed installation" do
     scope = full_scope_fixture()

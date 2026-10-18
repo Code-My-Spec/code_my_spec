@@ -25,7 +25,7 @@ defmodule CmsHarness.SyncPathTest do
   import CmsHarnessTest.Projects
 
   alias CmsHarness.Channel
-  alias CmsHarness.Project.{ChannelClient, Watcher}
+  alias CmsHarness.Project.{Watcher}
   alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
 

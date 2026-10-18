@@ -35,8 +35,6 @@ defmodule CodeMySpec.Issues.Tools.FrameworkIssuesTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Issues
 
   setup do

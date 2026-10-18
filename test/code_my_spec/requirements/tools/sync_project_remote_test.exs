@@ -28,14 +28,8 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
   import CodeMySpec.StoriesFixtures
 
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
-  alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Requirements.Tools.ShowStoryRequirements
-  alias CodeMySpec.Requirements.Tools.SyncProject
-
-  defp run({_status, text}) when is_binary(text), do: text
 
   defp run(scope) do
     frame = %Frame{assigns: %{current_scope: scope}}

@@ -16,7 +16,6 @@ defmodule CodeMySpec.Agents.AssignmentTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.EpicDispatch
   alias CodeMySpec.Epics
-  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Stories.Tools.SetActiveStory
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories

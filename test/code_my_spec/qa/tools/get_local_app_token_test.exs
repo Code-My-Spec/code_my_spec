@@ -58,7 +58,7 @@ defmodule CodeMySpec.Qa.Tools.GetLocalAppTokenTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias Anubis.Server.{Frame, Response}
+  alias Anubis.Server.{Frame}
   alias CodeMySpec.Qa.Tools.GetLocalAppTokenTest.FakeRefusingSpriteToken
   alias CodeMySpec.Qa.Tools.GetLocalAppTokenTest.FakeSpriteToken
 

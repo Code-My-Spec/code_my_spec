@@ -13,7 +13,6 @@ defmodule CodeMySpec.Agents.EveryWakeGoesThroughOneDecisionTest do
   import Ecto.Query
 
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.AnalysisReport

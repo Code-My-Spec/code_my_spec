@@ -19,7 +19,6 @@ defmodule CodeMySpec.Agents.ProductSeesEveryStoryTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements

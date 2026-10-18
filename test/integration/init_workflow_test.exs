@@ -55,12 +55,12 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     File.mkdir_p!(Path.join(tmp_dir, "config"))
 
     # Step 3: still init (no project in DB yet)
-    still_init_resp =
-      ToolLibrary.run(
-        "get_next_requirement",
-        %{},
-        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-      )
+    assert {:ok, _} =
+             ToolLibrary.run(
+               "get_next_requirement",
+               %{},
+               Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+             )
 
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()

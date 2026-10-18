@@ -18,7 +18,6 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirementsReadsAQueriedStorysOwnCo
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.Requirements.Tools.ListRequirements
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies

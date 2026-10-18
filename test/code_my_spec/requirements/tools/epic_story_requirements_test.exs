@@ -8,12 +8,6 @@ defmodule CodeMySpec.Requirements.Tools.EpicStoryRequirementsTest do
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.{Epics, Requirements, Stories}
 
-  alias CodeMySpec.Requirements.Tools.{
-    ListRequirements,
-    ShowRequirement,
-    ShowStoryRequirements
-  }
-
   alias CodeMySpec.McpServers.Stories.Tools.AssignStoryToEpic
 
   test "epic assignment preserves every per-story requirement read" do

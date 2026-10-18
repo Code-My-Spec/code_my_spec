@@ -16,7 +16,6 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposalTest do
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures, only: [full_scope_fixture: 0, put_fixture_environment: 2]
 
-  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths

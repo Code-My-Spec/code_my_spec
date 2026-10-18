@@ -5,7 +5,6 @@ defmodule CodeMySpec.Stories.StoryRefsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Stories
   alias Ecto.Adapters.SQL.Sandbox

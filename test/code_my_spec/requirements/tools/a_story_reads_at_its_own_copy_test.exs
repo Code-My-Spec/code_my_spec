@@ -14,8 +14,6 @@ defmodule CodeMySpec.Requirements.Tools.AStoryReadsAtItsOwnCopyTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias Anubis.Server.Response
-  alias CodeMySpec.Requirements.Tools.ShowStoryRequirements
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
