@@ -8,7 +8,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1815Spex do
 
   Per product's ruling (question 4017d97c): a claimed task still holds the
   agent busy, so the same work cannot be re-pushed while it is held --
-  `cancel_task` is what un-claims it, and John's rule is that a cancel is not
+  `cancel_task` is what un-claims it, and product's ruling (issue 75783a94)
+  is that a cancel is not
   a decline, so the work returns to the graph as actionable rather than being
   held back.
   """
@@ -80,7 +81,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1815Spex do
             context do
         # Newest first: the first push (ignored), the claim-then-cancel
         # (criterion 2220's own first cycle: settles :cancelled, not
-        # :declined -- John's rule, issue 75783a94), then the fresh offer
+        # :declined -- product's ruling, issue 75783a94), then the fresh offer
         # that followed it.
         assert [fresh, cancelled, ignored] = offers(context, context.coder, %{kind: "work"}),
                "expected the ignored push, the claim-cancel, and a fresh offer after it:\n" <>

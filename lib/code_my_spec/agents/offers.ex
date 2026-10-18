@@ -1001,7 +1001,8 @@ defmodule CodeMySpec.Agents.Offers do
       Enum.any?(tasks, &pending_tap_out?/1) ->
         nil
 
-      # Claimed and cancelled: not a decline (John's rule, criterion 1815) --
+      # Claimed and cancelled: not a decline (product's ruling, issue 75783a94,
+      # criterion 1815) --
       # the work returns to the graph as actionable. The abuse case the old
       # decline guarded against (claim and drop the same work forever) is
       # caught by cycle_outcome/1 instead: the third claim-cancel cycle on
