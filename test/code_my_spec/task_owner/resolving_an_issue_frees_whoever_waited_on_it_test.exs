@@ -27,13 +27,11 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.IssuesFixtures
-  import CodeMySpec.SessionsFixtures
   import CodeMySpecTest.GraphHelpers, only: [assert_woken: 2]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
@@ -219,32 +217,6 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
 
       {:ok, fresh} = AgentsRepository.fetch_agent(ctx.scope, ctx.agent.id)
       assert waiting?(fresh, ctx.issue.id), "an upgrade released a block still owed a fix"
-    end
-
-    test "a session's task waiting on it is released too", ctx do
-      session = session_fixture(ctx.scope)
-
-      {:ok, session} =
-        session
-        |> Session.add_task(%{
-          status: :active,
-          requirement_name: "qa_complete",
-          started_at: DateTime.utc_now()
-        })
-        |> Repo.update()
-
-      task = Enum.find(session.tasks, &(&1.status == :active))
-      {:ok, _} = TaskOwner.block_task(ctx.scope, session, task.id, :issue, ctx.issue.id)
-
-      _response =
-        ToolLibrary.run(
-          "resolve_issue",
-          %{issue_id: ctx.issue.id, resolution: "fixed"},
-          Map.put(ctx.frame.assigns, :scope, ctx.frame.assigns[:current_scope])
-        )
-
-      fresh = Repo.get!(Session, session.id)
-      refute waiting?(fresh, ctx.issue.id), "a session's task stayed blocked on a resolved issue"
     end
   end
 

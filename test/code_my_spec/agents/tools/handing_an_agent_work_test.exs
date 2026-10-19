@@ -25,10 +25,6 @@ defmodule CodeMySpec.Agents.Tools.HandingAnAgentWorkTest do
   Naming a subject is not claiming to be one — that distinction is what
   `execute/2`'s comment protects and it survives here.
 
-  Sub-agent labels (`aqa-1013-…` rather than a uuid) also still own tasks on the
-  caller's session. They have no agent row to land on, and `fetch_agent/2` now
-  answers `:not_found` for a non-uuid rather than raising, which is what lets
-  that case fall through instead of crashing (`a4e338ae`).
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -37,7 +33,7 @@ defmodule CodeMySpec.Agents.Tools.HandingAnAgentWorkTest do
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.DevicesFixtures
-  import CodeMySpec.SessionsFixtures
+  import CodeMySpec.TerminalAgentFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
@@ -79,9 +75,9 @@ defmodule CodeMySpec.Agents.Tools.HandingAnAgentWorkTest do
 
     # The main agent's position: a session, no agent id on the connection.
     session =
-      session_fixture(scope,
-        external_conversation_id: "sess-#{System.unique_integer([:positive])}"
-      )
+      terminal_agent_fixture(scope, %{
+        engine_session_id: "sess-#{System.unique_integer([:positive])}"
+      })
 
     frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -92,7 +88,7 @@ defmodule CodeMySpec.Agents.Tools.HandingAnAgentWorkTest do
           requirement_name: "implementation_file",
           entity_type: "component",
           entity_id: component.id,
-          session_id: session.external_conversation_id,
+          session_id: session.engine_session_id,
           agent_id: agent.id
         },
         Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
@@ -121,50 +117,5 @@ defmodule CodeMySpec.Agents.Tools.HandingAnAgentWorkTest do
 
            Got:\n#{text(listed)}
            """
-  end
-
-  test "a sub-agent label still owns its task on the caller's session" do
-    {scope, _agent, component} = a_project_with_an_agent()
-
-    # An explicit external id, because `resolve_session/2` looks up by the id the
-    # hook injects and the fixture does not set one.
-    external = "session-#{System.unique_integer([:positive])}"
-    session = session_fixture(scope, external_conversation_id: external)
-    frame = %Frame{assigns: %{current_scope: scope}}
-
-    started =
-      ToolLibrary.run(
-        "start_task",
-        %{
-          requirement_name: "implementation_file",
-          entity_type: "component",
-          entity_id: component.id,
-          session_id: external,
-          agent_id: "aqa-1013-4c48b2885a638b42"
-        },
-        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-      )
-
-    assert match?({:ok, _}, started),
-           """
-           A sub-agent label was treated as a missing agent and refused.
-
-           Labels are not agent rows and have none to land on, so they keep the
-           behaviour they had: the task lives on the caller's session with the
-           label as its ownership stamp. Refusing them would break sub-agent
-           task assignment entirely.
-
-           Got: #{text(started)}
-           """
-
-    listed =
-      ToolLibrary.run(
-        "list_tasks",
-        %{session_id: external},
-        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-      )
-
-    assert text(listed) =~ "implementation_file",
-           "the task should be on the caller's session, which is where a label's task belongs"
   end
 end

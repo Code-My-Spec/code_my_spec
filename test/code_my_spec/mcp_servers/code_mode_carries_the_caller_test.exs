@@ -24,9 +24,9 @@ defmodule CodeMySpec.McpServers.CodeModeCarriesTheCallerTest do
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.McpServers.CodeMode.Tools.RunScript
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.TerminalAgentFixtures
 
-  @no_owner "there is no owner whose"
+  @no_owner "No agent found for this call"
 
   defp text(response) do
     response |> Response.to_protocol() |> Map.get("content") |> hd() |> Map.get("text")
@@ -47,7 +47,9 @@ defmodule CodeMySpec.McpServers.CodeModeCarriesTheCallerTest do
   describe "a Claude Code session" do
     test "reaches its own tasks from inside a script", %{scope: scope, frame: frame} do
       external_id = "session_#{System.unique_integer([:positive])}"
-      {:ok, _session} = Sessions.find_or_create_session(scope, external_id)
+
+      _agent =
+        TerminalAgentFixtures.terminal_agent_fixture(scope, %{engine_session_id: external_id})
 
       answer = run("return list_tasks({})", %{session_id: external_id}, frame)
 
@@ -74,19 +76,19 @@ defmodule CodeMySpec.McpServers.CodeModeCarriesTheCallerTest do
                "which is worse than the refusal — it would be somebody else's"
     end
 
-    test "never has its explicit choice overridden", %{scope: scope, frame: frame} do
+    test "is its own agent whatever session a script names", %{scope: scope, frame: frame} do
       mine = "session_#{System.unique_integer([:positive])}"
-      {:ok, _} = Sessions.find_or_create_session(scope, mine)
+      _agent = TerminalAgentFixtures.terminal_agent_fixture(scope, %{engine_session_id: mine})
 
-      # The script names a session that does not exist. The injected id must not
-      # quietly stand in for it: substituting a different owner for the one the
-      # caller named is the same class of bug as answering the oldest pending
-      # question instead of the named one.
+      # Who is calling comes off the injected id, which resolved to the caller's
+      # agent: a script naming another session cannot make the call somebody
+      # else's.
       script = ~S|return list_tasks({ session_id = "not-a-session" })|
 
       answer = run(script, %{session_id: mine}, frame)
 
-      assert answer =~ "Session not found: not-a-session"
+      refute answer =~ @no_owner
+      assert answer =~ "Returned:\n[]"
     end
   end
 

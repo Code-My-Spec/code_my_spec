@@ -39,56 +39,6 @@
     }
   },
   {
-    "name": "assign_subagent",
-    "description": "Assign a registered sub-agent to an open task (Story 704 / Rule 4).\n\nAtomically updates `Task.agent_id`: if the sub-agent currently owns a\ndifferent task on this session, that task's `agent_id` is cleared and\nthe target task's `agent_id` is set in the **same** `Repo.update` —\nno partial-failure window where the sub-agent ends up unassigned\nfrom their old task while not landing on the new one.\n\n`agent_id` is the Task tool's own result from spawning that sub-agent,\nnot something to go look up — 50ddc827: `list_session_subagents` (the\ntool that *would* answer \"who is registered\") is not every role's to\ncall, and the id is already yours from the spawn, every time.\n\nErrors when:\n- the `agent_id` is not currently active in `session.subagents`\n  (filtered through `Session.active_subagents/2`, so TTL-expired\n  registrations are rejected the same way a fully unknown id is)\n- the `task_id` is not on the session\n",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "description": "The sub-agent's id, from the Task tool's own result when you spawned it — not something to look up elsewhere",
-          "type": "string"
-        },
-        "session_id": {
-          "description": "Injected by hook — do not set manually",
-          "type": "string"
-        },
-        "task_id": {
-          "description": "Target task id",
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id",
-        "task_id"
-      ],
-      "type": "object"
-    }
-  },
-  {
-    "name": "assign_task",
-    "description": "Assign an existing task to a subagent.\n\nThe main agent uses this to claim a task on behalf of a subagent\nbefore spawning it. Pass the `agent_id` that the subagent will use\nso it appears on the task record immediately.\n\nReturns the work prompt so the main agent can forward it to the subagent.\n",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "description": "Subagent identifier to assign to the task",
-          "type": "string"
-        },
-        "session_id": {
-          "description": "Injected by hook — do not set manually",
-          "type": "string"
-        },
-        "task_id": {
-          "description": "ID of the task to assign",
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id",
-        "task_id"
-      ],
-      "type": "object"
-    }
-  },
-  {
     "name": "cancel_task",
     "description": "Cancel a task on the current session (Story 704 / Rule 4).\n\nTransitions the task to `:cancelled` without going through\n`evaluate_task`. Used to unstick the loop when a task can't make\nprogress and the agent wants to move on. No PermissionSocket\ninvolvement — routine admin owned by the agent.\n",
     "input_schema": {
@@ -166,19 +116,6 @@
     }
   },
   {
-    "name": "list_session_subagents",
-    "description": "List all registered sub-agents on the current session, filtered by\nthe configured TTL (Story 704 / Rule 3).\n\nReturns each sub-agent's identity, when they registered, and their\nassignment status — idle (no Task in this session carries their\nagent_id) or the task they own (via Task.agent_id match).\n\nTTL-expired registrations are filtered out (lazy prune from Rule 2);\ncallers see the same truth the engineer's session detail page renders.\n",
-    "input_schema": {
-      "properties": {
-        "session_id": {
-          "description": "Injected by hook — do not set manually",
-          "type": "string"
-        }
-      },
-      "type": "object"
-    }
-  },
-  {
     "name": "list_tasks",
     "description": "List tasks — your own, or a named agent's.\n\nReturns task status, agent assignment, component, and requirement\nso the main agent can track subagent progress.\n\nPass `agent_id` to read that agent's queue instead of your own. Without it\nthis answers about the caller, which is what every agent means when it asks\nwhat it is holding.\n",
     "input_schema": {
@@ -204,22 +141,6 @@
     "description": "Your unanswered questions, oldest first, with their linked task IDs.\n\nRecovers what you asked before a compaction, or lets you check whether a\nquestion is still open before asking another. Internal callers see their\nown durable agent's questions across restarts; external callers see their\nsession's. Answered questions are not listed -- `check_answer` hands back\na reply once it lands, and there is no expiry: an unanswered question\nstays listed until it is.\n",
     "input_schema": {
       "properties": {},
-      "type": "object"
-    }
-  },
-  {
-    "name": "register_session",
-    "description": "Register this conversation as a session on the server.\n\nEvery task tool hangs off a session, and normally the SessionStart hook\ncreates it — the agent never thinks about it. That hook posts to the harness\non localhost, so a server the harness is not reporting to has no session for\nthe conversation, and every task tool dead-ends on `No session_id available`\nwith nothing the agent can do about it.\n\nDeliberately explicit rather than implicit. A tool that silently invents a\nsession on first use hides which server the work is being recorded against,\nand that is exactly the thing worth being sure of when two of them are\nreachable. The task tools name this one in their error instead.\n",
-    "input_schema": {
-      "properties": {
-        "session_id": {
-          "description": "This conversation's id — Claude Code exposes it as CLAUDE_SESSION_ID",
-          "type": "string"
-        }
-      },
-      "required": [
-        "session_id"
-      ],
       "type": "object"
     }
   },

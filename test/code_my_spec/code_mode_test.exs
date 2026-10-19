@@ -427,7 +427,7 @@ defmodule CodeMySpec.CodeModeTest do
             invoke: fn _ -> {:ok, 1} end
           },
           %{
-            name: "assign_subagent",
+            name: "start_analysis",
             description: "",
             input_schema: %{},
             invoke: fn _ -> {:ok, 1} end

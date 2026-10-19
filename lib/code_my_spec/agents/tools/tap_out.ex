@@ -17,7 +17,7 @@ defmodule CodeMySpec.Agents.Tools.TapOut do
     538/5124).
 
     Writes a `PermissionRequest` the person sees in their notifications inbox,
-    keyed to the agent that asked (a terminal Claude Code session is one). Returns
+    keyed to the agent we run or to the Claude Code session that asked. Returns
     immediately; the caller does not wait. On approve, continuous clears (or the
     linked task is cancelled). On reject, it stays on.
     """

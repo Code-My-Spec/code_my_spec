@@ -18,6 +18,7 @@ defmodule CodeMySpec do
       CodeMySpec.AgentHarness,
       CodeMySpec.AgentTasks,
       CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Analysis,
       CodeMySpec.Analytics,
       CodeMySpec.AppTokens,

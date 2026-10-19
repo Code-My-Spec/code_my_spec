@@ -98,10 +98,13 @@ defmodule CodeMySpec.McpServers.EveryScriptableListToolReturnsATableTest do
 
     test "list_tasks", %{frame: frame, scope: scope} do
       # list_tasks resolves "whose tasks" from an explicit session_id/agent_id,
-      # not from nothing -- a fresh session fixture gives it an owner with an
+      # not from nothing -- a fresh terminal agent gives it an owner with an
       # empty (but present) task list.
       external_id = "sess-#{System.unique_integer([:positive])}"
-      CodeMySpec.SessionsFixtures.session_fixture(scope, %{external_conversation_id: external_id})
+
+      CodeMySpec.TerminalAgentFixtures.terminal_agent_fixture(scope, %{
+        engine_session_id: external_id
+      })
 
       returns_a_table("return type(list_tasks({ session_id = \"#{external_id}\" }))", frame)
     end

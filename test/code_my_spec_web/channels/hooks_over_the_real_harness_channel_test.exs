@@ -71,8 +71,8 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
 
     started = HarnessHooks.post_hook(ctx, "session-start", %{"session_id" => session_id})
 
-    assert started["status"] == "active",
-           "session-start should open the session in the cloud; got #{inspect(started)}"
+    assert is_binary(started["agent_id"]),
+           "session-start should register the session as an agent in the cloud; got #{inspect(started)}"
 
     write_brief(ctx, session_id, brief, @incomplete_brief)
     first = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})

@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
   had nothing to do with the story in question.
 
   `TaskEvaluator` already knew what to do with an orphan: `{:error,
-  :entity_missing}` cancels the task and lets the session pull a fresh one. What
+  :entity_missing}` cancels the task and lets the agent pull a fresh one. What
   it did not recognise was the same orphan said in words — `WriteBddSpecs`
   answers `{:story_not_found, message}`, with a message written for an agent
   that typed a bad id, and that fell through to the generic error clause that
@@ -17,18 +17,18 @@ defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
 
   The message's other possibility — "you're scoped to the wrong project" — is
   why cancelling has to be argued rather than assumed. The scope doing the
-  evaluating is the task's own session's scope, so it is the project the task was
+  evaluating is the task's own agent's scope, so it is the project the task was
   created under: wrong-project is something an agent can do by hand and not
   something a stop hook can do by accident.
   """
 
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.SessionsFixtures
+  import CodeMySpec.TerminalAgentFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.Repo
   alias CodeMySpec.AgentTasks.TaskEvaluator
 
   # A number no story on this project has. `Agent.Task.story_id` is the
@@ -37,23 +37,19 @@ defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
 
   setup do
     scope = full_scope_fixture()
-    session = session_fixture(scope, %{type: WriteBddSpecs})
-
-    %{scope: scope, session: session}
+    %{scope: scope, session: terminal_agent_fixture(scope)}
   end
 
-  defp a_task_for(scope, session, story_id) do
-    {:ok, session} =
-      Sessions.prepare_task(scope, session, %{
-        requirement_name: "bdd_specs_exist",
-        session_type: WriteBddSpecs,
-        story_id: story_id
-      })
+  defp a_task_for(_scope, agent, story_id) do
+    attrs = %{
+      status: :active,
+      requirement_name: "bdd_specs_exist",
+      session_type: WriteBddSpecs,
+      story_id: story_id
+    }
 
-    task = List.last(session.tasks)
-    {:ok, session} = Sessions.activate_task(scope, session, task.id)
-
-    {session, Enum.find(session.tasks, &(&1.id == task.id))}
+    agent = agent |> CodeMySpec.Agents.Agent.add_task(attrs) |> Repo.update!()
+    {agent, List.last(agent.tasks)}
   end
 
   test "the stop is not held hostage by it", %{scope: scope, session: session} do
@@ -75,7 +71,7 @@ defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
 
     {:ok, :valid} = TaskEvaluator.evaluate_task(scope, session, task)
 
-    reread = Sessions.get_session(scope, session.id)
+    reread = Repo.reload!(session)
     cancelled = Enum.find(reread.tasks, &(&1.id == task.id))
 
     assert cancelled.status == :cancelled, """

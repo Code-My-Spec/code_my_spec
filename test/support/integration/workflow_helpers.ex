@@ -2,7 +2,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   @moduledoc """
   Setup helpers for integration workflow tests.
 
-  Builds a minimal requirements graph and session for testing
+  Builds a minimal requirements graph and terminal agent for testing
   MCP tool chains without filesystem dependencies.
   """
 
@@ -11,10 +11,10 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   alias Anubis.Server.{Frame, Response}
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.TerminalAgentFixtures
 
   @doc """
-  Creates a scope, session, frame, and a two-requirement graph:
+  Creates a scope, terminal agent, frame, and a two-requirement graph:
 
   - `project_setup` (actionable, no deps) — uses ProjectSetup task module
   - `qa_setup` (blocked) — a second project-level requirement
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
       CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, tmp_dir))
 
     external_id = "workflow-#{System.unique_integer([:positive])}"
-    {:ok, session} = Sessions.find_or_create_session(scope, external_id)
+    agent = TerminalAgentFixtures.terminal_agent_fixture(scope, %{engine_session_id: external_id})
     frame = %Frame{assigns: %{current_scope: scope}}
 
     # `req1` is the chain's vehicle: something automatic, so the stop hook can
@@ -59,8 +59,9 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     %{
       scope: scope,
       frame: frame,
-      session_id: session.id,
+      session_id: external_id,
       external_session_id: external_id,
+      agent: agent,
       project: project,
       req1: req1,
       req2: req2,

@@ -24,7 +24,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementCalculator
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.Agents
+  alias CodeMySpec.TerminalAgentFixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -128,7 +129,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       assert match?({:ok, _}, resp)
 
-      session = Sessions.get_session(scope, session_id)
+      {:ok, session} = Agents.fetch_owner(scope, nil, session_id)
       task = Enum.find(session.tasks, &(&1.status == :active))
       assert task
       task_id = task.id
@@ -147,7 +148,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       assert stop_response == %{}
 
       # Verify task was marked completed
-      session2 = Sessions.get_session(scope, session_id)
+      {:ok, session2} = Agents.fetch_owner(scope, nil, session_id)
       completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
       assert completed_task.status == :completed
     end
@@ -172,7 +173,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         )
 
       external_id = "manual-test-#{System.unique_integer([:positive])}"
-      {:ok, session} = Sessions.find_or_create_session(scope, external_id)
+
+      session =
+        TerminalAgentFixtures.terminal_agent_fixture(scope, %{engine_session_id: external_id})
 
       # qa_integration_plan is computed from the graph with validation_type: :manual
       req_ref = %{
@@ -190,13 +193,13 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       resp =
         ToolLibrary.run(
           "start_task",
-          Map.put(req_ref, :session_id, session.id),
+          Map.put(req_ref, :session_id, external_id),
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
       assert match?({:ok, _}, resp)
 
-      session = Sessions.get_session(scope, session.id)
+      {:ok, session} = Agents.fetch_owner(scope, nil, external_id)
       task = Enum.find(session.tasks, &(&1.status == :active))
       assert task
       assert task.validation_type == :manual
@@ -208,7 +211,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       assert stop_response == %{}
 
       # Task should still be active (not evaluated/completed)
-      session2 = Sessions.get_session(scope, session.id)
+      {:ok, session2} = Agents.fetch_owner(scope, nil, external_id)
       still_active = Enum.find(session2.tasks, &(&1.id == task.id))
       assert still_active.status == :active
     end

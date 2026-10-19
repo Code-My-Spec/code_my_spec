@@ -5,12 +5,12 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.IssuesFixtures
-  import CodeMySpec.SessionsFixtures
+  import CodeMySpec.TerminalAgentFixtures
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -19,15 +19,15 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
 
   describe "execute/2 — terminal state" do
     test "returns already-terminal for completed task" do
-      {scope, session, task} = setup_active_task()
+      {scope, agent, task} = setup_active_task()
       frame = %Frame{assigns: %{current_scope: scope}}
 
-      {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
+      {:ok, _} = TaskOwner.complete_task(scope, agent, task.id, :completed)
 
       response =
         ToolLibrary.run(
           "evaluate_task",
-          %{task_id: task.id, session_id: session.id},
+          %{task_id: task.id, session_id: agent.engine_session_id},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
@@ -38,44 +38,30 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
     end
   end
 
-  describe "execute/2 — session resolution" do
-    test "resolves session by DB UUID" do
-      {scope, session, task} = setup_active_task()
-      frame = %Frame{assigns: %{current_scope: scope}}
-
-      {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
-
-      response =
-        ToolLibrary.run(
-          "evaluate_task",
-          %{task_id: task.id, session_id: session.id},
-          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-        )
-
-      assert match?({:ok, _}, response)
-    end
-
-    test "resolves session by external_conversation_id" do
+  describe "execute/2 — owner resolution" do
+    test "resolves the terminal agent by the session id the hook injects" do
       scope = full_scope_fixture()
       component = component_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 
       external_id = "ext-eval-#{System.unique_integer([:positive])}"
-      {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
 
-      task_attrs = %{
-        session_type: CodeMySpec.AgentTasks.ComponentCode,
-        requirement_name: "implementation_file",
-        project_id: scope.active_project_id,
-        component_id: component.id
-      }
+      agent =
+        terminal_agent_fixture(scope, %{
+          engine_session_id: external_id,
+          tasks: [
+            %{
+              status: :completed,
+              session_type: CodeMySpec.AgentTasks.ComponentCode,
+              requirement_name: "implementation_file",
+              project_id: scope.active_project_id,
+              component_id: component.id
+            }
+          ]
+        })
 
-      {:ok, session_with_task} = Sessions.prepare_task(scope, ext_session, task_attrs)
-      task = Enum.find(session_with_task.tasks, &(&1.status == :prepared))
-      {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
-      {:ok, _} = Sessions.complete_task(scope, active_session, task.id, :completed)
+      task = hd(agent.tasks)
 
-      # Use external_id instead of DB UUID
       response =
         ToolLibrary.run(
           "evaluate_task",
@@ -95,18 +81,22 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
       frame = %Frame{assigns: %{current_scope: scope}}
 
       external_id = "ext-issue-qa-#{System.unique_integer([:positive])}"
-      {:ok, ext_session} = Sessions.find_or_create_session(scope, external_id)
 
-      task_attrs = %{
-        session_type: CodeMySpec.AgentTasks.IssueQa,
-        requirement_name: "qa_complete",
-        project_id: scope.active_project_id,
-        issue_id: issue.id
-      }
+      agent =
+        terminal_agent_fixture(scope, %{
+          engine_session_id: external_id,
+          tasks: [
+            %{
+              status: :active,
+              session_type: CodeMySpec.AgentTasks.IssueQa,
+              requirement_name: "qa_complete",
+              project_id: scope.active_project_id,
+              issue_id: issue.id
+            }
+          ]
+        })
 
-      {:ok, session_with_task} = Sessions.prepare_task(scope, ext_session, task_attrs)
-      task = Enum.find(session_with_task.tasks, &(&1.status == :prepared))
-      {:ok, _active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
+      task = hd(agent.tasks)
 
       response =
         ToolLibrary.run(
@@ -125,7 +115,7 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
   end
 
   describe "execute/2 — error paths" do
-    test "returns error for non-existent session" do
+    test "returns error for a session that is no registered agent" do
       scope = full_scope_fixture()
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -137,18 +127,18 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
         )
 
       assert match?({:error, _}, response)
-      assert response_text(response) =~ "Session not found"
+      assert response_text(response) =~ "No agent found"
     end
 
     test "returns error for non-existent task" do
       scope = full_scope_fixture()
-      session = session_fixture(scope)
+      agent = terminal_agent_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 
       response =
         ToolLibrary.run(
           "evaluate_task",
-          %{task_id: Ecto.UUID.generate(), session_id: session.id},
+          %{task_id: Ecto.UUID.generate(), session_id: agent.engine_session_id},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 
@@ -168,7 +158,7 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
         )
 
       assert match?({:error, _}, response)
-      assert response_text(response) =~ "No session_id"
+      assert response_text(response) =~ "No agent found"
     end
 
     test "returns error without valid scope" do
@@ -192,29 +182,22 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTaskTest do
   defp setup_active_task(task_module \\ CodeMySpec.AgentTasks.ComponentCode) do
     scope = full_scope_fixture()
     component = component_fixture(scope)
-    session = session_fixture(scope)
 
-    task_attrs = %{
-      session_type: task_module,
-      requirement_name: "implementation_file",
-      project_id: scope.active_project_id,
-      component_id: component.id,
-      component_module_name: component.module_name
-    }
+    agent =
+      terminal_agent_fixture(scope, %{
+        tasks: [
+          %{
+            status: :active,
+            session_type: task_module,
+            requirement_name: "implementation_file",
+            project_id: scope.active_project_id,
+            component_id: component.id,
+            component_module_name: component.module_name
+          }
+        ]
+      })
 
-    {:ok, session_with_task} = Sessions.prepare_task(scope, session, task_attrs)
-
-    task =
-      session_with_task.tasks
-      |> Enum.find(&(&1.requirement_name == "implementation_file" and &1.status == :prepared))
-
-    {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
-
-    active_task =
-      active_session.tasks
-      |> Enum.find(&(&1.id == task.id))
-
-    {scope, active_session, active_task}
+    {scope, agent, hd(agent.tasks)}
   end
 
   defp response_text({_status, text}), do: text

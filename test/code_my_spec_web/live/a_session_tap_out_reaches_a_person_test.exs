@@ -12,9 +12,8 @@ defmodule CodeMySpecWeb.ASessionTapOutReachesAPersonTest do
   alias CodeMySpec.ToolLibrary
 
   import Phoenix.LiveViewTest
-  import CodeMySpec.SessionsFixtures
+  import CodeMySpec.TerminalAgentFixtures
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpecSpex.TaskResponseHelpers
 
   setup :register_log_in_setup_account
@@ -22,7 +21,7 @@ defmodule CodeMySpecWeb.ASessionTapOutReachesAPersonTest do
 
   setup %{scope: scope} do
     external_id = "claude-#{System.unique_integer([:positive])}"
-    session = session_fixture(scope, %{external_conversation_id: external_id, continuous: true})
+    session = terminal_agent_fixture(scope, %{engine_session_id: external_id, continuous: true})
     %{session: session, external_id: external_id}
   end
 
@@ -41,7 +40,7 @@ defmodule CodeMySpecWeb.ASessionTapOutReachesAPersonTest do
     id
   end
 
-  defp continuous?(session), do: Repo.get!(Session, session.id).continuous
+  defp continuous?(agent), do: Repo.get!(CodeMySpec.Agents.Agent, agent.id).continuous
 
   test "the request is listed in the person's notifications inbox", ctx do
     id = tap_out(ctx.scope, ctx.external_id)

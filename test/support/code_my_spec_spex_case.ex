@@ -6528,13 +6528,13 @@ defmodule CodeMySpecSpex.Case do
     scope = context.scope
     story = context.story
 
-    # Create an active session with a qa_complete task for this story
-    {_story, task_id, session} = Fixtures.qa_story_task_fixture(scope, story: story)
+    # A QA agent holding an active qa_complete task for this story
+    {_story, task_id, agent} = Fixtures.qa_story_task_fixture(scope, story: story)
 
     Map.merge(context, %{
       story: story,
       task_id: task_id,
-      session_id: session.external_conversation_id
+      session_id: agent.engine_session_id
     })
   end
 

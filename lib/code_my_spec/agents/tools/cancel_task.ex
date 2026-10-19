@@ -11,7 +11,7 @@ defmodule CodeMySpec.Agents.Tools.CancelTask do
   @impl true
   def description do
     """
-    Cancel a task held by the calling agent (Story 704 / Rule 4).
+    Cancel a task on the current session (Story 704 / Rule 4).
 
     Transitions the task to `:cancelled` without going through
     `evaluate_task`. Used to unstick the loop when a task can't make

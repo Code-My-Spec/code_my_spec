@@ -75,7 +75,6 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Requirements,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.Servers,
-      CodeMySpec.Sessions,
       CodeMySpec.Staffing,
       CodeMySpec.TaskOwner,
       CodeMySpec.TempFile,
@@ -113,8 +112,7 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectSync,
     QaFixtures,
     QaIntegrationPlanFixtures,
-    Sessions,
-    SessionsFixtures,
+    TerminalAgentFixtures,
     SetupFixtures,
     Stories,
     TechnicalStrategyFixtures,
@@ -178,7 +176,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.AcceptanceCriteria
   alias CodeMySpec.Stories.Story
@@ -2026,8 +2023,14 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
-  @doc "The open task an agent holds, wherever it lives. See `Sessions.open_task_for_agent/2`."
-  defdelegate open_task_for_agent(scope, agent_id), to: CodeMySpec.Sessions
+  @doc "The open (not completed, not cancelled) task an agent holds, or nil."
+  def open_task_for_agent(scope, agent_id) do
+    with {:ok, agent} <- CodeMySpec.Agents.fetch_agent(scope, agent_id) do
+      Enum.find(agent.tasks || [], &(&1.status not in [:completed, :cancelled]))
+    else
+      _ -> nil
+    end
+  end
 
   @doc "Whether the server is currently carrying analyzer work for this copy."
   defdelegate analysis_runs_in_flight?(scope), to: CodeMySpec.Analysis, as: :runs_in_flight?
@@ -3217,36 +3220,6 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  @doc """
-  Looks up a session by its external conversation id (the string the
-  agent passes as `session_id` in hook calls). Returns the DB row so
-  spex can extract the UUID needed for LiveView route params.
-  """
-  @spec get_session_by_external_id(Scope.t(), String.t()) :: Session.t() | nil
-  def get_session_by_external_id(%Scope{} = scope, session_external_id)
-      when is_binary(session_external_id) do
-    Sessions.get_by_external_id(scope, session_external_id)
-  end
-
-  # -- Sub-agent registration with custom heartbeat (Story 704) --
-  @doc """
-  Register a sub-agent on a session with a specific `last_heartbeat_at`.
-
-  Used by spex that need to seed a TTL-expired registration (heartbeat
-  in the past) without manipulating the system clock. Goes through the
-  same `Sessions.register_subagent/3` context function the production
-  hook uses; only the timestamp differs.
-
-  Returns `{:ok, session}` with the registration applied.
-  """
-  @spec register_subagent_with_heartbeat(map(), String.t(), map()) ::
-          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
-  def register_subagent_with_heartbeat(scope, session_external_id, attrs)
-      when is_binary(session_external_id) and is_map(attrs) do
-    session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
-    CodeMySpec.Sessions.register_subagent(scope, session, attrs)
-  end
-
   # -- Agents on this machine --
   #
   # Story 1038's criteria are about what a *running* agent carries and what a
@@ -4228,27 +4201,25 @@ defmodule CodeMySpecSpex.Fixtures do
     deploy
   end
 
-  # -- Sessions (timeline spex fixture setup, Story 813) --
+  # -- Terminal agents (timeline spex fixture setup) --
   @doc """
-  Creates a session (with optional embedded tasks and controllable
-  `inserted_at`/`updated_at`) for timeline spex that assert on session
-  ordering, extent, and per-task focus. Sessions originate from the
-  agent's hook lifecycle in production; the bridge surfaces direct
-  creation so spex can stage specific timeline states without driving a
-  full agent run.
+  Creates a terminal agent (with optional tasks and controllable
+  `inserted_at`/`updated_at`). Agents originate from the SessionStart hook in
+  production; the bridge surfaces direct creation so spex can stage specific
+  states without driving a full session.
   """
-  defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
+  defdelegate terminal_agent_fixture(scope, attrs \\ %{}), to: TerminalAgentFixtures
 
-  # -- Sessions (QA spex fixture setup, Stories 726/727) --
+  # -- QA spex fixture setup, Stories 726/727 --
   @doc """
-  Creates an active session with a `qa_complete` task linked to the given
+  Creates a QA agent holding an active `qa_complete` task linked to the given
   story. Used by QA spex setup to seed `context.story` and `context.task_id`
   without needing the full requirement prerequisite chain satisfied.
 
-  Returns `{story, task_id, session}`.
+  Returns `{story, task_id, agent}`.
   """
   @spec qa_story_task_fixture(Scope.t(), keyword()) ::
-          {Story.t(), String.t(), Session.t()}
+          {Story.t(), String.t(), CodeMySpec.Agents.Agent.t()}
   def qa_story_task_fixture(scope, opts \\ []) do
     story =
       case Keyword.fetch(opts, :story) do
@@ -4273,42 +4244,31 @@ defmodule CodeMySpecSpex.Fixtures do
       end
 
     task_id = Ecto.UUID.generate()
-    session_external_id = "spex-qa-#{System.unique_integer([:positive])}"
 
-    {:ok, session} =
-      Sessions.create_session(scope, %{
-        external_conversation_id: session_external_id,
-        status: :active,
-        type: QaStory,
+    # Embedded as given, with no activation rules: a scenario may stage QA work
+    # for the same story on more than one agent.
+    agent =
+      TerminalAgentFixtures.terminal_agent_fixture(scope, %{
+        role: :qa,
         tasks: [
           %{
             id: task_id,
             status: :active,
-            # Set, or the task does not survive being read back.
-            # `Sessions.maybe_prune_orphan_tasks/1` strips any task whose
-            # `session_type` is not a known module, and `nil` is an atom that
-            # is not one — so a task created without it is pruned on the next
-            # read and the fixture quietly produces a session with no tasks.
             session_type: QaStory,
             requirement_name: "qa_complete",
             story_id: story.id,
             project_id: scope.active_project_id,
-            # Nameable, because a task can belong to an agent that is not a
-            # Claude Code session at all — an orchestrator assigns one to an
-            # agent running under Alloy, and the task then lives on the
-            # orchestrator's session while naming the other agent. Story 1043's
-            # nudge is about exactly that shape.
-            agent_id: Keyword.get(opts, :agent_id, "spex-agent"),
             started_at: DateTime.utc_now()
           }
         ]
       })
 
-    task = Enum.find(session.tasks, &(&1.id == task_id))
-    {:ok, _review} = CodeMySpec.Qa.capture_story_review(scope, session, task)
-    session = Sessions.get_session(scope, session.id)
+    task = TaskOwner.find_task(agent, task_id)
 
-    {story, task_id, session}
+    {:ok, _review} = CodeMySpec.Qa.capture_story_review(scope, agent, task)
+    {:ok, agent} = CodeMySpec.Agents.fetch_agent(scope, agent.id)
+
+    {story, task.id, agent}
   end
 
   @doc """
@@ -4318,9 +4278,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   `start_task` is what a real Alloy agent calls to claim work, and it goes
   through `TaskOwner.add_task/3` directly on the agent — there is no session in
-  the middle. `qa_story_task_fixture/2` models the older shape, a task on
-  somebody else's session naming this agent by id, which is what an *external*
-  Claude Code session's sub-agent looks like, not one we run ourselves.
+  the middle. 
 
   Returns `{agent, task}`, both the updated agent and the task recorded on
   it — spex files reach `CodeMySpec` only through this bridge, so the caller
@@ -4604,8 +4562,8 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec make_session_continuous(Scope.t(), String.t()) :: :ok
   def make_session_continuous(%Scope{} = scope, session_id) do
-    session = CodeMySpec.Sessions.get_by_external_id(scope, session_id)
-    {:ok, _session} = CodeMySpec.Sessions.update_session(scope, session, %{continuous: true})
+    {:ok, agent} = CodeMySpec.Agents.fetch_owner(scope, nil, session_id)
+    {:ok, _agent} = CodeMySpec.TaskOwner.set_continuous(agent, true)
     :ok
   end
 

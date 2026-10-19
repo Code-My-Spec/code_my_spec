@@ -35,14 +35,13 @@ defmodule CodeMySpecWeb.PortableHostTest do
       theirs: theirs
     } do
       assert {:error, {:live_redirect, %{to: "/app/projects", flash: flash}}} =
-               live(conn, ~p"/app/projects/#{theirs.id}/sessions")
+               live(conn, ~p"/app/projects/#{theirs.id}/problems")
 
       assert flash["error"] =~ "not in the account you are in"
     end
 
     test "is refused the same way on every project-scoped route", %{conn: conn, theirs: theirs} do
       routes = [
-        ~p"/app/projects/#{theirs.id}/sessions",
         ~p"/app/projects/#{theirs.id}/files",
         ~p"/app/projects/#{theirs.id}/configuration",
         ~p"/app/projects/#{theirs.id}/qa",
@@ -58,7 +57,7 @@ defmodule CodeMySpecWeb.PortableHostTest do
 
     test "refuses an id that is not a uuid at all", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/app/projects"}}} =
-               live(conn, ~p"/app/projects/not-a-uuid/sessions")
+               live(conn, ~p"/app/projects/not-a-uuid/problems")
     end
   end
 
@@ -70,7 +69,7 @@ defmodule CodeMySpecWeb.PortableHostTest do
     } do
       mine = project_fixture(scope, account_id: account.id)
 
-      assert {:ok, _view, _html} = live(conn, ~p"/app/projects/#{mine.id}/sessions")
+      assert {:ok, _view, _html} = live(conn, ~p"/app/projects/#{mine.id}/problems")
     end
   end
 end

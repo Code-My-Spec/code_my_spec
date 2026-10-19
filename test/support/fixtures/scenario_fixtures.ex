@@ -207,17 +207,6 @@ defmodule CodeMySpec.ScenarioFixtures do
     |> put_fixture_environment(Environment.new(:local, project_dir))
   end
 
-  @doc """
-  Creates a session fixture for a specific agent task phase.
-  """
-  def scenario_session_fixture(scope, task_module, attrs \\ %{}) do
-    import CodeMySpec.SessionsFixtures
-
-    session = session_fixture(scope, Map.merge(%{type: task_module, status: :active}, attrs))
-    # Set virtual project field — used by evaluate for app_name resolution
-    %{session | project: scope.active_project}
-  end
-
   # ============================================================================
   # Story Creation
   # ============================================================================

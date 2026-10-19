@@ -100,7 +100,6 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # and granted to main alone. `reject_offer` joined on 2026-10-03 beside
         # `tap_out` (story 1080): declining an offer is the agent's own call.
         unscriptable = ~w(
-          assign_subagent
           get_next_requirement sync_project start_task evaluate_task cancel_task
           ask_user_question tap_out reject_offer show_in_panel start_analysis
           promote check_answer list_user_questions

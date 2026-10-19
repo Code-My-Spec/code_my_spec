@@ -224,7 +224,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   @doc """
   A Claude Code session opened on the live harness: `session-start` for a fresh
-  session id, posted through the harness `ensure_live_harness/1` gives the
+  session id (which registers the session as an agent), posted through the harness `ensure_live_harness/1` gives the
   context. Answers `{context, session_id}`.
   """
   @spec open_session(map()) :: {map(), String.t()}
@@ -233,7 +233,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     case post_hook(context, "session-start", %{"session_id" => session_id}) do
-      %{"status" => "active"} -> {context, session_id}
+      %{"agent_id" => agent_id} when is_binary(agent_id) -> {context, session_id}
       refused -> flunk("session-start did not open the session: #{inspect(refused)}")
     end
   end

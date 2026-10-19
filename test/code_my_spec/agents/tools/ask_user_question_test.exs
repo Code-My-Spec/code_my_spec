@@ -13,7 +13,8 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
 
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.Agents
+  alias CodeMySpec.TerminalAgentFixtures
   alias CodeMySpec.TaskOwner
 
   setup do
@@ -129,27 +130,28 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   # e3290d96: a Claude Code session's `task_id` never blocked anything — only
   # the agent path (`create_agent_question_request`) did. John's decision
   # 2026-09-29: a session's `ask_user_question` with `task_id` blocks that
-  # session's task, the same as for an agent.
+  # session's task, the same as for an agent (a terminal session is one).
   describe "a session's task_id blocks its task, the same as an agent's" do
     defp active_session_task(scope) do
       external_id = "ext-ask-#{System.unique_integer([:positive])}"
-      {:ok, session} = Sessions.find_or_create_session(scope, external_id)
       component = component_fixture(scope)
 
-      task_attrs = %{
-        session_type: CodeMySpec.AgentTasks.ComponentCode,
-        requirement_name: "implementation_file",
-        project_id: scope.active_project_id,
-        component_id: component.id,
-        component_module_name: component.module_name
-      }
+      agent =
+        TerminalAgentFixtures.terminal_agent_fixture(scope, %{
+          engine_session_id: external_id,
+          tasks: [
+            %{
+              status: :active,
+              session_type: CodeMySpec.AgentTasks.ComponentCode,
+              requirement_name: "implementation_file",
+              project_id: scope.active_project_id,
+              component_id: component.id,
+              component_module_name: component.module_name
+            }
+          ]
+        })
 
-      {:ok, session_with_task} = Sessions.prepare_task(scope, session, task_attrs)
-      task = Enum.find(session_with_task.tasks, &(&1.status == :prepared))
-      {:ok, active_session} = Sessions.activate_task(scope, session_with_task, task.id, nil)
-      active_task = Enum.find(active_session.tasks, &(&1.id == task.id))
-
-      {external_id, active_task}
+      {external_id, hd(agent.tasks)}
     end
 
     test "the default (active) task is blocked", %{scope: scope} do
@@ -165,7 +167,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
       assert match?({:ok, _}, response)
       assert latest(scope).task_id == task.id
 
-      reloaded = Sessions.get_by_external_id(scope, external_id)
+      {:ok, reloaded} = Agents.fetch_owner(scope, nil, external_id)
       assert %{status: :blocked, blocker_type: :question} = TaskOwner.find_task(reloaded, task.id)
     end
 
@@ -181,7 +183,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
 
       assert match?({:ok, _}, response)
 
-      reloaded = Sessions.get_by_external_id(scope, external_id)
+      {:ok, reloaded} = Agents.fetch_owner(scope, nil, external_id)
       assert %{status: :blocked} = TaskOwner.find_task(reloaded, task.id)
     end
 

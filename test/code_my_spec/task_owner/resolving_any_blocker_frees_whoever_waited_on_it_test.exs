@@ -13,12 +13,10 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
-  import CodeMySpec.SessionsFixtures
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -108,24 +106,6 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnyBlockerFreesWhoeverWaitedOnItTest do
       "Your blocker question #{request.id} was answered; resume task #{task.id} " <>
         "only after inspecting its recorded requirement"
     )
-  end
-
-  test "answering a question releases a session's task waiting on it", ctx do
-    session = session_fixture(ctx.scope)
-    task = active_task(ctx.scope, session)
-
-    {:ok, request} =
-      Notifications.create_question_request(ctx.scope.user.id, %{
-        "title" => "Which way",
-        "questions" => [%{"question" => "Which way?", "options" => []}]
-      })
-
-    {:ok, _} = TaskOwner.block_task(ctx.scope, session, task.id, :question, request.id)
-
-    {:ok, _} = answer(request)
-
-    refute waiting?(task(Session, session.id, task.id)),
-           "a session's task stayed blocked on an answered question"
   end
 
   test "a denied tap-out releases its task and wakes the holder to resume it", ctx do

@@ -234,16 +234,22 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
         module_name: to_string(story.number)
       }
 
+      CodeMySpec.TerminalAgentFixtures.terminal_agent_fixture(scope, %{
+        engine_session_id: external
+      })
+
       assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
-      session = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      {:ok, session} = CodeMySpec.Agents.fetch_owner(scope, nil, external)
       assert [task] = CodeMySpec.TaskOwner.tasks(session)
       assert task.story_id == story.id
       assert task.requirement_name == "qa_complete"
       assert task.status == :active
+
       assert task.review_commit == "reviewed-revision",
              "the task started without recording the certification it reviews"
+
       assert {:ok, _prompt, _} = StartAgentTask.run(scope, args)
-      repeated = CodeMySpec.Sessions.get_by_external_id(scope, external)
+      {:ok, repeated} = CodeMySpec.Agents.fetch_owner(scope, nil, external)
       assert [same] = CodeMySpec.TaskOwner.tasks(repeated)
       assert same.id == task.id
     end
@@ -436,6 +442,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       File.mkdir_p!(brief_dir)
 
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
       refute feedback =~ "Brief not found",
              "a read failure read as the file never having been written: #{feedback}"
 

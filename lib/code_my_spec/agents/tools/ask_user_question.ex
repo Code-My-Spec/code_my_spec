@@ -4,6 +4,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
 
   require Logger
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
 
@@ -174,6 +175,9 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
          params,
          task_ref
        ) do
+    # The connection's agent, else the terminal agent the hook's session id is.
+    agent_id = context[:agent_id] || Agents.terminal_agent_id(scope, params[:session_id])
+
     attrs = %{
       "questions" => questions,
       # The caller's title, which this read off the frame's assigns — where it never
@@ -183,12 +187,12 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
       "title" => title_or_default(params[:title]),
       # Authenticated identity controls answer delivery. External sessions
       # collect durable replies through bounded event-driven check_answer.
-      "agent_id" => context[:agent_id],
+      "agent_id" => agent_id,
       # Who it waits on first. An agent's question goes to the project's main
       # agent, which is story 1052's routing; a Claude Code session's goes
       # straight to the person, because there is nobody above it to route to.
       # One the asker marks `about: "criteria"` goes to product (8c91d5bc).
-      "holder" => MainAgent.holder_for(scope, context[:agent_id], params[:about], params[:to])
+      "holder" => MainAgent.holder_for(scope, agent_id, params[:about], params[:to])
     }
 
     with {:ok, request} <- create_question(scope, user_id, attrs, task_ref) do

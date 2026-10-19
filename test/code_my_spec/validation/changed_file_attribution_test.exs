@@ -21,11 +21,9 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
-  import CodeMySpec.SessionsFixtures
 
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.File, as: FileRecord
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Validation
 
   setup do
@@ -129,7 +127,9 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          assert changed_files(scope, session.external_conversation_id) == [],
+          assert changed_files(scope, session.external_conversation_id,
+                   git_rewrite_at: session.git_rewrite_at
+                 ) == [],
                  "a rewrite recorded during this task means the dirty files may be " <>
                    "inherited history, not this turn's writes"
         end)
@@ -147,7 +147,9 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
       file!(scope, "test/spex/983_x/criterion_1_spex.exs", DateTime.utc_now())
 
       assert [%{path: "test/spex/983_x/criterion_1_spex.exs"}] =
-               changed_files(scope, session.external_conversation_id)
+               changed_files(scope, session.external_conversation_id,
+                 git_rewrite_at: session.git_rewrite_at
+               )
     end
   end
 
@@ -187,27 +189,23 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
     assert length(changed_files(scope, nil)) == 5
   end
 
-  defp changed_files(scope, session_id) do
+  defp changed_files(scope, session_id, extra \\ []) do
     Validation.changed_files_for_task(
       scope,
       %{started_at: DateTime.add(DateTime.utc_now(), -3600, :second)},
-      session_opts(session_id)
+      session_opts(session_id) ++ extra
     )
   end
 
   defp session_opts(nil), do: []
   defp session_opts(session_id), do: [session_id: session_id]
 
-  # A real session row, since `git_rewrote_tree?/3` reads `git_rewrite_at`
-  # off the `Sessions` table rather than off `opts` — unlike the plain
-  # `session_id: "attr-N"` string the other tests use, which has no backing
-  # row and so answers "never rewrote" by construction.
-  #
-  # Defaults to 30 minutes ago: after `changed_files/2`'s task `started_at`
-  # (1 hour ago) and before "now", i.e. squarely inside the task's window.
+  # The stop hook reads `git_rewrite_at` off the terminal agent and passes it in
+  # the options; this stands in for that. Defaults to 30 minutes ago: after
+  # `changed_files/2`'s task `started_at` (1 hour ago) and before "now", i.e.
+  # squarely inside the task's window.
   defp git_session_fixture(scope, rewrote_at \\ DateTime.add(DateTime.utc_now(), -1800, :second)) do
-    session = session_fixture(scope, %{external_conversation_id: Ecto.UUID.generate()})
-    {:ok, session} = Sessions.update_session(scope, session, %{git_rewrite_at: rewrote_at})
-    session
+    _ = scope
+    %{external_conversation_id: Ecto.UUID.generate(), git_rewrite_at: rewrote_at}
   end
 end

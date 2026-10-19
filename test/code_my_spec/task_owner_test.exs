@@ -1,7 +1,7 @@
 defmodule CodeMySpec.TaskOwnerTest do
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.SessionsFixtures
+  import CodeMySpec.TerminalAgentFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Agents.AgentsRepository
@@ -9,7 +9,7 @@ defmodule CodeMySpec.TaskOwnerTest do
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
 
-  for kind <- [:session, :agent] do
+  for kind <- [:terminal, :agent] do
     describe "#{kind} task blockers" do
       setup do
         scope = full_scope_fixture()
@@ -180,7 +180,7 @@ defmodule CodeMySpec.TaskOwnerTest do
     assert TaskOwner.active_task(Repo.reload!(owner)).id == active_id
   end
 
-  defp owner_fixture(:session, scope), do: session_fixture(scope, %{continuous: true})
+  defp owner_fixture(:terminal, scope), do: terminal_agent_fixture(scope, %{continuous: true})
 
   defp owner_fixture(:agent, scope) do
     {:ok, agent} =

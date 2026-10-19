@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Fixtures.StoryIssueBag do
 
   def review(scope, story_id) do
     story = Stories.get_story!(scope, story_id)
-    {_, task_id, _session} = Fixtures.qa_story_task_fixture(scope, story: story)
+    {_, task_id, _agent} = Fixtures.qa_story_task_fixture(scope, story: story)
     task_id
   end
 end

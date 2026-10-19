@@ -32,7 +32,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocsTest do
     agent
   end
 
-  # 50ddc827: `list_session_subagents` sits in every role's scriptable
+  # 50ddc827: `submit_qa_result` sits in every role's scriptable
   # catalog (`Layer.catalog/1` is unfiltered), so reading its schema here
   # looked like permission to call it -- the refusal only arrived later, at
   # `run_script`'s own gate (`ToolSets.for_role/1`), which coding never
@@ -44,17 +44,17 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocsTest do
       frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
       assert {:reply, response, ^frame} =
-               ToolDocs.execute(%{name: "list_session_subagents"}, frame)
+               ToolDocs.execute(%{name: "submit_qa_result"}, frame)
 
       body = text(response)
 
-      assert body =~ "session_id", "the real schema must still be printed"
+      assert body =~ "scenarios", "the real schema must still be printed"
       assert body =~ "Not available to your role"
     end
 
     # 10586b7f: a second, distinct tool (`list_agents`, main-only per
     # RoleProfile -- staffing is main's) showed the identical gap after
-    # 50ddc827's fix landed for `list_session_subagents` alone: tool_docs is
+    # 50ddc827's fix landed for `submit_qa_result` alone: tool_docs is
     # not restricted to naming one tool; the grant check has to run for
     # whichever tool is asked about, not just the one the first report named.
     test "a second main-only tool is also marked unavailable to coding" do
@@ -72,18 +72,21 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocsTest do
 
     test "carries no such note for a role the grant does not restrict" do
       scope = full_scope_fixture()
-      agent = AgentsRepository.create_agent(scope, %{
-        engine: :alloy,
-        provider: "anthropic",
-        role: :main,
-        working_copy: scope.cwd || "/workspace/main",
-        working_copy_id: scope.active_working_copy_id
-      })
+
+      agent =
+        AgentsRepository.create_agent(scope, %{
+          engine: :alloy,
+          provider: "anthropic",
+          role: :main,
+          working_copy: scope.cwd || "/workspace/main",
+          working_copy_id: scope.active_working_copy_id
+        })
+
       {:ok, agent} = agent
       frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
       assert {:reply, response, ^frame} =
-               ToolDocs.execute(%{name: "list_session_subagents"}, frame)
+               ToolDocs.execute(%{name: "submit_qa_result"}, frame)
 
       refute text(response) =~ "Not available to your role"
     end
@@ -103,7 +106,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocsTest do
       frame = %Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
 
       assert {:reply, response, ^frame} =
-               ToolDocs.execute(%{name: "list_session_subagents"}, frame)
+               ToolDocs.execute(%{name: "submit_qa_result"}, frame)
 
       refute text(response) =~ "Not available to your role"
     end

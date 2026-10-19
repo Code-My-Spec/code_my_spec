@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionTest do
   @moduledoc """
-  cd296681: `Hooks.Stop.decide/2` fetches `session` once, before
+  cd296681: `Hooks.Stop.decide/2` fetches the agent once, before
   `TaskEvaluator` runs. `{:ok, :valid}` from evaluation means the active task
   was validly closed -- true whether or not the recorded verdict itself
   passed -- and the block path that follows when the loop is still running
@@ -17,7 +17,8 @@ defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionT
 
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.Agents
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.ToolLibrary
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -37,8 +38,8 @@ defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionT
 
     Requirements.recompute(scope)
 
-    session = Sessions.get_session(scope, session_id)
-    {:ok, _session} = Sessions.update_session(scope, session, %{continuous: true})
+    {:ok, agent} = Agents.fetch_owner(scope, nil, session_id)
+    {:ok, _agent} = TaskOwner.set_continuous(agent, true)
 
     resp =
       ToolLibrary.run(
@@ -49,7 +50,7 @@ defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionT
 
     assert match?({:ok, _}, resp)
 
-    active = Sessions.get_session(scope, session_id)
+    {:ok, active} = Agents.fetch_owner(scope, nil, session_id)
     task = Enum.find(active.tasks, &(&1.status == :active))
     assert task, "start_task did not leave an active task to complete"
     task_id = task.id
@@ -84,7 +85,7 @@ defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionT
     refute reason =~ task_id,
            "the just-completed task's id must not appear in the follow-up directive"
 
-    completed = Sessions.get_session(scope, session_id)
+    {:ok, completed} = Agents.fetch_owner(scope, nil, session_id)
     closed_task = Enum.find(completed.tasks, &(&1.id == task_id))
     assert closed_task.status == :completed
   end

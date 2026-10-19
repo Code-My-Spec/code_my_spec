@@ -377,9 +377,9 @@ defmodule CodeMySpec.Transcripts.Player do
     |> elem(1)
   end
 
-  # Seed a harness Session whose external_conversation_id matches the
-  # transcript's session UUID, so the task/QA tools' resolve_session lookup
-  # succeeds when we inject session_id into their args.
+  # Open a session whose id matches the transcript's session UUID (the
+  # session-start hook registers it as an agent), so the task/QA tools resolve
+  # their owner when we inject session_id into their args.
   defp seed_session(transcript, opts) do
     with mcp_url when is_binary(mcp_url) <- opts[:mcp_url],
          sid when is_binary(sid) <- first_session_id(transcript) do

@@ -37,10 +37,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
     plan_path |> Path.dirname() |> File.mkdir_p!()
     File.write!(plan_path, "# QA plan\n\nNothing to see.\n")
 
+    # The agent holding the task needs a real copy; only the prompt is built
+    # against a scope that names none.
+    {_, id, agent} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
     scope = configure_app(scope, tmp_dir, info)
-
-    {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
-    {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(session, id))
+    {:ok, prompt} = QaStory.command(scope, CodeMySpec.TaskOwner.find_task(agent, id))
 
     prompt
   end

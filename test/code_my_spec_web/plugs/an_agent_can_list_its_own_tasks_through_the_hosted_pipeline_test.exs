@@ -84,7 +84,7 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCanListItsOwnTasksThroughTheHostedPipelineT
 
     text = hosted_list_tasks(scope, foreign_agent)
 
-    assert text =~ "No session_id and no agent id",
+    assert text =~ "No agent found",
            "a foreign project's agent id must not resolve an owner on this project's " <>
              "connection -- that would let one harness act as another's. Got: #{text}"
   end

@@ -30,8 +30,22 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   alias CodeMySpec.Hooks.SessionStart
   alias CodeMySpec.WorkingCopies
 
+  # A copy with a root, as every real one has: the hook registers the session as
+  # an agent working in it.
+  defp copy_with_root(scope, label) do
+    root = "/workspace/co-occupancy-#{System.unique_integer([:positive])}"
+
+    {:ok, copy} =
+      WorkingCopies.issue(scope, nil, label: label, root: root, device: device_fixture(scope))
+
+    {:ok, copy} = WorkingCopies.report_root(copy, root)
+    copy
+  end
+
   setup do
-    %{scope: full_scope_fixture()}
+    scope = full_scope_fixture()
+    copy = copy_with_root(scope, "the checkout")
+    %{scope: %{scope | active_working_copy_id: copy.id}}
   end
 
   defp start_session(scope, external_id) do
@@ -66,13 +80,12 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
 
   # The other checkout is a different hazard, not a lesser one, and it takes
   # different advice: no shared index, but shared task records. That is the case
-  # `Sessions.concurrent_sessions/2` was written for — a second agent using the
-  # only session id it could find, which was the first agent's.
+  # the warning was written for — a second agent using the only session id it
+  # could find, which was the first agent's.
   test "a session on another checkout warns about tasks, not about git", %{scope: scope} do
     {200, _} = start_session(scope, "session-here")
 
-    {:ok, other} =
-      WorkingCopies.issue(scope, nil, label: "another checkout", device: device_fixture(scope))
+    other = copy_with_root(scope, "another checkout")
 
     elsewhere = %{scope | active_working_copy_id: other.id}
 
@@ -92,8 +105,7 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
   test "both hazards are reported when both are present", %{scope: scope} do
     {200, _} = start_session(scope, "session-same-copy")
 
-    {:ok, other} =
-      WorkingCopies.issue(scope, nil, label: "another checkout", device: device_fixture(scope))
+    other = copy_with_root(scope, "another checkout")
 
     {200, _} = start_session(%{scope | active_working_copy_id: other.id}, "session-other-copy")
 
