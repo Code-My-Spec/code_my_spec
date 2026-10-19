@@ -154,27 +154,33 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
     """
   end
 
-  defp preview_state(harness) do
-    serving? = harness.app_status == "serving" or harness.preview_status == "serving"
-    erroring? = harness.app_status == "erroring" or harness.preview_status == "erroring"
-    url = harness.preview_url || harness.app_url
+  defp preview_state(harness), do: preview_state(health(harness), harness)
 
+  defp preview_state(:serving, %{preview_url: url}) when is_binary(url),
+    do: {:shared, url, "Serving at #{host(url)}"}
+
+  defp preview_state(:serving, %{app_url: url}) when is_binary(url),
+    do:
+      {:local, url,
+       "Running locally at #{host(url)} — not on a tunnel, so only its own machine can open it"}
+
+  defp preview_state(:erroring, harness) do
+    case harness.preview_url || harness.app_url do
+      nil -> {:down, nil, "No app running on this copy"}
+      url -> {:erroring, url, "Answering with errors at #{host(url)}"}
+    end
+  end
+
+  defp preview_state(_health, %{app_status: "starting"}),
+    do: {:starting, nil, "Starting — the first install and compile are still running"}
+
+  defp preview_state(_health, _harness), do: {:down, nil, "No app running on this copy"}
+
+  defp health(%{app_status: app, preview_status: preview}) do
     cond do
-      serving? and harness.preview_url ->
-        {:shared, harness.preview_url, "Serving at #{host(harness.preview_url)}"}
-
-      serving? and harness.app_url ->
-        {:local, harness.app_url,
-         "Running locally at #{host(harness.app_url)} — not on a tunnel, so only its own machine can open it"}
-
-      erroring? and url ->
-        {:erroring, url, "Answering with errors at #{host(url)}"}
-
-      harness.app_status == "starting" ->
-        {:starting, nil, "Starting — the first install and compile are still running"}
-
-      true ->
-        {:down, nil, "No app running on this copy"}
+      "serving" in [app, preview] -> :serving
+      "erroring" in [app, preview] -> :erroring
+      true -> :down
     end
   end
 
