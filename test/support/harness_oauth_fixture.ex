@@ -24,6 +24,26 @@ defmodule CmsHarnessTest.HarnessOAuthFixture do
     dir
   end
 
+  def use_deploy_key(key, endpoint) do
+    isolate()
+    previous_key = Application.fetch_env(:code_my_spec, :harness_deploy_key)
+    previous_token = Application.fetch_env(:code_my_spec, CmsHarness.Token)
+    opts = Application.get_env(:code_my_spec, CmsHarness.Token, [])
+
+    Application.put_env(:code_my_spec, :harness_deploy_key, key)
+    Application.put_env(:code_my_spec, CmsHarness.Token, Keyword.put(opts, :plug, endpoint))
+    CmsHarness.Token.invalidate()
+
+    ExUnit.Callbacks.on_exit(fn ->
+      restore(:harness_deploy_key, previous_key)
+      restore(CmsHarness.Token, previous_token)
+      CmsHarness.Token.invalidate()
+    end)
+  end
+
+  defp restore(key, {:ok, value}), do: Application.put_env(:code_my_spec, key, value)
+  defp restore(key, :error), do: Application.delete_env(:code_my_spec, key)
+
   def seed(dir, server, token) do
     hash =
       :crypto.hash(:sha256, String.trim_trailing(server, "/"))

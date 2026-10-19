@@ -61,9 +61,7 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
         key = "dk_spex_2846_#{System.unique_integer([:positive])}"
         CodeMySpecSpex.Fixtures.set_project_deploy_key(context.scope, context.project, key)
 
-        previous_token = Application.get_env(:code_my_spec, :harness_token)
-        Application.put_env(:code_my_spec, :harness_token, key)
-        on_exit(fn -> Application.put_env(:code_my_spec, :harness_token, previous_token) end)
+        CmsHarnessTest.HarnessOAuthFixture.use_deploy_key(key, CodeMySpecWeb.Endpoint)
 
         {:ok, Map.put(context, :device_file, file)}
       end
