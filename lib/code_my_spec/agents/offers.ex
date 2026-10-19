@@ -134,6 +134,25 @@ defmodule CodeMySpec.Agents.Offers do
 
   def record(_recorded, _agent, _kind, _subject), do: nil
 
+  @doc "Supersede open requirement offers for a finished issue across its project's agents."
+  @spec supersede_issue(Scope.t(), Ecto.UUID.t()) :: :ok
+  def supersede_issue(%Scope{} = scope, issue_id) do
+    now = DateTime.utc_now()
+    prefix = "issue:#{issue_id}:%"
+
+    Offer
+    |> where(
+      [o],
+      o.account_id == ^scope.active_account_id and
+        o.project_id == ^scope.active_project_id and o.kind == :work and
+        o.subject_type == "requirement" and like(o.subject_key, ^prefix) and
+        o.status == :open
+    )
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
   @doc "Whether this agent has an open offer of `kind` right now."
   @spec open_of_kind?(String.t(), Offer.kind()) :: boolean()
   def open_of_kind?(agent_id, kind) when is_binary(agent_id) and is_atom(kind) do

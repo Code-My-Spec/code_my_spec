@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.Events do
   @provisioning_failed [:code_my_spec, :provisioning, :failed]
   @task_completed [:code_my_spec, :tasks, :completed]
   @task_released [:code_my_spec, :tasks, :released]
+  @issue_finished [:code_my_spec, :issues, :finished]
   @issue_qa_passed [:code_my_spec, :qa, :issue_passed]
   @story_qa_passed [:code_my_spec, :qa, :story_passed]
   @promotion_team_free [:code_my_spec, :promotion, :team_free]
@@ -44,6 +45,7 @@ defmodule CodeMySpec.Agents.Events do
         @provisioning_failed,
         @task_completed,
         @task_released,
+        @issue_finished,
         @issue_qa_passed,
         @story_qa_passed,
         @promotion_team_free,
@@ -98,6 +100,12 @@ defmodule CodeMySpec.Agents.Events do
     :ok
   catch
     kind, reason -> log(:task_released, kind, reason)
+  end
+
+  def handle_event(@issue_finished, _measurements, %{scope: scope, issue: issue}, _config) do
+    Offers.supersede_issue(scope, issue.id)
+  catch
+    kind, reason -> log(:issue_finished, kind, reason)
   end
 
   # An issue's QA passed: its team is free for other work.

@@ -500,6 +500,7 @@ defmodule CodeMySpec.Issues do
 
   defp broadcast(%Scope{active_account_id: account_id} = scope, message)
        when is_binary(account_id) do
+    announce_finished(scope, message)
     Phoenix.PubSub.broadcast(CodeMySpec.PubSub, "user:#{account_id}:issues", message)
 
     # The event, not an invalidation: `Requirements.Handlers` settles the issue
@@ -516,6 +517,13 @@ defmodule CodeMySpec.Issues do
   end
 
   defp broadcast(_scope, _message), do: :ok
+
+  # Retire outstanding work offers before publishing a change that can wake agents.
+  defp announce_finished(scope, {status, issue}) when status in [:resolved, :dismissed] do
+    :telemetry.execute([:code_my_spec, :issues, :finished], %{}, %{scope: scope, issue: issue})
+  end
+
+  defp announce_finished(_scope, _message), do: :ok
 
   defp event_kind({:created, _}), do: "issue_created"
   defp event_kind({:accepted, _}), do: "issue_accepted"
