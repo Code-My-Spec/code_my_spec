@@ -103,22 +103,17 @@ defmodule CmsHarness.Application do
       {:error, :no_credential} ->
         IO.puts(:stderr, """
 
-        cms harness: no machine-wide credential. Starting anyway — any
-        project whose own .cms_harness.json carries its own deploy_key will
-        still connect. A project with neither fails loudly at join time,
-        naming itself and the fix.
+        cms harness: awaiting device authorization. After startup, follow the
+        verification URL and enter the user code shown in the harness log.
 
-        To give the whole machine a bootstrap credential instead, set one of:
-
-          config :code_my_spec, harness_token: "…"       # config file
-          config :code_my_spec, harness_deploy_key: "…"  # sprite or container
-          cms --deploy-key …
-
-        The harness does not read CMS_TOKEN or CMS_DEPLOY_KEY from the
-        environment; `mix cms.harness.onboard` does, and records the key in the
-        working copy's .cms_harness.json.
+        Project deploy keys remain available for gate and sprite work. They
+        do not authorize the account connection.
         """)
 
+        :ok
+
+      {:error, reason} ->
+        IO.puts(:stderr, "cms harness: authorization unavailable: #{inspect(reason)}")
         :ok
     end
   end

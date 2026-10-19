@@ -47,6 +47,7 @@ defmodule CmsHarness do
       CmsHarness.Channel,
       CodeMySpec,
       CodeMySpec.Analysis,
+      CodeMySpec.Auth,
       CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
       CodeMySpec.Compile,

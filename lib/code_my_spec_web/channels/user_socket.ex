@@ -50,6 +50,7 @@ defmodule CodeMySpecWeb.UserSocket do
           {:ok,
            socket
            |> assign(:user_id, user.id)
+           |> assign(:oauth_application_id, access_token.application_id)
            |> assign(:scope, scope)}
         else
           Logger.warning(
@@ -98,6 +99,10 @@ defmodule CodeMySpecWeb.UserSocket do
   #
   # Returning `nil` makes this socket anonymous.
   @impl true
+  def id(%{assigns: %{oauth_application_id: application_id, user_id: user_id}})
+      when is_integer(application_id),
+      do: "oauth_client:#{application_id}:#{user_id}"
+
   def id(_socket), do: nil
   # A sprite has no user and therefore no OAuth token — it holds its project's
   # deploy key and nothing else. Without this it cannot open the harness socket

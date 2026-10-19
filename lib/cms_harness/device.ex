@@ -78,7 +78,9 @@ defmodule CmsHarness.Device do
   # The id on file, minting and recording one if there is none.
   #
   # Safe from several daemons at once: the first write decides.
-  defp ensure_id do
+  @doc "Return this machine's persistent identity, creating it before authorization if needed."
+  @spec ensure_id() :: String.t()
+  def ensure_id do
     case recorded_id() do
       nil ->
         minted = fresh_id()

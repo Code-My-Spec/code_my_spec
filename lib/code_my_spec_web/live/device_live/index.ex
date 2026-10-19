@@ -64,6 +64,29 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     {:noreply, load(socket)}
   end
 
+  def handle_event("revoke_authorization", %{"id" => id}, socket) do
+    case CodeMySpec.Oauth.revoke_device_authorization(socket.assigns.current_scope, id) do
+      {:ok, clients} ->
+        Enum.each(clients, fn {application_id, user_id} ->
+          CodeMySpecWeb.Endpoint.broadcast(
+            "oauth_client:#{application_id}:#{user_id}",
+            "disconnect",
+            %{}
+          )
+        end)
+
+        message =
+          if clients == [],
+            do: "You have no harness authorization on this device.",
+            else: "Your harness access has been revoked."
+
+        {:noreply, socket |> put_flash(:info, message) |> load()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not revoke harness access.")}
+    end
+  end
+
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
 
@@ -171,6 +194,14 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
               </div>
 
               <div class="flex items-center gap-2">
+                <.button
+                  phx-click="revoke_authorization"
+                  phx-value-id={row.device.id}
+                  data-test="revoke-device-authorization"
+                  class="btn btn-sm btn-ghost"
+                >
+                  Revoke my harness access
+                </.button>
                 <.button
                   phx-click="destroy"
                   phx-value-id={row.device.id}

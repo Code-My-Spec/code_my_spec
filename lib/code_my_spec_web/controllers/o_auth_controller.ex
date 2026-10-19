@@ -191,7 +191,7 @@ defmodule CodeMySpecWeb.OAuthController do
   end
 
   def token(conn, params) do
-    case Token.grant(params, otp_app: :code_my_spec) do
+    case Oauth.grant_token(params) do
       {:ok, access_token} ->
         json(conn, %{
           access_token: access_token.access_token,

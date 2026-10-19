@@ -8,6 +8,10 @@ if config_env() == :test do
     Path.join(System.tmp_dir!(), "cms_test_served_roots_#{System.pid()}")
 
   config :code_my_spec, :harness_served_roots_dir, served_roots_dir
+
+  config :code_my_spec, CodeMySpec.Auth.HarnessOAuth,
+    state_dir: Path.join(served_roots_dir, "oauth")
+
   System.at_exit(fn _ -> File.rm_rf(served_roots_dir) end)
 end
 

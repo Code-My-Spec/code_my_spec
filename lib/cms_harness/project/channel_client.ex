@@ -469,14 +469,15 @@ defmodule CmsHarness.Project.ChannelClient do
           "project #{project.id}, so it is the wrong key or it has been rotated — " <>
           "Save a new one and onboard this copy again."
 
-      {:ok, _token, :user_token} ->
-        "This harness presented its configured user token (`:harness_token`). A " <>
-          "user token reaches every project its user can access, so a refusal " <>
-          "means this user has no access to #{project.id} — or the token has " <>
-          "expired, which it does silently because a configured token is never refreshed."
+      {:ok, _token, :harness_oauth} ->
+        "This harness presented its own OAuth credential. Check that the approving " <>
+          "user has access to project #{project.id}."
 
       {:error, :no_credential} ->
         "This harness has no credential at all for #{project.root}."
+
+      {:error, reason} ->
+        "This harness could not obtain its OAuth credential: #{inspect(reason)}."
     end
   end
 
@@ -864,9 +865,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
       {{root, target, base_head}, pending} ->
         if status == "error" do
-          Logger.warning(
-            "[CmsHarness] #{target} failed server-side registration; rolling back"
-          )
+          Logger.warning("[CmsHarness] #{target} failed server-side registration; rolling back")
 
           Create.rollback_if_untouched(root, target, base_head)
         end
@@ -2561,7 +2560,11 @@ defmodule CmsHarness.Project.ChannelClient do
 
   defp remember_pending_registration(socket, _root, {:error, _}), do: socket
 
-  defp remember_pending_registration(socket, root, {:ok, %{working_copy_id: id, root: target, base_head: base_head}}) do
+  defp remember_pending_registration(
+         socket,
+         root,
+         {:ok, %{working_copy_id: id, root: target, base_head: base_head}}
+       ) do
     pending = socket.assigns[:pending_registration] || %{}
     assign(socket, :pending_registration, Map.put(pending, id, {root, target, base_head}))
   end

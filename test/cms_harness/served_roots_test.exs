@@ -128,7 +128,14 @@ defmodule CmsHarness.ServedRootsTest do
     # Token exchange is outside this test. Credential bootstrap is asserted
     # before setting this synthetic token, then the real reporter boot timer
     # drives the stubbed authoritative server response and actual subtrees.
-    Application.put_env(:code_my_spec, :harness_token, "fixture-user-token")
+    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+
+    CodeMySpecTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarness.Config.server_url(),
+      "fixture-harness-token"
+    )
+
     Application.put_env(:code_my_spec, :root_test_roster, roster)
     pid = start_supervised!({WorkingCopyReporter, name: :served_roots_boot_test})
     # Generous: the boot report waits on a timer and a credential lookup, and

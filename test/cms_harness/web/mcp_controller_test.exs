@@ -25,7 +25,13 @@ defmodule CmsHarness.Web.McpControllerTest do
     previous_url = Application.get_env(:code_my_spec, :harness_server_url)
     previous_token = Application.get_env(:code_my_spec, :harness_token)
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:#{port}")
-    Application.put_env(:code_my_spec, :harness_token, "test-token")
+    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+
+    CodeMySpecTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarness.Config.server_url(),
+      "test-token"
+    )
 
     # The OS environment is cleared by `CmsHarnessTest.ConnCase` — it wins over
     # application config in `CmsHarness.Config`, and `ProjectIdentity` prefers
@@ -332,7 +338,7 @@ defmodule CmsHarness.Web.McpControllerTest do
   # trade first. See `CmsHarness.Token`.
   describe "a harness holding only a deploy key" do
     setup do
-      Application.delete_env(:code_my_spec, :harness_token)
+      CodeMySpecTest.HarnessOAuthFixture.isolate()
       Application.put_env(:code_my_spec, :harness_deploy_key, "a-deploy-key")
       CmsHarness.Token.invalidate()
 
@@ -421,7 +427,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     end
 
     test "with no credential it says so instead of forwarding", %{conn: conn} do
-      Application.delete_env(:code_my_spec, :harness_token)
+      CodeMySpecTest.HarnessOAuthFixture.isolate()
       %{root: dir} = project_dir()
       serve(dir)
 

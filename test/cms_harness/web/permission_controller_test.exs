@@ -25,7 +25,13 @@ defmodule CmsHarness.Web.PermissionControllerTest do
     previous_url = Application.get_env(:code_my_spec, :harness_server_url)
     previous_token = Application.get_env(:code_my_spec, :harness_token)
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:#{port}")
-    Application.put_env(:code_my_spec, :harness_token, "test-token")
+    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+
+    CodeMySpecTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarness.Config.server_url(),
+      "test-token"
+    )
 
     # The OS environment is cleared by `CmsHarnessTest.ConnCase`; it wins over
     # application config in `CmsHarness.Config`.
@@ -77,7 +83,7 @@ defmodule CmsHarness.Web.PermissionControllerTest do
     end
 
     test "when the harness has no credential", %{conn: conn} do
-      Application.delete_env(:code_my_spec, :harness_token)
+      CodeMySpecTest.HarnessOAuthFixture.isolate()
 
       assert behavior(request(conn, %{"tool_name" => "Bash"})) == "ask"
       assert FakeUpstream.last_request() == nil

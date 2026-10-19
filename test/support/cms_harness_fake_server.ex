@@ -84,7 +84,13 @@ defmodule CmsHarnessTest.FakeServer do
     # exporting a real-looking `CMS_SERVER_URL` before a manual run. The
     # override always wins now, regardless of what the env var holds.
     Application.put_env(:code_my_spec, :harness_server_url_override, "http://127.0.0.1:#{port}")
-    Application.put_env(:code_my_spec, :harness_token, "test-token")
+    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+
+    CodeMySpecTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      "http://127.0.0.1:#{port}",
+      "test-token"
+    )
 
     # Still cleared too — belt and suspenders, and the env var is what
     # `mix cms.harness.onboard --server-url`-style tooling reads elsewhere.

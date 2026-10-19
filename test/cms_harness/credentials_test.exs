@@ -48,7 +48,8 @@ defmodule CmsHarness.CredentialsTest do
       restore_env("CMS_DEPLOY_KEY", env_key)
     end)
 
-    %{root: copy()}
+    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    %{root: copy(), oauth_dir: oauth_dir}
   end
 
   defp copy do
@@ -116,13 +117,26 @@ defmodule CmsHarness.CredentialsTest do
                Credentials.for_working_copy(CodeMySpec.TempFile.dir("never_onboarded"))
     end
 
-    # A user token reaches every project its user can access, so it answers for
-    # all of them and there is nothing to record per copy.
-    test "a user token wins over both", ctx do
-      Application.put_env(:code_my_spec, :harness_token, "user-token")
+    test "the harness's own OAuth credential wins over project keys", ctx do
+      CodeMySpecTest.HarnessOAuthFixture.seed(
+        ctx.oauth_dir,
+        CmsHarness.Config.server_url(),
+        "owned-token"
+      )
+
+      Application.put_env(:code_my_spec, :harness_token, "borrowed-token")
       onboard(ctx.root, deploy_key: "this-copys-key")
 
-      assert {:ok, "user-token", :user_token} = Credentials.for_working_copy(ctx.root)
+      assert {:ok, "owned-token", :harness_oauth} = Credentials.for_working_copy(ctx.root)
+      assert {:ok, "owned-token", :harness_oauth} = Credentials.any()
+    end
+
+    test "a configured user token is not borrowed", ctx do
+      Application.put_env(:code_my_spec, :harness_token, "borrowed-token")
+      assert {:error, :no_credential} = Credentials.for_working_copy(ctx.root)
+
+      onboard(ctx.root, deploy_key: "this-copys-key")
+      assert {:ok, "this-copys-key", :working_copy_key} = Credentials.for_working_copy(ctx.root)
     end
 
     test "nothing anywhere is no credential, not a blank one", ctx do
@@ -136,7 +150,8 @@ defmodule CmsHarness.CredentialsTest do
     test "application config is honoured", ctx do
       Application.put_env(:code_my_spec, :harness_deploy_key, "from-app-config")
 
-      assert {:ok, "from-app-config", :configured_deploy_key} = Credentials.for_working_copy(ctx.root)
+      assert {:ok, "from-app-config", :configured_deploy_key} =
+               Credentials.for_working_copy(ctx.root)
     end
   end
 
