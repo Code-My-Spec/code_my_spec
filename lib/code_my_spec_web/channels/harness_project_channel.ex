@@ -1364,7 +1364,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # forgotten like `:offboarded` above: a harness that has since disconnected
   # falls back to its own ack-timeout rollback, same as before this existed.
   def handle_info({:working_copy_registered, working_copy_id, outcome}, socket) do
-    push(socket, "create_working_copy_registered", encode_registration_outcome(working_copy_id, outcome))
+    push(
+      socket,
+      "create_working_copy_registered",
+      encode_registration_outcome(working_copy_id, outcome)
+    )
+
     {:noreply, socket}
   end
 
@@ -2017,7 +2022,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # install serves many checkouts, and devices are created once by
   # `CmsHarness.Device.announce/0`. An unknown id attaches nothing.
   defp resolve_device(scope, %{"device" => %{"id" => id}}) when is_binary(id) do
-    Devices.get_device(scope, id)
+    Devices.get_harness_device(scope, id)
   end
 
   defp resolve_device(_scope, _payload), do: nil
