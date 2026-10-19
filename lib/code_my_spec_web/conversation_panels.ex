@@ -51,7 +51,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :dynamic_story, :any, required: true
   attr :dynamic_epics, :list, required: true
   attr :offer, :any, default: nil
-  attr :activity, :list, required: true
   attr :waiting, :list, required: true
   attr :copies, :list, required: true
   attr :scope, :any, default: nil
@@ -121,7 +120,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
           dynamic_story={@dynamic_story}
           dynamic_epics={@dynamic_epics}
           offer={@offer}
-          activity={@activity}
           copies={@copies}
           scope={@scope}
           project_id={@project_id}
@@ -216,7 +214,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
               dynamic_epics={@dynamic_epics}
-              activity={@activity}
               copies={@copies}
               scope={@scope}
               project_id={@project_id}
@@ -298,7 +295,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
   attr :dynamic_story, :any, required: true
   attr :dynamic_epics, :list, required: true
   attr :offer, :any, default: nil
-  attr :activity, :list, required: true
   attr :copies, :list, required: true
   attr :scope, :any, default: nil
   attr :project_id, :string, required: true

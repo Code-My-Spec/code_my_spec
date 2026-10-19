@@ -13,7 +13,6 @@ defmodule CodeMySpecWeb.ConversationPanelsTest do
     dynamic_story: nil,
     dynamic_epics: [],
     offer: nil,
-    activity: [],
     waiting: [],
     copies: [],
     project_id: "project-1",
