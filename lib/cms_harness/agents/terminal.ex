@@ -129,18 +129,30 @@ defmodule CmsHarness.Agents.Terminal do
   def handle_call({:session, session}, _from, state) do
     transcript = session[:transcript] || state.transcript
 
-    {:reply, :ok,
-     %{
-       state
-       | socket: session.socket,
-         session_id: session[:session_id] || state.session_id,
-         transcript: transcript,
-         offset:
-           if(transcript == state.transcript,
-             do: state.offset,
-             else: Transcript.end_of(transcript)
-           )
-     }}
+    state = %{
+      state
+      | socket: session.socket,
+        session_id: session[:session_id] || state.session_id,
+        transcript: transcript,
+        offset:
+          if(transcript == state.transcript,
+            do: state.offset,
+            else: Transcript.end_of(transcript)
+          )
+    }
+
+    # Issue c67e1ab7: this process survived the harness restart that just
+    # reconnected it (CmsHarness.Agents.whereis/1 found it already running,
+    # so `attach/2` never reached `init/1` and never ran the report_up fix
+    # from d12aa283/e79e42de0). If `busy?` was already true before the
+    # restart and stays true straight through it, `settle_turn/2`'s own
+    # no-op clause (`%{busy?: busy?} = state, busy?`) never sees a
+    # transition either, so nothing else would ever re-announce this agent
+    # up. A fresh session arriving here -- a new socket, every time -- is
+    # itself the re-attach; report it unconditionally.
+    report_up(state)
+
+    {:reply, :ok, state}
   end
 
   @impl true
