@@ -66,13 +66,13 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # catalogue: "it isn't available in the active tool catalog".
         #
         # The ways to a person and out of the loop joined on 2026-09-06:
-        # `ask_user_question`, `tap_out` and `show_in_panel`. Same shape again
+        # `ask_question`, `tap_out` and `show_in_panel`. Same shape again
         # — each is refused to scripts for a reason about scripts and was
         # carried by nothing, so every refusal that offered `ask_user` or
         # `tap_out` named a tool the agent did not have. `send_message` was one
         # of them and is gone: the durable-work plan deleted it outright,
         # because an agent creating a blocker and asking a person a question is
-        # not sending prose, and `ask_user_question` already is that surface.
+        # not sending prose, and `ask_question` already is that surface.
         #
         # `list_problems` was carried in the same pass and taken back out: it is
         # scriptable, so carrying it buys nothing and costs a schema on every
@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1038.Criterion3015Spex do
         # `tap_out` (story 1080): declining an offer is the agent's own call.
         unscriptable = ~w(
           get_next_requirement sync_project start_task evaluate_task cancel_task
-          ask_user_question tap_out reject_offer show_in_panel start_analysis
+          ask_question tap_out reject_offer show_in_panel start_analysis
           promote check_answer list_user_questions
         )
 

@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
 
         coding_asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1989Spex do
 
         qa_asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

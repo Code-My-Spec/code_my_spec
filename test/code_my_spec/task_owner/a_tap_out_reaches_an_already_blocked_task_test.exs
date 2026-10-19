@@ -7,7 +7,7 @@ defmodule CodeMySpec.TaskOwner.ATapOutReachesAnAlreadyBlockedTaskTest do
   question; once the question was answered the system said to resume with
   `start_task`, which failed with `:requirement_not_eligible` on the
   entity_id-resolution bug (ab111a52). The agent then tried `tap_out` — which
-  the loop's own refusal text tells it to do ("block it with `ask_user_question`
+  the loop's own refusal text tells it to do ("block it with `ask_question`
   or `tap_out`, or `cancel_task`") — and got `:task_not_active`. That leaves
   only `cancel_task`, which abandons the attempt outright rather than asking a
   person to decide.

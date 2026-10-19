@@ -7,8 +7,9 @@ defmodule CmsHarness.Credentials do
 
   ## Resolution order
 
-    1. `:harness_token` — a signed-in user's token reaches every project its
-       user can access.
+    1. The harness's persisted OAuth credential for the target server,
+       refreshed before expiry. Refused credentials stop resolution.
+
     2. `deploy_key` in this working copy's own `.cms_harness.json`, written by
        `mix cms.harness.onboard` (gitignored, `0600`).
     3. `:harness_deploy_key` — machine-wide configuration.
@@ -21,8 +22,8 @@ defmodule CmsHarness.Credentials do
   alias CmsHarness.Projects
   alias CmsHarness.ServedRoots
 
-  @type source :: :user_token | :working_copy_key | :configured_deploy_key
-  @type result :: {:ok, String.t(), source()} | {:error, :no_credential}
+  @type source :: :harness_oauth | :working_copy_key | :configured_deploy_key
+  @type result :: {:ok, String.t(), source()} | {:error, term()}
 
   @doc """
   The credential to present for the working copy at `root`, and where it came
@@ -33,7 +34,7 @@ defmodule CmsHarness.Credentials do
   """
   @spec for_working_copy(String.t() | nil) :: result()
   def for_working_copy(root) do
-    with {:error, :no_credential} <- from_user_token(),
+    with {:error, :no_credential} <- from_harness_oauth(Config.server_url_for(root)),
          {:error, :no_credential} <- from_working_copy(root) do
       from_configured_deploy_key()
     end
@@ -47,7 +48,7 @@ defmodule CmsHarness.Credentials do
   """
   @spec any() :: result()
   def any do
-    with {:error, :no_credential} <- from_user_token(),
+    with {:error, :no_credential} <- from_harness_oauth(Config.server_url()),
          {:error, :no_credential} <- from_any_working_copy() do
       from_configured_deploy_key()
     end
@@ -68,11 +69,14 @@ defmodule CmsHarness.Credentials do
     end)
   end
 
-  # Through `Config`: one definition of where a credential comes from.
-  defp from_user_token do
-    case Config.user_token() do
-      {:ok, token} -> {:ok, token, :user_token}
-      {:error, :no_credential} -> {:error, :no_credential}
+  # Only absence permits project-key fallback; refusal and refresh failures
+  # must propagate so revoked authorization cannot silently change identity.
+  defp from_harness_oauth(server) do
+    opts = Application.get_env(:code_my_spec, CodeMySpec.Auth.HarnessOAuth, [])
+
+    case CodeMySpec.Auth.HarnessOAuth.access_token(server, opts) do
+      {:ok, token} -> {:ok, token, :harness_oauth}
+      {:error, _reason} = error -> error
     end
   end
 

@@ -8,6 +8,10 @@ if config_env() == :test do
     Path.join(System.tmp_dir!(), "cms_test_served_roots_#{System.pid()}")
 
   config :code_my_spec, :harness_served_roots_dir, served_roots_dir
+
+  config :code_my_spec, CodeMySpec.Auth.HarnessOAuth,
+    state_dir: Path.join(served_roots_dir, "oauth")
+
   System.at_exit(fn _ -> File.rm_rf(served_roots_dir) end)
 end
 
@@ -19,6 +23,36 @@ source!([
   Path.absname("#{config_env()}.env", env_dir_prefix),
   System.get_env()
 ])
+
+# Optional dev/test OAuth timings, in seconds. For a short QA cycle set
+# CMS_DEVICE_CODE_TTL_SECONDS=12, CMS_DEVICE_CODE_INTERVAL_SECONDS=1,
+# CMS_ACCESS_TOKEN_TTL_SECONDS=12, CMS_OAUTH_REFRESH_BEFORE_SECONDS=2,
+# and CMS_OAUTH_CHECK_INTERVAL_SECONDS=1 on the server/harness being tested.
+# Omitted variables preserve application configuration and production defaults.
+if config_env() in [:dev, :test] do
+  for {variable, module, key, minimum} <- [
+        {"CMS_DEVICE_CODE_TTL_SECONDS", CodeMySpec.Oauth, :ttl_seconds, 0},
+        {"CMS_DEVICE_CODE_INTERVAL_SECONDS", CodeMySpec.Oauth, :interval, 1},
+        {"CMS_ACCESS_TOKEN_TTL_SECONDS", ExOauth2Provider, :access_token_expires_in, 1},
+        {"CMS_OAUTH_REFRESH_BEFORE_SECONDS", CodeMySpec.Auth.HarnessOAuth,
+         :refresh_before_seconds, 0},
+        {"CMS_OAUTH_CHECK_INTERVAL_SECONDS", CmsHarness.Authorization, :check_interval_seconds, 1}
+      ] do
+    case System.get_env(variable) do
+      nil ->
+        :ok
+
+      value ->
+        case Integer.parse(value) do
+          {seconds, ""} when seconds >= minimum ->
+            config :code_my_spec, module, [{key, seconds}]
+
+          _ ->
+            raise "#{variable} must be an integer >= #{minimum}"
+        end
+    end
+  end
+end
 
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the

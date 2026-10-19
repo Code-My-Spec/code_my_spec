@@ -24,7 +24,7 @@ defmodule CodeMySpec.Agents.Menu do
   ## Offers
 
   Every refusal carries the open-question count with `list_user_questions` /
-  `check_answer`, `ask_user_question`, and `semantic_search`; `tap_out` only
+  `check_answer`, `ask_question`, and `semantic_search`; `tap_out` only
   inside the loop.
 
   See knowledge/agents/coordination, "The stop menu".
@@ -144,7 +144,7 @@ defmodule CodeMySpec.Agents.Menu do
       obstacle(scope, task) <>
       " Nothing closes a task for you — when the work is done, call " <>
       "`evaluate_task` with task_id \"#{task.id}\". Otherwise block it with " <>
-      "`ask_user_question` or `tap_out` using that task_id, or cancel the attempt " <>
+      "`ask_question` or `tap_out` using that task_id, or cancel the attempt " <>
       "with `cancel_task`. Disposition this active task before starting another." <>
       evaluation_feedback_note(task) <>
       backlog_note(count)
@@ -285,7 +285,7 @@ defmodule CodeMySpec.Agents.Menu do
     answer_offer(open_questions(scope, owner)) <>
       blocked_task_note(owner) <>
       "\n\nNobody is reading this conversation. If you need a decision from the " <>
-      "user, `ask_user_question` is what reaches them — name the alternatives and " <>
+      "user, `ask_question` is what reaches them — name the alternatives and " <>
       "they answer with a tap; use a single free-text question when the answer is genuinely " <>
       "prose. A question written into your reply reaches no one, and stopping on " <>
       "it just brings you back here. Ask, then carry on with anything the answer " <>

@@ -175,7 +175,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1758Spex do
 
     asked =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{
           task_id: design_task,
           questions: [

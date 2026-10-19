@@ -1,6 +1,6 @@
 [
   {
-    "name": "ask_user_question",
+    "name": "ask_question",
     "description": "Ask the user a question with the answers written out for them.\n\nOne to four questions with choices, or one free-text question with options: [].\nA linked task is blocked atomically; omitted task_id uses your active task.\nYou may continue unrelated work. Collect answers with check_answer, then\nexplicitly resume the blocked task after its blocker has been resolved.\n",
     "input_schema": {
       "properties": {
@@ -259,7 +259,7 @@
     "input_schema": {
       "properties": {
         "question_id": {
-          "description": "The id `ask_user_question` returned.",
+          "description": "The id `ask_question` returned.",
           "type": "string"
         },
         "reason": {

@@ -22,7 +22,7 @@ defmodule CodeMySpec.Agents.ARoleCarriesTheToolsItsWorkNamesTest do
   defect; a word in backticks that no tool answers to is a word in backticks.
 
   Direct-call-only tools are skipped too, and that is not a loophole. The loop's
-  own tools — `evaluate_task`, `start_task`, `tap_out`, `ask_user_question`,
+  own tools — `evaluate_task`, `start_task`, `tap_out`, `ask_question`,
   `get_next_requirement` — are in `Catalog.excluded()`: callable as tools, never
   from a script, so `ToolSets` does not gate them and every agent has them.
   Without this the check reports all five against every role and says nothing.

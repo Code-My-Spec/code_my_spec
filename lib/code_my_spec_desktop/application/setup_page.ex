@@ -5,7 +5,15 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
 
   def render(status, action_path, app_url) do
     body = content(status, action_path, app_url)
-    refresh = refresh(status.phase)
+
+    refresh =
+      case {status.phase, Map.get(status, :authorization)} do
+        {:ready, %{phase: phase}} when phase in [:starting, :pending, :unavailable] ->
+          refresh(:starting)
+
+        _ ->
+          refresh(status.phase)
+      end
 
     IO.iodata_to_binary([
       "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CodeMySpec setup</title>",
@@ -17,8 +25,9 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
     ])
   end
 
-  defp content(%{phase: :ready}, _path, app_url) do
+  defp content(%{phase: :ready} = status, path, app_url) do
     [
+      authorization(Map.get(status, :authorization), path),
       "<section><h2>CodeMySpec is ready</h2><a data-test=\"open-application\" href=\"",
       escape(app_url),
       "\">Continue to CodeMySpec</a></section>"
@@ -34,6 +43,30 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
       controls(status, path)
     ]
   end
+
+  defp authorization(%{phase: :pending} = auth, _path) do
+    [
+      "<section data-test=\"harness-authorization\"><h2>Connect this harness</h2><p>Open <span>",
+      escape(auth.verification_uri),
+      "</span> and enter this code:</p><code data-test=\"authorization-code\">",
+      escape(auth.user_code),
+      "</code><p>Waiting for approval…</p></section>"
+    ]
+  end
+
+  defp authorization(%{phase: :authorized}, _path),
+    do: "<section data-test=\"harness-authorized\"><p>This harness is connected.</p></section>"
+
+  defp authorization(%{phase: :stopped}, path) do
+    [
+      "<section><h2>Harness authorization stopped</h2><p>Start again to request a new approval code.</p>",
+      form(path <> "/authorize", "retry-authorization", "Connect this harness"),
+      "</section>"
+    ]
+  end
+
+  defp authorization(_status, _path),
+    do: "<p role=\"status\">Preparing harness authorization…</p>"
 
   defp snapshot(nil), do: "<p>No prerequisite checks have run yet.</p>"
 

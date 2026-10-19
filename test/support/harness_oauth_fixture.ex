@@ -1,0 +1,68 @@
+defmodule CmsHarnessTest.HarnessOAuthFixture do
+  @moduledoc "Isolated persisted harness credentials for synchronous integration tests."
+
+  alias CodeMySpec.Auth.HarnessOAuth
+
+  def server_url, do: CmsHarness.Config.server_url()
+
+  def isolate do
+    previous = Application.fetch_env(:code_my_spec, HarnessOAuth)
+    dir = CodeMySpec.TempFile.dir("harness-oauth-fixture")
+    File.mkdir_p!(dir)
+    opts = Application.get_env(:code_my_spec, HarnessOAuth, [])
+    Application.put_env(:code_my_spec, HarnessOAuth, Keyword.put(opts, :state_dir, dir))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, HarnessOAuth, value)
+        :error -> Application.delete_env(:code_my_spec, HarnessOAuth)
+      end
+
+      File.rm_rf(dir)
+    end)
+
+    dir
+  end
+
+  def use_deploy_key(key, endpoint) do
+    isolate()
+    previous_key = Application.fetch_env(:code_my_spec, :harness_deploy_key)
+    previous_token = Application.fetch_env(:code_my_spec, CmsHarness.Token)
+    opts = Application.get_env(:code_my_spec, CmsHarness.Token, [])
+
+    Application.put_env(:code_my_spec, :harness_deploy_key, key)
+    Application.put_env(:code_my_spec, CmsHarness.Token, Keyword.put(opts, :plug, endpoint))
+    CmsHarness.Token.invalidate()
+
+    ExUnit.Callbacks.on_exit(fn ->
+      restore(:harness_deploy_key, previous_key)
+      restore(CmsHarness.Token, previous_token)
+      CmsHarness.Token.invalidate()
+    end)
+  end
+
+  defp restore(key, {:ok, value}), do: Application.put_env(:code_my_spec, key, value)
+  defp restore(key, :error), do: Application.delete_env(:code_my_spec, key)
+
+  def seed(dir, server, token) do
+    hash =
+      :crypto.hash(:sha256, String.trim_trailing(server, "/"))
+      |> Base.encode16(case: :lower)
+
+    path = Path.join(dir, "harness_oauth_#{hash}.json")
+
+    File.write!(
+      path,
+      Jason.encode!(%{
+        client_id: "fixture-harness-client",
+        client_secret: "fixture-client-secret",
+        access_token: token,
+        refresh_token: "fixture-refresh",
+        expires_at: System.system_time(:second) + 7200
+      })
+    )
+
+    File.chmod!(path, 0o600)
+    path
+  end
+end

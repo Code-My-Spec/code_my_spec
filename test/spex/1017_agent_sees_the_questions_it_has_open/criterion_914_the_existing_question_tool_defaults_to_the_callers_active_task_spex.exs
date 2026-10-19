@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2421Spex do
   Story 1017 — Agent sees the questions it has open.
   Criterion 2421 — The existing question tool defaults to the caller's active task.
 
-  Claim through start_task, ask through ask_user_question, and observe both
+  Claim through start_task, ask through ask_question, and observe both
   effects through the agent's task and question listings. No task blocker or
   question is seeded. Transaction rollback is covered by criterion 3575.
   """
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2421Spex do
       when_ "it asks a structured question without task_id", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "Choose the test contract",
               questions: [

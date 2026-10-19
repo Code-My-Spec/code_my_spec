@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1984Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "cannot see what my app is serving",
               questions: [

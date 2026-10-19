@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion3219Spex do
             fn {question, choice} ->
               asked =
                 ToolLibrary.run(
-                  "ask_user_question",
+                  "ask_question",
                   %{
                     questions: [
                       %{

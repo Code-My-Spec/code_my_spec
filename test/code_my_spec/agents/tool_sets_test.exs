@@ -66,11 +66,11 @@ defmodule CodeMySpec.Agents.ToolSetsTest do
 
   test "coding and QA can ask main a question without discovering its agent id" do
     # message_agent's own reachable/2 error, for a non-teammate target, says
-    # to use `ask_user_question (to: "main" or "product")` instead -- a tool
+    # to use `ask_question (to: "main" or "product")` instead -- a tool
     # neither role was actually granted, so tool_docs never told them it
     # existed (6520ca49).
-    assert "ask_user_question" in ToolSets.for_role(:coding)
-    assert "ask_user_question" in ToolSets.for_role(:qa)
+    assert "ask_question" in ToolSets.for_role(:coding)
+    assert "ask_question" in ToolSets.for_role(:qa)
   end
 
   test "main is unscoped rather than a list of everything" do

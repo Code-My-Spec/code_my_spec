@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3262Spex do
 
             response =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   title: "#{role} needs a decision",
                   questions: [

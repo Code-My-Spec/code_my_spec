@@ -10,6 +10,24 @@ defmodule CodeMySpecWeb.OAuthController do
   alias CodeMySpec.Oauth
   alias ExOauth2Provider.{Authorization, Token}
 
+  plug :require_registered_redirect when action in [:authorize, :create, :delete]
+
+  # The provider assumes a nonempty redirect list even when the request supplies
+  # a redirect. Device clients must never enter its browser authorization flow.
+  defp require_registered_redirect(conn, _opts) do
+    if Oauth.application_without_redirect?(conn.params["client_id"]) do
+      conn
+      |> put_status(:bad_request)
+      |> json(%{
+        error: "invalid_redirect_uri",
+        error_description: "This client has no registered redirect URI"
+      })
+      |> halt()
+    else
+      conn
+    end
+  end
+
   @doc """
   GET /oauth/authorize
   Shows the authorization page to the user
@@ -154,12 +172,44 @@ defmodule CodeMySpecWeb.OAuthController do
     end
   end
 
+  # RFC 8628's own grant type. ExOauth2Provider.Token knows nothing of it --
+  # it is not one of the library's built-in strategies -- so it is handled
+  # here, ahead of the ordinary library dispatch below, rather than inside
+  # that library.
+  @device_code_grant_type "urn:ietf:params:oauth:grant-type:device_code"
+
   @doc """
   POST /oauth/token
-  Handles token requests (authorization code exchange, refresh tokens)
+  Handles token requests (authorization code exchange, refresh tokens, and
+  the device authorization grant's own polling).
   """
+  def token(conn, %{"grant_type" => @device_code_grant_type} = params) do
+    case Oauth.poll_device_grant(params["device_code"], params["client_id"]) do
+      {:ok, access_token} ->
+        json(conn, %{
+          access_token: access_token.token,
+          refresh_token: access_token.refresh_token,
+          expires_in: access_token.expires_in,
+          token_type: "Bearer",
+          scope: access_token.scopes
+        })
+
+      {:error, :authorization_pending} ->
+        conn |> put_status(:bad_request) |> json(%{error: "authorization_pending"})
+
+      {:error, :access_denied} ->
+        conn |> put_status(:bad_request) |> json(%{error: "access_denied"})
+
+      {:error, :expired_token} ->
+        conn |> put_status(:bad_request) |> json(%{error: "expired_token"})
+
+      {:error, :invalid_grant} ->
+        conn |> put_status(:bad_request) |> json(%{error: "invalid_grant"})
+    end
+  end
+
   def token(conn, params) do
-    case Token.grant(params, otp_app: :code_my_spec) do
+    case Oauth.grant_token(params) do
       {:ok, access_token} ->
         json(conn, %{
           access_token: access_token.access_token,
@@ -260,28 +310,69 @@ defmodule CodeMySpecWeb.OAuthController do
   Dynamic Client Registration for MCP
   """
   def register(conn, params) do
-    case create_oauth_application(params) do
-      {:ok, application} ->
-        conn
-        |> put_status(201)
-        |> json(%{
-          "client_id" => application.uid,
-          "client_secret" => application.secret,
-          "client_name" => application.name,
-          "redirect_uris" => String.split(application.redirect_uri || "", " ", trim: true),
-          "grant_types" => ["authorization_code"],
-          "response_types" => ["code"],
-          "scope" => application.scopes
-        })
+    grant_types = Map.get(params, "grant_types", ["authorization_code"])
+    redirect_uris = Map.get(params, "redirect_uris", [])
 
-      {:error, changeset} ->
-        conn
-        |> put_status(400)
-        |> json(%{
-          "error" => "invalid_client_metadata",
-          "error_description" => format_errors(changeset)
-        })
+    with :ok <- validate_registration_metadata(grant_types, redirect_uris),
+         {:ok, application} <- create_oauth_application(params) do
+      conn
+      |> put_status(:created)
+      |> json(%{
+        "client_id" => application.uid,
+        "client_secret" => application.secret,
+        "client_name" => application.name,
+        "redirect_uris" => redirect_uris,
+        "grant_types" => grant_types,
+        "response_types" => if("authorization_code" in grant_types, do: ["code"], else: []),
+        "scope" => application.scopes
+      })
+    else
+      {:error, error, description} ->
+        registration_error(conn, error, description)
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        error =
+          if Keyword.has_key?(changeset.errors, :redirect_uri),
+            do: "invalid_redirect_uri",
+            else: "invalid_client_metadata"
+
+        registration_error(conn, error, format_errors(changeset))
     end
+  end
+
+  defp validate_registration_metadata(grant_types, redirect_uris) do
+    cond do
+      not is_list(grant_types) or grant_types == [] ->
+        {:error, "invalid_client_metadata", "grant_types must be a nonempty array"}
+
+      not Enum.all?(grant_types, &is_binary/1) ->
+        {:error, "invalid_client_metadata", "grant_types must contain strings"}
+
+      not is_list(redirect_uris) ->
+        {:error, "invalid_redirect_uri", "redirect_uris must be an array"}
+
+      not Enum.all?(redirect_uris, &registration_redirect?/1) ->
+        {:error, "invalid_redirect_uri",
+         "redirect_uris must contain nonempty URIs without whitespace"}
+
+      redirect_uris == [] and
+          not Enum.all?(grant_types, &(&1 in [@device_code_grant_type, "refresh_token"])) ->
+        {:error, "invalid_redirect_uri", "A redirect URI is required for this grant type"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp registration_redirect?(uri) when is_binary(uri),
+    do: uri != "" and not Regex.match?(~r/\s/u, uri)
+
+  defp registration_redirect?(_uri), do: false
+
+  defp registration_error(conn, error, description) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: error, error_description: description})
   end
 
   defp create_oauth_application(params) do

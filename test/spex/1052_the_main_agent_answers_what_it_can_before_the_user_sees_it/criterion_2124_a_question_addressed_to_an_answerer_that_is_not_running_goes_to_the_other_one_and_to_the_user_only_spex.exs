@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2124Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             params,
             Map.put(
               context.coder_frame.assigns,
@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2124Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             params,
             Map.put(
               context.coder_frame.assigns,

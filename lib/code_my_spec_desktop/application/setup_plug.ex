@@ -30,7 +30,9 @@ defmodule CodeMySpecDesktop.Application.SetupPlug do
          %{token: token} = opts,
          true
        ) do
-    html = SetupPage.render(Bootstrap.status(opts.bootstrap), "/setup/" <> token, opts.app_url)
+    status = Bootstrap.status(opts.bootstrap)
+    status = Map.put(status, :authorization, CmsHarness.Authorization.status())
+    html = SetupPage.render(status, "/setup/" <> token, opts.app_url)
     conn |> put_resp_content_type("text/html") |> send_resp(200, html)
   end
 
@@ -39,7 +41,7 @@ defmodule CodeMySpecDesktop.Application.SetupPlug do
          %{token: token} = opts,
          true
        )
-       when action in ["check", "continue"] do
+       when action in ["check", "continue", "authorize"] do
     perform(conn, opts, action, same_origin?(conn))
   end
 
@@ -51,6 +53,7 @@ defmodule CodeMySpecDesktop.Application.SetupPlug do
     respond(conn, opts.token, invoke(action, opts.bootstrap))
   end
 
+  defp invoke("authorize", _server), do: CmsHarness.Authorization.retry()
   defp invoke("check", server), do: Bootstrap.check(server)
   defp invoke("continue", server), do: Bootstrap.continue(server)
 

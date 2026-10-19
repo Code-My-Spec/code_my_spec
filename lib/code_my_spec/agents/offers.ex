@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.Offers do
   }
 
   # What main can do with a waiting question it was offered.
-  @question_moves ~w(answer_notification escalate_question ask_user_question)
+  @question_moves ~w(answer_notification escalate_question ask_question)
 
   # What main can do to re-assign a team-free copy: a story, or an issue.
   @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)
@@ -133,6 +133,25 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   def record(_recorded, _agent, _kind, _subject), do: nil
+
+  @doc "Supersede open requirement offers for a finished issue across its project's agents."
+  @spec supersede_issue(Scope.t(), Ecto.UUID.t()) :: :ok
+  def supersede_issue(%Scope{} = scope, issue_id) do
+    now = DateTime.utc_now()
+    prefix = "issue:#{issue_id}:%"
+
+    Offer
+    |> where(
+      [o],
+      o.account_id == ^scope.active_account_id and
+        o.project_id == ^scope.active_project_id and o.kind == :work and
+        o.subject_type == "requirement" and like(o.subject_key, ^prefix) and
+        o.status == :open
+    )
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
 
   @doc "Whether this agent has an open offer of `kind` right now."
   @spec open_of_kind?(String.t(), Offer.kind()) :: boolean()

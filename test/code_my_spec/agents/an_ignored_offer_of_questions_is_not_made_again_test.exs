@@ -123,7 +123,7 @@ defmodule CodeMySpec.Agents.AnIgnoredOfferOfQuestionsIsNotMadeAgainTest do
     assert prompt =~ "escalate_question",
            "the offer named answering but not passing a question up"
 
-    assert prompt =~ "never re-asked with `ask_user_question`"
+    assert prompt =~ "never re-asked with `ask_question`"
   end
 
   test "questions ignored once are not offered again while unchanged", ctx do

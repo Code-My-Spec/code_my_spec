@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3318Spex do
       when_ "the coding agent asks before the next check-in", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.task_id,
               questions: [

@@ -14,13 +14,13 @@ defmodule CmsHarness.TheTestRunsReporterDoesNotTickTest do
   end
 
   test "a report that crashes does not loop and does not take the harness tree down" do
-    Application.put_env(:code_my_spec, :harness_token, "e258f257")
-    System.put_env("CMS_TOKEN", "e258f257")
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
 
-    on_exit(fn ->
-      Application.delete_env(:code_my_spec, :harness_token)
-      System.delete_env("CMS_TOKEN")
-    end)
+    CmsHarnessTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarness.Config.server_url(),
+      "e258f257"
+    )
 
     supervisor = Process.whereis(CmsHarness.Supervisor)
     reporter = Process.whereis(CmsHarness.WorkingCopyReporter)

@@ -132,6 +132,20 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     assert AgentsRepository.list_reported_running(scope) == []
   end
 
+  test "project deploy keys cannot join the account channel", %{scope: scope} do
+    assert {:error, %{reason: "unauthorized"}} =
+             CodeMySpecWeb.UserSocket
+             |> socket("project-key-socket", %{
+               scope: scope,
+               deploy_key_project_id: Ecto.UUID.generate()
+             })
+             |> subscribe_and_join(
+               CodeMySpecWeb.HarnessChannel,
+               "harness:#{scope.active_account_id}",
+               %{}
+             )
+  end
+
   test "join is rejected when the account doesn't match the socket scope", %{scope: scope} do
     assert {:error, %{reason: "unauthorized"}} =
              CodeMySpecWeb.UserSocket

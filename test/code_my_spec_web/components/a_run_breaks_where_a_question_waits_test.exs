@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.Components.ARunBreaksWhereAQuestionWaitsTest do
 
   The fold is right almost always: a run of tool calls collapses into one
   expandable item instead of filling the transcript. It stops being right when a
-  pending question sits inside the run — three calls, then `ask_user_question`,
+  pending question sits inside the run — three calls, then `ask_question`,
   then two more calls is one item, and a form rendered after it appears below
   work the agent did *after* asking.
 

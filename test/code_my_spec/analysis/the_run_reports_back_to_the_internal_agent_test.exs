@@ -201,5 +201,43 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
       assert_receive {:agent_dispatch, id, _ref, _message}
       assert id == coding.id
     end
+
+    # Issue cdf54b03: a terminal coder called evaluate_task, was told its fix
+    # was waiting on a spex run, and said it would complete once that run
+    # landed. The run finished clean 40 minutes later and nothing woke it —
+    # the "other path" the bystander test above relies on (its own Stop hook,
+    # on its next turn) never ran, because the agent had no next turn to run
+    # it on. An asker gets no other notice, whatever engine it runs on.
+    test "a terminal (Claude Code) agent is answered when it is the one that asked", ctx do
+      terminal = agent(ctx.scope, ctx.copy, :claude_code, "coding")
+
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], terminal.id)
+
+      assert_receive {:agent_dispatch, id, _ref, message}
+      assert id == terminal.id
+      assert message =~ "spex run finished"
+    end
+
+    test "a terminal agent that did not ask still hears nothing, even beside one that did", ctx do
+      bystander = agent(ctx.scope, ctx.copy, :claude_code, "coding")
+      asker = agent(ctx.scope, ctx.copy, :claude_code, "coding")
+      bystander_id = bystander.id
+
+      AnalysisReport.deliver(ctx.scope, "spex", [problem(:error)], asker.id)
+
+      assert_receive {:agent_dispatch, id, _ref, _message}
+      assert id == asker.id
+      refute_receive {:agent_dispatch, ^bystander_id, _ref, _message}, 100
+    end
+
+    test "a terminal agent also hears a failed run it asked about", ctx do
+      terminal = agent(ctx.scope, ctx.copy, :claude_code, "coding")
+
+      AnalysisReport.deliver_failure(ctx.scope, "spex", "the harness restarted", terminal.id)
+
+      assert_receive {:agent_dispatch, id, _ref, message}
+      assert id == terminal.id
+      assert message =~ "spex"
+    end
   end
 end

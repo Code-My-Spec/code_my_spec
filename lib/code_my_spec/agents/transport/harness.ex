@@ -40,6 +40,37 @@ defmodule CodeMySpec.Agents.Transport.Harness do
     end
   end
 
+  @doc """
+  Tell the machine that made a working copy whether the server went on to
+  record it.
+
+  Issue 37f35126: the harness used to decide whether to roll back a create
+  purely on its own transport-level push ack -- which only confirms the
+  server received its result, never that `Staffing.mint/2`'s own
+  registration (`WorkingCopies.issue/3`, `report_root/2`) actually
+  succeeded. Those run in this caller's own process, after the ack-bearing
+  push has already been handled server-side, so the ack had no way to
+  carry this outcome. This does, explicitly, as soon as the outcome is
+  known -- before the caller reports anything of its own.
+
+  Best-effort: a fresh `host_holder/1` lookup, not the pid the original
+  create used, since nothing here carries that forward. A harness that has
+  since disconnected gets no notice and falls back to its own ack-timeout
+  rollback, same as before this existed.
+  """
+  @spec report_working_copy_registration([String.t()], String.t(), :ok | {:error, term()}) ::
+          :ok
+  def report_working_copy_registration(candidate_ids, working_copy_id, outcome) do
+    case HarnessRegistry.host_holder(candidate_ids) do
+      {:ok, pid, _root} ->
+        send(pid, {:working_copy_registered, working_copy_id, outcome})
+        :ok
+
+      :none ->
+        :ok
+    end
+  end
+
   # The agent, not its `LaunchRequest`: the channel builds the request, because
   # the tool index it carries reads the MCP servers, which sit above `Agents`.
   @impl true

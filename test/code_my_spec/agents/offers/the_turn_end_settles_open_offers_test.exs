@@ -341,7 +341,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndSettlesOpenOffersTest do
       assert settled(offered).status == :claimed
     end
 
-    for move <- ~w(answer_notification escalate_question ask_user_question) do
+    for move <- ~w(answer_notification escalate_question ask_question) do
       test "a questions offer to main is claimed by #{move} (1866)", ctx do
         offered = offer(ctx, :work, {"questions", nil})
         called(ctx, "run_script", %{"script" => "return #{unquote(move)}({ question_id = 'q' })"})

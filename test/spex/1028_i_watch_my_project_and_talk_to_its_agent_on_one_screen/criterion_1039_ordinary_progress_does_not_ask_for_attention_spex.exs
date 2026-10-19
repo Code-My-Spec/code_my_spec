@@ -6,6 +6,14 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
   The inverse of 2953, and the half that keeps it useful. A badge that lights up
   for routine progress is a badge nobody reads, and once it is ignored the
   blocked-agent case it exists for is lost with it.
+
+  Issue d12aa283: this used to drive progress through "agent_progress", a
+  client-pushed LiveView event nothing in the browser ever actually sent --
+  confirmed by John's decision to remove it as dead state, since the panel
+  it fed is a tree now (every working copy, its agents, and which of them has
+  a question waiting), not a feed. "Ordinary progress" today is a real turn
+  starting, broadcast as `{:agent_turn, agent}` and already redrawing this
+  same panel (`handle_info({:agent_turn, ...})`) -- this drives that instead.
   """
 
   use CodeMySpecSpex.Case
@@ -45,14 +53,11 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
         {:ok, Map.put(context, :live, live)}
       end
 
-      when_ "an agent finishes some work and reports progress", context do
-        html =
-          render_hook(context.live, "agent_progress", %{
-            "working_copy" => "spex_966",
-            "message" => "finished three criteria"
-          })
+      when_ "an agent's turn starts", context do
+        agent = CodeMySpec.Agents.main_agent(context.scope)
+        CodeMySpec.Agents.record_turn_event(context.scope, agent.id, %{"kind" => "turn_started"}, [])
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.live))}
       end
 
       then_ "the activity tab does not claim anything is waiting on me", context do
@@ -61,7 +66,7 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
                  "they are or are not claiming"
 
         refute context.html =~ ~s(data-test="panel-attention"),
-               "routine progress raised the attention mark. A badge that lights up for " <>
+               "a turn starting raised the attention mark. A badge that lights up for " <>
                  "everything is a badge nobody reads, and the blocked agent it exists " <>
                  "for is lost with it."
 
@@ -69,9 +74,9 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
       end
 
       # John, on redesigning this panel: it is working copies, their agents,
-      # and a question-waiting indicator now — not a feed. Ambient progress
-      # like this has nowhere to render inline any more; the badge assertion
-      # above is what this criterion still owns.
+      # and a question-waiting indicator now — not a feed. The badge
+      # assertion above is what this criterion owns; "ordinary progress" is
+      # a turn, not a message in a feed that no longer exists.
     end
   end
 end

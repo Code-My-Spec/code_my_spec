@@ -109,6 +109,10 @@ defmodule CmsHarness.Supervisor do
       # simultaneous exchanges for one key is N-1 tokens nobody uses.
       CmsHarness.Token,
 
+      # Device approval and token renewal run independently of project hooks.
+      {CmsHarness.Authorization,
+       Application.get_env(:code_my_spec, CmsHarness.Authorization, [])},
+
       # Claude Code POSTs its hooks to a fixed URL. This is that URL.
       CmsHarness.Web.Endpoint,
 

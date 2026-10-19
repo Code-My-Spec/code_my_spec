@@ -54,5 +54,22 @@ defmodule CodeMySpec.Issues.Tools.ResolveIssue do
          {:error,
           "Story issues must be submitted for shared story QA and completed through promotion."}
 
+  # Issue 9988f567: a coder finished d12aa283, called this directly, and the
+  # issue went to resolved with its fix still unlanded on its copy -- nobody
+  # could reopen it (resolved is terminal), so main had to file a second
+  # issue just to carry the same commits through QA and promotion.
+  #
+  # Once an issue is assigned to a working copy it is in the fix_issue/
+  # promote_issue track (`assign_issue_to_working_copy` sets `awaiting_role`
+  # alongside it, every time), and landing is what resolves it --
+  # `Qa.issue_fix_landed/3` calls `Issues.resolve_issue/3` directly, not this
+  # tool, so that path is untouched by this guard.
+  defp may_resolve(%{assigned_working_copy_id: copy_id}) when not is_nil(copy_id),
+    do:
+      {:error,
+       "This issue is assigned to a working copy and its fix has not landed on main yet. " <>
+         "Promote it with promote_issue -- the landing resolves the issue. Resolving it " <>
+         "here would mark it done with the fix still unlanded."}
+
   defp may_resolve(_issue), do: :ok
 end

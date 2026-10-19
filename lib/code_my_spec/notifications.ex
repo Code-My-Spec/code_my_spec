@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Notifications do
   @moduledoc """
   Push subscriptions and Web Push, and the requests that reach a person: question
-  requests (`ask_user_question`) and permission requests (tool approvals and
+  requests (`ask_question`) and permission requests (tool approvals and
   `tap_out`), with their inbox, holders, answers and the task blockers they
   release.
 
@@ -943,7 +943,7 @@ defmodule CodeMySpec.Notifications do
   def get_pending_tap_out_request(agent_id, task_id) when is_binary(agent_id),
     do: pending_tap_out(:agent_id, agent_id, task_id)
 
-  # --- Question Requests (remote AskUserQuestion) ---
+  # --- Question Requests (remote AskQuestion) ---
 
   @doc """
   Create a question request and notify the user via Web Push.
@@ -1040,7 +1040,7 @@ defmodule CodeMySpec.Notifications do
   defp question_task(_owner, nil), do: {:ok, nil}
   defp question_task(owner, :active), do: {:ok, TaskOwner.active_task(owner)}
 
-  # A task an agent may name to `tap_out` or `ask_user_question`: active or
+  # A task an agent may name to `tap_out` or `ask_question`: active or
   # blocked. Re-blocking a blocked task names the new blocker, so deciding it
   # frees exactly this task; otherwise only `cancel_task` could reach it.
   defp question_task(owner, id) do

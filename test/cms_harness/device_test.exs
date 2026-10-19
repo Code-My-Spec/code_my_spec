@@ -49,7 +49,13 @@ defmodule CmsHarness.DeviceTest do
 
     Application.put_env(:code_my_spec, :device_config_path, file)
     Application.put_env(:code_my_spec, :device_client, StubClient)
-    Application.put_env(:code_my_spec, :harness_token, "stub-token")
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
+
+    CmsHarnessTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarness.Config.server_url(),
+      "stub-token"
+    )
 
     on_exit(fn ->
       restore(:device_config_path, previous.path)

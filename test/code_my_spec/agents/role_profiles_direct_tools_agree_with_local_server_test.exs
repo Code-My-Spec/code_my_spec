@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Agents.RoleProfilesDirectToolsAgreeWithLocalServerTest do
   @moduledoc """
   Issue `7507da80`: `RoleProfile`'s per-role `tools` lists drifted from
-  `LocalServer`'s actual registrations -- `ask_user_question`,
+  `LocalServer`'s actual registrations -- `ask_question`,
   `check_answer` and `list_user_questions` were listed for both `coding`
   and `qa`, `tap_out` and `cancel_task` were not, even though `LocalServer`
   grants all five role-independently (`@spine ++ @unscriptable`; a direct
@@ -31,7 +31,7 @@ defmodule CodeMySpec.Agents.RoleProfilesDirectToolsAgreeWithLocalServerTest do
 
   @roles [:coding, :qa]
   @direct_tools [
-    "ask_user_question",
+    "ask_question",
     "check_answer",
     "list_user_questions",
     "tap_out",

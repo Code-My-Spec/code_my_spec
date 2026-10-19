@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
       when_ "the agent asks a question linked to its active task", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.task_id,
               questions: [

@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3261Spex do
 
             response =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   title: "a question from #{label} checkout",
                   questions: [

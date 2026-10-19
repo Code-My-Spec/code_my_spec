@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3277Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "needs a decision before it can carry on",
               questions: [

@@ -158,6 +158,13 @@ defmodule CodeMySpecWeb.Router do
     get "/authorize", OAuthController, :authorize
     post "/authorize", OAuthController, :create
     delete "/authorize", OAuthController, :delete
+
+    # Device authorization grant (RFC 8628) -- the human half. A harness
+    # prints the verification URL and the code; this is where whoever reads
+    # it off the screen decides.
+    get "/device", DeviceAuthorizationController, :new
+    post "/device", DeviceAuthorizationController, :show
+    post "/device/decide", DeviceAuthorizationController, :decide
   end
 
   # OAuth2 API endpoints (no CSRF protection)
@@ -167,6 +174,11 @@ defmodule CodeMySpecWeb.Router do
     post "/token", OAuthController, :token
     post "/revoke", OAuthController, :revoke
     post "/register", OAuthController, :register
+
+    # Device authorization grant (RFC 8628) -- the machine half. The
+    # harness's own call, naming the client it registered and getting back
+    # the code pair to show a person and to poll /oauth/token with.
+    post "/device/code", DeviceAuthorizationController, :create
   end
 
   # MCP clients fall back to /register when they can't fetch authorization server metadata

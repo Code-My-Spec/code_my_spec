@@ -36,6 +36,7 @@ defmodule CmsHarnessTest do
       AnalysisResults,
       Projects,
       FakeServer,
+      HarnessOAuthFixture,
       BlockingProject,
       SlotHolder,
       AppInstanceHelpers,

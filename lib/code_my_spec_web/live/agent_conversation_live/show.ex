@@ -189,7 +189,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_new(:dynamic_view, fn -> ScreenState.get(scope).dynamic_view end)
     |> assign_new(:dynamic_story_id, fn -> ScreenState.get(scope).dynamic_story_id end)
     |> assign_new(:offer, fn -> offer_of(ScreenState.get(scope)) end)
-    |> assign_new(:activity, fn -> [] end)
     # `assign`, not `assign_new`: a preview that comes up should appear live.
     |> assign_preview(scope)
     |> assign_new(:draft, fn -> "" end)
@@ -1027,15 +1026,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> remember()}
   end
 
-  # Progress is ambient: it lands in activity and raises no attention mark.
-  def handle_event("agent_progress", %{"message" => message} = params, socket) do
-    entry = %{
-      source: Map.get(params, "working_copy", "somewhere on this project"),
-      message: message
-    }
-
-    {:noreply, assign(socket, :activity, socket.assigns.activity ++ [entry])}
-  end
 
   # Kept so the composer survives patches it did not cause (panel toggles).
   def handle_event("draft", %{"message" => message}, socket) do
@@ -1512,6 +1502,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
 
+
   # The agent's draft so far, or nil once said, for the conversation on screen.
   def handle_info({:agent_draft, conversation_id, text}, socket) do
     case socket.assigns[:conversation] do
@@ -1850,7 +1841,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           dynamic_story={@dynamic_story}
           dynamic_epics={@dynamic_epics}
           offer={@offer}
-          activity={@activity}
           waiting={@waiting}
           copies={@copies}
           project_id={@project.id}
@@ -1962,7 +1952,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               dynamic_story={@dynamic_story}
               dynamic_epics={@dynamic_epics}
               offer={@offer}
-              activity={@activity}
               waiting={@waiting}
               copies={@copies}
               project_id={@project.id}

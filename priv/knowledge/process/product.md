@@ -12,7 +12,7 @@ read this.
 
 Messaging a teammate directly only works between a coding agent and its own
 QA agent, sharing a working copy. Product carries no such tool for reaching
-main — use `ask_user_question` instead.
+main — use `ask_question` instead.
 
 ## The shape
 

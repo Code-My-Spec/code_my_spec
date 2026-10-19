@@ -1353,6 +1353,23 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # Issue 37f35126: `Staffing.mint/2`'s own registration (`WorkingCopies.issue/3`,
+  # `report_root/2`) runs in the caller's process, after this channel already
+  # replied to the "create_working_copy_result" push that unblocked it -- so
+  # the harness's transport-level ack of that push never carried whether
+  # registration itself succeeded. This tells it explicitly, pushed and
+  # forgotten like `:offboarded` above: a harness that has since disconnected
+  # falls back to its own ack-timeout rollback, same as before this existed.
+  def handle_info({:working_copy_registered, working_copy_id, outcome}, socket) do
+    push(
+      socket,
+      "create_working_copy_registered",
+      encode_registration_outcome(working_copy_id, outcome)
+    )
+
+    {:noreply, socket}
+  end
+
   # Reconcile counts, logged here because the reply leaves before they exist.
   def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do
     Process.demonitor(ref, [:flush])
@@ -1387,6 +1404,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     do: {:noreply, resolve_pending(socket, task_ref, reason)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  defp encode_registration_outcome(working_copy_id, :ok),
+    do: %{"working_copy_id" => working_copy_id, "status" => "ok"}
+
+  defp encode_registration_outcome(working_copy_id, {:error, reason}),
+    do: %{"working_copy_id" => working_copy_id, "status" => "error", "reason" => inspect(reason)}
 
   # The agent reads this as test output, so the tool's own text is the body. An
   # error still answers in that shape, never as empty output that reads as a pass.
@@ -1994,7 +2017,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # install serves many checkouts, and devices are created once by
   # `CmsHarness.Device.announce/0`. An unknown id attaches nothing.
   defp resolve_device(scope, %{"device" => %{"id" => id}}) when is_binary(id) do
-    Devices.get_device(scope, id)
+    Devices.get_harness_device(scope, id)
   end
 
   defp resolve_device(_scope, _payload), do: nil

@@ -95,7 +95,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # the components above: the spine, and script exclusions. Registered on each
   # session's frame at `init/2`; see `LibraryTools`.
   @spine ~w(get_next_requirement start_task evaluate_task cancel_task sync_project reject_offer)
-  @unscriptable ~w(ask_user_question start_analysis check_answer list_user_questions
+  @unscriptable ~w(ask_question start_analysis check_answer list_user_questions
                    tap_out show_in_panel)
   @library_tools @spine ++ @unscriptable
 

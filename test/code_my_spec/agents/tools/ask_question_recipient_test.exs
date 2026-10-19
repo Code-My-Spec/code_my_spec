@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Agents.Tools.AskUserQuestionRecipientTest do
+defmodule CodeMySpec.Agents.Tools.AskQuestionRecipientTest do
   @moduledoc """
   The reply names whose inbox the question landed in.
 
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionRecipientTest do
   test "the reply names the user and the project", %{scope: scope} do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [%{question: "Which storage backend?", options: []}]},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )

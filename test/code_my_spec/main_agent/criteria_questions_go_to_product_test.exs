@@ -80,7 +80,7 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
 
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         params,
         Map.put(
           frame(ctx, ctx.coder).assigns,

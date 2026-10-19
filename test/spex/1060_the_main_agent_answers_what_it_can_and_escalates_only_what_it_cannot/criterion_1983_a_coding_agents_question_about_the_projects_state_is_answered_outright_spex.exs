@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1983Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "which working copy is my epic built on",
               questions: [

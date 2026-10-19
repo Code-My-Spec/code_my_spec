@@ -85,7 +85,7 @@ defmodule CodeMySpec.Agents.Main.OpenQuestion do
   @doc """
   The same struct, built from a permission request.
 
-  A `tap_out` or an `ask_user_question` is an agent waiting on a person exactly
+  A `tap_out` or an `ask_question` is an agent waiting on a person exactly
   as a question is: `Notifications.awaiting_answer?/1` is `pending_question? or
   pending_permission?`.
 

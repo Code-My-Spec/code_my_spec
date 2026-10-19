@@ -24,7 +24,7 @@ defmodule CodeMySpec.Transcripts.Player do
   @text_cap 700
   @result_cap 200
 
-  # AskUserQuestion renders in the user's browser, not the terminal, so a
+  # AskQuestion renders in the user's browser, not the terminal, so a
   # replay that prints only the tool name drops the most informative thing in
   # an interview session: the options, and the reasoning attached to each one.
   # Those descriptions are where you can see the agent has already read the
@@ -110,12 +110,12 @@ defmodule CodeMySpec.Transcripts.Player do
 
   # -- the interview question, expanded ------------------------------------
   defp render_block(
-         %{"type" => "tool_use", "name" => "AskUserQuestion", "input" => input},
+         %{"type" => "tool_use", "name" => "AskQuestion", "input" => input},
          _type,
          index,
          ctx
        ) do
-    puts([ANSI.cyan(), "⏺ AskUserQuestion", ANSI.reset()])
+    puts([ANSI.cyan(), "⏺ AskQuestion", ANSI.reset()])
 
     questions = input["questions"] || []
 

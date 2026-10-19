@@ -4,6 +4,91 @@ defmodule CodeMySpecWeb.OAuthControllerTest do
   import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
 
+  describe "POST /oauth/register" do
+    test "registers a harness without redirects and starts its device grant", %{conn: conn} do
+      grant_types = ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"]
+
+      registration =
+        conn
+        |> post(~p"/oauth/register", %{
+          "client_name" => "CodeMySpec Harness",
+          "redirect_uris" => [],
+          "grant_types" => grant_types
+        })
+        |> json_response(201)
+
+      assert is_binary(registration["client_id"])
+      assert registration["redirect_uris"] == []
+      assert registration["grant_types"] == grant_types
+      assert registration["response_types"] == []
+
+      grant =
+        conn
+        |> recycle()
+        |> post(~p"/oauth/device/code", %{
+          "client_id" => registration["client_id"],
+          "device_id" => Ecto.UUID.generate()
+        })
+        |> json_response(200)
+
+      assert is_binary(grant["device_code"])
+      assert is_binary(grant["user_code"])
+      assert grant["interval"] > 0
+    end
+
+    test "rejects authorization-code registration without redirects", %{conn: conn} do
+      for metadata <- [
+            %{"grant_types" => ["authorization_code"], "redirect_uris" => []},
+            %{"redirect_uris" => []},
+            %{"grant_types" => ["authorization_code", "refresh_token"]}
+          ] do
+        response =
+          conn
+          |> recycle()
+          |> post(~p"/oauth/register", Map.put(metadata, "client_name", "Browser Client"))
+          |> json_response(400)
+
+        assert response["error"] == "invalid_redirect_uri"
+      end
+    end
+  end
+
+  describe "browser authorization for clients without redirects" do
+    test "rejects authorization and denial even with a supplied redirect", %{conn: conn} do
+      registration =
+        conn
+        |> post(~p"/oauth/register", %{
+          "client_name" => "Device Client",
+          "grant_types" => ["urn:ietf:params:oauth:grant-type:device_code", "refresh_token"]
+        })
+        |> json_response(201)
+
+      user = user_fixture()
+
+      for method <- [:get, :post, :delete],
+          redirect_params <- [
+            %{},
+            %{"redirect_uri" => "https://example.com/callback"},
+            %{"redirect_uri" => "urn:ietf:wg:oauth:2.0:oob"}
+          ] do
+        params =
+          Map.merge(redirect_params, %{
+            "client_id" => registration["client_id"],
+            "response_type" => "code"
+          })
+
+        response =
+          conn
+          |> recycle()
+          |> log_in_user(user)
+          |> dispatch(@endpoint, method, ~p"/oauth/authorize", params)
+
+        assert json_response(response, 400)["error"] == "invalid_redirect_uri"
+        assert get_resp_header(response, "location") == []
+      end
+    end
+  end
+
   describe "GET /oauth/authorize" do
     test "redirects to login when user not authenticated", %{conn: conn} do
       params = %{

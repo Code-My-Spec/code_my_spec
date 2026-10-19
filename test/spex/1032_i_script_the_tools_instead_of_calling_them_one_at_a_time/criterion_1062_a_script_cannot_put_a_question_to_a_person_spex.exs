@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2986Spex do
   Criterion 2986 — A script cannot put a question to a person
 
   A tool that waits on a human means something different inside a loop than a
-  read does. `ask_user_question` is not bound into a script at all, so the call fails
+  read does. `ask_question` is not bound into a script at all, so the call fails
   and nobody is asked anything.
   """
 
@@ -24,10 +24,10 @@ defmodule CodeMySpecSpex.Story1032.Criterion2986Spex do
         {:ok, Map.put(context, :frame, %Frame{assigns: %{current_scope: context.scope}})}
       end
 
-      when_ "the script calls ask_user_question", context do
+      when_ "the script calls ask_question", context do
         {:reply, response, _frame} =
           RunScript.execute(
-            %{script: ~S[return ask_user_question({ question = "should I?" })]},
+            %{script: ~S[return ask_question({ question = "should I?" })]},
             context.frame
           )
 
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2986Spex do
       end
 
       then_ "and the failure names the call it could not make", context do
-        assert response_text(context.response) =~ "ask_user"
+        assert response_text(context.response) =~ "ask_question"
         {:ok, context}
       end
     end

@@ -10,6 +10,11 @@ defmodule CodeMySpec.Auth do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.ClientUsers.ClientUser, CodeMySpec.PublicUrl, CodeMySpec.Repo],
+    deps: [
+      CodeMySpec.ClientUsers.ClientUser,
+      CodeMySpec.Paths,
+      CodeMySpec.PublicUrl,
+      CodeMySpec.Repo
+    ],
     exports: :all
 end

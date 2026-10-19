@@ -55,6 +55,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     end
 
     report = fn _root, _agent, envelope -> send(test, {:reported, envelope}) end
+    report_up = fn _root, agent_id -> send(test, {:reported_up, agent_id}) end
 
     id = Ecto.UUID.generate()
 
@@ -66,7 +67,8 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
            socket: socket,
            working_copy: "/workspace/terminal",
            mailbox: mailbox,
-           report: report
+           report: report,
+           report_up: report_up
          ] ++ extra}
       )
 
@@ -152,6 +154,60 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     :counters.put(status, 1, 0)
     send(pid, :check)
     assert_receive {:reported, %{event: :turn_over, ref: nil}}
+  end
+
+  # Issue d12aa283: a re-attach's own Liveness notification is the only time
+  # the server is told this agent is up, and if that one notification is
+  # ever missed the cockpit shows it `starting` forever. These are the two
+  # points that now confirm it directly, bypassing Liveness entirely.
+  test "attaching reports the agent up, directly", %{socket: socket} do
+    listen(socket)
+    {id, _pid} = start_terminal(socket)
+
+    assert_receive {:reported_up, ^id}
+  end
+
+  test "a turn starting reports the agent up again, as a second confirmation", %{
+    socket: socket
+  } do
+    listen(socket)
+    now = fn -> session("busy") end
+    {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+
+    assert_receive {:reported_up, ^id}, 100
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+    assert_receive {:reported_up, ^id}
+  end
+
+  # Issue c67e1ab7: a process that survives the harness's own restart (found
+  # already running by `attach/2`, via `CmsHarness.Agents.whereis/1`) never
+  # reaches `init/1` on re-attach, and `settle_turn/2`'s no-op clause
+  # (`%{busy?: busy?} = state, busy?`) only reports on a genuine idle/busy
+  # transition -- an agent that was already busy and stays busy straight
+  # through the restart has neither, so nothing else would ever re-announce
+  # it. A fresh `{:session, ...}` arriving here -- a re-attach, every time --
+  # must report unconditionally, independent of busy? or any transition.
+  test "a re-attach while continuously busy, with no transition, still reports up", %{
+    socket: socket
+  } do
+    listen(socket)
+    now = fn -> session("busy") end
+    {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+
+    assert_receive {:reported_up, ^id}, 100
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+    assert_receive {:reported_up, ^id}
+
+    assert :ok = GenServer.call(pid, {:session, %{socket: socket}})
+
+    assert_receive {:reported_up, ^id},
+                    100
+
+    refute_receive {:reported, %{event: :turn_started}}, 50
   end
 
   test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do
@@ -241,5 +297,39 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
 
     assert %{"messagingSocketPath" => "/tmp/cc-socks/1.sock"} =
              Terminal.session_record("cc-trailing", dir)
+  end
+
+  # Issue d12aa283: a resumed session's old pid can leave its file behind,
+  # freezing "busy" forever if a stale duplicate ever won the lookup -- the
+  # turn it belongs to would never be seen to end.
+  test "a stale duplicate registry file for the same session does not win over the live one",
+       %{dir: dir} do
+    stale_path = Path.join(dir, "1.json")
+    live_path = Path.join(dir, "4242.json")
+
+    File.write!(
+      stale_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "busy", "pid" => 1})
+    )
+
+    File.touch!(stale_path, {{2020, 1, 1}, {0, 0, 0}})
+
+    File.write!(
+      live_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "busy", "pid" => 4242})
+    )
+
+    File.touch!(live_path, {{2024, 1, 1}, {0, 0, 1}})
+
+    assert %{"pid" => 4242, "status" => "busy"} = Terminal.session_record("cc-dup", dir)
+
+    File.write!(
+      live_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "idle", "pid" => 4242})
+    )
+
+    File.touch!(live_path, {{2024, 1, 1}, {0, 0, 2}})
+
+    assert %{"pid" => 4242, "status" => "idle"} = Terminal.session_record("cc-dup", dir)
   end
 end

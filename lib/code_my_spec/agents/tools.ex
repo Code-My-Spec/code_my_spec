@@ -32,7 +32,7 @@ defmodule CodeMySpec.Agents.Tools do
   def all do
     [
       CodeMySpec.Agents.Tools.AnswerNotification,
-      CodeMySpec.Agents.Tools.AskUserQuestion,
+      CodeMySpec.Agents.Tools.AskQuestion,
       CodeMySpec.Agents.Tools.Cadence,
       CodeMySpec.Agents.Tools.CancelTask,
       CodeMySpec.Agents.Tools.CheckAnswer,

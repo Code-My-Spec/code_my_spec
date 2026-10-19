@@ -1,6 +1,6 @@
 defmodule CodeMySpecWeb.QuestionLive.Show do
   @moduledoc """
-  Answer a remote `AskUserQuestion` from Claude Code on your phone. Renders each
+  Answer a remote `AskQuestion` from Claude Code on your phone. Renders each
   question with its options (single- or multi-select) plus an "Other" free-text
   choice, and posts the answers back — which the waiting hook returns to the
   model. Mirrors `PermissionLive.Show`.

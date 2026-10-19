@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3252Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "a decision about the product",
               questions: [

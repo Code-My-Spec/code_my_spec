@@ -1,15 +1,12 @@
 defmodule CodeMySpecDesktop.FirstBoot do
   @moduledoc """
   Every desktop boot, after the Repo and before anything reads it (bb8bc042
-  step 6): migrate, ensure the desktop user and an account it owns, and hand
-  the in-tree harness a token for that user. Idempotent; returns `:ignore`
-  so it occupies no process.
+  step 6): migrate and ensure the desktop user and an account it owns.
+  The harness obtains its own credential through device authorization.
+  Idempotent; returns `:ignore` so it occupies no process.
   """
 
-  import Ecto.Query
-
   alias CodeMySpec.Accounts
-  alias CodeMySpec.Oauth.AccessToken
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.UserPreferences.DesktopUser
@@ -23,7 +20,6 @@ defmodule CodeMySpecDesktop.FirstBoot do
     CodeMySpec.Release.migrate()
     user = ensure_user()
     ensure_account(user)
-    Application.put_env(:code_my_spec, :harness_token, ensure_token(user).token)
     :ignore
   end
 
@@ -59,24 +55,5 @@ defmodule CodeMySpecDesktop.FirstBoot do
 
     if Accounts.list_accounts(scope) == [],
       do: {:ok, _} = Accounts.create_account(scope, %{name: "Local"})
-  end
-
-  # Reused, not minted per boot: one non-expiring, app-less token per desktop
-  # user. The harness holds it for the life of the process, so an expiring
-  # one would drop the socket mid-session.
-  defp ensure_token(user) do
-    Repo.one(
-      from t in AccessToken,
-        where: t.resource_owner_id == ^user.id and is_nil(t.application_id),
-        where: is_nil(t.expires_in) and is_nil(t.revoked_at),
-        limit: 1
-    ) || mint_token(user)
-  end
-
-  defp mint_token(user) do
-    {:ok, token} =
-      ExOauth2Provider.AccessTokens.create_token(user, %{expires_in: nil}, otp_app: :code_my_spec)
-
-    token
   end
 end
