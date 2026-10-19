@@ -34,6 +34,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Epics
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.ScreenState
@@ -47,6 +48,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
+  alias CodeMySpecWeb.TaskComponents
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy, as: CopyComponents
   alias CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph, as: StoryGraphComponents
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
@@ -155,6 +158,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:current_scope, scope)
     |> assign(:assigned_modal, nil)
+    |> assign(:copy_modal_id, nil)
+    |> assign(:task_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -451,22 +456,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Every pie on the page: the header's, and one per agent row holding a story.
+  # Every pie on the page: the header's, and one per copy holding a story.
   defp story_progress_ids(assigns) do
     header = if Enum.any?(assigns.assigned, &(&1.kind == :story)), do: ["story-progress-header"]
 
     rows =
-      for copy <- assigns.copies,
-          a <- copy.agents,
-          Enum.any?(a.assigned, &(&1.kind == :story)),
-          do: "story-progress-#{a.agent.id}"
+      for %{assignment: %{kind: :story}} = copy <- assigns.copies,
+          do: "story-progress-copy-#{copy.row.harness.id}"
 
     List.wrap(header) ++ rows
   end
 
-  defp assigned_story(_scope, %Agent{story_id: nil}), do: nil
+  defp assigned_story(scope, %Agent{story_id: id}), do: story_assignment(scope, id)
 
-  defp assigned_story(scope, %Agent{story_id: id}) do
+  defp story_assignment(_scope, nil), do: nil
+
+  defp story_assignment(scope, id) do
     case Stories.get_story(scope, id) do
       nil ->
         nil
@@ -738,6 +743,35 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_assigned", _params, socket),
     do: {:noreply, assign(socket, :assigned_modal, nil)}
+
+  def handle_event("show_copy", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, id)}
+
+  def handle_event("close_copy", _params, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, nil)}
+
+  # The agent's active tasks as it was handed them, read off the LiveView
+  # process: the directive is a graph read at the agent's copy.
+  def handle_event("show_task", %{"agent-id" => agent_id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} ->
+        tasks = Enum.filter(agent.tasks || [], &(&1.status == :active))
+        vantage = %{scope | active_working_copy_id: agent.working_copy_id}
+
+        {:noreply,
+         socket
+         |> assign(:task_modal, %{title: task_title(agent, tasks), directive: :loading})
+         |> start_async(:task_modal, fn -> task_directive(vantage, tasks) end)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_task", _params, socket),
+    do: {:noreply, assign(socket, :task_modal, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -1026,7 +1060,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> remember()}
   end
 
-
   # Kept so the composer survives patches it did not cause (panel toggles).
   def handle_event("draft", %{"message" => message}, socket) do
     {:noreply, assign(socket, :draft, message)}
@@ -1129,7 +1162,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           chat: chat,
           liveness: Liveness.agent(agent, now),
           question?: not is_nil(session) and MapSet.member?(pending_sessions, session),
-          assigned: assignments(scope, agent),
           task_label: task_label(scope, agent.id)
         }
       end)
@@ -1138,8 +1170,28 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     %{
       row: row,
       agents: agents,
+      assignment: copy_assignment(scope, row.harness.id),
       question?: Enum.any?(agents, & &1.question?),
       empty_seats: empty_seats(row)
+    }
+  end
+
+  # Work is assigned to the copy and blown through to its agents: its issue
+  # bag, which dispatch takes first, or else its team's story.
+  defp copy_assignment(scope, copy_id) do
+    case Agents.assigned_issues(scope, copy_id) do
+      [] -> story_assignment(scope, WorkingCopies.team_story_id(copy_id))
+      issues -> issue_bag(issues)
+    end
+  end
+
+  defp issue_bag(issues) do
+    nodes = Requirements.issue_bag_graph(issues).nodes
+
+    %{
+      kind: :issues,
+      issues: issues,
+      progress: {Enum.count(nodes, & &1.satisfied), length(nodes)}
     }
   end
 
@@ -1200,6 +1252,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp empty_seats(row), do: Agents.empty_seats(row.agents, Agents.home_roles(row.harness))
 
   # One task names itself; more name only the count.
+  defp task_title(agent, [task]), do: "#{agent.role} · #{task.requirement_name}"
+  defp task_title(agent, tasks), do: "#{agent.role} · #{length(tasks)} tasks"
+
+  defp task_directive(scope, tasks) do
+    case tasks |> Enum.map(&Requirements.task_directive(scope, &1)) |> Enum.reject(&is_nil/1) do
+      [] -> nil
+      directives -> Enum.join(directives, "\n\n---\n\n")
+    end
+  end
+
   defp task_label(scope, agent_id) do
     with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
          [_ | _] = tasks <- Enum.filter(agent.tasks || [], &(&1.status == :active)) do
@@ -1478,6 +1540,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
 
+  def handle_async(:task_modal, {:ok, directive}, %{assigns: %{task_modal: modal}} = socket)
+      when is_map(modal),
+      do: {:noreply, assign(socket, :task_modal, %{modal | directive: directive})}
+
+  def handle_async(:task_modal, _result, %{assigns: %{task_modal: modal}} = socket)
+      when is_map(modal),
+      do: {:noreply, assign(socket, :task_modal, %{modal | directive: nil})}
+
+  def handle_async(:task_modal, _result, socket), do: {:noreply, socket}
+
   @impl true
   def handle_info({:analysis, payload}, socket) do
     {:noreply, apply_analysis_event(socket, payload)}
@@ -1501,7 +1573,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> assign(:undelivered, undelivered_for(socket.assigns.conversation))
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
-
 
   # The agent's draft so far, or nil once said, for the conversation on screen.
   def handle_info({:agent_draft, conversation_id, text}, socket) do
@@ -1964,6 +2035,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         </LivePane.group>
       </div>
       <.assigned_modal :if={assigns[:assigned_modal]} item={@assigned_modal} />
+      <TaskComponents.modal
+        :if={@task_modal}
+        title={@task_modal.title}
+        directive={@task_modal.directive}
+        project_id={@project.id}
+        on_close="close_task"
+      />
+      <CopyComponents.modal
+        :for={copy <- @copies}
+        :if={copy.row.harness.id == @copy_modal_id}
+        row={copy.row}
+        project_id={@project.id}
+        on_close="close_copy"
+      />
       <.graph_modal :if={assigns[:graph_modal]} modal={@graph_modal} project_id={@project.id} />
     </Layouts.app>
     """

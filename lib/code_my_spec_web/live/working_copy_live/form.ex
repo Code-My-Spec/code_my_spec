@@ -41,7 +41,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
     {:noreply,
      socket
      |> put_flash(:error, "That working copy is not on this project.")
-     |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/working-copies")}
+     |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/agent-conversation")}
   end
 
   defp assign_harness(harness, socket) do
@@ -76,7 +76,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Form do
     {:noreply,
      socket
      |> put_flash(:error, "That working copy is not on this project.")
-     |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/working-copies")}
+     |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/agent-conversation")}
   end
 
   defp saved({:error, _changeset}, socket) do

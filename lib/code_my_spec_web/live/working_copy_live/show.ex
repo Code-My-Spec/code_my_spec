@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   alias CodeMySpec.Staffing
   alias CodeMySpec.Stories
   alias CodeMySpecWeb.AgentLoopBadge
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -166,7 +167,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
   defp assign_row(nil, socket, _now) do
     socket
     |> put_flash(:error, "That working copy is not on this project.")
-    |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/working-copies")
+    |> push_navigate(to: ~p"/app/projects/#{socket.assigns.project.id}/agent-conversation")
   end
 
   defp assign_row(row, socket, now) do
@@ -244,6 +245,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
          socket
          |> assign(:armed_agent_id, nil)
          |> put_flash(:error, "That agent could not be fired. Try again.")}
+    end
+  end
+
+  # Removes this copy's row and what was derived from it (`Copy.offboard/1`),
+  # then leaves: the page it was on no longer exists. Found through the
+  # project's own rows because the id arrives from the client.
+  def handle_event("offboard", %{"id" => id}, socket) do
+    scope = socket.assigns.current_scope
+    project = socket.assigns.project
+
+    with row when not is_nil(row) <- Rows.get(scope, project, id, DateTime.utc_now()),
+         {:ok, counts} <- Staffing.offboard(scope, row.harness) do
+      {:noreply,
+       socket
+       |> put_flash(:info, Copy.offboarded(row, counts))
+       |> push_navigate(to: ~p"/app/projects/#{project.id}/agent-conversation")}
+    else
+      _ -> {:noreply, put_flash(socket, :error, "That working copy is not on this project.")}
     end
   end
 
@@ -384,10 +403,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           <:subtitle>{@row.harness.root}</:subtitle>
           <:actions>
             <.button
-              navigate={~p"/app/projects/#{@project.id}/working-copies"}
+              navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
               class="btn btn-sm btn-ghost"
             >
-              <.icon name="hero-arrow-left" /> All copies
+              <.icon name="hero-arrow-left" /> Cockpit
             </.button>
             <.button
               navigate={~p"/app/projects/#{@project.id}/working-copies/#{@row.harness.id}/edit"}
@@ -414,8 +433,11 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
             >
               <.icon name="hero-star-solid" class="size-3" /> Main checkout
             </span>
+            <Copy.offboard row={@row} />
           </:actions>
         </.header>
+
+        <Copy.facts row={@row} />
 
         <section class="my-6 space-y-4" data-test="working-copy-queue">
           <h2 class="text-lg font-semibold">Queued work</h2>
@@ -472,13 +494,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
           <:item title="Root">{@row.harness.root}</:item>
           <:item title="Working copy last seen">
             {Liveness.since(@row.harness.last_seen_at, @now) || "not yet"}
-          </:item>
-          <:item title="Liveness">
-            <span data-test="liveness">
-              {@row.liveness.label}
-              <span :if={@row.liveness.since} data-test="liveness-since">{@row.liveness.since}</span>
-            </span>
-            <div data-test="liveness-basis" class="text-xs opacity-60">{@row.liveness.basis}</div>
           </:item>
           <:item title="Browser">
             <span data-test="browser-status">{browser_label(@row.harness)}</span>
