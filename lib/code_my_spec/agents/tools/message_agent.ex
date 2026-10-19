@@ -47,7 +47,14 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
             description:
               "What to tell the agent — an instruction, a question, or the next piece of work"
           ]}},
-      agent_id: {:required, {:meta, :string, [description: "Id of the agent to send this to"]}},
+      agent_id:
+        {:required,
+         {:meta, :string,
+          [
+            description:
+              "Id of the agent to send this to, or `main` for the project's current main " <>
+                "agent -- reachable from any working copy, unlike any other role's agent"
+          ]}},
       send_now:
         {:meta, :boolean,
          [
@@ -60,24 +67,38 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   @impl true
   def call(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
-         :ok <- reachable(scope, context[:agent_id], agent_id(params)),
+         {:ok, target_id} <- resolve_target(scope, agent_id(params)),
+         :ok <- reachable(scope, context[:agent_id], target_id),
          {:ok, reply, sent} <-
-           Agents.dispatch_message(scope, agent_id(params), message(params), :operator_message,
+           Agents.dispatch_message(scope, target_id, message(params), :operator_message,
              send_now: MapAccess.get(params, :send_now) == true
            ) do
       response =
-        agent_id(params)
+        target_id
         |> AgentsMapper.replied(reply)
         |> withdrawable(reply, sent)
-        |> with_pending_question(scope, context[:agent_id], agent_id(params))
-        |> not_interruptible(scope, agent_id(params), MapAccess.get(params, :send_now) == true)
-        |> held_for_stop(scope, agent_id(params))
+        |> with_pending_question(scope, context[:agent_id], target_id)
+        |> not_interruptible(scope, target_id, MapAccess.get(params, :send_now) == true)
+        |> held_for_stop(scope, target_id)
 
       response
     else
       {:error, reason} -> AgentsMapper.error(reason, nil)
     end
   end
+
+  # "main" addresses the project's current main agent by role rather than by
+  # id, since its id changes across restarts and nothing in an agent's own
+  # context names it (issue 0ae29c2a) -- the caller that filed this one had
+  # no other way to find it than guessing.
+  defp resolve_target(scope, "main") do
+    case Agents.main_agent(scope) do
+      %{id: id} -> {:ok, id}
+      nil -> {:error, "no main agent is running on this project right now"}
+    end
+  end
+
+  defp resolve_target(_scope, agent_id), do: {:ok, agent_id}
 
   # Story 1052: coding and QA message a teammate on their own copy; main,
   # product and other copies are reached through a question instead.
@@ -97,11 +118,15 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
        when role in [:coding, :qa],
        do: :ok
 
+  # John's decision, issue 0ae29c2a: message_agent reaches main from any
+  # copy. The copy restriction stays for every other role.
+  defp teammate(_caller, %{role: :main}), do: :ok
+
   defp teammate(_caller, _target),
     do:
       {:error,
-       "You can message only a teammate on your own working copy. Ask main or product " <>
-         "with ask_user_question (to: \"main\" or \"product\") instead."}
+       "You can message only a teammate on your own working copy, or main from any copy. " <>
+         "Ask product with ask_user_question (to: \"product\") instead."}
 
   # c99aad08: main answered a teammate's question by messaging it, so the
   # question stayed pending and the teammate rightly refused an answer nothing

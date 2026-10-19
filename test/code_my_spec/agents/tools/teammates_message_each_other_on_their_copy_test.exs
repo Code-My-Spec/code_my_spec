@@ -5,6 +5,12 @@ defmodule CodeMySpec.Agents.Tools.TeammatesMessageEachOtherOnTheirCopyTest do
 
   Before this, coding could not message its QA at all, so main carried every
   "the fix is at commit X" between them.
+
+  Issue 0ae29c2a (2026-10-19): main is the one exception to "anyone else" --
+  an agent told to report to main had no id for it (main's id changes across
+  restarts) and no route to it off its own copy. John's decision: message_agent
+  reaches main from any copy, by id or by the role name "main". The copy
+  restriction stays for product and for every other copy's coding/QA.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -48,17 +54,16 @@ defmodule CodeMySpec.Agents.Tools.TeammatesMessageEachOtherOnTheirCopyTest do
     agent
   end
 
-  defp send_as(scope, from, to) do
+  defp send_as(scope, from, to), do: send_to_id(scope, from, to.id)
+
+  defp send_to_id(scope, from, to_id) do
     frame = %Frame{assigns: %{current_scope: scope, agent_id: from.id}}
 
-    reply =
-      ToolLibrary.run(
-        "message_agent",
-        %{agent_id: to.id, message: "fix at abc123"},
-        Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-      )
-
-    reply
+    ToolLibrary.run(
+      "message_agent",
+      %{agent_id: to_id, message: "fix at abc123"},
+      Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+    )
   end
 
   test "coding and QA carry message_agent" do
@@ -81,11 +86,31 @@ defmodule CodeMySpec.Agents.Tools.TeammatesMessageEachOtherOnTheirCopyTest do
     assert refused?(send_as(ctx.scope, coding, other_qa))
   end
 
-  test "a coder reaches main through a question, not a message", ctx do
+  test "a coder on main's own copy can message main", ctx do
     coding = agent(ctx.scope, :coding, ctx.here)
     main = agent(ctx.scope, :main, ctx.here)
 
-    assert refused?(send_as(ctx.scope, coding, main))
+    assert match?({:ok, _}, send_as(ctx.scope, coding, main)), "main is reachable, same copy or not"
+  end
+
+  test "a coder on a different copy can still message main", ctx do
+    coding = agent(ctx.scope, :coding, ctx.here)
+    main = agent(ctx.scope, :main, ctx.there)
+
+    reply = send_as(ctx.scope, coding, main)
+
+    assert match?({:ok, _}, reply), inspect(reply)
+  end
+
+  test "a coder can address main by role instead of its id", ctx do
+    coding = agent(ctx.scope, :coding, ctx.here)
+    _main = agent(ctx.scope, :main, ctx.there)
+
+    {:ok, _copy} = CodeMySpec.WorkingCopies.designate_main(ctx.scope, ctx.there)
+
+    reply = send_to_id(ctx.scope, coding, "main")
+
+    assert match?({:ok, _}, reply), inspect(reply)
   end
 
   defp refused?({:error, text}), do: text =~ "only a teammate on your own"
