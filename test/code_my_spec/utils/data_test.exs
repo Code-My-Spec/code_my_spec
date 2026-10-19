@@ -105,6 +105,43 @@ defmodule CodeMySpec.Utils.DataTest do
       assert Repo.get(Story, story_b.id)
     end
 
+    test "import does not reuse previously allocated sequence IDs" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user, %{name: "Sequence allocation"})
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, %{name: "Imported project"})
+      story_fixture(%{scope | active_project_id: project.id, active_project: project})
+
+      path = export_path()
+      on_exit(fn -> File.rm(path) end)
+      Data.export_project(project.id, path)
+
+      # Sequence allocations survive rollback and are shared across transactions.
+      # These IDs need not be visible in MAX(id), just as another sandbox's
+      # uncommitted rows are invisible to the importing transaction.
+      reserved =
+        for table <- ~w(versions stories) do
+          %{rows: rows} =
+            Repo.query!(
+              "SELECT nextval(pg_get_serial_sequence($1, 'id')) FROM generate_series(1, 10)",
+              [table]
+            )
+
+          {table, rows |> List.last() |> hd()}
+        end
+
+      # This disposable fixture's criteria and graph invalidations are intentionally replaced.
+      assert {:ok, _} = Data.import_project(path, force: true)
+
+      for {table, last_reserved} <- reserved do
+        %{rows: [[next_id]]} =
+          Repo.query!("SELECT nextval(pg_get_serial_sequence($1, 'id'))", [table])
+
+        assert next_id > last_reserved,
+               "import rewound #{table}: allocated #{next_id} after #{last_reserved}"
+      end
+    end
+
     test "re-importing the same export is idempotent" do
       user = user_fixture()
 

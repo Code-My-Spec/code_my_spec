@@ -462,20 +462,27 @@ defmodule CodeMySpec.Utils.Data do
     end)
   end
 
-  # Reset all table sequences after manual ID insertion
+  # Advance integer ID sequences after inserting explicit IDs.
   defp reset_sequences do
-    # Only tables with an actual integer/serial :id. accounts and sessions
-    # both moved to `@primary_key {:id, :binary_id, ...}` — components and
-    # projects always were — so pg_get_serial_sequence has nothing to reset
-    # for either, and MAX(id) on a uuid column fails outright rather than
-    # returning something merely wrong.
-    tables = ~w(versions stories)
-
-    Enum.each(tables, fn table ->
+    # MAX(id) cannot see other transactions' uncommitted rows, but sequence
+    # allocations are shared and survive rollback. Even setval with a maximum
+    # of last_value and MAX(id) can overwrite a concurrent allocation. Only
+    # nextval advances atomically without reusing an already allocated ID.
+    Enum.each(~w(versions stories), fn table ->
       Repo.query!("""
-        SELECT setval(pg_get_serial_sequence('#{table}', 'id'),
-                      COALESCE((SELECT MAX(id) FROM #{table}), 1),
-                      true)
+      DO $$
+      DECLARE
+        sequence_name regclass := pg_get_serial_sequence('#{table}', 'id');
+        highest_id bigint;
+      BEGIN
+        SELECT MAX(id) INTO highest_id FROM #{table};
+        IF highest_id IS NOT NULL THEN
+          WHILE nextval(sequence_name) < highest_id LOOP
+            NULL;
+          END LOOP;
+        END IF;
+      END
+      $$;
       """)
     end)
   end
