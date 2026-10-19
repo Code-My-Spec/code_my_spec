@@ -523,6 +523,46 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # same as `insert_all_problems/2` writes to; never "every working copy".
   # `default_id/1` is pure, so this creates no row.
   # See knowledge/analysis, "Problems".
+  @doc """
+  Problem counts across every working copy on the project, by source:
+  `[{working_copy_id, source, count}]`. Ignores the scope's own copy — it is
+  the comparison between copies.
+  """
+  @spec counts_by_working_copy(Scope.t()) :: [{String.t() | nil, String.t(), non_neg_integer()}]
+  def counts_by_working_copy(%Scope{active_project_id: project_id}) do
+    Problem
+    |> where([p], p.project_id == ^project_id)
+    |> group_by([p], [p.working_copy_id, p.source])
+    |> select([p], {p.working_copy_id, p.source, count(p.id)})
+    |> Repo.all()
+  end
+
+  @doc """
+  The files with the most problems at the scope's copy, by source:
+  `[{file_path, source, count}]` for the `limit` files with the highest totals.
+  Problems with no file are left out.
+  """
+  @spec top_files(Scope.t(), pos_integer()) :: [{String.t(), String.t(), non_neg_integer()}]
+  def top_files(%Scope{active_project_id: project_id} = scope, limit) do
+    base =
+      Problem
+      |> where([p], p.project_id == ^project_id and not is_nil(p.file_path))
+      |> scope_to_harness(scope)
+
+    files =
+      base
+      |> group_by([p], p.file_path)
+      |> order_by([p], desc: count(p.id), asc: p.file_path)
+      |> limit(^limit)
+      |> select([p], p.file_path)
+
+    base
+    |> where([p], p.file_path in subquery(files))
+    |> group_by([p], [p.file_path, p.source])
+    |> select([p], {p.file_path, p.source, count(p.id)})
+    |> Repo.all()
+  end
+
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil, active_project_id: project_id})
        when is_binary(project_id),
        do: where(query, [p], p.working_copy_id == ^WorkingCopies.default_id(project_id))

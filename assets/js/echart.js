@@ -31,7 +31,15 @@ export const EChart = {
     loadEcharts().then((echarts) => {
       if (this.disposed) return
       this.chart = echarts.init(this.el)
-      this.chart.setOption(toOption(this.readData()))
+      const data = this.readData()
+      this.chart.setOption(toOption(data))
+      // A bar that names something can pick it: the server is told which.
+      if (data.pick_event) {
+        this.chart.on("click", (params) => {
+          const id = (data.ids || [])[params.dataIndex]
+          if (id) this.pushEvent(data.pick_event, { id })
+        })
+      }
       this.onResize = () => this.chart.resize()
       window.addEventListener("resize", this.onResize)
     })

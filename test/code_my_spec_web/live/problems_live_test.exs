@@ -108,4 +108,69 @@ defmodule CodeMySpecWeb.ProblemsLiveTest do
              "capping every message would put an ellipsis on the 360 that already fit"
     end
   end
+
+  describe "the charts" do
+    defp record_at(scope, source, file_path, n) do
+      {:ok, _} =
+        Problems.create_problems(
+          scope,
+          for line <- 1..n do
+            %{
+              severity: :error,
+              source: source,
+              source_type: :static_analysis,
+              file_path: file_path,
+              line: line,
+              message: "#{source} #{line}",
+              category: "c"
+            }
+          end
+        )
+    end
+
+    defp option(view, selector) do
+      view
+      |> element(selector <> " [phx-hook='EChart']")
+      |> render()
+      |> then(&Regex.run(~r/data-option="([^"]*)"/, &1, capture: :all_but_first))
+      |> hd()
+      |> String.replace("&quot;", ~s("))
+      |> Jason.decode!()
+    end
+
+    test "stack each copy's problems by source, and the picked copy's files", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {:ok, other} =
+        WorkingCopies.issue(scope, nil,
+          label: "the harness at /repo/other",
+          device: device_fixture(scope)
+        )
+
+      other_scope = %{scope | active_working_copy_id: other.id}
+
+      record_at(scope, "credo", "lib/a.ex", 3)
+      record_at(scope, "exunit", "test/a_test.exs", 1)
+      record_at(other_scope, "credo", "lib/b.ex", 1)
+
+      {:ok, view, _html} =
+        live(conn, "#{path(project)}?harness=#{scope.active_working_copy_id}")
+
+      by_copy = option(view, "[data-test='problems-by-copy']")
+      assert by_copy["categories"] |> hd() =~ "main"
+      assert by_copy["ids"] == [scope.active_working_copy_id, other.id]
+      assert Enum.find(by_copy["stacks"], &(&1["name"] == "credo"))["data"] == [3, 1]
+      assert Enum.find(by_copy["stacks"], &(&1["name"] == "exunit"))["data"] == [1, 0]
+
+      by_file = option(view, "[data-test='problems-by-file']")
+      assert by_file["categories"] == ["lib/a.ex", "test/a_test.exs"]
+
+      render_hook(view, "pick_copy", %{"id" => other.id})
+      assert_patch(view, "#{path(project)}?harness=#{other.id}")
+
+      assert option(view, "[data-test='problems-by-file']")["categories"] == ["lib/b.ex"]
+    end
+  end
 end

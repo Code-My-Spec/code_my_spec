@@ -14,8 +14,10 @@ defmodule CodeMySpecWeb.ProblemsLive do
   alias CodeMySpec.WorkingCopies
   import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.Problems
+  alias CodeMySpecWeb.ProblemCharts
 
   @per_page 25
+  @top_files 10
   @sources ~w(compiler credo exunit spex qa_validation)
 
   @impl true
@@ -51,10 +53,15 @@ defmodule CodeMySpecWeb.ProblemsLive do
         filter: filter
       )
 
+    harnesses = WorkingCopies.list_harnesses(scope)
+
     {:noreply,
      assign(socket,
        scope: scope,
-       harnesses: WorkingCopies.list_harnesses(scope),
+       harnesses: harnesses,
+       copy_counts: Problems.counts_by_working_copy(scope),
+       file_counts: Problems.top_files(scope, @top_files),
+       copy_name: copy_name(harnesses, scope.active_working_copy_id),
        page: page,
        filter: filter,
        result: result,
@@ -63,7 +70,16 @@ defmodule CodeMySpecWeb.ProblemsLive do
      )}
   end
 
+  # A bar in the per-copy chart picks that copy, as the picker does.
   @impl true
+  def handle_event("pick_copy", %{"id" => id}, socket),
+    do:
+      {:noreply,
+       push_patch(socket,
+         to:
+           problems_path(socket.assigns.slug, page: 1, filter: socket.assigns.filter, harness: id)
+       )}
+
   def handle_event("clear", _params, %{assigns: %{scope: scope, filter: filter}} = socket) do
     {:ok, count} =
       case filter do
@@ -82,7 +98,12 @@ defmodule CodeMySpecWeb.ProblemsLive do
 
     {:noreply,
      socket
-     |> assign(page: 1, result: result)
+     |> assign(
+       page: 1,
+       result: result,
+       copy_counts: Problems.counts_by_working_copy(scope),
+       file_counts: Problems.top_files(scope, @top_files)
+     )
      |> put_flash(:info, "Cleared #{count} problem(s) from #{label}.")}
   end
 
@@ -100,6 +121,16 @@ defmodule CodeMySpecWeb.ProblemsLive do
           Every problem the validation pipeline persisted, ordered by severity.
           Filter by source to see what each analyzer flagged.
         </p>
+      </div>
+
+      <div class="mb-6 grid gap-4 lg:grid-cols-2" data-test="problem-charts">
+        <ProblemCharts.by_copy
+          counts={@copy_counts}
+          harnesses={@harnesses}
+          selected_id={@scope.active_working_copy_id}
+          pick_event="pick_copy"
+        />
+        <ProblemCharts.by_file counts={@file_counts} copy_name={@copy_name} />
       </div>
 
       <.harness_picker
@@ -269,6 +300,13 @@ defmodule CodeMySpecWeb.ProblemsLive do
   end
 
   defp sources, do: @sources
+
+  defp copy_name(harnesses, id) do
+    case Enum.find(harnesses, &(&1.id == id)) do
+      nil -> "this copy"
+      harness -> WorkingCopies.display_name(harness)
+    end
+  end
 
   defp parse_page(nil), do: 1
 

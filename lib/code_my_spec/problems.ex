@@ -22,6 +22,8 @@ defmodule CodeMySpec.Problems do
   # Repository functions
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
+  defdelegate counts_by_working_copy(scope), to: ProblemRepository
+  defdelegate top_files(scope, limit), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
 
   # Writes. Nothing in the requirement graph reads findings (John,
