@@ -111,7 +111,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
 
     case Enum.find(
-           Work.actionable(scope, role, owner),
+           Work.actionable(scope, role, owner, claim: true),
            &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == id)
          ) do
       nil -> {:error, "Requirement #{name} not found for issue #{id}"}

@@ -1180,9 +1180,11 @@ defmodule CodeMySpec.Agents.Work do
 
   defp at_copy(scope, _owner), do: scope
 
+  # `claim: true` is an agent naming the work itself: its own decline keeps
+  # the work off its menu, but does not refuse the claim.
   defp withholding(scope, %Agent{} = agent, opts) do
     owners = Keyword.get(opts, :owners) || AgentsRepository.list_agents(scope)
-    standing = Offers.standing(agent.id)
+    standing = if Keyword.get(opts, :claim), do: %{}, else: Offers.standing(agent.id)
     &withheld?(owners, agent, &1, standing)
   end
 
