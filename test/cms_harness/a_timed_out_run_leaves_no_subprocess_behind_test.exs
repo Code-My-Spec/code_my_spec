@@ -12,6 +12,42 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Sync
 
+  test "timeout delivers partial output after confirming descendant termination" do
+    root = "/tmp/timeout-output-#{Ecto.UUID.generate()}"
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    {:ok, capture} = StringIO.open("")
+    {task, child_pids} = spawn_hanging_task(capture)
+    {:ok, _} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+
+    state = %{
+      project: %{root: root},
+      running: %{
+        run_id: 1,
+        source: "exunit",
+        task: task,
+        args: [],
+        tied_run_ids: [],
+        output_capture: capture
+      },
+      queue: [],
+      pending_cleanups: [],
+      timer: nil
+    }
+
+    assert {:noreply, pending} = AnalysisServer.handle_info({:timeout, 1}, state)
+    [%{cleanup: %{ref: ref}}] = pending.pending_cleanups
+    assert_receive {^ref, result}, 6_000
+    assert result == :ok
+    assert {:noreply, finished} = AnalysisServer.handle_info({ref, result}, pending)
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["status"] == "error"
+    assert payload["error"] =~ "Subprocess termination confirmed"
+    refute_alive(child_pids)
+    assert finished.pending_cleanups == []
+    assert payload["output"] == "stdout-before-timeout\nstderr-without-newline"
+    refute Process.alive?(capture)
+  end
+
   test "the OS child a timed-out run shelled out to is confirmed dead once cleanup reports" do
     root = "/tmp/a-timed-out-run-test-#{System.unique_integer([:positive])}"
     {task, child_pid} = spawn_hanging_task()
@@ -285,7 +321,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
              AnalysisServer.handle_info({:cleanup_overdue, 1, self()}, state)
   end
 
-  defp spawn_hanging_task do
+  defp spawn_hanging_task(capture \\ nil) do
     pid_file =
       Path.join(System.tmp_dir!(), "analysis_kill_test_#{Ecto.UUID.generate()}")
 
@@ -297,38 +333,45 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     task =
       Task.Supervisor.async_nolink(supervisor, fn ->
-        System.cmd(System.find_executable("python3"), [
-          "-c",
-          """
-          import os, signal, sys, time
-          signal.signal(signal.SIGTERM, signal.SIG_IGN)
-          child = os.fork()
-          if child == 0:
-              time.sleep(30)
-              os._exit(0)
-          read_fd, write_fd = os.pipe()
-          middle = os.fork()
-          if middle == 0:
-              os.close(read_fd)
-              grandchild = os.fork()
-              if grandchild == 0:
-                  os.close(write_fd)
-                  time.sleep(30)
-                  os._exit(0)
-              os.write(write_fd, str(grandchild).encode())
-              os.close(write_fd)
-              os._exit(0)
-          os.close(write_fd)
-          grandchild = int(os.read(read_fd, 64))
-          os.close(read_fd)
-          os.waitpid(middle, 0)
-          with open(sys.argv[1] + ".pending", "w") as output:
-              output.write(str(child) + " " + str(grandchild))
-          os.replace(sys.argv[1] + ".pending", sys.argv[1])
-          time.sleep(30)
-          """,
-          pid_file
-        ])
+        env = CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+
+        CodeMySpec.Environments.cmd(
+          env,
+          System.find_executable("python3"),
+          [
+            "-c",
+            """
+            import os, signal, sys, time
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            child = os.fork()
+            if child == 0:
+                time.sleep(30)
+                os._exit(0)
+            read_fd, write_fd = os.pipe()
+            middle = os.fork()
+            if middle == 0:
+                os.close(read_fd)
+                grandchild = os.fork()
+                if grandchild == 0:
+                    os.close(write_fd)
+                    time.sleep(30)
+                    os._exit(0)
+                os.write(write_fd, str(grandchild).encode())
+                os.close(write_fd)
+                os._exit(0)
+            os.close(write_fd)
+            grandchild = int(os.read(read_fd, 64))
+            os.close(read_fd)
+            os.waitpid(middle, 0)
+            os.write(1, b"stdout-before-timeout\\n")
+            os.write(2, b"stderr-without-newline")
+            with open(sys.argv[1] + ".pending", "w") as output:
+                output.write(str(child) + " " + str(grandchild))
+            os.replace(sys.argv[1] + ".pending", sys.argv[1])
+            time.sleep(30)
+            """,
+            pid_file
+          ], stderr_to_stdout: true, output_capture: capture)
       end)
 
     pids = pid_file |> wait_for_pid_file() |> String.split()

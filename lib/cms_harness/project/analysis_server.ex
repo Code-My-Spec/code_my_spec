@@ -189,6 +189,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     if running = state.running do
       Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
       Process.demonitor(running.task.ref, [:flush])
+
+      if capture = Map.get(running, :output_capture) do
+        StringIO.close(capture)
+      end
     end
 
     for entry <- held, run_id <- [entry.run_id | Map.get(entry, :tied_run_ids, [])] do
@@ -561,6 +565,8 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
     parent = self()
+    {:ok, capture} = StringIO.open("")
+    entry = Map.put(entry, :output_capture, capture)
 
     Logger.info("[CmsHarness] #{entry.source} run #{entry.run_id} starting for #{project.root}")
 
@@ -611,7 +617,11 @@ defmodule CmsHarness.Project.AnalysisServer do
         case bounded_tree_state(env) do
           {:ok, start_tree} ->
             send(parent, {:analysis_started, entry.run_id, start_tree})
-            result = Analysis.run(project, entry.source, entry.args, entry.run_id)
+
+            result =
+              Analysis.run(project, entry.source, entry.args, entry.run_id,
+                output_capture: Map.get(entry, :output_capture)
+              )
 
             completed_tree =
               case bounded_tree_state(env) do
@@ -671,7 +681,18 @@ defmodule CmsHarness.Project.AnalysisServer do
   # when it never returned. `"args"` is what actually ran (a tie merges args),
   # and the server decides what the result replaces from it.
   defp deliver(state, running, result, completed \\ nil) do
+    output =
+      case Map.get(running, :output_capture) do
+        nil ->
+          nil
+
+        capture ->
+          {:ok, {_, bytes}} = StringIO.close(capture)
+          Analysis.cap(bytes)
+      end
+
     tree = completed |> completed_tree() |> Map.put("args", Map.get(running, :args))
+    tree = if match?({:error, _}, result), do: Map.put(tree, "output", output), else: tree
     push_result(state.project.root, running.run_id, running.source, result, nil, tree)
 
     for run_id <- Map.get(running, :tied_run_ids, []) do
