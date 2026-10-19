@@ -1,0 +1,57 @@
+<div class="hero min-h-screen bg-base-200">
+  <div class="hero-content text-center">
+    <div class="max-w-md">
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <.header>
+            <.icon name="hero-shield-check" class="size-8 text-primary mb-2" /> Connect this device?
+            <:subtitle>
+              <strong class="text-primary">{@grant.application.name}</strong>
+              is asking to connect to your account
+            </:subtitle>
+          </.header>
+
+          <div class="divider"></div>
+
+          <div class="card-actions justify-center gap-4">
+            <.form
+              :let={_f}
+              for={%{}}
+              as={:device}
+              action={~p"/oauth/device/decide"}
+              method="post"
+              class="flex-1"
+            >
+              <input type="hidden" name="device_code" value={@grant.device_code} />
+              <input type="hidden" name="decision" value="approve" />
+              <.button type="submit" class="btn btn-primary btn-wide">
+                <.icon name="hero-check" class="size-4 mr-2" /> Approve
+              </.button>
+            </.form>
+
+            <.form
+              :let={_f}
+              for={%{}}
+              as={:device}
+              action={~p"/oauth/device/decide"}
+              method="post"
+              class="flex-1"
+            >
+              <input type="hidden" name="device_code" value={@grant.device_code} />
+              <input type="hidden" name="decision" value="deny" />
+              <.button type="submit" class="btn btn-error btn-wide">
+                <.icon name="hero-x-mark" class="size-4 mr-2" /> Deny
+              </.button>
+            </.form>
+          </div>
+
+          <div class="text-xs text-base-content/70 mt-4">
+            <p>
+              This device will be able to act on your account until you revoke it.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

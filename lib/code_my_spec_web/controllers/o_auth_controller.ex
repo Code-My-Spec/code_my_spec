@@ -154,10 +154,42 @@ defmodule CodeMySpecWeb.OAuthController do
     end
   end
 
+  # RFC 8628's own grant type. ExOauth2Provider.Token knows nothing of it --
+  # it is not one of the library's built-in strategies -- so it is handled
+  # here, ahead of the ordinary library dispatch below, rather than inside
+  # that library.
+  @device_code_grant_type "urn:ietf:params:oauth:grant-type:device_code"
+
   @doc """
   POST /oauth/token
-  Handles token requests (authorization code exchange, refresh tokens)
+  Handles token requests (authorization code exchange, refresh tokens, and
+  the device authorization grant's own polling).
   """
+  def token(conn, %{"grant_type" => @device_code_grant_type} = params) do
+    case Oauth.poll_device_grant(params["device_code"], params["client_id"]) do
+      {:ok, access_token} ->
+        json(conn, %{
+          access_token: access_token.token,
+          refresh_token: access_token.refresh_token,
+          expires_in: access_token.expires_in,
+          token_type: "Bearer",
+          scope: access_token.scopes
+        })
+
+      {:error, :authorization_pending} ->
+        conn |> put_status(:bad_request) |> json(%{error: "authorization_pending"})
+
+      {:error, :access_denied} ->
+        conn |> put_status(:bad_request) |> json(%{error: "access_denied"})
+
+      {:error, :expired_token} ->
+        conn |> put_status(:bad_request) |> json(%{error: "expired_token"})
+
+      {:error, :invalid_grant} ->
+        conn |> put_status(:bad_request) |> json(%{error: "invalid_grant"})
+    end
+  end
+
   def token(conn, params) do
     case Token.grant(params, otp_app: :code_my_spec) do
       {:ok, access_token} ->
