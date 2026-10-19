@@ -269,19 +269,37 @@ defmodule CmsHarness.Agents.Terminal do
   its `cwd`, `version`, `status` (busy or idle) and, from v2.1.224,
   `messagingSocketPath` — and removes it when it exits. The same source
   `claude agents --json` reads, without running `claude`.
+
+  A session resumed under a new pid can leave its old file behind if that
+  process never exits cleanly (issue d12aa283), so more than one file can
+  name the same session id; the one most recently written to is the live
+  session, regardless of directory listing order.
   """
   @spec session_record(String.t(), String.t()) :: map() | nil
   def session_record(session_id, dir \\ sessions_dir()) when is_binary(session_id) do
     dir
     |> Path.join("*.json")
     |> Path.wildcard()
-    |> Enum.find_value(fn path ->
-      with {:ok, body} <- File.read(path),
-           {:ok, %{"sessionId" => ^session_id} = record} <- first_object(body),
-           do: record,
-           else: (_ -> nil)
-    end)
+    |> Enum.reduce(nil, &newest_match(&1, session_id, &2))
+    |> case do
+      nil -> nil
+      {_mtime, record} -> record
+    end
   end
+
+  defp newest_match(path, session_id, newest) do
+    with {:ok, body} <- File.read(path),
+         {:ok, %{"sessionId" => ^session_id} = record} <- first_object(body),
+         {:ok, %File.Stat{mtime: mtime}} <- File.stat(path),
+         true <- newer?(mtime, newest) do
+      {mtime, record}
+    else
+      _ -> newest
+    end
+  end
+
+  defp newer?(_mtime, nil), do: true
+  defp newer?(mtime, {newest_mtime, _record}), do: mtime >= newest_mtime
 
   # Claude Code 2.1.293 can leave a stray `}` after a session's object (seen
   # live, 2026-10-18), so the first complete object is the record.

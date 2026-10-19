@@ -268,4 +268,38 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     assert %{"messagingSocketPath" => "/tmp/cc-socks/1.sock"} =
              Terminal.session_record("cc-trailing", dir)
   end
+
+  # Issue d12aa283: a resumed session's old pid can leave its file behind,
+  # freezing "busy" forever if a stale duplicate ever won the lookup -- the
+  # turn it belongs to would never be seen to end.
+  test "a stale duplicate registry file for the same session does not win over the live one",
+       %{dir: dir} do
+    stale_path = Path.join(dir, "1.json")
+    live_path = Path.join(dir, "4242.json")
+
+    File.write!(
+      stale_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "busy", "pid" => 1})
+    )
+
+    File.touch!(stale_path, {{2020, 1, 1}, {0, 0, 0}})
+
+    File.write!(
+      live_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "busy", "pid" => 4242})
+    )
+
+    File.touch!(live_path, {{2024, 1, 1}, {0, 0, 1}})
+
+    assert %{"pid" => 4242, "status" => "busy"} = Terminal.session_record("cc-dup", dir)
+
+    File.write!(
+      live_path,
+      Jason.encode!(%{"sessionId" => "cc-dup", "status" => "idle", "pid" => 4242})
+    )
+
+    File.touch!(live_path, {{2024, 1, 1}, {0, 0, 2}})
+
+    assert %{"pid" => 4242, "status" => "idle"} = Terminal.session_record("cc-dup", dir)
+  end
 end
