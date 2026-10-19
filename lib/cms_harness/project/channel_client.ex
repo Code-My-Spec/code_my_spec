@@ -845,6 +845,36 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # Issue 37f35126: whether this create's own transport-level push was acked
+  # only ever said the server received the result -- `Staffing.mint/2`'s own
+  # registration runs afterward, in a different process, and this is the
+  # server telling this side what that registration actually decided. An
+  # error here rolls back immediately, same as a missed ack would (and
+  # through the same, unchanged `rollback_if_untouched/3`), rather than
+  # waiting out `create_ack_timeout` for something already known.
+  def handle_message(
+        _topic,
+        "create_working_copy_registered",
+        %{"working_copy_id" => id, "status" => status},
+        socket
+      ) do
+    case Map.pop(socket.assigns[:pending_registration] || %{}, id) do
+      {nil, _pending} ->
+        {:ok, socket}
+
+      {{root, target, base_head}, pending} ->
+        if status == "error" do
+          Logger.warning(
+            "[CmsHarness] #{target} failed server-side registration; rolling back"
+          )
+
+          Create.rollback_if_untouched(root, target, base_head)
+        end
+
+        {:ok, assign(socket, :pending_registration, pending)}
+    end
+  end
+
   def handle_message(_topic, "start_agent", %{"ref" => ref} = msg, socket) do
     parent = self()
     topic = socket.assigns.topic
@@ -1670,6 +1700,8 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_info({:create_working_copy_result, topic, ref, root, result}, socket) do
     payload = Map.put(encode_create_result(result), "ref", ref)
     timeout = Channel.create_ack_timeout()
+
+    socket = remember_pending_registration(socket, root, result)
 
     case transport().push(socket, topic, "create_working_copy_result", payload, timeout) do
       {:ok, native_ref} ->
@@ -2513,5 +2545,12 @@ defmodule CmsHarness.Project.ChannelClient do
   defp remember_create_ack(socket, native_ref, root, {:ok, %{root: target, base_head: base_head}}) do
     pending = socket.assigns[:pending_create_ack] || %{}
     assign(socket, :pending_create_ack, Map.put(pending, native_ref, {root, target, base_head}))
+  end
+
+  defp remember_pending_registration(socket, _root, {:error, _}), do: socket
+
+  defp remember_pending_registration(socket, root, {:ok, %{working_copy_id: id, root: target, base_head: base_head}}) do
+    pending = socket.assigns[:pending_registration] || %{}
+    assign(socket, :pending_registration, Map.put(pending, id, {root, target, base_head}))
   end
 end
