@@ -234,8 +234,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           id={"panel-split-#{key}"}
           class="group flex h-3 shrink-0 cursor-row-resize select-none flex-col items-center justify-center self-stretch"
         >
-          <span class="h-0.5 w-full rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary">
-          </span>
+          <span class="h-0.5 w-full rounded-full bg-base-300 transition-colors group-hover:bg-primary/60 group-active:bg-primary"></span>
         </LivePane.resizer>
       <% end %>
     </LivePane.group>
@@ -514,8 +513,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
                 :if={unread?(a)}
                 data-test="unread-dot"
                 class="size-2 shrink-0 rounded-full bg-primary"
-              >
-              </span>
+              ></span>
               <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
               <span
                 :if={turn_running?(a)}
@@ -625,6 +623,16 @@ defmodule CodeMySpecWeb.ConversationPanels do
             </button>
           </div>
 
+          <p
+            data-test="team-agent-kind"
+            data-external={to_string(a.agent.engine == :claude_code)}
+            title={kind_title(a.agent)}
+            class="flex items-center gap-1 truncate pl-9 text-[11px] opacity-50"
+          >
+            <.icon name={kind_icon(a.agent)} class="size-3 shrink-0" />
+            <span class="truncate">{kind_label(a.agent)}</span>
+          </p>
+
           <%!-- One name, or a count — never both truncated names on one line.
           One task is the thing worth reading here; more than one is a reason
           to click through rather than a list to skim in a line-and-a-half. --%>
@@ -656,6 +664,28 @@ defmodule CodeMySpecWeb.ConversationPanels do
   # A turn in flight, which is not a liveness state: a running agent is either
   # mid-turn or waiting, and the row says which apart from the label.
   defp turn_running?(%{agent: %{turn_started_at: at}}), do: not is_nil(at)
+
+  # Internal agents run on Alloy, sometimes over Claude Code, so the provider
+  # alone cannot say whether the harness runs the agent or a person does.
+  defp kind_label(%{engine: :claude_code}), do: "Terminal · Claude Code"
+
+  defp kind_label(agent),
+    do: Enum.join(["Alloy", provider_label(agent.provider) | List.wrap(agent.model)], " · ")
+
+  defp kind_title(%{engine: :claude_code}),
+    do: "External: a Claude Code session a person runs in a terminal"
+
+  defp kind_title(_agent), do: "Internal: the harness runs this agent on Alloy"
+
+  defp kind_icon(%{engine: :claude_code}), do: "hero-command-line"
+  defp kind_icon(_agent), do: "hero-cpu-chip"
+
+  defp provider_label("claude-code"), do: "Claude Code"
+  defp provider_label("openai-codex"), do: "Codex"
+  defp provider_label("anthropic"), do: "Anthropic API"
+  defp provider_label("zai"), do: "Z.ai"
+  defp provider_label(nil), do: "no provider"
+  defp provider_label(other), do: other
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural

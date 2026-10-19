@@ -1096,6 +1096,44 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  # John, 2026-10-19: the team panel has to say who is internal and who is
+  # external, and on what. Alloy agents can run over Claude Code too.
+  describe "the team panel's agent kind" do
+    test "an Alloy agent reads as internal with its provider and model", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{provider: "claude-code", model: "sonnet"})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      kind = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-kind']"
+      assert has_element?(view, "#{kind}[data-external='false']", "Alloy · Claude Code · sonnet")
+    end
+
+    test "a terminal session reads as external Claude Code", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{
+          engine: :claude_code,
+          provider: "claude-code",
+          engine_session_id: "cc-#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      kind = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-kind']"
+      assert has_element?(view, "#{kind}[data-external='true']", "Terminal · Claude Code")
+    end
+  end
+
   describe "the cockpit header, since f096eba2 dropped its loop badge" do
     test "the header shows play/pause and power but no 'Continuous'/'Not continuous' text", %{
       conn: conn,
