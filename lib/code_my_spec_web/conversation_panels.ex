@@ -16,6 +16,8 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   import CodeMySpecWeb.PreviewComponents, only: [pane: 1]
 
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
+
   @doc """
   The dynamic panel beside a conversation, with nothing to switch between.
 
@@ -475,6 +477,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           >
             {copy.row.heading}
           </button>
+          <Copy.preview_marker harness={copy.row.harness} />
           <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
         </div>
 

@@ -1084,6 +1084,11 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       {:ok, view, _html} = live(conn, show_path(project, conversation))
       open_team_panel(view)
 
+      assert has_element?(
+               view,
+               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-preview-marker'][data-state='down']"
+             )
+
       view
       |> element(
         "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='team-copy-open']"

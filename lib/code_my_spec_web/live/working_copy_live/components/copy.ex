@@ -112,6 +112,92 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
   end
 
   @doc """
+  Whether this copy's app is up and where to open it, as one mark with a
+  tooltip: green and linked to the preview when it is shared on a tunnel,
+  linked to the local address when it runs only on its own machine, grey when
+  nothing is running.
+
+  Serving is either signal: the main copy reports its preview's health
+  (`preview_status`), every other copy its own app's (`app_status`).
+  """
+  attr :harness, :map, required: true
+  attr :class, :any, default: "tooltip-left"
+
+  def preview_marker(assigns) do
+    {state, href, tip} = preview_state(assigns.harness)
+    assigns = assign(assigns, state: state, href: href, tip: tip)
+
+    ~H"""
+    <a
+      :if={@href}
+      href={@href}
+      target="_blank"
+      rel="noopener"
+      data-test="copy-preview-marker"
+      data-state={@state}
+      data-tip={@tip}
+      aria-label={@tip}
+      class={["tooltip flex shrink-0", preview_color(@state), @class]}
+    >
+      <.icon name={preview_icon(@state)} class="size-3.5" />
+    </a>
+    <span
+      :if={!@href}
+      data-test="copy-preview-marker"
+      data-state={@state}
+      data-tip={@tip}
+      aria-label={@tip}
+      class={["tooltip flex shrink-0", preview_color(@state), @class]}
+    >
+      <.icon name={preview_icon(@state)} class="size-3.5" />
+    </span>
+    """
+  end
+
+  defp preview_state(harness) do
+    serving? = harness.app_status == "serving" or harness.preview_status == "serving"
+    erroring? = harness.app_status == "erroring" or harness.preview_status == "erroring"
+    url = harness.preview_url || harness.app_url
+
+    cond do
+      serving? and harness.preview_url ->
+        {:shared, harness.preview_url, "Serving at #{host(harness.preview_url)}"}
+
+      serving? and harness.app_url ->
+        {:local, harness.app_url,
+         "Running locally at #{host(harness.app_url)} — not on a tunnel, so only its own machine can open it"}
+
+      erroring? and url ->
+        {:erroring, url, "Answering with errors at #{host(url)}"}
+
+      harness.app_status == "starting" ->
+        {:starting, nil, "Starting — the first install and compile are still running"}
+
+      true ->
+        {:down, nil, "No app running on this copy"}
+    end
+  end
+
+  defp host(url) do
+    case URI.parse(url) do
+      %URI{host: host, port: port} when port in [80, 443, nil] -> host
+      %URI{host: host, port: port} -> "#{host}:#{port}"
+    end
+  end
+
+  defp preview_color(:shared), do: "text-success"
+  defp preview_color(:local), do: "text-info"
+  defp preview_color(:erroring), do: "text-warning"
+  defp preview_color(:starting), do: "text-info opacity-70"
+  defp preview_color(:down), do: "opacity-40"
+
+  defp preview_icon(:shared), do: "hero-globe-alt"
+  defp preview_icon(:local), do: "hero-computer-desktop"
+  defp preview_icon(:erroring), do: "hero-exclamation-triangle"
+  defp preview_icon(:starting), do: "hero-arrow-path"
+  defp preview_icon(:down), do: "hero-signal-slash"
+
+  @doc """
   Offboarding, and only when asked: removes the copy's row and what was
   derived from it, never the checkout on disk. Nothing does it on a timer —
   story 892's automatic reclaim trusted a signal that went stale while agents
