@@ -118,7 +118,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
-    check_answer list_user_questions tool_docs
+    check_answer list_user_questions tool_docs search_answers
     list_problems get_analysis_output
     start_analysis
     web_search web_fetch
