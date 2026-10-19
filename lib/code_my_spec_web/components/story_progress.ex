@@ -65,18 +65,23 @@ defmodule CodeMySpecWeb.StoryProgress do
       data-done={@done}
       data-total={@total}
       title={"#{@done} of #{@total} requirements satisfied"}
-      style={"background: conic-gradient(currentColor #{percent(@done, @total)}%, transparent 0)"}
-      class={[
-        "inline-block size-3 shrink-0 cursor-pointer rounded-full ring-1",
-        if(@total > 0 and @done == @total,
-          do: "text-success ring-success/60",
-          else: "text-primary ring-base-content/25"
-        )
-      ]}
+      style={fill(@done, @total)}
+      class={["cursor-pointer", ring(@done, @total)]}
       aria-label={"Show the requirements graph: #{@done} of #{@total} satisfied"}
     ></button>
     """
   end
+
+  @doc "The pie's fill: `done` of `total` as a slice."
+  def fill(done, total),
+    do: "background: conic-gradient(currentColor #{percent(done, total)}%, transparent 0)"
+
+  @doc "The pie's shape and colour: green once every requirement is satisfied."
+  def ring(done, total) when total > 0 and done == total,
+    do: "inline-block size-3 shrink-0 rounded-full ring-1 text-success ring-success/60"
+
+  def ring(_done, _total),
+    do: "inline-block size-3 shrink-0 rounded-full ring-1 text-primary ring-base-content/25"
 
   defp percent(_done, 0), do: 0
   defp percent(done, total), do: round(done / total * 100)

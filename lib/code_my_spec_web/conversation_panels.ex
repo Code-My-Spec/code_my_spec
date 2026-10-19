@@ -473,6 +473,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           >
             {copy.row.heading}
           </.link>
+          <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
@@ -574,36 +575,11 @@ defmodule CodeMySpecWeb.ConversationPanels do
             </button>
           </div>
 
-          <%!-- One name, or a count — never both truncated names on one line.
-          One task is the thing worth reading here; more than one is a reason
-          to click through rather than a list to skim in a line-and-a-half.
-          The refs are siblings of nothing clickable, so they can be buttons. --%>
           <div
-            :if={a.assigned != [] or a.task_label}
+            :if={a.task_label}
             data-test="team-agent-work"
             class="flex min-w-0 items-center gap-2 pb-1 pl-4 text-[11px]"
           >
-            <button
-              :for={item <- a.assigned}
-              type="button"
-              phx-click="show_assigned"
-              phx-value-kind={item.kind}
-              phx-value-key={item.key}
-              data-test={"team-agent-#{item.kind}"}
-              title={item.title}
-              class="link link-hover shrink-0 font-mono opacity-70"
-            >
-              {item.ref}
-            </button>
-            <.live_component
-              :for={item <- a.assigned}
-              :if={item.kind == :story}
-              module={CodeMySpecWeb.StoryProgress}
-              id={"story-progress-#{a.agent.id}"}
-              scope={@scope}
-              story_id={item.story_id}
-              working_copy_id={item.working_copy_id}
-            />
             <span :if={a.task_label} data-test="team-agent-task" class="truncate opacity-50">
               {a.task_label}
             </span>
@@ -621,6 +597,85 @@ defmodule CodeMySpecWeb.ConversationPanels do
         </.link>
       </div>
     </div>
+    """
+  end
+
+  attr :copy, :map, required: true
+  attr :scope, :any, required: true
+  attr :project_id, :string, required: true
+
+  # What the copy is working on, on the copy's row: work is assigned to the
+  # copy and blown through to its agents. The pie is greyed when nothing is.
+  defp copy_assignment(%{copy: %{assignment: %{kind: :story} = story}} = assigns) do
+    assigns = assign(assigns, :story, story)
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="show_assigned"
+      phx-value-kind="story"
+      phx-value-key={@story.key}
+      data-test="team-copy-story"
+      title={@story.title}
+      class="link link-hover shrink-0 font-mono font-normal opacity-70"
+    >
+      {@story.ref}
+    </button>
+    <.live_component
+      module={CodeMySpecWeb.StoryProgress}
+      id={"story-progress-copy-#{@copy.row.harness.id}"}
+      scope={@scope}
+      story_id={@story.story_id}
+      working_copy_id={@story.working_copy_id}
+    />
+    """
+  end
+
+  # One issue is named and opens like a story; a bag of several is a count
+  # that opens the copy's status page, which draws the whole bag.
+  defp copy_assignment(%{copy: %{assignment: %{kind: :issues} = bag}} = assigns) do
+    {done, total} = bag.progress
+    assigns = assign(assigns, issues: bag.issues, done: done, total: total)
+
+    ~H"""
+    <button
+      :if={match?([_], @issues)}
+      type="button"
+      phx-click="show_assigned"
+      phx-value-kind="issue"
+      phx-value-key={hd(@issues).id}
+      data-test="team-copy-issue"
+      title={hd(@issues).title}
+      class="link link-hover shrink-0 font-mono font-normal opacity-70"
+    >
+      {String.slice(hd(@issues).id, 0, 8)}
+    </button>
+    <.link
+      :if={not match?([_], @issues)}
+      navigate={~p"/app/projects/#{@project_id}/working-copies/#{@copy.row.harness.id}/status"}
+      data-test="team-copy-issues"
+      class="link link-hover shrink-0 font-mono font-normal opacity-70"
+    >
+      {length(@issues)} issues
+    </.link>
+    <span
+      data-test="team-copy-issue-progress"
+      data-done={@done}
+      data-total={@total}
+      title={"#{@done} of #{@total} issue milestones done"}
+      style={CodeMySpecWeb.StoryProgress.fill(@done, @total)}
+      class={CodeMySpecWeb.StoryProgress.ring(@done, @total)}
+    ></span>
+    """
+  end
+
+  defp copy_assignment(assigns) do
+    ~H"""
+    <span
+      data-test="team-copy-unassigned"
+      title="Nothing assigned"
+      class="inline-block size-3 shrink-0 rounded-full ring-1 ring-base-content/15 opacity-40"
+    ></span>
     """
   end
 

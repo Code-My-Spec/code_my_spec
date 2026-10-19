@@ -956,7 +956,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "what the agent is assigned" do
-    test "the header and the team panel open the agent's story and issue in a modal", %{
+    test "the header and the copy's row open the story and issue in a modal", %{
       conn: conn,
       scope: scope,
       project: project
@@ -973,12 +973,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       story_path = "/app/projects/#{project.id}/stories/#{story.number}"
       issue_path = "/app/projects/#{project.id}/issues/#{issue.id}"
-      row = "[data-test='team-agent'][data-agent-id='#{agent.id}']"
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
 
       assert has_element?(view, "header [data-test='assigned-story']", "Pay by card")
       assert has_element?(view, "header [data-test='assigned-issue']", "Card form 500s")
+      refute has_element?(view, "[data-test='team-agent'] [data-test^='team-agent-story']")
 
-      view |> element("#{row} [data-test='team-agent-story']") |> render_click()
+      view |> element("#{copy} [data-test='team-copy-story']") |> render_click()
 
       assert has_element?(view, "[data-test='assigned-modal-story']", "Pay by card")
       assert has_element?(view, "[data-test='assigned-modal-story'] a[href='#{story_path}']")
@@ -986,10 +987,88 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       render_click(view, "close_assigned", %{})
       refute has_element?(view, "[data-test^='assigned-modal']")
 
-      view |> element("#{row} [data-test='team-agent-issue']") |> render_click()
+      view |> element("header [data-test='assigned-issue']") |> render_click()
 
       assert has_element?(view, "[data-test='assigned-modal-issue']", "Card form 500s")
       assert has_element?(view, "[data-test='assigned-modal-issue'] a[href='#{issue_path}']")
+    end
+
+    test "a copy with an issue bag shows the bag, not its team's story", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope)
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      for title <- ["Card form 500s", "Receipt never sent"] do
+        issue = CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{title: title})
+        {:ok, issue} = CodeMySpec.Issues.accept_issue(project_scope, issue)
+
+        {:ok, _} =
+          CodeMySpec.Issues.set_assigned_working_copy(project_scope, issue, agent.working_copy_id)
+      end
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      status = "/app/projects/#{project.id}/working-copies/#{agent.working_copy_id}/status"
+
+      # Assigned is each issue's first milestone of three.
+      assert has_element?(
+               view,
+               "#{copy} a[data-test='team-copy-issues'][href='#{status}']",
+               "2 issues"
+             )
+
+      assert has_element?(
+               view,
+               "#{copy} [data-test='team-copy-issue-progress'][data-done='2'][data-total='6']"
+             )
+
+      refute has_element?(view, "#{copy} [data-test='team-copy-story']")
+    end
+
+    test "a copy with one issue names it and opens it", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {agent, conversation} = agent_with_conversation(scope, project)
+      issue = CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{title: "Card form 500s"})
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(project_scope, issue)
+
+      {:ok, issue} =
+        CodeMySpec.Issues.set_assigned_working_copy(project_scope, issue, agent.working_copy_id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      refute has_element?(view, "#{copy} [data-test='team-copy-issues']")
+
+      view
+      |> element("#{copy} [data-test='team-copy-issue']", String.slice(issue.id, 0, 8))
+      |> render_click()
+
+      assert has_element?(view, "[data-test='assigned-modal-issue']", "Card form 500s")
+    end
+
+    test "a copy with nothing assigned shows a greyed pie", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      assert has_element?(view, "#{copy} [data-test='team-copy-unassigned']")
     end
   end
 
@@ -1020,7 +1099,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       open_team_panel(view)
 
       header = "header [data-test='story-progress']"
-      row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
+
+      row =
+        "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}'] [data-test='story-progress']"
 
       render_async(view)
       {done, total} = slice_progress(scope, project, story)
