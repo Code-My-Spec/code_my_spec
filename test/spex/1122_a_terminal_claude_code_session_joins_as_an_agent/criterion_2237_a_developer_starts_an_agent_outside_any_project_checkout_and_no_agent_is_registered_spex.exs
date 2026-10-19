@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story1122.Criterion2237Spex do
   @moduledoc """
   Story 1122 — A terminal Claude Code session joins as an agent.
-  Criterion 2237 — A developer starts Claude Code outside any project checkout and no agent is registered.
+  Criterion 2237 — A developer starts an agent outside any project checkout and no agent is registered.
   """
   use CodeMySpecSpex.Case
 

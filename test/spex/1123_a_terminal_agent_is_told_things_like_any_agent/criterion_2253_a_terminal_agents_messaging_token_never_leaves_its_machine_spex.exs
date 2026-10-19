@@ -1,6 +1,6 @@
-defmodule CodeMySpecSpex.Story1122.Criterion2253Spex do
+defmodule CodeMySpecSpex.Story1123.Criterion2253Spex do
   @moduledoc """
-  Story 1122 — A terminal Claude Code session joins as an agent.
+  Story 1123 — A terminal agent is told things like any agent.
   Criterion 2253 — A terminal agent's messaging token never leaves its machine.
   """
   use CodeMySpecSpex.Case
