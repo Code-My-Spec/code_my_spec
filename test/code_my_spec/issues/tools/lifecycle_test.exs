@@ -106,6 +106,41 @@ defmodule CodeMySpec.Issues.Tools.LifecycleTest do
 
       assert match?({:error, _}, response)
     end
+
+    # Issue 9988f567: a coder finished a fix, called this tool directly, and
+    # the issue went to resolved with its three commits unlanded on its
+    # copy -- resolved is terminal, so there was no way back; main had to
+    # file a second issue just to carry the same commits through QA and
+    # promotion. Once an issue is assigned to a working copy it is on the
+    # fix_issue/promote_issue track, and only landing resolves it.
+    test "cannot resolve an issue assigned to a working copy -- its fix has not landed" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      {:ok, accepted} = Issues.accept_issue(scope, issue)
+
+      {:ok, copy} =
+        CodeMySpec.WorkingCopies.issue(scope, nil,
+          device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+        )
+
+      {:ok, assigned} = Issues.set_assigned_working_copy(scope, accepted, copy.id)
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "resolve_issue",
+          %{issue_id: assigned.id, resolution: "Fixed, not yet landed"},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert match?({:error, _}, response)
+      assert response_text(response) =~ "promote_issue"
+
+      assert Issues.get_issue(scope, assigned.id).status == :accepted,
+             "the issue must stay accepted -- resolving it here would be exactly the bug " <>
+               "this test guards against"
+    end
   end
 
   describe "full lifecycle" do
