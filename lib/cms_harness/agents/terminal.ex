@@ -88,12 +88,14 @@ defmodule CmsHarness.Agents.Terminal do
       # In-process callers (tests) may answer the mailbox themselves.
       mailbox: Keyword.get(opts, :mailbox, &Channel.mailbox/2),
       report: Keyword.get(opts, :report, &Channel.report_turn_event/3),
+      report_up: Keyword.get(opts, :report_up, &Channel.report_agent_up/2),
       sessions: Keyword.get(opts, :sessions)
     }
 
     case register(state) do
       :ok ->
         Liveness.watch(state.agent_id, self(), state.working_copy)
+        report_up(state)
         send(self(), :mailbox_ready)
         schedule_check()
         {:ok, state}
@@ -210,6 +212,11 @@ defmodule CmsHarness.Agents.Terminal do
   defp settle_turn(%{busy?: busy?} = state, busy?), do: state
 
   defp settle_turn(state, true) do
+    # A second confirmation that this agent is up, at the moment a real turn
+    # is observed -- belt and suspenders beside the one `register/1` sends at
+    # `init/1` (issue d12aa283): if that first one was ever missed, a turn
+    # starting is as good a moment as any to say so again.
+    report_up(state)
     report(state, %{event: :turn_started, generation: state.generation, ref: nil})
     %{state | busy?: true}
   end
@@ -305,6 +312,8 @@ defmodule CmsHarness.Agents.Terminal do
 
   defp report(state, envelope),
     do: state.report.(state.working_copy, state.agent_id, envelope)
+
+  defp report_up(state), do: state.report_up.(state.working_copy, state.agent_id)
 
   defp register(state) do
     case state.mailbox.(state.working_copy, %{

@@ -55,6 +55,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     end
 
     report = fn _root, _agent, envelope -> send(test, {:reported, envelope}) end
+    report_up = fn _root, agent_id -> send(test, {:reported_up, agent_id}) end
 
     id = Ecto.UUID.generate()
 
@@ -66,7 +67,8 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
            socket: socket,
            working_copy: "/workspace/terminal",
            mailbox: mailbox,
-           report: report
+           report: report,
+           report_up: report_up
          ] ++ extra}
       )
 
@@ -152,6 +154,31 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     :counters.put(status, 1, 0)
     send(pid, :check)
     assert_receive {:reported, %{event: :turn_over, ref: nil}}
+  end
+
+  # Issue d12aa283: a re-attach's own Liveness notification is the only time
+  # the server is told this agent is up, and if that one notification is
+  # ever missed the cockpit shows it `starting` forever. These are the two
+  # points that now confirm it directly, bypassing Liveness entirely.
+  test "attaching reports the agent up, directly", %{socket: socket} do
+    listen(socket)
+    {id, _pid} = start_terminal(socket)
+
+    assert_receive {:reported_up, ^id}
+  end
+
+  test "a turn starting reports the agent up again, as a second confirmation", %{
+    socket: socket
+  } do
+    listen(socket)
+    now = fn -> session("busy") end
+    {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+
+    assert_receive {:reported_up, ^id}, 100
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+    assert_receive {:reported_up, ^id}
   end
 
   test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do

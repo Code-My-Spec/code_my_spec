@@ -2100,6 +2100,18 @@ defmodule CmsHarness.Project.ChannelClient do
   # agent doing those steps now.
   def handle_cast({:turn_event, _agent_id, _envelope}, socket), do: {:noreply, socket}
 
+  # A terminal agent's own direct confirmation that it is up (issue d12aa283),
+  # independent of `Liveness`'s subscriber notification -- the same push
+  # `handle_info({:agent_liveness, :up, ...})` makes, triggered a second,
+  # more reliable way: Liveness.watch/3 only ever notifies once per pid, with
+  # no later chance to correct it if that one notification is missed.
+  def handle_cast({:agent_up, agent_id}, %{assigns: %{joined: true}} = socket) do
+    push_liveness(socket, :up, agent_id, nil)
+    {:noreply, socket}
+  end
+
+  def handle_cast({:agent_up, _agent_id}, socket), do: {:noreply, socket}
+
   # A fragment of what an agent is writing, flushed on a timer: a push per
   # fragment is a push every few characters.
   def handle_cast({:draft, agent_id, turn, text}, %{assigns: %{joined: true}} = socket) do
