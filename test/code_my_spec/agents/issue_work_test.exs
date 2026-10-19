@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.IssueWork
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.IssueFix
   alias CodeMySpec.Analysis.HarnessRegistry
@@ -337,5 +338,32 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     # qa_complete would belong to a story, and this must be the issue's own.
     assert [%{entity_type: "issue", entity_id: entity_id}] = menu
     assert entity_id == ctx.issue.id
+  end
+
+  # 44a4a121, seen twice on 2026-10-19: a coder declined its assigned issue's
+  # offer while it waited on main's answer, and its own start_task then
+  # answered "Requirement fix_issue not found" with nothing main could do. A
+  # decline keeps the work off the agent's menu; it does not refuse the
+  # agent's own claim of it by name.
+  test "an agent that declined its issue's offer can still claim it by name", ctx do
+    %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
+    coding = agent(scope, :coding, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(scope, ctx.issue.id, copy_id)
+
+    Offers.record_declined(
+      coding,
+      :work,
+      {"requirement", "issue:#{ctx.issue.id}:fix_issue"},
+      "waiting on main's answer"
+    )
+
+    assert Work.claimable_work(scope, coding) == []
+
+    params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
+
+    assert {:ok, _} =
+             ToolLibrary.run("start_task", params, %{scope: scope, agent_id: coding.id})
+
+    assert [%{requirement_name: "fix_issue", status: :active}] = reload(coding).tasks
   end
 end

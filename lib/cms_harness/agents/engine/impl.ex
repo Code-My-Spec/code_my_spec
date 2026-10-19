@@ -35,6 +35,11 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # default of 25 is too few for browser-driving work.
   @max_turns 150
 
+  # Compaction budget. Alloy defaults to the model's window, 1M for Sonnet 5
+  # and Opus 5.5, so an agent compacted only near a million while Claude Code
+  # on the same model works within ~200k.
+  @context_budget 200_000
+
   # Spilled tool results older than this are pruned when an agent starts. Not
   # cleared outright: the server restarts an agent with its history, and the
   # notices in it name these files.
@@ -886,6 +891,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
+       |> Keyword.put(:max_tokens, @context_budget)
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
        # `ToolResults`: an error struct in a result block cannot be JSON-encoded
