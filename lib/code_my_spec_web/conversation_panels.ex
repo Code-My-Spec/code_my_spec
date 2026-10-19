@@ -477,9 +477,9 @@ defmodule CodeMySpecWeb.ConversationPanels do
           >
             {copy.row.heading}
           </button>
+          <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
           <Copy.harness_marker row={copy.row} />
           <Copy.preview_marker harness={copy.row.harness} />
-          <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
