@@ -19,6 +19,11 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
     :ok
   end
 
+  defp open_activity_panel(_view, html, true), do: html
+
+  defp open_activity_panel(view, _html, false),
+    do: render_hook(view, "toggle_panel", %{"panel" => "activity"})
+
   # The cockpit's team panel: the page John watches his agents on.
   defp cockpit(context) do
     {:ok, view, _html} =
@@ -29,9 +34,11 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
     html = render(view)
 
     html =
-      if html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/,
-        do: html,
-        else: render_hook(view, "toggle_panel", %{"panel" => "activity"})
+      open_activity_panel(
+        view,
+        html,
+        html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/
+      )
 
     {view, html}
   end

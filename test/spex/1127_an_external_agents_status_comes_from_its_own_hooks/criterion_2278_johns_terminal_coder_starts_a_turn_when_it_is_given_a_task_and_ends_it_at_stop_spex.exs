@@ -35,12 +35,19 @@ defmodule CodeMySpecSpex.Story1127.Criterion2278Spex do
     html = render(view)
 
     html =
-      if html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/,
-        do: html,
-        else: render_hook(view, "toggle_panel", %{"panel" => "activity"})
+      open_activity_panel(
+        view,
+        html,
+        html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/
+      )
 
     {view, html}
   end
+
+  defp open_activity_panel(_view, html, true), do: html
+
+  defp open_activity_panel(view, _html, false),
+    do: render_hook(view, "toggle_panel", %{"panel" => "activity"})
 
   defp liveness_panel(context) do
     {:ok, _view, html} =
