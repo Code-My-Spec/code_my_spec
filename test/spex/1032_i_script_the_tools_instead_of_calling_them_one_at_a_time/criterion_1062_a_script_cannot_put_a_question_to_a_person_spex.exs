@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1032.Criterion2986Spex do
       end
 
       then_ "and the failure names the call it could not make", context do
-        assert response_text(context.response) =~ "ask_user"
+        assert response_text(context.response) =~ "ask_question"
         {:ok, context}
       end
     end
