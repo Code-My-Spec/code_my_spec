@@ -68,6 +68,19 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProviderTest do
     end
   end
 
+  describe "await_provider_connection's wait" do
+    # A tool called from run_script gets ~28s; a longer wait crashed
+    # restart_app the same way (issue 0b1ae6fc).
+    test "above the cap is clamped to it" do
+      assert AwaitProviderConnection.wait_seconds(%{wait_seconds: 120}) == 25
+    end
+
+    test "defaults to 20 and is never negative" do
+      assert AwaitProviderConnection.wait_seconds(%{}) == 20
+      assert AwaitProviderConnection.wait_seconds(%{wait_seconds: -5}) == 0
+    end
+  end
+
   defp connect(scope, provider) do
     {:ok, _} =
       IntegrationRepository.upsert_integration(scope, provider, %{
