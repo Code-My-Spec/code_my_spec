@@ -110,6 +110,18 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp do_decide(scope, session_id, agent, active_task, validation_opts, req_id) do
     cond do
+      CodeMySpec.Analysis.awaiting_runs?(scope, agent.working_copy_id, agent.id) ->
+        Logger.info("[StopHook] [#{req_id}] Waiting for analysis, allowing stop",
+          cms_decision: "allow",
+          cms_why: "analysis pending"
+        )
+
+        %{
+          "systemMessage" =>
+            "Waiting for analysis you requested or subscribed to. Your task remains open; " <>
+              "each run will report when it finishes. You may stop without polling or closing the task."
+        }
+
       continuous_mode?(agent) && stuck_threshold_hit?(agent) ->
         terminate_stuck(scope, agent, req_id)
 
