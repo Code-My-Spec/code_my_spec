@@ -181,6 +181,35 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     assert_receive {:reported_up, ^id}
   end
 
+  # Issue c67e1ab7: a process that survives the harness's own restart (found
+  # already running by `attach/2`, via `CmsHarness.Agents.whereis/1`) never
+  # reaches `init/1` on re-attach, and `settle_turn/2`'s no-op clause
+  # (`%{busy?: busy?} = state, busy?`) only reports on a genuine idle/busy
+  # transition -- an agent that was already busy and stays busy straight
+  # through the restart has neither, so nothing else would ever re-announce
+  # it. A fresh `{:session, ...}` arriving here -- a re-attach, every time --
+  # must report unconditionally, independent of busy? or any transition.
+  test "a re-attach while continuously busy, with no transition, still reports up", %{
+    socket: socket
+  } do
+    listen(socket)
+    now = fn -> session("busy") end
+    {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
+
+    assert_receive {:reported_up, ^id}, 100
+
+    send(pid, :check)
+    assert_receive {:reported, %{event: :turn_started}}
+    assert_receive {:reported_up, ^id}
+
+    assert :ok = GenServer.call(pid, {:session, %{socket: socket}})
+
+    assert_receive {:reported_up, ^id},
+                    100
+
+    refute_receive {:reported, %{event: :turn_started}}, 50
+  end
+
   test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do
     listen(socket)
     gone = :counters.new(1, [])
