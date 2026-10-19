@@ -74,7 +74,11 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
           context.live_agent.harness.deploy_key
         )
 
-        CmsHarness.Token.invalidate()
+        CmsHarnessTest.HarnessOAuthFixture.use_deploy_key(
+          context.live_agent.harness.deploy_key,
+          CodeMySpecWeb.Endpoint
+        )
+
         remove(root)
         report(reporter)
 
