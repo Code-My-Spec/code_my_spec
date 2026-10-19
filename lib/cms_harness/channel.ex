@@ -406,4 +406,24 @@ defmodule CmsHarness.Channel do
       [] -> :ok
     end
   end
+
+  @doc """
+  Tell the server this agent is up, directly.
+
+  Issue d12aa283: a terminal agent's presence depends on `Liveness`'s own
+  subscriber notification reaching this same channel process at the moment
+  it (re)attaches, and the agent has no later chance to correct it if that
+  notification is ever missed -- `Liveness.watch/3` only notifies once, the
+  first time a given pid is watched. This is a second, independent way to
+  say the same thing, cast exactly like `report_turn_event/3` so a terminal
+  agent (or a turn it is later observed running) can confirm it is up
+  without waiting on anything here.
+  """
+  @spec report_agent_up(String.t(), String.t()) :: :ok
+  def report_agent_up(root, agent_id) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:agent_up, agent_id})
+      [] -> :ok
+    end
+  end
 end
