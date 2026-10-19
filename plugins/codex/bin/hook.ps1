@@ -32,8 +32,6 @@ $endpoint = switch ($event) {
   'PreToolUse'    { '/api/hooks/pre-tool-use' }
   'PostToolUse'   { '/api/hooks/post-tool-use' }
   'Stop'          { '/api/hooks/stop' }
-  'SubagentStart' { '/api/hooks/subagent-start' }
-  'SubagentStop'  { '/api/hooks/subagent-stop' }
   default         { exit 0 }
 }
 
