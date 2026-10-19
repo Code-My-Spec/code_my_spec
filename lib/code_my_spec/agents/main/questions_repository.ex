@@ -15,13 +15,19 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
   that is where it actually is: `question_requests` keys to a user, and the
   agent is the only thing on the row that knows which project this was.
 
-  ## Every agent, not only the running ones
+  ## Every agent meant to run, not only the running ones
 
   Criterion 3263. An agent is restarted whenever its harness reconnects, its
   machine reboots, or somebody promotes, so "the agent that asked is stopped"
   is the ordinary case. Joining against running agents would drop the question
   with the process, and drop it silently — there is no entry left to be short
   and no agent left to complain.
+
+  An agent somebody turned off or retired is different: nobody means it to
+  answer, and the notifications page already hides its requests
+  (`Notifications.pending_query/2`). The listing applies the same rule, so what
+  main is told is waiting is what the user can act on (issue 83d3ecd2). The
+  rows stay; only the listing skips them.
   """
 
   import Ecto.Query
@@ -56,6 +62,7 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
       left_join: w in WorkingCopy,
       on: w.id == a.working_copy_id,
       where: a.project_id == ^project_id and q.status == "pending",
+      where: is_nil(a.off_at) and is_nil(a.retired_at),
       order_by: [asc: q.inserted_at],
       select: {q, a, w}
     )
@@ -89,6 +96,7 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
       left_join: w in WorkingCopy,
       on: w.id == a.working_copy_id,
       where: a.project_id == ^project_id and p.status == "pending",
+      where: is_nil(a.off_at) and is_nil(a.retired_at),
       order_by: [asc: p.inserted_at],
       select: {p, a, w}
     )

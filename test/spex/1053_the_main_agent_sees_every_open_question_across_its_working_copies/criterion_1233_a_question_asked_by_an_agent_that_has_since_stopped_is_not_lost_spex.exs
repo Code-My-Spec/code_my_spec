@@ -20,8 +20,11 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
   ordinary rather than exceptional, and a question that cannot survive it is a
   question that rarely survives at all.
 
-  Stopped through `stop_agent`, which is how an agent actually stops. A scenario
-  that deleted the row would be testing its own delete.
+  The process ends and the record still says the agent should run -- what a
+  restart does. An agent somebody turned off is a different thing: nobody means
+  it to answer, so the listing leaves its questions out, as the notifications
+  page does (issue 83d3ecd2). A scenario that deleted the row would be testing
+  its own delete.
   """
 
   use CodeMySpecSpex.Case
@@ -43,7 +46,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
   end
 
   spex "A question survives the agent that raised it", criterion: 1233 do
-    scenario "the asking agent is stopped before anyone answers" do
+    scenario "the asking agent's process ends before anyone answers" do
       given_ "an agent with an open question", context do
         reply = join_working_copy(context, "/tmp/spex-3263", "the checkout")
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
@@ -76,19 +79,14 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
       end
 
-      when_ "that agent is stopped", context do
-        frame = %Frame{assigns: %{current_scope: context.scope}}
+      when_ "that agent's process ends, as it does on every restart", context do
+        {:ok, stopped} =
+          CodeMySpec.Agents.AgentsRepository.update_agent(context.scope, context.agent, %{
+            status: :stopped
+          })
 
-        response =
-          ToolLibrary.run(
-            "turn_off_agent",
-            %{agent_id: context.agent.id},
-            Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
-          )
-
-        assert match?({:ok, _}, response),
-               "the agent had to actually stop for this to mean anything:\n" <>
-                 inspect(response)
+        assert stopped.status == :stopped
+        assert is_nil(stopped.off_at) and is_nil(stopped.retired_at)
 
         {:ok, context}
       end
