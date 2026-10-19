@@ -469,15 +469,14 @@ defmodule CodeMySpecWeb.ConversationPanels do
             name="hero-star-solid"
             class="size-3 shrink-0 text-primary"
           />
-          <span class="min-w-0 flex-1 truncate">{copy.row.heading}</span>
           <.link
             navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}/status"}
-            class="link link-hover"
+            class="link link-hover min-w-0 flex-1 truncate"
             data-test="working-copy-status"
+            title="This copy's status"
           >
-            Status
+            {copy.row.heading}
           </.link>
-          <span class="shrink-0 opacity-60">{copy.row.liveness.label}</span>
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
