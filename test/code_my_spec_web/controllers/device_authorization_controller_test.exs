@@ -101,6 +101,38 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
       assert is_binary(token)
     end
 
+    test "a device_code is single-use: a second poll after approval is refused", %{
+      conn: conn,
+      client: client,
+      grant: grant,
+      user: user
+    } do
+      conn = log_in_user(conn, user)
+
+      post(conn, ~p"/oauth/device/decide", %{
+        "device_code" => grant.device_code,
+        "decision" => "approve"
+      })
+
+      first_poll =
+        post(build_conn(), ~p"/oauth/token", %{
+          "grant_type" => "urn:ietf:params:oauth:grant-type:device_code",
+          "device_code" => grant.device_code,
+          "client_id" => client.uid
+        })
+
+      assert %{"access_token" => _} = json_response(first_poll, 200)
+
+      second_poll =
+        post(build_conn(), ~p"/oauth/token", %{
+          "grant_type" => "urn:ietf:params:oauth:grant-type:device_code",
+          "device_code" => grant.device_code,
+          "client_id" => client.uid
+        })
+
+      assert %{"error" => "invalid_grant"} = json_response(second_poll, 400)
+    end
+
     test "denying the confirm page leaves the poll refused", %{
       conn: conn,
       client: client,

@@ -29,6 +29,7 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
           interval: integer() | nil,
           denied_at: DateTime.t() | nil,
           access_token_id: integer() | nil,
+          consumed_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -44,6 +45,7 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
     field :interval, :integer, default: 5
     field :denied_at, :utc_datetime
     field :access_token_id, :integer
+    field :consumed_at, :utc_datetime
 
     timestamps()
   end
@@ -115,6 +117,16 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
 
   @spec approved?(t()) :: boolean()
   def approved?(%__MODULE__{resource_owner_id: id}), do: not is_nil(id)
+
+  @doc """
+  Whether this device_code has already been exchanged for a token.
+
+  RFC 8628 §3.5: a device_code is single-use -- once a client has
+  successfully retrieved the token, any later poll with the same code
+  answers `invalid_grant`, same as a code nobody ever issued.
+  """
+  @spec consumed?(t()) :: boolean()
+  def consumed?(%__MODULE__{consumed_at: consumed_at}), do: not is_nil(consumed_at)
 
   # 32 random bytes, url-safe -- opaque and long, as RFC 8628 expects of a
   # device_code. Matches this file's own generate_client_secret/0 convention.

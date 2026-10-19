@@ -110,18 +110,28 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
                Oauth.poll_device_grant(grant.device_code, application.uid)
     end
 
-    test "answers the same minted token on every poll after approval", %{
+    test "the first poll after approval returns the minted token", %{
       application: application,
       user: user
     } do
       {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate())
+      {:ok, decided} = Oauth.decide_device_grant(grant, user, :approve)
+
+      assert {:ok, token} = Oauth.poll_device_grant(grant.device_code, application.uid)
+      assert token.id == decided.access_token_id
+    end
+
+    test "a device_code is single-use -- a second poll after the token is returned is refused",
+         %{application: application, user: user} do
+      {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate())
       {:ok, _} = Oauth.decide_device_grant(grant, user, :approve)
 
-      assert {:ok, first} = Oauth.poll_device_grant(grant.device_code, application.uid)
-      assert {:ok, second} = Oauth.poll_device_grant(grant.device_code, application.uid)
+      assert {:ok, _token} = Oauth.poll_device_grant(grant.device_code, application.uid)
 
-      assert first.id == second.id,
-             "a second poll after approval minted a different token instead of reusing it"
+      assert {:error, :invalid_grant} =
+               Oauth.poll_device_grant(grant.device_code, application.uid),
+             "RFC 8628 §3.5: once a device_code has been exchanged, a later poll must not " <>
+               "answer the same tokens again -- anyone who later obtains the code must get nothing"
     end
 
     test "answers access_denied after a decline", %{application: application, user: user} do

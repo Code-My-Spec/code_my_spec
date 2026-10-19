@@ -11,6 +11,8 @@ defmodule CodeMySpec.Oauth do
 
   use Boundary, top_level?: true, deps: [CodeMySpec.Repo, CodeMySpec.Users], exports: :all
 
+  import Ecto.Query, only: [from: 2]
+
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Oauth.DeviceGrant
   alias CodeMySpec.Repo
@@ -181,10 +183,28 @@ defmodule CodeMySpec.Oauth do
 
   defp resolve_poll(%DeviceGrant{} = grant, _client_uid) do
     cond do
+      # Checked ahead of expiry/denial: a device_code already exchanged is
+      # done regardless of what its own clock says next (RFC 8628 §3.5).
+      DeviceGrant.consumed?(grant) -> {:error, :invalid_grant}
       DeviceGrant.expired?(grant) -> {:error, :expired_token}
       DeviceGrant.denied?(grant) -> {:error, :access_denied}
-      DeviceGrant.approved?(grant) -> fetch_claimed_token(grant)
+      DeviceGrant.approved?(grant) -> consume_and_fetch_token(grant)
       true -> {:error, :authorization_pending}
+    end
+  end
+
+  # A device_code is single-use: once a client has successfully retrieved
+  # the token, a second poll -- whether from the same client racing itself
+  # or from anyone else who got hold of the code in the meantime -- answers
+  # invalid_grant, same as a code nobody ever issued. The guard lives in the
+  # UPDATE itself (`consumed_at IS NULL`), not in a read-then-write, so two
+  # concurrent polls cannot both win it.
+  defp consume_and_fetch_token(%DeviceGrant{} = grant) do
+    query = from(g in DeviceGrant, where: g.id == ^grant.id and is_nil(g.consumed_at))
+
+    case Repo.update_all(query, set: [consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)]) do
+      {1, _} -> fetch_claimed_token(grant)
+      {0, _} -> {:error, :invalid_grant}
     end
   end
 
