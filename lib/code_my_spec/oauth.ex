@@ -37,6 +37,19 @@ defmodule CodeMySpec.Oauth do
     |> Repo.insert()
   end
 
+  @doc "Whether a registered client has no redirect available for browser authorization."
+  def application_without_redirect?(uid) when is_binary(uid) do
+    case Applications.get_application(uid, otp_app: :code_my_spec) do
+      %Application{redirect_uri: redirect_uri} ->
+        is_nil(redirect_uri) or String.trim(redirect_uri) == ""
+
+      nil ->
+        false
+    end
+  end
+
+  def application_without_redirect?(_uid), do: false
+
   @doc "Issues tokens, refusing revoked refresh credentials regardless of rotation settings."
   def grant_token(
         %{"grant_type" => "refresh_token", "client_id" => uid, "refresh_token" => refresh} =
