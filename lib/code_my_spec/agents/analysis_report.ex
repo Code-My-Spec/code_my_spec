@@ -85,7 +85,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     askers = agent_uuids(requester_id)
 
     scope
-    |> internal_agents(copy_id)
+    |> agents_to_tell(copy_id, askers)
     |> Enum.each(&tell_one(scope, &1, {findings, advisory}, source, askers))
   end
 
@@ -169,26 +169,22 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     """
   end
 
-  # Alloy only: a Claude Code session in the copy gets the hook path and would
-  # be told twice. Every alloy agent on the copy, unfiltered by role here — the
-  # role filter is `Wake` (`RoleProfile.wake` naming `:findings`), so an asker
-  # of any role is still answered as `:own_reply`.
-  defp internal_agents(%Scope{active_project_id: project_id}, copy_id) do
+  # Everyone who asked (any engine -- a terminal agent has no other way to
+  # hear that a run it is explicitly waiting on has landed, issue cdf54b03),
+  # plus every Alloy agent for the unasked `:findings` broadcast. Not every
+  # Claude Code session for that broadcast: it already gets a clean run's
+  # silence or a dirty one's findings through its own Stop hook on its next
+  # turn, and would be told twice.
+  defp agents_to_tell(%Scope{active_project_id: project_id}, copy_id, askers) do
     Agent
-    |> where(
-      [a],
-      a.working_copy_id == ^copy_id and a.project_id == ^project_id and a.engine == :alloy
-    )
+    |> where([a], a.working_copy_id == ^copy_id and a.project_id == ^project_id)
+    |> where([a], a.engine == :alloy or a.id in ^askers)
     |> Repo.all()
   end
 
   defp requesting_agents(%Scope{active_project_id: project_id}, copy_id, agent_ids) do
     Agent
-    |> where(
-      [a],
-      a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
-        a.engine == :alloy
-    )
+    |> where([a], a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id)
     |> Repo.all()
   end
 
