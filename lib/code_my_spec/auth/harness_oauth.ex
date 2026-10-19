@@ -69,7 +69,9 @@ defmodule CodeMySpec.Auth.HarnessOAuth do
 
   defp token(server, path, %{"access_token" => token, "expires_at" => expires} = stored, opts)
        when is_binary(token) and token != "" and is_integer(expires) do
-    if expires > System.system_time(:second) + 300 do
+    refresh_before_seconds = Keyword.get(opts, :refresh_before_seconds, 300)
+
+    if expires > System.system_time(:second) + refresh_before_seconds do
       {:ok, token}
     else
       refresh(server, path, stored, opts)

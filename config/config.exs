@@ -185,7 +185,12 @@ config :phoenix, :filter_parameters, ["password", "token", "secret", "key"]
 
 config :paper_trail, repo: CodeMySpec.Repo, strict_mode: true
 
+# Device authorization timing, in seconds; overridable in dev/test config.
+config :code_my_spec, CodeMySpec.Oauth, ttl_seconds: 600, interval: 5
+
 config :code_my_spec, ExOauth2Provider,
+  # Applies to initial device tokens and tokens issued through refresh.
+  access_token_expires_in: 7200,
   repo: CodeMySpec.Repo,
   access_token: CodeMySpec.Oauth.AccessToken,
   application: CodeMySpec.Oauth.Application,
