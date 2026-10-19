@@ -19,11 +19,10 @@ defmodule CodeMySpecWeb.ProblemCharts do
 
   @doc """
   One bar per working copy. Clicking a bar pushes `pick_event` with the
-  copy's id. Copies with no problems are left out; the selected one is marked.
+  copy's id. Copies with no problems are left out.
   """
   attr :counts, :list, required: true, doc: "`[{working_copy_id, source, count}]`"
   attr :harnesses, :list, required: true
-  attr :selected_id, :string, default: nil
   attr :pick_event, :string, default: nil
 
   def by_copy(assigns) do
@@ -36,7 +35,7 @@ defmodule CodeMySpecWeb.ProblemCharts do
 
     option =
       rows
-      |> bars(fn id -> mark(names[id], id == assigns.selected_id) end)
+      |> bars(&names[&1])
       |> Map.merge(%{ids: Enum.map(rows, &elem(&1, 0)), pick_event: assigns.pick_event})
 
     assigns = assign(assigns, option: option, empty?: rows == [])
@@ -121,7 +120,4 @@ defmodule CodeMySpecWeb.ProblemCharts do
         end
     }
   end
-
-  defp mark(name, true), do: "▸ " <> name
-  defp mark(name, false), do: name
 end

@@ -62,6 +62,8 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     (`"credo"`, `"compiler"`, `"exunit"`, `"spex"`,
     `"qa_validation"`).
   - `:severity` — `:error`, `:warning` or `:info`. Omit for all.
+  - `:working_copy` — `:all` reads every copy on the project instead of the
+    scope's own.
 
   Severity narrows the scope before the counts are taken, so
   `counts_by_source` and `unfiltered_count` describe the same population the
@@ -85,7 +87,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     project_scope =
       Problem
       |> where([p], p.project_id == ^project_id)
-      |> scope_to_harness(scope)
+      |> scope_to_copies(scope, Keyword.get(opts, :working_copy))
       |> apply_severity(Keyword.get(opts, :severity))
 
     unfiltered_count = Repo.aggregate(project_scope, :count, :id)
@@ -562,6 +564,9 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     |> select([p], {p.file_path, p.source, count(p.id)})
     |> Repo.all()
   end
+
+  defp scope_to_copies(query, _scope, :all), do: query
+  defp scope_to_copies(query, scope, _one), do: scope_to_harness(query, scope)
 
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil, active_project_id: project_id})
        when is_binary(project_id),
