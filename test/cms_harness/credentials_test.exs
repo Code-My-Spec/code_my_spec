@@ -48,7 +48,7 @@ defmodule CmsHarness.CredentialsTest do
       restore_env("CMS_DEPLOY_KEY", env_key)
     end)
 
-    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
     %{root: copy(), oauth_dir: oauth_dir}
   end
 
@@ -118,7 +118,7 @@ defmodule CmsHarness.CredentialsTest do
     end
 
     test "the harness's own OAuth credential wins over project keys", ctx do
-      CodeMySpecTest.HarnessOAuthFixture.seed(
+      CmsHarnessTest.HarnessOAuthFixture.seed(
         ctx.oauth_dir,
         CmsHarness.Config.server_url(),
         "owned-token"

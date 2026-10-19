@@ -11,7 +11,7 @@ defmodule CodeMySpec.Oauth do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Devices],
+    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope, CodeMySpec.Devices],
     exports: :all
 
   import Ecto.Query, only: [from: 2]

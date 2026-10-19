@@ -1,7 +1,9 @@
-defmodule CodeMySpecTest.HarnessOAuthFixture do
+defmodule CmsHarnessTest.HarnessOAuthFixture do
   @moduledoc "Isolated persisted harness credentials for synchronous integration tests."
 
   alias CodeMySpec.Auth.HarnessOAuth
+
+  def server_url, do: CmsHarness.Config.server_url()
 
   def isolate do
     previous = Application.fetch_env(:code_my_spec, HarnessOAuth)

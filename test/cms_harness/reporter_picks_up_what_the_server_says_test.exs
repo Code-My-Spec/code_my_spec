@@ -62,9 +62,9 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
     end)
 
     Application.put_env(:code_my_spec, :device_client, ServerSays)
-    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
 
-    CodeMySpecTest.HarnessOAuthFixture.seed(
+    CmsHarnessTest.HarnessOAuthFixture.seed(
       oauth_dir,
       CmsHarness.Config.server_url(),
       "stub-token"

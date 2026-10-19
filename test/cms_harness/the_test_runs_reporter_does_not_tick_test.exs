@@ -14,9 +14,9 @@ defmodule CmsHarness.TheTestRunsReporterDoesNotTickTest do
   end
 
   test "a report that crashes does not loop and does not take the harness tree down" do
-    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
 
-    CodeMySpecTest.HarnessOAuthFixture.seed(
+    CmsHarnessTest.HarnessOAuthFixture.seed(
       oauth_dir,
       CmsHarness.Config.server_url(),
       "e258f257"

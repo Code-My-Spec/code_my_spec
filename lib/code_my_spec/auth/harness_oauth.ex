@@ -27,9 +27,8 @@ defmodule CodeMySpec.Auth.HarnessOAuth do
                "/oauth/device/code",
                [form: [client_id: client["client_id"], device_id: device_id]],
                opts
-             ),
-           {:ok, grant} <- grant(body) do
-        {:ok, grant}
+             ) do
+        grant(body)
       end
     end)
   end
@@ -251,9 +250,9 @@ defmodule CodeMySpec.Auth.HarnessOAuth do
           with :ok <- File.chmod(temporary, 0o600),
                :ok <- IO.binwrite(file, Jason.encode!(data)),
                :ok <- :file.sync(file),
-               :ok <- File.close(file),
-               :ok <- File.rename(temporary, path),
-               do: :ok
+               :ok <- File.close(file) do
+            File.rename(temporary, path)
+          end
         after
           File.close(file)
           File.rm(temporary)

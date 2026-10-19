@@ -17,26 +17,7 @@ defmodule CodeMySpec.Auth.HarnessOAuthTest do
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(owner, {:request, conn.request_path, body})
 
-      case conn.request_path do
-        "/oauth/register" ->
-          Req.Test.json(conn, %{client_id: "harness-client", client_secret: "client-secret"})
-
-        "/oauth/device/code" ->
-          Req.Test.json(conn, %{
-            device_code: "private-code",
-            user_code: "ABCD-EFGH",
-            verification_uri: "https://auth.example.test/oauth/device",
-            expires_in: 600,
-            interval: 5
-          })
-
-        "/oauth/token" ->
-          Req.Test.json(conn, %{
-            access_token: "access-one",
-            refresh_token: "refresh-one",
-            expires_in: 7200
-          })
-      end
+      authorization_response(conn)
     end)
 
     device_id = Ecto.UUID.generate()
@@ -124,6 +105,28 @@ defmodule CodeMySpec.Auth.HarnessOAuthTest do
 
       assert {:error, ^expected} = HarnessOAuth.poll(ctx.server, grant, ctx.opts)
     end
+  end
+
+  defp authorization_response(%{request_path: "/oauth/register"} = conn) do
+    Req.Test.json(conn, %{client_id: "harness-client", client_secret: "client-secret"})
+  end
+
+  defp authorization_response(%{request_path: "/oauth/device/code"} = conn) do
+    Req.Test.json(conn, %{
+      device_code: "private-code",
+      user_code: "ABCD-EFGH",
+      verification_uri: "https://auth.example.test/oauth/device",
+      expires_in: 600,
+      interval: 5
+    })
+  end
+
+  defp authorization_response(%{request_path: "/oauth/token"} = conn) do
+    Req.Test.json(conn, %{
+      access_token: "access-one",
+      refresh_token: "refresh-one",
+      expires_in: 7200
+    })
   end
 
   defp seed_expiring_credentials(ctx) do

@@ -128,9 +128,9 @@ defmodule CmsHarness.ServedRootsTest do
     # Token exchange is outside this test. Credential bootstrap is asserted
     # before setting this synthetic token, then the real reporter boot timer
     # drives the stubbed authoritative server response and actual subtrees.
-    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
 
-    CodeMySpecTest.HarnessOAuthFixture.seed(
+    CmsHarnessTest.HarnessOAuthFixture.seed(
       oauth_dir,
       CmsHarness.Config.server_url(),
       "fixture-harness-token"

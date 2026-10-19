@@ -79,12 +79,12 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     os_user = System.get_env("USER") || System.get_env("USERNAME") || "user"
     local = os_user |> String.replace(~r/[^A-Za-z0-9._-]/, "") |> String.downcase()
     user = Fixtures.user_fixture(%{email: desktop_email(local)})
-    oauth_dir = CodeMySpecTest.HarnessOAuthFixture.isolate()
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
     start_local_server(root)
 
-    CodeMySpecTest.HarnessOAuthFixture.seed(
+    CmsHarnessTest.HarnessOAuthFixture.seed(
       oauth_dir,
-      CmsHarness.Config.server_url(),
+      CmsHarnessTest.HarnessOAuthFixture.server_url(),
       Fixtures.desktop_harness_credential(user)
     )
 
