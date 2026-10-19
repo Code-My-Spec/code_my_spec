@@ -23,7 +23,7 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
 
   defp task(attrs) do
     struct!(
-      %CodeMySpec.Sessions.Task{
+      %CodeMySpec.Agents.Agent.Task{
         id: "43d57947-9b6b-4309-806c-53a32ae5c65b",
         status: :active,
         requirement_name: "ready_for_qa",

@@ -4,7 +4,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   time within each stage that went to waiting on a person rather than to
   the work itself.
 
-  Built entirely from `Sessions.Task` -- `started_at`/`completed_at` for a
+  Built entirely from `Agent.Task` -- `started_at`/`completed_at` for a
   stage's own active time, `blocked_at`/`blocker_resolved_at` for the wait
   within it -- rather than a second, separately-maintained clock. A story
   with no tasks yet has no cycle time to report at all.

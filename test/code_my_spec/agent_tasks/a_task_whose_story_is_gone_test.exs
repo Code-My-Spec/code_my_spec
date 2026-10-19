@@ -31,7 +31,7 @@ defmodule CodeMySpec.AgentTasks.ATaskWhoseStoryIsGoneTest do
   alias CodeMySpec.Sessions
   alias CodeMySpec.AgentTasks.TaskEvaluator
 
-  # A number no story on this project has. `Sessions.Task.story_id` is the
+  # A number no story on this project has. `Agent.Task.story_id` is the
   # durable story *number*, not the row id.
   @deleted_story 999_999
 

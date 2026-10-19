@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.AStuckLoopGoesQuietTest do
   end
 
   defp holding(agent, task_id) do
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: task_id,
       status: :active,
       requirement_name: "qa_complete",

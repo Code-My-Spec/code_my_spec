@@ -232,7 +232,7 @@ defmodule CodeMySpec.Agents.Offers.AnUndeliveredOfferIsNeverIgnoredTest do
   test "a turn-end menu whose dispatch failed", ctx do
     agent = agent(ctx.scope, %{role: "qa"})
 
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: Ecto.UUID.generate(),
       status: :active,
       requirement_name: "qa_complete",

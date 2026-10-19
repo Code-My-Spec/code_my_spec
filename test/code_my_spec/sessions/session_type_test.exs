@@ -5,7 +5,7 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.SessionType
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
 
   # ============================================================================
   # Fixtures

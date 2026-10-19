@@ -125,7 +125,7 @@ defmodule CodeMySpec.Agents.ADeclinedOfferIsNotHandedStraightBackTest do
   defp ended_turn_having_finished_a_task(scope, agent) do
     started = DateTime.add(DateTime.utc_now(), -30, :second)
 
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: Ecto.UUID.generate(),
       status: :complete,
       requirement_name: "bdd_specs_passing",

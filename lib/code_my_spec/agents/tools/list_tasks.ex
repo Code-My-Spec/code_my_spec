@@ -206,7 +206,7 @@ defmodule CodeMySpec.Agents.Tools.ListTasks do
   # `prepared active completed failed cancelled` while the schema had been
   # writing `:blocked` for days, so filtering for the state the whole
   # durable-work model turns on answered "Invalid status".
-  @valid_statuses Enum.map(CodeMySpec.Sessions.Task.statuses(), &Atom.to_string/1)
+  @valid_statuses Enum.map(CodeMySpec.Agents.Agent.Task.statuses(), &Atom.to_string/1)
 
   defp parse_status(nil), do: {:ok, nil}
 

@@ -14,7 +14,7 @@ defmodule CodeMySpec.Sessions.Session do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Sessions.SessionType
   alias CodeMySpec.Sessions.Subagent
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Users.User
   alias CodeMySpec.Utils.MapAccess
 

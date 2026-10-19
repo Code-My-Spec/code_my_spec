@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.ProblemsHoldTheRolesThatCanFixThemTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
 
   setup do
     scope = full_scope_fixture()

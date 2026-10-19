@@ -22,7 +22,11 @@ defmodule CodeMySpec.Agents.Agent do
 
   # A schema leaf: contexts below Agents (TaskOwner, Notifications, Qa) read
   # and match agent rows without depending on Agents.
-  use Boundary, top_level?: true, deps: [CodeMySpec.Agents.RoleProfile]
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Agents.RoleProfile],
+    exports: [Task, TaskType]
+
   use Ecto.Schema
 
   import Ecto.Changeset
@@ -61,7 +65,7 @@ defmodule CodeMySpec.Agents.Agent do
           retired_by: String.t() | nil,
           retired_reason: String.t() | nil,
           continuous: boolean() | nil,
-          tasks: [CodeMySpec.Sessions.Task.t()],
+          tasks: [CodeMySpec.Agents.Agent.Task.t()],
           working_copy_id: Ecto.UUID.t() | nil,
           story_id: integer() | nil,
           epic_id: Ecto.UUID.t() | nil,
@@ -170,7 +174,7 @@ defmodule CodeMySpec.Agents.Agent do
 
     # The work this agent has claimed: the same `Task` a session embeds. Which
     # list a task is in is its ownership.
-    embeds_many :tasks, CodeMySpec.Sessions.Task, on_replace: :delete
+    embeds_many :tasks, CodeMySpec.Agents.Agent.Task, on_replace: :delete
 
     belongs_to :project, Project
 
@@ -258,13 +262,13 @@ defmodule CodeMySpec.Agents.Agent do
   end
 
   @doc "The task this agent is working, if any."
-  @spec active_task(t()) :: CodeMySpec.Sessions.Task.t() | nil
+  @spec active_task(t()) :: CodeMySpec.Agents.Agent.Task.t() | nil
   def active_task(%__MODULE__{tasks: tasks}) do
     Enum.find(tasks || [], &(&1.status == :active))
   end
 
   @doc "One of this agent's tasks by id."
-  @spec find_task(t(), String.t()) :: CodeMySpec.Sessions.Task.t() | nil
+  @spec find_task(t(), String.t()) :: CodeMySpec.Agents.Agent.Task.t() | nil
   def find_task(%__MODULE__{tasks: tasks}, task_id) do
     Enum.find(tasks || [], &(&1.id == task_id))
   end

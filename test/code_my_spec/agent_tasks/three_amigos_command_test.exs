@@ -9,13 +9,13 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigosCommandTest do
   sealed 890 correctly. One resolver knew and the other did not.
 
   `resolve_command_story/2` matched `entity_id`, which a stored
-  `Sessions.Task` does not have — it carries `story_id` — and then
+  `Agent.Task` does not have — it carries `story_id` — and then
   `requirement_name`, which on the graph route is "three_amigos_complete"
   rather than a story id. So both clauses missed and `command/2` answered
   `no_story_prompt/0`.
 
   The evaluate path's `resolve_story/2` already carries a comment saying exactly
-  this ("A real `Sessions.Task` carries `story_id`, and nothing else"). The
+  this ("A real `Agent.Task` carries `story_id`, and nothing else"). The
   lesson was learned on one function and never applied to its neighbour, which
   is why the two disagreed about the same task.
 

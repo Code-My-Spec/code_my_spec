@@ -44,7 +44,7 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
 
     on_exit(fn -> :persistent_term.erase({StopDecision, :continuing, agent.id}) end)
 
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: Ecto.UUID.generate(),
       status: :active,
       requirement_name: "qa_complete",

@@ -16,7 +16,7 @@ defmodule CodeMySpec.EpicsTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Epics
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
 
   describe "dispatch_state/1" do
     test "an agent holding a claimed task is in progress, with no epic dispatched" do

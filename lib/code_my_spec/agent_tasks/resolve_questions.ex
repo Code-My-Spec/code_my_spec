@@ -54,7 +54,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
   end
 
   # Same resolution order as `ThreeAmigos` (three_amigos.ex): a stored
-  # `Sessions.Task` carries `story_id`, the graph-dispatch route sets
+  # `Agent.Task` carries `story_id`, the graph-dispatch route sets
   # `entity_id`. Both land here rather than duplicating the four clauses,
   # since this task is only ever reached one of those two ways.
   defp resolve_story(scope, %{story_id: story_id}) when is_integer(story_id) do

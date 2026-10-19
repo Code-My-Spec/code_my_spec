@@ -26,7 +26,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence

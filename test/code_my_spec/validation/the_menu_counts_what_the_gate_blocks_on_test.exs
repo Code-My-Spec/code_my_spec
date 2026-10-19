@@ -23,7 +23,7 @@ defmodule CodeMySpec.Validation.TheMenuCountsWhatTheGateBlocksOnTest do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Problems
   alias CodeMySpec.Validation.Blocking
 

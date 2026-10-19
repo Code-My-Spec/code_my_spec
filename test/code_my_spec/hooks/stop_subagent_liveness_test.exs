@@ -29,7 +29,7 @@ defmodule CodeMySpec.Hooks.StopSubagentLivenessTest do
 
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
 
   defp session(tasks), do: %Session{tasks: tasks}
 

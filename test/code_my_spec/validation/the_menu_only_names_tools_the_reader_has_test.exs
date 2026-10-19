@@ -101,7 +101,7 @@ defmodule CodeMySpec.Validation.TheMenuOnlyNamesToolsTheReaderHasTest do
   # renders a different sentence.
   test "an open task's directive names nothing the holder lacks",
        %{scope: scope, catalogue: catalogue} do
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: "5c3e2f10-0c4a-4b1e-9f0d-7a6b5c4d3e2f",
       status: :active,
       requirement_name: "issues_triaged",

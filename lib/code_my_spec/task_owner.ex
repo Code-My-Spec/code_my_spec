@@ -38,7 +38,7 @@ defmodule CodeMySpec.TaskOwner do
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL
 

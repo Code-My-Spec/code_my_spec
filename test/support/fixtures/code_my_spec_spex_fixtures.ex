@@ -4328,7 +4328,7 @@ defmodule CodeMySpecSpex.Fixtures do
   just staged.
   """
   @spec agent_task_fixture(Scope.t(), CodeMySpec.Agents.Agent.t(), keyword()) ::
-          {CodeMySpec.Agents.Agent.t(), CodeMySpec.Sessions.Task.t()}
+          {CodeMySpec.Agents.Agent.t(), CodeMySpec.Agents.Agent.Task.t()}
   def agent_task_fixture(%Scope{} = scope, %CodeMySpec.Agents.Agent{} = agent, opts \\ []) do
     task_id = Keyword.get(opts, :id, Ecto.UUID.generate())
 

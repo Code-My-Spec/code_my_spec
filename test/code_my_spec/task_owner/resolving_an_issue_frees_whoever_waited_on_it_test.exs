@@ -34,7 +34,7 @@ defmodule CodeMySpec.TaskOwner.ResolvingAnIssueFreesWhoeverWaitedOnItTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Issues
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.TaskOwner
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport

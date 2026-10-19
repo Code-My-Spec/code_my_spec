@@ -81,7 +81,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
     agent = agent(ctx, "qa", true)
     task_id = Ecto.UUID.generate()
 
-    task = %CodeMySpec.Sessions.Task{
+    task = %CodeMySpec.Agents.Agent.Task{
       id: task_id,
       status: :active,
       requirement_name: "qa_complete",

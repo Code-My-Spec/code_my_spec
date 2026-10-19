@@ -10,6 +10,7 @@ defmodule CodeMySpec.Sessions do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
@@ -22,7 +23,7 @@ defmodule CodeMySpec.Sessions do
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Sessions.SessionType
-  alias CodeMySpec.Sessions.Task
+  alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Users.Scope
 
   # A session reads as "active" if it was touched within this window: nothing

@@ -1,20 +1,20 @@
-defmodule CodeMySpec.Sessions.Task do
+defmodule CodeMySpec.Agents.Agent.Task do
   @moduledoc """
-  Embedded schema for tasks tracked within a session.
+  Embedded schema for a task an agent holds.
 
   Each task represents a unit of work the agent is performing — tied to a
   requirement and its satisfied_by agent task module. Tasks are embedded
-  in the Session record as a JSONB array.
+  in the agent row as a JSONB array.
 
   Active tasks may be blocked on a durable request. Resolving the request
   leaves the task blocked until its owner explicitly resumes or cancels it.
-  Prepared remains a legacy session draft state.
+  Prepared remains a legacy draft state.
   """
 
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias CodeMySpec.Sessions.SessionType
+  alias CodeMySpec.Agents.Agent.TaskType
 
   @statuses [:prepared, :active, :blocked, :completed, :failed, :cancelled]
   # `:issue` is the machine-resolvable one. A question or a tap_out waits on a
@@ -29,7 +29,7 @@ defmodule CodeMySpec.Sessions.Task do
   @type t :: %__MODULE__{
           id: String.t() | nil,
           status: atom() | nil,
-          session_type: SessionType.t() | nil,
+          session_type: TaskType.t() | nil,
           validation_type: :automatic | :manual | nil,
           execution_type: :main_agent | :sub_agent | nil,
           requirement_id: integer() | nil,
@@ -56,7 +56,7 @@ defmodule CodeMySpec.Sessions.Task do
   embedded_schema do
     field :id, :string
     field :status, Ecto.Enum, values: @statuses, default: :prepared
-    field :session_type, SessionType
+    field :session_type, TaskType
     field :validation_type, Ecto.Enum, values: @validation_types, default: :automatic
     field :execution_type, Ecto.Enum, values: @execution_types, default: :main_agent
     field :requirement_id, :integer

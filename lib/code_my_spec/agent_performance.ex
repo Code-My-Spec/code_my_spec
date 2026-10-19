@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentPerformance do
   performance report.
 
   Everything but token use reads data that already exists elsewhere --
-  `Sessions.Task`, `Qa.QaAttempt`, `Agents.Offer`, `Conversations.Message`
+  `Agent.Task`, `Qa.QaAttempt`, `Agents.Offer`, `Conversations.Message`
   -- and writes nothing. Token use (`TokenUsage`, story 1092 criteria
   1976-1979) is the one exception: nothing else persisted a turn's cost,
   so it owns both the write, from `HarnessProjectChannel`'s `record_turn`,

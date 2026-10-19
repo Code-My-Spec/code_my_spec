@@ -29,7 +29,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     end
   end
 
-  # A stored `Sessions.Task` carries `story_id` and no `entity_id`, so it goes
+  # A stored `Agent.Task` carries `story_id` and no `entity_id`, so it goes
   # first.
   #
   # This is the same mistake `resolve_story/2` below already carries a comment
@@ -111,7 +111,7 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
   defp seal_if_complete(result, _scope, _story), do: result
 
-  # A real `Sessions.Task` carries `story_id`, and nothing else. The
+  # A real `Agent.Task` carries `story_id`, and nothing else. The
   # entity_type/entity_id clauses below match the shape `start_task` is *called*
   # with, which is not the shape that gets stored -- so before this module was
   # added to `Evaluator.custom_evaluate_modules/0` none of them was ever
