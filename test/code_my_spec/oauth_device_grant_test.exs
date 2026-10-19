@@ -35,6 +35,15 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
       assert {:error, :invalid_client} = Oauth.request_device_code("no-such-client", Ecto.UUID.generate())
     end
 
+    test "a malformed device_id is an ordinary changeset error, not a crash", %{
+      application: application
+    } do
+      assert {:error, changeset} =
+               Oauth.request_device_code(application.uid, "qa-device-grant-test-device")
+
+      assert "is not a valid id" in errors_on(changeset).device_id
+    end
+
     test "two requests for the same client never collide on either code", %{
       application: application
     } do

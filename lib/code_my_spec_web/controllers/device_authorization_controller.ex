@@ -44,8 +44,8 @@ defmodule CodeMySpecWeb.DeviceAuthorizationController do
 
       {:error, %Ecto.Changeset{}} ->
         conn
-        |> put_status(:internal_server_error)
-        |> json(%{error: "server_error"})
+        |> put_status(:bad_request)
+        |> json(%{error: "invalid_request"})
     end
   end
 

@@ -45,6 +45,18 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
 
       assert %{"error" => "invalid_client"} = json_response(conn, 400)
     end
+
+    test "a malformed device_id is a bounded 400, not a 500", %{conn: conn} do
+      client = oauth_application_fixture()
+
+      conn =
+        post(conn, ~p"/oauth/device/code", %{
+          "client_id" => client.uid,
+          "device_id" => "qa-device-grant-test-device"
+        })
+
+      assert %{"error" => "invalid_request"} = json_response(conn, 400)
+    end
   end
 
   describe "GET /oauth/device" do

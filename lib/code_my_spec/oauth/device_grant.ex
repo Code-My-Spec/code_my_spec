@@ -78,8 +78,24 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
     )
     |> put_change(:application_id, application.id)
     |> validate_required([:device_code, :user_code, :expires_at, :interval])
+    |> validate_device_id()
     |> unique_constraint(:device_code)
     |> unique_constraint(:user_code)
+  end
+
+  # `:binary_id`'s own cast is permissive -- it accepts any binary string and
+  # defers to the database driver to reject one that isn't actually a UUID,
+  # which surfaces as a raised Ecto.ChangeError at insert rather than an
+  # ordinary changeset error a caller can match on. Checked explicitly here
+  # so a malformed device_id answers {:error, changeset} like any other bad
+  # input, not a 500.
+  defp validate_device_id(changeset) do
+    validate_change(changeset, :device_id, fn :device_id, value ->
+      case Ecto.UUID.cast(value) do
+        {:ok, _} -> []
+        :error -> [device_id: "is not a valid id"]
+      end
+    end)
   end
 
   @doc "Mark a pending grant approved by `resource_owner_id`."
