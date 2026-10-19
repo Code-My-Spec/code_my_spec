@@ -254,6 +254,9 @@ defmodule CodeMySpecWeb.Layouts do
               <li :if={can_manage_mailboxes?(@current_scope)}>
                 <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
               </li>
+
+              <li class="menu-title">Private</li>
+              <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
               <li :for={p <- @projects}>
