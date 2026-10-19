@@ -19,6 +19,7 @@ defmodule CodeMySpec.Oauth do
   alias CodeMySpec.Users.User
   alias ExOauth2Provider.AccessTokens
   alias ExOauth2Provider.Applications
+  alias ExOauth2Provider.Config, as: OauthConfig
 
   @doc """
   Registers a new OAuth2 application (MCP client) with the given
@@ -137,7 +138,16 @@ defmodule CodeMySpec.Oauth do
            {:ok, token} <-
              AccessTokens.create_token(
                user,
-               %{application: application, scopes: grant.scopes},
+               %{
+                 application: application,
+                 scopes: grant.scopes,
+                 # The library's own authorization_code/password strategies pass
+                 # this explicitly (create_token/3 only issues a refresh token
+                 # when told to) -- without it, a device grant's token had no
+                 # way to renew and nothing to revoke, breaking John's "the
+                 # harness keeps a refresh token bound to its own client" (point 3).
+                 use_refresh_token: OauthConfig.use_refresh_token?(otp_app: :code_my_spec)
+               },
                otp_app: :code_my_spec
              ),
            {:ok, grant} <- grant |> DeviceGrant.claim_changeset(token.id) |> Repo.update() do

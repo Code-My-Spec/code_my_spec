@@ -84,6 +84,10 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
       token = CodeMySpec.Repo.get(CodeMySpec.Oauth.AccessToken, decided.access_token_id)
       assert token.resource_owner_id == user.id
       assert token.application_id == application.id
+
+      refute is_nil(token.refresh_token),
+             "John's decision (point 3): the harness keeps a refresh token bound to its own " <>
+               "client. With none, a harness would need re-approval on every token's own expiry."
     end
 
     test "denying sets denied_at and mints nothing", %{application: application, user: user} do

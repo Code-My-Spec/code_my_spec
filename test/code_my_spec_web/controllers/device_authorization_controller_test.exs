@@ -113,6 +113,41 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
       assert is_binary(token)
     end
 
+    test "the minted token carries a refresh_token that itself works", %{
+      conn: conn,
+      client: client,
+      grant: grant,
+      user: user
+    } do
+      conn = log_in_user(conn, user)
+
+      post(conn, ~p"/oauth/device/decide", %{
+        "device_code" => grant.device_code,
+        "decision" => "approve"
+      })
+
+      poll_conn =
+        post(build_conn(), ~p"/oauth/token", %{
+          "grant_type" => "urn:ietf:params:oauth:grant-type:device_code",
+          "device_code" => grant.device_code,
+          "client_id" => client.uid
+        })
+
+      assert %{"refresh_token" => refresh_token} = json_response(poll_conn, 200)
+      refute is_nil(refresh_token)
+
+      refresh_conn =
+        post(build_conn(), ~p"/oauth/token", %{
+          "grant_type" => "refresh_token",
+          "refresh_token" => refresh_token,
+          "client_id" => client.uid,
+          "client_secret" => client.secret
+        })
+
+      assert %{"access_token" => new_token} = json_response(refresh_conn, 200)
+      refute is_nil(new_token)
+    end
+
     test "a device_code is single-use: a second poll after approval is refused", %{
       conn: conn,
       client: client,
