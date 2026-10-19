@@ -106,7 +106,7 @@ defmodule CodeMySpec.Agents.AnAnswerReachesAnAskerThatIsComingBackTest do
 
     on_exit(fn -> :telemetry.detach(handler) end)
 
-    for author <- ["main_agent", "product_agent", "user"] do
+    for author <- ["main_agent", "product_agent"] do
       {:ok, request} =
         Notifications.create_agent_question_request(
           ctx.scope,
@@ -132,21 +132,66 @@ defmodule CodeMySpec.Agents.AnAnswerReachesAnAskerThatIsComingBackTest do
                  answered_by: author
                )
 
-      if author == "user" do
-        assert_receive {:escalated_answer, text}
-        assert text =~ "The user answered question #{request.id}"
-        assert text =~ "On the dashboard"
-      else
-        refute_receive {:escalated_answer, _}
-      end
+      refute_receive {:escalated_answer, _}
     end
 
     await_dispatches()
   end
 
-  def capture_escalated_answer(_event, _measurements, meta, {pid, asker_id}) do
-    if meta.asker.id == asker_id, do: send(pid, {:escalated_answer, meta.text})
+  test "a user answer notifies the agent that escalated the question", ctx do
+    handler = {__MODULE__, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :notifications, :escalated_answer_reached],
+        &__MODULE__.capture_escalated_answer/4,
+        {self(), ctx.coder.id}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    {:ok, request} =
+      Notifications.create_agent_question_request(
+        ctx.scope,
+        ctx.coder.id,
+        %{
+          "title" => "User answer attribution",
+          "holder" => "main_agent",
+          "questions" => [%{"question" => "Where?", "options" => []}]
+        },
+        nil
+      )
+
+    {:ok, _} =
+      CodeMySpec.Agents.Main.QuestionsRepository.hand_to_user(
+        request.id,
+        "Needs a decision"
+      )
+
+    assert {:ok, _} =
+             Notifications.answer_question_request(
+               request.id,
+               %{"Where?" => "On the dashboard"},
+               answered_by: "user"
+             )
+
+    assert_receive {:escalated_answer, text}
+    assert text =~ "The user answered question #{request.id}"
+    assert text =~ "On the dashboard"
+    await_dispatches()
   end
+
+  def capture_escalated_answer(
+        _event,
+        _measurements,
+        %{asker: %{id: asker_id}, text: text},
+        {pid, asker_id}
+      ) do
+    send(pid, {:escalated_answer, text})
+  end
+
+  def capture_escalated_answer(_event, _measurements, _meta, _config), do: :ok
 
   defp await_dispatches do
     CodeMySpec.TaskSupervisor
