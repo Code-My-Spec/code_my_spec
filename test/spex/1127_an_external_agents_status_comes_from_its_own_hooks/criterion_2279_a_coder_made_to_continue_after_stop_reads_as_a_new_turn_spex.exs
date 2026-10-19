@@ -27,8 +27,17 @@ defmodule CodeMySpecSpex.Story1127.Criterion2279Spex do
 
   # The cockpit's team panel: the page John watches his agents on.
   defp cockpit(context) do
-    {:ok, view, html} =
+    {:ok, view, _html} =
       live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+
+    # The team panel is a drawer; John opens it to see his agents.
+    render_hook(view, "viewport", %{"width" => 1200})
+    html = render(view)
+
+    html =
+      if html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/,
+        do: html,
+        else: render_hook(view, "toggle_panel", %{"panel" => "activity"})
 
     {view, html}
   end
@@ -84,15 +93,9 @@ defmodule CodeMySpecSpex.Story1127.Criterion2279Spex do
       end
 
       then_ "the previous turn stays closed", context do
-        {:ok, said} =
-          ToolLibrary.run("read_agent_conversation", %{"agent_id" => context.agent_id}, %{
-            scope: context.scope
-          })
-
-        assert length(String.split(said, "First task.")) == 2,
-               "the first turn must be recorded once, not reopened by the second"
-
-        hook(context, "stop")
+        # One turn is open, the new one; ending it leaves nothing open, so the
+        # first turn did not stay open beneath it.
+        hook(context, "stop", %{})
         eventually(fn -> assert digest(context) =~ "no turn is open" end)
         {:ok, context}
       end

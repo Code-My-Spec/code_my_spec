@@ -40,9 +40,9 @@ defmodule CodeMySpecSpex.Story1124.Criterion2250Spex do
         context = HarnessHooks.ensure_live_harness(context)
         inbox = open_inbox()
         session = session_id()
-        started = start_session_on_socket(context, session, inbox.socket, status: "busy")
+        started = start_session_on_socket(context, session, inbox.socket)
         assert {:ok, _} = set_role(context, session, "coding")
-        look(started["agent_id"])
+        submit_prompt(context, session)
         eventually(fn -> assert digest(context) =~ "has not finished" end)
 
         {:ok,

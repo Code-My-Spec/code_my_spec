@@ -1791,6 +1791,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp decide_hook("stop", scope, payload, _port), do: {200, Stop.decide(scope, payload)}
 
+  # A terminal session's turn opening and its session ending (story 1127): the
+  # harness on its machine reads these for the agent's state; the server has
+  # nothing to decide.
+  defp decide_hook("user-prompt-submit", _scope, _payload, _port), do: {200, %{}}
+  defp decide_hook("session-end", _scope, _payload, _port), do: {200, %{}}
+
   defp decide_hook("session-start", scope, payload, _port),
     do: SessionStart.handle(scope, payload)
 

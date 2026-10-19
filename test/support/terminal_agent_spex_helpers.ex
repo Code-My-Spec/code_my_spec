@@ -130,6 +130,16 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
   defp put_present(map, _key, nil), do: map
   defp put_present(map, key, value), do: Map.put(map, key, value)
 
+  @doc "The developer submitting a prompt: the session's UserPromptSubmit hook fires (story 1127)."
+  @spec submit_prompt(map(), String.t()) :: map()
+  def submit_prompt(context, session_id),
+    do: HarnessHooks.post_hook(context, "user-prompt-submit", %{"session_id" => session_id})
+
+  @doc "The session finishing its turn: its Stop hook fires (story 1127)."
+  @spec stop_turn(map(), String.t()) :: map()
+  def stop_turn(context, session_id),
+    do: HarnessHooks.post_hook(context, "stop", %{"session_id" => session_id})
+
   @doc "What Claude Code's agent list says of a session from now on."
   @spec session_is(String.t(), String.t()) :: :ok
   def session_is(session_id, status), do: ClaudeSessions.put(session_id, status)

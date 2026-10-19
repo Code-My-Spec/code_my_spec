@@ -666,6 +666,20 @@ defmodule CodeMySpecWeb.ConversationPanels do
     >
       <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
     </span>
+    <span
+      :if={@a.agent.waiting_since}
+      data-test="team-agent-waiting"
+      title="Waiting on its person"
+      class="flex shrink-0 text-warning"
+    >
+      <.icon name="hero-hand-raised" class="size-3.5" />
+    </span>
+    <span
+      :if={@a.agent.current_tool}
+      data-test="team-agent-tool"
+      title="Running a tool"
+      class="min-w-0 truncate font-mono text-[10px] opacity-60"
+    >{@a.agent.current_tool}</span>
     """
   end
 

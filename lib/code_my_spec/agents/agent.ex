@@ -59,6 +59,8 @@ defmodule CodeMySpec.Agents.Agent do
           status: atom() | nil,
           stopped_reason: atom() | nil,
           git_rewrite_at: DateTime.t() | nil,
+          current_tool: String.t() | nil,
+          waiting_since: DateTime.t() | nil,
           off_at: DateTime.t() | nil,
           off_by: String.t() | nil,
           off_reason: String.t() | nil,
@@ -91,6 +93,12 @@ defmodule CodeMySpec.Agents.Agent do
     # pull, checkout, ...). `Validation` reads it to tell inherited history from
     # this turn's work when no edits were recorded.
     field :git_rewrite_at, :utc_datetime_usec
+    # The tool the agent is running now, as one line, or nil. Set by a tool call
+    # starting and cleared by it ending or the turn ending.
+    field :current_tool, :string
+    # Since when a terminal session has been waiting on its person (a permission
+    # prompt), or nil. It cannot take work while it is.
+    field :waiting_since, :utc_datetime_usec
     field :provider, :string
     # The model this agent started on, recorded: changing the role's setting
     # must not move an agent already running.
@@ -301,6 +309,8 @@ defmodule CodeMySpec.Agents.Agent do
       :engine,
       :engine_session_id,
       :git_rewrite_at,
+      :current_tool,
+      :waiting_since,
       :provider,
       :model,
       :working_copy,

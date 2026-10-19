@@ -133,27 +133,77 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 2_000
   end
 
-  # Story 1124: the session's state is read from Claude Code's own agent list.
+  # Story 1127: a turn is the session's own hooks; Claude Code's agent list is
+  # read for presence only.
   defp listed(status_fun) do
     fn -> {:ok, status_fun.()} end
   end
 
   defp session(status), do: [%{"sessionId" => "cc-1", "status" => status, "pid" => 4242}]
 
-  test "its session going busy starts a turn, and going idle ends it", %{socket: socket} do
+  test "a prompt submitted starts a turn, and a stop that lets the session end ends it",
+       %{socket: socket} do
     listen(socket)
-    status = :counters.new(1, [])
-    statuses = {"idle", "busy"}
-    now = fn -> session(elem(statuses, :counters.get(status, 1))) end
-    {_id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
 
-    :counters.put(status, 1, 1)
-    send(pid, :check)
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(fn -> session("idle") end))
+
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
     assert_receive {:reported, %{event: :turn_started}}
 
-    :counters.put(status, 1, 0)
-    send(pid, :check)
+    send(pid, {:hook, "stop", %{}, %{}})
     assert_receive {:reported, %{event: :turn_over, ref: nil}}
+  end
+
+  test "a stop the server blocks leaves the turn open", %{socket: socket} do
+    listen(socket)
+
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(fn -> session("idle") end))
+
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
+    assert_receive {:reported, %{event: :turn_started}}
+
+    send(pid, {:hook, "stop", %{}, %{"decision" => "block"}})
+    refute_receive {:reported, %{event: :turn_over}}, 100
+  end
+
+  test "Claude Code listing the session busy is not a turn: hooks alone say so", %{socket: socket} do
+    listen(socket)
+
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(fn -> session("busy") end))
+
+    send(pid, :check)
+    refute_receive {:reported, %{event: :turn_started}}, 100
+  end
+
+  test "a tool call is the tool the session is running until it ends", %{socket: socket} do
+    listen(socket)
+
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(fn -> session("idle") end))
+
+    send(
+      pid,
+      {:hook, "pre-tool-use",
+       %{"tool_name" => "Bash", "tool_input" => %{"command" => "mix test"}}, %{}}
+    )
+
+    assert_receive {:reported, %{event: :tool_activity, payload: %{name: "Bash"}}}
+
+    send(pid, {:hook, "post-tool-use", %{}, %{}})
+    assert_receive {:reported, %{event: :tool_activity, payload: nil}}
+  end
+
+  test "a permission prompt is the session waiting on its person", %{socket: socket} do
+    listen(socket)
+
+    {_id, pid} =
+      start_terminal(socket, session_id: "cc-1", sessions: listed(fn -> session("idle") end))
+
+    send(pid, {:hook, "notification", %{"notification_type" => "permission_prompt"}, %{}})
+    assert_receive {:reported, %{event: :waiting}}
   end
 
   # Issue d12aa283: a re-attach's own Liveness notification is the only time
@@ -171,12 +221,12 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     socket: socket
   } do
     listen(socket)
-    now = fn -> session("busy") end
+    now = fn -> session("idle") end
     {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
 
     assert_receive {:reported_up, ^id}, 100
 
-    send(pid, :check)
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
     assert_receive {:reported, %{event: :turn_started}}
     assert_receive {:reported_up, ^id}
   end
@@ -193,19 +243,19 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     socket: socket
   } do
     listen(socket)
-    now = fn -> session("busy") end
+    now = fn -> session("idle") end
     {id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
 
     assert_receive {:reported_up, ^id}, 100
 
-    send(pid, :check)
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
     assert_receive {:reported, %{event: :turn_started}}
     assert_receive {:reported_up, ^id}
 
     assert :ok = GenServer.call(pid, {:session, %{socket: socket}})
 
     assert_receive {:reported_up, ^id},
-                    100
+                   100
 
     refute_receive {:reported, %{event: :turn_started}}, 50
   end
@@ -213,12 +263,12 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
   test "its session leaving the list ends the agent, its turn settled first", %{socket: socket} do
     listen(socket)
     gone = :counters.new(1, [])
-    lists = {session("busy"), []}
+    lists = {session("idle"), []}
     now = fn -> elem(lists, :counters.get(gone, 1)) end
     {_id, pid} = start_terminal(socket, session_id: "cc-1", sessions: listed(now))
     ref = Process.monitor(pid)
 
-    send(pid, :check)
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
     assert_receive {:reported, %{event: :turn_started}}
 
     :counters.put(gone, 1, 1)
@@ -235,14 +285,12 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     listen(socket)
     transcript = Path.join(dir, "s.jsonl")
     File.write!(transcript, "")
-    status = :counters.new(1, [])
-    statuses = {"idle", "busy"}
-    now = fn -> session(elem(statuses, :counters.get(status, 1))) end
+    now = fn -> session("idle") end
 
     {_id, pid} =
       start_terminal(socket, session_id: "cc-1", sessions: listed(now), transcript: transcript)
 
-    :counters.put(status, 1, 1)
+    send(pid, {:hook, "user-prompt-submit", %{}, %{}})
 
     File.write!(
       transcript,
@@ -260,8 +308,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     send(pid, :check)
     assert_receive {:reported, %{event: :message, text: "On it."}}, 5_000
 
-    :counters.put(status, 1, 0)
-    send(pid, :check)
+    send(pid, {:hook, "stop", %{}, %{}})
 
     assert_receive {:reported,
                     %{

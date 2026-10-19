@@ -85,7 +85,7 @@ defmodule CodeMySpec.Agents.Work do
   # A held task with a turn ended to wait is not stranded: whatever it waits on
   # messages it (`Wake`, through `Waiting`).
   defp stranded?(scope, agent) do
-    present?(agent) and is_nil(agent.turn_started_at) and
+    present?(agent) and is_nil(agent.turn_started_at) and is_nil(agent.waiting_since) and
       not Offers.in_flight?(agent.id) and not is_nil(Agent.active_task(agent)) and
       not is_nil(agent.working_copy_id) and Wake.decide(scope, agent, :resume) == :wake
   end
@@ -591,7 +591,7 @@ defmodule CodeMySpec.Agents.Work do
   # agent could act on, a copy to run on. Whether this agent should be woken for
   # it at all is `Wake`'s.
   defp idle?(agent) do
-    present?(agent) and is_nil(agent.turn_started_at) and
+    present?(agent) and is_nil(agent.turn_started_at) and is_nil(agent.waiting_since) and
       not Offers.in_flight?(agent.id) and not busy_on?(agent) and
       not is_nil(agent.working_copy_id)
   end

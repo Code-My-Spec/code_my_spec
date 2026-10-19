@@ -28,12 +28,21 @@ defmodule CodeMySpecSpex.Story1123.Criterion2244ContinuousSpex do
     scenario "a terminal coder's turn ends with coding work waiting" do
       given_ "an idle terminal coder, continuous, on a working copy with coding work waiting",
              context do
-        {:ok, busy_terminal_coder(context, true)}
+        {:ok, busy_terminal_coder(context, false)}
       end
 
       when_ "its turn ends, and the work waiting is offered", context do
-        session_is(context.session, "idle")
-        look(context.agent_id)
+        stop_turn(context, context.session)
+
+        # Idle between turns, with the work still waiting, it is put into the
+        # loop: the offer is what wakes it.
+        {:ok, _} =
+          ToolLibrary.run(
+            "set_agent_continuous",
+            %{"agent_id" => context.agent_id, "continuous" => true},
+            %{scope: context.scope}
+          )
+
         {:ok, context}
       end
 
@@ -63,8 +72,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2244ContinuousSpex do
         %{scope: context.scope}
       )
 
-    session_is(session, "busy")
-    look(agent_id)
+    submit_prompt(context, session)
 
     eventually(fn ->
       {:ok, work} = ToolLibrary.run("list_agent_work", %{}, %{scope: context.scope})

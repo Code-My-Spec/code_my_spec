@@ -31,6 +31,7 @@ defmodule CmsHarness.Web.HooksController do
         params = with_messaging(hook, conn, working_dir, params)
         decision = decide(hook, working_dir, params)
         attach_terminal(hook, conn, working_dir, params, decision)
+        CmsHarness.Agents.Terminal.hook(params["session_id"], hook, params, decision)
 
         conn
         |> put_status(200)

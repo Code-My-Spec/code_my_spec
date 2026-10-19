@@ -9,13 +9,16 @@ defmodule CmsHarness.Agents.Terminal do
   this is never busy, a written message is delivered (a `delivered` event
   settles its mailbox entry), and nothing it is sent can be interrupted.
 
-  Its state is read from Claude Code's own session registry (what
-  `claude agents --json` lists, story 1124): its session going busy is a turn starting, going idle the turn
-  ending, and leaving the list the agent ending — watched by `Liveness`, so
-  the server sees it come and go through Presence like any other, and an
-  exited session reads as gone rather than stalled. Where the list cannot be
-  read, the socket answering stands in for it. The socket and its key stay on
-  this machine; the server never sees either.
+  Its turns come from the session's own hooks (story 1127), which the harness
+  hands it as they fire: a prompt submitted starts a turn, a stop that lets the
+  session end it ends one, a tool call is the tool it is running, a permission
+  prompt is the session waiting on its person, and the session ending closes
+  whatever was open. A session running with hooks disabled reads idle: Claude
+  Code's agent list is read for presence only (story 1124), watched by
+  `Liveness`, so the server sees it come and go through Presence like any
+  other, and an exited session reads as gone rather than stalled. Where the
+  list cannot be read, the socket answering stands in for it. The socket and
+  its key stay on this machine; the server never sees either.
 
   Frames are newline-delimited JSON: an optional auth line carrying the
   session's peer token, then a user message (knowledge/harness, "Terminal
@@ -94,6 +97,7 @@ defmodule CmsHarness.Agents.Terminal do
 
     case register(state) do
       :ok ->
+        register_session(state)
         Liveness.watch(state.agent_id, self(), state.working_copy)
         report_up(state)
         send(self(), :mailbox_ready)
@@ -167,19 +171,54 @@ defmodule CmsHarness.Agents.Terminal do
     case observe(state) do
       :gone ->
         Logger.info("[CmsHarness] terminal agent #{state.agent_id} gone: its session ended")
-        {:stop, :normal, settle_turn(state, false)}
+        {:stop, :normal, end_turn(state)}
 
-      busy? ->
+      :alive ->
         schedule_check()
-        {:noreply, settle_turn(state, busy?)}
+        {:noreply, state}
     end
   end
 
-  # Busy, idle (`false`), or `:gone` — from Claude Code's agent list when it can
-  # be read, else from whether the socket answers (idle while it does).
+  # A hook the session fired (story 1127), handed over by the harness's hook
+  # endpoint. The turn it opens or closes is the session's own say-so, never
+  # Claude Code's agent list.
+  def handle_info({:hook, "user-prompt-submit", _params, _decision}, state),
+    do: {:noreply, settle_turn(state, true)}
+
+  def handle_info({:hook, "stop", _params, %{"decision" => "block"}}, state),
+    do: {:noreply, state}
+
+  def handle_info({:hook, "stop", _params, _decision}, state) do
+    state = read_transcript(state)
+    {:noreply, state |> end_turn() |> tool_activity(nil)}
+  end
+
+  def handle_info({:hook, "session-end", _params, _decision}, state) do
+    state = read_transcript(state)
+    {:stop, :normal, end_turn(state)}
+  end
+
+  def handle_info({:hook, "pre-tool-use", params, _decision}, state),
+    do: {:noreply, tool_activity(state, tool_of(params))}
+
+  def handle_info({:hook, "post-tool-use", _params, _decision}, state),
+    do: {:noreply, tool_activity(state, nil)}
+
+  # The session is waiting on its person (a permission prompt): its turn is
+  # still open, but it cannot take work.
+  def handle_info({:hook, "notification", %{"notification_type" => type}, _decision}, state)
+      when type in ["permission_prompt", "elicitation_dialog"] do
+    report(state, %{event: :waiting, generation: state.generation, ref: nil})
+    {:noreply, state}
+  end
+
+  def handle_info({:hook, _other, _params, _decision}, state), do: {:noreply, state}
+
+  # `:alive` or `:gone` — from Claude Code's agent list when it can be read,
+  # else from whether the socket answers. Never busy or idle: that is the hooks'.
   defp observe(%{session_id: session_id} = state) when is_binary(session_id) do
     case lookup(state, session_id) do
-      {:ok, status} -> status == "busy"
+      {:ok, _status} -> :alive
       :gone -> :gone
       :error -> socket_answers(state)
     end
@@ -212,7 +251,7 @@ defmodule CmsHarness.Agents.Terminal do
     case connect(state.socket) do
       {:ok, conn} ->
         :gen_tcp.close(conn)
-        state.busy?
+        :alive
 
       {:error, _} ->
         :gone
@@ -233,11 +272,25 @@ defmodule CmsHarness.Agents.Terminal do
     %{state | busy?: true}
   end
 
-  defp settle_turn(state, false) do
+  # The turn closes whether or not this process saw it open: a harness restart
+  # loses `busy?`, and the server's turn is still open.
+  defp end_turn(state) do
     report_spent(state)
     report(state, %{event: :turn_over, generation: state.generation, ref: nil})
     %{state | busy?: false, spent: []}
   end
+
+  # The tool the session is running now, or nil: what the team panel shows
+  # beside an Alloy agent's own tool calls, without writing the call twice.
+  defp tool_activity(state, tool) do
+    report(state, %{event: :tool_activity, payload: tool, generation: state.generation, ref: nil})
+    state
+  end
+
+  defp tool_of(%{"tool_name" => name} = params) when is_binary(name),
+    do: %{name: name, input: params["tool_input"] || %{}}
+
+  defp tool_of(_params), do: nil
 
   # What the session said and did since the last look, as the steps an agent
   # we run reports, and what its responses cost, held for the turn's end.
@@ -339,6 +392,25 @@ defmodule CmsHarness.Agents.Terminal do
   end
 
   defp schedule_check, do: Process.send_after(self(), :check, @check_ms)
+
+  # The hook endpoint finds this process by the session id every hook carries.
+  defp register_session(%{session_id: session_id}) when is_binary(session_id),
+    do: Registry.register(CmsHarness.Registry, {:terminal_session, session_id}, nil)
+
+  defp register_session(_state), do: :ok
+
+  @doc "Hand a hook the session fired to its agent, if this harness serves one for it."
+  @spec hook(String.t() | nil, String.t(), map(), map()) :: :ok
+  def hook(session_id, name, params, decision) when is_binary(session_id) do
+    case Registry.lookup(CmsHarness.Registry, {:terminal_session, session_id}) do
+      [{pid, _}] -> send(pid, {:hook, name, params, decision})
+      [] -> :ok
+    end
+
+    :ok
+  end
+
+  def hook(_session_id, _name, _params, _decision), do: :ok
 
   defp report(state, envelope),
     do: state.report.(state.working_copy, state.agent_id, envelope)

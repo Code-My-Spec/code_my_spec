@@ -2453,6 +2453,19 @@ defmodule CodeMySpec.Agents do
   # as usage, never written to the conversation as something the agent said.
   def record_turn_event(%Scope{}, _agent_id, %{"kind" => "turn_usage"}, _opts), do: :ok
 
+  # What a terminal session's hooks report beside its turns (story 1127): the
+  # tool it is running now, and that it is waiting on its person. State on the
+  # row, never a step in the conversation.
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "tool_activity"} = event, _opts),
+    do:
+      record_activity(scope, agent_id, %{
+        current_tool: tool_summary(event["tool"]),
+        waiting_since: nil
+      })
+
+  def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "waiting"}, _opts),
+    do: record_activity(scope, agent_id, %{waiting_since: DateTime.utc_now()})
+
   # A terminal session's turn ending (story 1124), read off Claude Code's own
   # agent list: what an engine's turn end settles — the turn, a decline, its
   # offers, what main must hear — and then its queue and its next offer. No
@@ -2472,7 +2485,10 @@ defmodule CodeMySpec.Agents do
            AgentsRepository.update_agent(
              scope,
              agent,
-             Map.merge(%{turn_started_at: nil}, refusal_outlived(agent, agent.turn_started_at))
+             Map.merge(
+               %{turn_started_at: nil, current_tool: nil, waiting_since: nil},
+               refusal_outlived(agent, agent.turn_started_at)
+             )
            ) do
       {:ok, settled} = Work.record_decline(scope, settled, agent.turn_started_at)
       :ok = Offers.settle_turn(settled)
@@ -2507,7 +2523,8 @@ defmodule CodeMySpec.Agents do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
            AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: agent.turn_started_at || DateTime.utc_now()
+             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
+             waiting_since: nil
            }),
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
@@ -2571,6 +2588,7 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent) do
       record_edit(agent, event)
       record_refusal(scope, agent, event)
+      track_tool(scope, agent, event)
       write_turn_event(conversation, agent, event)
     else
       # Not ours, or not found: dropped. A transcript under the wrong agent
@@ -2578,6 +2596,36 @@ defmodule CodeMySpec.Agents do
       _ -> :ok
     end
   end
+
+  # The tool an agent is running, as the team panel shows it: the same line for
+  # an agent we run (its tool call) and a terminal session (its hook).
+  defp track_tool(scope, agent, %{"kind" => "tool_start", "tool" => tool}),
+    do: record_activity(scope, agent.id, %{current_tool: tool_summary(tool)})
+
+  defp track_tool(scope, agent, %{"kind" => "tool_end"}),
+    do: record_activity(scope, agent.id, %{current_tool: nil})
+
+  defp track_tool(_scope, _agent, _event), do: :ok
+
+  defp record_activity(scope, agent_id, attrs) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, agent} <- AgentsRepository.update_agent(scope, agent, attrs) do
+      broadcast(scope, {:agent_turn, agent})
+    end
+
+    :ok
+  end
+
+  defp tool_summary(%{"name" => name} = tool) when is_binary(name) do
+    input = tool["input"] || %{}
+
+    case input["command"] || input["file_path"] || input["path"] || input["pattern"] do
+      detail when is_binary(detail) and detail != "" -> "#{name}: #{String.slice(detail, 0, 80)}"
+      _ -> name
+    end
+  end
+
+  defp tool_summary(_tool), do: nil
 
   defp broadcast_unreferenced_ready(scope, agent_id, agent, event) do
     if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do

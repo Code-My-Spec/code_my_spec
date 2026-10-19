@@ -27,8 +27,17 @@ defmodule CodeMySpecSpex.Story1127.Criterion2278Spex do
 
   # The cockpit's team panel: the page John watches his agents on.
   defp cockpit(context) do
-    {:ok, view, html} =
+    {:ok, view, _html} =
       live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+
+    # The team panel is a drawer; John opens it to see his agents.
+    render_hook(view, "viewport", %{"width" => 1200})
+    html = render(view)
+
+    html =
+      if html =~ ~r/data-test="panel-activity"[^>]*data-panel-open="true"/,
+        do: html,
+        else: render_hook(view, "toggle_panel", %{"panel" => "activity"})
 
     {view, html}
   end
