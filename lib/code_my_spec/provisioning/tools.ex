@@ -11,6 +11,7 @@ defmodule CodeMySpec.Provisioning.Tools do
       CodeMySpec.Agents,
       CodeMySpec.Environments,
       CodeMySpec.Generators,
+      CodeMySpec.Integrations,
       CodeMySpec.LocalScope,
       CodeMySpec.Provisioning,
       CodeMySpec.Provisioning.EnvironmentRepository,
@@ -25,6 +26,8 @@ defmodule CodeMySpec.Provisioning.Tools do
   def all do
     [
       CodeMySpec.Provisioning.Tools.AdoptRepository,
+      CodeMySpec.Provisioning.Tools.AwaitProviderConnection,
+      CodeMySpec.Provisioning.Tools.ConnectProvider,
       CodeMySpec.Provisioning.Tools.DevopsStatus,
       CodeMySpec.Provisioning.Tools.EnsureEnvironment,
       CodeMySpec.Provisioning.Tools.EnsureServerAccessKey,

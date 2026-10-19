@@ -142,8 +142,9 @@ defmodule CodeMySpecWeb.IntegrationsController do
   defp prepare_desktop_client(_provider), do: :ok
 
   defp pending_flow(conn, params) do
-    with true <- DesktopUser.active?(),
-         {:ok, flow} <- OAuthHandoff.claim(params["state"]) do
+    # Any parked flow, not only the desktop's: an agent's `connect_provider`
+    # parks one for a person who approves it in whatever browser they have.
+    with {:ok, flow} <- OAuthHandoff.claim(params["state"]) do
       {flow.provider, flow.session_params, flow.flow}
     else
       _session ->
