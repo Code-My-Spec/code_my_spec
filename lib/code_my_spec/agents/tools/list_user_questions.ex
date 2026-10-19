@@ -4,7 +4,6 @@ defmodule CodeMySpec.Agents.Tools.ListUserQuestions do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Sessions
 
   @impl true
   def name, do: "list_user_questions"
@@ -45,22 +44,7 @@ defmodule CodeMySpec.Agents.Tools.ListUserQuestions do
     end
   end
 
-  def call(_params, context) do
-    scope = context[:scope]
-
-    case Sessions.external_id_for_harness(working_copy_id(scope)) do
-      nil ->
-        {:ok, no_session()}
-
-      external_id ->
-        questions =
-          external_id
-          |> Notifications.list_question_requests_for_session()
-          |> Enum.filter(&(&1.status == "pending"))
-
-        {:ok, render(questions)}
-    end
-  end
+  def call(_params, _context), do: {:ok, no_agent()}
 
   defp render([]) do
     """
@@ -95,14 +79,11 @@ defmodule CodeMySpec.Agents.Tools.ListUserQuestions do
   defp text(%{title: title}) when is_binary(title), do: title
   defp text(_request), do: "(no question text)"
 
-  defp no_session do
+  defp no_agent do
     """
-    No session is registered for this working copy, so there are no questions to
-    list. A question is tied to the conversation it was asked in, and that link
-    is made from the session running here.
+    No agent is identified for this call, so there are no questions to list. A
+    question is tied to the agent that asked it; a Claude Code session is one
+    once its SessionStart hook has registered it.
     """
   end
-
-  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
-  defp working_copy_id(_scope), do: nil
 end

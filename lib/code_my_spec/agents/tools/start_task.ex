@@ -13,12 +13,9 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.StoryRefs
   alias CodeMySpec.TaskOwner
-  alias CodeMySpec.Utils
 
   @impl true
   def name, do: "start_task"
@@ -178,55 +175,25 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     end
   end
 
-  defp resolve_owner(scope, session_id, caller_agent_id, subject) when is_binary(subject) do
+  defp resolve_owner(scope, session_id, nil, subject) when is_binary(subject) do
     case Agents.fetch_agent(scope, subject) do
       {:ok, agent} -> {:ok, agent}
-      # Not an agent row: a sub-agent label, which owns tasks on the caller's
-      # session.
-      _ -> resolve_owner(scope, session_id, caller_agent_id)
+      _ -> resolve_session_owner(scope, session_id)
     end
   end
 
-  defp resolve_owner(scope, session_id, caller_agent_id, _subject),
-    do: resolve_owner(scope, session_id, caller_agent_id)
+  defp resolve_owner(scope, session_id, _caller, _subject),
+    do: resolve_session_owner(scope, session_id)
 
-  defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
-    Agents.fetch_agent(scope, agent_id)
-  end
-
-  defp resolve_owner(scope, session_id, _agent_id), do: resolve_session(scope, session_id)
-
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil ->
-        # Try as the internal id, then register lazily: a session opened
-        # before the plugin's hooks were enabled never got its row from
-        # SessionStart. The /mcp and hook pipelines resolve the same scope.
-        case safe_get_session(scope, session_id) do
-          nil -> lazily_register_session(scope, session_id)
-          session -> {:ok, session}
-        end
-
-      session ->
-        {:ok, session}
+  # Every task is an agent's: a terminal Claude Code session is one, registered
+  # by its SessionStart hook. One that never registered has no owner.
+  defp resolve_session_owner(scope, session_id) do
+    case Agents.fetch_owner(scope, nil, session_id) do
+      {:ok, agent} -> {:ok, agent}
+      {:error, :no_owner} -> {:error, Agents.no_owner_message()}
+      {:error, _reason} -> {:error, "Agent not found in this project."}
     end
   end
-
-  defp resolve_session(_scope, _session_id) do
-    {:error, no_owner_message()}
-  end
-
-  defp lazily_register_session(scope, session_id) do
-    case Sessions.find_or_create_session(scope, session_id) do
-      {:ok, session} ->
-        {:ok, session}
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:error, "Could not register session #{session_id}: #{inspect(changeset.errors)}"}
-    end
-  end
-
-  defp safe_get_session(scope, id), do: Utils.safe_get(fn -> Sessions.get_session(scope, id) end)
 
   defp start_or_resume(scope, owner, requirement, agent_id, context) do
     # Match on entity too: sub-agents may hold the same requirement for
@@ -310,8 +277,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     end
   end
 
-  defp handle_existing(%{status: :active} = task, scope, owner, _req, agent_id, context) do
-    maybe_assign_agent(scope, owner, task, agent_id)
+  defp handle_existing(%{status: :active} = task, scope, owner, _req, _agent_id, context) do
     return_prompt(owner, task, scope, context)
   end
 
@@ -383,10 +349,8 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   defp owner_scope(scope, %Agent{working_copy_id: id}),
     do: %{scope | active_working_copy_id: id}
 
-  defp owner_scope(scope, %Session{}), do: scope
-
   # A fresh claim is checked against the caller's role: work its role is not
-  # offered is work nothing would hand it. A session has no role. An agent
+  # offered is work nothing would hand it.  An agent
   # holding an active task passes here and is refused by `TaskOwner`, which is
   # the refusal it must act on first. Issue nodes already name their role.
   defp role_may_claim(%Agent{role: role}, %{entity_type: "issue", role: role}), do: :ok
@@ -545,16 +509,9 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
 
   defp answered_blocker(_task), do: ""
 
-  defp maybe_assign_agent(scope, %Session{} = session, %{agent_id: nil, id: task_id}, agent_id)
-       when is_binary(agent_id) do
-    Sessions.assign_agent(scope, session, task_id, agent_id)
-  end
-
-  defp maybe_assign_agent(_scope, _session, _task, _agent_id), do: :ok
-
   defp create_and_activate(scope, owner, requirement, agent_id, context) do
     task_attrs = build_task_attrs(scope, requirement, agent_id)
-    owner = maybe_init_session(scope, owner, requirement.satisfied_by)
+    owner = maybe_init_owner(scope, owner, requirement.satisfied_by)
 
     with {:ok, updated_owner} <- TaskOwner.add_task(scope, owner, task_attrs),
          task = TaskOwner.find_task(updated_owner, task_attrs.id),
@@ -655,18 +612,16 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   defp issue_ref(%{entity_type: "issue", entity_id: id}), do: to_string(id)
   defp issue_ref(_req), do: nil
 
-  # Session-only: `init_session/2` sets `continuous` on a Session, and an agent
-  # we run has its own `continuous` column; two writers would disagree.
-  defp maybe_init_session(scope, %Session{} = session, task_module) do
-    if Code.ensure_loaded?(task_module) and function_exported?(task_module, :init_session, 2) do
-      {:ok, s} = task_module.init_session(scope, session)
-      s
+  # A task module that sets its agent up on claiming (`StartImplementation`
+  # turning continuous mode on) exports `init_owner/2`.
+  defp maybe_init_owner(scope, %Agent{} = agent, task_module) do
+    if Code.ensure_loaded?(task_module) and function_exported?(task_module, :init_owner, 2) do
+      {:ok, agent} = task_module.init_owner(scope, agent)
+      agent
     else
-      session
+      agent
     end
   end
-
-  defp maybe_init_session(_scope, owner, _task_module), do: owner
 
   defp matches_entity?(task, "component", entity_id) do
     to_string(task.component_id) == entity_id
@@ -708,17 +663,4 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   # `{:error, {atom, message}}` (terse code + agent-actionable
   # message). Prefer the message when present.
   defp format_error_reason(reason), do: CodeMySpec.AgentTasks.format_error(reason)
-
-  # Neither identity arrived. `register_session` is advice for Claude Code only;
-  # an agent we run does not carry it.
-  defp no_owner_message do
-    "No session_id and no agent id on this call, so there is no owner to find " <>
-      "the task on.\n\n" <>
-      "If you are Claude Code: `register_session` with this conversation's id " <>
-      "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
-      "If you are an agent we run: your id travels on the connection and you " <>
-      "cannot supply it — this is a harness fault, not something to retry or " <>
-      "spell differently. Report it with `create_issue` and carry on with work " <>
-      "that does not need the task closed."
-  end
 end

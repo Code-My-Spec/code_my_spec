@@ -1,7 +1,6 @@
 defmodule CodeMySpec.Hooks.SessionStart do
   @moduledoc """
-  The SessionStart hook — find or create the session this agent is working in,
-  and the agent a terminal session is (story 1122).
+  The SessionStart hook — the agent a terminal session is (story 1122).
 
   Entirely a database operation, so there is nothing here that needs the
   machine the agent is running on. A harness with no database of its own can
@@ -11,8 +10,7 @@ defmodule CodeMySpec.Hooks.SessionStart do
   require Logger
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Agents.Agent
 
   @doc """
   Returns `{http_status, body}`.
@@ -30,19 +28,12 @@ defmodule CodeMySpec.Hooks.SessionStart do
   end
 
   defp create(scope, session_id, messaging) do
-    case Sessions.find_or_create_session(scope, session_id) do
-      {:ok, session} ->
-        {200,
-         %{session_id: session.id, status: to_string(session.status)}
-         |> maybe_warn_co_occupant(scope, session)
-         |> introduce(Agents.register_terminal(scope, session_id), messaging)}
+    registered = Agents.register_terminal(scope, session_id)
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {422, %{error: inspect(changeset.errors)}}
-
-      {:error, reason} ->
-        {422, %{error: inspect(reason)}}
-    end
+    {200,
+     %{}
+     |> maybe_warn_co_occupant(scope, registered)
+     |> introduce(registered, messaging)}
   end
 
   # The agent hears who it is: its id and the role it joined as, which it
@@ -82,42 +73,34 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
   # Another agent is already working here, said to the agent rather than to a log.
   #
-  # `Sessions.concurrent_sessions/2` has detected this all along and its
-  # comment is right that "silently proceeding was the thing that hurt, not the
-  # concurrency itself" — but it warns into `server.log`, which is the one place
-  # the agent is not looking. `1f94a769` is that gap one level over: two
-  # sessions in one worktree for hours, with `git status` and `git log` both
-  # looking normal and both sessions committing as the same author.
+  # Warns into `server.log` would be the one place the agent is not looking.
+  # `1f94a769` is that gap: two sessions in one worktree for hours, with
+  # `git status` and `git log` both looking normal and both sessions committing
+  # as the same author.
   #
-  # Split by harness, because the two cases are different hazards and take
+  # Split by checkout, because the two cases are different hazards and take
   # different advice:
   #
-  #   * **Same harness** — one working copy, so one index and one HEAD. A
-  #     `git add -- <path> && git commit` commits the *index*, which may hold
-  #     files the other session staged; a rebase moves the branch under a live
-  #     session; autostash shares a stack. Measured in one morning: a commit
-  #     carrying eight foreign files pushed under a message about one test
-  #     file, and a push that shipped a commit the pusher never made and
-  #     reported it verified.
+  #   * **Same working copy** — one index and one HEAD. A `git add -- <path> &&
+  #     git commit` commits the *index*, which may hold files the other session
+  #     staged; a rebase moves the branch under a live session; autostash
+  #     shares a stack.
   #
   #   * **Same project, different checkout** — no shared index, but shared task
-  #     records. The case behind `concurrent_sessions/2` itself: a second agent
-  #     whose MCP session had failed to register used the only session id it
-  #     could find, which was the first agent's, so every `start_task` and
-  #     `evaluate_task` it made was attributed elsewhere, including a task it
-  #     cancelled there.
+  #     records.
   #
-  # A warning, not a refusal, for the reason already recorded there: a desktop
-  # user and a sprite on one project may be legitimate, and refusing is a policy
-  # call. What changes is only that the agent hears it.
-  defp maybe_warn_co_occupant(body, scope, session) do
-    case Sessions.concurrent_sessions(scope, session.external_conversation_id) do
+  # A warning, not a refusal: a desktop user and a sprite on one project may be
+  # legitimate. What changes is only that the agent hears it.
+  defp maybe_warn_co_occupant(body, scope, {:ok, %Agent{} = agent}) do
+    case Agents.concurrent_terminal_agents(scope, agent) do
       [] -> body
-      others -> Map.put(body, :systemMessage, co_occupancy_message(others, session))
+      others -> Map.put(body, :systemMessage, co_occupancy_message(others, agent))
     end
   end
 
-  defp co_occupancy_message(others, %Session{working_copy_id: working_copy_id}) do
+  defp maybe_warn_co_occupant(body, _scope, _registered), do: body
+
+  defp co_occupancy_message(others, %Agent{working_copy_id: working_copy_id}) do
     {same_copy, elsewhere} = Enum.split_with(others, &(&1.working_copy_id == working_copy_id))
 
     [shared_index_warning(same_copy), shared_project_warning(elsewhere)]
@@ -127,8 +110,8 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
   defp shared_index_warning([]), do: nil
 
-  defp shared_index_warning(sessions) do
-    "Another agent is working in this same checkout: #{names(sessions)}. " <>
+  defp shared_index_warning(agents) do
+    "Another agent is working in this same checkout: #{names(agents)}. " <>
       "A worktree is one index and one HEAD, so `git add` and `git commit` act on a " <>
       "staging area you share — a commit can carry files the other session staged, and " <>
       "a rebase moves the branch under it. Stage explicit paths, check " <>
@@ -137,12 +120,12 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
   defp shared_project_warning([]), do: nil
 
-  defp shared_project_warning(sessions) do
+  defp shared_project_warning(agents) do
     "Another agent is working on this project from a different checkout: " <>
-      "#{names(sessions)}. No shared index, but task records are shared — check that " <>
-      "`start_task` and `evaluate_task` are acting on your own session before " <>
+      "#{names(agents)}. No shared index, but task records are shared — check that " <>
+      "`start_task` and `evaluate_task` are acting on your own agent before " <>
       "assuming a task is yours."
   end
 
-  defp names(sessions), do: Enum.map_join(sessions, ", ", & &1.external_conversation_id)
+  defp names(agents), do: Enum.map_join(agents, ", ", & &1.engine_session_id)
 end

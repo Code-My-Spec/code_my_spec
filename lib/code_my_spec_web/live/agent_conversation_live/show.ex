@@ -37,7 +37,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.ScreenState
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Utils
@@ -132,9 +131,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       # Analyzer runs in progress, so an idle transcript still shows work. Local
       # and remote runs broadcast here in the same shape.
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{scope.active_project_id}")
-
-      # Each agent's task line.
-      Sessions.subscribe_sessions(scope)
 
       # The dynamic panel's content, live. An epic event also switches the panel
       # to the epic view, as `show_in_panel` would.
@@ -1215,10 +1211,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # One task names itself; more name only the count.
   defp task_label(scope, agent_id) do
-    case Sessions.list_active_tasks_for_agent(scope, agent_id) do
-      [] -> nil
-      [task] -> task.requirement_name || "1 task"
-      tasks -> "#{length(tasks)} tasks"
+    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+         [_ | _] = tasks <- Enum.filter(agent.tasks || [], &(&1.status == :active)) do
+      case tasks do
+        [task] -> task.requirement_name || "1 task"
+        tasks -> "#{length(tasks)} tasks"
+      end
+    else
+      _ -> nil
     end
   end
 
@@ -1359,8 +1359,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp permissions_for(%{agent_id: agent_id}) when is_binary(agent_id),
     do: Notifications.list_permission_requests_for_agent(agent_id)
 
-  defp permissions_for(conversation),
-    do: Notifications.list_permission_requests_for_session(conversation.session_external_id)
+  # A conversation with no agent asked no permissions.
+  defp permissions_for(_conversation), do: []
 
   # A plain assign, not a stream: folding and nesting a result in its call need
   # neighbours, and `stream_insert/3` cannot regroup. One page, so re-folding on

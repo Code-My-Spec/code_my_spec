@@ -6,7 +6,6 @@ defmodule CodeMySpec.Issues.Tools.CreateIssue do
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Tools.Responses, as: IssuesMapper
   alias CodeMySpec.Stories.StoryRefs
-  alias CodeMySpec.Sessions
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Utils
 
@@ -144,17 +143,7 @@ defmodule CodeMySpec.Issues.Tools.CreateIssue do
     end
   end
 
-  defp caller(scope, agent_id, _session_id) when is_binary(agent_id),
-    do: Agents.fetch_agent(scope, agent_id)
-
-  defp caller(scope, _agent_id, session_id) when is_binary(session_id) and session_id != "" do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil -> :error
-      session -> {:ok, session}
-    end
-  end
-
-  defp caller(_scope, _agent_id, _session_id), do: :error
+  defp caller(scope, agent_id, session_id), do: Agents.fetch_owner(scope, agent_id, session_id)
 
   defp build_attrs(params) do
     params

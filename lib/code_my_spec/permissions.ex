@@ -12,7 +12,6 @@ defmodule CodeMySpec.Permissions do
     deps: [
       CodeMySpec.Auth,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope
     ],

@@ -2,7 +2,7 @@ defmodule CodeMySpec.Hooks.Stop do
   @moduledoc """
   The stop hook's decision.
 
-  Resolves session and task, consults persisted Problems, and decides
+  Resolves the terminal agent and its task, consults persisted Problems, and decides
   block/allow **immediately** — never waiting on a subprocess, so the answer
   always beats the hook's timeout.
 
@@ -18,14 +18,12 @@ defmodule CodeMySpec.Hooks.Stop do
   require Logger
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.TaskEvaluator
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
 
   @total_response_cap 4096
@@ -50,15 +48,23 @@ defmodule CodeMySpec.Hooks.Stop do
 
     case Agents.take_held_for_stop(scope, session_id) do
       [] ->
-        session = session_id && Sessions.get_by_external_id(scope, session_id)
-        warn_unresolved_session(scope, session_id, session, req_id)
+        agent = owner(scope, session_id)
+        warn_unresolved_session(scope, session_id, agent, req_id)
 
-        active_task = session && Session.active_task(session)
+        active_task = agent && Agent.active_task(agent)
 
-        do_decide(scope, session_id, session, active_task, [], req_id)
+        do_decide(scope, session_id, agent, active_task, [], req_id)
 
       messages ->
         hand_over(messages, req_id)
+    end
+  end
+
+  # The terminal agent a Claude Code session is, fresh from the row, or nil.
+  defp owner(scope, session_id) do
+    case Agents.fetch_owner(scope, nil, session_id) do
+      {:ok, agent} -> agent
+      {:error, _reason} -> nil
     end
   end
 
@@ -90,9 +96,9 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp warn_unresolved_session(_scope, session_id, nil, req_id) do
     Logger.warning(
-      "[StopHook] [#{req_id}] session_id #{session_id} has no session record — " <>
-        "allowing, but task evaluation is skipped. Usually a stale MCP connection; " <>
-        "reconnect with /mcp or re-fire the session-start hook."
+      "[StopHook] [#{req_id}] session_id #{session_id} is no registered agent — " <>
+        "allowing, but task evaluation is skipped. Usually a session whose start hook " <>
+        "never fired; restart it or re-fire the session-start hook."
     )
   end
 
@@ -102,58 +108,54 @@ defmodule CodeMySpec.Hooks.Stop do
     run_and_decide(scope, session_id, nil, nil, validation_opts, req_id)
   end
 
-  defp do_decide(scope, session_id, session, active_task, validation_opts, req_id) do
+  defp do_decide(scope, session_id, agent, active_task, validation_opts, req_id) do
     cond do
-      has_active_subagent_task?(scope, session) ->
-        allow(req_id, "Active subagent task")
+      continuous_mode?(agent) && stuck_threshold_hit?(agent) ->
+        terminate_stuck(scope, agent, req_id)
 
-      continuous_mode?(session) && stuck_threshold_hit?(session) ->
-        terminate_stuck(scope, session, req_id)
-
-      has_active_manual_task?(session) ->
+      has_active_manual_task?(agent) ->
         allow(req_id, "Active manual task")
 
       true ->
-        run_and_decide(scope, session_id, session, active_task, validation_opts, req_id)
+        run_and_decide(scope, session_id, agent, active_task, validation_opts, req_id)
     end
   end
 
-  defp run_and_decide(scope, session_id, session, active_task, validation_opts, req_id) do
-    agent_id = active_task && active_task.agent_id
-
+  defp run_and_decide(scope, session_id, agent, _active_task, validation_opts, req_id) do
     opts =
       validation_opts
       |> Keyword.put(:session_id, session_id)
-      |> Keyword.put(:agent_id, agent_id)
+      |> Keyword.put(:agent_id, nil)
+      |> Keyword.put(:git_rewrite_at, agent && agent.git_rewrite_at)
       |> Keyword.put(:requested_by, %{
         kind: "hook",
         hook: "stop",
         session_id: session_id,
-        agent_id: agent_id
+        agent_id: nil
       })
 
     # Problems never block a stop; promotion is where they gate (John,
     # 2026-10-18). Validation still syncs files and runs the in-process
     # validators.
-    {:ok, _result} = Validation.validate_stop(scope, active_task, opts)
-    evaluate_and_decide(scope, session_id, session, req_id)
+    {:ok, _result} = Validation.validate_stop(scope, agent && Agent.active_task(agent), opts)
+    evaluate_and_decide(scope, session_id, agent, req_id)
   end
 
-  defp evaluate_and_decide(scope, session_id, session, req_id) do
-    case maybe_evaluate(scope, session_id, session) do
+  defp evaluate_and_decide(scope, session_id, agent, req_id) do
+    case maybe_evaluate(scope, agent) do
       {:ok, :valid} ->
-        # cd296681: `session` is the struct `decide/2` fetched before
+        # cd296681: `agent` is the struct `decide/2` fetched before
         # `maybe_evaluate` ran. `:valid` here means TaskEvaluator just
         # closed the active task without error -- including a *failed* QA
         # attempt, which still counts as a validly-recorded evaluation --
         # and that write never reaches this stale struct's own `tasks`
-        # association. `Work.actionable/3` and `Menu.render/4` below must
+        # list. `Work.actionable/3` and `Menu.render/4` below must
         # see the task as TaskEvaluator just left it, not as it was before
         # this stop hook started, or the menu reports an obstacle ("No
         # valid QA pass attempt in DB") against a task the database
         # already shows as completed.
-        session = session && Sessions.get_by_external_id(scope, session_id)
-        maybe_continue_with_next_task(scope, session, req_id)
+        agent = agent && owner(scope, session_id)
+        maybe_continue_with_next_task(scope, agent, req_id)
 
       # Already recorded by `TaskEvaluator`, so nothing to record here — doing
       # it twice would advance the streak two per stop and trip the escape at
@@ -167,13 +169,19 @@ defmodule CodeMySpec.Hooks.Stop do
   # See knowledge/analysis, "Stop hook".
   @stuck_threshold 5
 
-  defp stuck_threshold_hit?(%Session{eval_feedback_count: count}) when is_integer(count),
-    do: count >= @stuck_threshold
-
+  # The same failure text this many stops running, counted on the active task.
+  defp stuck_threshold_hit?(%Agent{} = agent), do: feedback_count(agent) >= @stuck_threshold
   defp stuck_threshold_hit?(_), do: false
 
-  defp terminate_stuck(scope, session, req_id) do
-    count = session.eval_feedback_count || 0
+  defp feedback_count(%Agent{} = agent) do
+    case Agent.active_task(agent) do
+      %{evaluation_feedback_count: count} when is_integer(count) -> count
+      _ -> 0
+    end
+  end
+
+  defp terminate_stuck(scope, agent, req_id) do
+    count = feedback_count(agent)
 
     # Names what repeated without claiming which check produced it: task
     # evaluations and problem blocks both advance the counter.
@@ -187,7 +195,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
     # The counter is deliberately not cleared: re-enabling continuous mode
     # without a fix re-trips on the next failure.
-    Sessions.update_session(scope, session, %{continuous: false})
+    Agents.set_agent_continuous(scope, agent.id, false)
 
     NotificationClient.notify(%{
       type: "stuck",
@@ -204,32 +212,32 @@ defmodule CodeMySpec.Hooks.Stop do
     do: block_with_reason(scope, reason, req_id)
 
   defp maybe_terminate_stuck(scope, session_id, reason, req_id) do
-    case Sessions.get_by_external_id(scope, session_id) do
+    case owner(scope, session_id) do
       nil ->
         block_with_reason(scope, reason, req_id)
 
-      session ->
-        case {stuck_threshold_hit?(session), continuous_mode?(session)} do
+      agent ->
+        case {stuck_threshold_hit?(agent), continuous_mode?(agent)} do
           {true, true} ->
-            terminate_stuck(scope, session, req_id)
+            terminate_stuck(scope, agent, req_id)
 
-          # A non-continuous session gets the same escape: a block that
+          # A non-continuous agent gets the same escape: a block that
           # repeats forever is its own outage. Allow, saying nothing was fixed.
           {true, false} ->
-            allow_stuck(session, req_id)
+            allow_stuck(agent, req_id)
 
           {false, _continuous} ->
-            block_with_reason(scope, reason, req_id, session)
+            block_with_reason(scope, reason, req_id, agent)
         end
     end
   end
 
-  defp allow_stuck(session, req_id) do
-    count = session.eval_feedback_count || 0
+  defp allow_stuck(agent, req_id) do
+    count = feedback_count(agent)
 
     Logger.warning(
       "[StopHook] [#{req_id}] same block #{count} times running on a non-continuous " <>
-        "session — allowing the stop, unfixed"
+        "agent — allowing the stop, unfixed"
     )
 
     %{
@@ -305,43 +313,11 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp blocking_counts(_), do: []
 
-  defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
+  defp maybe_evaluate(_scope, nil), do: {:ok, :valid}
+  defp maybe_evaluate(scope, %Agent{} = agent), do: TaskEvaluator.evaluate_agent(scope, agent)
 
-  defp maybe_evaluate(scope, session_id, _session) do
-    TaskEvaluator.evaluate_sessions(scope, session_id)
-  end
-
-  # A parent is exempt while a subagent holding an active task (non-nil
-  # `agent_id`) is live by heartbeat (`Session.active_subagents/2`, the same
-  # source `list_session_subagents` reports). A task row alone is not evidence:
-  # it outlives a killed subagent.
-  defp has_active_subagent_task?(scope, session) do
-    subagent_task_live?(session, live_agent_ids(scope, session))
-  end
-
-  @doc """
-  Public, and split from the lookup, so the rule can be asserted without a
-  database: the interesting cases are all about which agent ids are live, and
-  `Configurations.get_or_create/1` inserts on miss.
-  """
-  @spec subagent_task_live?(Session.t(), MapSet.t(String.t())) :: boolean()
-  def subagent_task_live?(session, live_agent_ids) do
-    Enum.any?(session.tasks || [], fn task ->
-      task.status == :active and not is_nil(task.agent_id) and
-        MapSet.member?(live_agent_ids, task.agent_id)
-    end)
-  end
-
-  defp live_agent_ids(scope, session) do
-    ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
-
-    session
-    |> Session.active_subagents(ttl)
-    |> MapSet.new(& &1.agent_id)
-  end
-
-  defp has_active_manual_task?(session) do
-    case Session.active_task(session) do
+  defp has_active_manual_task?(agent) do
+    case Agent.active_task(agent) do
       %{validation_type: :manual} -> true
       _ -> false
     end
@@ -350,14 +326,14 @@ defmodule CodeMySpec.Hooks.Stop do
   # The loop keeps the agent working; it does not tell it what to work on. The
   # refusal is `Menu.render/4`, the same menu every refusal uses.
   # See knowledge/analysis, "Stop hook".
-  defp maybe_continue_with_next_task(scope, session, req_id) do
+  defp maybe_continue_with_next_task(scope, agent, req_id) do
     cond do
-      is_nil(session) ->
-        Logger.info("[StopHook] [#{req_id}] No session, allowing stop")
+      is_nil(agent) ->
+        Logger.info("[StopHook] [#{req_id}] No agent, allowing stop")
         notify_complete()
         %{}
 
-      not continuous_mode?(session) ->
+      not continuous_mode?(agent) ->
         Logger.info("[StopHook] [#{req_id}] Not in continuous mode, allowing stop")
         notify_complete()
         %{}
@@ -365,7 +341,7 @@ defmodule CodeMySpec.Hooks.Stop do
       true ->
         # The same count the menu renders, so the decision and the menu in one
         # response cannot disagree.
-        case length(Work.actionable(scope, nil, session)) do
+        case length(Work.actionable(scope, nil, agent)) do
           n when n > 0 ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
@@ -375,7 +351,7 @@ defmodule CodeMySpec.Hooks.Stop do
               "decision" => "block",
               "reason" =>
                 "Task completed successfully, and the loop is still running." <>
-                  Menu.render(scope, true, nil, session)
+                  Menu.render(scope, true, nil, agent)
             }
 
           0 ->

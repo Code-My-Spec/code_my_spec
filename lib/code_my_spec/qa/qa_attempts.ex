@@ -17,7 +17,6 @@ defmodule CodeMySpec.Qa.QaAttempts do
   alias CodeMySpec.Qa.StoryReviews
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -28,7 +27,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   Required params: `:task_id`, `:status`, `:scenarios`.
   Optional: `:issue_ids`.
 
-  Resolves `story_id` and `agent_id` from the session owning the task.
+  Resolves `story_id` and `agent_id` from the agent owning the task.
   Sets `parent_attempt_id` to the most-recent prior attempt on the story.
   The parent-link lookup + insert run in a transaction so concurrent
   submits don't produce a diamond chain.
@@ -120,7 +119,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp agent_in_project(_scope, _agent_id), do: nil
 
   defp complete_review_task(scope, task_id, agent_id) do
-    owner = agent_in_project(scope, agent_id) || session_owner(scope, task_id)
+    owner = agent_in_project(scope, agent_id) || task_owner(scope, task_id)
 
     case owner && TaskOwner.complete_task(scope, owner, task_id, :completed) do
       {:ok, _} -> :ok
@@ -129,17 +128,13 @@ defmodule CodeMySpec.Qa.QaAttempts do
     end
   end
 
-  defp session_owner(scope, task_id) do
-    ids_and_tasks =
-      Repo.all(
-        from(s in Session,
-          where: s.project_id == ^scope.active_project_id,
-          select: {s.id, s.tasks}
-        )
-      )
-
-    case Enum.find(ids_and_tasks, fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end) do
-      {id, _} -> Repo.get(Session, id)
+  # The agent holding the task, when the caller did not name its agent.
+  defp task_owner(scope, task_id) do
+    scope.active_project_id
+    |> agent_tasks()
+    |> Enum.find(fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end)
+    |> case do
+      {id, _tasks} -> Repo.get(Agent, id)
       nil -> nil
     end
   end
@@ -352,12 +347,11 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
     # `tasks` is PG `jsonb[]`, so `@>` does not apply. Only `tasks` is selected,
     # skipping Ecto's enum cast on `type`, which crashes on deprecated values.
-    sessions = session_tasks(project_id)
     agents = agent_tasks(project_id)
 
-    case find_task(sessions ++ Enum.map(agents, &elem(&1, 1)), task_id) do
+    case find_task(Enum.map(agents, &elem(&1, 1)), task_id) do
       nil ->
-        {:error, {:task_not_found, open_qa_tasks(sessions ++ Enum.map(agents, &elem(&1, 1)))}}
+        {:error, {:task_not_found, open_qa_tasks(Enum.map(agents, &elem(&1, 1)))}}
 
       task ->
         cond do
@@ -375,15 +369,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   defp resolve_task_info(_scope, _task_id), do: {:error, :task_id_required}
 
-  defp session_tasks(project_id) do
-    Session
-    |> where([s], s.project_id == ^project_id)
-    |> select([s], s.tasks)
-    |> Repo.all()
-  end
-
-  # An in-app agent holds its own tasks. Sessions and agents are both searched:
-  # the task id is unique across both and is all this is given.
+  # Every task is an agent's; the task id is unique and is all this is given.
   defp agent_tasks(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id)
@@ -391,8 +377,8 @@ defmodule CodeMySpec.Qa.QaAttempts do
     |> Repo.all()
   end
 
-  # Who did this QA: the agent row the task was found on (an agent-owned task
-  # does not name its agent), else the session task's `agent_id` field.
+  # Who did this QA: the agent row the task was found on (a task does not name
+  # its agent).
   defp owner_of(task, task_id, agents) do
     case Enum.find(agents, fn {_id, tasks} -> find_task(List.wrap(tasks), task_id) end) do
       {agent_id, _tasks} -> agent_id

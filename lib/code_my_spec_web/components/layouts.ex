@@ -229,7 +229,6 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
               <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
               <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
               <li>
                 <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
               </li>

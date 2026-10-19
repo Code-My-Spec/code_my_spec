@@ -87,50 +87,6 @@
           }
         ]
       }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/subagent-start",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "curl",
-            "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/subagent-stop",
-              "-H",
-              "Content-Type: application/json",
-              "--data-binary",
-              "@-"
-            ]
-          }
-        ]
-      }
     ]
   }
 }

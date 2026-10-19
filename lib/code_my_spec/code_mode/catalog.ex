@@ -40,7 +40,6 @@ defmodule CodeMySpec.CodeMode.Catalog do
     "start_analysis" =>
       "it spawns a sweep that runs for minutes, and a loop around it is a queue " <>
         "of them nobody asked for",
-    "assign_subagent" => "it spawns background work, and a loop around it is a fleet",
     "tap_out" => "it ends your turn, which is yours to do and not a script's",
     "reject_offer" =>
       "declining work is a decision about your own turn, made once, not a script's",

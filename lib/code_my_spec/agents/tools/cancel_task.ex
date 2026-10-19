@@ -3,7 +3,6 @@ defmodule CodeMySpec.Agents.Tools.CancelTask do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Sessions
   alias CodeMySpec.TaskOwner
 
   @impl true
@@ -12,7 +11,7 @@ defmodule CodeMySpec.Agents.Tools.CancelTask do
   @impl true
   def description do
     """
-    Cancel a task on the current session (Story 704 / Rule 4).
+    Cancel a task held by the calling agent (Story 704 / Rule 4).
 
     Transitions the task to `:cancelled` without going through
     `evaluate_task`. Used to unstick the loop when a task can't make
@@ -46,31 +45,13 @@ defmodule CodeMySpec.Agents.Tools.CancelTask do
     end
   end
 
-  defp resolve_owner(scope, agent_id, _session_id) when is_binary(agent_id) do
-    case Agents.fetch_agent(scope, agent_id) do
+  defp resolve_owner(scope, agent_id, session_id) do
+    case Agents.fetch_owner(scope, agent_id, session_id) do
       {:ok, agent} -> {:ok, agent}
+      {:error, :no_owner} -> {:error, Agents.no_owner_message()}
       {:error, _} -> {:error, "Agent not found in this project"}
     end
   end
-
-  defp resolve_owner(scope, _agent_id, session_id), do: resolve_session(scope, session_id)
-
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil -> {:error, "Session not found: #{session_id}"}
-      session -> {:ok, session}
-    end
-  end
-
-  defp resolve_session(_scope, _),
-    do:
-      {:error,
-       "No session_id and no agent id on this call, so there is nothing to act on.\n\n" <>
-         "If you are Claude Code: `register_session` with this conversation's id " <>
-         "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
-         "If you are an agent we run: your id travels on the connection and you " <>
-         "cannot supply it — this is a harness fault, not something to retry or " <>
-         "ask a person about. Report it with `create_issue` and carry on."}
 
   defp ensure_task(session, task_id) do
     case TaskOwner.find_task(session, task_id) do

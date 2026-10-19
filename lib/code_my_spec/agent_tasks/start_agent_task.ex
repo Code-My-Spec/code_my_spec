@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
   alias CodeMySpec.Qa
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Stories
   alias CodeMySpec.TaskOwner
 
@@ -176,25 +175,22 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- find_or_create_session(scope, external_id, agent_task_module),
-         {:ok, _session} <- init_session_state(scope, session, agent_task_module),
+         {:ok, agent} <- owner_for(scope, external_id),
+         {:ok, _agent} <- init_owner_state(scope, agent, agent_task_module),
          {:ok, prompt} <-
            apply(agent_task_module, :command, [scope, %{project_id: scope.active_project_id}]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
   end
 
-  # Task modules that mutate the session before `command/2` (e.g.
-  # StartImplementation enabling continuous mode) export `init_session/2`.
-  defp init_session_state(scope, session, agent_task_module) do
-    # Load first: `function_exported?` is false for a module not yet loaded.
-    Code.ensure_loaded?(agent_task_module)
-
+  # Task modules that set their agent up before `command/2` (e.g.
+  # StartImplementation enabling continuous mode) export `init_owner/2`.
+  defp init_owner_state(scope, agent, agent_task_module) do
     if Code.ensure_loaded?(agent_task_module) and
-         function_exported?(agent_task_module, :init_session, 2) do
-      agent_task_module.init_session(scope, session)
+         function_exported?(agent_task_module, :init_owner, 2) do
+      agent_task_module.init_owner(scope, agent)
     else
-      {:ok, session}
+      {:ok, agent}
     end
   end
 
@@ -204,7 +200,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, _session} <- create_session(scope, external_id, agent_task_module, nil),
          {:ok, prompt} <-
            apply(agent_task_module, :command, [scope, %{project_id: scope.active_project_id}]) do
       {:ok, with_project_context(prompt, scope), sync_result}
@@ -217,8 +212,8 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, _project} <- get_project(scope),
          {:ok, sync_result} <- sync_project(scope),
          {:ok, agent_task_module} <- resolve_session_type(session_type, nil),
-         {:ok, session} <- create_topic_session(scope, external_id, agent_task_module, topic),
-         {:ok, task_attrs} <- topic_task(scope, session, agent_task_module, topic),
+         {:ok, agent} <- owner_for(scope, external_id),
+         {:ok, task_attrs} <- topic_task(scope, agent, agent_task_module, topic),
          {:ok, prompt} <- apply(agent_task_module, :command, [scope, task_attrs]) do
       {:ok, with_project_context(prompt, scope), sync_result}
     end
@@ -298,7 +293,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
          {:ok, sync_result} <- sync_project(scope),
          {:ok, component} <- get_component(scope, module_name),
          {:ok, agent_task_module} <- resolve_session_type(session_type, component),
-         {:ok, _session} <- create_session(scope, external_id, agent_task_module, component),
          {:ok, prompt} <-
            apply(agent_task_module, :command, [
              scope,
@@ -412,29 +406,18 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     end
   end
 
-  # Session creation
+  # Every task is an agent's: the terminal agent a Claude Code session is.
+  defp owner_for(scope, external_id) do
+    case TaskOwner.terminal_agent(scope, external_id) do
+      {:ok, agent} ->
+        {:ok, agent}
 
-  defp find_or_create_session(scope, external_id, session_module) do
-    Sessions.find_or_create_session(scope, external_id, %{type: session_module})
-  end
-
-  defp create_session(scope, external_id, session_module, component) do
-    attrs = %{
-      type: session_module,
-      component_module_name: component && component.module_name,
-      state: if(component, do: %{"component_id" => component.id}, else: %{})
-    }
-
-    Sessions.find_or_create_session(scope, external_id, attrs)
-  end
-
-  defp create_topic_session(scope, external_id, session_module, topic) do
-    attrs = %{
-      type: session_module,
-      state: %{"topic" => topic}
-    }
-
-    Sessions.find_or_create_session(scope, external_id, attrs)
+      :error ->
+        {:error,
+         "No agent found for session #{inspect(external_id)}: the SessionStart hook " <>
+           "registers a Claude Code conversation as an agent. Restart the session, or " <>
+           "re-fire the hook, so it registers."}
+    end
   end
 
   # Sync — incremental only.

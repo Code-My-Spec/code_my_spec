@@ -12,7 +12,6 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
 
   alias CodeMySpec.AgentPerformance.Stage
   alias CodeMySpec.Agents
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -44,8 +43,8 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   @doc """
   A story's cycle time, from tasks already in hand.
 
-  `story/2` asks `Sessions` and `Agents` for this story's tasks, and each of
-  those reads the project's sessions and agents and filters in memory. That is
+  `story/2` asks `Agents` for this story's tasks, which reads the project's
+  agents and filters in memory. That is
   fine for one story and is why the performance page's chart re-read them once
   per story -- 166 stories over 180 agents is the shape that kept the join past
   the websocket timeout (issue 5d359bb3). A caller with the whole project's
@@ -68,8 +67,8 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   end
 
   @doc """
-  Every task of every agent and session in the project, in two reads rather
-  than two per story.
+  Every task of every agent in the project, in one read rather than one per
+  story.
 
   The same rows `all_tasks/3` answers for one story, and the same
   `story_id`/`component_id` matching -- just not re-read per story. Pair it
@@ -77,10 +76,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   """
   @spec all_tasks(Scope.t()) :: [map()]
   def all_tasks(%Scope{} = scope) do
-    session_tasks = scope |> Sessions.list_sessions() |> Enum.flat_map(&tasks_of/1)
-    agent_tasks = scope |> Agents.list_agents() |> Enum.flat_map(&tasks_of/1)
-
-    session_tasks ++ agent_tasks
+    scope |> Agents.list_agents() |> Enum.flat_map(&tasks_of/1)
   end
 
   @doc "The slice of `all_tasks/1` that belongs to one story."
@@ -97,12 +93,9 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   defp status(%Story{promoted_version: nil}, _tasks), do: :in_flight
   defp status(%Story{}, _tasks), do: :finished
 
-  # Tasks live on whichever owner ran them: a session-backed agent (Claude
-  # Code, hooks) or an agent run directly under Alloy, with no session at
-  # all. A story's build moves through both over its life.
+  # Tasks live on the agent that ran them, terminal or Alloy.
   defp all_tasks(scope, story_id, component_id) do
-    Sessions.list_tasks_for_story(scope, story_id, component_id) ++
-      Agents.list_tasks_for_story(scope, story_id, component_id)
+    Agents.list_tasks_for_story(scope, story_id, component_id)
   end
 
   # The earliest task opened against the story, as a proxy for "released":
@@ -111,7 +104,7 @@ defmodule CodeMySpec.AgentPerformance.CycleTime do
   #
   # Restricted to tasks carrying this story's own story_id: `tasks` can also
   # hold a shared component's own tasks (no story_id of their own, see
-  # `Sessions.list_tasks_for_story/3`), and a component reused across many
+  # `Agents.list_tasks_for_story/3`), and a component reused across many
   # stories' builds has one earliest such task that predates all of them --
   # anchoring on it pinned every sibling story to the same Total (issue
   # 04830e20). That shared fallback still flows into `stage_seconds/2`'s

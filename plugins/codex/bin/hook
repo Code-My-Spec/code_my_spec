@@ -25,8 +25,6 @@ case "$EVENT" in
   PreToolUse)        ENDPOINT="/api/hooks/pre-tool-use" ;;
   PostToolUse)       ENDPOINT="/api/hooks/post-tool-use" ;;
   Stop)              ENDPOINT="/api/hooks/stop" ;;
-  SubagentStart)     ENDPOINT="/api/hooks/subagent-start" ;;
-  SubagentStop)      ENDPOINT="/api/hooks/subagent-stop" ;;
   *)                 exit 0 ;;
 esac
 

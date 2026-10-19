@@ -3,7 +3,6 @@ defmodule CodeMySpec.Agents.Tools.ListTasks do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Sessions
 
   @impl true
   def name, do: "list_tasks"
@@ -150,57 +149,15 @@ defmodule CodeMySpec.Agents.Tools.ListTasks do
   defp status_icon(:blocked), do: "⏸"
   defp status_icon(_), do: "?"
 
-  # An agent we run owns its tasks directly, so it is the owner and there is no
-  # session in the picture. Ahead of the session clause for the same reason as
-  # in `evaluate_task`: a call carrying both is one of ours.
-  #
-  # This clause did not exist, and the cost was watched on 2026-09-07. The
-  # war-epic coding agent called `list_tasks`, was told "call `register_session`
-  # with this conversation's id", looked `register_session` up, found it is not
-  # a tool it carries — and then asked *John* to register the conversation or
-  # hand it a session id. A question he could not usefully answer, about a
-  # session that should never have been wanted, while seven completed tasks sat
-  # on its own row.
-  defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
-    Agents.fetch_agent(scope, agent_id)
-  end
-
-  defp resolve_owner(scope, session_id, _agent_id), do: resolve_session(scope, session_id)
-
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil -> {:error, "Session not found: #{session_id}"}
-      session -> {:ok, session}
+  # Every task is an agent's: the one asked about, the connection's, or the
+  # terminal agent the hook's `session_id` names.
+  defp resolve_owner(scope, session_id, agent_id) do
+    case Agents.fetch_owner(scope, agent_id, session_id) do
+      {:ok, agent} -> {:ok, agent}
+      {:error, :no_owner} -> {:error, Agents.no_owner_message()}
+      {:error, _reason} -> {:error, "Agent not found in this project."}
     end
   end
-
-  # Neither identity arrived, so there is no owner whose tasks these would be.
-  #
-  # `register_session` is named only to the caller that can follow it. It is a
-  # Claude Code tool and no coding agent carries one — being told to call it is
-  # what sent an agent to ask a person for a session id.
-  #
-  # The Claude Code half used to stop at "call `register_session`", and a caller
-  # that did got this same refusal from the next line of the same script — so the
-  # advice read as a lie and the caller went looking for a session id to pass by
-  # hand. Registering creates the session; it was never what carried the id here.
-  # Since `1a892606` the id travels into a script from `run_script`'s own input,
-  # so the remaining case is a conversation whose SessionStart hook is not
-  # injecting one at all, and the remedy for that is to say which id rather than
-  # to register again.
-  defp resolve_session(_scope, _),
-    do:
-      {:error,
-       "No session_id and no agent id on this call, so there is no owner whose " <>
-         "tasks to list.\n\n" <>
-         "If you are Claude Code: normally the hook injects `session_id` and you " <>
-         "never see this. Without it, pass the id yourself — `list_tasks({ " <>
-         "session_id = \"…\" })` — and `register_session` first if this server has " <>
-         "never seen the conversation. Registering alone will not fix this: it " <>
-         "creates the session, it does not tell this call which one you are.\n\n" <>
-         "If you are an agent we run: your id travels on the connection and you " <>
-         "cannot supply it — this is a harness fault, not something to retry or " <>
-         "ask a person about. Report it with `create_issue` and carry on."}
 
   # From the schema, not a copy of it. This list said
   # `prepared active completed failed cancelled` while the schema had been

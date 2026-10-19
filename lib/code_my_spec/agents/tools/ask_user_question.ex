@@ -6,7 +6,6 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
 
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Sessions
 
   @impl true
   def name, do: "ask_user_question"
@@ -189,12 +188,10 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
       # agent, which is story 1052's routing; a Claude Code session's goes
       # straight to the person, because there is nobody above it to route to.
       # One the asker marks `about: "criteria"` goes to product (8c91d5bc).
-      "holder" => MainAgent.holder_for(scope, context[:agent_id], params[:about], params[:to]),
-      "session_external_id" => session_id_unless_agent(context[:agent_id], scope)
+      "holder" => MainAgent.holder_for(scope, context[:agent_id], params[:about], params[:to])
     }
 
-    with {:ok, request} <-
-           create_question(scope, user_id, attrs, task_ref, Map.get(params, :session_id)) do
+    with {:ok, request} <- create_question(scope, user_id, attrs, task_ref) do
       # Delivered rather than discovered. Story 1059 wakes the main agent on a
       # cadence, so a question raised now would be seen eventually — at the cost
       # of the asking agent waiting out a window for somebody who was idle
@@ -208,19 +205,18 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
     {:error, "No user on this scope, so there is nobody to ask. Ask in the terminal instead."}
   end
 
-  defp create_question(scope, _user_id, %{"agent_id" => id} = attrs, task_ref, _session_id)
+  defp create_question(scope, _user_id, %{"agent_id" => id} = attrs, task_ref)
        when is_binary(id) do
     Notifications.create_agent_question_request(scope, id, attrs, task_ref)
   end
 
-  defp create_question(scope, user_id, attrs, task_ref, session_id),
-    do: Notifications.create_session_question_request(scope, user_id, attrs, task_ref, session_id)
+  # A caller that is no agent (a Claude Code session whose SessionStart never
+  # registered it) still reaches the person, with no task to block.
+  defp create_question(_scope, user_id, attrs, _task_ref),
+    do: Notifications.create_question_request(user_id, attrs)
 
   defp title_or_default(title) when is_binary(title) and title != "", do: title
   defp title_or_default(_title), do: "A question for you"
-
-  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
-  defp working_copy_id(_scope), do: nil
 
   defp asked(context, request, questions) do
     """
@@ -277,13 +273,4 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
       "`check_answer` with that id for the reply, and `start_task` to deliberately " <>
       "resume eligible work."
   end
-
-  # A session or an agent, never both. `Sessions.external_id_for_harness/1`
-  # answers nil for an agent's working copy anyway, so stamping it wrote
-  # nothing — but naming both implied the two identities were interchangeable,
-  # and a page reading the wrong one is what sent every agent question nowhere.
-  defp session_id_unless_agent(agent_id, _scope) when is_binary(agent_id), do: nil
-
-  defp session_id_unless_agent(_agent_id, scope),
-    do: Sessions.external_id_for_harness(working_copy_id(scope))
 end

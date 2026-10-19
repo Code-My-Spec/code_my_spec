@@ -4,7 +4,6 @@ defmodule CodeMySpec.Agents.Tools.CheckAnswer do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Sessions
 
   # Comfortably inside the transport's call timeout. The point is to catch the
   # case where the user is already looking at their phone, not to wait them out.
@@ -172,8 +171,8 @@ defmodule CodeMySpec.Agents.Tools.CheckAnswer do
   end
 
   @doc """
-  The question `id`, if the caller asked it: the same agent, or the same
-  Claude Code session. `{:error, :not_found}` otherwise, whoever else's it is.
+  The question `id`, if the caller asked it: the same agent, or an unowned
+  question the same user asked. `{:error, :not_found}` otherwise, whoever else's it is.
   """
   @spec owned_request(String.t(), map()) :: {:ok, map()} | {:error, :not_found}
   def owned_request(id, context) do
@@ -190,10 +189,9 @@ defmodule CodeMySpec.Agents.Tools.CheckAnswer do
     request.agent_id == id and match?({:ok, _}, Agents.fetch_agent(scope, id))
   end
 
-  defp owned?(request, %{scope: %{user: %{id: user_id}} = scope}) do
-    is_nil(request.agent_id) and request.user_id == user_id and
-      request.session_external_id ==
-        Sessions.external_id_for_harness(scope.active_working_copy_id)
+  # A caller that is no agent owns the unowned questions its user asked.
+  defp owned?(request, %{scope: %{user: %{id: user_id}}}) do
+    is_nil(request.agent_id) and request.user_id == user_id
   end
 
   defp owned?(_request, _context), do: false

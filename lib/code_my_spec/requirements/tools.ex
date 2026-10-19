@@ -14,7 +14,6 @@ defmodule CodeMySpec.Requirements.Tools do
       CodeMySpec.Configurations,
       CodeMySpec.Files,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.Tools,
       CodeMySpec.WorkingCopies

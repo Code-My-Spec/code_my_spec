@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   @moduledoc """
-  Evaluates a session's active task against its requirement, and completes,
+  Evaluates an agent's active task against its requirement, and completes,
   cancels or leaves it according to the answer.
 
   Evaluation only: no file sync, no compilation, no static analysis — that is
@@ -13,37 +13,23 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
 
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.Environments
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Look up session by external conversation ID, evaluate the active task.
-  """
-  @spec evaluate_sessions(Scope.t(), String.t()) :: {:ok, :valid} | {:error, String.t()}
-  def evaluate_sessions(%Scope{} = scope, session_id) when is_binary(session_id) do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil ->
-        {:ok, :valid}
-
-      %Session{} = session ->
-        evaluate_session(scope, session)
-    end
-  end
-
-  @doc """
-  Evaluate the active task on a session.
+  Evaluate the active task an agent holds.
 
   ## Options
 
   - `:record_feedback` (default `true`) — whether an invalid result bumps the
-    session's repeat-feedback counter. Background re-evaluations pass `false`:
+    task's repeat-feedback counter. Background re-evaluations pass `false`:
     only agent-facing stops count toward the stuck threshold.
   """
-  @spec evaluate_session(Scope.t(), Session.t(), keyword()) ::
+  @spec evaluate_agent(Scope.t(), Agent.t(), keyword()) ::
           {:ok, :valid} | {:error, String.t()}
-  def evaluate_session(scope, session, opts \\ []) do
-    case Session.active_task(session) do
+  def evaluate_agent(scope, %Agent{} = agent, opts \\ []) do
+    case Agent.active_task(agent) do
       nil ->
         {:ok, :valid}
 
@@ -52,16 +38,16 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
         {:ok, :valid}
 
       task ->
-        evaluate_task(scope, session, task, opts)
+        evaluate_task(scope, agent, task, opts)
     end
   end
 
   @doc """
   Evaluate a single task: dispatch to custom or unified evaluator, complete on pass.
   """
-  @spec evaluate_task(Scope.t(), Session.t(), map(), keyword()) ::
+  @spec evaluate_task(Scope.t(), Agent.t(), map(), keyword()) ::
           {:ok, :valid} | {:error, String.t()}
-  def evaluate_task(scope, session, task, opts \\ []) do
+  def evaluate_task(scope, agent, task, opts \\ []) do
     case task.session_type do
       nil ->
         Logger.warning("[TaskEvaluator] Task #{task.id} has no session_type, skipping")
@@ -73,24 +59,24 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
 
         module
         |> dispatch_evaluate(scope, task, opts)
-        |> handle_result(scope, session, task, type_name, opts)
+        |> handle_result(scope, agent, task, type_name, opts)
     end
   end
 
   # One clause per evaluator outcome.
-  defp handle_result({:ok, :valid}, scope, session, task, _type_name, _opts) do
-    Sessions.complete_task(scope, session, task.id, :completed)
-    Sessions.clear_eval_feedback(scope, session)
+  defp handle_result({:ok, :valid}, scope, agent, task, _type_name, _opts) do
+    TaskOwner.complete_task(scope, agent, task.id, :completed)
+    TaskOwner.clear_task_feedback(scope, agent, task.id)
     reconsider_other_agents(scope, task)
     {:ok, :valid}
   end
 
   # Satisfied with a non-blocking advisory (e.g. ArchitectureDesign's proposal
   # warnings). Completes like `{:ok, :valid}`; the advisory is only logged.
-  defp handle_result({:ok, :valid, advisory}, scope, session, task, _type_name, _opts) do
+  defp handle_result({:ok, :valid, advisory}, scope, agent, task, _type_name, _opts) do
     Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
-    Sessions.complete_task(scope, session, task.id, :completed)
-    Sessions.clear_eval_feedback(scope, session)
+    TaskOwner.complete_task(scope, agent, task.id, :completed)
+    TaskOwner.clear_task_feedback(scope, agent, task.id)
     reconsider_other_agents(scope, task)
     {:ok, :valid}
   end
@@ -98,36 +84,36 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   # Not this stop's task to judge: it stays active for its owner and this stop
   # is not blocked. Neither completing nor failing is right for, e.g., a
   # sub-agent's in-flight task.
-  defp handle_result({:ok, :skip, why}, _scope, _session, task, _type_name, _opts) do
+  defp handle_result({:ok, :skip, why}, _scope, _agent, task, _type_name, _opts) do
     Logger.info("[TaskEvaluator] Leaving task #{task.id} active: #{why}")
     {:ok, :valid}
   end
 
-  # Hash the feedback and bump (or reset) the session's repeat counter, which
-  # `Hooks.Stop` reads to detect a stuck loop.
-  defp handle_result({:ok, :invalid, feedback}, scope, session, _task, _type_name, opts) do
+  # Bump (or reset) the task's repeat counter, which `Hooks.Stop` reads to
+  # detect a stuck loop.
+  defp handle_result({:ok, :invalid, feedback}, scope, agent, task, _type_name, opts) do
     if Keyword.get(opts, :record_feedback, true) do
-      Sessions.record_eval_feedback(scope, session, feedback)
+      TaskOwner.record_task_feedback(scope, agent, task.id, feedback)
     end
 
     {:error, feedback}
   end
 
   # The task's component or story no longer exists: cancel it and let the
-  # session pull a fresh one.
-  defp handle_result({:error, :entity_missing}, scope, session, task, _type_name, _opts) do
+  # agent pull a fresh one.
+  defp handle_result({:error, :entity_missing}, scope, agent, task, _type_name, _opts) do
     Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing")
-    Sessions.complete_task(scope, session, task.id, :cancelled)
+    TaskOwner.complete_task(scope, agent, task.id, :cancelled)
     {:ok, :valid}
   end
 
   # The same orphan, said with a message. The evaluating scope is the task's own
-  # session's, so not-found here means gone, not "wrong project"; failing
+  # agent's, so not-found here means gone, not "wrong project"; failing
   # instead would block every stop on work that no longer exists.
-  defp handle_result({:error, {kind, _message}}, scope, session, task, _type_name, _opts)
+  defp handle_result({:error, {kind, _message}}, scope, agent, task, _type_name, _opts)
        when kind in [:story_not_found, :component_not_found] do
     Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — #{kind}")
-    Sessions.complete_task(scope, session, task.id, :cancelled)
+    TaskOwner.complete_task(scope, agent, task.id, :cancelled)
     {:ok, :valid}
   end
 
@@ -135,7 +121,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   defp handle_result(
          {:error, {:evaluator_crashed, detail}},
          _scope,
-         _session,
+         _agent,
          _task,
          _type_name,
          _opts
@@ -155,7 +141,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   # silently. The feedback names the task, type and working copy so the agent
   # can route around it. Any other error is named the same way.
   # See knowledge/tools, "Unobservable environments".
-  defp handle_result({:error, reason}, scope, _session, task, type_name, _opts) do
+  defp handle_result({:error, reason}, scope, _agent, task, type_name, _opts) do
     if Environments.unobservable?(reason) do
       Logger.error(
         "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>

@@ -35,7 +35,6 @@ defmodule CodeMySpec.Agents.Menu do
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Sessions
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Validation.Blocking
 
@@ -333,25 +332,12 @@ defmodule CodeMySpec.Agents.Menu do
       "shows them and `check_answer` collects each reply once it lands."
   end
 
-  # An agent's own questions; otherwise resolved from the working copy (the
-  # scope carries a copy, never a session id). Never fails the stop.
+  # An agent's own questions. Never fails the stop.
   defp open_questions(_scope, %CodeMySpec.Agents.Agent{id: id}) do
     id
     |> Notifications.list_question_requests_for_agent()
     |> Enum.count(&(&1.status == "pending"))
   end
 
-  defp open_questions(scope, _owner) do
-    with id when is_binary(id) <- working_copy_id(scope),
-         external_id when is_binary(external_id) <- Sessions.external_id_for_harness(id) do
-      external_id
-      |> Notifications.list_question_requests_for_session()
-      |> Enum.count(&(&1.status == "pending"))
-    else
-      _ -> 0
-    end
-  end
-
-  defp working_copy_id(%{active_working_copy_id: id}) when is_binary(id), do: id
-  defp working_copy_id(_scope), do: 0
+  defp open_questions(_scope, _owner), do: 0
 end

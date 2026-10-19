@@ -96,7 +96,6 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Resources,
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,
-      CodeMySpec.Sessions,
       CodeMySpec.Staffing,
       CodeMySpec.Tags,
       # Closing an issue from the page or the API frees the tasks waiting on it.

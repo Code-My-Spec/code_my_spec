@@ -33,6 +33,7 @@ defmodule CodeMySpec.Hooks do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Configurations,
@@ -44,7 +45,6 @@ defmodule CodeMySpec.Hooks do
       CodeMySpec.Problems,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
       CodeMySpec.Users,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation

@@ -52,15 +52,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.PreToolUse
   alias CodeMySpec.Hooks.SessionStart
   alias CodeMySpec.Hooks.Stop
-  alias CodeMySpec.Hooks.SubagentStart
-  alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.McpServers.Promotion.Responses, as: PromotionResponses
   alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.PromotionQueue
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
@@ -1777,11 +1774,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp decide_hook("post-tool-use", scope, payload, _port),
     do: PostToolUse.handle(scope, payload)
 
-  defp decide_hook("subagent-start", scope, payload, _port),
-    do: SubagentStart.handle(scope, payload)
-
-  defp decide_hook("subagent-stop", scope, payload, _port),
-    do: SubagentStop.handle(scope, payload)
+  # No sub-agent roster any more (issue 26b78dca). An older plugin still posts
+  # these, so they answer "nothing to say" instead of erroring.
+  defp decide_hook("subagent-" <> _event, _scope, _payload, _port), do: {200, %{}}
 
   defp decide_hook("notification", scope, payload, _port),
     do: NotificationHook.handle(scope, payload)
@@ -2130,7 +2125,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp session_external_id(scope, payload) do
     case payload["session_id"] do
       id when is_binary(id) and id != "" -> id
-      _ -> Sessions.external_id_for_harness(scope.active_working_copy_id) || "sprite"
+      _ -> Agents.terminal_session_id_for(scope.active_working_copy_id) || "sprite"
     end
   end
 

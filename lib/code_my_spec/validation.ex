@@ -14,7 +14,6 @@ defmodule CodeMySpec.Validation do
       CodeMySpec.Configurations,
       CodeMySpec.FileEdits,
       CodeMySpec.Files,
-      CodeMySpec.Sessions,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Users.Scope
     ]
@@ -27,7 +26,6 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Sessions
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Users.Scope
 
@@ -203,7 +201,7 @@ defmodule CodeMySpec.Validation do
   # When a session is in play, narrow the changed-file set to files this
   # session+agent actually wrote (via PostToolUse); otherwise a parallel
   # session's writes leak into this stop. No session → no filter.
-  defp filter_by_session_attribution(files, scope, cwd, task, opts) do
+  defp filter_by_session_attribution(files, _scope, cwd, task, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         # PostToolUse stores whatever Claude passed, typically absolute;
@@ -214,7 +212,7 @@ defmodule CodeMySpec.Validation do
           |> Enum.map(&relativize(&1, cwd))
           |> MapSet.new()
 
-        narrow_to_attributed(scope, files, attributed, session_id, task_started_at(task))
+        narrow_to_attributed(files, attributed, session_id, opts, task_started_at(task))
 
       _ ->
         files
@@ -234,7 +232,7 @@ defmodule CodeMySpec.Validation do
   # dirty set is kept unless `git_rewrite_at` (stamped by PostToolUse on a Bash
   # command able to move HEAD) is at or after the task start.
   # See knowledge/analysis, "Changed files and attribution".
-  defp narrow_to_attributed(scope, files, attributed, session_id, started_at) do
+  defp narrow_to_attributed(files, attributed, session_id, opts, started_at) do
     case {MapSet.size(attributed), length(files)} do
       {0, dirty} when dirty > @rebase_sized ->
         Logger.warning(
@@ -248,7 +246,7 @@ defmodule CodeMySpec.Validation do
         []
 
       {0, _dirty} ->
-        if git_rewrote_tree?(scope, session_id, started_at) do
+        if git_rewrote_tree?(opts, started_at) do
           Logger.warning(
             "[Validation] session #{session_id} recorded no edits, and ran a git " <>
               "command that can move HEAD since this task started — treating the " <>
@@ -265,9 +263,11 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  defp git_rewrote_tree?(scope, session_id, started_at) do
-    case Sessions.get_by_external_id(scope, session_id) do
-      %{git_rewrite_at: %DateTime{} = rewrote_at} ->
+  # `:git_rewrite_at` arrives in the options: the caller (the stop hook) knows
+  # the agent and reads it; this module sits below agents.
+  defp git_rewrote_tree?(opts, started_at) do
+    case Keyword.get(opts, :git_rewrite_at) do
+      %DateTime{} = rewrote_at ->
         is_nil(started_at) or DateTime.compare(rewrote_at, started_at) != :lt
 
       _ ->

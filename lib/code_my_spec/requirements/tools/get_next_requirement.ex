@@ -6,10 +6,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Requirements.Tools.Responses, as: RequirementsMapper
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
 
   @impl true
   def name, do: "get_next_requirement"
@@ -37,11 +34,6 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   def call(params, context) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
-        # Resolve active sub-agents from the most recent session for this
-        # project so the mapper can produce role-aware dispatch directives
-        # (SendMessage to a live sub-agent vs. fresh Agent spawn).
-        active_subagents = resolve_active_subagents(scope)
-
         # One normalisation rather than two lookups: the schema declares atom
         # keys and a raw MCP payload arrives with strings, so both shapes reach
         # here and only one of them should be asked about.
@@ -57,7 +49,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
           |> then(&CodeMySpec.Requirements.Directives.number_execution(scope, &1))
 
         execution
-        |> RequirementsMapper.story_execution_response(active_subagents)
+        |> RequirementsMapper.story_execution_response(%{})
         |> with_offer_note(ready_offer(agent))
 
       {:error, _reason} ->
@@ -113,24 +105,6 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
       agent
     else
       _ -> nil
-    end
-  end
-
-  # Resolves the currently-active sub-agents for the most recent session
-  # on this project. Returns a map of role string → agent_id, e.g.
-  # %{"qa" => "a-qa-spex-1"}. Used by the mapper to choose between
-  # SendMessage (live agent) and Agent spawn (no live agent for role).
-  defp resolve_active_subagents(scope) do
-    ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
-
-    case Sessions.list_active_sessions(scope) do
-      [] ->
-        %{}
-
-      [session | _] ->
-        session
-        |> Session.active_subagents(ttl)
-        |> Map.new(fn subagent -> {subagent.agent_name, subagent.agent_id} end)
     end
   end
 

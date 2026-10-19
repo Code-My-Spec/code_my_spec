@@ -1,21 +1,20 @@
 defmodule CodeMySpec.AgentTasks.StartImplementation do
   @moduledoc """
-  Enables continuous mode on the session and prompts the agent to begin
+  Enables continuous mode on the agent and prompts the agent to begin
   the autonomous implementation loop.
 
   When continuous mode is active, the stop hook blocks the agent from
   stopping and directs it to the next requirement. The loop continues
   until all requirements are satisfied or continuous mode is cleared.
 
-  ## init_session/2
-  Owns the per-task session setup. Sets the materialized `continuous`
-  boolean on the session via `Sessions.update_session/3`. Both entry
+  ## init_owner/2
+  Owns the per-task setup. Sets the agent's `continuous` column. Both entry
   points (the CLI orchestrator in `StartAgentTask` and the `start_task`
   MCP tool) dispatch to this so the per-task setup lives in the task
   module rather than being duplicated at every call site.
 
   ## command/2
-  Returns the kickoff prompt. Does not mutate state — `init_session/2`
+  Returns the kickoff prompt. Does not mutate state — `init_owner/2`
   has already run by the time `command/2` is called.
 
   ## evaluate/2
@@ -25,12 +24,12 @@ defmodule CodeMySpec.AgentTasks.StartImplementation do
   """
 
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.TaskOwner
 
-  @spec init_session(term(), Session.t()) :: {:ok, Session.t()} | {:error, term()}
-  def init_session(scope, session) do
-    Sessions.update_session(scope, session, %{continuous: true})
+  @spec init_owner(term(), Agent.t()) :: {:ok, Agent.t()} | {:error, term()}
+  def init_owner(_scope, %Agent{} = agent) do
+    TaskOwner.set_continuous(agent, true)
   end
 
   @spec command(term(), map()) :: {:ok, String.t()}

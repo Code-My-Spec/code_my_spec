@@ -37,6 +37,48 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def get_by_engine_session(%Scope{}, _session_id), do: nil
 
   @doc """
+  The session id of the newest terminal agent on duty in a working copy, or nil:
+  the join between a turn addressed to a copy and the conversation it belongs to.
+  """
+  @spec terminal_session_id_for(Ecto.UUID.t() | nil) :: String.t() | nil
+  def terminal_session_id_for(nil), do: nil
+
+  def terminal_session_id_for(working_copy_id) when is_binary(working_copy_id) do
+    Agent
+    |> where(
+      [a],
+      a.working_copy_id == ^working_copy_id and a.engine == :claude_code and
+        not is_nil(a.engine_session_id) and is_nil(a.off_at) and is_nil(a.retired_at)
+    )
+    |> order_by([a], desc: a.inserted_at)
+    |> limit(1)
+    |> select([a], a.engine_session_id)
+    |> Repo.one()
+  end
+
+  @recent_window_seconds 300
+
+  @doc """
+  The other terminal agents on duty in this project, touched within the last
+  five minutes: who else is working here right now.
+  """
+  @spec concurrent_terminal_agents(Scope.t(), Agent.t()) :: [Agent.t()]
+  def concurrent_terminal_agents(%Scope{active_project_id: project_id}, %Agent{id: id})
+      when is_binary(project_id) do
+    cutoff = DateTime.add(DateTime.utc_now(), -@recent_window_seconds, :second)
+
+    Agent
+    |> where(
+      [a],
+      a.project_id == ^project_id and a.engine == :claude_code and a.id != ^id and
+        is_nil(a.off_at) and is_nil(a.retired_at) and a.updated_at > ^cutoff
+    )
+    |> Repo.all()
+  end
+
+  def concurrent_terminal_agents(_scope, _agent), do: []
+
+  @doc """
   Every agent row on this machine, ignoring scope.
 
   For a person debugging a stuck agent before they know whose it is. Reached

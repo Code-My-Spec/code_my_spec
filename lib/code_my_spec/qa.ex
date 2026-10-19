@@ -41,7 +41,6 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.Requirements.GraphInputs,
       CodeMySpec.TaskOwner,
       CodeMySpec.Uploads,

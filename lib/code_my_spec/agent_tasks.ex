@@ -7,6 +7,7 @@ defmodule CodeMySpec.AgentTasks do
     top_level?: true,
     deps: [
       CodeMySpec.PromotionQueue,
+      CodeMySpec.Agents.Agent,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.Architecture,
@@ -31,7 +32,6 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.Requirements,
       CodeMySpec.Resources,
       CodeMySpec.Rules,
-      CodeMySpec.Sessions,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies

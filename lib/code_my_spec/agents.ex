@@ -37,7 +37,6 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
-      CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
@@ -141,6 +140,8 @@ defmodule CodeMySpec.Agents do
     do: AgentsRepository.list_by_ids(scope, scope |> present_ids() |> MapSet.to_list())
 
   defdelegate list_on_duty(scope), to: AgentsRepository
+  defdelegate terminal_session_id_for(working_copy_id), to: AgentsRepository
+  defdelegate concurrent_terminal_agents(scope, agent), to: AgentsRepository
   defdelegate list_for_team_status(scope), to: AgentsRepository
   defdelegate fetch_agent(scope, id), to: AgentsRepository
   defdelegate assign_team(scope, copy_id, story_id), to: Assignment
@@ -394,6 +395,65 @@ defmodule CodeMySpec.Agents do
   end
 
   def terminal_agent_id(_scope, _session_id), do: nil
+
+  @doc """
+  Stamp that a terminal session ran a command able to move HEAD. A session that
+  is no agent has nothing to stamp.
+  """
+  @spec record_git_rewrite(Scope.t(), String.t() | nil) :: :ok
+  def record_git_rewrite(%Scope{} = scope, session_id) do
+    with id when is_binary(id) <- terminal_agent_id(scope, session_id),
+         {:ok, agent} <- AgentsRepository.fetch_agent(scope, id) do
+      AgentsRepository.update_agent(scope, agent, %{git_rewrite_at: DateTime.utc_now()})
+    end
+
+    :ok
+  end
+
+  @doc "When this terminal session last ran a command able to move HEAD, or nil."
+  @spec git_rewrite_at(Scope.t(), String.t() | nil) :: DateTime.t() | nil
+  def git_rewrite_at(%Scope{} = scope, session_id) do
+    with id when is_binary(id) <- terminal_agent_id(scope, session_id),
+         {:ok, %Agent{git_rewrite_at: at}} <- AgentsRepository.fetch_agent(scope, id) do
+      at
+    else
+      _ -> nil
+    end
+  end
+
+  @doc "What a caller is told when no agent could be found for its call."
+  @spec no_owner_message() :: String.t()
+  def no_owner_message do
+    "No agent found for this call: it carries no agent id and its session_id is " <>
+      "not a registered terminal agent.\n\n" <>
+      "If you are Claude Code: the SessionStart hook registers this conversation " <>
+      "as an agent. Restart the session, or re-fire the hook, so it registers.\n\n" <>
+      "If you are an agent we run: your id travels on the connection and you " <>
+      "cannot supply it — this is a harness fault, not something to retry or " <>
+      "spell differently. Report it with `create_issue` and carry on with work " <>
+      "that does not need this call."
+  end
+
+  @doc """
+  The agent a call is made as: the one on the connection, else the terminal
+  agent a Claude Code `session_id` is.
+
+  Every task is owned by an agent. A session that did not register as one
+  (its SessionStart hook never fired) has no owner, and the caller is told so
+  rather than given a lazily created stand-in.
+  """
+  @spec fetch_owner(Scope.t(), String.t() | nil, String.t() | nil) ::
+          {:ok, Agent.t()} | {:error, :no_owner | :not_found}
+  def fetch_owner(%Scope{} = scope, agent_id, _session_id)
+      when is_binary(agent_id) and agent_id != "",
+      do: fetch_agent(scope, agent_id)
+
+  def fetch_owner(%Scope{} = scope, _agent_id, session_id) do
+    case terminal_agent_id(scope, session_id) do
+      nil -> {:error, :no_owner}
+      id -> fetch_agent(scope, id)
+    end
+  end
 
   @doc """
   What a terminal session's stop hook hands over (story 1123): the messages

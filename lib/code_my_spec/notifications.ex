@@ -18,7 +18,6 @@ defmodule CodeMySpec.Notifications do
       CodeMySpec.Conversations,
       CodeMySpec.Issues,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.TaskOwner,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
@@ -35,8 +34,6 @@ defmodule CodeMySpec.Notifications do
   alias CodeMySpec.Notifications.PushSubscription
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils.MapAccess
@@ -273,8 +270,10 @@ defmodule CodeMySpec.Notifications do
     )
   end
 
+  # Agents whose tap-outs are the person's: main's own, and a terminal
+  # session's, which has nobody above it to route to.
   defp main_role_agent_ids do
-    from(a in Agent, where: a.role == :main, select: a.id)
+    from(a in Agent, where: a.role == :main or a.engine == :claude_code, select: a.id)
   end
 
   # Off or retired: nobody means it to run. An agent on duty whose process is
@@ -374,13 +373,6 @@ defmodule CodeMySpec.Notifications do
   def request_agent_tap_out(scope, agent_id, task_id, reason \\ nil),
     do: request_tap_out(scope, Agent, agent_id, task_id, reason)
 
-  @doc """
-  The same request for a Claude Code session: a row in the person's inbox,
-  whose approval clears `session.continuous` (or cancels the linked task).
-  """
-  def request_session_tap_out(scope, session_id, task_id, reason \\ nil),
-    do: request_tap_out(scope, Session, session_id, task_id, reason)
-
   defp request_tap_out(scope, owner_schema, owner_id, task_id, reason) do
     owner_key = tap_out_owner_key(owner_schema)
 
@@ -429,13 +421,13 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  # A teammate's tap-out is the main agent's to decide, so the
-  # person is pushed only for one that is theirs: main's own, or a session's.
+  # A teammate's tap-out is the main agent's to decide, so the person is
+  # pushed only for one that is theirs: main's own, or a terminal session's
+  # (a person's process, with nobody above it to route to).
+  defp user_decides?(%Agent{engine: :claude_code}), do: true
   defp user_decides?(%Agent{role: role}), do: role == :main
-  defp user_decides?(_session), do: true
 
   defp tap_out_owner_key(Agent), do: :agent_id
-  defp tap_out_owner_key(Session), do: :session_id
 
   defp pending_tap_out(owner_key, owner_id, task_id) do
     query =
@@ -476,9 +468,6 @@ defmodule CodeMySpec.Notifications do
         {:error, :not_found}
 
       %{tool_name: "tap_out", agent_id: agent_id} when is_binary(agent_id) ->
-        resolve_tap_out(id, decision, answer, answered_by_user_id)
-
-      %{tool_name: "tap_out", session_id: session_id} when is_binary(session_id) ->
         resolve_tap_out(id, decision, answer, answered_by_user_id)
 
       %{status: "pending"} ->
@@ -787,9 +776,6 @@ defmodule CodeMySpec.Notifications do
   defp lock_tap_out_owner(%{agent_id: id}) when is_binary(id),
     do: Repo.one(from a in Agent, where: a.id == ^id, lock: "FOR UPDATE")
 
-  defp lock_tap_out_owner(%{session_id: id}) when is_binary(id),
-    do: Repo.one(from s in Session, where: s.id == ^id, lock: "FOR UPDATE")
-
   defp update_tap_out_owner(_scope, owner, %{task_id: nil, decision: "allow"}),
     do: owner |> Ecto.Changeset.change(continuous: false) |> Repo.update()
 
@@ -944,18 +930,6 @@ defmodule CodeMySpec.Notifications do
     |> Repo.all()
   end
 
-  @doc "The requests one Claude Code session raised, by its external id, oldest first."
-  @spec list_permission_requests_for_session(String.t() | nil) :: [PermissionRequest.t()]
-  def list_permission_requests_for_session(nil), do: []
-
-  def list_permission_requests_for_session(session_external_id) do
-    PermissionRequest
-    |> join(:inner, [p], s in assoc(p, :session))
-    |> where([_p, s], s.external_conversation_id == ^session_external_id)
-    |> order_by([p], asc: p.inserted_at)
-    |> Repo.all()
-  end
-
   @doc """
   The agent's own pending tap-out on `task_id` (nil for the one naming no task),
   if it already has one. An agent holds at most one per task and one naming
@@ -981,48 +955,6 @@ defmodule CodeMySpec.Notifications do
     with {:ok, request} <- insert_question_request(user_id, attrs) do
       deliver_question(request)
       {:ok, request}
-    end
-  end
-
-  @doc """
-  Save a Claude Code session's question and its task blocker atomically, then
-  deliver it — the session half of `create_agent_question_request/4`.
-
-  `session_id` is the external conversation id the PreToolUse hook injects; a
-  session that cannot be resolved from it (no id, a stale negotiation, no
-  `register_session` yet) falls back to a plain, unblocked question rather
-  than refusing the ask.
-  """
-  def create_session_question_request(scope, user_id, attrs, task_ref, session_id) do
-    case session_id && Sessions.get_by_external_id(scope, session_id) do
-      nil ->
-        with {:ok, request} <- insert_question_request(user_id, attrs) do
-          deliver_question(request)
-          {:ok, request}
-        end
-
-      session ->
-        result =
-          Repo.transaction(fn ->
-            save_blocking_session_question(scope, user_id, attrs, task_ref, session)
-          end)
-
-        deliver_if_new(result)
-    end
-  end
-
-  defp save_blocking_session_question(scope, user_id, attrs, task_ref, session) do
-    with {:ok, task} <- question_task(session, task_ref),
-         attrs =
-           Map.merge(attrs, %{
-             "task_id" => task && task.id,
-             "story_id" => task && task.story_id
-           }),
-         {:ok, outcome} <- save_or_reuse_question_request(user_id, attrs),
-         :ok <- block_question_task(scope, session, task, request_from(outcome)) do
-      outcome
-    else
-      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

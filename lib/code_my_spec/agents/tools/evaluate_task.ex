@@ -7,10 +7,7 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTask do
   alias CodeMySpec.Agents
   alias CodeMySpec.AgentTasks.Evaluator
   alias CodeMySpec.Agents.Tools.TaskResponses, as: TasksMapper
-  alias CodeMySpec.Sessions
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.TaskOwner
-  alias CodeMySpec.Utils
 
   @impl true
   def name, do: "evaluate_task"
@@ -99,8 +96,8 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTask do
           completion_response(result)
       end
     else
-      {:error, :session_not_found} ->
-        TasksMapper.session_not_found(session_id || "unknown")
+      {:error, :no_owner} ->
+        TasksMapper.error(Agents.no_owner_message())
 
       {:error, :task_not_found} ->
         TasksMapper.task_not_found(task_id)
@@ -116,30 +113,10 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTask do
 
   defp completion_response({:error, reason}), do: TasksMapper.error(reason)
 
-  # An agent we run owns its tasks directly, so it is the owner and there is no
-  # session in the picture. Ahead of the session clause for the same reason as
-  # in `start_task`: a call carrying both is one of ours, and the agent is what
-  # holds the task it is closing.
-  defp resolve_owner(scope, _session_id, agent_id) when is_binary(agent_id) do
-    Agents.fetch_agent(scope, agent_id)
-  end
-
-  defp resolve_owner(scope, session_id, _agent_id), do: resolve_session(scope, session_id)
-
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
-    session =
-      Sessions.get_by_external_id(scope, session_id) ||
-        Utils.safe_get(fn -> Sessions.get_session(scope, session_id) end)
-
-    case session do
-      nil -> {:error, :session_not_found}
-      session -> {:ok, session}
-    end
-  end
-
-  defp resolve_session(_scope, _session_id) do
-    {:error, no_owner_message()}
-  end
+  # Every task is owned by an agent: the one on the connection, else the
+  # terminal agent the hook's `session_id` names.
+  defp resolve_owner(scope, session_id, agent_id),
+    do: Agents.fetch_owner(scope, agent_id, session_id)
 
   defp find_task(owner, task_id) do
     case TaskOwner.find_task(owner, task_id) do
@@ -242,37 +219,13 @@ defmodule CodeMySpec.Agents.Tools.EvaluateTask do
     e -> {:error, "Evaluation failed: #{Exception.message(e)}"}
   end
 
-  defp record_feedback(scope, %Session{} = session, _task_id, feedback),
-    do: Sessions.record_eval_feedback(scope, session, feedback)
-
   defp record_feedback(scope, owner, task_id, feedback),
     do: TaskOwner.record_task_feedback(scope, owner, task_id, feedback)
-
-  defp clear_feedback(scope, %Session{} = session, _task_id),
-    do: Sessions.clear_eval_feedback(scope, session)
 
   defp clear_feedback(scope, owner, task_id),
     do: TaskOwner.clear_task_feedback(scope, owner, task_id)
 
   defp type_name(module) do
     module |> Atom.to_string() |> String.split(".") |> List.last()
-  end
-
-  # Neither identity arrived, so there is nothing to look the task up on.
-  #
-  # `register_session` is named only where it can be followed. It is a Claude
-  # Code tool and no coding agent carries one — an Alloy agent told to call it
-  # gets "register_session is not a tool a coding agent carries" and is no
-  # closer, which is exactly what happened on 2026-09-06 while its task stayed
-  # open.
-  defp no_owner_message do
-    "No session_id and no agent id on this call, so there is no owner to find " <>
-      "the task on.\n\n" <>
-      "If you are Claude Code: `register_session` with this conversation's id " <>
-      "(CLAUDE_SESSION_ID) creates it on this server.\n\n" <>
-      "If you are an agent we run: your id travels on the connection and you " <>
-      "cannot supply it — this is a harness fault, not something to retry or " <>
-      "spell differently. Report it with `create_issue` and carry on with work " <>
-      "that does not need the task closed."
   end
 end

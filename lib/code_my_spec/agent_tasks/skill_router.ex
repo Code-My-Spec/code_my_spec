@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Requirement
-  alias CodeMySpec.Sessions
+  alias CodeMySpec.TaskOwner
 
   # skill → {subcommand → session_type}
   # nil subcommand means "no args" default
@@ -124,13 +124,14 @@ defmodule CodeMySpec.AgentTasks.SkillRouter do
     do: {:error, "Cannot stop continuous mode: no external_id names the session."}
 
   defp stop_continuous(scope, external_id) do
-    case Sessions.get_by_external_id(scope, external_id) do
-      nil ->
-        {:error, "Cannot stop continuous mode: no active session #{external_id} in this project."}
+    case TaskOwner.terminal_agent(scope, external_id) do
+      :error ->
+        {:error,
+         "Cannot stop continuous mode: no agent for session #{external_id} in this project."}
 
-      session ->
-        case Sessions.update_session(scope, session, %{continuous: false}) do
-          {:ok, _session} -> {:ok, %{stopped: true}}
+      {:ok, agent} ->
+        case TaskOwner.set_continuous(agent, false) do
+          {:ok, _agent} -> {:ok, %{stopped: true}}
           {:error, reason} -> {:error, "Cannot stop continuous mode: #{inspect(reason)}"}
         end
     end

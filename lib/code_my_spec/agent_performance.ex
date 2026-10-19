@@ -22,7 +22,6 @@ defmodule CodeMySpec.AgentPerformance do
       CodeMySpec.Qa,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.Tools,
       CodeMySpec.Users.Scope

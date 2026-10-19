@@ -10,7 +10,6 @@ defmodule CodeMySpec.Issues.Tools do
       CodeMySpec.Agents,
       CodeMySpec.Configurations,
       CodeMySpec.Issues,
-      CodeMySpec.Sessions,
       CodeMySpec.Stories,
       CodeMySpec.TaskOwner,
       CodeMySpec.Tools,

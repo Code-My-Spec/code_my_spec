@@ -58,6 +58,7 @@ defmodule CodeMySpec.Agents.Agent do
           os_boot_id: String.t() | nil,
           status: atom() | nil,
           stopped_reason: atom() | nil,
+          git_rewrite_at: DateTime.t() | nil,
           off_at: DateTime.t() | nil,
           off_by: String.t() | nil,
           off_reason: String.t() | nil,
@@ -86,6 +87,10 @@ defmodule CodeMySpec.Agents.Agent do
     # A terminal Claude Code session's own session id (story 1122): how a
     # resumed session finds its agent again, and how its tool calls name it.
     field :engine_session_id, :string
+    # When a terminal session last ran a Bash command able to move HEAD (rebase,
+    # pull, checkout, ...). `Validation` reads it to tell inherited history from
+    # this turn's work when no edits were recorded.
+    field :git_rewrite_at, :utc_datetime_usec
     field :provider, :string
     # The model this agent started on, recorded: changing the role's setting
     # must not move an agent already running.
@@ -295,6 +300,7 @@ defmodule CodeMySpec.Agents.Agent do
     |> cast(attrs, [
       :engine,
       :engine_session_id,
+      :git_rewrite_at,
       :provider,
       :model,
       :working_copy,

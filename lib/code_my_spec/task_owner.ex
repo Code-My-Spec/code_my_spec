@@ -6,22 +6,19 @@ defmodule CodeMySpec.TaskOwner do
       CodeMySpec.Configurations,
       CodeMySpec.Issues,
       CodeMySpec.Repo,
-      CodeMySpec.Sessions,
       CodeMySpec.Users.Scope
     ]
 
   # credo:disable-for-next-line ExSlop.Check.Readability.NarratorDoc
   @moduledoc """
-  The two things that can hold a task, behind one set of calls.
+  Who holds a task, behind one set of calls.
 
-  A `Session` (a Claude Code conversation) and an `Agent` (one we run, which
-  has no session) each embed their own tasks. `Hooks.Stop` passes a `Session`;
-  `Agents.StopDecision` passes an `Agent`; neither knows the other's storage.
+  Every task is an `Agent`'s: one we run, or a terminal Claude Code session,
+  which is an agent too. `Hooks.Stop` and `Agents.StopDecision` both pass one.
 
   ## Ownership is the list, not a field
 
-  A task is in exactly one owner's list. `Task.agent_id` means the Claude Code
-  sub-agent a session's task was assigned to; it is unused on an agent's task.
+  A task is in exactly one agent's list; `Task.agent_id` is unused.
 
   ## Why not a table yet
 
@@ -37,14 +34,13 @@ defmodule CodeMySpec.TaskOwner do
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Users.Scope
   alias Ecto.Adapters.SQL
 
   import Ecto.Query, only: [from: 2]
 
-  @type t :: Session.t() | Agent.t()
+  @type t :: Agent.t()
   @type blocker_type :: :issue | :question | :tap_out
   @type outcome ::
           :resolved | :dismissed | :answered | :denied | :approved | :withdrawn | :below_threshold
@@ -52,9 +48,46 @@ defmodule CodeMySpec.TaskOwner do
   @resolvable [:issue, :question, :tap_out]
   @outcomes [:resolved, :dismissed, :answered, :denied, :approved, :withdrawn, :below_threshold]
 
+  @doc """
+  The terminal agent a Claude Code session is, fresh from its row.
+
+  For callers below `Agents` (task evaluation, skills) that must reach a
+  session's owner without depending on it.
+  """
+  @spec terminal_agent(Scope.t(), String.t() | nil) :: {:ok, Agent.t()} | :error
+  def terminal_agent(%Scope{active_project_id: project_id}, session_id)
+      when is_binary(project_id) and is_binary(session_id) and session_id != "" do
+    case Repo.get_by(Agent, project_id: project_id, engine_session_id: session_id) do
+      %Agent{retired_at: nil} = agent -> {:ok, agent}
+      _ -> :error
+    end
+  end
+
+  def terminal_agent(_scope, _session_id), do: :error
+
+  @doc "The project's terminal agents on duty that hold an active task."
+  @spec terminal_agents_with_active_task(Scope.t()) :: [Agent.t()]
+  def terminal_agents_with_active_task(%Scope{active_project_id: project_id})
+      when is_binary(project_id) do
+    from(a in Agent,
+      where:
+        a.project_id == ^project_id and a.engine == :claude_code and is_nil(a.off_at) and
+          is_nil(a.retired_at)
+    )
+    |> Repo.all()
+    |> Enum.filter(&active_task/1)
+  end
+
+  def terminal_agents_with_active_task(_scope), do: []
+
+  @doc "Turn an agent's continuous mode on or off, touching nothing else."
+  @spec set_continuous(Agent.t(), boolean()) :: {:ok, Agent.t()} | {:error, Ecto.Changeset.t()}
+  def set_continuous(%Agent{} = agent, continuous?) when is_boolean(continuous?) do
+    agent |> Agent.changeset(%{continuous: continuous?}) |> Repo.update()
+  end
+
   @doc "Every task this owner holds."
   @spec tasks(t()) :: [Task.t()]
-  def tasks(%Session{tasks: tasks}), do: tasks || []
   def tasks(%Agent{tasks: tasks}), do: tasks || []
 
   @doc "The task this owner is working, if any."
@@ -78,8 +111,6 @@ defmodule CodeMySpec.TaskOwner do
   from a script has no task to mark, and the queue messages nobody.
   """
   @spec await_promotion(t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
-  def await_promotion(%Session{} = owner, _type, _id), do: {:ok, owner}
-
   def await_promotion(%Agent{} = owner, subject_type, subject_id)
       when is_binary(subject_type) and is_binary(subject_id) do
     case Enum.find(tasks(owner), &promotion_task?/1) do
@@ -220,10 +251,8 @@ defmodule CodeMySpec.TaskOwner do
 
   Released means `blocker_resolved_at` is set. The task stays `:blocked` until
   its holder resumes it with `start_task`, so nothing is reactivated or
-  cancelled here. Waiters are found by the blocker's id on every owner, agents
-  and sessions alike, not by the resolver's scope: whoever answered (a person,
-  the main agent, another project's issue page) need not hold the task. Only
-  an agent can be woken, and an approved tap-out wakes nobody — its holder
+  cancelled here. Waiters are found by the blocker's id on every agent, not by the resolver's scope: whoever answered (a person,
+  the main agent, another project's issue page) need not hold the task. An approved tap-out wakes nobody — its holder
   asked to leave and was told yes.
 
   `:detail` is appended to the wake notice, for what the resolver said.
@@ -234,8 +263,9 @@ defmodule CodeMySpec.TaskOwner do
   def blocker_resolved(type, blocker_id, outcome, opts \\ [])
       when type in @resolvable and is_binary(blocker_id) and outcome in @outcomes do
     released =
-      [Agent, Session]
-      |> Enum.flat_map(&Repo.all(waiting_on(&1, type, blocker_id)))
+      Agent
+      |> waiting_on(type, blocker_id)
+      |> Repo.all()
       |> Enum.map(&release_waiters(&1, {type, blocker_id, outcome}, opts))
       |> Enum.sum()
 
@@ -302,19 +332,16 @@ defmodule CodeMySpec.TaskOwner do
   end
 
   defp waited_issue_ids(%Scope{active_project_id: project_id}) do
-    [Agent, Session]
-    |> Enum.flat_map(fn module ->
-      Repo.all(
-        from(row in module,
-          where: row.project_id == ^project_id,
-          select:
-            fragment(
-              "(select array_agg(t->>'blocker_id') from unnest(?) t where t->>'blocker_type' = 'issue' and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
-              row.tasks
-            )
-        )
+    Repo.all(
+      from(row in Agent,
+        where: row.project_id == ^project_id,
+        select:
+          fragment(
+            "(select array_agg(t->>'blocker_id') from unnest(?) t where t->>'blocker_type' = 'issue' and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
+            row.tasks
+          )
       )
-    end)
+    )
     |> Enum.flat_map(&(&1 || []))
     |> Enum.uniq()
   end
@@ -428,8 +455,6 @@ defmodule CodeMySpec.TaskOwner do
     :telemetry.execute([:code_my_spec, :tasks, :released], %{}, meta)
   end
 
-  defp wake_holder(_scope, %Session{}, _released, _blocker, _opts), do: :ok
-
   # A denied tap-out is its own kind of offer; anything else
   # releasing a task is an unblocked offer on the task.
   defp offer_subject({:tap_out, id, _outcome}), do: {"tap_out", id}
@@ -534,7 +559,7 @@ defmodule CodeMySpec.TaskOwner do
 
   defp resume_resolved_task(_owner, _task, nil), do: {:error, :task_not_blocked}
 
-  defp locked_update(%Scope{} = scope, %module{id: id}, fun) when module in [Agent, Session] do
+  defp locked_update(%Scope{} = scope, %module{id: id}, fun) when module == Agent do
     Repo.transaction(fn ->
       current =
         Repo.one(
@@ -555,9 +580,6 @@ defmodule CodeMySpec.TaskOwner do
 
   defp finish_update({:ok, owner}), do: owner
   defp finish_update({:error, reason}), do: Repo.rollback(reason)
-
-  defp update_embedded_task(%Session{} = owner, id, attrs),
-    do: owner |> Session.update_task(id, attrs) |> Repo.update()
 
   defp update_embedded_task(%Agent{} = owner, id, attrs),
     do: owner |> Agent.update_task(id, attrs) |> Repo.update()
@@ -640,17 +662,11 @@ defmodule CodeMySpec.TaskOwner do
     end
   end
 
-  defp allow_activation(%Session{}, _task_id), do: :ok
-
   # A promotion task that waits on the queue does not hold the one-task slot:
   # it stays open until its batch lands or is ejected, without parking the
   # agent. The signal is the task's own row, written by `await_promotion/3`.
   defp awaiting_landing?(%Task{awaiting_subject_id: id}) when is_binary(id), do: true
   defp awaiting_landing?(_task), do: false
-
-  defp add_embedded_task(%Session{} = session, attrs) do
-    session |> Session.add_task(attrs) |> Repo.update()
-  end
 
   defp add_embedded_task(%Agent{} = agent, attrs) do
     agent |> Agent.add_task(Map.delete(attrs, :agent_id)) |> Repo.update()
@@ -693,14 +709,7 @@ defmodule CodeMySpec.TaskOwner do
     end)
   end
 
-  defp activation_attrs(%Session{}, agent_id) do
-    %{status: :active, started_at: now()} |> maybe_put_agent(agent_id)
-  end
-
   defp activation_attrs(%Agent{}, _agent_id), do: %{status: :active, started_at: now()}
-
-  defp maybe_put_agent(updates, nil), do: updates
-  defp maybe_put_agent(updates, agent_id), do: Map.put(updates, :agent_id, agent_id)
 
   defp now, do: DateTime.utc_now()
 end

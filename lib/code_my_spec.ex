@@ -94,7 +94,6 @@ defmodule CodeMySpec do
       CodeMySpec.Rules,
       CodeMySpec.ScreenState,
       CodeMySpec.Servers,
-      CodeMySpec.Sessions,
       CodeMySpec.Staffing,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.StoryReconcile,

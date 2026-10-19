@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.RunReconciled do
   @moduledoc """
-  Re-evaluates the active sessions' tasks when an analysis run lands.
+  Re-evaluates the terminal agents' active tasks when an analysis run lands.
 
   `Analysis` announces a reconciled run as `[:code_my_spec, :analysis,
   :run_reconciled]` rather than calling `TaskEvaluator` itself (John,
@@ -15,8 +15,8 @@ defmodule CodeMySpec.AgentTasks.RunReconciled do
 
   require Logger
 
-  alias CodeMySpec.Sessions
   alias CodeMySpec.AgentTasks.TaskEvaluator
+  alias CodeMySpec.TaskOwner
 
   @event [:code_my_spec, :analysis, :run_reconciled]
 
@@ -28,14 +28,14 @@ defmodule CodeMySpec.AgentTasks.RunReconciled do
   @doc false
   def handle_event(@event, _measurements, %{scope: scope}, _config) do
     scope
-    |> Sessions.list_active_sessions()
-    |> Enum.each(fn session ->
-      TaskEvaluator.evaluate_session(scope, session, record_feedback: false, sync: false)
+    |> TaskOwner.terminal_agents_with_active_task()
+    |> Enum.each(fn agent ->
+      TaskEvaluator.evaluate_agent(scope, agent, record_feedback: false, sync: false)
     end)
   catch
     kind, reason ->
       Logger.warning(
-        "[Analysis] session evaluation failed: #{Exception.format_banner(kind, reason)}"
+        "[Analysis] agent evaluation failed: #{Exception.format_banner(kind, reason)}"
       )
   end
 end

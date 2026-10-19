@@ -41,7 +41,6 @@ defmodule CodeMySpec.AgentPerformance.Page do
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
-  alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -64,7 +63,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
     attempts = project_attempts(scope)
     turns = project_turns(scope)
     messages = agent_messages(scope, agents)
-    tasks = project_tasks(scope, stories, agents)
+    tasks = project_tasks(stories, agents)
 
     %{
       stories: stories,
@@ -101,9 +100,8 @@ defmodule CodeMySpec.AgentPerformance.Page do
 
   # -- the page's own reads, one query apiece ------------------------------
 
-  # `CycleTime.story/2` reads a story's tasks off its sessions and, separately,
-  # off its agents -- two whole listings per story. Both are project-wide reads
-  # underneath, so they are read once here and grouped by story.
+  # `CycleTime.story/2` reads a story's tasks off the project's agents, a
+  # project-wide read per story, so they are read once here and grouped by story.
   #
   # A task's own story_id, when it has one, is the only story it belongs to
   # -- grouping by story_id alone would otherwise put a component-scoped
@@ -113,7 +111,7 @@ defmodule CodeMySpec.AgentPerformance.Page do
   # be shared by several stories, so it counts toward every story sharing
   # that component -- never toward a sibling's own, separately story_id'd
   # tasks (issue 9c2107a6).
-  defp project_tasks(scope, stories, agents) do
+  defp project_tasks(stories, agents) do
     story_ids = MapSet.new(stories, & &1.id)
 
     component_to_story_ids =
@@ -121,12 +119,8 @@ defmodule CodeMySpec.AgentPerformance.Page do
       |> Enum.reject(&is_nil(&1.component_id))
       |> Enum.group_by(& &1.component_id, & &1.id)
 
-    session_tasks =
-      from(s in Session, where: s.project_id == ^scope.active_project_id)
-      |> Repo.all()
-      |> Enum.flat_map(& &1.tasks)
-
-    (session_tasks ++ Enum.flat_map(agents, & &1.tasks))
+    agents
+    |> Enum.flat_map(& &1.tasks)
     |> Enum.flat_map(&task_story_pairs(&1, story_ids, component_to_story_ids))
     |> Enum.group_by(fn {story_id, _task} -> story_id end, fn {_story_id, task} -> task end)
   end

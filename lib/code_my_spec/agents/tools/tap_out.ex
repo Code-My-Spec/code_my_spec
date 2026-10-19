@@ -2,9 +2,10 @@ defmodule CodeMySpec.Agents.Tools.TapOut do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Notifications
-  alias CodeMySpec.Sessions
 
   @impl true
   def name, do: "tap_out"
@@ -16,7 +17,7 @@ defmodule CodeMySpec.Agents.Tools.TapOut do
     538/5124).
 
     Writes a `PermissionRequest` the person sees in their notifications inbox,
-    keyed to the agent we run or to the Claude Code session that asked. Returns
+    keyed to the agent that asked (a terminal Claude Code session is one). Returns
     immediately; the caller does not wait. On approve, continuous clears (or the
     linked task is cancelled). On reject, it stays on.
     """
@@ -61,31 +62,23 @@ defmodule CodeMySpec.Agents.Tools.TapOut do
 
   # A teammate's tap-out is main's to decide from the moment it is raised
   # (criteria 2073, 2120), so main is woken and offered it, as for a question.
-  defp request(scope, agent_id, params) when is_binary(agent_id) do
-    with {:ok, request} <-
-           Notifications.request_agent_tap_out(scope, agent_id, params[:task_id], params[:reason]) do
-      :ok = MainAgent.question_raised(scope, %{agent_id: agent_id})
+  # A terminal session's is the person's, with nobody above it to route to.
+  defp request(scope, agent_id, params) do
+    with {:ok, agent} <- Agents.fetch_owner(scope, agent_id, params[:session_id]),
+         {:ok, request} <-
+           Notifications.request_agent_tap_out(scope, agent.id, params[:task_id], params[:reason]) do
+      wake_main(scope, agent)
       {:ok, request}
+    else
+      {:error, :no_owner} -> {:error, Agents.no_owner_message() <> " Nothing was saved."}
+      {:error, :not_found} -> {:error, "Agent not found in this project. Nothing was saved."}
+      other -> other
     end
   end
 
-  defp request(scope, _agent_id, params) do
-    with {:ok, session} <- resolve_session(scope, params[:session_id]) do
-      Notifications.request_session_tap_out(scope, session.id, params[:task_id], params[:reason])
-    end
-  end
+  defp wake_main(_scope, %Agent{engine: :claude_code}), do: :ok
 
-  defp resolve_session(scope, session_id) when is_binary(session_id) and session_id != "" do
-    case Sessions.get_by_external_id(scope, session_id) do
-      nil -> {:error, "Session not found: #{session_id}. Nothing was saved."}
-      session -> {:ok, session}
-    end
+  defp wake_main(scope, %Agent{id: id}) do
+    :ok = MainAgent.question_raised(scope, %{agent_id: id})
   end
-
-  defp resolve_session(_scope, _),
-    do:
-      {:error,
-       "`tap_out` needs the session id the hook injects, and none arrived, so " <>
-         "nothing was saved and no one was asked. If you want out of the loop, " <>
-         "say so in your reply and stop; a human reads that."}
 end

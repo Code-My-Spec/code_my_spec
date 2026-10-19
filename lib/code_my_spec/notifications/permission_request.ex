@@ -34,9 +34,6 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     # waiting on it.
     belongs_to :agent, CodeMySpec.Agents.Agent, type: :binary_id
 
-    # The Claude Code session a tap-out's decision applies to. Nil otherwise.
-    belongs_to :session, CodeMySpec.Sessions.Session, type: :binary_id
-
     belongs_to :user, CodeMySpec.Users.User, type: :id
     belongs_to :answered_by_user, CodeMySpec.Users.User, type: :id
 
@@ -48,7 +45,6 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     |> cast(attrs, [
       :user_id,
       :agent_id,
-      :session_id,
       :task_id,
       :tool_name,
       :tool_input,
