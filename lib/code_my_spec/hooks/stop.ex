@@ -341,7 +341,7 @@ defmodule CodeMySpec.Hooks.Stop do
       true ->
         # The same count the menu renders, so the decision and the menu in one
         # response cannot disagree.
-        case length(Work.actionable(scope, nil, agent)) do
+        case length(Work.actionable(scope, role_of(agent), agent)) do
           n when n > 0 ->
             Logger.info(
               "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
@@ -351,7 +351,7 @@ defmodule CodeMySpec.Hooks.Stop do
               "decision" => "block",
               "reason" =>
                 "Task completed successfully, and the loop is still running." <>
-                  Menu.render(scope, true, nil, agent)
+                  Menu.render(scope, true, role_of(agent), agent)
             }
 
           0 ->
@@ -361,6 +361,12 @@ defmodule CodeMySpec.Hooks.Stop do
         end
     end
   end
+
+  # A terminal main is offered main's own work, not the graph's development
+  # requirements; any other terminal agent works the whole graph, as a session
+  # always did.
+  defp role_of(%Agent{role: :main}), do: :main
+  defp role_of(_owner), do: nil
 
   defp continuous_mode?(%{continuous: true}), do: true
   defp continuous_mode?(_), do: false
