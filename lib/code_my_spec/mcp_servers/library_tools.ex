@@ -11,6 +11,7 @@ defmodule CodeMySpec.McpServers.LibraryTools do
   See knowledge/tools, "Tool library".
   """
 
+  alias CodeMySpec.Agents
   alias Anubis.MCP.Error
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
@@ -58,11 +59,16 @@ defmodule CodeMySpec.McpServers.LibraryTools do
   defp unscoped(reason), do: "This request has no project scope: #{inspect(reason)}"
 
   # `session_id` arrives in the arguments (the PreToolUse hook injects it);
-  # an agent we run is named on the connection.
-  defp context(scope, params, frame) do
+  # an agent we run is named on the connection, and a terminal agent by that
+  # session id, so its tasks and its role are its own (story 1122).
+  @doc false
+  def context(scope, params, frame) do
     %{scope: scope}
     |> put_known(:session_id, params[:session_id])
-    |> put_known(:agent_id, frame.assigns[:agent_id])
+    |> put_known(
+      :agent_id,
+      frame.assigns[:agent_id] || Agents.terminal_agent_id(scope, params[:session_id])
+    )
     |> put_known(:working_dir, frame.assigns[:working_dir])
   end
 

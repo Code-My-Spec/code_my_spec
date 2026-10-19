@@ -119,10 +119,19 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # `agent_id` from the frame first. The parameter says which agent's *tool list*
   # to use and a caller may legitimately name another one; the connection says
   # who is actually calling, and that is the one whose tasks these are.
+  #
+  # A terminal agent is named by that injected `session_id` (story 1122).
   defp caller(params, frame) do
+    session_id = Map.get(params, :session_id)
+
     %{}
-    |> put_present(:session_id, Map.get(params, :session_id))
-    |> put_present(:agent_id, frame.assigns[:agent_id] || Map.get(params, :agent_id))
+    |> put_present(:session_id, session_id)
+    |> put_present(
+      :agent_id,
+      frame.assigns[:agent_id] ||
+        CodeMySpec.Agents.terminal_agent_id(frame.assigns[:current_scope], session_id) ||
+        Map.get(params, :agent_id)
+    )
   end
 
   # Absent rather than nil: `list_tasks` guards on `is_binary(agent_id)`, so a
