@@ -49,30 +49,6 @@
           }
         ]
       }
-    ],
-    "SubagentStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/bin/hook\"",
-            "commandWindows": "\"%PLUGIN_ROOT%\\bin\\hook.cmd\"",
-            "timeout": 30
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"${PLUGIN_ROOT}/bin/hook\"",
-            "commandWindows": "\"%PLUGIN_ROOT%\\bin\\hook.cmd\"",
-            "timeout": 30
-          }
-        ]
-      }
     ]
   }
 }
