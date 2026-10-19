@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.WorkingCopies
 
@@ -1119,6 +1120,82 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       render_click(view, "close_copy", %{})
       refute has_element?(view, modal)
+    end
+  end
+
+  describe "an agent's task" do
+    defp active_task(scope, agent, attrs) do
+      {:ok, _agent} =
+        CodeMySpec.TaskOwner.add_task(
+          scope,
+          agent,
+          Map.merge(
+            %{id: Ecto.UUID.generate(), status: :active, started_at: DateTime.utc_now()},
+            Map.new(attrs)
+          )
+        )
+    end
+
+    test "clicking it shows the directive the next-task page gives for its requirement", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: "Pay by card"})
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      vantage = %{project_scope | active_working_copy_id: agent.working_copy_id}
+      :ok = RequirementGraph.settle(vantage)
+      {{nodes, _edges}, _at} = RequirementGraph.cached_graph(vantage)
+
+      node =
+        Enum.find(
+          nodes,
+          &(&1.entity_type == "story" and to_string(&1.entity_id) == to_string(story.id))
+        )
+
+      active_task(project_scope, agent, requirement_name: node.name, story_id: story.id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view
+      |> element(
+        "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-task']"
+      )
+      |> render_click()
+
+      render_async(view)
+
+      assert has_element?(view, "[data-test='task-modal']", node.name)
+      assert has_element?(view, "[data-test='task-modal-directive']")
+
+      render_click(view, "close_task", %{})
+      refute has_element?(view, "[data-test='task-modal']")
+    end
+
+    test "a task whose requirement the graph no longer holds says so", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      active_task(project_scope, agent, requirement_name: "no_such_requirement")
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view
+      |> element(
+        "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-task']"
+      )
+      |> render_click()
+
+      render_async(view)
+      assert has_element?(view, "[data-test='task-modal-gone']")
     end
   end
 

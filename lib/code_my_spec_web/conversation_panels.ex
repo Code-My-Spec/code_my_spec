@@ -586,9 +586,17 @@ defmodule CodeMySpecWeb.ConversationPanels do
             data-test="team-agent-work"
             class="flex min-w-0 items-center gap-2 pb-1 pl-4 text-[11px]"
           >
-            <span :if={a.task_label} data-test="team-agent-task" class="truncate opacity-50">
+            <button
+              :if={a.task_label}
+              type="button"
+              phx-click="show_task"
+              phx-value-agent-id={a.agent.id}
+              data-test="team-agent-task"
+              title="What this agent was handed"
+              class="link link-hover truncate text-left opacity-50 hover:opacity-100"
+            >
               {a.task_label}
-            </span>
+            </button>
           </div>
         </div>
 
