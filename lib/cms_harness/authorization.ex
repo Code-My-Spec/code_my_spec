@@ -45,6 +45,7 @@ defmodule CmsHarness.Authorization do
     state = %{
       server: Keyword.get(opts, :server_url, Config.server_url()),
       opts: Keyword.get(opts, :oauth_opts, Application.get_env(:code_my_spec, HarnessOAuth, [])),
+      check_interval_seconds: Keyword.get(opts, :check_interval_seconds, 60),
       grant: nil,
       timer: nil,
       announced: false,
@@ -125,7 +126,12 @@ defmodule CmsHarness.Authorization do
 
   defp authorized(state, token) do
     announced = state.announced or match?({:ok, _}, Device.announce(%{}, token))
-    schedule(%{state | announced: announced, phase: :authorized}, :check, 60)
+
+    schedule(
+      %{state | announced: announced, phase: :authorized},
+      :check,
+      state.check_interval_seconds
+    )
   end
 
   defp refused(state, reason) do

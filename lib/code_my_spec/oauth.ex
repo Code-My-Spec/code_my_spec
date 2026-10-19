@@ -147,6 +147,12 @@ defmodule CodeMySpec.Oauth do
   @device_code_ttl_seconds 600
   @device_code_interval 5
 
+  defp device_grant_setting(key, default) do
+    :code_my_spec
+    |> Elixir.Application.get_env(__MODULE__, [])
+    |> Keyword.get(key, default)
+  end
+
   @doc """
   Start a device-authorization request (RFC 8628) for the OAuth client
   named by `client_uid`.
@@ -170,8 +176,14 @@ defmodule CodeMySpec.Oauth do
       application ->
         application
         |> DeviceGrant.new_changeset(device_id,
-          ttl_seconds: Keyword.get(opts, :ttl_seconds, @device_code_ttl_seconds),
-          interval: Keyword.get(opts, :interval, @device_code_interval),
+          ttl_seconds:
+            Keyword.get(
+              opts,
+              :ttl_seconds,
+              device_grant_setting(:ttl_seconds, @device_code_ttl_seconds)
+            ),
+          interval:
+            Keyword.get(opts, :interval, device_grant_setting(:interval, @device_code_interval)),
           scopes: Keyword.get(opts, :scopes)
         )
         |> Repo.insert()

@@ -68,6 +68,24 @@ defmodule CodeMySpec.Auth.HarnessOAuthTest do
              HarnessOAuth.access_token("https://other.example.test", ctx.opts)
   end
 
+  test "refresh lead time can be shortened for short-lived tokens", ctx do
+    seed_expiring_credentials(ctx)
+    opts = Keyword.put(ctx.opts, :refresh_before_seconds, 2)
+
+    Req.Test.expect(__MODULE__, fn conn ->
+      Req.Test.json(conn, %{
+        access_token: "short-lived-access",
+        refresh_token: "short-lived-refresh",
+        expires_in: 12
+      })
+    end)
+
+    assert {:ok, "old-access"} = HarnessOAuth.access_token(ctx.server, opts)
+    assert {:ok, "short-lived-access"} = HarnessOAuth.access_token(ctx.server, ctx.opts)
+    assert {:ok, "short-lived-access"} = HarnessOAuth.access_token(ctx.server, opts)
+    Req.Test.verify!(__MODULE__)
+  end
+
   test "rejected refresh remains refused across subsequent reads", ctx do
     path = seed_expiring_credentials(ctx)
 
