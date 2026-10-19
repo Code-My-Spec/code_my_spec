@@ -105,6 +105,50 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
   defp reload(agent), do: Repo.get!(Agents.Agent, agent.id)
 
+  test "an issue task resumes after reusing its answered question", ctx do
+    %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
+    coding = agent(scope, :coding, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(scope, ctx.issue.id, copy_id)
+    context = %{scope: scope, agent_id: coding.id}
+    params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
+    assert {:ok, _} = ToolLibrary.run("start_task", params, context)
+    [task] = reload(coding).tasks
+
+    attrs = %{
+      "title" => "Implementation decision",
+      "questions" => [%{"question" => "Which approach?", "options" => []}]
+    }
+
+    {:ok, question} =
+      CodeMySpec.Notifications.create_agent_question_request(
+        scope,
+        coding.id,
+        attrs,
+        task.id
+      )
+
+    {:ok, _} =
+      CodeMySpec.Notifications.answer_question_request(
+        question.id,
+        %{"Which approach?" => "Use the existing implementation"}
+      )
+
+    {:ok, reused} =
+      CodeMySpec.Notifications.create_agent_question_request(
+        scope,
+        coding.id,
+        attrs,
+        task.id
+      )
+
+    assert reused.id == question.id
+    assert reused.status == "answered"
+    assert {:ok, _} = ToolLibrary.run("start_task", params, context)
+    [resumed] = reload(coding).tasks
+    assert resumed.id == task.id
+    assert resumed.status == :active
+  end
+
   test "evaluating a fix hands it to QA and refuses a second coding task", ctx do
     %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
     coding = agent(scope, :coding, copy_id)

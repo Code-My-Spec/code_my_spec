@@ -1079,6 +1079,16 @@ defmodule CodeMySpec.Notifications do
     {:ok, request}
   end
 
+  # Reusing an answered question creates a new task blocker, but no new
+  # answer event will arrive to release it. Release after the transaction
+  # commits so the normal wake path sees the persisted blocker.
+  defp deliver_if_new({:ok, {:duplicate, %{status: "answered"} = request}}) do
+    with {:ok, _released} <-
+           TaskOwner.blocker_resolved(:question, request.id, :answered, detail: answered(request)) do
+      {:ok, request}
+    end
+  end
+
   defp deliver_if_new({:ok, {:duplicate, request}}), do: {:ok, request}
   defp deliver_if_new(error), do: error
 
