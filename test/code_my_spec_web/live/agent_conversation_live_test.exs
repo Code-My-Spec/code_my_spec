@@ -1089,6 +1089,11 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
                "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-preview-marker'][data-state='unchecked']"
              )
 
+      assert has_element?(
+               view,
+               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-harness-marker'][data-state='unattached']"
+             )
+
       view
       |> element(
         "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='team-copy-open']"

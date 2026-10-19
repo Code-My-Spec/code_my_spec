@@ -41,18 +41,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
       <div class="flex flex-wrap items-center gap-1.5">
         <.preview_marker harness={@row.harness} size={:normal} class="tooltip-right" />
 
-        <%!-- Whether a harness holds this checkout, which is not the app: a
-        worktree created for an agent has nobody to open a session in it, and
-        once sat unattached for an hour with an agent assigned. --%>
-        <span
-          :if={not @row.served}
-          data-test="copy-not-ready"
-          data-tip="No harness on its machine holds this checkout, so its agents cannot run"
-          class="tooltip tooltip-right badge badge-ghost badge-sm"
-        >
-          <.icon name="hero-link-slash" class="size-3" /> No harness attached
-        </span>
-        <span :if={@row.served} data-test="copy-ready" class="sr-only">served</span>
+        <.harness_marker row={@row} size={:normal} class="tooltip-right" />
 
         <span :if={@row.missing} data-test="path-missing" class="badge badge-warning badge-sm">
           <.icon name="hero-exclamation-triangle" class="size-3" /> Checkout gone
@@ -155,6 +144,60 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
     </.dynamic_tag>
     """
   end
+
+  @doc """
+  Whether a harness holds this checkout — the process on its machine that
+  agents run through. Not the app: a copy can serve its app with no harness,
+  and then nothing can start its agents. A worktree created for an agent has
+  nobody to open a session in it, and once sat unattached for an hour with an
+  agent assigned.
+
+  `:small` is the mark alone, faint when attached and amber when not.
+  `:normal` says so only when it is not attached.
+  """
+  attr :row, :map, required: true
+  attr :size, :atom, default: :small, values: [:small, :normal]
+  attr :class, :any, default: "tooltip-left"
+
+  def harness_marker(assigns) do
+    assigns = assign(assigns, :tip, harness_tip(assigns.row))
+
+    ~H"""
+    <span
+      :if={@size == :small}
+      data-test="copy-harness-marker"
+      data-state={if @row.served, do: "attached", else: "unattached"}
+      data-tip={@tip}
+      aria-label={@tip}
+      class={[
+        "tooltip flex shrink-0",
+        if(@row.served, do: "opacity-40", else: "text-warning"),
+        @class
+      ]}
+    >
+      <.icon name={if @row.served, do: "hero-link", else: "hero-link-slash"} class="size-3.5" />
+    </span>
+    <span
+      :if={@size == :normal and not @row.served}
+      data-test="copy-not-ready"
+      data-tip={@tip}
+      class={["tooltip badge badge-ghost badge-sm", @class]}
+    >
+      <.icon name="hero-link-slash" class="size-3" /> No harness attached
+    </span>
+    <span :if={@size == :normal and @row.served} data-test="copy-ready" class="sr-only">
+      served
+    </span>
+    """
+  end
+
+  defp harness_tip(%{served: true, device_name: name}) when is_binary(name),
+    do: "Held by the harness on #{name}"
+
+  defp harness_tip(%{served: true}), do: "Held by a harness"
+
+  defp harness_tip(_row),
+    do: "No harness on its machine holds this checkout, so its agents cannot run"
 
   defp link_attrs(nil), do: []
   defp link_attrs(href), do: [href: href, target: "_blank", rel: "noopener"]
