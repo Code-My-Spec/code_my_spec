@@ -4212,7 +4212,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- QA spex fixture setup, Stories 726/727 --
   @doc """
-  Creates a QA agent holding an active `qa_complete` task linked to the given
+  Creates a terminal agent (role main, so it takes no team seat) holding an active
+  `qa_complete` task linked to the given
   story. Used by QA spex setup to seed `context.story` and `context.task_id`
   without needing the full requirement prerequisite chain satisfied.
 
@@ -4249,7 +4250,7 @@ defmodule CodeMySpecSpex.Fixtures do
     # for the same story on more than one agent.
     agent =
       TerminalAgentFixtures.terminal_agent_fixture(scope, %{
-        role: :qa,
+        role: :main,
         tasks: [
           %{
             id: task_id,

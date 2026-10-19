@@ -155,9 +155,22 @@ defmodule CodeMySpecSpex.Story1046.Criterion1510Spex do
   # every time, which is itself the proof this stays one copy: a task
   # resolved against a different copy would push to a socket nothing here
   # answers, and `assert_push` would time out.
+  # The session a QA agent opens with: registered as an agent, as its
+  # SessionStart hook leaves it.
+  defp a_registered_session(scope) do
+    session_id = "spex-1510-#{System.unique_integer([:positive])}"
+
+    CodeMySpecSpex.Fixtures.terminal_agent_fixture(scope, %{
+      engine_session_id: session_id,
+      role: :qa
+    })
+
+    session_id
+  end
+
   defp start_qa_task(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
-    session_id = context[:session_id] || "spex-1510-#{System.unique_integer([:positive])}"
+    session_id = context[:session_id] || a_registered_session(context.scope)
 
     task =
       Task.async(fn ->

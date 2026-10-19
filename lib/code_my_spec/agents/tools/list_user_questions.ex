@@ -28,8 +28,16 @@ defmodule CodeMySpec.Agents.Tools.ListUserQuestions do
   end
 
   @impl true
-  def call(_params, %{agent_id: id, scope: scope})
-      when is_binary(id) do
+  def call(_params, %{scope: scope} = context) do
+    case Agents.caller_agent_id(scope, context) do
+      nil -> {:ok, no_agent()}
+      id -> list_for(scope, id)
+    end
+  end
+
+  def call(_params, _context), do: {:ok, no_agent()}
+
+  defp list_for(scope, id) do
     case Agents.fetch_agent(scope, id) do
       {:ok, _agent} ->
         questions =
@@ -43,8 +51,6 @@ defmodule CodeMySpec.Agents.Tools.ListUserQuestions do
         {:error, "Agent not found in this project."}
     end
   end
-
-  def call(_params, _context), do: {:ok, no_agent()}
 
   defp render([]) do
     """

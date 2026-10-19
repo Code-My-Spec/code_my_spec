@@ -175,8 +175,13 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
          params,
          task_ref
        ) do
-    # The connection's agent, else the terminal agent the hook's session id is.
-    agent_id = context[:agent_id] || Agents.terminal_agent_id(scope, params[:session_id])
+    # The connection's agent, else the terminal agent the hook's session id is,
+    # else the newest one on this working copy.
+    agent_id =
+      Agents.caller_agent_id(
+        scope,
+        Map.put(context, :session_id, params[:session_id] || context[:session_id])
+      )
 
     attrs = %{
       "questions" => questions,

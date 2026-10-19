@@ -421,6 +421,18 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  The agent a read-only call is about: the connection's, else the terminal agent
+  the hook's `session_id` names, else the newest terminal agent on the call's
+  working copy (a caller the hook did not name still has one conversation in
+  its copy). Nil when there is none.
+  """
+  @spec caller_agent_id(Scope.t(), map()) :: Ecto.UUID.t() | nil
+  def caller_agent_id(%Scope{} = scope, context) do
+    context[:agent_id] || terminal_agent_id(scope, context[:session_id]) ||
+      terminal_agent_id(scope, terminal_session_id_for(scope.active_working_copy_id))
+  end
+
   @doc "What a caller is told when no agent could be found for its call."
   @spec no_owner_message() :: String.t()
   def no_owner_message do

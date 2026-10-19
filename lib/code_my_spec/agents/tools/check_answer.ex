@@ -185,16 +185,23 @@ defmodule CodeMySpec.Agents.Tools.CheckAnswer do
     end
   end
 
-  defp owned?(request, %{agent_id: id, scope: scope}) when is_binary(id) do
-    request.agent_id == id and match?({:ok, _}, Agents.fetch_agent(scope, id))
-  end
+  defp owned?(request, %{scope: scope} = context) do
+    case Agents.caller_agent_id(scope, context) do
+      id when is_binary(id) ->
+        request.agent_id == id and match?({:ok, _}, Agents.fetch_agent(scope, id))
 
-  # A caller that is no agent owns the unowned questions its user asked.
-  defp owned?(request, %{scope: %{user: %{id: user_id}}}) do
-    is_nil(request.agent_id) and request.user_id == user_id
+      nil ->
+        owned_by_user?(request, scope)
+    end
   end
 
   defp owned?(_request, _context), do: false
+
+  # A caller that is no agent owns the unowned questions its user asked.
+  defp owned_by_user?(request, %{user: %{id: user_id}}),
+    do: is_nil(request.agent_id) and request.user_id == user_id
+
+  defp owned_by_user?(_request, _scope), do: false
 
   defp subscribe_and_wait(id, context) do
     topic = "question_request:#{id}"

@@ -118,6 +118,19 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
   # because it blocks on the reply this test itself has to answer, the same
   # push-and-reply shape `criterion_1183`'s `answer_restart_app/2` uses for
   # `restart_app`.
+  # The session a QA agent opens with: registered as an agent, as its
+  # SessionStart hook leaves it.
+  defp a_registered_session(scope) do
+    session_id = "spex-1170-#{System.unique_integer([:positive])}"
+
+    CodeMySpecSpex.Fixtures.terminal_agent_fixture(scope, %{
+      engine_session_id: session_id,
+      role: :qa
+    })
+
+    session_id
+  end
+
   defp start_qa_task(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}
 
@@ -129,7 +142,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1170Spex do
             requirement_name: "qa_complete",
             entity_type: "story",
             entity_id: to_string(context.story.number),
-            session_id: "spex-1170-#{System.unique_integer([:positive])}"
+            session_id: a_registered_session(context.scope)
           },
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
