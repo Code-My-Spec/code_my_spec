@@ -24,7 +24,8 @@ defmodule CodeMySpecWeb.HarnessChannel do
   def join("harness:" <> account_id, _payload, socket) do
     scope = socket.assigns[:scope]
 
-    if scope && to_string(scope.active_account_id) == account_id do
+    if is_nil(socket.assigns[:deploy_key_project_id]) && scope &&
+         to_string(scope.active_account_id) == account_id do
       # `externals` maps a subscribed conversation_id -> its session_external_id,
       # so an operator reply can be tagged for the harness without a Repo lookup.
       {:ok, socket |> assign(:account_id, account_id) |> assign(:externals, %{})}

@@ -9,7 +9,10 @@ defmodule CodeMySpec.Oauth do
   authorization grant (RFC 8628).
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Repo, CodeMySpec.Users], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Repo, CodeMySpec.Users, CodeMySpec.Users.Scope, CodeMySpec.Devices],
+    exports: :all
 
   import Ecto.Query, only: [from: 2]
 
@@ -32,6 +35,113 @@ defmodule CodeMySpec.Oauth do
     %Application{}
     |> Application.changeset(attrs)
     |> Repo.insert()
+  end
+
+  @doc "Whether a registered client has no redirect available for browser authorization."
+  def application_without_redirect?(uid) when is_binary(uid) do
+    case Applications.get_application(uid, otp_app: :code_my_spec) do
+      %Application{redirect_uri: redirect_uri} ->
+        is_nil(redirect_uri) or String.trim(redirect_uri) == ""
+
+      nil ->
+        false
+    end
+  end
+
+  def application_without_redirect?(_uid), do: false
+
+  @doc "Issues tokens, refusing revoked refresh credentials regardless of rotation settings."
+  def grant_token(
+        %{"grant_type" => "refresh_token", "client_id" => uid, "refresh_token" => refresh} =
+          params
+      )
+      when is_binary(uid) and is_binary(refresh) do
+    result =
+      Repo.transaction(fn ->
+        application = Repo.one(from(a in Application, where: a.uid == ^uid, lock: "FOR UPDATE"))
+
+        token =
+          if application do
+            Repo.get_by(CodeMySpec.Oauth.AccessToken,
+              application_id: application.id,
+              refresh_token: refresh
+            )
+          end
+
+        case token do
+          %{revoked_at: nil} ->
+            ExOauth2Provider.Token.grant(params, otp_app: :code_my_spec)
+
+          _ ->
+            {:error,
+             %{error: "invalid_grant", error_description: "Refresh credential is unavailable"},
+             :bad_request}
+        end
+      end)
+
+    case result do
+      {:ok, response} ->
+        response
+
+      {:error, _reason} ->
+        {:error, %{error: "server_error", error_description: "Token exchange failed"},
+         :internal_server_error}
+    end
+  end
+
+  def grant_token(params), do: ExOauth2Provider.Token.grant(params, otp_app: :code_my_spec)
+
+  @doc "Revokes the caller's OAuth authorizations for a device on the current account."
+  def revoke_device_authorization(%CodeMySpec.Users.Scope{user_id: user_id} = scope, device_id)
+      when is_integer(user_id) do
+    case CodeMySpec.Devices.get_device(scope, device_id) do
+      nil -> {:error, :not_found}
+      device -> revoke_device_clients(device.id, user_id)
+    end
+  end
+
+  def revoke_device_authorization(_scope, _device_id), do: {:error, :unauthorized}
+
+  defp revoke_device_clients(device_id, user_id) do
+    Repo.transaction(fn ->
+      application_ids =
+        Repo.all(
+          from(g in DeviceGrant,
+            where: g.device_id == ^device_id and g.resource_owner_id == ^user_id,
+            select: g.application_id,
+            distinct: true
+          )
+        )
+
+      applications =
+        Repo.all(
+          from(a in Application,
+            where: a.id in ^application_ids,
+            order_by: a.id,
+            lock: "FOR UPDATE"
+          )
+        )
+
+      Enum.each(applications, fn application ->
+        tokens =
+          Repo.all(
+            from(t in CodeMySpec.Oauth.AccessToken,
+              where:
+                t.application_id == ^application.id and
+                  t.resource_owner_id == ^user_id and is_nil(t.revoked_at)
+            )
+          )
+
+        Enum.each(tokens, fn token ->
+          case AccessTokens.revoke(token, otp_app: :code_my_spec) do
+            {:ok, _} -> :ok
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+      end)
+
+      Enum.map(applications, &{&1.id, user_id})
+    end)
   end
 
   @device_code_ttl_seconds 600
@@ -212,7 +322,9 @@ defmodule CodeMySpec.Oauth do
   defp consume_and_fetch_token(%DeviceGrant{} = grant) do
     query = from(g in DeviceGrant, where: g.id == ^grant.id and is_nil(g.consumed_at))
 
-    case Repo.update_all(query, set: [consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)]) do
+    case Repo.update_all(query,
+           set: [consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+         ) do
       {1, _} -> fetch_claimed_token(grant)
       {0, _} -> {:error, :invalid_grant}
     end
@@ -223,8 +335,13 @@ defmodule CodeMySpec.Oauth do
   # polling should paper over with a fresh mint.
   defp fetch_claimed_token(%DeviceGrant{access_token_id: id}) when is_integer(id) do
     case Repo.get(CodeMySpec.Oauth.AccessToken, id) do
-      nil -> {:error, :invalid_grant}
-      token -> {:ok, token}
+      nil ->
+        {:error, :invalid_grant}
+
+      token ->
+        if AccessTokens.is_accessible?(token),
+          do: {:ok, token},
+          else: {:error, :invalid_grant}
     end
   end
 

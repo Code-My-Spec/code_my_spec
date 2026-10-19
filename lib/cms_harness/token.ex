@@ -2,16 +2,13 @@ defmodule CmsHarness.Token do
   @moduledoc """
   The access token the harness presents to the server, and where it comes from.
 
-  The harness cannot run an authorization-code flow (no browser, no person, no
-  Repo to keep a refresh in). So a deploy key is traded for a short-lived token
-  at `POST /api/sprite/token` (`CodeMySpecWeb.SpriteTokenController`), which
-  `require_oauth_token` accepts like any other client's. The key stays narrow
-  (`Plugs.DeployKeyOrOAuth` mounts only on question routes), a leak expires,
-  and one token can be revoked without stopping every harness on the project.
+  The harness's own device-grant credential comes from
+  `CmsHarness.Credentials`, which refreshes it before expiry.
 
-  The key comes from `CmsHarness.Credentials`; the token lives only in this
-  process, keyed by working copy, and a restart re-exchanges. A signed-in
-  user's token is handed back untouched, never exchanged.
+  Gate and sprite work can instead exchange a project deploy key at
+  `POST /api/sprite/token`. Those exchanged tokens live in this process,
+  keyed by working copy; a restart re-exchanges the key. Account connections
+  use the harness OAuth credential directly and cannot use this fallback.
 
   Not `CodeMySpec.AppTokens`, which serves a customer app's refresh secret.
   """
@@ -45,9 +42,14 @@ defmodule CmsHarness.Token do
   @spec access_token(String.t() | nil) :: {:ok, String.t()} | {:error, refusal()}
   def access_token(root \\ nil) do
     case credential(root) do
-      {:ok, token, :user_token} -> {:ok, token}
-      {:ok, key, _source} -> call_for_token(root, key)
-      {:error, :no_credential} -> {:error, :no_credential}
+      {:ok, token, :harness_oauth} ->
+        {:ok, token}
+
+      {:ok, key, source} when source in [:working_copy_key, :configured_deploy_key] ->
+        call_for_token(root, key)
+
+      {:error, _reason} = error ->
+        error
     end
   end
 

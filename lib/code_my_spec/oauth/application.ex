@@ -12,7 +12,9 @@ defmodule CodeMySpec.Oauth.Application do
 
   def changeset(application, attrs) do
     application
-    |> cast(attrs, [:name, :redirect_uri, :scopes, :uid, :secret])
+    |> cast(attrs, [:name, :scopes, :uid, :secret])
+    # Device clients have no redirect; preserve the empty string for the NOT NULL column.
+    |> cast(attrs, [:redirect_uri], empty_values: [])
     |> validate_required([:name, :uid, :secret])
     |> validate_redirect_uris()
     |> unique_constraint(:uid)

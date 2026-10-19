@@ -79,17 +79,15 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     os_user = System.get_env("USER") || System.get_env("USERNAME") || "user"
     local = os_user |> String.replace(~r/[^A-Za-z0-9._-]/, "") |> String.downcase()
     user = Fixtures.user_fixture(%{email: desktop_email(local)})
-    previous_token = Application.fetch_env(:code_my_spec, :harness_token)
-    Application.put_env(:code_my_spec, :harness_token, Fixtures.desktop_harness_credential(user))
-
-    ExUnit.Callbacks.on_exit(fn ->
-      case previous_token do
-        {:ok, value} -> Application.put_env(:code_my_spec, :harness_token, value)
-        :error -> Application.delete_env(:code_my_spec, :harness_token)
-      end
-    end)
-
+    oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
     start_local_server(root)
+
+    CmsHarnessTest.HarnessOAuthFixture.seed(
+      oauth_dir,
+      CmsHarnessTest.HarnessOAuthFixture.server_url(),
+      Fixtures.desktop_harness_credential(user)
+    )
+
     environment = Fixtures.local_environment_fixture(working_dir: root)
 
     {:ok,

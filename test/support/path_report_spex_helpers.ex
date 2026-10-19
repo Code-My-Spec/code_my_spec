@@ -132,11 +132,6 @@ defmodule CodeMySpecSpex.PathReportHelpers do
     key = "dk_spex_892_#{:erlang.phash2(context.project.id)}"
     Fixtures.set_project_deploy_key(context.scope, context.project, key)
 
-    previous = Application.get_env(:code_my_spec, :harness_token)
-    Application.put_env(:code_my_spec, :harness_token, key)
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :harness_token, previous)
-    end)
+    CmsHarnessTest.HarnessOAuthFixture.use_deploy_key(key, CodeMySpecWeb.Endpoint)
   end
 end

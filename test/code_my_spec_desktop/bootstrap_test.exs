@@ -186,6 +186,20 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     refute File.exists?(Path.join(ctx.root, "setup"))
   end
 
+  test "authorization retries require the launch token and same origin", ctx do
+    uri = URI.parse(ctx.url)
+    unknown = URI.to_string(%{uri | path: "/setup/unknown/authorize"})
+    assert Req.post!(unknown, redirect: false).status == 404
+
+    response =
+      Req.post!(ctx.url <> "/authorize",
+        headers: [{"origin", "https://other.invalid"}],
+        redirect: false
+      )
+
+    assert response.status == 403
+  end
+
   def handle_bootstrap_settled(_event, _measurements, metadata, recipient) do
     send(recipient, {:bootstrap_settled, metadata.bootstrap, metadata.status})
   end

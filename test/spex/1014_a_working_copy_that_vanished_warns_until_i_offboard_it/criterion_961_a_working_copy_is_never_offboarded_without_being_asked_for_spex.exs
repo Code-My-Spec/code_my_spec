@@ -46,11 +46,9 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
   spex "Ordinary work by other agents never removes anybody's copy", criterion: 961 do
     scenario "A working copy is never offboarded without being asked for" do
       given_ "another agent working on the project", context do
-        # Its own checkout, served by a live harness its hooks go through. First,
-        # because the missing copy's harness below puts its own deploy key on the
-        # project and in `:harness_token`, which every harness on this node
-        # connects with: started after, this one would present a key the project
-        # no longer has.
+        # Its own checkout, served by a live harness its hooks go through.
+        # The missing copy's setup below restores this checkout's project key
+        # after the device and reporter helpers have installed theirs.
         {:ok, Map.put(context, :live_agent, HarnessHooks.ensure_live_harness(context))}
       end
 
@@ -67,8 +65,31 @@ defmodule CodeMySpecSpex.Story1014.Criterion2864Spex do
         )
 
         reporter = harness(context, device, %{working_copy_id => root})
+
+        # Both simulated machines share this node's served roots. Keep the
+        # live checkout's key valid for credential discovery and its channel.
+        CodeMySpecSpex.Fixtures.set_project_deploy_key(
+          context.scope,
+          context.project,
+          context.live_agent.harness.deploy_key
+        )
+
+        CmsHarnessTest.HarnessOAuthFixture.use_deploy_key(
+          context.live_agent.harness.deploy_key,
+          CodeMySpecWeb.Endpoint
+        )
+
         remove(root)
         report(reporter)
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/working-copies")
+
+        assert has_element?(
+                 view,
+                 "[data-working-copy-id='#{working_copy_id}'] [data-test='path-missing']"
+               ),
+               "the harness must establish the missing warning before the other agent stops"
 
         {:ok, Map.put(context, :working_copy_id, working_copy_id)}
       end

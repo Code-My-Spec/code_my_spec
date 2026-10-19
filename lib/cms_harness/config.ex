@@ -37,13 +37,7 @@ defmodule CmsHarness.Config do
   ambient); `server_url_for/1` answers per working copy.
   """
   @spec server_url() :: String.t()
-  def server_url do
-    Application.get_env(:code_my_spec, :harness_server_url_override) ||
-      System.get_env("CMS_SERVER_URL") ||
-      Application.get_env(:code_my_spec, :harness_server_url) ||
-      Application.get_env(:code_my_spec, :base_url) ||
-      default_server_url()
-  end
+  defdelegate server_url(), to: CodeMySpec.Auth.HarnessOAuth
 
   @doc """
   Where this instance keeps machine-identity state that lives outside any

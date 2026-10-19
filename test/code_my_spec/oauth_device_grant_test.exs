@@ -32,7 +32,8 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
     end
 
     test "refuses an unregistered client" do
-      assert {:error, :invalid_client} = Oauth.request_device_code("no-such-client", Ecto.UUID.generate())
+      assert {:error, :invalid_client} =
+               Oauth.request_device_code("no-such-client", Ecto.UUID.generate())
     end
 
     test "a malformed device_id is an ordinary changeset error, not a crash", %{
@@ -61,7 +62,9 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
     } do
       {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate())
 
-      assert %{id: id} = Oauth.get_device_grant_by_user_code(" #{String.downcase(grant.user_code)} ")
+      assert %{id: id} =
+               Oauth.get_device_grant_by_user_code(" #{String.downcase(grant.user_code)} ")
+
       assert id == grant.id
     end
 
@@ -109,9 +112,52 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
     end
 
     test "an expired grant cannot be decided", %{application: application, user: user} do
-      {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate(), ttl_seconds: -1)
+      {:ok, grant} =
+        Oauth.request_device_code(application.uid, Ecto.UUID.generate(), ttl_seconds: -1)
 
       assert {:error, :expired} = Oauth.decide_device_grant(grant, user, :approve)
+    end
+  end
+
+  describe "revoke_device_authorization/2" do
+    test "revocation blocks access, refresh, and an unconsumed device code" do
+      scope = full_scope_fixture()
+      device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+      application = oauth_application_fixture()
+      {:ok, grant} = Oauth.request_device_code(application.uid, device.id)
+      {:ok, approved} = Oauth.decide_device_grant(grant, scope.user, :approve)
+      token = CodeMySpec.Repo.get!(Oauth.AccessToken, approved.access_token_id)
+
+      assert {:ok, [{application_id, user_id}]} =
+               Oauth.revoke_device_authorization(scope, device.id)
+
+      assert application_id == application.id
+      assert user_id == scope.user.id
+      refute ExOauth2Provider.AccessTokens.is_accessible?(CodeMySpec.Repo.reload!(token))
+
+      assert {:error, :invalid_grant} =
+               Oauth.poll_device_grant(grant.device_code, application.uid)
+
+      assert {:error, %{error: "invalid_grant"}, :bad_request} =
+               Oauth.grant_token(%{
+                 "grant_type" => "refresh_token",
+                 "client_id" => application.uid,
+                 "client_secret" => application.secret,
+                 "refresh_token" => token.refresh_token
+               })
+    end
+
+    test "another account cannot revoke the device's authorization" do
+      owner = full_scope_fixture()
+      stranger = full_scope_fixture()
+      device = CodeMySpec.DevicesFixtures.device_fixture(owner)
+      application = oauth_application_fixture()
+      {:ok, grant} = Oauth.request_device_code(application.uid, device.id)
+      {:ok, approved} = Oauth.decide_device_grant(grant, owner.user, :approve)
+
+      assert {:error, :not_found} = Oauth.revoke_device_authorization(stranger, device.id)
+      token = CodeMySpec.Repo.get!(Oauth.AccessToken, approved.access_token_id)
+      assert ExOauth2Provider.AccessTokens.is_accessible?(token)
     end
   end
 
@@ -151,13 +197,16 @@ defmodule CodeMySpec.OauthDeviceGrantTest do
       {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate())
       {:ok, _} = Oauth.decide_device_grant(grant, user, :deny)
 
-      assert {:error, :access_denied} = Oauth.poll_device_grant(grant.device_code, application.uid)
+      assert {:error, :access_denied} =
+               Oauth.poll_device_grant(grant.device_code, application.uid)
     end
 
     test "answers expired_token once the code's own deadline passes", %{application: application} do
-      {:ok, grant} = Oauth.request_device_code(application.uid, Ecto.UUID.generate(), ttl_seconds: -1)
+      {:ok, grant} =
+        Oauth.request_device_code(application.uid, Ecto.UUID.generate(), ttl_seconds: -1)
 
-      assert {:error, :expired_token} = Oauth.poll_device_grant(grant.device_code, application.uid)
+      assert {:error, :expired_token} =
+               Oauth.poll_device_grant(grant.device_code, application.uid)
     end
 
     test "answers invalid_grant for a code nothing issued", %{application: application} do

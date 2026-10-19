@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
 
   alias CodeMySpec.AgentHarness
   alias CodeMySpec.AgentHarness.WorkSource
-  alias CodeMySpec.Auth.OAuthClient
+  alias CodeMySpec.Auth.HarnessOAuth
   alias CodeMySpec.Auth.WebSocketBackoff
   alias CodeMySpec.Users.Scope
 
@@ -45,21 +45,15 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
     # pushes are guarded on `:joined` and simply dropped while disconnected.
     AgentHarness.subscribe_relay(scope.active_account_id)
 
-    case build_ws_url() do
-      {:ok, uri} ->
-        socket =
-          new_socket()
-          |> assign(:scope, scope)
-          |> assign(:topic, "harness:#{scope.active_account_id}")
-          |> assign(:joined, false)
-          |> connect!(uri: uri)
+    socket =
+      new_socket()
+      |> assign(:scope, scope)
+      |> assign(:topic, "harness:#{scope.active_account_id}")
+      |> assign(:joined, false)
+      |> assign(:reconnect_attempts, 0)
 
-        {:ok, socket}
-
-      {:error, reason} ->
-        Logger.warning("[HarnessProxySocket] Cannot connect: #{inspect(reason)}")
-        :ignore
-    end
+    send(self(), :reconnect)
+    {:ok, socket}
   end
 
   @impl Slipstream
@@ -140,30 +134,25 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
     {:ok, socket |> assign(:joined, false) |> assign(:reconnect_attempts, attempts + 1)}
   end
 
-  # OAuth when a user is signed in here; otherwise the project's deploy key,
-  # which is all a sprite has. UserSocket accepts either.
+  # Account traffic uses only the credentials this harness obtained through
+  # device authorization. Project deploy keys remain on the project plane.
   defp socket_credential do
-    case OAuthClient.get_token() do
-      {:ok, token} ->
-        {:ok, token}
-
-      _ ->
-        case Application.get_env(:code_my_spec, :deploy_key) do
-          key when is_binary(key) and key != "" -> {:ok, key}
-          _ -> {:error, :not_authenticated}
-        end
-    end
+    CodeMySpec.Auth.HarnessOAuth.access_token(
+      HarnessOAuth.server_url(),
+      Application.get_env(:code_my_spec, CodeMySpec.Auth.HarnessOAuth, [])
+    )
   end
 
   defp build_ws_url do
     with {:ok, token} <- socket_credential() do
-      server_url = OAuthClient.get_server_url()
+      server_url = HarnessOAuth.server_url()
 
       ws_url =
         server_url
         |> String.replace(~r{^https://}, "wss://")
         |> String.replace(~r{^http://}, "ws://")
-        |> Kernel.<>("/socket/websocket?token=#{token}&vsn=2.0.0")
+        |> String.trim_trailing("/")
+        |> Kernel.<>("/socket/websocket?" <> URI.encode_query(%{token: token, vsn: "2.0.0"}))
 
       {:ok, ws_url}
     end

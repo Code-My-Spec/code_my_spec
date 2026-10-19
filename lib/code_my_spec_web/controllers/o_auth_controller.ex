@@ -10,6 +10,24 @@ defmodule CodeMySpecWeb.OAuthController do
   alias CodeMySpec.Oauth
   alias ExOauth2Provider.{Authorization, Token}
 
+  plug :require_registered_redirect when action in [:authorize, :create, :delete]
+
+  # The provider assumes a nonempty redirect list even when the request supplies
+  # a redirect. Device clients must never enter its browser authorization flow.
+  defp require_registered_redirect(conn, _opts) do
+    if Oauth.application_without_redirect?(conn.params["client_id"]) do
+      conn
+      |> put_status(:bad_request)
+      |> json(%{
+        error: "invalid_redirect_uri",
+        error_description: "This client has no registered redirect URI"
+      })
+      |> halt()
+    else
+      conn
+    end
+  end
+
   @doc """
   GET /oauth/authorize
   Shows the authorization page to the user
@@ -191,7 +209,7 @@ defmodule CodeMySpecWeb.OAuthController do
   end
 
   def token(conn, params) do
-    case Token.grant(params, otp_app: :code_my_spec) do
+    case Oauth.grant_token(params) do
       {:ok, access_token} ->
         json(conn, %{
           access_token: access_token.access_token,
@@ -292,28 +310,69 @@ defmodule CodeMySpecWeb.OAuthController do
   Dynamic Client Registration for MCP
   """
   def register(conn, params) do
-    case create_oauth_application(params) do
-      {:ok, application} ->
-        conn
-        |> put_status(201)
-        |> json(%{
-          "client_id" => application.uid,
-          "client_secret" => application.secret,
-          "client_name" => application.name,
-          "redirect_uris" => String.split(application.redirect_uri || "", " ", trim: true),
-          "grant_types" => ["authorization_code"],
-          "response_types" => ["code"],
-          "scope" => application.scopes
-        })
+    grant_types = Map.get(params, "grant_types", ["authorization_code"])
+    redirect_uris = Map.get(params, "redirect_uris", [])
 
-      {:error, changeset} ->
-        conn
-        |> put_status(400)
-        |> json(%{
-          "error" => "invalid_client_metadata",
-          "error_description" => format_errors(changeset)
-        })
+    with :ok <- validate_registration_metadata(grant_types, redirect_uris),
+         {:ok, application} <- create_oauth_application(params) do
+      conn
+      |> put_status(:created)
+      |> json(%{
+        "client_id" => application.uid,
+        "client_secret" => application.secret,
+        "client_name" => application.name,
+        "redirect_uris" => redirect_uris,
+        "grant_types" => grant_types,
+        "response_types" => if("authorization_code" in grant_types, do: ["code"], else: []),
+        "scope" => application.scopes
+      })
+    else
+      {:error, error, description} ->
+        registration_error(conn, error, description)
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        error =
+          if Keyword.has_key?(changeset.errors, :redirect_uri),
+            do: "invalid_redirect_uri",
+            else: "invalid_client_metadata"
+
+        registration_error(conn, error, format_errors(changeset))
     end
+  end
+
+  defp validate_registration_metadata(grant_types, redirect_uris) do
+    cond do
+      not is_list(grant_types) or grant_types == [] ->
+        {:error, "invalid_client_metadata", "grant_types must be a nonempty array"}
+
+      not Enum.all?(grant_types, &is_binary/1) ->
+        {:error, "invalid_client_metadata", "grant_types must contain strings"}
+
+      not is_list(redirect_uris) ->
+        {:error, "invalid_redirect_uri", "redirect_uris must be an array"}
+
+      not Enum.all?(redirect_uris, &registration_redirect?/1) ->
+        {:error, "invalid_redirect_uri",
+         "redirect_uris must contain nonempty URIs without whitespace"}
+
+      redirect_uris == [] and
+          not Enum.all?(grant_types, &(&1 in [@device_code_grant_type, "refresh_token"])) ->
+        {:error, "invalid_redirect_uri", "A redirect URI is required for this grant type"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp registration_redirect?(uri) when is_binary(uri),
+    do: uri != "" and not Regex.match?(~r/\s/u, uri)
+
+  defp registration_redirect?(_uri), do: false
+
+  defp registration_error(conn, error, description) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: error, error_description: description})
   end
 
   defp create_oauth_application(params) do
