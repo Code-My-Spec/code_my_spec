@@ -66,13 +66,16 @@ defmodule CodeMySpecWeb.OAuthControllerTest do
       user = user_fixture()
 
       for method <- [:get, :post, :delete],
-          redirect <- [nil, "https://example.com/callback", "urn:ietf:wg:oauth:2.0:oob"] do
-        params = %{
-          "client_id" => registration["client_id"],
-          "response_type" => "code"
-        }
-
-        params = if redirect, do: Map.put(params, "redirect_uri", redirect), else: params
+          redirect_params <- [
+            %{},
+            %{"redirect_uri" => "https://example.com/callback"},
+            %{"redirect_uri" => "urn:ietf:wg:oauth:2.0:oob"}
+          ] do
+        params =
+          Map.merge(redirect_params, %{
+            "client_id" => registration["client_id"],
+            "response_type" => "code"
+          })
 
         response =
           conn
