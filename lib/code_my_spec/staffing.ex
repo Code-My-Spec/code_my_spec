@@ -34,6 +34,7 @@ defmodule CodeMySpec.Staffing do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Transport
+  alias CodeMySpec.Agents.Transport.Harness
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -124,29 +125,50 @@ defmodule CodeMySpec.Staffing do
       "prepare" => true
     }
 
-    with {:ok, %{root: root, working_copy_id: id} = made} <-
-           Transport.impl().create_working_copy(candidates, request, 60_000),
-         {:ok, copy} <-
-           WorkingCopies.issue(scope, id,
-             root: root,
-             label: opts[:label],
-             device: host_device(scope),
-             # Already written into the checkout's config; a row under another
-             # id is a copy nothing can recognise.
-             working_copy_id: id
-           ),
-         {:ok, copy} <- WorkingCopies.report_root(copy, root) do
-      # `:setup` says whether the project's own `init-worktree` recipe set the
-      # copy up or the harness fell back to a bare worktree (no deps, no
-      # `_build`, no untracked config) — the caller must be told.
-      staffed =
-        scope
-        |> Agents.ensure_copy_agents(copy, opts[:roles] || Agents.copy_roles())
-        |> Map.put(:setup, Map.get(made, :setup))
-
-      {:ok, copy, staffed}
+    case Transport.impl().create_working_copy(candidates, request, 60_000) do
+      {:ok, made} -> register(scope, candidates, made, opts)
+      {:error, _reason} = error -> error
     end
   end
+
+  # Issue 37f35126: the harness's own transport-level ack (whether this
+  # call's push arrived) is not evidence this registration succeeded --
+  # that runs here, in this process, after the ack-bearing push has already
+  # been handled on the other side. The harness has to be told the real
+  # outcome explicitly, or a registration failure after a genuine checkout
+  # leaves it behind with no agents, no row, and nothing that will ever
+  # roll it back -- its own ack-timeout safety net only catches a create
+  # whose result never reached the server at all, which this is not.
+  defp register(scope, candidates, %{root: root, working_copy_id: id} = made, opts) do
+    result =
+      with {:ok, copy} <-
+             WorkingCopies.issue(scope, id,
+               root: root,
+               label: opts[:label],
+               device: host_device(scope),
+               # Already written into the checkout's config; a row under
+               # another id is a copy nothing can recognise.
+               working_copy_id: id
+             ),
+           {:ok, copy} <- WorkingCopies.report_root(copy, root) do
+        # `:setup` says whether the project's own `init-worktree` recipe set
+        # the copy up or the harness fell back to a bare worktree (no deps,
+        # no `_build`, no untracked config) — the caller must be told.
+        staffed =
+          scope
+          |> Agents.ensure_copy_agents(copy, opts[:roles] || Agents.copy_roles())
+          |> Map.put(:setup, Map.get(made, :setup))
+
+        {:ok, copy, staffed}
+      end
+
+    Harness.report_working_copy_registration(candidates, id, registration_outcome(result))
+
+    result
+  end
+
+  defp registration_outcome({:ok, _copy, _staffed}), do: :ok
+  defp registration_outcome({:error, reason}), do: {:error, reason}
 
   @doc """
   Designate a working copy as the project's main one, and move the main agent
