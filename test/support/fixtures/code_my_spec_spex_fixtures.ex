@@ -4575,7 +4575,8 @@ defmodule CodeMySpecSpex.Fixtures do
     event =
       ChannelClient.encode_turn_event(%{
         event: Keyword.get(opts, :event, :turn_started),
-        turn: Keyword.get(opts, :turn, 1)
+        turn: Keyword.get(opts, :turn, 1),
+        payload: Keyword.get(opts, :payload)
       })
 
     case CodeMySpecWeb.HarnessProjectChannel.handle_in(

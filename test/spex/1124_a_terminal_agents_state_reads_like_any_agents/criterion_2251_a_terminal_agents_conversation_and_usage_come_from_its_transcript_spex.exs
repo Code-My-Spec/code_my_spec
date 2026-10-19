@@ -44,8 +44,7 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
       end
 
       when_ "the session works a turn and writes it to its transcript", context do
-        session_is(context.session, "busy")
-        look(context.agent_id)
+        submit_prompt(context, context.session)
         eventually(fn -> assert digest(context) =~ "has not finished" end)
 
         write_transcript(
@@ -61,9 +60,7 @@ defmodule CodeMySpecSpex.Story1124.Criterion2251Spex do
           }
         )
 
-        look(context.agent_id)
-        session_is(context.session, "idle")
-        look(context.agent_id)
+        stop_turn(context, context.session)
         {:ok, context}
       end
 

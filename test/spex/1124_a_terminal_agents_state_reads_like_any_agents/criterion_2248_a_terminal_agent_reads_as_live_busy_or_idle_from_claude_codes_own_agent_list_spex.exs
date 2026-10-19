@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story1124.Criterion2248Spex do
   @moduledoc """
   Story 1124 — A terminal agent's state reads like any agent's.
-  Criterion 2248 — A terminal agent reads as live, busy or idle from Claude Code's own agent list.
+  Criterion 2248 — A terminal agent reads as live from Claude Code's own agent list; busy or idle comes from its hooks.
   """
   use CodeMySpecSpex.Case
 
@@ -34,9 +34,9 @@ defmodule CodeMySpecSpex.Story1124.Criterion2248Spex do
     html
   end
 
-  spex "A terminal agent reads as live, busy or idle from Claude Code's own agent list",
+  spex "A terminal agent reads as live from Claude Code's own agent list; busy or idle comes from its hooks",
     criterion: 2248 do
-    scenario "the harness reads the session from claude agents on its machine" do
+    scenario "the harness reads the session from claude agents on its machine, and its hooks say when it works" do
       given_ "a registered terminal agent whose session is live and idle", context do
         context = HarnessHooks.ensure_live_harness(context)
         inbox = open_inbox()
@@ -53,9 +53,8 @@ defmodule CodeMySpecSpex.Story1124.Criterion2248Spex do
         {:ok, context}
       end
 
-      when_ "Claude Code lists its session as busy", context do
-        session_is(context.session, "busy")
-        look(context.agent_id)
+      when_ "its session submits a prompt", context do
+        submit_prompt(context, context.session)
         {:ok, context}
       end
 
@@ -64,9 +63,8 @@ defmodule CodeMySpecSpex.Story1124.Criterion2248Spex do
         {:ok, context}
       end
 
-      when_ "Claude Code lists its session as idle again", context do
-        session_is(context.session, "idle")
-        look(context.agent_id)
+      when_ "its session stops", context do
+        stop_turn(context, context.session)
         {:ok, context}
       end
 

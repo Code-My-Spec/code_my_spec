@@ -68,11 +68,11 @@ defmodule CodeMySpec.Integration.AStopHookBlockRereadsTheSessionAfterCompletionT
       |> Jason.encode!()
       |> Jason.decode!()
 
-    assert stop_response["decision"] == "block",
-           "with continuous mode on and more work available, the stop hook " <>
-             "should block to keep the loop going rather than allow the stop"
-
-    reason = stop_response["reason"]
+    # A continuous terminal main is judged by main's own work, not the graph's
+    # development requirements (issue c611917d), so once the task is closed
+    # there may be nothing left to keep the loop going. Whatever the stop says
+    # must not name the task it just closed.
+    reason = stop_response["reason"] || ""
 
     refute reason =~ "Disposition this active task",
            """

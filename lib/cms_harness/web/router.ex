@@ -43,6 +43,8 @@ defmodule CmsHarness.Web.Router do
     post("/pre-tool-use", HooksController, :handle)
     post("/post-tool-use", HooksController, :handle)
     post("/stop", HooksController, :handle)
+    post("/user-prompt-submit", HooksController, :handle)
+    post("/session-end", HooksController, :handle)
     post("/subagent-start", HooksController, :handle)
     post("/subagent-stop", HooksController, :handle)
     post("/notification", HooksController, :handle)

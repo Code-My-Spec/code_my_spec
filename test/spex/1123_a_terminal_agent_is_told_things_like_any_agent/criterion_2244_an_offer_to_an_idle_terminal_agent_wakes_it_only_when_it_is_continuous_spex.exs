@@ -33,8 +33,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2244Spex do
       end
 
       when_ "its turn ends, and the work waiting is offered", context do
-        session_is(context.session, "idle")
-        look(context.agent_id)
+        stop_turn(context, context.session)
         {:ok, context}
       end
 
@@ -63,8 +62,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2244Spex do
         %{scope: context.scope}
       )
 
-    session_is(session, "busy")
-    look(agent_id)
+    submit_prompt(context, session)
 
     eventually(fn ->
       {:ok, work} = ToolLibrary.run("list_agent_work", %{}, %{scope: context.scope})

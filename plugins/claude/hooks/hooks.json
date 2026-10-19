@@ -87,6 +87,72 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl",
+            "args": [
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
+              "http://localhost:4004/api/hooks/user-prompt-submit",
+              "-H",
+              "Content-Type: application/json",
+              "--data-binary",
+              "@-"
+            ]
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl",
+            "args": [
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
+              "http://localhost:4004/api/hooks/session-end",
+              "-H",
+              "Content-Type: application/json",
+              "--data-binary",
+              "@-"
+            ]
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl",
+            "args": [
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
+              "http://localhost:4004/api/hooks/notification",
+              "-H",
+              "Content-Type: application/json",
+              "--data-binary",
+              "@-"
+            ]
+          }
+        ]
+      }
     ]
   }
 }
