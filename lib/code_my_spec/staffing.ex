@@ -63,7 +63,7 @@ defmodule CodeMySpec.Staffing do
 
   @doc false
   def handle_event(@gate_copy_needed, _measurements, %{scope: scope, label: label}, _config) do
-    case mint(scope, label: label, roles: [], prepare: true) do
+    case mint(scope, label: label, roles: []) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
 
@@ -117,9 +117,11 @@ defmodule CodeMySpec.Staffing do
       "root" => opts[:root],
       # A copy that cannot authenticate never joins, so the key goes with it.
       "deploy_key" => opts[:deploy_key] || deploy_key(scope),
-      # A copy that must build and test before anything uses it — the promotion
-      # gate — is prepared by the project's own recipe before it is served.
-      "prepare" => opts[:prepare] == true
+      # Every copy is prepared by the project's own recipe (envs decrypted,
+      # deps fetched, test database created and migrated) before it is
+      # served -- John, 2026-10-19: "we should for sure do all the setup on
+      # every copy at creation." Not a caller's choice to make.
+      "prepare" => true
     }
 
     with {:ok, %{root: root, working_copy_id: id} = made} <-
