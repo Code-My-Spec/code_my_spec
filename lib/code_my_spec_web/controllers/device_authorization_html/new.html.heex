@@ -1,0 +1,38 @@
+<div class="hero min-h-screen bg-base-200">
+  <div class="hero-content text-center">
+    <div class="max-w-md">
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <.header>
+            <.icon name="hero-device-tablet" class="size-8 text-primary mb-2" /> Connect a device
+            <:subtitle>
+              Enter the code it showed you
+            </:subtitle>
+          </.header>
+
+          <%= if @error do %>
+            <div class="alert alert-error">
+              <.icon name="hero-exclamation-circle" class="size-5" />
+              <span>{@error}</span>
+            </div>
+          <% end %>
+
+          <.form :let={_f} for={%{}} as={:device} action={~p"/oauth/device"} method="post">
+            <input
+              type="text"
+              name="user_code"
+              value={@user_code}
+              placeholder="XXXX-XXXX"
+              autocomplete="off"
+              autocapitalize="characters"
+              class="input input-bordered w-full text-center text-2xl tracking-widest uppercase"
+            />
+            <.button type="submit" class="btn btn-primary btn-wide mt-4">
+              Continue
+            </.button>
+          </.form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
