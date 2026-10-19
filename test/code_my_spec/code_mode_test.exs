@@ -252,7 +252,7 @@ defmodule CodeMySpec.CodeModeTest do
           agent_kind: "product"
         )
 
-      assert result.error.message =~ "Use `ask_user_question` instead"
+      assert result.error.message =~ "Use `ask_question` instead"
     end
 
     # 8a186121: a coder told only "not yours" deleted the spec or asked the user.
@@ -421,7 +421,7 @@ defmodule CodeMySpec.CodeModeTest do
         catalog([
           %{name: "get_story", description: "", input_schema: %{}, invoke: fn _ -> {:ok, 1} end},
           %{
-            name: "ask_user_question",
+            name: "ask_question",
             description: "",
             input_schema: %{},
             invoke: fn _ -> {:ok, 1} end
@@ -441,14 +441,14 @@ defmodule CodeMySpec.CodeModeTest do
       built =
         catalog([
           %{
-            name: "ask_user_question",
+            name: "ask_question",
             description: "",
             input_schema: %{},
             invoke: fn _ -> {:ok, 1} end
           }
         ])
 
-      result = CodeMode.eval(built, ~S[return ask_user_question({ question = "hi" })])
+      result = CodeMode.eval(built, ~S[return ask_question({ question = "hi" })])
 
       assert Result.failed?(result),
              "a loop over ask_user is twenty questions nobody agreed to answer"
@@ -491,7 +491,7 @@ defmodule CodeMySpec.CodeModeTest do
 
     test "the index says which tools are not callable, so their absence is explained" do
       docs = CodeMode.docs(stories_catalog())
-      assert docs =~ "ask_user_question"
+      assert docs =~ "ask_question"
     end
   end
 end

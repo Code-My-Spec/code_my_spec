@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1822Spex do
              context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.design_task,
               questions: [

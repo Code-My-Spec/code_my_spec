@@ -8,7 +8,7 @@ defmodule CodeMySpec.Agents.Tools.AnAgentWeRunListsSubagentsWithoutASessionIdTes
   `resolve_session/2` only ever looked at the `session_id` param.
 
   `Sessions.external_id_for_harness/1` already answers "which conversation is
-  running in this working copy" for `list_user_questions`, `ask_user_question`
+  running in this working copy" for `list_user_questions`, `ask_question`
   and `check_answer`; this is the same join, used the same way.
   """
   use CodeMySpecTest.DataCase, async: true

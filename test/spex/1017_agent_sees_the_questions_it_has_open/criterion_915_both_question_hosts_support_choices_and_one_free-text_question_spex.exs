@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
   Story 1017 — Agent sees the questions it has open.
   Criterion 2422 — Both question hosts support choices and one free-text question.
 
-  Each case creates exactly one question through ask_user_question, opens both
+  Each case creates exactly one question through ask_question, opens both
   real hosts, answers from one, and collects the saved answer through MCP.
   Separate cases keep a failure in free-text creation from hiding choice coverage.
   """
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
       given_ "the agent asks one structured choices question", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{
@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
       given_ "the agent asks one structured choices question", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{
@@ -174,7 +174,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
       given_ "the agent asks one free text question", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{questions: [%{question: @question, options: []}]},
             Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )
@@ -233,7 +233,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2422Spex do
       given_ "the agent asks one free text question", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{questions: [%{question: @question, options: []}]},
             Map.put(context.frame.assigns, :scope, context.frame.assigns[:current_scope])
           )

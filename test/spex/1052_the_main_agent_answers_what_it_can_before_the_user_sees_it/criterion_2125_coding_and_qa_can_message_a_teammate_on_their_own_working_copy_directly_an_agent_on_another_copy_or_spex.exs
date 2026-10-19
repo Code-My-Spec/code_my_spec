@@ -214,9 +214,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
         assert match?({:error, _}, context.message_reply),
                "messaging an agent on another working copy was allowed, with no question in the way"
 
-        assert response_text(context.message_reply) =~ ~r/ask_user_question/i,
+        assert response_text(context.message_reply) =~ ~r/ask_question/i,
                """
-               The refusal did not point at `ask_user_question` as the way to \
+               The refusal did not point at `ask_question` as the way to \
                reach an agent on another working copy.
 
                #{response_text(context.message_reply)}

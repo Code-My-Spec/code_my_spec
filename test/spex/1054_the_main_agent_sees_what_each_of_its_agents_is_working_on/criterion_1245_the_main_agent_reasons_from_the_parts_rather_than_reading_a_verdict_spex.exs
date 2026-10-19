@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "blocked on a decision",
               questions: [

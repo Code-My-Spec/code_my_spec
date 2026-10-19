@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2176Spex do
         # while the coder takes the other beside it.
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: task_id,
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]

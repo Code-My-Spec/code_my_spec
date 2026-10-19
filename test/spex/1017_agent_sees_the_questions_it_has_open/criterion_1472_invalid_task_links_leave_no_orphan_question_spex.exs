@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3574Spex do
       when_ "the caller asks with an unknown task UUID", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: "00000000-0000-4000-8000-000000000001",
               title: "Invalid task question",
@@ -231,7 +231,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3574Spex do
       when_ "the caller asks with another agent's active task", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.other_task_id,
               title: "Invalid task question",
@@ -362,7 +362,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3574Spex do
       when_ "the caller asks with the caller's completed task", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.completed_task_id,
               title: "Invalid task question",

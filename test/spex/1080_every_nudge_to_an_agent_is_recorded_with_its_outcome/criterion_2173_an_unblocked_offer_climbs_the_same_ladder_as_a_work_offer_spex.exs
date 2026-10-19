@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion2173Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: extract_task_id!(first),
               questions: [%{"question" => "Which way?", "options" => [%{"label" => "Left"}]}]

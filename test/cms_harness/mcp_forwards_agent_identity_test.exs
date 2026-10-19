@@ -7,7 +7,7 @@ defmodule CmsHarness.McpForwardsAgentIdentityTest do
   list, so it never reached the server — and nothing anywhere reported that a
   header had been discarded.
 
-  What that cost: `ask_user_question` decides who holds a question from
+  What that cost: `ask_question` decides who holds a question from
   `frame.assigns[:agent_id]`. With none it writes `agent_id NULL` and
   `holder: "user"`, so every question a locally-run agent asked went straight to
   the person, bypassing the main agent whose entire purpose is to answer it
@@ -35,7 +35,7 @@ defmodule CmsHarness.McpForwardsAgentIdentityTest do
            The proxy drops x-agent-id, so the server cannot tell which agent is
            calling.
 
-           Consequence is not a missing convenience: ask_user_question falls back
+           Consequence is not a missing convenience: ask_question falls back
            to holder "user" with a NULL agent_id, which both sends the question
            to the wrong place and makes the row unreachable to the tools that
            would have handled it.

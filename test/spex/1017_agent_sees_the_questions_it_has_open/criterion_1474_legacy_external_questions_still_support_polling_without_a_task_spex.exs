@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3576Spex do
       when_ "the session asks without a task link", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{question: @question, options: [%{label: @answer}, %{label: "Change it"}]}

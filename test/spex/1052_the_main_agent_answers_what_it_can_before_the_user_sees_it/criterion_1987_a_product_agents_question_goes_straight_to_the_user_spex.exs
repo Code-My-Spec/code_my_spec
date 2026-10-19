@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion1987Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             params,
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )

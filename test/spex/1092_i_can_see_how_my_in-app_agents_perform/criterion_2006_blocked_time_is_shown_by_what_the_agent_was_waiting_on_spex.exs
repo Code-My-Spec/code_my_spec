@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2006Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{questions: [%{question: "Which environment should this target?", options: []}]},
             Map.put(asking_2.assigns, :scope, asking_2.assigns[:current_scope])
           )

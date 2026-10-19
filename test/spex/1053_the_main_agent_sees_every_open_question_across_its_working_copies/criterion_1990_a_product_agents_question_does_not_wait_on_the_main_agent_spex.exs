@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion1990Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               about: "criteria",
               questions: [

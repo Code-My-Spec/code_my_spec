@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
 
             asked =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   task_id: task_id,
                   questions: [
@@ -121,7 +121,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3269Spex do
       when_ "main relays the original decision to the user and the user answers it", context do
         nested =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

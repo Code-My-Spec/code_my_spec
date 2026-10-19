@@ -126,7 +126,7 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
     do:
       {:error,
        "You can message only a teammate on your own working copy, or main from any copy. " <>
-         "Ask product with ask_user_question (to: \"product\") instead."}
+         "Ask product with ask_question (to: \"product\") instead."}
 
   # c99aad08: main answered a teammate's question by messaging it, so the
   # question stayed pending and the teammate rightly refused an answer nothing

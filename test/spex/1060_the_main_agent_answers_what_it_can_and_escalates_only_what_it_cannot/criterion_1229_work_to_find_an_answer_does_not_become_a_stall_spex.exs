@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3259Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "needs a policy nobody has written down",
               questions: [

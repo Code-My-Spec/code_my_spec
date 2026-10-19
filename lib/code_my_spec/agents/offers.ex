@@ -72,7 +72,7 @@ defmodule CodeMySpec.Agents.Offers do
   }
 
   # What main can do with a waiting question it was offered.
-  @question_moves ~w(answer_notification escalate_question ask_user_question)
+  @question_moves ~w(answer_notification escalate_question ask_question)
 
   # What main can do to re-assign a team-free copy: a story, or an issue.
   @reassignment_tools ~w(set_active_story assign_issue_to_working_copy)

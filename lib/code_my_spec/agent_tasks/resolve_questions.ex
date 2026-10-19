@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
   def dispatch(_node) do
     "Clear this story's open questions (red cards) — resolve the ones the " <>
       "implementation already answers, using `resolve_question` with the " <>
-      "citation as the resolution; escalate the rest with `ask_user_question` " <>
+      "citation as the resolution; escalate the rest with `ask_question` " <>
       "when the decision genuinely isn't product's. Use when a sealed story " <>
       "still carries open questions."
   end
@@ -115,7 +115,7 @@ defmodule CodeMySpec.AgentTasks.ResolveQuestions do
       a `resolution` that cites the evidence — "ratification of an existing
       decision", not a new one.
     - **It's genuinely a decision only the user can make.** Call
-      `ask_user_question` — the role's own tools stop at `resolve_question` /
+      `ask_question` — the role's own tools stop at `resolve_question` /
       `list_questions` on purpose, so a wrong answer invented under pressure to
       unblock the story doesn't become the recorded decision instead of an
       open one.

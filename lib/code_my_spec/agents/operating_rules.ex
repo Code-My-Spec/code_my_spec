@@ -128,7 +128,7 @@ defmodule CodeMySpec.Agents.OperatingRules do
   `harness` environment means nothing inside a project. A `mix` command asking
   for a config file that does not exist means the wrong environment.
 
-  **A question in your reply reaches nobody.** `ask_user_question` reaches a
+  **A question in your reply reaches nobody.** `ask_question` reaches a
   person: name the alternatives where there are any, one open question where
   the answer is prose. Then carry on with anything it does not block.
   """

@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion3253Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "foreign key behaviour",
               questions: [

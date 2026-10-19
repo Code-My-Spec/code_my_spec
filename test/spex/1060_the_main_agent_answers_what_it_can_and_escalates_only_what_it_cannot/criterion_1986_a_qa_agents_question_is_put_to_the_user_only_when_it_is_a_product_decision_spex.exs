@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1986Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "found a gap, not sure it is a bug",
               questions: [

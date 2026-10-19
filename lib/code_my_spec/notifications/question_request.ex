@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Notifications.QuestionRequest do
   @moduledoc """
-  A remote `AskUserQuestion` from Claude Code.
+  A remote `AskQuestion` from Claude Code.
 
   When the agent asks the user a question, the local hook posts it here and
   blocks; the user answers from their phone (via a Web Push link to

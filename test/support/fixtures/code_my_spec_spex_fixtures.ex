@@ -2327,7 +2327,7 @@ defmodule CodeMySpecSpex.Fixtures do
   `session_external_id` is what ties a question to the conversation it was
   asked in; nil means it was asked outside a harness.
 
-  Options are `%{"label" => …}` maps because that is the shape `AskUserQuestion`
+  Options are `%{"label" => …}` maps because that is the shape `AskQuestion`
   sends and the shape the form renders — a bare string here raises inside the
   component, several layers from the fixture that produced it.
   """
@@ -2821,7 +2821,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  The question id out of what `AskUserQuestion` answered.
+  The question id out of what `AskQuestion` answered.
 
   The tool reports it in prose — "Question id: <uuid>" — because its reader is
   an agent rather than a parser. A spex that needs to answer the question it

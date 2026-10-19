@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.Components.AResultBelongsToItsOwnCallTest do
 
   On 2026-09-06 that put "No session_id available. Call `register_session`…" —
   a real error, from a `start_task` eight hours earlier that happened to be
-  `call_16` too — underneath an `ask_user_question` that had worked. The
+  `call_16` too — underneath an `ask_question` that had worked. The
   question had been created, delivered and answered. John, reasonably: "ask user
   question looks like it failed."
 
@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb.Components.AResultBelongsToItsOwnCallTest do
     messages = [
       call("call_16", "start_task"),
       result("call_16", "No session_id available."),
-      call("call_16", "ask_user_question")
+      call("call_16", "ask_question")
     ]
 
     refute Map.has_key?(results_for(messages), "call_16"),
@@ -65,7 +65,7 @@ defmodule CodeMySpecWeb.Components.AResultBelongsToItsOwnCallTest do
     messages = [
       call("call_16", "start_task"),
       result("call_16", "No session_id available."),
-      call("call_16", "ask_user_question"),
+      call("call_16", "ask_question"),
       result("call_16", "Asked 1 question(s).")
     ]
 
@@ -78,9 +78,9 @@ defmodule CodeMySpecWeb.Components.AResultBelongsToItsOwnCallTest do
     messages = [
       call("call_1", "start_task"),
       result("call_1", "started"),
-      call("call_2", "ask_user_question"),
+      call("call_2", "ask_question"),
       result("call_2", "asked"),
-      call("call_2", "ask_user_question")
+      call("call_2", "ask_question")
     ]
 
     results = results_for(messages)

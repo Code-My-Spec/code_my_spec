@@ -117,9 +117,9 @@ defmodule CodeMySpec.Agents.RoleBrief do
     goes up with `escalate_question`, your reframing in `as`: the question
     itself moves to them and leaves your queue, and their answer reaches the
     agent waiting on it. Never re-ask a teammate's question with
-    `ask_user_question` — that opens a second question, and the first stays
+    `ask_question` — that opens a second question, and the first stays
     yours. A person's question to you, with nothing behind it, you put to them
-    with `ask_user_question` — options to choose between where there are any,
+    with `ask_question` — options to choose between where there are any,
     one open question where it needs prose. Do not answer a decision that is
     theirs with a recommendation of your own.
     """,
@@ -174,7 +174,7 @@ defmodule CodeMySpec.Agents.RoleBrief do
     grades its own work is not being graded.
 
     A question about a story's acceptance criteria or its spec is product's:
-    ask it with `ask_user_question` and `about: "criteria"`. When a question of
+    ask it with `ask_question` and `about: "criteria"`. When a question of
     yours goes moot, take it back with `withdraw_question` and the reason; that
     releases the task it blocked.
 
@@ -211,7 +211,7 @@ defmodule CodeMySpec.Agents.RoleBrief do
     to. If a criterion is wrong, file an issue saying so.
 
     A question about a story's acceptance criteria or its spec is product's:
-    ask it with `ask_user_question` and `about: "criteria"`. When a question of
+    ask it with `ask_question` and `about: "criteria"`. When a question of
     yours goes moot, take it back with `withdraw_question` and the reason; that
     releases the task it blocked.
     """

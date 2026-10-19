@@ -125,7 +125,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1824Spex do
 
     asked =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{
           task_id: extract_task_id!(started),
           questions: [

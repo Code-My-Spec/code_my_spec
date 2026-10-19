@@ -58,7 +58,7 @@ defmodule CodeMySpec.Agents.Tools.ListSessionSubagents do
   # connection as the working copy's own harness, not a Claude-assigned
   # session id (issue 69808362). `Sessions.external_id_for_harness/1` is the
   # same newest-session-wins join already used by list_user_questions,
-  # ask_user_question and check_answer to answer exactly this: which
+  # ask_question and check_answer to answer exactly this: which
   # conversation is running in the working copy already on scope.
   defp resolve_session(%Scope{active_working_copy_id: working_copy_id} = scope, _)
        when is_binary(working_copy_id) do

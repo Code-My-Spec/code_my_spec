@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2026Spex do
       when_ "coding raises a new question, and nobody ever checks in", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

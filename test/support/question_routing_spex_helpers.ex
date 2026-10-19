@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   Every criterion here is a claim about a *route* — who was asked, who
   answered, who saw it, and what the asker eventually got. So each leg is
   driven through the tool that leg really uses rather than through the records
-  underneath: `ask_user_question` to raise one, `list_open_questions` and
+  underneath: `ask_question` to raise one, `list_open_questions` and
   `answer_question` / `escalate_question` for the main agent's side,
   `check_answer` for the asker collecting, and `Notifications`' own answering
   path for the user.
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
 
     reply =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         params,
         Map.put(
           asking_frame(context).assigns,
@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   @doc """
   The frame an *agent* asks from, as opposed to the main agent's own.
 
-  `AskUserQuestion` reads `frame.assigns[:agent_id]`, which `Plugs.AgentScope`
+  `AskQuestion` reads `frame.assigns[:agent_id]`, which `Plugs.AgentScope`
   sets in production. Without it the request is written with a null `agent_id`,
   and `QuestionsRepository.list_open_questions/1` inner-joins `agents` — so the
   question is invisible to the main agent by construction and goes to the user
@@ -179,7 +179,7 @@ defmodule CodeMySpecSpex.QuestionRoutingHelpers do
   The asking agent collects its answer, through the tool it really uses.
 
   Answers the reply text. `check_answer` is deliberately the *other* half of a
-  two-step exchange — `ask_user_question` returns an id and this collects
+  two-step exchange — `ask_question` returns an id and this collects
   whenever the agent gets round to it — so "the answer came back" is a claim
   about this call and not about a row.
   """

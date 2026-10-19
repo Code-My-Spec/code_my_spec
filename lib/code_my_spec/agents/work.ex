@@ -995,7 +995,7 @@ defmodule CodeMySpec.Agents.Work do
           "`run_script` calling list_notifications, and answer each with " <>
           "`answer_notification` so the answer is recorded and reaches the asker. " <>
           "One that is the user's to decide goes up with `escalate_question`, " <>
-          "never re-asked with `ask_user_question`: that opens a second question " <>
+          "never re-asked with `ask_question`: that opens a second question " <>
           "and leaves this one yours.",
       else: @prompt
   end

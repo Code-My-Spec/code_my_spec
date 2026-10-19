@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: task_id,
               questions: [
@@ -231,7 +231,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: task_id,
               questions: [
@@ -400,7 +400,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3579Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: task_id,
               questions: [
