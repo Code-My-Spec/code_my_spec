@@ -33,7 +33,7 @@ password = "qa-dev-sign-in"
 # It used to live under the real `code-my-spec` account, for that visibility.
 # That put it under an account owned by johns10@gmail.com, and
 # `Accounts.get_account_owner/1` routes a question to its project's account
-# owner — correctly. Composed, every `escalate_question` and `ask_user_question`
+# owner — correctly. Composed, every `escalate_question` and `ask_question`
 # from the sandbox landed in the real owner's real inbox, and QA could not
 # verify a notification criterion without putting test traffic there. It
 # reported `partial` and cleaned up after itself rather than leave two live

@@ -38,7 +38,7 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
   defp ask(frame) do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{
           title: "A question",
           questions: [%{"question" => "Which way?", "options" => ["left", "right"]}]

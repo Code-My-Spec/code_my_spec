@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2182Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "a different module, the same shape of question",
               questions: [

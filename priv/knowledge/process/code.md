@@ -86,7 +86,7 @@ which looks from outside exactly like an agent that stalled.
 and the QA agent on your own checkout, say. It is not how you reach main,
 product, or anyone on another copy: that role does not carry the tool at
 all, and a different spelling will not change that. Use
-`ask_user_question` instead — whichever of main or product is running
+`ask_question` instead — whichever of main or product is running
 receives it, not the user, unless neither is.
 
 ## When an analysis run is stuck
@@ -104,7 +104,7 @@ every role poll for it separately multiplies the confusion rather than
 fixing it.
 
 So when a run is genuinely stuck — not merely slow — report it to main with
-`ask_user_question`, naming the working copy, the commit, and what you were
+`ask_question`, naming the working copy, the commit, and what you were
 trying to validate, and wait. Main inspects and recovers the machinery; you
 resume by calling `start_task`/`evaluate_task` again once it tells you to,
 not by guessing at a tool name that does not exist.

@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion1985Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "my app will not restart",
               questions: [

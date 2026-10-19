@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion2115Spex do
 
           response =
             ToolLibrary.run(
-              "ask_user_question",
+              "ask_question",
               %{
                 questions: [
                   %{

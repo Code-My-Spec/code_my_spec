@@ -150,7 +150,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3315Spex do
 
     asked =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{
           title: "cannot see epic membership",
           questions: [

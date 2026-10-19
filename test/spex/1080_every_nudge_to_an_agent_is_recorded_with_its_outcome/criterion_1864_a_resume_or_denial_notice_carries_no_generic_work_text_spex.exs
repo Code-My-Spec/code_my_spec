@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1864Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             params,
             Map.put(
               agent_frame(context, context.coder).assigns,

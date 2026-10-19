@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
       when_ "the coder asks a question about something other than a story's criteria", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.coder_task,
               questions: [

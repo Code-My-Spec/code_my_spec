@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3335Spex do
       when_ "a coding question arrives and recovery checks run", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

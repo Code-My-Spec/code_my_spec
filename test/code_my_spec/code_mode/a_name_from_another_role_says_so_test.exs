@@ -3,7 +3,7 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
   A tool this role does not carry is named as such, not as a misspelling.
 
   Issue `27fb2de3`, from the stop hook on story 1015. A QA agent was refused and
-  told to "block it with `ask_user_question` or `tap_out`", so it tried both from
+  told to "block it with `ask_question` or `tap_out`", so it tried both from
   a script. `tap_out` is excluded from scripts *and* withheld from the QA role
   (`ToolSets`), and what it got back was:
 
@@ -34,7 +34,7 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
 
   defp registered do
     Enum.map(
-      ["list_stories", "tap_out", "ask_user_question", "create_issue"],
+      ["list_stories", "tap_out", "ask_question", "create_issue"],
       &%{name: &1}
     )
   end
@@ -43,7 +43,7 @@ defmodule CodeMySpec.CodeMode.ANameFromAnotherRoleSaysSoTest do
   # server whose registrations include both. The lists are derived the way
   # `run_script` derives them.
   defp run_as_qa(script) do
-    carried = ["list_stories", "ask_user_question"]
+    carried = ["list_stories", "ask_question"]
 
     CodeMode.eval(catalog(), script,
       out_of_scope: [],

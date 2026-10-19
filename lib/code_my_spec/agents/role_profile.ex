@@ -112,13 +112,13 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
     list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
-    withdraw_question ask_user_question tap_out cancel_task
+    withdraw_question ask_question tap_out cancel_task
     call_mcp_server get_local_app_token
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
     list_tasks list_session_subagents list_notifications
-    check_answer list_user_questions tool_docs
+    check_answer list_user_questions tool_docs search_answers
     list_problems get_analysis_output
     start_analysis
     web_search web_fetch
@@ -142,7 +142,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_dependency remove_dependency
     list_requirements show_requirement
     list_working_copies
-    list_rules list_questions withdraw_question ask_user_question tap_out cancel_task
+    list_rules list_questions withdraw_question ask_question tap_out cancel_task
     check_answer list_user_questions tool_docs
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search
@@ -253,7 +253,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       story_vantage: :project,
       home_copy: :main,
       # Teammates' questions about criteria and spec are routed to it
-      # (`ask_user_question`'s `about: "criteria"`).
+      # (`ask_question`'s `about: "criteria"`).
       wake: [:work_offer, :nudge, :resume, :teammate_question],
       # Its own question blocks only the task it was asked about, as coding's
       # and QA's do.

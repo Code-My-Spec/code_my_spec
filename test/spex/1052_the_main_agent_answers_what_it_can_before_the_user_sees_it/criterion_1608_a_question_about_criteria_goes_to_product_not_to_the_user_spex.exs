@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
       when_ "the coder asks about a criterion, saying it is about criteria", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.task_id,
               about: "criteria",

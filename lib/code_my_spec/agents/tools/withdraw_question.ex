@@ -21,7 +21,7 @@ defmodule CodeMySpec.Agents.Tools.WithdrawQuestion do
     %{
       reason: {:required, {:meta, :string, [description: "Why it no longer needs an answer."]}},
       question_id:
-        {:required, {:meta, :string, [description: "The id `ask_user_question` returned."]}}
+        {:required, {:meta, :string, [description: "The id `ask_question` returned."]}}
     }
   end
 

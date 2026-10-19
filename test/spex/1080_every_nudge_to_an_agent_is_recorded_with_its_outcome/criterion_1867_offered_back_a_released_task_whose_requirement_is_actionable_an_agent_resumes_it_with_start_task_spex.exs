@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1867Spex do
 
         reply =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: task_id,
               questions: [

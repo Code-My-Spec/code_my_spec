@@ -6,12 +6,12 @@ defmodule CodeMySpec.Agents.TheStopDecisionsDispositionToolsAreCarriedByEveryRol
 
   `Menu`'s `{:task, count}` directive -- the one printed when a role holds an
   open task -- tells the agent to close it with `evaluate_task`, or dispose
-  of it with `ask_user_question`, `tap_out` or `cancel_task`. All three
+  of it with `ask_question`, `tap_out` or `cancel_task`. All three
   disposition tools are already registered, role-independently, by
   `LocalServer`'s `@spine`/`@unscriptable` lists -- confirmed by reading
   `CodeMySpec.McpServers.LibraryTools.call/4`, which gates a direct call on
   nothing but whether the tool is on that role-independent registration list.
-  What was missing was `RoleProfile`'s own manifest: `ask_user_question` was
+  What was missing was `RoleProfile`'s own manifest: `ask_question` was
   listed for every role, but `tap_out` and `cancel_task` were not, so by this
   project's own established convention (`RoleProfile.carries?/2` is the
   single source of truth the test suite and the tool index both read) coding
@@ -29,7 +29,7 @@ defmodule CodeMySpec.Agents.TheStopDecisionsDispositionToolsAreCarriedByEveryRol
   # issue does not answer, so this stays explicit rather than reaching for
   # `RoleProfile.roles()`.
   defp roles, do: [:coding, :qa]
-  @disposition_tools ["ask_user_question", "tap_out", "cancel_task"]
+  @disposition_tools ["ask_question", "tap_out", "cancel_task"]
   @menu_source "lib/code_my_spec/agents/menu.ex"
 
   describe "the {:task, count} directive text" do

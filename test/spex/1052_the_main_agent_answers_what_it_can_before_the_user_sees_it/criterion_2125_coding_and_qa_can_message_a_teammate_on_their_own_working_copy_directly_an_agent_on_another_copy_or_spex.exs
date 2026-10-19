@@ -2,8 +2,14 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
   @moduledoc """
   Story 1052 — The main agent answers what it can before the user sees it.
   Criterion 2125 — Coding and QA can message a teammate on their own working
-  copy directly; an agent on another copy, or main or product, is reached
-  through a question, not a message.
+  copy directly; an agent on another copy, or product, is reached through a
+  question, not a message.
+
+  Issue 0ae29c2a (2026-10-19): main is no longer on that "reached through a
+  question" list. John's decision: message_agent reaches main from any copy,
+  by id or by role. The criterion's own recorded text still names main
+  alongside product -- flagged to product to bring up to date; this spex
+  asserts the behavior as decided, not as the stale text still reads.
   """
 
   use CodeMySpecSpex.Case
@@ -79,8 +85,8 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
     end
   end
 
-  spex "Reaching the main agent goes through a question, not a message", criterion: 2125 do
-    scenario "a coding agent tries to message the main agent directly" do
+  spex "Reaching the main agent happens directly, not through a question", criterion: 2125 do
+    scenario "a coding agent messages the main agent directly" do
       given_ "a coding agent and a main agent on the same working copy", context do
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         main = Fixtures.running_agent(context.scope, role: "main", continuous: true)
@@ -92,7 +98,7 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
          })}
       end
 
-      when_ "the coding agent tries to message the main agent directly", context do
+      when_ "the coding agent messages the main agent directly", context do
         params = %{agent_id: context.main_id, message: "Can you take a look at this?"}
 
         reply =
@@ -109,17 +115,56 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
         {:ok, Map.put(context, :message_reply, reply)}
       end
 
-      then_ "it is refused, and told to ask instead", context do
-        assert match?({:error, _}, context.message_reply),
-               "messaging the main agent directly was allowed, with no question in the way"
+      then_ "it is delivered", context do
+        assert match?({:ok, _}, context.message_reply),
+               "main was supposed to be reachable directly (issue 0ae29c2a):\n" <>
+                 response_text(context.message_reply)
 
-        assert response_text(context.message_reply) =~ ~r/ask_user_question/i,
-               """
-               The refusal did not point at `ask_user_question` as the way to \
-               reach the main agent.
+        {:ok, context}
+      end
+    end
 
-               #{response_text(context.message_reply)}
-               """
+    scenario "a coding agent messages the main agent from a different working copy" do
+      given_ "a coding agent on one copy and the main agent on another", context do
+        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+
+        {:ok, other_copy} =
+          WorkingCopies.issue(context.scope, nil,
+            label: "main's checkout",
+            device: Fixtures.device_fixture(context.scope)
+          )
+
+        other_scope = %{context.scope | active_working_copy_id: other_copy.id}
+        main = Fixtures.running_agent(other_scope, role: "main", continuous: true)
+
+        {:ok,
+         Map.merge(context, %{
+           main_id: main.id,
+           coder_frame: %Frame{assigns: %{current_scope: context.scope, agent_id: coder.id}}
+         })}
+      end
+
+      when_ "the coding agent messages the main agent directly", context do
+        params = %{agent_id: context.main_id, message: "Can you take a look at this?"}
+
+        reply =
+          ToolLibrary.run(
+            "message_agent",
+            params,
+            Map.put(
+              context.coder_frame.assigns,
+              :scope,
+              context.coder_frame.assigns.current_scope
+            )
+          )
+
+        {:ok, Map.put(context, :message_reply, reply)}
+      end
+
+      then_ "it is delivered, same copy or not", context do
+        assert match?({:ok, _}, context.message_reply),
+               "main was supposed to be reachable from any copy (issue 0ae29c2a):\n" <>
+                 response_text(context.message_reply)
 
         {:ok, context}
       end
@@ -169,9 +214,9 @@ defmodule CodeMySpecSpex.Story1052.Criterion2125Spex do
         assert match?({:error, _}, context.message_reply),
                "messaging an agent on another working copy was allowed, with no question in the way"
 
-        assert response_text(context.message_reply) =~ ~r/ask_user_question/i,
+        assert response_text(context.message_reply) =~ ~r/ask_question/i,
                """
-               The refusal did not point at `ask_user_question` as the way to \
+               The refusal did not point at `ask_question` as the way to \
                reach an agent on another working copy.
 
                #{response_text(context.message_reply)}

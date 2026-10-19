@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3264Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "beyond what the main agent knows",
               questions: [

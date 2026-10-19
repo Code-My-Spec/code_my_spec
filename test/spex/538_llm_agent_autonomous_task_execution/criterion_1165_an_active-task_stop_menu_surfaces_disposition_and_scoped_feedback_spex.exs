@@ -197,7 +197,7 @@ defmodule CodeMySpecSpex.Story538.Criterion3105Spex do
         assert text =~ context.task_id
         assert text =~ ~r/missing|not.*found/i
         assert text =~ "evaluate_task"
-        assert text =~ "ask_user_question"
+        assert text =~ "ask_question"
         assert text =~ "tap_out"
         assert text =~ "cancel_task"
         refute text =~ context.other_story.title

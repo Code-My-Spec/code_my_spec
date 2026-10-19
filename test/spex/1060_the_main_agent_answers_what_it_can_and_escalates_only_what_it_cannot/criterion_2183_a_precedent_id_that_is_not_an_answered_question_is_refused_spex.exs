@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2183Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "a question with no real precedent",
               questions: [%{"question" => "Should this feature exist?", "options" => []}]

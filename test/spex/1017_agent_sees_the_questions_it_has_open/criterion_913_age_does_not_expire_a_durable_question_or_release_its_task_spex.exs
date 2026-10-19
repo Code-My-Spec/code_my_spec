@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
       given_ "it has asked a structured question against its active task", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "Choose the test contract",
               questions: [

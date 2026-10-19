@@ -33,7 +33,7 @@ defmodule CodeMySpec.CodeMode.Catalog do
   # Name to the reason a script may not call it. The reason is what an agent is
   # told when it tries, so it must say where the tool actually is.
   @excluded %{
-    "ask_user_question" =>
+    "ask_question" =>
       "it waits on a person, and a loop around it is questions nobody agreed to answer",
     "check_answer" => "it belongs with the asking tools, which a script cannot call",
     "list_user_questions" => "it belongs with the asking tools, which a script cannot call",

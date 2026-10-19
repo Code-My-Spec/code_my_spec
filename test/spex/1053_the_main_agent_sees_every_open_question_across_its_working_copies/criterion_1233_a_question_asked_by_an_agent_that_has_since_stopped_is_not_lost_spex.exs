@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3263Spex do
 
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "a question raised before stopping",
               questions: [

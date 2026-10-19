@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2419Spex do
 
             asked =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   task_id: task_id,
                   questions: [

@@ -14,7 +14,7 @@ the surprises are.
 and the coding agent on your own checkout, say. It is not how you reach
 main, product, or anyone on another copy: that role does not carry the
 tool at all, and a different spelling will not change that. Use
-`ask_user_question` instead — whichever of main or product is running
+`ask_question` instead — whichever of main or product is running
 receives it, not the user, unless neither is.
 
 ## QA is a browser, not a spex run

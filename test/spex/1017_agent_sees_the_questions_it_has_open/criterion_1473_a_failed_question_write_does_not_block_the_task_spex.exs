@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
       when_ "the agent asks a valid question linked to its active task", context do
         response =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.task_id,
               title: "A question whose write fails",
@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3575Spex do
         # The existing tool logs its rescued stale-write exception. Accept
         # only that induced error; unrelated errors still fail this scenario.
         Enum.each(SexySpex.ErrorCapture.get_errors(), fn error ->
-          assert error.message =~ "[AskUserQuestion] crashed: attempted to insert a stale struct"
+          assert error.message =~ "[AskQuestion] crashed: attempted to insert a stale struct"
           assert error.message =~ "CodeMySpec.Notifications.QuestionRequest"
         end)
 

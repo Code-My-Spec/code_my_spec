@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
+defmodule CodeMySpec.Agents.Tools.AskQuestion do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
@@ -9,7 +9,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
   alias CodeMySpec.Sessions
 
   @impl true
-  def name, do: "ask_user_question"
+  def name, do: "ask_question"
 
   @impl true
   def description do
@@ -102,7 +102,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestion do
   # rather than another unreproducible report.
   defp crashed(exception, stacktrace) do
     Logger.error(
-      "[AskUserQuestion] crashed: #{Exception.message(exception)}\n" <>
+      "[AskQuestion] crashed: #{Exception.message(exception)}\n" <>
         Exception.format_stacktrace(stacktrace)
     )
 

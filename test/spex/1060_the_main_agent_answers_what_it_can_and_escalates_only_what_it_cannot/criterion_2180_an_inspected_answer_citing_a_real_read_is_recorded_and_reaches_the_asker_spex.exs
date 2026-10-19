@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "which port is dev on",
               questions: [

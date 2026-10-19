@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
   over the existing shape alone — the attribution has to exist. That is the
   point of writing it red.
 
-  Questions are raised here the way an agent raises one: `AskUserQuestion`
+  Questions are raised here the way an agent raises one: `AskQuestion`
   executed on each agent's own scope. Seeding rows directly would prove the
   listing works on data nobody could have produced, and the attribution this
   criterion turns on is exactly what the real call path supplies.
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3260Spex do
 
             response =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   title: "#{role} needs a decision",
                   questions: [

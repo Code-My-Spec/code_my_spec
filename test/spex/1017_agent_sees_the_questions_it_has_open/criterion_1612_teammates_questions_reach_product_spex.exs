@@ -111,7 +111,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{
@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion1612Spex do
       when_ "the coder asks product about a criterion", context do
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.coder_task,
               about: "criteria",

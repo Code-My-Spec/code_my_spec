@@ -173,7 +173,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
   # `escalate_question` is not the fix: it writes a different table from the
   # questions product works with. See knowledge/tools, "Refusals".
   defp substitute_hint("escalate_question"),
-    do: " Use `ask_user_question` instead — it reaches a human the same way."
+    do: " Use `ask_question` instead — it reaches a human the same way."
 
   # Without a path, a coder that cannot retire a criterion deletes its spec.
   defp substitute_hint("retire_criterion"),

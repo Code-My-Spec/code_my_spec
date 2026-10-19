@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1058.Criterion3316Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               title: "needs a QA result recorded",
               questions: [

@@ -33,7 +33,7 @@ defmodule CodeMySpec.Agents.Tools do
   def all do
     [
       CodeMySpec.Agents.Tools.AnswerNotification,
-      CodeMySpec.Agents.Tools.AskUserQuestion,
+      CodeMySpec.Agents.Tools.AskQuestion,
       CodeMySpec.Agents.Tools.AssignSubagent,
       CodeMySpec.Agents.Tools.AssignTask,
       CodeMySpec.Agents.Tools.Cadence,

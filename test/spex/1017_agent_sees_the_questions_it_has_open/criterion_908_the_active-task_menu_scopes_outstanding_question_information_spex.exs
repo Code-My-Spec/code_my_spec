@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
         question =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: blocked_task_id,
               questions: [

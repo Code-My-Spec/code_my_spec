@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.DevSignInController do
   second agent testing at the same time takes yours.
 
   Measured cost, 2026-09-12: a QA agent working around auth reached for
-  `ask_user_question` against the live endpoint to get at a real agent context,
+  `ask_question` against the live endpoint to get at a real agent context,
   and left a question in the owner's real inbox that no tool could withdraw.
   The improvisation was reasonable; there was no sanctioned door.
 

@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
+defmodule CodeMySpec.Agents.Tools.AskQuestionTest do
   @moduledoc """
   The structured question an agent asks.
 
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "the caller's title is what the person sees", %{scope: scope} do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [a_question()], title: "Capital vassalization rule"},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "no title falls back to something rather than nothing", %{scope: scope} do
     _response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [a_question()]},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -74,7 +74,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "the options survive in the shape the renderer reads", %{scope: scope} do
     _response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [a_question()]},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "one question with no options uses the free-text form", %{scope: scope} do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [%{"question" => "Thoughts?", "options" => []}]},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "free-text questions must be asked individually", %{scope: scope} do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: [%{"question" => "Thoughts?", "options" => []}, a_question()]},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -118,7 +118,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
   test "more questions than a person is shown is refused", %{scope: scope} do
     response =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{questions: List.duplicate(a_question(), 5)},
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
@@ -128,7 +128,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
 
   # e3290d96: a Claude Code session's `task_id` never blocked anything — only
   # the agent path (`create_agent_question_request`) did. John's decision
-  # 2026-09-29: a session's `ask_user_question` with `task_id` blocks that
+  # 2026-09-29: a session's `ask_question` with `task_id` blocks that
   # session's task, the same as for an agent.
   describe "a session's task_id blocks its task, the same as an agent's" do
     defp active_session_task(scope) do
@@ -157,7 +157,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
 
       response =
         ToolLibrary.run(
-          "ask_user_question",
+          "ask_question",
           %{questions: [a_question()], session_id: external_id},
           Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
         )
@@ -174,7 +174,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
 
       response =
         ToolLibrary.run(
-          "ask_user_question",
+          "ask_question",
           %{questions: [a_question()], session_id: external_id, task_id: task.id},
           Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
         )
@@ -188,7 +188,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
     test "a session_id that resolves to nothing still asks, unblocked", %{scope: scope} do
       response =
         ToolLibrary.run(
-          "ask_user_question",
+          "ask_question",
           %{questions: [a_question()], session_id: Ecto.UUID.generate()},
           Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
         )
@@ -200,7 +200,7 @@ defmodule CodeMySpec.Agents.Tools.AskUserQuestionTest do
     test "no session_id at all still asks, unblocked", %{scope: scope} do
       response =
         ToolLibrary.run(
-          "ask_user_question",
+          "ask_question",
           %{questions: [a_question()]},
           Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
         )

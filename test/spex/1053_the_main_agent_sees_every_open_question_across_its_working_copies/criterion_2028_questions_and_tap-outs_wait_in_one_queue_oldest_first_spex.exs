@@ -5,10 +5,10 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
   Criterion 2028 — Questions and tap-outs wait in one queue, oldest first.
   Title only; no scenario was recorded.
 
-  A question (`ask_user_question`) and a tap-out are two different request
+  A question (`ask_question`) and a tap-out are two different request
   types underneath — `OpenQuestion.new/3` and `OpenQuestion.from_permission/4`
   build the same struct from different tables (criterion 1233's own doc:
-  "a `tap_out` or an `ask_user_question` is an agent waiting on a person
+  "a `tap_out` or an `ask_question` is an agent waiting on a person
   exactly as a question is"). `listing/2` groups both by `holder` into
   sections, so two entries only share a queue in any order-testable sense
   once they share a *holder* — otherwise "which section comes first" is a
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2028Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

@@ -5,7 +5,7 @@ defmodule CodeMySpec.Agents.Main.AnEscalatedAnswerReachesTheAskerTest do
   answered it.
 
   Driven through the same tools a real asker, main and the user use -
-  ask_user_question, escalate_question, the inbox's own answering path, and
+  ask_question, escalate_question, the inbox's own answering path, and
   check_answer - rather than the records underneath, because the report is
   about what each party's own tool call returns.
 

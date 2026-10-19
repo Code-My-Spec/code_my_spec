@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion2027Spex do
 
         asked =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               questions: [
                 %{

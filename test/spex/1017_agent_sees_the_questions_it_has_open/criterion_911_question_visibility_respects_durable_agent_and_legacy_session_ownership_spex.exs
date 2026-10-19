@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
 
             asked =
               ToolLibrary.run(
-                "ask_user_question",
+                "ask_question",
                 %{
                   questions: [
                     %{question: question, options: [%{label: "Keep it"}, %{label: "Change it"}]}

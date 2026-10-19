@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
             context do
         original =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: context.task_id,
               questions: [
@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1053.Criterion3268Spex do
 
         nested =
           ToolLibrary.run(
-            "ask_user_question",
+            "ask_question",
             %{
               task_id: nil,
               questions: [

@@ -82,7 +82,7 @@ defmodule CodeMySpec.Agents.Tools.AStoryTaskResumesDespiteAnUnrelatedIssueBindin
 
     asked =
       ToolLibrary.run(
-        "ask_user_question",
+        "ask_question",
         %{
           task_id: task.id,
           questions: [%{question: "Which criteria first?", options: []}]
