@@ -23,7 +23,7 @@ defmodule CodeMySpecDesktop.Application.Runtime do
   def children(web_children) do
     Enum.flat_map(web_children, fn
       {Phoenix.PubSub, _} = pubsub ->
-        [pubsub, FirstBoot, CodeMySpec.Integrations.OAuthHandoff]
+        [pubsub, FirstBoot]
 
       {CodeMySpec.McpServers.LocalServer, opts} ->
         [

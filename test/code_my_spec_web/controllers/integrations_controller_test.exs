@@ -5,6 +5,28 @@ defmodule CodeMySpecWeb.IntegrationsControllerTest do
 
   setup :register_log_in_setup_account
 
+  describe "a flow an agent parked (connect_provider)" do
+    # Not the desktop: the person's browser carries its own session, and the
+    # callback must find the flow by the `state` the provider echoes back.
+    test "is finished by the callback without an OAuth session cookie", %{conn: conn} do
+      {:ok, %{session_params: session_params}} = Integrations.authorize_url(:github)
+
+      :ok =
+        CodeMySpec.Integrations.OAuthHandoff.park(%{
+          session_params: session_params,
+          provider: :github,
+          flow: :integration
+        })
+
+      conn =
+        get(conn, ~p"/auth/github/callback?state=#{session_params.state}&error=access_denied")
+
+      assert redirected_to(conn) == ~p"/app/users/settings"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error)
+      assert CodeMySpec.Integrations.OAuthHandoff.claim(session_params.state) == :error
+    end
+  end
+
   describe "GET /auth/:provider" do
     test "redirects to GitHub OAuth authorization URL", %{conn: conn} do
       conn = get(conn, ~p"/auth/github")

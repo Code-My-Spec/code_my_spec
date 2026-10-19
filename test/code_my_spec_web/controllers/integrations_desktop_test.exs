@@ -17,7 +17,6 @@ defmodule CodeMySpecWeb.IntegrationsDesktopTest do
     previous = Application.get_env(:code_my_spec, :env)
     Application.put_env(:code_my_spec, :env, :desktop)
     on_exit(fn -> Application.put_env(:code_my_spec, :env, previous) end)
-    start_supervised!(OAuthHandoff)
     %{conn: init_test_session(conn, %{})}
   end
 

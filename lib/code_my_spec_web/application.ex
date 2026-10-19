@@ -42,6 +42,9 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
+        # Flows parked under their OAuth `state`: the desktop window's, and an
+        # agent's `connect_provider`, finished in whatever browser the person has.
+        CodeMySpec.Integrations.OAuthHandoff,
         # Gated on the configured backend, not the env name (`:test` stays on
         # the ETS TestBackend). One serving: it prioritises search internally.
         embeddings_configured?() && CodeMySpec.Embeddings.OrtexServing,
