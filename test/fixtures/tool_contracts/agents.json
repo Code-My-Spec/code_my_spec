@@ -13,7 +13,7 @@
     "input_schema": {
       "properties": {
         "agent_id": {
-          "description": "Id of the agent to send this to",
+          "description": "Id of the agent to send this to, or `main` for the project's current main agent -- reachable from any working copy, unlike any other role's agent",
           "type": "string"
         },
         "message": {
