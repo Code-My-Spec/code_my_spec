@@ -55,6 +55,15 @@ defmodule CodeMySpec.Agents.Assignment do
 
   defp team_roles, do: Enum.filter(RoleProfile.roles(), &team_member?/1)
 
+  @doc "The active story shared by a non-retired story-team member and its teammates."
+  @spec story_id(Agent.t()) :: integer() | nil
+  def story_id(%Agent{retired_at: nil} = agent) do
+    if team_member?(agent.role),
+      do: WorkingCopies.team_story_id(agent.working_copy_id) || agent.story_id
+  end
+
+  def story_id(%Agent{}), do: nil
+
   @doc """
   Assign a story to the whole team on this copy, or clear it with `nil`.
 
@@ -536,10 +545,18 @@ defmodule CodeMySpec.Agents.Assignment do
   end
 
   defp team_claim(scope, agent, id) do
-    case agent.story_id || WorkingCopies.team_story_id(agent.working_copy_id) do
-      ^id -> :ok
-      nil -> take(scope, agent, id)
-      held -> {:error, {:outside_team_story, held}}
+    case story_id(agent) do
+      ^id ->
+        from(a in Agent, where: a.id == ^agent.id and is_nil(a.retired_at))
+        |> Repo.update_all(set: [story_id: id])
+
+        :ok
+
+      nil ->
+        take(scope, agent, id)
+
+      held ->
+        {:error, {:outside_team_story, held}}
     end
   end
 

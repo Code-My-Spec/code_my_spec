@@ -1148,8 +1148,7 @@ defmodule CodeMySpec.Agents.Work do
   What counts as the story's work is `StoryExecution.story_work?/3`.
   """
   @spec bound_story_id(term()) :: integer() | nil
-  def bound_story_id(%Agent{role: role, story_id: id}),
-    do: if(Assignment.team_member?(role), do: id)
+  def bound_story_id(%Agent{} = agent), do: Assignment.story_id(agent)
 
   def bound_story_id(_owner), do: nil
 

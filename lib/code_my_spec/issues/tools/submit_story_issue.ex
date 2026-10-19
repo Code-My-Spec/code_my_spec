@@ -51,7 +51,9 @@ defmodule CodeMySpec.Issues.Tools.SubmitStoryIssue do
   end
 
   defp assigned(scope, %{role: :coding, retired_at: nil} = agent, issue) do
-    if agent.story_id == issue.story_id and not is_nil(agent.story_id) and
+    story_id = Agents.Assignment.story_id(agent)
+
+    if story_id == issue.story_id and not is_nil(story_id) and
          agent.working_copy_id == scope.active_working_copy_id,
        do: :ok,
        else: {:error, :story_not_assigned_to_agent}
