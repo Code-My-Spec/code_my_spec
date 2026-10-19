@@ -272,6 +272,40 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     assert message =~ "no longer exists"
   end
 
+  test "resolving an issue supersedes its promotion offer without affecting other work", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    {:ok, promoting} = Issues.set_awaiting_role(ctx.scope, assigned, :promote)
+    coding = reload(coding)
+
+    assert [%{name: "promote_issue"}] = Work.claimable_work(ctx.scope, coding)
+
+    offered =
+      CodeMySpec.Agents.Offers.record(
+        nil,
+        coding,
+        :work,
+        {"requirement", "issue:#{promoting.id}:promote_issue"}
+      )
+
+    other =
+      CodeMySpec.Agents.Offers.record(
+        nil,
+        coding,
+        :work,
+        {"requirement", "issue:#{Ecto.UUID.generate()}:fix_issue"}
+      )
+
+    {:ok, _} = Issues.resolve_issue(ctx.scope, promoting, "Landed on main.")
+
+    assert Repo.get!(CodeMySpec.Agents.Offer, offered.id).status == :superseded
+    assert Repo.get!(CodeMySpec.Agents.Offer, other.id).status == :open
+    assert Work.claimable_work(ctx.scope, reload(coding)) == []
+    CodeMySpec.Agents.Offers.settle_turn(reload(coding))
+    assert Repo.get!(CodeMySpec.Agents.Offer, offered.id).status == :superseded
+  end
+
   test "a direct resolve_issue frees the team instead of re-offering qa_complete", ctx do
     copy_id = copy(ctx.scope)
     coding = agent(ctx.scope, :coding, copy_id)

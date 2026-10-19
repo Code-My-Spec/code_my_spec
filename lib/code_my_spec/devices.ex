@@ -197,6 +197,20 @@ defmodule CodeMySpec.Devices do
   def get_device(%Scope{}, _id), do: nil
 
   @doc """
+  An announced machine accessible to this harness, or nil.
+
+  A user's machine can serve projects across their account memberships without
+  moving its device record or changing their selected account. Scopes without
+  a user remain limited to their active account. This lookup never creates or
+  refreshes a device.
+  """
+  @spec get_harness_device(Scope.t(), String.t()) :: Device.t() | nil
+  def get_harness_device(%Scope{user_id: user_id} = scope, id) when is_integer(user_id),
+    do: members_device(scope, id)
+
+  def get_harness_device(%Scope{} = scope, id), do: get_device(scope, id)
+
+  @doc """
   The tunnel a machine's harness runs, as `{:ok, %{tunnel_id, tunnel_secret}}`,
   or `:error` when it holds none. Unscoped: the caller already holds a working
   copy on this machine, which is what decides it may ask.
