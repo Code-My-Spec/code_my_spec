@@ -3,8 +3,9 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
   Issue 39af5611. check_in and list_agent_work listed running agents only, so a
   seat somebody had stopped on purpose read as empty — a role to staff. An off
   agent is printed with who turned it off, when and why, and is settled: it is
-  not STALLED and does not make the fleet non-quiet. Its open questions still
-  show, and still count.
+  not STALLED and does not make the fleet non-quiet. Its open questions are not
+  listed: nobody means it to answer, and the notifications page hides them too
+  (issue 83d3ecd2).
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -70,7 +71,7 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
     assert text =~ "turn_on_agent"
   end
 
-  test "an off agent's open question still shows and still needs somebody" do
+  test "an off agent's open question is not listed, as on the notifications page" do
     scope = full_scope_fixture()
 
     {:ok, agent} =
@@ -89,15 +90,35 @@ defmodule CodeMySpec.Agents.Main.AnOffAgentIsShownAndSettledTest do
       Notifications.create_question_request(scope.user.id, %{
         "title" => "A question",
         "agent_id" => agent.id,
+        "holder" => "user",
         "questions" => [%{"question" => "Which schema?"}]
       })
 
-    questions = MainAgent.list_open_questions(scope)
-    assert Enum.any?(questions, &(&1.agent_id == agent.id))
+    refute Enum.any?(MainAgent.list_open_questions(scope), &(&1.agent_id == agent.id))
+    assert [] = Notifications.list_pending_notifications(scope.user.id)
+  end
 
-    digest = digest(MainAgent.list_off_agents(scope), questions)
-    refute Digest.quiet?(digest)
-    assert CheckInReport.render(digest) =~ "user 1"
-    refute CheckInReport.render(digest) =~ "Which schema?"
+  test "a retired agent's open question is not listed either" do
+    scope = full_scope_fixture()
+
+    {:ok, agent} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        status: :stopped,
+        working_copy: "/tmp/retired-q-#{System.unique_integer([:positive])}",
+        working_copy_id: scope.active_working_copy_id,
+        retired_at: DateTime.utc_now()
+      })
+
+    {:ok, _} =
+      Notifications.create_question_request(scope.user.id, %{
+        "title" => "A question",
+        "agent_id" => agent.id,
+        "questions" => [%{"question" => "Which schema?"}]
+      })
+
+    refute Enum.any?(MainAgent.list_open_questions(scope), &(&1.agent_id == agent.id))
   end
 end
