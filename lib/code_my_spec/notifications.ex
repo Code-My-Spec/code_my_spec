@@ -1302,7 +1302,7 @@ defmodule CodeMySpec.Notifications do
 
   # The agent that escalated the question hears the answer too, so it can act
   # on the user's decision.
-  defp tell_escalator(%{escalated_by: by, agent_id: asker_id} = request)
+  defp tell_escalator(%{answered_by: "user", escalated_by: by, agent_id: asker_id} = request)
        when is_binary(by) and is_binary(asker_id) do
     case Repo.get(Agent, asker_id) do
       %Agent{} = asker ->
@@ -1340,7 +1340,7 @@ defmodule CodeMySpec.Notifications do
   # dialogue with no idea what it answers.
   defp answer_message(request, agent) do
     """
-    The user answered your question.
+    #{answer_author(request)} answered your question.
 
     #{answer_body(request)}
 
@@ -1528,7 +1528,12 @@ defmodule CodeMySpec.Notifications do
     end
   end
 
-  defp answered(request), do: "The user answered your question.\n\n" <> answer_body(request)
+  defp answered(request),
+    do: answer_author(request) <> " answered your question.\n\n" <> answer_body(request)
+
+  defp answer_author(%{answered_by: "main_agent"}), do: "The main agent"
+  defp answer_author(%{answered_by: "product_agent"}), do: "The product agent"
+  defp answer_author(_request), do: "The user"
 
   @doc """
   Get a question request by ID, or nil.
