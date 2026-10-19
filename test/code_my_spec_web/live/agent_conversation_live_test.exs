@@ -1111,7 +1111,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       open_team_panel(view)
 
       kind = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-kind']"
-      assert has_element?(view, "#{kind}[data-external='false']", "Alloy · Claude Code")
+      assert has_element?(view, "#{kind}[data-external='false'][data-provider='claude-code'] svg")
+      refute has_element?(view, kind, "sonnet")
     end
 
     test "a terminal session reads as external", %{
@@ -1130,7 +1131,24 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       open_team_panel(view)
 
       kind = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-kind']"
-      assert has_element?(view, "#{kind}[data-external='true']", "Terminal")
+      assert has_element?(view, "#{kind}[data-external='true']")
+    end
+  end
+
+  describe "the team panel's agent state" do
+    test "a starting agent shows the starting mark and no liveness word", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      row = "[data-test='team-agent'][data-agent-id='#{agent.id}']"
+      assert has_element?(view, "#{row} [data-test='team-agent-starting']")
+      refute has_element?(view, row, "Starting")
     end
   end
 

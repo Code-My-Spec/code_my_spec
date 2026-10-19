@@ -481,7 +481,13 @@ defmodule CodeMySpecWeb.ConversationPanels do
         </div>
 
         <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
-          <div class="flex items-center gap-1">
+          <%!-- Line 1 is the agent: who it is and what state it is in, then the
+          two controls on the right. Line 2 is its work, which opens the issue
+          or story show. John, 2026-10-19. --%>
+          <div
+            class={["flex items-center gap-1", dimmed?(a) && "opacity-50"]}
+            title={dimmed?(a) && liveness_title(a.liveness)}
+          >
             <%!-- `patch`, not `navigate`: this panel is the fastest way to a
             different agent, and the panel is part of what a navigate would tear
             down and rebuild — including the preview pane and the widths somebody
@@ -514,63 +520,15 @@ defmodule CodeMySpecWeb.ConversationPanels do
                 data-test="unread-dot"
                 class="size-2 shrink-0 rounded-full bg-primary"
               ></span>
-              <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                <span class="truncate">{a.agent.role}</span>
-                <.agent_kind agent={a.agent} />
-              </span>
-              <span
-                :if={turn_running?(a)}
-                data-test="team-agent-turn"
-                title="Mid-turn"
-                class="flex shrink-0 text-primary motion-safe:animate-pulse"
-              >
-                <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
-              </span>
-              <span class="shrink-0 opacity-60">{a.liveness.label}</span>
+              <.agent_identity a={a} />
             </.link>
 
             <div
               :if={!a.chat}
-              class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
+              class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs"
             >
-              <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                <span class="truncate">{a.agent.role}</span>
-                <.agent_kind agent={a.agent} />
-              </span>
-              <span
-                :if={turn_running?(a)}
-                data-test="team-agent-turn"
-                title="Mid-turn"
-                class="flex shrink-0 text-primary motion-safe:animate-pulse"
-              >
-                <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
-              </span>
-              <span class="shrink-0">{a.liveness.label}</span>
+              <.agent_identity a={a} />
             </div>
-
-            <%!-- Siblings of the row link, not inside it: a link in an `<a>` is
-            invalid HTML and would fire the patch as well. --%>
-            <button
-              :for={item <- a.assigned}
-              type="button"
-              phx-click="show_assigned"
-              phx-value-kind={item.kind}
-              phx-value-key={item.key}
-              data-test={"team-agent-#{item.kind}"}
-              title={item.title}
-              class="link link-hover shrink-0 font-mono text-[11px] opacity-70"
-            >
-              {item.ref}
-            </button>
-            <.live_component
-              :for={item <- a.assigned}
-              :if={item.kind == :story}
-              module={CodeMySpecWeb.StoryProgress}
-              id={"story-progress-#{a.agent.id}"}
-              scope={@scope}
-              story_id={item.story_id}
-              working_copy_id={item.working_copy_id}
-            />
 
             <%!-- f096eba2: every agent controllable from here, not only the one
             whose conversation happens to be open — siblings of the link/div
@@ -598,14 +556,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
                 class="size-3"
               />
             </button>
-
-            <span
-              :if={a.agent.retired_at}
-              data-test="team-agent-retired"
-              class="badge badge-ghost badge-xs shrink-0"
-            >
-              Retired
-            </span>
             <button
               :if={!a.agent.retired_at}
               type="button"
@@ -631,14 +581,38 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
           <%!-- One name, or a count — never both truncated names on one line.
           One task is the thing worth reading here; more than one is a reason
-          to click through rather than a list to skim in a line-and-a-half. --%>
-          <p
-            :if={a.task_label}
-            data-test="team-agent-task"
-            class="truncate pl-9 text-[11px] opacity-50"
+          to click through rather than a list to skim in a line-and-a-half.
+          The refs are siblings of nothing clickable, so they can be buttons. --%>
+          <div
+            :if={a.assigned != [] or a.task_label}
+            data-test="team-agent-work"
+            class="flex min-w-0 items-center gap-1.5 pl-9 text-[11px]"
           >
-            {a.task_label}
-          </p>
+            <button
+              :for={item <- a.assigned}
+              type="button"
+              phx-click="show_assigned"
+              phx-value-kind={item.kind}
+              phx-value-key={item.key}
+              data-test={"team-agent-#{item.kind}"}
+              title={item.title}
+              class="link link-hover shrink-0 font-mono opacity-70"
+            >
+              {item.ref}
+            </button>
+            <.live_component
+              :for={item <- a.assigned}
+              :if={item.kind == :story}
+              module={CodeMySpecWeb.StoryProgress}
+              id={"story-progress-#{a.agent.id}"}
+              scope={@scope}
+              story_id={item.story_id}
+              working_copy_id={item.working_copy_id}
+            />
+            <span :if={a.task_label} data-test="team-agent-task" class="truncate opacity-50">
+              {a.task_label}
+            </span>
+          </div>
         </div>
 
         <.link
@@ -661,41 +635,124 @@ defmodule CodeMySpecWeb.ConversationPanels do
   # mid-turn or waiting, and the row says which apart from the label.
   defp turn_running?(%{agent: %{turn_started_at: at}}), do: not is_nil(at)
 
+  attr :a, :map, required: true
+
+  # Who the agent is, then its state as icons that only appear when they say
+  # something: running and idle are the normal case and show nothing.
+  defp agent_identity(assigns) do
+    ~H"""
+    <%!-- The kind first: fixed-width marks line up in a column, and the role,
+    which varies, truncates at the end instead of pushing them around. --%>
+    <span class="flex min-w-0 flex-1 items-center gap-1.5">
+      <.agent_kind agent={@a.agent} />
+      <span class="truncate">{@a.agent.role}</span>
+    </span>
+    <span
+      :if={liveness_mark(@a.liveness) == :starting}
+      data-test="team-agent-starting"
+      title={liveness_title(@a.liveness)}
+      class="flex shrink-0 opacity-60"
+    >
+      <.icon name="hero-ellipsis-horizontal" class="size-3.5" />
+    </span>
+    <span
+      :if={liveness_mark(@a.liveness) == :gave_up}
+      data-test="team-agent-gave-up"
+      title={liveness_title(@a.liveness)}
+      class="flex shrink-0 text-warning"
+    >
+      <.icon name="hero-exclamation-triangle" class="size-3.5" />
+    </span>
+    <span
+      :if={turn_running?(@a)}
+      data-test="team-agent-turn"
+      title="Mid-turn"
+      class="flex shrink-0 text-primary motion-safe:animate-pulse"
+    >
+      <.icon name="hero-chat-bubble-oval-left-ellipsis" class="size-3.5" />
+    </span>
+    """
+  end
+
   attr :agent, :map, required: true
+
+  # Internal agents run on Alloy, sometimes over Claude Code, so the provider
+  # alone cannot say whether the harness runs the agent or a person does.
+  defp agent_kind(%{agent: %{engine: :claude_code}} = assigns) do
+    ~H"""
+    <span
+      data-test="team-agent-kind"
+      data-external="true"
+      title="External: a Claude Code session a person runs in a terminal"
+      class="flex shrink-0 items-center opacity-60"
+    >
+      <.icon name="hero-command-line" class="size-3.5" />
+    </span>
+    """
+  end
 
   defp agent_kind(assigns) do
     ~H"""
     <span
       data-test="team-agent-kind"
-      data-external={to_string(@agent.engine == :claude_code)}
-      title={kind_title(@agent)}
-      class="flex shrink-0 items-center gap-0.5 text-[11px] font-normal opacity-50"
+      data-external="false"
+      data-provider={@agent.provider}
+      title={"Internal: the harness runs this agent on Alloy, over " <> provider_label(@agent.provider)}
+      class="flex shrink-0 items-center gap-0.5"
     >
-      <.icon name={kind_icon(@agent)} class="size-3" />
-      {kind_label(@agent)}
+      <span class="font-mono text-[11px] font-semibold tracking-tighter text-primary">|&gt;</span>
+      <svg
+        :if={provider_path(@agent.provider)}
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        fill-rule="evenodd"
+        aria-hidden="true"
+        class="size-3.5 shrink-0 opacity-60"
+      >
+        <path clip-rule="evenodd" d={provider_path(@agent.provider)} />
+      </svg>
     </span>
     """
   end
 
-  # Internal agents run on Alloy, sometimes over Claude Code, so the provider
-  # alone cannot say whether the harness runs the agent or a person does.
-  defp kind_label(%{engine: :claude_code}), do: "Terminal"
-  defp kind_label(agent), do: "Alloy · " <> provider_label(agent.provider)
-
-  defp kind_title(%{engine: :claude_code}),
-    do: "External: a Claude Code session a person runs in a terminal"
-
-  defp kind_title(_agent), do: "Internal: the harness runs this agent on Alloy"
-
-  defp kind_icon(%{engine: :claude_code}), do: "hero-command-line"
-  defp kind_icon(_agent), do: "hero-cpu-chip"
-
   defp provider_label("claude-code"), do: "Claude Code"
   defp provider_label("openai-codex"), do: "Codex"
-  defp provider_label("anthropic"), do: "Anthropic API"
+  defp provider_label("anthropic"), do: "the Anthropic API"
   defp provider_label("zai"), do: "Z.ai"
   defp provider_label(nil), do: "no provider"
   defp provider_label(other), do: other
+
+  # Provider marks from Lobe Icons 1.95.1 (MIT, github.com/lobehub/lobe-icons),
+  # one path each rather than the package.
+  defp provider_path("claude-code"),
+    do:
+      "M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"
+
+  defp provider_path("openai-codex"),
+    do:
+      "M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z"
+
+  defp provider_path("zai"),
+    do:
+      "M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z"
+
+  defp provider_path("anthropic"),
+    do:
+      "M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z"
+
+  defp provider_path(_provider), do: nil
+
+  # Running and Idle are the normal case; Starting and Gave up are worth an
+  # icon; anything else (Away, Off, Stopped, Retired, Last heard from) means
+  # the agent is not doing anything, which the dimmed row says.
+  defp liveness_mark(%{label: label}) when label in ["Running", "Idle"], do: :none
+  defp liveness_mark(%{label: "Starting"}), do: :starting
+  defp liveness_mark(%{label: "Gave up" <> _}), do: :gave_up
+  defp liveness_mark(_liveness), do: :dim
+
+  defp dimmed?(a), do: liveness_mark(a.liveness) == :dim
+
+  defp liveness_title(%{label: label, basis: basis}), do: "#{label}: #{basis}"
 
   defp noun(1, singular, _plural), do: singular
   defp noun(_n, _singular, plural), do: plural
