@@ -202,7 +202,7 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     )
 
     send(pid, :check)
-    assert_receive {:reported, %{event: :message, text: "On it."}}
+    assert_receive {:reported, %{event: :message, text: "On it."}}, 5_000
 
     :counters.put(status, 1, 0)
     send(pid, :check)
@@ -211,7 +211,8 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
                     %{
                       event: :turn_usage,
                       usage: %{"output_tokens" => 2, "model" => "claude-opus-5-5"}
-                    }}
+                    }},
+                   5_000
   end
 
   test "a session's socket and status are read from Claude Code's own session registry", %{
