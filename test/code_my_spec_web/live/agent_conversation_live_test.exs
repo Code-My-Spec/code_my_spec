@@ -1072,6 +1072,46 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  describe "a copy at a glance" do
+    test "clicking a copy opens its facts with the way to its show and status pages", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+      copy_id = agent.working_copy_id
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view
+      |> element(
+        "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='team-copy-open']"
+      )
+      |> render_click()
+
+      modal = "[data-test='copy-modal']"
+
+      assert has_element?(
+               view,
+               "#{modal} [data-test='working-copy'][data-working-copy-id='#{copy_id}']"
+             )
+
+      assert has_element?(
+               view,
+               "#{modal} a[data-test='copy-modal-show'][href='/app/projects/#{project.id}/working-copies/#{copy_id}']"
+             )
+
+      assert has_element?(
+               view,
+               "#{modal} a[data-test='copy-modal-status'][href='/app/projects/#{project.id}/working-copies/#{copy_id}/status']"
+             )
+
+      render_click(view, "close_copy", %{})
+      refute has_element?(view, modal)
+    end
+  end
+
   describe "a story's progress pie" do
     # The pie counts the slice the working copy status page draws, so the two
     # cannot disagree: whatever `Requirements.story_graph/2` returns for the

@@ -465,14 +465,16 @@ defmodule CodeMySpecWeb.ConversationPanels do
             name="hero-star-solid"
             class="size-3 shrink-0 text-primary"
           />
-          <.link
-            navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}/status"}
-            class="link link-hover min-w-0 flex-1 truncate"
-            data-test="working-copy-status"
-            title="This copy's status"
+          <button
+            type="button"
+            phx-click="show_copy"
+            phx-value-id={copy.row.harness.id}
+            class="link link-hover min-w-0 flex-1 truncate text-left"
+            data-test="team-copy-open"
+            title="This copy at a glance"
           >
             {copy.row.heading}
-          </.link>
+          </button>
           <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
         </div>
 

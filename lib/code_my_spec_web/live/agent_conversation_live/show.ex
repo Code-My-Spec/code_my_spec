@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy, as: CopyComponents
   alias CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph, as: StoryGraphComponents
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
@@ -156,6 +157,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:current_scope, scope)
     |> assign(:assigned_modal, nil)
+    |> assign(:copy_modal_id, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -739,6 +741,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_assigned", _params, socket),
     do: {:noreply, assign(socket, :assigned_modal, nil)}
+
+  def handle_event("show_copy", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, id)}
+
+  def handle_event("close_copy", _params, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -1982,6 +1990,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         </LivePane.group>
       </div>
       <.assigned_modal :if={assigns[:assigned_modal]} item={@assigned_modal} />
+      <CopyComponents.modal
+        :for={copy <- @copies}
+        :if={copy.row.harness.id == @copy_modal_id}
+        row={copy.row}
+        project_id={@project.id}
+        on_close="close_copy"
+      />
       <.graph_modal :if={assigns[:graph_modal]} modal={@graph_modal} project_id={@project.id} />
     </Layouts.app>
     """
