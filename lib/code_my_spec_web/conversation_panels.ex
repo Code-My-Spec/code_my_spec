@@ -514,7 +514,10 @@ defmodule CodeMySpecWeb.ConversationPanels do
                 data-test="unread-dot"
                 class="size-2 shrink-0 rounded-full bg-primary"
               ></span>
-              <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                <span class="truncate">{a.agent.role}</span>
+                <.agent_kind agent={a.agent} />
+              </span>
               <span
                 :if={turn_running?(a)}
                 data-test="team-agent-turn"
@@ -530,7 +533,10 @@ defmodule CodeMySpecWeb.ConversationPanels do
               :if={!a.chat}
               class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs opacity-60"
             >
-              <span class="min-w-0 flex-1 truncate">{a.agent.role}</span>
+              <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                <span class="truncate">{a.agent.role}</span>
+                <.agent_kind agent={a.agent} />
+              </span>
               <span
                 :if={turn_running?(a)}
                 data-test="team-agent-turn"
@@ -623,16 +629,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
             </button>
           </div>
 
-          <p
-            data-test="team-agent-kind"
-            data-external={to_string(a.agent.engine == :claude_code)}
-            title={kind_title(a.agent)}
-            class="flex items-center gap-1 truncate pl-9 text-[11px] opacity-50"
-          >
-            <.icon name={kind_icon(a.agent)} class="size-3 shrink-0" />
-            <span class="truncate">{kind_label(a.agent)}</span>
-          </p>
-
           <%!-- One name, or a count — never both truncated names on one line.
           One task is the thing worth reading here; more than one is a reason
           to click through rather than a list to skim in a line-and-a-half. --%>
@@ -665,12 +661,26 @@ defmodule CodeMySpecWeb.ConversationPanels do
   # mid-turn or waiting, and the row says which apart from the label.
   defp turn_running?(%{agent: %{turn_started_at: at}}), do: not is_nil(at)
 
+  attr :agent, :map, required: true
+
+  defp agent_kind(assigns) do
+    ~H"""
+    <span
+      data-test="team-agent-kind"
+      data-external={to_string(@agent.engine == :claude_code)}
+      title={kind_title(@agent)}
+      class="flex shrink-0 items-center gap-0.5 text-[11px] font-normal opacity-50"
+    >
+      <.icon name={kind_icon(@agent)} class="size-3" />
+      {kind_label(@agent)}
+    </span>
+    """
+  end
+
   # Internal agents run on Alloy, sometimes over Claude Code, so the provider
   # alone cannot say whether the harness runs the agent or a person does.
-  defp kind_label(%{engine: :claude_code}), do: "Terminal · Claude Code"
-
-  defp kind_label(agent),
-    do: Enum.join(["Alloy", provider_label(agent.provider) | List.wrap(agent.model)], " · ")
+  defp kind_label(%{engine: :claude_code}), do: "Terminal"
+  defp kind_label(agent), do: "Alloy · " <> provider_label(agent.provider)
 
   defp kind_title(%{engine: :claude_code}),
     do: "External: a Claude Code session a person runs in a terminal"
