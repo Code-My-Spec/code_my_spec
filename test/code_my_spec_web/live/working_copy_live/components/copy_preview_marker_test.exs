@@ -6,8 +6,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.CopyPreviewMarkerTest do
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
 
-  defp marker(attrs),
-    do: render_component(&Copy.preview_marker/1, harness: struct(WorkingCopy, attrs))
+  defp marker(attrs, size \\ :small),
+    do: render_component(&Copy.preview_marker/1, harness: struct(WorkingCopy, attrs), size: size)
 
   test "a copy serving on a tunnel links to its preview" do
     html =
@@ -42,5 +42,23 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.CopyPreviewMarkerTest do
     assert html =~ ~s(data-state="down")
     refute html =~ "href="
     assert html =~ "No app running on this copy"
+  end
+
+  test "a copy never checked is grey when small and says nothing at normal size" do
+    assert marker([]) =~ ~s(data-state="unchecked")
+    refute marker([], :normal) =~ "data-state"
+  end
+
+  test "normal size says the same state in words, with the commit" do
+    html =
+      marker(
+        [app_status: "serving", app_url: "http://127.0.0.1:60584", app_commit: "23f5ce90abcdef"],
+        :normal
+      )
+
+    assert html =~ ~s(data-state="local")
+    assert html =~ ~s(data-app-status="serving")
+    assert html =~ "app serving locally"
+    assert html =~ "23f5ce90"
   end
 end

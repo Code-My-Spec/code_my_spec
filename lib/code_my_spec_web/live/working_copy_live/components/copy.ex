@@ -39,24 +39,18 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
       <%!-- Story 1108: this copy's own app, separate from `preview_url` —
       every copy runs one. Without it a broken app read as a silent hang. --%>
       <div class="flex flex-wrap items-center gap-1.5">
-        <span
-          :if={@row.harness.app_status}
-          data-test="working-copy-app-status"
-          data-app-status={@row.harness.app_status}
-          class={["badge badge-sm", app_status_badge_class(@row.harness.app_status)]}
-        >
-          <.icon name={app_status_icon(@row.harness.app_status)} class="size-3" />
-          app {@row.harness.app_status}
-          <span :if={@row.harness.app_commit} data-test="working-copy-app-commit">
-            &nbsp;{String.slice(@row.harness.app_commit, 0, 8)}
-          </span>
-        </span>
+        <.preview_marker harness={@row.harness} size={:normal} class="tooltip-right" />
 
-        <%!-- Whether anything serves this checkout, which liveness does not
-        answer: a worktree created for an agent has nobody to open a session
-        in it, and once sat unserved for an hour with an agent assigned. --%>
-        <span :if={not @row.served} data-test="copy-not-ready" class="badge badge-ghost badge-sm">
-          <.icon name="hero-signal-slash" class="size-3" /> Not being served
+        <%!-- Whether a harness holds this checkout, which is not the app: a
+        worktree created for an agent has nobody to open a session in it, and
+        once sat unattached for an hour with an agent assigned. --%>
+        <span
+          :if={not @row.served}
+          data-test="copy-not-ready"
+          data-tip="No harness on its machine holds this checkout, so its agents cannot run"
+          class="tooltip tooltip-right badge badge-ghost badge-sm"
+        >
+          <.icon name="hero-link-slash" class="size-3" /> No harness attached
         </span>
         <span :if={@row.served} data-test="copy-ready" class="sr-only">served</span>
 
@@ -112,15 +106,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
   end
 
   @doc """
-  Whether this copy's app is up and where to open it, as one mark with a
-  tooltip: green and linked to the preview when it is shared on a tunnel,
-  linked to the local address when it runs only on its own machine, grey when
-  nothing is running.
+  Whether this copy's app is up and where to open it — the one reading of
+  that, wherever it is shown. Green and linked to the preview when it is shared
+  on a tunnel, linked to the local address when it runs only on its own
+  machine, grey when nothing is running.
+
+  `:small` is the mark alone, its reading in a tooltip. `:normal` adds the
+  label and the commit the app launched from, and says nothing for a copy
+  never checked: nil is "nothing to say", not evidence of being down.
 
   Serving is either signal: the main copy reports its preview's health
   (`preview_status`), every other copy its own app's (`app_status`).
   """
   attr :harness, :map, required: true
+  attr :size, :atom, default: :small, values: [:small, :normal]
   attr :class, :any, default: "tooltip-left"
 
   def preview_marker(assigns) do
@@ -128,31 +127,37 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
     assigns = assign(assigns, state: state, href: href, tip: tip)
 
     ~H"""
-    <a
-      :if={@href}
-      href={@href}
-      target="_blank"
-      rel="noopener"
-      data-test="copy-preview-marker"
+    <.dynamic_tag
+      :if={@size == :small or @state != :unchecked}
+      tag_name={if @href, do: "a", else: "span"}
+      {link_attrs(@href)}
+      data-test={if @size == :small, do: "copy-preview-marker", else: "working-copy-app-status"}
       data-state={@state}
+      data-app-status={@harness.app_status || @harness.preview_status}
       data-tip={@tip}
       aria-label={@tip}
-      class={["tooltip flex shrink-0", preview_color(@state), @class]}
+      class={[
+        "tooltip flex shrink-0 items-center gap-1",
+        @size == :normal && "w-fit text-xs",
+        preview_color(@state),
+        @class
+      ]}
     >
       <.icon name={preview_icon(@state)} class="size-3.5" />
-    </a>
-    <span
-      :if={!@href}
-      data-test="copy-preview-marker"
-      data-state={@state}
-      data-tip={@tip}
-      aria-label={@tip}
-      class={["tooltip flex shrink-0", preview_color(@state), @class]}
-    >
-      <.icon name={preview_icon(@state)} class="size-3.5" />
-    </span>
+      <span :if={@size == :normal}>{preview_label(@state)}</span>
+      <span
+        :if={@size == :normal and @harness.app_commit}
+        data-test="working-copy-app-commit"
+        class="font-mono opacity-70"
+      >
+        {String.slice(@harness.app_commit, 0, 8)}
+      </span>
+    </.dynamic_tag>
     """
   end
+
+  defp link_attrs(nil), do: []
+  defp link_attrs(href), do: [href: href, target: "_blank", rel: "noopener"]
 
   defp preview_state(harness), do: preview_state(health(harness), harness)
 
@@ -173,6 +178,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
 
   defp preview_state(_health, %{app_status: "starting"}),
     do: {:starting, nil, "Starting — the first install and compile are still running"}
+
+  defp preview_state(_health, %{app_status: nil, preview_status: nil}),
+    do: {:unchecked, nil, "Not checked yet"}
 
   defp preview_state(_health, _harness), do: {:down, nil, "No app running on this copy"}
 
@@ -195,13 +203,20 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
   defp preview_color(:local), do: "text-info"
   defp preview_color(:erroring), do: "text-warning"
   defp preview_color(:starting), do: "text-info opacity-70"
-  defp preview_color(:down), do: "opacity-40"
+  defp preview_color(_down_or_unchecked), do: "opacity-40"
 
   defp preview_icon(:shared), do: "hero-globe-alt"
   defp preview_icon(:local), do: "hero-computer-desktop"
   defp preview_icon(:erroring), do: "hero-exclamation-triangle"
   defp preview_icon(:starting), do: "hero-arrow-path"
   defp preview_icon(:down), do: "hero-signal-slash"
+  defp preview_icon(:unchecked), do: "hero-question-mark-circle"
+
+  defp preview_label(:shared), do: "app serving"
+  defp preview_label(:local), do: "app serving locally"
+  defp preview_label(:erroring), do: "app erroring"
+  defp preview_label(:starting), do: "app starting"
+  defp preview_label(:down), do: "app down"
 
   @doc """
   Offboarding, and only when asked: removes the copy's row and what was
@@ -317,19 +332,4 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
 
   defp count(1, noun), do: "1 #{noun}"
   defp count(n, noun), do: "#{n} #{noun}s"
-
-  # `WorkingCopy.app_status` follows `preview_status`'s three states
-  # (`serving` | `erroring` | `down`), plus `starting` — a first start's cold
-  # install/compile still running in the background.
-  defp app_status_badge_class("serving"), do: "badge-success"
-  defp app_status_badge_class("erroring"), do: "badge-warning"
-  defp app_status_badge_class("down"), do: "badge-error"
-  defp app_status_badge_class("starting"), do: "badge-info"
-  defp app_status_badge_class(_other), do: "badge-ghost"
-
-  defp app_status_icon("serving"), do: "hero-check-circle"
-  defp app_status_icon("erroring"), do: "hero-exclamation-triangle"
-  defp app_status_icon("down"), do: "hero-signal-slash"
-  defp app_status_icon("starting"), do: "hero-arrow-path"
-  defp app_status_icon(_other), do: "hero-question-mark-circle"
 end

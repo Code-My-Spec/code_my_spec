@@ -1086,7 +1086,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       assert has_element?(
                view,
-               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-preview-marker'][data-state='down']"
+               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-preview-marker'][data-state='unchecked']"
              )
 
       view
