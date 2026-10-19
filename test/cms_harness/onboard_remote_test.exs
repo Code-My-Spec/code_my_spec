@@ -13,6 +13,7 @@ defmodule CmsHarness.OnboardRemoteTest do
 
   setup do
     server = FakeServer.start()
+    CmsHarnessTest.HarnessOAuthFixture.isolate()
 
     previous =
       Map.new(

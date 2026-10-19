@@ -9,7 +9,8 @@ defmodule CmsHarnessTest.HarnessOAuthFixture do
     previous = Application.fetch_env(:code_my_spec, HarnessOAuth)
     dir = CodeMySpec.TempFile.dir("harness-oauth-fixture")
     File.mkdir_p!(dir)
-    Application.put_env(:code_my_spec, HarnessOAuth, state_dir: dir)
+    opts = Application.get_env(:code_my_spec, HarnessOAuth, [])
+    Application.put_env(:code_my_spec, HarnessOAuth, Keyword.put(opts, :state_dir, dir))
 
     ExUnit.Callbacks.on_exit(fn ->
       case previous do

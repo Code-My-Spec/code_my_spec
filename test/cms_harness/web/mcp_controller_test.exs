@@ -469,6 +469,8 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "an unreachable server says which one", %{conn: conn} do
       Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:1")
+      oauth_dir = CmsHarnessTest.HarnessOAuthFixture.isolate()
+      CmsHarnessTest.HarnessOAuthFixture.seed(oauth_dir, "http://127.0.0.1:1", "test-token")
       %{root: dir} = project_dir()
       serve(dir)
 

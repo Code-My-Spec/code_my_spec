@@ -794,3 +794,5 @@ config :code_my_spec, CodeMySpec.Integrations.DesktopClients,
 
 config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
   plug: {Req.Test, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth}
+
+config :code_my_spec, CodeMySpec.Auth.HarnessOAuth, plug: {Req.Test, CodeMySpec.Auth.HarnessOAuth}
