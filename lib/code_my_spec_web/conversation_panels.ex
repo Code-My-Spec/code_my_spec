@@ -586,7 +586,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           <div
             :if={a.assigned != [] or a.task_label}
             data-test="team-agent-work"
-            class="flex min-w-0 items-center gap-1.5 pl-9 text-[11px]"
+            class="flex min-w-0 items-center gap-2 pb-1 pl-4 text-[11px]"
           >
             <button
               :for={item <- a.assigned}
