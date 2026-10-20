@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.Architecture.BoundaryGraph
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphProjector
@@ -59,7 +60,12 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       |> assign_new(:selected, fn -> nil end)
 
     if refresh? or not Map.has_key?(socket.assigns, :bands),
-      do: {:ok, assign(socket, :bands, Bands.read(socket.assigns.scope))},
+      do:
+        {:ok,
+         assign(socket,
+           bands: Bands.read(socket.assigns.scope),
+           architecture: BoundaryGraph.build(socket.assigns.scope).summary
+         )},
       else: {:ok, socket}
   end
 
@@ -121,10 +127,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.story_chart stories={@bands.stories} />
         </li>
         <li data-test="timeline-band" data-band="components" class="shrink-0">
-          <.component_bar counts={@bands.components} target={@myself} />
+          <.labelled label="Arch">
+            <span class="flex items-center gap-3">
+              <.component_bar counts={@bands.components} target={@myself} />
+              <.architecture_mark summary={@architecture} project={@project} />
+            </span>
+          </.labelled>
         </li>
         <li data-test="timeline-band" data-band="issues" class="shrink-0">
-          <.issue_bar counts={@bands.issues} target={@myself} />
+          <.labelled label="Issues">
+            <.issue_bar counts={@bands.issues} target={@myself} />
+          </.labelled>
         </li>
         <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
           <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
@@ -261,6 +274,60 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   defp story_title(story),
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
+
+  attr :label, :string, required: true
+  slot :inner_block, required: true
+
+  # A small heading over a group of counts, so neighbouring numbers do not read
+  # as one row.
+  defp labelled(assigns) do
+    ~H"""
+    <span class="flex flex-col items-center leading-none">
+      <span class="text-[9px] font-semibold uppercase tracking-wide opacity-40">{@label}</span>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  attr :summary, :map, required: true
+  attr :project, :map, required: true
+
+  # The architecture's health from `BoundaryGraph`: how many boundary cycles
+  # (red when any) and how deep the longest chain of boundaries runs.
+  defp architecture_mark(assigns) do
+    cycles = length(assigns.summary.cycles)
+    chain = Enum.join(assigns.summary.longest_chain, " → ")
+
+    assigns =
+      assign(assigns,
+        cycles: cycles,
+        tip:
+          "Architecture: #{cycles} #{if cycles == 1, do: "cycle", else: "cycles"} · " <>
+            "#{assigns.summary.depth} deep" <> if(chain != "", do: " (#{chain})", else: "")
+      )
+
+    ~H"""
+    <.link
+      navigate={~p"/app/projects/#{@project.id}/architecture"}
+      data-test="architecture-mark"
+      data-cycles={@cycles}
+      data-depth={@summary.depth}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-left flex items-center gap-2 font-mono text-[11px] tabular-nums"
+    >
+      <span class={[
+        "flex items-center gap-0.5",
+        if(@cycles > 0, do: "text-error", else: "opacity-50")
+      ]}>
+        <.icon name="hero-arrow-path" class="size-3" />{@cycles}
+      </span>
+      <span class="flex items-center gap-0.5 opacity-60">
+        <.icon name="hero-bars-arrow-down" class="size-3" />{@summary.depth}
+      </span>
+    </.link>
+    """
+  end
 
   attr :counts, :map, required: true
   attr :target, :any, required: true
