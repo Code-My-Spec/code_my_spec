@@ -300,7 +300,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-retired={@counts.retired}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums"
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums"
     >
       <span class="text-success">{@counts.done}</span>
       <span class="opacity-30">/</span>
@@ -319,7 +319,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp labelled(assigns) do
     ~H"""
     <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
-      <span class="text-[8px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+      <span class="text-[7px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
         {@label}
       </span>
       {render_slot(@inner_block)}
@@ -352,7 +352,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-depth={@summary.depth}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center gap-2 font-mono text-[11px] tabular-nums"
+      class="tooltip tooltip-left flex items-center gap-2 font-mono text-[10px] tabular-nums"
     >
       <span class={[
         "flex items-center gap-0.5",
@@ -392,7 +392,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-[11px] tabular-nums"
+      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-[10px] tabular-nums"
     >
       <span class="text-success">{@resolved}</span>
       <span class="opacity-30">/</span>
@@ -431,7 +431,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-[11px] tabular-nums"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-[10px] tabular-nums"
     >
       <span class="text-success">{@done}</span>
       <span class="opacity-30">/</span>
