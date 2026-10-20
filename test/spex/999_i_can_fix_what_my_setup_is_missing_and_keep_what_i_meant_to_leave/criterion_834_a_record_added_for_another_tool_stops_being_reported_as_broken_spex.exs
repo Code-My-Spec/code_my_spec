@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8304Spex do
   Reversible, and still listed. Marking says "keep this", not "hide this" —
   a resource nobody can see is the failure this whole epic keeps finding.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -149,7 +149,9 @@ defmodule CodeMySpecSpex.Story999.Criterion8304Spex do
             storage: []
           })
 
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
+
         html = render_async(view, 5_000)
 
         assert html

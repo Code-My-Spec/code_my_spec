@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
   resource is only forgotten relative to somewhere you would have looked, and
   eleven project pages is eleven places not to look.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Two projects' resources appear on one page", criterion: 825 do
     scenario "one page covers the whole account" do
@@ -39,7 +40,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
       end
 
       when_ "he opens the resources page", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, render_async(view, 5_000))}
       end
@@ -61,11 +63,10 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
       end
 
       then_ "and he did not have to open either project to find them", context do
-        # Reached directly, with no project in the path. The page is account
-        # grain or it is not answering the question.
+        # Reached from a third project's console. The page is account grain
+        # or it is not answering the question.
         assert context.html =~ "data-test=\"resource\"",
-               "the account-level page needed a project to be open before it would " <>
-                 "show anything"
+               "the console's inventory showed only the open project's resources"
 
         {:ok, context}
       end

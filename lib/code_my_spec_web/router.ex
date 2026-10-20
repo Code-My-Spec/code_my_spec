@@ -516,7 +516,6 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
 
       # Account-scoped: a box belongs to the account and can serve several projects.
-      live "/resources", ResourceLive.Index, :index
       live "/servers", ServerLive.Index, :index
 
       # Account-scoped: one machine serves checkouts of several projects.
@@ -625,6 +624,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/console/servers", ServerLive.Index, :index
       live "/projects/:project_id/console/servers/:name/edit", ServerLive.Index, :edit
       live "/projects/:project_id/console/servers/:name", ServerLive.Show, :show
+      live "/projects/:project_id/console/inventory", ResourceLive.Index, :index
       live "/projects/:project_id/console/deploys", ConsoleLive, :deploys
       live "/projects/:project_id/console/secrets", ConsoleLive, :secrets
       live "/projects/:project_id/console/credentials", ConsoleLive, :credentials

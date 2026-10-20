@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
   provider and its identity. Nothing about our record of it, because for the
   resources that most need marking we have no record at all.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -143,7 +143,9 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
       end
 
       given_ "and Sam has marked it as deliberate", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
+
         render_async(view, 5_000)
 
         view
@@ -156,7 +158,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
       when_ "the page re-reads every provider from scratch", context do
         # A fresh mount. Nothing carries over in the socket, so anything still
         # on the screen came back from storage rather than from memory.
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, Map.put(context, :document, Floki.parse_document!(render_async(view, 5_000)))}
       end

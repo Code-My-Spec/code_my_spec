@@ -286,7 +286,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     # The console's own sections: reached from its own sidebar once you're
     # on `/console`, same as the tabs above — only the surface itself,
     # `/console`, belongs in the cloud app's nav.
+    "/app/projects/:project_id/console/resources",
     "/app/projects/:project_id/console/servers",
+    "/app/projects/:project_id/console/inventory",
     "/app/projects/:project_id/console/deploys",
     "/app/projects/:project_id/console/secrets",
     "/app/projects/:project_id/console/credentials",

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
   make. This is Sam's version of that judgement, for the things he did not make
   either.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -93,7 +93,9 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
             Fixtures.record_call(recorder, {:trimmed, resource.location})
           end)
 
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
+
         render_async(view, 5_000)
 
         {:ok, Map.merge(context, %{view: view, recorder: recorder})}

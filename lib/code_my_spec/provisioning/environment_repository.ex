@@ -52,7 +52,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
 
   `list/1` seeds on first read, which is right for the run — provisioning is
   where environments first mean anything. It is wrong for anything merely
-  looking: `/app/resources` reads every project on the account, and the seeding
+  looking: the console's Inventory reads every project on the account, and the seeding
   version created twenty rows across nine projects the first time anyone
   opened it.
   """

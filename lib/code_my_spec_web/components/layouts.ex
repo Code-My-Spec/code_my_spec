@@ -185,11 +185,10 @@ defmodule CodeMySpecWeb.Layouts do
             <li><a href={~p"/app/projects"}>Projects</a></li>
             <%!--
                 Account-scoped, so it sits with Projects rather than inside the
-                per-project block: a box is shared between projects, and one
-                left over from a project that no longer exists still bills.
+                per-project block: one machine serves checkouts of several
+                projects. Servers and resources are in each project's console.
               --%>
             <li><a href={~p"/app/devices"}>Devices</a></li>
-            <li><a href={~p"/app/resources"}>Resources</a></li>
             <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in

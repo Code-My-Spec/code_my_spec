@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
   @moduledoc """
-  The console's section navigation — Overview, Resources, Servers, Deploys,
-  Secrets, Credentials, Activity, Settings. A plain function component; `ConsoleLive`
+  The console's section navigation — Overview, Resources, Servers, Inventory,
+  Deploys, Secrets, Credentials, Activity, Settings. A plain function component; `ConsoleLive`
   carries all the state.
   """
 
@@ -38,6 +38,15 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
           class={nav_class(@live_action, :servers)}
         >
           Servers
+        </.link>
+      </li>
+      <li>
+        <.link
+          navigate={~p"/app/projects/#{@project_id}/console/inventory"}
+          data-test="console-nav-inventory"
+          class={nav_class(@live_action, :inventory)}
+        >
+          Inventory
         </.link>
       </li>
       <li>

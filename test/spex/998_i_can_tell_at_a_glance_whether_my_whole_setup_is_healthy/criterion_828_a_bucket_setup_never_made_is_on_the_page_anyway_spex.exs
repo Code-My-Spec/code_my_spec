@@ -16,14 +16,14 @@ defmodule CodeMySpecSpex.Story998.Criterion8294Spex do
   It must not be the same as "safe to ignore": a bucket we did not create is
   still on the bill.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  setup :register_log_in_setup_account
+  setup [:register_log_in_setup_account, :setup_active_project]
 
   spex "A bucket setup never made is on the page anyway", criterion: 828 do
     scenario "a resource with no record of ours is still listed" do
@@ -38,8 +38,9 @@ defmodule CodeMySpecSpex.Story998.Criterion8294Spex do
         {:ok, context}
       end
 
-      when_ "he opens the resources page", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+      when_ "he opens the console's inventory", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end
