@@ -2225,7 +2225,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test={@main_agent? && "main-agent"}
         data-agent-id={@main_agent? && @conversation.agent_id}
         data-working-copy-id={@main_agent? && main_copy_id(@main)}
-        class="flex shrink-0 flex-wrap items-center gap-2 border-b border-base-300 pb-3"
+        class={[
+          "flex shrink-0 items-center gap-2 pb-3",
+          not @main_agent? && "border-b border-base-300"
+        ]}
       >
         <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
         <div class="flex min-w-0 flex-col">
@@ -2342,19 +2345,19 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             Cancel
           </button>
         </div>
-        <div :if={@main_agent?} class="basis-full">
-          <%!-- Where the project stands, on the one conversation about the
-          whole project: the project's own agent on the main copy. John, seeing
-          it on every page: "it should only show up on the chat for the main
-          agent on the main checkout." --%>
-          <ProjectTimeline.project_timeline
-            :if={@main_agent?}
-            scope={@current_scope}
-            project={@project}
-            variant={:header}
-          />
-        </div>
       </header>
+      <div :if={@main_agent?} class="shrink-0 border-b border-base-300 py-2">
+        <%!-- Where the project stands, on the one conversation about the
+        whole project: the project's own agent on the main copy. John, seeing
+        it on every page: "it should only show up on the chat for the main
+        agent on the main checkout." --%>
+        <ProjectTimeline.project_timeline
+          :if={@main_agent?}
+          scope={@current_scope}
+          project={@project}
+          variant={:header}
+        />
+      </div>
 
       <%!-- `overflow-anchor` is what keeps your place when older turns are
           prepended: without it the browser holds the scroll *offset*, so
