@@ -182,9 +182,8 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
+            <li><a href={~p"/app/accounts"}>Accounts</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
-            <%!-- Servers, inventory and dev boxes are the account's, shown in
-                  each project's console. --%>
             <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
@@ -203,41 +202,50 @@ defmodule CodeMySpecWeb.Layouts do
                 project was the one page you could not open.
               --%>
             <%= if (project = @project) && project.id do %>
-              <li class="menu-title truncate" title={project.name}>{project.name}</li>
-              <li class="menu-title">Specification</li>
-              <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
-
-              <li class="menu-title">Build</li>
-              <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
               <%!-- Two consoles, each a sidebar over its own pages: DevOps for
-                    the infrastructure, Operations for running the live app. --%>
+                    the infrastructure, Operations for running the live app.
+                    Servers, inventory and dev boxes in DevOps are the
+                    account's, whichever project's console shows them. --%>
               <li><a href={~p"/app/projects/#{project.id}/console"}>DevOps</a></li>
               <li><a href={~p"/app/projects/#{project.id}/inbox"}>Operations</a></li>
 
-              <li class="menu-title">Project</li>
+              <li class="menu-title truncate" title={project.name}>{project.name}</li>
+              <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
               <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
 
-              <li class="menu-title">Private</li>
+              <li><a href={~p"/app/users/settings"}>Settings</a></li>
+
+              <%!-- Operator surfaces, folded away so the everyday nav stays short. --%>
               <li>
-                <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
-              </li>
-              <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
-              <%!-- "Agent chat" opens whichever session the cockpit defaults to.
+                <details data-test="nav-advanced">
+                  <summary>Advanced</summary>
+                  <ul>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+                    <%!-- "Agent chat" opens whichever session the cockpit defaults to.
                     This is the list of all of them — the way to reach the four a
                     project with five agents would otherwise hide. --%>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/docs"}>Docs</a></li>
+                  </ul>
+                </details>
               </li>
-              <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/docs"}>Docs</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
               <li :for={p <- @projects}>
@@ -248,11 +256,10 @@ defmodule CodeMySpecWeb.Layouts do
               <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
                 No projects yet.
               </li>
+              <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <% end %>
-            <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
-            <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <%= if @current_scope do %>
-              <li class="border-t border-base-300 mt-2 pt-2">
+              <li class="border-t border-base-300 mt-auto pt-2">
                 <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
                   {@current_scope.user.email}
                 </div>
