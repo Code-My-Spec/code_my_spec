@@ -21,7 +21,10 @@ defmodule CodeMySpecWeb.ProblemCharts do
   One bar per working copy. Clicking a bar pushes `pick_event` with the
   copy's id. Copies with no problems are left out.
   """
-  attr :counts, :list, required: true, doc: "`[{working_copy_id, source, count}]`"
+  attr :counts, :list,
+    required: true,
+    doc: "`[{working_copy_id, source, severity, count}]`"
+
   attr :harnesses, :list, required: true
   attr :pick_event, :string, default: nil
 
@@ -29,8 +32,11 @@ defmodule CodeMySpecWeb.ProblemCharts do
     names = Map.new(assigns.harnesses, &{&1.id, WorkingCopies.display_name(&1)})
 
     rows =
-      assigns.counts
-      |> Enum.filter(fn {id, _source, _count} -> Map.has_key?(names, id) end)
+      for(
+        {id, source, _severity, count} <- assigns.counts,
+        Map.has_key?(names, id),
+        do: {id, source, count}
+      )
       |> rows()
 
     option =
@@ -71,6 +77,46 @@ defmodule CodeMySpecWeb.ProblemCharts do
     """
   end
 
+  @doc """
+  One copy's problems over whatever page is open: where they are, and the way
+  to the full list. Pushes `on_close` to close.
+  """
+  attr :counts, :list, required: true, doc: "`[{file_path, source, count}]`"
+  attr :copy_name, :string, required: true
+  attr :href, :string, required: true
+  attr :on_close, :string, required: true
+
+  def modal(assigns) do
+    ~H"""
+    <div
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      data-test="problems-modal"
+      phx-window-keydown={@on_close}
+      phx-key="Escape"
+    >
+      <div class="modal-box w-11/12 max-w-4xl space-y-3">
+        <button
+          type="button"
+          phx-click={@on_close}
+          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <.by_file counts={@counts} copy_name={@copy_name} />
+        <div class="flex justify-end">
+          <.link navigate={@href} data-test="problems-modal-open" class="btn btn-sm">
+            All problems <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+          </.link>
+        </div>
+      </div>
+      <button type="button" class="modal-backdrop" phx-click={@on_close} aria-label="Close"></button>
+    </div>
+    """
+  end
+
   attr :id, :string, required: true
   attr :title, :string, required: true
   attr :option, :map, required: true
@@ -100,8 +146,15 @@ defmodule CodeMySpecWeb.ProblemCharts do
   # `[{key, %{source => count}}]`, largest total first.
   defp rows(counts) do
     counts
-    |> Enum.group_by(&elem(&1, 0), fn {_key, source, count} -> {source, count} end)
-    |> Enum.map(fn {key, by_source} -> {key, Map.new(by_source)} end)
+    |> Enum.reduce(%{}, fn {key, source, count}, acc ->
+      Map.update(
+        acc,
+        key,
+        %{source => count},
+        &Map.update(&1, source, count, fn n -> n + count end)
+      )
+    end)
+    |> Enum.to_list()
     |> Enum.sort_by(fn {key, by_source} -> {-Enum.sum(Map.values(by_source)), key} end)
   end
 

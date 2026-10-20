@@ -526,16 +526,18 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # `default_id/1` is pure, so this creates no row.
   # See knowledge/analysis, "Problems".
   @doc """
-  Problem counts across every working copy on the project, by source:
-  `[{working_copy_id, source, count}]`. Ignores the scope's own copy — it is
-  the comparison between copies.
+  Problem counts across every working copy on the project, by source and
+  severity: `[{working_copy_id, source, severity, count}]`. Ignores the scope's
+  own copy — it is the comparison between copies.
   """
-  @spec counts_by_working_copy(Scope.t()) :: [{String.t() | nil, String.t(), non_neg_integer()}]
+  @spec counts_by_working_copy(Scope.t()) :: [
+          {String.t() | nil, String.t(), atom() | nil, non_neg_integer()}
+        ]
   def counts_by_working_copy(%Scope{active_project_id: project_id}) do
     Problem
     |> where([p], p.project_id == ^project_id)
-    |> group_by([p], [p.working_copy_id, p.source])
-    |> select([p], {p.working_copy_id, p.source, count(p.id)})
+    |> group_by([p], [p.working_copy_id, p.source, p.severity])
+    |> select([p], {p.working_copy_id, p.source, p.severity, count(p.id)})
     |> Repo.all()
   end
 
