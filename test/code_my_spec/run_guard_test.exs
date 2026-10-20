@@ -57,16 +57,15 @@ defmodule CodeMySpec.RunGuardTest do
     {owner, pid}
   end
 
-  defp eventually(fun, attempts \\ 100) do
+  defp eventually(fun, attempts \\ 100)
+  defp eventually(fun, 0), do: fun.()
+
+  defp eventually(fun, attempts) do
     fun.()
   rescue
-    error in [ExUnit.AssertionError, MatchError] ->
-      if attempts == 0 do
-        reraise error, __STACKTRACE__
-      else
-        Process.sleep(20)
-        eventually(fun, attempts - 1)
-      end
+    ExUnit.AssertionError ->
+      Process.sleep(20)
+      eventually(fun, attempts - 1)
   end
 
   defp group_alive?(pid),
