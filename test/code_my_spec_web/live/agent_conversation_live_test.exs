@@ -1304,6 +1304,31 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='qa-modal'] [data-test='qa-row']")
     end
 
+    test "the week's numbers open the activity chart", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='activity-counts'][data-tokens][data-shipped][data-messages]"
+             )
+
+      view |> element("[data-test='activity-counts']") |> render_click()
+      assert has_element?(view, "[data-test='activity-modal']")
+      render_async(view)
+      assert has_element?(view, "[data-test='activity-modal'] [data-test='activity-chart']")
+    end
+
     test "a main-role agent on another copy does not", %{
       conn: conn,
       scope: scope,

@@ -24,6 +24,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   use CodeMySpecWeb, :live_view
 
   import CodeMySpecWeb.Markdown, only: [md_html: 1]
+  alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Analysis.RunsRepository
@@ -47,6 +48,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpecWeb.ActivityComponents
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.IssueComponents
   alias CodeMySpecWeb.MainAgentConversation
@@ -170,6 +172,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:problems_modal, nil)
     |> assign(:issues_modal, nil)
     |> assign(:qa_modal, nil)
+    |> assign(:activity_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -891,6 +894,20 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_qa", _params, socket),
     do: {:noreply, assign(socket, :qa_modal, nil)}
+
+  # The status bar's week: the performance page's activity chart, read off the
+  # LiveView process — its story events need every story's cycle times.
+  def handle_event("show_activity", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     socket
+     |> assign(:activity_modal, %{option: :loading, summary: Chart.week_summary(scope)})
+     |> start_async(:activity_chart, fn -> Chart.option(scope) end)}
+  end
+
+  def handle_event("close_activity", _params, socket),
+    do: {:noreply, assign(socket, :activity_modal, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -1669,6 +1686,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
 
+  def handle_async(
+        :activity_chart,
+        {:ok, option},
+        %{assigns: %{activity_modal: %{} = modal}} = socket
+      ),
+      do: {:noreply, assign(socket, :activity_modal, %{modal | option: option})}
+
+  def handle_async(:activity_chart, _result, socket), do: {:noreply, socket}
+
   def handle_async(:task_modal, {:ok, directive}, %{assigns: %{task_modal: modal}} = socket)
       when is_map(modal),
       do: {:noreply, assign(socket, :task_modal, %{modal | directive: directive})}
@@ -2310,6 +2336,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         directive={@task_modal.directive}
         project_id={@project.id}
         on_close="close_task"
+      />
+      <ActivityComponents.modal
+        :if={@activity_modal}
+        option={@activity_modal.option}
+        summary={@activity_modal.summary}
+        project_id={@project.id}
+        on_close="close_activity"
       />
       <QaComponents.modal
         :if={@qa_modal}

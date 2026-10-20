@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.Architecture.BoundaryGraph
   alias CodeMySpec.Qa
   alias CodeMySpec.Requirements
@@ -30,6 +31,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.PlainLanguage
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpecWeb.ActivityComponents
   alias CodeMySpecWeb.QaComponents
   alias CodeMySpecWeb.RequirementGraphComponents
 
@@ -73,7 +75,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
            qa:
              socket.assigns.scope
              |> Qa.list_project_attempts(include_older: true)
-             |> QaComponents.recent_counts()
+             |> QaComponents.recent_counts(),
+           activity: Chart.week_summary(socket.assigns.scope)
          )},
       else: {:ok, socket}
   end
@@ -199,6 +202,11 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <li data-test="timeline-band" data-band="architecture">
             <.labelled label="Arch">
               <.architecture_mark summary={@architecture} project={@project} />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="activity">
+            <.labelled label="Week">
+              <ActivityComponents.summary_mark summary={@activity} phx-click="show_activity" />
             </.labelled>
           </li>
           <li data-test="timeline-band" data-band="qa">

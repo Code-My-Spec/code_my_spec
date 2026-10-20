@@ -222,9 +222,6 @@ defmodule CodeMySpecWeb.Layouts do
               <li>
                 <a href={~p"/app/projects/#{project.id}/console"}>Console</a>
               </li>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
-              </li>
               <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
 
               <li class="menu-title">Project</li>
@@ -242,6 +239,9 @@ defmodule CodeMySpecWeb.Layouts do
               </li>
 
               <li class="menu-title">Private</li>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
+              </li>
               <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
               <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
               <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
