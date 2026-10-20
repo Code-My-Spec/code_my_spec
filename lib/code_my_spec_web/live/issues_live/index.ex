@@ -384,7 +384,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     page = min(socket.assigns.page, total_pages)
 
     socket
-    |> assign(:issues, issues |> Enum.drop((page - 1) * @per_page) |> Enum.take(@per_page))
+    |> assign(:issues, Enum.slice(issues, (page - 1) * @per_page, @per_page))
     |> assign(page: page, total_pages: total_pages, total_count: total_count)
     # Every issue, whatever the filters: the chart is the project's issues
     # over time.
