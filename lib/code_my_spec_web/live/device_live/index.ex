@@ -41,21 +41,79 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Devices")}
+    scope = socket.assigns.current_scope
+
+    if connected?(socket) and is_binary(scope.active_account_id),
+      do: Devices.subscribe(scope.active_account_id)
+
+    {:ok,
+     assign(socket,
+       page_title: "Dev boxes",
+       adding?: false,
+       new_box: nil,
+       providers: Provider.all(),
+       can_add?: can_add?(scope)
+     )}
   end
+
+  # Owners and admins add boxes; everyone else on the account only sees them.
+  defp can_add?(%{active_account_id: account_id, user: %{}} = scope) when is_binary(account_id),
+    do: Authorization.authorize(:manage_account, scope, account_id)
+
+  defp can_add?(_scope), do: false
 
   @impl true
   def handle_params(_params, _uri, socket), do: {:noreply, load(socket)}
 
   @impl true
+  def handle_event("new_dev_box", _params, %{assigns: %{can_add?: true}} = socket),
+    do: {:noreply, assign(socket, adding?: true, new_box: nil)}
+
+  # An add sent by someone who cannot add is refused, whether or not the page
+  # offered it: the check is the context's, not the button's.
+  def handle_event("add_dev_box", %{"dev_box" => params}, socket) do
+    case Devices.add_dev_box(socket.assigns.current_scope, params) do
+      {:ok, box, token} ->
+        provider = Provider.get(box.provider)
+        context = %{token: token, server_url: CodeMySpecWeb.Endpoint.url()}
+
+        {:noreply,
+         socket
+         |> assign(
+           adding?: false,
+           new_box: %{
+             device: box,
+             name: Device.display_name(box),
+             token: token,
+             sections: provider.instructions(context)
+           }
+         )
+         |> load()}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "Only an account owner or admin can add a dev box.")}
+
+      {:error, :unknown_provider} ->
+        {:noreply, put_flash(socket, :error, "Choose where the dev box runs.")}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, put_flash(socket, :error, "Name the dev box.")}
+    end
+  end
+
+  def handle_event("cancel_dev_box", _params, socket),
+    do: {:noreply, assign(socket, adding?: false)}
+
   def handle_event("destroy", %{"id" => id}, socket) do
     socket.assigns.current_scope
     |> Devices.get_device(id)
@@ -87,6 +145,9 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     end
   end
 
+  @impl true
+  def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
+
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
 
@@ -106,6 +167,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   defp row(device, copy_ids, now) do
     %{
       device: device,
+      status: box_status(device),
+      provider: Provider.get(device.provider),
       name: Device.display_name(device),
       presence: presence(reachable?(copy_ids), device, now)
     }
@@ -142,6 +205,10 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   defp presence(false, %{last_seen_at: at}, now),
     do: %{label: "Last seen", since: Liveness.since(at, now)}
 
+  # A dev box says whether anything has ever signed in with its token.
+  defp box_status(%Device{token_last_used_at: nil}), do: "Never connected"
+  defp box_status(%Device{}), do: "Connected"
+
   # "unknown", not a guess. A default here would make a sprite read as somebody's
   # laptop, which is the one distinction the field exists for.
   defp kind_name(:local), do: "local machine"
@@ -159,15 +226,87 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     >
       <div data-test="devices" class="mx-auto w-full max-w-3xl">
         <.header>
-          Devices
+          Dev boxes
           <:subtitle>
-            Every machine running a harness for this account. A machine onboards itself
-            when its harness comes up.
+            Every machine running a harness for this account. Add a dev box here, or a
+            machine onboards itself when its harness comes up.
           </:subtitle>
+          <:actions>
+            <.button :if={@can_add?} phx-click="new_dev_box" data-test="add-dev-box">
+              Add
+            </.button>
+          </:actions>
         </.header>
 
+        <form
+          :if={@adding?}
+          id="add-dev-box-form"
+          data-test="add-dev-box-form"
+          phx-submit="add_dev_box"
+          class="card card-compact mt-4 border border-base-300 bg-base-100"
+        >
+          <div class="card-body gap-3">
+            <label class="form-control">
+              <span class="label-text">Name</span>
+              <input type="text" name="dev_box[name]" class="input input-bordered" required />
+            </label>
+            <fieldset class="flex flex-col gap-2">
+              <legend class="label-text">Where it runs</legend>
+              <label :for={provider <- @providers} class="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="dev_box[provider]"
+                  value={provider.id()}
+                  data-test={"provider-#{provider.id()}"}
+                />
+                {provider.label()}
+              </label>
+            </fieldset>
+            <div class="flex gap-2">
+              <.button type="submit">Add dev box</.button>
+              <.button type="button" phx-click="cancel_dev_box" class="btn btn-ghost">
+                Cancel
+              </.button>
+            </div>
+          </div>
+        </form>
+
+        <div
+          :if={@new_box}
+          data-test="new-dev-box"
+          class="card card-compact mt-4 border border-success bg-base-100"
+        >
+          <div class="card-body gap-3">
+            <h2 class="card-title">{@new_box.name} added</h2>
+            <p class="text-sm">
+              This is its token. It is shown once: copy it now, because it cannot be shown again.
+            </p>
+            <code
+              data-test="new-dev-box-token"
+              data-token={@new_box.token}
+              class="break-all rounded bg-base-200 p-2 text-sm"
+            >
+              {@new_box.token}
+            </code>
+            <div :for={section <- @new_box.sections} data-test={section.key} class="space-y-1">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="font-medium">{section.title}</h3>
+                <button
+                  type="button"
+                  class="copy-btn btn btn-sm btn-primary"
+                  data-copy={section.body}
+                  data-test={section.copy}
+                >
+                  Copy
+                </button>
+              </div>
+              <pre class="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">{section.body}</pre>
+            </div>
+          </div>
+        </div>
+
         <p :if={@devices == []} data-test="devices-empty" class="py-16 text-center opacity-60">
-          No machines yet. One appears when a harness starts on it.
+          No dev boxes yet. Add one, or a machine appears when a harness starts on it.
         </p>
 
         <ul class="mt-6 space-y-3">
@@ -185,6 +324,17 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   <div data-test="device-kind" class="text-xs opacity-60">
                     {kind_name(row.device.kind)}
                   </div>
+                </div>
+
+                <div
+                  :if={Device.dev_box?(row.device)}
+                  data-test="dev-box"
+                  data-box-name={row.name}
+                  data-device-id={row.device.id}
+                  class="shrink-0 text-right text-sm"
+                >
+                  <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
+                  <span data-test="dev-box-status">{row.status}</span>
                 </div>
 
                 <div data-test="device-presence" class="shrink-0 text-right text-sm">

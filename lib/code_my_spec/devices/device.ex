@@ -47,6 +47,9 @@ defmodule CodeMySpec.Devices.Device do
           last_seen_at: DateTime.t() | nil,
           preview_tunnel_id: String.t() | nil,
           preview_tunnel_secret: String.t() | nil,
+          provider: atom() | nil,
+          token_hash: String.t() | nil,
+          token_last_used_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -93,6 +96,14 @@ defmodule CodeMySpec.Devices.Device do
     field :preview_tunnel_id, :string
     field :preview_tunnel_secret, CodeMySpec.Encrypted.Binary
 
+    # A dev box added from a provider (story 1130). `token_hash` is the SHA-256 of
+    # the token the box signs in with: the token itself is shown once, when the box
+    # is added, and kept nowhere. `token_last_used_at` is the first and latest
+    # sign-in with it; nil is "never connected".
+    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud]
+    field :token_hash, :string
+    field :token_last_used_at, :utc_datetime_usec
+
     timestamps(type: :utc_datetime)
   end
 
@@ -116,6 +127,24 @@ defmodule CodeMySpec.Devices.Device do
     # `not_null_violation` on a column name.
     |> validate_required([:kind])
   end
+
+  @doc "A dev box: a device Sam added by choosing a provider, with its token's hash."
+  def dev_box_changeset(device, attrs) do
+    device
+    |> cast(attrs, [:label, :provider, :kind, :account_id, :token_hash])
+    |> validate_required([:label, :provider, :kind, :account_id, :token_hash])
+    |> validate_length(:label, max: 80)
+    |> unique_constraint(:token_hash)
+  end
+
+  @doc "The box signed in with its token."
+  def token_used_changeset(device, at) do
+    cast(device, %{token_last_used_at: at}, [:token_last_used_at])
+  end
+
+  @doc "Whether this device is a dev box added from a provider."
+  @spec dev_box?(t()) :: boolean()
+  def dev_box?(%__MODULE__{token_hash: hash}), do: is_binary(hash)
 
   @doc "Record the tunnel this machine's harness runs — id and secret together, or neither."
   def tunnel_changeset(device, attrs) do

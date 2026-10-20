@@ -49,7 +49,9 @@ defmodule CodeMySpec.Devices do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Accounts.Member
+  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -168,6 +170,94 @@ defmodule CodeMySpec.Devices do
 
   defp scoped(id, account_id) do
     from(d in Device, where: d.id == ^id and d.account_id == ^account_id)
+  end
+
+  @doc """
+  Add a dev box from a provider (story 1130), as `{:ok, device, token}`.
+
+  Owners and admins only: `{:error, :forbidden}` for anyone else, checked here and
+  not left to the page that offers the button. The token is minted here, shown
+  once by the caller, and only its hash is kept. A box is announced `kind` by its
+  provider, since the provider is what knows what it runs on.
+  """
+  @spec add_dev_box(Scope.t(), map()) ::
+          {:ok, Device.t(), String.t()}
+          | {:error, :forbidden | :unknown_provider | Ecto.Changeset.t()}
+  def add_dev_box(%Scope{active_account_id: account_id} = scope, params)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         provider when not is_nil(provider) <-
+           Provider.get(params["provider"] || params[:provider]) do
+      token = mint_token()
+
+      attrs = %{
+        label: String.trim(to_string(params["name"] || params[:name] || "")),
+        provider: provider.id(),
+        kind: provider.kind(),
+        account_id: account_id,
+        token_hash: hash_token(token)
+      }
+
+      case %Device{} |> Device.dev_box_changeset(attrs) |> Repo.insert() do
+        {:ok, device} -> {:ok, device, token}
+        {:error, changeset} -> {:error, changeset}
+      end
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :unknown_provider}
+    end
+  end
+
+  def add_dev_box(%Scope{}, _params), do: {:error, :forbidden}
+
+  defp mint_token, do: "cbt_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+  defp hash_token(token), do: :crypto.hash(:sha256, token) |> Base.encode16(case: :lower)
+
+  @doc """
+  The dev box this token belongs to, or nil. Marks it connected: the first
+  sign-in is what turns "Never connected" into "Connected", and every later one
+  refreshes it. Another box's token never resolves to this one.
+  """
+  @spec sign_in_with_token(String.t() | nil) :: Device.t() | nil
+  def sign_in_with_token(token) when is_binary(token) and token != "" do
+    case Repo.get_by(Device, token_hash: hash_token(token)) do
+      nil ->
+        nil
+
+      %Device{} = device ->
+        {:ok, device} = device |> Device.token_used_changeset(DateTime.utc_now()) |> Repo.update()
+        broadcast(device, {:dev_box_connected, device.id})
+        device
+    end
+  end
+
+  def sign_in_with_token(_token), do: nil
+
+  @doc "Subscribe to changes to this account's dev boxes."
+  @spec subscribe(String.t()) :: :ok | {:error, term()}
+  def subscribe(account_id) when is_binary(account_id),
+    do: Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic(account_id))
+
+  defp broadcast(%Device{account_id: account_id}, message) when is_binary(account_id),
+    do: Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(account_id), message)
+
+  defp broadcast(_device, _message), do: :ok
+
+  defp topic(account_id), do: "devices:#{account_id}"
+
+  @doc """
+  The announce of a dev box that signed in with its token: it is told who it is
+  whatever id it presents, and says what it runs on.
+  """
+  @spec announce_box(Device.t(), map()) :: {:ok, Device.t()} | {:error, Ecto.Changeset.t()}
+  def announce_box(%Device{} = box, attrs) do
+    box
+    |> Device.changeset(
+      %{hostname: attrs[:hostname], last_seen_at: DateTime.utc_now()}
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    )
+    |> Repo.update()
   end
 
   @doc """

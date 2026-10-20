@@ -32,6 +32,18 @@ defmodule CodeMySpecWeb.DeviceController do
   Answers `device_id` either way, which is the only thing the caller needs: it
   writes that down and presents it next time.
   """
+  def create(%Plug.Conn{assigns: %{box_device: box}} = conn, params) do
+    # Signed in with a dev box's own token: it is that box, whatever id it presents.
+    {:ok, device} = CodeMySpec.Devices.announce_box(box, %{hostname: params["hostname"]})
+    WorkingCopies.observe_paths(device, observations(params["working_copies"]))
+
+    json(conn, %{
+      device_id: device.id,
+      working_copies: WorkingCopies.list_on_device(device),
+      pending_local_projects: []
+    })
+  end
+
   def create(conn, params) do
     scope = scope(conn)
 

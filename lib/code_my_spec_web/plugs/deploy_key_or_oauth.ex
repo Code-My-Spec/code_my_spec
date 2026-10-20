@@ -47,6 +47,34 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
 
   @impl true
   def call(conn, opts) do
+    case box_sign_in(conn) do
+      {:ok, box} ->
+        conn
+        |> assign(:current_scope, %CodeMySpec.Users.Scope{active_account_id: box.account_id})
+        |> assign(:box_device, box)
+
+      :none ->
+        authenticate(conn, opts)
+    end
+  end
+
+  # A dev box's own token (story 1130), accepted on the one route a machine
+  # announces itself on and nowhere else: it resolves to exactly that box. Story
+  # 1131 replaces this with an exchange for a short-lived token; this is the
+  # minimal path that ties a connecting harness to its box.
+  defp box_sign_in(%Plug.Conn{request_path: "/api/devices"} = conn) do
+    with ["Bearer cbt_" <> rest] <- get_req_header(conn, "authorization"),
+         %CodeMySpec.Devices.Device{} = box <-
+           CodeMySpec.Devices.sign_in_with_token("cbt_" <> rest) do
+      {:ok, box}
+    else
+      _ -> :none
+    end
+  end
+
+  defp box_sign_in(_conn), do: :none
+
+  defp authenticate(conn, opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
          {:ok, project} <- project_for_deploy_key(token),
          {:ok, user} <- account_owner(project.account_id) do
