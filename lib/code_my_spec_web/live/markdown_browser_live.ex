@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @moduledoc """
-  Generic browser for directories of markdown files.
+  The project's docs: a browser for directories of markdown files, one tab
+  per library.
 
   Reusable across multiple libraries — each `live_action` maps to a
   filesystem root (priv content) or a project-relative path resolved
@@ -20,7 +21,14 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, section: :knowledge, page_title: "Knowledge", view: nil, error: nil)}
+    {:ok,
+     assign(socket,
+       section: :knowledge,
+       page_title: "Docs",
+       tabs: [:project_knowledge, :knowledge],
+       view: nil,
+       error: nil
+     )}
   end
 
   @impl true
@@ -33,7 +41,7 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
 
-    base_url = "/app/projects/#{socket.assigns.slug}/#{library_path(library)}"
+    base_url = library_url(socket.assigns.slug, library)
 
     case Knowledge.browse(socket.assigns.scope, library, path_segments) do
       {:ok, result} ->
@@ -57,6 +65,18 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <div role="tablist" class="tabs tabs-border mb-4" data-test="docs-tabs">
+      <.link
+        :for={library <- @tabs}
+        navigate={library_url(@slug, library)}
+        role="tab"
+        data-library={library}
+        class={["tab", library == @live_action && "tab-active"]}
+      >
+        {tab_label(library)}
+      </.link>
+    </div>
+
     <div :if={@error} role="alert" class="alert alert-error">
       <span>{@error}</span>
     </div>
@@ -72,7 +92,8 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     ~H"""
     <div>
       <.back_link :if={@dir.back_url} url={@dir.back_url} />
-      <h1 class="text-2xl font-bold mb-4">{@dir.title}</h1>
+      <%!-- At a library's root the tab already names it. --%>
+      <h1 :if={@dir.back_url} class="text-2xl font-bold mb-4">{@dir.title}</h1>
 
       <ul class="space-y-1.5">
         <li
@@ -199,7 +220,9 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     |> humanize()
   end
 
-  defp library_path(library) when is_atom(library) do
-    library |> Atom.to_string() |> String.replace("_", "-")
-  end
+  defp library_url(slug, :project_knowledge), do: "/app/projects/#{slug}/docs/project"
+  defp library_url(slug, :knowledge), do: "/app/projects/#{slug}/docs/codemyspec"
+
+  defp tab_label(:project_knowledge), do: "This project"
+  defp tab_label(:knowledge), do: "CodeMySpec"
 end

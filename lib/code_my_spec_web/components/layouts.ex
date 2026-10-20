@@ -226,10 +226,6 @@ defmodule CodeMySpecWeb.Layouts do
 
               <li class="menu-title">Project</li>
               <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
-              </li>
               <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
               <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
               <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
@@ -256,6 +252,7 @@ defmodule CodeMySpecWeb.Layouts do
               </li>
               <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
               <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/docs"}>Docs</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
               <li :for={p <- @projects}>

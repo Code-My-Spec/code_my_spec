@@ -17,9 +17,9 @@ defmodule CodeMySpecWeb.MarkdownBrowserLiveTest do
 
   test "a backtick path naming a real doc becomes a link to it", %{conn: conn, project: project} do
     {:ok, _live, html} =
-      live(conn, ~p"/app/projects/#{project.id}/knowledge/process/product.md")
+      live(conn, ~p"/app/projects/#{project.id}/docs/codemyspec/process/product.md")
 
-    assert html =~ ~s(href="/app/projects/#{project.id}/knowledge/process/code.md")
+    assert html =~ ~s(href="/app/projects/#{project.id}/docs/codemyspec/process/code.md")
   end
 
   @doc """
@@ -41,9 +41,9 @@ defmodule CodeMySpecWeb.MarkdownBrowserLiveTest do
     project: project
   } do
     {:ok, _live, html} =
-      live(conn, ~p"/app/projects/#{project.id}/knowledge/process/devops.md")
+      live(conn, ~p"/app/projects/#{project.id}/docs/codemyspec/process/devops.md")
 
-    refute html =~ "knowledge/CLAUDE.md"
+    refute html =~ "codemyspec/CLAUDE.md"
     assert html =~ "CLAUDE.md"
   end
 end

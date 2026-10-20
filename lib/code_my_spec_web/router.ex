@@ -580,9 +580,12 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/agent-performance", AgentPerformanceLive.Index, :index
       live "/projects/:project_id/agent-performance/:agent_id", AgentPerformanceLive.Show, :show
 
-      live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      # Docs: the project's own knowledge, then CodeMySpec's bundled guidance.
+      # The old per-library paths still open the same page.
+      live "/projects/:project_id/docs", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/docs/project/*path", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/docs/codemyspec/*path", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
-      live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
 
       live "/projects/:project_id/project-knowledge/*path",
            MarkdownBrowserLive,
