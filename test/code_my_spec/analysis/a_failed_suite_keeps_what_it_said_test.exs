@@ -13,6 +13,28 @@ defmodule CodeMySpec.Analysis.AFailedSuiteKeepsWhatItSaidTest do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Repo
 
+  test "a timed-out analyzer keeps partial stdout and stderr without claiming an exit status" do
+    scope = full_scope_fixture()
+    {:ok, run} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
+    output = "stdout before timeout\nstderr before timeout\npartial without newline"
+    reason = "analyzer timed out. Subprocess termination confirmed."
+
+    assert {:error, ^reason} =
+             Analysis.record_remote_result(scope, %{
+               "run_id" => run.id,
+               "source" => "exunit",
+               "status" => "error",
+               "error" => reason,
+               "output" => output
+             })
+
+    failed = Repo.reload!(run)
+    assert failed.status == :failed
+    assert failed.output == output
+    assert failed.exit_status == nil
+    assert failed.stats["error"] == reason
+  end
+
   test "the failed run carries the suite's output and exit status" do
     scope = full_scope_fixture()
     {:ok, run} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})

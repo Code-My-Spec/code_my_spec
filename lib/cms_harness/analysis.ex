@@ -54,13 +54,19 @@ defmodule CmsHarness.Analysis do
   `args` are the analyzer's own arguments — empty for the stop hook's
   whole-project sweep, paths for a targeted run. `run_id` is the server's
   ledger row for this execution; every real dispatch has one, direct calls
-  may omit it.
+  may omit it. The optional `:output_capture` IO device receives command
+  output as it arrives. Its caller owns and closes it, allowing captured
+  output to survive termination of the analyzer task.
   """
-  @spec run(map(), String.t(), [String.t()], integer() | nil) ::
+  @spec run(map(), String.t(), [String.t()], integer() | nil, keyword()) ::
           {:ok, map()} | {:error, String.t()}
-  def run(project, source, args \\ [], run_id \\ nil)
+  def run(project, source, args \\ [], run_id \\ nil, opts \\ [])
       when is_binary(source) and is_list(args) do
-    env = Environment.new(:local, project.root)
+    env =
+      Environment.new(:local, project.root,
+        metadata: %{output_capture: Keyword.get(opts, :output_capture)}
+      )
+
     started = System.monotonic_time(:millisecond)
 
     result =

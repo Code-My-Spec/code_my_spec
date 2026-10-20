@@ -23,13 +23,13 @@ defmodule CmsHarness.Agents.Engine.Execution do
   def stop_owned(ownership, deadline) do
     term_result = ProcessGroups.signal(ownership.groups, "-TERM", deadline)
 
-    # Slot release does not wait for OS termination confirmation.
-    release(ownership)
+    # Suspended owners retain their machine-wide slots until every owned OS
+    # group is confirmed gone. Failed confirmation must not release capacity.
     Process.sleep(min(100, max(deadline - System.monotonic_time(:millisecond), 0)))
     kill_result = ProcessGroups.signal(ownership.groups, "-KILL", deadline)
 
     case ProcessGroups.confirm(ownership.groups, deadline) do
-      :ok -> :ok
+      :ok -> release(ownership)
       error -> {:error, {:cleanup_incomplete, error, term_result, kill_result}}
     end
   end

@@ -209,7 +209,7 @@ defmodule CodeMySpec.Environments.Local do
             "project. Build the environment with an explicit cwd."
   end
 
-  def cmd(%Environment{cwd: cwd}, command, args, opts) do
+  def cmd(%Environment{cwd: cwd, metadata: metadata}, command, args, opts) do
     # The environment's cwd is the default working directory — that is what
     # makes this the environment's command rather than an ambient one. An
     # explicit :cd still wins, for callers operating on a path outside the
@@ -220,6 +220,15 @@ defmodule CodeMySpec.Environments.Local do
     # ROOTDIR/BINDIR/RELEASE_* that would otherwise make a child mix/erl boot
     # from our extracted ERTS ("cannot get bootfile") instead of the user's OTP.
     opts = CodeMySpec.Environments.merge_clean_env(opts)
+
+    {capture, opts} = Keyword.pop(opts, :output_capture, Map.get(metadata, :output_capture))
+
+    opts =
+      if capture do
+        Keyword.put(opts, :into, %CodeMySpec.Environments.CommandOutput{device: capture})
+      else
+        opts
+      end
 
     case System.cmd(command, args, opts) do
       {output, 0} -> {clean_terminal_output(output), 0}
