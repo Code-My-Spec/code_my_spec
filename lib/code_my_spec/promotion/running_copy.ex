@@ -106,33 +106,52 @@ defmodule CodeMySpec.Promotion.RunningCopy do
       {version, nil} when is_binary(version) ->
         {true, %{status: "Promoted at version #{version}"}}
 
-      {version, {issue_id, submitted_at}} when is_binary(version) ->
-        fix_not_promoted(version, issue_id, submitted_at)
+      {version, {issue_id, submitted_at, open?}} when is_binary(version) ->
+        fix_not_promoted(version, issue_id, submitted_at, open?)
 
       _ ->
         not_yet_promoted(copy)
     end
   end
 
-  # A submitted story fix after the last promotion requires a fresh shared QA
-  # pass and another landing. Its submission timestamp is stable when the issue
-  # is edited or ultimately resolved by promotion.
+  # A submitted story fix requires a fresh shared QA pass and a landing that
+  # completes it, in two cases: it was submitted after the last promotion (its
+  # timestamp is stable when the issue is edited or ultimately resolved), or it is
+  # still open — no landing has completed it — whenever it was submitted (issue
+  # 04c1f5c1: a story promoted after a fix was submitted, by a landing that did
+  # not complete that fix, read as shipped and was never offered a promotion).
   #
   # A stamp with no `specs_ready_at` predates that column: every submitted fix
   # counts as newer than it, never as "no fix".
   defp unshipped_fix(entity) do
-    with {_issue_id, submitted_at} = fix <- Map.get(entity, :fix),
-         :gt <- after_promotion(submitted_at, Map.get(entity, :specs_ready_at)) do
-      fix
-    else
-      _ -> nil
+    case Map.get(entity, :fix) do
+      {_issue_id, _submitted_at, true} = fix ->
+        fix
+
+      {_issue_id, submitted_at, _open?} = fix ->
+        if after_promotion(submitted_at, Map.get(entity, :specs_ready_at)) == :gt,
+          do: fix
+
+      nil ->
+        nil
     end
   end
 
   defp after_promotion(_submitted_at, nil), do: :gt
   defp after_promotion(submitted_at, promoted_at), do: DateTime.compare(submitted_at, promoted_at)
 
-  defp fix_not_promoted(version, issue_id, submitted_at) do
+  defp fix_not_promoted(version, issue_id, submitted_at, true) do
+    {false,
+     %{
+       reason:
+         "issue #{issue_id} on this story was submitted at #{DateTime.to_iso8601(submitted_at)} and " <>
+           "no promotion has completed it (last promotion: version #{version}), so its fix is " <>
+           "not on main yet. Promote this story again by completing its story_promoted task.",
+       promoted: false
+     }}
+  end
+
+  defp fix_not_promoted(version, issue_id, submitted_at, false) do
     {false,
      %{
        reason:

@@ -41,9 +41,27 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
     %{scope: %{scope | active_working_copy_id: copy.id}, story: story}
   end
 
+  # What a landing does for its story: completes the fixes submitted for it, then
+  # stamps it (`Promotion.record_landed_stories/4`).
   defp promote(scope, story, at) do
+    complete_submissions(scope, story)
+    stamp(scope, story, at)
+  end
+
+  # Stamped without completing anything: a landing that carried the story but not
+  # its submitted fix (issue 04c1f5c1).
+  defp stamp(scope, story, at) do
     {:ok, story} = Stories.mark_story_promoted(scope, story, "0.1.15", at: at, commit: "abc")
     story
+  end
+
+  defp complete_submissions(scope, story) do
+    snapshot =
+      scope
+      |> Issues.story_submission_snapshot(story.id)
+      |> Map.filter(fn {_id, ref} -> is_binary(ref) end)
+
+    {:ok, _} = Issues.complete_story_submissions(scope, story.id, snapshot, "abc")
   end
 
   defp submit(scope, story) do
@@ -85,6 +103,30 @@ defmodule CodeMySpec.Promotion.AFixSubmittedAfterPromotionIsPromotedAgainTest do
   test "a fix submitted before the promotion is already on main", ctx do
     submit(ctx.scope, ctx.story)
     story = promote(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), 1))
+
+    assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
+  end
+
+  # Issue 04c1f5c1: 2a269214 and eeeeeb3d were submitted before their stories'
+  # stamps, by landings that did not complete them. Timestamps alone read them
+  # as shipped, so nothing offered the promotion that would complete them.
+  test "a fix submitted before the stamp but never completed still needs promoting", ctx do
+    issue = submit(ctx.scope, ctx.story)
+    story = stamp(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), 1))
+
+    {check, swept} = verdicts(ctx.scope, story)
+    assert check == swept
+    assert {false, %{reason: reason}} = check
+    assert reason =~ issue.id
+    assert reason =~ "no promotion has completed it"
+  end
+
+  test "completing that fix clears it", ctx do
+    submit(ctx.scope, ctx.story)
+    story = stamp(ctx.scope, ctx.story, DateTime.add(DateTime.utc_now(), 1))
+    assert {{false, _}, {false, _}} = verdicts(ctx.scope, story)
+
+    complete_submissions(ctx.scope, story)
 
     assert {{true, _}, {true, _}} = verdicts(ctx.scope, story)
   end

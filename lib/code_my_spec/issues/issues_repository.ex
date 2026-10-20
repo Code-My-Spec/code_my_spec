@@ -554,17 +554,34 @@ defmodule CodeMySpec.Issues.IssuesRepository do
       {:error, Changeset.change(issue) |> Changeset.add_error(:id, "does not exist")}
   end
 
-  @doc "Most recent inherited fix submission per story, using its immutable submission timestamp."
+  @doc """
+  The inherited fix a story still owes, per story: `{issue_id, submitted_at, open?}`.
+
+  A submission no landing has completed (the issue still `:accepted`) is `open?`
+  and wins whatever its age: its fix is not on main until a promotion completes
+  it, however the story's promotion stamp compares with the day it was submitted
+  (issue 04c1f5c1: two submitted fixes older than their story's stamp read as
+  shipped and nothing was ever offered to complete them). With none open, the
+  latest submission by its immutable timestamp, for the caller to compare with
+  the stamp.
+  """
   def latest_story_submissions(project_id, story_ids) when is_list(story_ids) do
     from(i in Issue,
       where: i.project_id == ^project_id and i.story_id in ^story_ids,
       where: is_nil(i.assigned_working_copy_id) and not is_nil(i.story_submitted_at),
       where: i.status in [:accepted, :resolved],
-      select: {i.story_id, i.id, i.story_submitted_at}
+      select: {i.story_id, i.id, i.story_submitted_at, i.status == :accepted}
     )
     |> Repo.all()
-    |> Enum.group_by(&elem(&1, 0), fn {_story_id, id, at} -> {id, at} end)
-    |> Map.new(fn {story_id, rows} -> {story_id, Enum.max_by(rows, &elem(&1, 1), DateTime)} end)
+    |> Enum.group_by(&elem(&1, 0), fn {_story_id, id, at, open?} -> {id, at, open?} end)
+    |> Map.new(fn {story_id, rows} -> {story_id, owed(rows)} end)
+  end
+
+  defp owed(rows) do
+    case Enum.filter(rows, &elem(&1, 2)) do
+      [] -> Enum.max_by(rows, &elem(&1, 1), DateTime)
+      open -> Enum.max_by(open, &elem(&1, 1), DateTime)
+    end
   end
 
   def list_filtered(%Scope{} = scope, filters) when is_map(filters) do
