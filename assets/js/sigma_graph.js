@@ -146,8 +146,22 @@ export const SigmaGraph = {
   destroyed() {
     if (this.sigma) { this.sigma.kill(); this.sigma = null }
     this.clearLoader()
-    const panel = document.getElementById("graph-debug")
-    if (panel) panel.remove()
+  },
+  mountDebugCopy() {
+    const home = document.getElementById(`${this.el.id}-debug`)
+    if (!home || home.querySelector("[data-graph-debug-copy]")) return
+    const button = document.createElement("button")
+    button.type = "button"
+    button.dataset.graphDebugCopy = ""
+    button.className = "btn btn-ghost btn-xs mt-2 opacity-60"
+    button.textContent = "Copy graph debug"
+    button.addEventListener("click", () => {
+      navigator.clipboard.writeText(this.debugPicked + this.debugBase).then(() => {
+        button.textContent = "Copied"
+        setTimeout(() => { button.textContent = "Copy graph debug" }, 1500)
+      })
+    })
+    home.appendChild(button)
   },
   // `data-focus` names a node to open on: it is drawn larger and the camera
   // moves to it, so a link from the timeline lands on its own requirement.
@@ -301,74 +315,45 @@ export const SigmaGraph = {
         this.el.addEventListener(type, fn, { capture: true, passive: true })
     }
 
-    // Debug panel — themed
-    let debugPanel = document.getElementById("graph-debug")
-    if (!debugPanel) {
-      debugPanel = document.createElement("details")
-      debugPanel.id = "graph-debug"
-      debugPanel.className = "bg-base-200 text-base-content border-t border-base-300"
-      // In the page under the graph when it gives the panel a home, so the
-      // page's one scroll carries it; pinned to the window otherwise.
-      const home = document.getElementById(`${this.el.id}-debug`)
-      debugPanel.style.cssText = home
-        ? "margin-top:8px;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;overflow-x:auto"
-        : "position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;padding:8px 16px;font-family:ui-monospace,monospace;font-size:11px;z-index:9999"
-      debugPanel.innerHTML = `<summary style="cursor:pointer;opacity:0.7;margin-bottom:8px">Graph Debug (${data.nodes.length} nodes, ${data.edges.length} edges)</summary><div id="graph-debug-metrics" style="margin-bottom:8px"></div><pre id="graph-debug-content" style="margin:0"></pre>`
-      ;(document.getElementById(`${this.el.id}-debug`) || document.body).appendChild(debugPanel)
-    }
-    const metricsEl = document.getElementById("graph-debug-metrics")
-    if (metricsEl && this.lastMetrics) {
-      const m = this.lastMetrics
-      const total = Object.entries(m)
-        .filter(([k]) => k.endsWith("_ms"))
-        .reduce((a, [, v]) => a + v, 0)
-      const rows = Object.entries(m)
-        .map(([k, v]) => `  ${k.padEnd(22)} ${v}${k.endsWith("_ms") ? "ms" : ""}`)
-        .join("\n")
-      metricsEl.innerHTML = `<pre style="margin:0;color:inherit">METRICS (total ${total}ms):\n${rows}</pre>`
-    }
-    const debugContent = document.getElementById("graph-debug-content")
+    // Graph debug: kept for pasting into a bug report, never shown. A copy
+    // button sits where the page gives it a home (`<id>-debug`); the text is
+    // the metrics, every edge and node, and the last node or edge clicked.
+    const metrics = this.lastMetrics
+      ? (() => {
+          const m = this.lastMetrics
+          const total = Object.entries(m)
+            .filter(([k]) => k.endsWith("_ms"))
+            .reduce((a, [, v]) => a + v, 0)
+          const rows = Object.entries(m)
+            .map(([k, v]) => `  ${k.padEnd(22)} ${v}${k.endsWith("_ms") ? "ms" : ""}`)
+            .join("\n")
+          return `METRICS (total ${total}ms):\n${rows}\n\n`
+        })()
+      : ""
     const edgeList = data.edges.map(e => `${e.source}  →  ${e.target}`).join("\n")
-    debugContent.textContent = `EDGES:\n${edgeList}\n\nNODES:\n${data.nodes.map(n => `${n.key}  (${n.attributes.label})`).join("\n")}`
+    const nodeList = data.nodes.map(n => `${n.key}  (${n.attributes.label})`).join("\n")
+    this.debugBase = `${metrics}EDGES:\n${edgeList}\n\nNODES:\n${nodeList}`
+    this.debugPicked = ""
+    this.mountDebugCopy()
 
-    // Click → show node edges
     this.sigma.on("clickNode", ({ node }) => {
       // A page that shows a node's detail names where to say which was picked.
       const target = this.el.dataset.selectTarget
       if (target) this.pushEventTo(target, "select_node", { key: node })
       const attrs = graph.getNodeAttributes(node)
-      const inEdges = []
-      const outEdges = []
-
-      graph.forEachEdge((edge, edgeAttrs, source, target) => {
-        if (target === node) inEdges.push({ edge, from: source })
-        if (source === node) outEdges.push({ edge, to: target })
+      const ins = []
+      const outs = []
+      graph.forEachEdge((_edge, _attrs, source, to) => {
+        if (to === node) ins.push(`  ← ${source}`)
+        if (source === node) outs.push(`  → ${to}`)
       })
-
-      const panel = document.getElementById("graph-debug")
-      if (!panel) return
-      panel.open = true
-      const inHtml = inEdges.map(e => `  ← ${e.from}`).join("\n")
-      const outHtml = outEdges.map(e => `  → ${e.to}`).join("\n")
-      const content = document.getElementById("graph-debug-content")
-      content.innerHTML = `<strong>${node}</strong>  (${attrs.label || ""})
-<span style="color:${t.primary}">IN (${inEdges.length}):</span>
-${inHtml || "  (none)"}
-<span style="color:${t.success}">OUT (${outEdges.length}):</span>
-${outHtml || "  (none)"}`
+      this.debugPicked =
+        `PICKED: ${node}  (${attrs.label || ""})\nIN (${ins.length}):\n${ins.join("\n") || "  (none)"}\n` +
+        `OUT (${outs.length}):\n${outs.join("\n") || "  (none)"}\n\n`
     })
 
     this.sigma.on("clickEdge", ({ edge }) => {
-      const source = graph.source(edge)
-      const target = graph.target(edge)
-      const sourceLabel = graph.getNodeAttributes(source).label || source
-      const targetLabel = graph.getNodeAttributes(target).label || target
-
-      const panel = document.getElementById("graph-debug")
-      if (!panel) return
-      panel.open = true
-      const content = document.getElementById("graph-debug-content")
-      content.textContent = `EDGE: ${edge}\n\n  FROM: ${source}\n        (${sourceLabel})\n\n  TO:   ${target}\n        (${targetLabel})`
+      this.debugPicked = `PICKED EDGE: ${edge}\n  FROM: ${graph.source(edge)}\n  TO:   ${graph.target(edge)}\n\n`
     })
 
     this.sigma.on("enterNode", () => { container.style.cursor = "pointer" })

@@ -81,7 +81,8 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
             target={@target}
           />
         </div>
-        <div class="flex justify-end">
+        <div class="flex items-center justify-between">
+          <div id="timeline-graph-debug"></div>
           <.link navigate={@href} data-test="graph-modal-open" class="btn btn-sm btn-ghost">
             Full page <.icon name="hero-arrow-top-right-on-square" class="size-4" />
           </.link>
