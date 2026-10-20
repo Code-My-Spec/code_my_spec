@@ -759,7 +759,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # the chart's stories in its order.
   def handle_event("show_chart_story", %{"number" => number}, socket) do
     stories = chart_stories(socket)
-    {:noreply, assign(socket, :assigned_modal, chart_story(socket, stories, number))}
+
+    {:noreply,
+     socket
+     |> assign(:graph_modal, nil)
+     |> assign(:assigned_modal, chart_story(socket, stories, number))}
   end
 
   def handle_event("slide_chart_story", %{"index" => index}, socket) do
@@ -1759,6 +1763,38 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # -- Render -----------------------------------------------------------------
 
+  attr :story, :map, required: true
+  attr :view, :atom, required: true, values: [:text, :graph]
+
+  # Flips the chart's story between its text and its requirements graph,
+  # keeping the slider's place.
+  defp story_view_switch(assigns) do
+    ~H"""
+    <div class="join" data-test="story-view-switch">
+      <button
+        type="button"
+        phx-click={@view != :text && "show_chart_story"}
+        phx-value-number={@story.number}
+        data-test="story-view-text"
+        class={["btn btn-xs join-item", @view == :text && "btn-active"]}
+      >
+        Story
+      </button>
+      <button
+        type="button"
+        phx-click={@view != :graph && "show_story_graph"}
+        phx-value-story-id={@story.id}
+        phx-value-copy-id={@story.working_copy_id}
+        phx-value-from="chart"
+        data-test="story-view-graph"
+        class={["btn btn-xs join-item", @view == :graph && "btn-active"]}
+      >
+        Graph
+      </button>
+    </div>
+    """
+  end
+
   attr :item, :map, required: true
 
   # The story or issue an agent holds, over the cockpit.
@@ -1782,12 +1818,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
+        <.story_view_switch :if={@item[:slider]} story={@item.story} view={:text} />
         <form
           :if={@item[:slider]}
           id="chart-story-slider"
           phx-change="slide_chart_story"
           data-test="chart-story-slider"
-          class="mb-3 flex items-center gap-3 pr-8"
+          class="my-3 flex items-center gap-3 pr-8"
         >
           <input
             type="range"
@@ -1808,18 +1845,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           <.assigned_body item={@item} />
         </div>
         <div class="modal-action">
-          <button
-            :if={@item[:slider]}
-            type="button"
-            phx-click="show_story_graph"
-            phx-value-story-id={@item.story.id}
-            phx-value-copy-id={@item.story.working_copy_id}
-            phx-value-from="chart"
-            data-test="chart-story-graph"
-            class="btn btn-sm btn-ghost"
-          >
-            <.icon name="hero-share" class="size-4" /> Graph
-          </button>
           <.link navigate={@item.path} class="btn btn-sm btn-ghost">
             View full {if @item.kind == :issue, do: "issue", else: "story"}
             <.icon name="hero-arrow-top-right-on-square" class="size-4" />
@@ -1920,6 +1945,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         <p data-test="story-graph-description" class="line-clamp-2 min-h-10 text-sm opacity-70">
           {@modal.story.description}
         </p>
+        <.story_view_switch :if={@modal[:slider]} story={@modal.story} view={:graph} />
         <form
           :if={@modal[:slider]}
           id="story-graph-slider"

@@ -181,7 +181,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <%!-- Where it stands, counted. --%>
         <ul class="timeline-more order-4 flex basis-full flex-wrap items-center gap-x-3 gap-y-1 max-sm:hidden sm:order-none sm:basis-auto sm:flex-nowrap">
           <li data-test="timeline-band" data-band="story-counts">
-            <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
+            <.labelled label="Stories">
+              <.story_counts counts={@bands.story_counts} first={List.first(@bands.stories)} />
+            </.labelled>
           </li>
           <li data-test="timeline-band" data-band="components">
             <.labelled label="Impl">
@@ -271,9 +273,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
-  # A column opens that story in the cockpit's story modal
-  # (`show_chart_story`), with a slider through the stories in this order and
-  # the way to its requirements graph.
+  # A column opens that story's requirements graph in the cockpit
+  # (`show_story_graph`), with a slider through the stories in this order and a
+  # switch to the story's text.
   defp story_chart(assigns) do
     ~H"""
     <div
@@ -293,8 +295,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           data-test="story-column"
           data-story-id={story.id}
           title={story_title(story)}
-          phx-click="show_chart_story"
-          phx-value-number={story.number}
+          phx-click="show_story_graph"
+          phx-value-story-id={story.id}
+          phx-value-copy-id={story.working_copy_id}
+          phx-value-from="chart"
           class="flex min-w-0 flex-1 cursor-pointer flex-col-reverse transition-opacity group-hover:opacity-50 hover:opacity-100!"
         >
           <span
@@ -332,6 +336,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
 
   attr(:counts, :map, required: true)
+  attr(:first, :map, default: nil, doc: "the chart's first story, which a tap opens")
 
   # The stories the chart leaves out: done (promoted), backlog (not yet ready
   # for development), retired.
@@ -344,7 +349,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       )
 
     ~H"""
-    <span
+    <button
+      type="button"
+      phx-click={@first && "show_chart_story"}
+      phx-value-number={@first && @first.number}
       data-test="story-counts"
       data-done={@counts.done}
       data-backlog={@counts.backlog}
@@ -358,7 +366,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       <span class="opacity-50">{@counts.backlog}</span>
       <span class="opacity-30">/</span>
       <span class="opacity-30">{@counts.retired}</span>
-    </span>
+    </button>
     """
   end
 
