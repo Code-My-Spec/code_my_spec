@@ -126,6 +126,13 @@ defmodule CodeMySpec.Notifications.ADuplicateQuestionIsReusedInsteadOfAskedAgain
     assert second.status == "answered"
     assert second.answers == %{"Which refund window applies?" => "30 days"}
     assert length(requests_for_story(ctx.story.id)) == 1
+
+    [blocked] = Repo.reload!(second_asker).tasks
+    assert blocked.status == :blocked
+    assert blocked.blocker_id == first.id
+
+    refute is_nil(blocked.blocker_resolved_at),
+           "reusing an answered question must release the new task's blocker"
   end
 
   test "a different question on the same story is not deduped", ctx do

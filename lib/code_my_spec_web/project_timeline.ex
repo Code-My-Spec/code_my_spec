@@ -1,315 +1,511 @@
 defmodule CodeMySpecWeb.ProjectTimeline do
   @moduledoc """
-  Where a project stands, across the top of its pages.
+  Where a project stands, across the top of the main agent's conversation, in
+  the five bands its graph runs through (`Requirements.Bands`):
 
-  The steps are the project's own requirements — John's call, and the reason it
-  can be a line at all. A project graph is a sequence: you cannot triage
-  problems that do not exist yet. The story work is not a sequence, and the
-  screen this replaces got that wrong.
+      ● ● ● ●  [stories ▓▓▒░░]  [components ████░ 62%]  [stories ▓▒░░░]  ● ○
 
-  > "What it got wrong was trying to represent the non-linear story work in a
-  > linear process."
+  Each band at the grain its work has. The project gates either end are
+  serial, so each is a mark of its own. Story work is parallel, so it is a
+  count — done, partial, open issues, not started — not a mark per story. The
+  components are a DAG with no useful order to draw on one line, so they are a
+  continuous bar.
 
-  So all of the story work is one step, however many stories are behind it, and
-  the per-story detail stays on the page built to show it.
+  A LiveComponent because the bands are read from the database: once on mount
+  and again when the parent forwards a graph update
+  (`send_update(ProjectTimeline, id: "project-timeline", refresh: true)`), never
+  on every render.
 
-  ## Thirteen steps and "a handful"
-
-  Both, by zoom rather than by cutting. Every requirement is on the line; the
-  phase the project is in is expanded and the phases either side are collapsed
-  to a mark each. A shorter list would read more easily and could not answer a
-  question about a step it left out.
-
-  ## Why a component and not a page
-
-  A page you have to navigate to is a page somebody has to know exists, and
-  knowing which of eleven project pages answers "how is it going" is the problem
-  this removes. On a page of its own it would be the twelfth.
+  The graph opens in a modal (`RequirementGraphComponents.modal/1`) from the
+  button at the end, or from a gate with that gate selected; it is computed off
+  the LiveView process, only when asked for.
   """
 
-  use CodeMySpecWeb, :html
+  use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.Architecture.BoundaryGraph
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Bands
+  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.PlainLanguage
+  alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpecWeb.RequirementGraphComponents
 
   @doc """
-  The timeline for a project, or nothing at all.
-
-  Nothing when there is no project in scope — every page this rides has one, but
-  the layout renders before that is guaranteed and a crash in a header takes
-  every page with it.
+  The timeline for a project, or nothing at all when there is none in scope.
   """
-  attr :scope, :map, required: true
-  attr :project, :any, default: nil
+  attr(:scope, :map, required: true)
+  attr(:project, :any, default: nil)
+  attr(:variant, :atom, default: :strip, values: [:strip, :header])
 
   def project_timeline(assigns) do
-    assigns = assign(assigns, :steps, steps_for(assigns[:project], assigns.scope))
+    ~H"""
+    <.live_component
+      :if={@project && @project.id}
+      module={__MODULE__}
+      id="project-timeline"
+      scope={@scope}
+      project={@project}
+      variant={@variant}
+    />
+    """
+  end
+
+  @impl true
+  def update(assigns, socket) do
+    {refresh?, assigns} = Map.pop(assigns, :refresh, false)
+    socket = assign(socket, assigns)
+
+    socket =
+      socket
+      |> assign_new(:graph_modal, fn -> nil end)
+      |> assign_new(:selected, fn -> nil end)
+      |> assign_new(:detail, fn -> %{} end)
+
+    if refresh? or not Map.has_key?(socket.assigns, :bands),
+      do:
+        {:ok,
+         assign(socket,
+           bands: Bands.read(socket.assigns.scope),
+           architecture: BoundaryGraph.build(socket.assigns.scope).summary
+         )},
+      else: {:ok, socket}
+  end
+
+  # Off the LiveView process, and only when asked for: the projected graph and
+  # every requirement, keyed as the graph keys its nodes.
+  @impl true
+  def handle_event("open_graph", params, socket) do
+    scope = socket.assigns.scope
+    project = socket.assigns.project
+
+    {:noreply,
+     socket
+     |> assign(graph_modal: :loading, selected: focus_key(project, params["focus"]))
+     |> start_async(:graph, fn -> load_graph(scope) end)}
+  end
+
+  def handle_event("select_node", %{"key" => key}, socket),
+    do: {:noreply, socket |> assign(:selected, key) |> with_detail()}
+
+  def handle_event("close_graph", _params, socket),
+    do: {:noreply, assign(socket, graph_modal: nil, selected: nil)}
+
+  @impl true
+  def handle_async(:graph, {:ok, graph}, %{assigns: %{graph_modal: :loading}} = socket),
+    do: {:noreply, socket |> assign(:graph_modal, graph) |> with_detail()}
+
+  def handle_async(:graph, {:exit, _reason}, %{assigns: %{graph_modal: :loading}} = socket),
+    do: {:noreply, assign(socket, :graph_modal, :error)}
+
+  def handle_async(:graph, _result, socket), do: {:noreply, socket}
+
+  defp with_detail(%{assigns: %{graph_modal: %{requirements: reqs}, selected: key}} = socket)
+       when is_binary(key) do
+    case reqs[key] do
+      nil ->
+        assign(socket, :detail, %{})
+
+      node ->
+        assign(socket, :detail, RequirementGraphComponents.detail(socket.assigns.scope, node))
+    end
+  end
+
+  defp with_detail(socket), do: assign(socket, :detail, %{})
+
+  defp load_graph(scope) do
+    {data, _metrics} = GraphProjector.project_graph_with_metrics(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
+    %{data: data, requirements: Map.new(nodes, &{GraphProjector.key(&1), &1})}
+  end
+
+  defp focus_key(_project, nil), do: nil
+  defp focus_key(project, name), do: "project_#{String.replace(project.id, "-", "")}_#{name}"
+
+  @impl true
+  def render(assigns) do
+    {early, late} = gates(assigns.bands)
+    graph = ~p"/app/projects/#{assigns.project.id}/requirements/graph"
+    assigns = assign(assigns, early: early, late: late, graph: graph)
 
     ~H"""
     <nav
-      :if={@steps != []}
+      id={@id}
       data-test="project-timeline"
       aria-label="Where this project stands"
-      class="border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
+      class={[
+        "w-full",
+        @variant == :strip && "border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
+      ]}
     >
-      <%!-- Five phases and thirteen steps, legible at 390px without scrolling.
-      What did not fit was the words: every phase printed its name, so BUILDING,
-      CHECKING and PROVING fell off the right-hand edge of a phone with no
-      scrollbar to say they were there — a strip that looks complete and does
-      not contain your own phase.
-
-      So the names went and the shapes stayed. A phase you are not in is one
-      pie: how much of it is done, readable without reading. The phase you are
-      in is its steps instead — dots, with the one you are on as a pill carrying
-      its short name. Aggregate where you are not, itemise where you are; a pie
-      beside its own dots is the same fact twice at lower resolution.
-
-      One colour language throughout: green is done, primary is where you are,
-      grey is not yet. Done and not-yet used to both be grey, which made a
-      finished phase and an untouched one identical.
-
-      Everything on the line is 16px tall, and the pill's font is chosen to fit
-      that rather than the height falling out of the font. --%>
-      <ol class="flex flex-wrap items-center gap-x-4 gap-y-1">
-        <li
-          :for={phase <- @steps}
-          data-test="timeline-phase"
-          data-phase={phase.key}
-          data-expanded={to_string(phase.expanded?)}
-          class={[
-            "flex shrink-0 items-center gap-1.5",
-            phase_complete?(phase) && "text-success",
-            not phase_complete?(phase) && "text-base-content/30"
-          ]}
+      <%!-- From sm up, a grid, so the stories chart always keeps a track of its
+      own: gates, the chart taking what is left, gates, then the counts. On a
+      phone it flows instead: both gate groups on one line, the chart across
+      the full width, then the counts wrapping as they need. --%>
+      <div class="flex w-full flex-wrap items-center gap-x-3 gap-y-2 sm:grid sm:grid-cols-[auto_minmax(6rem,1fr)_auto_auto]">
+        <div
+          data-test="timeline-band"
+          data-band="early"
+          class="order-1 flex shrink-0 flex-nowrap items-center gap-1 sm:order-none"
         >
-          <%!-- The pie is the phase's visible mark and its way in. Hovering
-          names it and says how far through it is, which is what the phase name
-          used to cost a line of text to say. --%>
-          <.link
-            navigate={phase_path(phase)}
-            title={"#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done"}
-            data-tip={phase_tip(phase)}
-            class={[
-              "flex shrink-0 items-center gap-1",
-              phase_tip(phase) && "tooltip tooltip-bottom"
-            ]}
-          >
-            <%!-- No pie on the phase you are in. Its dots already say which
-            steps are done and which one you are on, one mark per step, so a pie
-            beside them is the same fact drawn twice and the less precise of the
-            two. A phase is a pie *or* its dots — aggregate where you are not,
-            itemise where you are. --%>
-            <span
-              :if={not phase.expanded?}
-              data-test="phase-pie"
-              data-done={phase_done(phase)}
-              data-total={length(phase.steps)}
-              style={pie_style(phase)}
-              class={[
-                "size-4 shrink-0 rounded-full ring-1",
-                phase_complete?(phase) && "ring-success/60",
-                not phase_complete?(phase) && "ring-base-content/25"
-              ]}
+          <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
+        </div>
+        <div
+          data-test="timeline-band"
+          data-band="stories"
+          class="order-3 min-w-0 basis-full sm:order-none sm:basis-auto"
+        >
+          <.story_chart stories={@bands.stories} />
+        </div>
+        <div
+          data-test="timeline-band"
+          data-band="late"
+          class="order-2 flex shrink-0 flex-nowrap items-center gap-1 sm:order-none"
+        >
+          <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
+        </div>
+        <%!-- Where it stands, counted. --%>
+        <ul class="order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:basis-auto sm:flex-nowrap">
+          <li data-test="timeline-band" data-band="story-counts">
+            <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="components">
+            <.labelled label="Impl">
+              <.component_bar counts={@bands.components} target={@myself} />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="architecture">
+            <.labelled label="Arch">
+              <.architecture_mark summary={@architecture} project={@project} />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="issues">
+            <.labelled label="Issues">
+              <.issue_bar counts={@bands.issues} target={@myself} />
+            </.labelled>
+          </li>
+          <li>
+            <button
+              type="button"
+              phx-click="open_graph"
+              phx-target={@myself}
+              data-test="open-graph"
+              title="Open the requirements graph"
+              aria-label="Open the requirements graph"
+              class="btn btn-ghost btn-xs btn-square"
             >
-            </span>
-
-            <span class="sr-only">{phase.label}</span>
-          </.link>
-
-          <%!-- Dots are drawn only for the phase you are in. A collapsed phase
-          is its pie, which already carries how many steps it holds and how many
-          are done — aggregating, not cutting, which is why a pie can still
-          answer a question about a step while a shortened list cannot.
-
-          Every step keeps its link either way. Drawing nothing is a visual
-          decision and must not become an unreachable one: a step outside the
-          current phase is still a way in rather than a dead end, still named,
-          and still keyboard-reachable. What changes is whether it takes space. --%>
-          <span
-            :for={step <- phase.steps}
-            data-test="timeline-step"
-            data-step={step.name}
-            data-state={step.state}
-            class={[not phase.expanded? && "sr-only"]}
-          >
-            <.link
-              navigate={step.path}
-              title={step.title}
-              class={[
-                "flex h-4 items-center",
-                phase.expanded? and step.detail not in [nil, ""] and "tooltip tooltip-bottom"
-              ]}
-              data-tip={phase.expanded? && step.detail}
-            >
-              <%!-- The step you are on is a pill with its short name inside;
-              the rest of the phase is dots. That is the one place the strip
-              spends words, and it spends them on the only thing a glance is
-              looking for. The phase name is gone entirely — "DESIGN" beside a
-              pill reading "arch" is the same fact at lower resolution. --%>
-              <%!-- `h-4` and `leading-none`, matching the pies exactly. Sized
-              by its text the pill came out a pixel or two taller than a
-              `size-4` pie, which is enough to make the row look like it is
-              sagging where the pill sits. Everything on the strip is 16px tall
-              and the font is chosen to fit that, rather than the other way
-              round. --%>
-              <span
-                :if={step.state == "current"}
-                data-test="current-step"
-                class="flex h-4 items-center rounded-full bg-primary px-1.5 text-[0.6rem] font-semibold uppercase leading-none tracking-wide text-primary-content"
-              >
-                {step.abbrev}
-              </span>
-
-              <span
-                :if={step.state != "current"}
-                class={[
-                  "block size-2 rounded-full",
-                  step.state == "done" && "bg-success",
-                  step.state == "todo" && "bg-base-content/20"
-                ]}
-              >
-              </span>
-              <span class="sr-only">{step.title}</span>
-            </.link>
-          </span>
-        </li>
-      </ol>
-
-      <%!-- Nothing under the strip. The two explanatory sentences went first,
-      then the step's title — the pill already names the step, and a line
-      repeating it in full is a third telling of one fact. The full name is on
-      the pill's own link for hover and assistive text.
-
-      Criterion 2927, which held the sentences to plain language, is retired
-      with them: there is no prose left for it to govern. --%>
+              <.icon name="hero-share" class="size-4" />
+            </button>
+          </li>
+        </ul>
+      </div>
+      <RequirementGraphComponents.modal
+        :if={@graph_modal}
+        graph={@graph_modal}
+        selected={@selected}
+        detail={@detail}
+        href={@graph}
+        target={@myself}
+        target_selector={"##{@id}"}
+      />
     </nav>
     """
   end
 
-  defp phase_done(phase), do: Enum.count(phase.steps, &(&1.state == "done"))
+  attr(:step, :map, required: true)
+  attr(:tip, :string, required: true, doc: "which way the tooltip opens, away from the edge")
+  attr(:target, :any, required: true)
 
-  defp phase_complete?(phase),
-    do: phase.steps != [] and phase_done(phase) == length(phase.steps)
-
-  # Where clicking a phase goes: the step it is on, or its first if it has not
-  # started. A pie that names a phase on hover and does nothing on click is an
-  # affordance that lies.
-  defp phase_path(phase) do
-    current = Enum.find(phase.steps, &(&1.state == "current"))
-    (current || hd(phase.steps)).path
+  # A project gate: a dot, or the pill naming it when it is the one the project
+  # is on. Exactly one gate is current, always — an idle project is the
+  # ordinary overnight state, and a strip marking nothing then reads as broken.
+  defp gate(assigns) do
+    ~H"""
+    <span data-test="timeline-step" data-step={@step.name} data-state={@step.state}>
+      <.link
+        phx-click="open_graph"
+        phx-value-focus={@step.name}
+        phx-target={@target}
+        data-tip={@step.title}
+        class={["tooltip flex h-4 items-center", @tip]}
+      >
+        <span
+          :if={@step.state == "current"}
+          data-test="current-step"
+          class="flex h-4 items-center rounded-full bg-primary px-1.5 text-[0.6rem] font-semibold uppercase leading-none tracking-wide text-primary-content"
+        >
+          {@step.abbrev}
+        </span>
+        <span
+          :if={@step.state != "current"}
+          class={[
+            "block size-2 rounded-full",
+            @step.state == "done" && "bg-success",
+            @step.state == "todo" && "bg-base-content/20"
+          ]}
+        ></span>
+        <span class="sr-only">{@step.title}</span>
+      </.link>
+    </span>
+    """
   end
 
-  # A phase as a wedge. `currentColor` so the pie takes the phase's own colour —
-  # primary for the one you are in, muted for the rest — and the ring around it
-  # draws the whole, so an empty phase still reads as a phase rather than as
-  # nothing.
-  defp pie_style(phase) do
-    total = length(phase.steps)
-    done = phase_done(phase)
-    pct = if total == 0, do: 0, else: round(done / total * 100)
+  attr(:stories, :list, required: true)
 
-    "background: conic-gradient(currentColor #{pct}%, transparent 0)"
+  # Every story in progress, one thin column each, furthest along first. A column is the
+  # story's steps stacked from the bottom: done (green), the one it is on
+  # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
+  # right like a stacked line, and the shape says how far along the stories
+  # are as a body of work.
+  # A column opens that story's requirements graph in the cockpit's story
+  # graph modal (`show_story_graph`), with a slider through the stories in this
+  # order.
+  defp story_chart(assigns) do
+    ~H"""
+    <div
+      data-test="story-chart"
+      data-stories={length(@stories)}
+      aria-label={"#{length(@stories)} stories, by how far each has got"}
+      class="tooltip tooltip-bottom block w-full"
+    >
+      <span data-test="story-legend" class="tooltip-content text-left text-xs">
+        <span :for={{label, class} <- legend()} class="flex items-center gap-1.5">
+          <span class={["size-2 rounded-sm", class]}></span>{label}
+        </span>
+      </span>
+      <span class="group flex h-7 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
+        <span
+          :for={story <- @stories}
+          data-test="story-column"
+          data-story-id={story.id}
+          title={story_title(story)}
+          phx-click="show_story_graph"
+          phx-value-story-id={story.id}
+          phx-value-copy-id={story.working_copy_id}
+          phx-value-from="chart"
+          class="flex min-w-0 flex-1 cursor-pointer flex-col-reverse transition-opacity group-hover:opacity-50 hover:opacity-100!"
+        >
+          <span
+            :for={{key, class} <- step_segments()}
+            :if={story[key] > 0}
+            class={["w-full shrink-0", class]}
+            style={"height: #{story[key] / max(step_total(story), 1) * 100}%"}
+          ></span>
+        </span>
+      </span>
+    </div>
+    """
   end
 
-  defp steps_for(nil, _scope), do: []
+  defp legend,
+    do: [
+      {"Steps done", "bg-success"},
+      {"Working on", "bg-warning"},
+      {"Held by open issues", "bg-error"},
+      {"Not reached yet", "bg-base-content/25"}
+    ]
 
-  # A project that has not been saved yet. The new-project form renders this
-  # layout with an empty `%Project{}` — truthy, so a presence check passes — and
-  # every step would then build a path from a nil id. There is nothing to draw:
-  # no requirements have been computed and no page exists to link to.
-  defp steps_for(%{id: nil}, _scope), do: []
+  # Not-started steps on top in grey, so every column is the story's full height.
+  defp step_segments,
+    do: [
+      done: "bg-success",
+      working: "bg-warning",
+      issues: "bg-error",
+      none: "bg-base-content/25"
+    ]
 
-  defp steps_for(project, scope) do
-    satisfied = satisfied_names(scope)
-    current = current_step(satisfied)
+  defp step_total(story), do: story.done + story.working + story.issues + story.none
 
-    PlainLanguage.phases()
-    |> Enum.map(fn {key, label} ->
-      steps = steps_in_phase(key, project, satisfied, current)
+  defp story_title(story),
+    do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
 
-      %{
-        key: key,
-        label: label,
-        steps: steps,
-        expanded?: Enum.any?(steps, &(&1.state == "current"))
-      }
-    end)
-    |> Enum.reject(&(&1.steps == []))
+  attr(:counts, :map, required: true)
+
+  # The stories the chart leaves out: done (promoted), backlog (not yet ready
+  # for development), retired.
+  defp story_counts(assigns) do
+    assigns =
+      assign(assigns,
+        tip:
+          "Stories: #{assigns.counts.done} done · #{assigns.counts.backlog} in the backlog · " <>
+            "#{assigns.counts.retired} retired"
+      )
+
+    ~H"""
+    <span
+      data-test="story-counts"
+      data-done={@counts.done}
+      data-backlog={@counts.backlog}
+      data-retired={@counts.retired}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums"
+    >
+      <span class="text-success">{@counts.done}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@counts.backlog}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-30">{@counts.retired}</span>
+    </span>
+    """
   end
 
-  # Progress and meaning in one string, because they are one hover.
-  #
-  # `nil` when the phase has no description, which collapses the tooltip classes
-  # away rather than opening an empty bubble — the same choice
-  # `PlainLanguage.fetch/1` makes for a step.
-  defp phase_tip(phase) do
-    case PlainLanguage.phase_detail(phase.key) do
-      nil -> nil
-      detail -> "#{phase.label} — #{phase_done(phase)} of #{length(phase.steps)} done. #{detail}"
-    end
+  attr(:label, :string, required: true)
+  slot(:inner_block, required: true)
+
+  # A small heading over a group of counts, so neighbouring numbers do not read
+  # as one row.
+  defp labelled(assigns) do
+    ~H"""
+    <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
+      <span class="text-xs font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+        {@label}
+      </span>
+      {render_slot(@inner_block)}
+    </span>
+    """
   end
 
-  defp steps_in_phase(key, project, satisfied, current) do
-    for name <- PlainLanguage.order(),
-        meaning = PlainLanguage.fetch(name),
-        meaning.phase == key do
-      %{
-        name: name,
-        title: meaning.title,
-        abbrev: meaning.abbrev,
-        detail: meaning.detail,
-        state: state_of(name, satisfied, current),
-        path: path_for(name, project)
-      }
-    end
+  attr(:summary, :map, required: true)
+  attr(:project, :map, required: true)
+
+  # The architecture's health from `BoundaryGraph`: how many boundary cycles
+  # (red when any) and how deep the longest chain of boundaries runs.
+  defp architecture_mark(assigns) do
+    cycles = length(assigns.summary.cycles)
+    chain = Enum.join(assigns.summary.longest_chain, " → ")
+
+    assigns =
+      assign(assigns,
+        cycles: cycles,
+        tip:
+          "Architecture: #{cycles} #{if cycles == 1, do: "cycle", else: "cycles"} · " <>
+            "#{assigns.summary.depth} deep" <> if(chain != "", do: " (#{chain})", else: "")
+      )
+
+    ~H"""
+    <.link
+      navigate={~p"/app/projects/#{@project.id}/architecture"}
+      data-test="architecture-mark"
+      data-cycles={@cycles}
+      data-depth={@summary.depth}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-left flex items-center gap-2 font-mono text-xs tabular-nums"
+    >
+      <span class={[
+        "flex items-center gap-0.5",
+        if(@cycles > 0, do: "text-error", else: "opacity-50")
+      ]}>
+        <.icon name="hero-arrow-path" class="size-3" />{@cycles}
+      </span>
+      <span data-test="architecture-depth" class="flex items-center gap-0.5 opacity-60">
+        <.icon name="hero-list-bullet" class="size-3" />{@summary.depth}
+      </span>
+    </.link>
+    """
   end
 
-  # Exactly one step is current, always.
-  #
-  # The first unsatisfied step in the order, and the last step when everything
-  # is satisfied. Never none: an idle project is the ordinary overnight state,
-  # and a timeline that marks nothing then is indistinguishable from one that
-  # failed to load.
-  defp current_step(satisfied) do
-    Enum.find(PlainLanguage.order(), List.last(PlainLanguage.order()), &(&1 not in satisfied))
+  attr(:counts, :map, required: true)
+  attr(:target, :any, required: true)
+
+  # Issues as three counts, closed to open: resolved (green), dismissed
+  # (grey), open (red).
+  defp issue_bar(assigns) do
+    %{resolved: resolved, dismissed: dismissed, open: open} = assigns.counts
+
+    assigns =
+      assign(assigns,
+        resolved: resolved,
+        dismissed: dismissed,
+        open: open,
+        tip: "Issues: #{resolved} resolved · #{dismissed} dismissed · #{open} open"
+      )
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="open_graph"
+      phx-target={@target}
+      data-test="issue-bar"
+      data-resolved={@resolved}
+      data-dismissed={@dismissed}
+      data-open={@open}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+    >
+      <span class="text-success">{@resolved}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@dismissed}</span>
+      <span class="opacity-30">/</span>
+      <span class={if @open > 0, do: "text-error", else: "opacity-50"}>{@open}</span>
+    </button>
+    """
   end
 
-  defp state_of(name, _satisfied, current) when name == current, do: "current"
-  defp state_of(name, satisfied, _current), do: if(name in satisfied, do: "done", else: "todo")
+  attr(:counts, :map, required: true)
+  attr(:target, :any, required: true)
 
-  # Which of the project's own requirements are met. An empty list when the
-  # graph cannot answer — a timeline that shows everything as not-started is
-  # wrong in a way somebody can see, which beats a page that will not render.
-  #
-  # `cached_all/1`, not `project_graph/1`. This is a `:html` function
-  # component, called fresh on every render of every page that carries it —
-  # and `AgentConversationLive.Show` carries it on the one page that
-  # re-renders on every turn a busy main agent takes. `project_graph/1`
-  # always recomputes: 37 seconds against a 22k-component project, measured
-  # on this project, on a LiveView process that cannot do anything else
-  # while it runs — which is what "the page never finishes loading and then
-  # restarts" actually was. `cached_all/1` is the same nodes off the
-  # fingerprinted read model — a hit skips node/edge computation entirely,
-  # and a miss recomputes once rather than once per render.
-  defp satisfied_names(scope) do
-    {nodes, _computed_at} = Requirements.cached_all(scope)
+  # Components as three counts: planned and done (green), planned and not done
+  # (grey), and found on disk without being planned (amber).
+  defp component_bar(assigns) do
+    %{done: done, not_done: not_done, unspecified: unspecified} = assigns.counts
 
-    for node <- nodes, node.satisfied, do: node.name
-  rescue
-    _ -> []
+    assigns =
+      assign(assigns,
+        done: done,
+        not_done: not_done,
+        unspecified: unspecified,
+        tip:
+          "Components: #{done} done · #{not_done} not done · #{unspecified} built without being specified"
+      )
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="open_graph"
+      phx-target={@target}
+      data-test="component-bar"
+      data-done={@done}
+      data-not-done={@not_done}
+      data-unspecified={@unspecified}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+    >
+      <span class="text-success">{@done}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@not_done}</span>
+      <span class="opacity-30">/</span>
+      <span class="text-warning">{@unspecified}</span>
+    </button>
+    """
   end
 
-  # The page that already answers for this step, rather than a health page built
-  # for it. Every one of these exists.
-  defp path_for("personas_complete", project), do: ~p"/app/projects/#{project.id}/personas"
-  defp path_for("stories_exist", project), do: ~p"/app/projects/#{project.id}/stories"
-  defp path_for("work_dispatched", project), do: ~p"/app/projects/#{project.id}/stories"
+  # The gates in template order, split where stories join, each with its state.
+  defp gates(bands) do
+    names = Enum.map(RequirementDefinitionData.project_graph(), & &1.name)
+    current = Enum.find(names, List.last(names), &(not MapSet.member?(bands.satisfied, &1)))
 
-  defp path_for("architecture_designed", project),
-    do: ~p"/app/projects/#{project.id}/architecture"
+    names
+    |> Enum.map(&step(&1, bands.satisfied, current))
+    |> Enum.split_with(&(not MapSet.member?(bands.late_names, &1.name)))
+  end
 
-  defp path_for("issues_triaged", project), do: ~p"/app/projects/#{project.id}/issues"
-  defp path_for("issues_resolved", project), do: ~p"/app/projects/#{project.id}/issues"
-  defp path_for("qa_" <> _, project), do: ~p"/app/projects/#{project.id}/qa"
-  defp path_for(_name, project), do: ~p"/app/projects/#{project.id}/requirements"
+  defp step(name, satisfied, current) do
+    meaning = PlainLanguage.fetch(name) || %{}
+
+    %{
+      name: name,
+      title: Map.get(meaning, :title, String.replace(name, "_", " ")),
+      abbrev: Map.get(meaning, :abbrev, name |> String.split("_") |> hd()),
+      state: state_of(name, satisfied, current)
+    }
+  end
+
+  defp state_of(name, _satisfied, name), do: "current"
+
+  defp state_of(name, satisfied, _current),
+    do: if(MapSet.member?(satisfied, name), do: "done", else: "todo")
 end

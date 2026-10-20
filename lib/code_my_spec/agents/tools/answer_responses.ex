@@ -143,6 +143,21 @@ defmodule CodeMySpec.Agents.Tools.AnswerResponses do
           "so only they can settle it."
       )
 
+  def error(:not_recorded) do
+    refuse("""
+    Answer refused: with `basis: \"record\"`, the answer text must name a project
+    record: an issue's title or first eight ID characters, a working copy's
+    root or ID, a ready story without an epic's title, or the first eight ID
+    characters of a resolved Question on the asker's story. The matching
+    reference must be at least eight characters long and appear exactly in
+    the answer text. No matching record was found in this answer.
+
+    The question has been escalated to the user and remains unanswered; the
+    asking agent is still waiting. You can retry with an answer that names
+    the supporting record.
+    """)
+  end
+
   def error(reason), do: refuse("Could not do that: #{inspect(reason)}")
 
   defp refuse(text), do: {:error, text}

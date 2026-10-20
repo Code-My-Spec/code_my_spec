@@ -127,6 +127,15 @@ defmodule CmsHarness.Agents.ProviderTest do
       assert "features.unified_exec=false" in config.config_overrides
     end
 
+    # Issue 199e6ac1: told its sandbox was read-only, a Codex coder refused to
+    # ask for the outer Edit/Write tools at all.
+    test "a codex agent is not told it cannot write" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+
+      assert "include_permissions_instructions=false" in config.config_overrides
+    end
+
     test "a codex agent uses the model it was given" do
       {:ok, opts} = Provider.options("openai-codex", %{}, model: "gpt-5.6-terra")
       {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)

@@ -49,6 +49,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Staffing
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
   @impl true
@@ -123,7 +124,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
          {:ok, counts} <- Staffing.offboard(scope, row.harness) do
       {:noreply,
        socket
-       |> put_flash(:info, offboarded(row, counts))
+       |> put_flash(:info, Copy.offboarded(row, counts))
        |> load()}
     else
       _ ->
@@ -148,39 +149,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
          put_flash(socket, :error, "That copy could not be made the main one. Try again.")}
     end
   end
-
-  # Says what went, in counts. "Offboarded" alone leaves the reader wondering
-  # whether it did anything, and the numbers are the difference between a copy
-  # that was holding the project up and one that was already empty.
-  defp offboarded(row, %{files: files, problems: problems, components: components} = counts) do
-    "Offboarded #{row.label} — #{count(files, "file")}, #{count(problems, "problem")} " <>
-      "and #{count(components, "orphaned component")} removed." <> agents(counts)
-  end
-
-  # What became of the agents, said only when there were any.
-  #
-  # The one that has to be said out loud is the agent that would not stop: the
-  # copy is gone from here and a process may still be running on a machine, and
-  # ending it is the operator's to do because the server could not reach it.
-  # Silence there reads as "everything is over", which is the belief this whole
-  # story exists to stop being wrong.
-  defp agents(%{agents_stopped: 0, agents_left_running: []}), do: ""
-
-  defp agents(%{agents_stopped: stopped, agents_left_running: []}),
-    do: " #{count(stopped, "agent")} stopped."
-
-  defp agents(%{agents_stopped: stopped, agents_left_running: left}) do
-    " #{count(stopped, "agent")} stopped, and #{count(length(left), "agent")} could not be " <>
-      "reached — #{Enum.join(left, ", ")} may still be running on its machine."
-  end
-
-  defp agents(_counts), do: ""
-
-  # Counted nouns agree with their count. A real offboard printed "1 orphaned
-  # components removed", which reads as a template rather than a report of what
-  # just happened to this copy.
-  defp count(1, noun), do: "1 #{noun}"
-  defp count(n, noun), do: "#{n} #{noun}s"
 
   defp load(socket) do
     rows =
@@ -216,187 +184,48 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
         </p>
 
         <ul class="mt-6 space-y-3">
-          <li
-            :for={row <- @rows}
-            data-test="working-copy"
-            data-working-copy-id={row.harness.id}
-            data-root={row.harness.root}
-            class={[
-              "card card-compact",
-              if(row.harness.main,
-                do: "border-2 border-primary bg-primary/5",
-                else: "border border-base-300 bg-base-100"
-              )
-            ]}
-          >
-            <div class="card-body gap-3">
-              <%!-- The star, and nothing else, for the copy that already holds
-              it. It used to be followed by "Your project's main checkout —
-              its agent runs here", which is a sentence explaining a mark that
-              already reads; hover and assistive text still carry the full
-              meaning for anyone who wants it. Every other row gets the same
-              star as a control instead — there was no way to change this
-              short of opening a copy and finding the button on its own page. --%>
-              <div
-                :if={row.harness.main}
-                data-test="main-copy"
-                title="Your project's main checkout — its agent runs here"
-                class="flex items-center gap-2 text-primary"
-              >
-                <.icon name="hero-star-solid" class="size-4" />
-                <span class="sr-only">Your project's main checkout — its agent runs here</span>
-              </div>
-
-              <button
-                :if={not row.harness.main}
-                type="button"
-                phx-click="designate_main"
-                phx-value-id={row.harness.id}
-                data-test="designate-main-copy"
-                class="-ml-2 flex items-center gap-1 self-start text-xs opacity-50 hover:opacity-100"
-              >
-                <.icon name="hero-star" class="size-4" /> Make main
-              </button>
-
-              <div class="flex items-start gap-3">
-                <div class="min-w-0 flex-1">
-                  <%!-- `label` falls back to the raw root when nothing has
-                  named this copy, and a plain CSS `truncate` cuts the *end* of
-                  a string — keeping the part every checkout on this machine
-                  shares (`/Users/…/Documents/github/code_my_spec/…`) and
-                  hiding the one segment that tells two copies apart. Once
-                  named, the path adds nothing a rename didn't already say, so
-                  it is gone rather than kept underneath. --%>
+          <li :for={row <- @rows}>
+            <Copy.facts
+              row={row}
+              class={[
+                "rounded-box p-4",
+                if(row.harness.main,
+                  do: "border-2 border-primary bg-primary/5",
+                  else: "border border-base-300 bg-base-100"
+                )
+              ]}
+            >
+              <:title>
+                <div class="flex items-center gap-2">
+                  <span
+                    :if={row.harness.main}
+                    data-test="main-copy"
+                    title="Your project's main checkout — its agent runs here"
+                    class="flex shrink-0 text-primary"
+                  >
+                    <.icon name="hero-star-solid" class="size-4" />
+                    <span class="sr-only">Your project's main checkout — its agent runs here</span>
+                  </span>
                   <.link
                     navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}"}
                     data-test="open-working-copy"
-                    class="block min-w-0 font-medium link link-hover"
+                    class="min-w-0 flex-1 truncate font-medium link link-hover"
                   >
-                    <span :if={row.harness.label} class="block truncate">
-                      {row.harness.label}
-                    </span>
-                    <.path_tail :if={!row.harness.label} path={row.harness.root} class="font-medium" />
+                    {row.heading}
                   </.link>
-
-                  <%!-- Where this copy's preview answers. Only the copy that has
-                  one shows one, which is the whole of "a worktree does not claim
-                  to be where the preview runs" — nothing here has to say so. --%>
-                  <a
-                    :if={row.harness.preview_url}
-                    data-test="working-copy-preview"
-                    href={row.harness.preview_url}
-                    target="_blank"
-                    rel="noopener"
-                    class="block truncate text-xs link link-hover opacity-60"
+                  <button
+                    :if={not row.harness.main}
+                    type="button"
+                    phx-click="designate_main"
+                    phx-value-id={row.harness.id}
+                    data-test="designate-main-copy"
+                    class="flex shrink-0 items-center gap-1 text-xs opacity-50 hover:opacity-100"
                   >
-                    {URI.parse(row.harness.preview_url).host}
-                  </a>
-
-                  <%!-- Story 1108: this copy's own app, separate from `preview_url`
-                  above — every copy runs one, not only main's. Added for story
-                  1046 (QA runs against a copy's own app before promotion), which
-                  had no surface at all showing whether that app was actually up
-                  or what commit it was serving; a defect in that plumbing read as
-                  a silent hang rather than something visible on this page. --%>
-                  <div
-                    :if={row.harness.app_status}
-                    data-test="working-copy-app-status"
-                    data-app-status={row.harness.app_status}
-                    class={["badge badge-sm mt-1", app_status_badge_class(row.harness.app_status)]}
-                  >
-                    <.icon name={app_status_icon(row.harness.app_status)} class="size-3" />
-                    app {row.harness.app_status}
-                    <span :if={row.harness.app_commit} data-test="working-copy-app-commit">
-                      &nbsp;{String.slice(row.harness.app_commit, 0, 8)}
-                    </span>
-                  </div>
-
-                  <div class="text-xs opacity-60 truncate">
-                    <span
-                      :if={row.device}
-                      data-test="working-copy-device"
-                      data-device-id={row.device.id}
-                    >
-                      on {row.device_name}
-                    </span>
-                    <span :if={is_nil(row.device)} data-test="working-copy-no-device">
-                      no machine — never reported one, or it may be orphaned
-                    </span>
-                  </div>
-
-                  <p
-                    :if={row.missing}
-                    data-test="path-missing-basis"
-                    class="text-xs text-warning/80"
-                  >
-                    Its machine reports nothing at this path. Nothing has been removed —
-                    offboard it when you are sure it is not coming back.
-                  </p>
-
-                  <p
-                    :if={row.other_copies_at_root && row.other_copies_at_root > 0}
-                    data-test="other-copies-at-root"
-                    class="text-xs opacity-60"
-                  >
-                    +{row.other_copies_at_root} other {if row.other_copies_at_root == 1,
-                      do: "checkout",
-                      else: "checkouts"} at this same path
-                  </p>
+                    <.icon name="hero-star" class="size-4" /> Make main
+                  </button>
                 </div>
-
-                <div data-test="liveness" class="shrink-0 text-right">
-                  <%!-- Whether anything is actually serving this checkout, which
-                  is not what the liveness line answers. Liveness reports what
-                  the agents on the copy last said; this reports whether the
-                  copy is being served at all.
-
-                  They come apart exactly where it hurts. A harness adopts a
-                  copy on its first hook request, so a checkout nobody has
-                  opened a session in is served by nothing — and a worktree
-                  created *for an agent* has nobody to open one. On 2026-09-04
-                  a copy sat in that state for over an hour with an agent
-                  assigned to it, and the only thing that ever said so was a
-                  chat message failing to deliver. --%>
-                  <div
-                    :if={not row.served}
-                    data-test="copy-not-ready"
-                    class="badge badge-ghost badge-sm mb-1"
-                  >
-                    <.icon name="hero-signal-slash" class="size-3" /> Not being served
-                  </div>
-                  <span :if={row.served} data-test="copy-ready" class="sr-only">served</span>
-                  <div
-                    :if={row.missing}
-                    data-test="path-missing"
-                    class="badge badge-warning badge-sm mb-1"
-                  >
-                    <.icon name="hero-exclamation-triangle" class="size-3" /> Checkout gone
-                    <span :if={row.missing.since} data-test="path-missing-since">
-                      &nbsp;{row.missing.since}
-                    </span>
-                  </div>
-                  <div class="text-sm">
-                    {row.liveness.label}
-                    <span :if={row.liveness.since} data-test="liveness-since" class="opacity-70">
-                      {row.liveness.since}
-                    </span>
-                  </div>
-                  <div data-test="liveness-basis" class="text-xs opacity-60">
-                    {row.liveness.basis}
-                  </div>
-                </div>
-              </div>
-
-              <%!-- Individual agent chips used to sit here, one per lane —
-              redundant with the liveness line above it, which already says
-              how many agents and what they are doing ("2 agents present on
-              the harness channel"). Per-agent detail belongs to Show, where
-              each lane gets its own row. --%>
-              <div :if={row.last_message} class="text-xs opacity-60">
-                <span data-test="last-message">last message {row.last_message}</span>
-              </div>
-
-              <div class="flex items-center gap-2">
+              </:title>
+              <:actions>
                 <.link
                   navigate={~p"/app/projects/#{@project.id}/working-copies/#{row.harness.id}/status"}
                   class="btn btn-sm btn-ghost"
@@ -418,51 +247,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
                 >
                   <.icon name="hero-pencil-square" /> Rename
                 </.button>
-
-                <button
-                  type="button"
-                  data-test="offboard-working-copy"
-                  data-working-copy-id={row.harness.id}
-                  class="btn btn-sm btn-ghost text-error"
-                  phx-click={show_confirm("offboard-#{row.harness.id}")}
-                >
-                  <.icon name="hero-trash" /> Offboard
-                </button>
-
-                <.confirm_dialog
-                  id={"offboard-#{row.harness.id}"}
-                  title="Offboard this working copy?"
-                  message={
-                    "Removes #{row.label} and everything derived from it — its files, " <>
-                      "its problems, and any component left with nothing pointing at it. " <>
-                      "The checkout on disk is not touched."
-                  }
-                  confirm_label="Offboard"
-                  on_confirm={JS.push("offboard", value: %{id: row.harness.id})}
-                />
-              </div>
-            </div>
+                <Copy.offboard row={row} />
+              </:actions>
+            </Copy.facts>
           </li>
         </ul>
       </div>
     </Layouts.app>
     """
   end
-
-  # `WorkingCopy.app_status` follows `preview_status`'s three states
-  # (`serving` | `erroring` | `down`), plus `starting` — a first start's
-  # cold install/compile still running in the background — see that field's
-  # own moduledoc note for why a 500 (erroring) reads differently from
-  # nothing answering (down).
-  defp app_status_badge_class("serving"), do: "badge-success"
-  defp app_status_badge_class("erroring"), do: "badge-warning"
-  defp app_status_badge_class("down"), do: "badge-error"
-  defp app_status_badge_class("starting"), do: "badge-info"
-  defp app_status_badge_class(_other), do: "badge-ghost"
-
-  defp app_status_icon("serving"), do: "hero-check-circle"
-  defp app_status_icon("erroring"), do: "hero-exclamation-triangle"
-  defp app_status_icon("down"), do: "hero-signal-slash"
-  defp app_status_icon("starting"), do: "hero-arrow-path"
-  defp app_status_icon(_other), do: "hero-question-mark-circle"
 end

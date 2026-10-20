@@ -65,18 +65,56 @@ defmodule CodeMySpec.Agents.Main.AResolvedQuestionIsARecordMainCanCiteTest do
   end
 
   test "an answer citing a resolved Question on the same story is recorded", ctx do
-    {:ok, question} = Questions.create_question(ctx.scope, ctx.story.id, %{text: "Ship this cycle?"})
+    {:ok, question} =
+      Questions.create_question(ctx.scope, ctx.story.id, %{text: "Ship this cycle?"})
+
     {:ok, resolved} = Questions.resolve_question(ctx.scope, question, "Yes, ship it this cycle.")
 
     short_id = String.slice(resolved.id, 0, 8)
     answer = "Yes, already decided (see #{short_id})."
 
-    assert {:ok, _} = MainAgent.answer_question(ctx.scope, ctx.request.id, answer, basis: "record"),
+    assert {:ok, _} =
+             MainAgent.answer_question(ctx.scope, ctx.request.id, answer, basis: "record"),
            "an answer citing a resolved Question's own id on the same story was refused as unrecorded"
   end
 
+  test "the tool explains a missing record, escalation, and how to retry", ctx do
+    alias CodeMySpec.Agents.Tools.AnswerNotification
+    alias CodeMySpec.Notifications.QuestionRequest
+
+    params = %{notification_id: ctx.request.id, answer: "Yes, ship it.", basis: "record"}
+
+    assert {:error, message} = AnswerNotification.call(params, %{scope: ctx.scope})
+    assert message =~ "answer text must name a project"
+    assert message =~ "issue's title or first eight ID characters"
+    assert message =~ "working copy's"
+    assert message =~ "ready story without an epic"
+    assert message =~ "resolved Question on the asker's story"
+    assert message =~ "at least eight characters"
+    assert message =~ "escalated to the user"
+    assert message =~ "remains unanswered"
+    assert message =~ "retry"
+
+    escalated = CodeMySpec.Repo.get!(QuestionRequest, ctx.request.id)
+    assert escalated.holder == "user"
+    refute escalated.status == "answered"
+
+    assert {:error, ^message} = AnswerNotification.call(params, %{scope: ctx.scope})
+
+    {:ok, question} = Questions.create_question(ctx.scope, ctx.story.id, %{text: "Ship now?"})
+    {:ok, resolved} = Questions.resolve_question(ctx.scope, question, "Yes.")
+    answer = "Yes, see #{String.slice(resolved.id, 0, 8)}."
+
+    assert {:ok, confirmation} =
+             AnswerNotification.call(%{params | answer: answer}, %{scope: ctx.scope})
+
+    assert confirmation =~ "Answered."
+    assert CodeMySpec.Repo.get!(QuestionRequest, ctx.request.id).status == "answered"
+  end
+
   test "citing a resolved Question still open is not enough", ctx do
-    {:ok, question} = Questions.create_question(ctx.scope, ctx.story.id, %{text: "Ship this cycle?"})
+    {:ok, question} =
+      Questions.create_question(ctx.scope, ctx.story.id, %{text: "Ship this cycle?"})
 
     short_id = String.slice(question.id, 0, 8)
     answer = "Yes, decided (see #{short_id})."

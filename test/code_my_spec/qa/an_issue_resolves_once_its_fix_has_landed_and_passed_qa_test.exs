@@ -73,7 +73,18 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
         scenarios: [%{name: "Delivered", status: :pass, observation: "It arrived."}]
       })
 
+    assert_completed_task_absent_from_menu(ctx.scope, owner, task.id)
     :ok
+  end
+
+  defp assert_completed_task_absent_from_menu(scope, owner, task_id) do
+    current = reload(owner)
+    assert %{status: :completed} = TaskOwner.find_task(current, task_id)
+    assert Agents.Agent.active_task(current) == nil
+
+    message = Agents.StopDecision.decide(scope, %{current | continuous: true}) || ""
+    refute message =~ task_id
+    refute message =~ "you have an open task"
   end
 
   defp issue(ctx), do: Issues.get_issue(ctx.scope, ctx.issue.id)
@@ -104,6 +115,7 @@ defmodule CodeMySpec.Qa.AnIssueResolvesOnceItsFixHasLandedAndPassedQaTest do
       })
 
     assert %{awaiting_role: :coding, qa_ready_commit: nil, qa_ready_at: nil} = issue(ctx)
+    assert_completed_task_absent_from_menu(ctx.scope, owner, task.id)
   end
 
   test "a pass on a fix not yet landed sends the coder to promote it", ctx do

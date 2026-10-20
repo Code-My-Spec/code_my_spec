@@ -1,0 +1,176 @@
+defmodule CodeMySpecWeb.ProblemCharts do
+  @moduledoc """
+  Problems as stacked bars for the `EChart` hook: how many each working copy
+  holds, and where in one copy they sit. Stacked by source, in one fixed order
+  and colour per source, so the two charts read the same way.
+  """
+  use CodeMySpecWeb, :html
+
+  alias CodeMySpec.WorkingCopies
+
+  @sources ~w(compiler credo exunit spex qa_validation)
+  @colors %{
+    "compiler" => "#ef4444",
+    "credo" => "#f59e0b",
+    "exunit" => "#8b5cf6",
+    "spex" => "#3b82f6",
+    "qa_validation" => "#10b981"
+  }
+
+  @doc """
+  One bar per working copy. Clicking a bar pushes `pick_event` with the
+  copy's id. Copies with no problems are left out.
+  """
+  attr :counts, :list,
+    required: true,
+    doc: "`[{working_copy_id, source, severity, count}]`"
+
+  attr :harnesses, :list, required: true
+  attr :pick_event, :string, default: nil
+
+  def by_copy(assigns) do
+    names = Map.new(assigns.harnesses, &{&1.id, WorkingCopies.display_name(&1)})
+
+    rows =
+      for(
+        {id, source, _severity, count} <- assigns.counts,
+        Map.has_key?(names, id),
+        do: {id, source, count}
+      )
+      |> rows()
+
+    option =
+      rows
+      |> bars(&names[&1])
+      |> Map.merge(%{ids: Enum.map(rows, &elem(&1, 0)), pick_event: assigns.pick_event})
+
+    assigns = assign(assigns, option: option, empty?: rows == [])
+
+    ~H"""
+    <.chart
+      id="problems-by-copy"
+      title="Problems per working copy"
+      option={@option}
+      empty?={@empty?}
+      rows={length(@option.categories)}
+    />
+    """
+  end
+
+  @doc "The files with the most problems at one copy."
+  attr :counts, :list, required: true, doc: "`[{file_path, source, count}]`"
+  attr :copy_name, :string, required: true
+
+  def by_file(assigns) do
+    rows = rows(assigns.counts)
+    option = bars(rows, &Path.relative/1)
+    assigns = assign(assigns, option: option, empty?: rows == [])
+
+    ~H"""
+    <.chart
+      id="problems-by-file"
+      title={"Where #{@copy_name}'s problems are"}
+      option={@option}
+      empty?={@empty?}
+      rows={length(@option.categories)}
+    />
+    """
+  end
+
+  @doc """
+  One copy's problems over whatever page is open: where they are, and the way
+  to the full list. Pushes `on_close` to close.
+  """
+  attr :counts, :list, required: true, doc: "`[{file_path, source, count}]`"
+  attr :copy_name, :string, required: true
+  attr :href, :string, required: true
+  attr :on_close, :string, required: true
+
+  def modal(assigns) do
+    ~H"""
+    <div
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      data-test="problems-modal"
+      phx-window-keydown={@on_close}
+      phx-key="Escape"
+    >
+      <div class="modal-box w-11/12 max-w-4xl space-y-3">
+        <button
+          type="button"
+          phx-click={@on_close}
+          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+        <.by_file counts={@counts} copy_name={@copy_name} />
+        <div class="flex justify-end">
+          <.link navigate={@href} data-test="problems-modal-open" class="btn btn-sm">
+            All problems <.icon name="hero-arrow-top-right-on-square" class="size-4" />
+          </.link>
+        </div>
+      </div>
+      <button type="button" class="modal-backdrop" phx-click={@on_close} aria-label="Close"></button>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :option, :map, required: true
+  attr :empty?, :boolean, required: true
+  attr :rows, :integer, required: true
+
+  # Keyed on its data: the hook draws once into an ignored element, so new
+  # data is a new element rather than a patch the chart would never see.
+  defp chart(assigns) do
+    ~H"""
+    <section data-test={@id} class="rounded-box border border-base-300 p-4">
+      <h2 class="text-sm font-semibold">{@title}</h2>
+      <p :if={@empty?} class="py-6 text-center text-sm opacity-60">No problems.</p>
+      <div
+        :if={!@empty?}
+        id={"#{@id}-chart-#{:erlang.phash2(@option)}"}
+        phx-hook="EChart"
+        phx-update="ignore"
+        data-option={Jason.encode!(@option)}
+        style={"height: #{80 + @rows * 28}px"}
+      >
+      </div>
+    </section>
+    """
+  end
+
+  # `[{key, %{source => count}}]`, largest total first.
+  defp rows(counts) do
+    counts
+    |> Enum.reduce(%{}, fn {key, source, count}, acc ->
+      Map.update(
+        acc,
+        key,
+        %{source => count},
+        &Map.update(&1, source, count, fn n -> n + count end)
+      )
+    end)
+    |> Enum.to_list()
+    |> Enum.sort_by(fn {key, by_source} -> {-Enum.sum(Map.values(by_source)), key} end)
+  end
+
+  defp bars(rows, label) do
+    %{
+      kind: "bars",
+      categories: Enum.map(rows, fn {key, _} -> label.(key) end),
+      stacks:
+        for source <- @sources,
+            Enum.any?(rows, fn {_key, by_source} -> Map.has_key?(by_source, source) end) do
+          %{
+            name: source,
+            color: @colors[source],
+            data: Enum.map(rows, fn {_key, by_source} -> Map.get(by_source, source, 0) end)
+          }
+        end
+    }
+  end
+end

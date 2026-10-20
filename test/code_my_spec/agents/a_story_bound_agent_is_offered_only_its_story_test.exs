@@ -39,6 +39,36 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     %{ctx | coding: reload(coding)}
   end
 
+  test "QA without its own story discovers and claims its team's QA work", ctx do
+    ctx = Slice.waiting(ctx)
+
+    reload(ctx.qa)
+    |> Ecto.Changeset.change(story_id: nil)
+    |> Repo.update!()
+
+    qa = reload(ctx.qa)
+    assert Work.bound_story_id(qa) == ctx.story.id
+    answer = Slice.next(ctx, %{agent_id: qa.id})
+    assert answer =~ "# Story #{ctx.story.number}:"
+    assert answer =~ "qa_complete"
+    refute Slice.offered?(answer, ctx.waiting.id)
+    assert reload(qa).story_id == nil, "discovery must remain read-only"
+
+    Slice.call(
+      ctx,
+      "start_task",
+      %{
+        requirement_name: "qa_complete",
+        entity_type: "story",
+        entity_id: to_string(ctx.story.number)
+      },
+      %{agent_id: qa.id}
+    )
+
+    assert reload(qa).story_id == ctx.story.id
+    assert reload(ctx.coding).story_id == ctx.story.id
+  end
+
   test "the coding agent is bound to the team's story", ctx do
     assert ctx.coding.story_id == ctx.story.id
     assert Work.bound_story_id(ctx.coding) == ctx.story.id

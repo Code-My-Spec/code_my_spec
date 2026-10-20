@@ -60,6 +60,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   # Resolved hex for the legend's bg-primary / bg-success / bg-warning tokens
   # (assets/css/app.css): Sigma renders to canvas, not CSS. Keep in lockstep.
@@ -76,6 +77,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # viewport's: Sigma preserves aspect ratio when fitting, so a wide, short
   # layout collapses into a thin line at default zoom.
   @row_gap 2000
+  @node_scale 0.6
+  @holding_gap 1500
   @story_col_gap 500
   @story_row_gap 1400
   @ctx_req_gap 1000
@@ -165,10 +168,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.map(fn {n, idx} ->
         y = -(idx * @story_row_gap)
 
-        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
-          entity_type: "project",
-          name: n.name
-        )
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set), project_attrs(n))
       end)
 
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
@@ -341,10 +341,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.map(fn {n, idx} ->
         y = late_start_y - idx * @story_row_gap
 
-        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
-          entity_type: "project",
-          name: n.name
-        )
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set), project_attrs(n))
       end)
 
     base_sigma = early_sigma ++ pre_sigma ++ comp_sigma ++ post_sigma ++ late_sigma
@@ -394,7 +391,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
           key: "#{f}->#{t}",
           source: f,
           target: t,
-          attributes: %{size: 2, color: edge_color(e), type: "arrow"}
+          attributes: %{size: 1, color: edge_color(e), type: "arrow"}
         }
       end)
 
@@ -405,10 +402,49 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
       |> MapSet.new(& &1.key)
 
+    # A component with no edge at all has nothing to place it by — a file the
+    # scan found, connected to nothing — so it waits in a holding area below the
+    # graph, drawn faint, rather than floating among the steps. One with edges
+    # keeps its place even if no story reaches it yet.
     reachable_keys = bfs_reachable(project_keys, sigma_edges)
-    all_sigma = mark_orphan_references(all_sigma, reachable_keys)
 
-    %{nodes: all_sigma, edges: sigma_edges}
+    linked =
+      MapSet.new(sigma_edges, & &1.source) |> MapSet.union(MapSet.new(sigma_edges, & &1.target))
+
+    {placed, held} =
+      all_sigma
+      |> mark_orphan_references(reachable_keys)
+      |> Enum.split_with(
+        &(&1.attributes.entity_type != "component" or MapSet.member?(linked, &1.key))
+      )
+
+    %{nodes: placed ++ holding_area(held, placed), edges: sigma_edges, edge_alpha: 0.12}
+  end
+
+  # The unplanned components as a square-ish grid below everything in the
+  # plan, from its left edge: the issue branches already take the right.
+  defp holding_area([], _placed), do: []
+
+  defp holding_area(held, placed) do
+    xs = Enum.map(placed, & &1.attributes.x)
+    ys = Enum.map(placed, & &1.attributes.y)
+    left = Enum.min(xs, fn -> 0 end)
+    top = Enum.min(ys, fn -> 0 end) - @row_gap
+    columns = held |> length() |> :math.sqrt() |> ceil()
+
+    held
+    |> Enum.sort_by(& &1.attributes.label)
+    |> Enum.with_index()
+    |> Enum.map(fn {node, i} ->
+      attrs =
+        Map.merge(node.attributes, %{
+          x: left + rem(i, columns) * @holding_gap,
+          y: top - div(i, columns) * @holding_gap,
+          status: "unplanned"
+        })
+
+      %{node | attributes: attrs}
+    end)
   end
 
   # Overwrite the y coordinate of every component sigma node using the node's
@@ -814,16 +850,45 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   # -- Node builders --
 
+  # `status` is what the page colours by, from its theme, so the canvas and the
+  # legend cannot disagree; `color` stays for callers that draw it as given.
+  # Sizes are scaled down: at fit-to-view 2,000+ nodes at full size overlap
+  # into one blob.
   defp mk_node(key, label, x, y, size, status, extra) do
     %{
       key: key,
       attributes:
         Map.merge(
-          %{label: label, x: x, y: y, size: size, color: color(status), type: "circle"},
+          %{
+            label: label,
+            x: x,
+            y: y,
+            size: size * @node_scale,
+            color: color(status),
+            status: Atom.to_string(status),
+            type: "circle"
+          },
           Map.new(extra)
         )
     }
   end
+
+  # A project gate says whether it holds and, from its checker, why: a
+  # satisfied `work_dispatched` means finished or merely busy, and only the
+  # basis tells the two apart.
+  defp project_attrs(n) do
+    details = n.details || %{}
+
+    [
+      entity_type: "project",
+      name: n.name,
+      satisfied: n.satisfied == true,
+      basis: MapAccess.get(details, :status) || MapAccess.get(details, :reason)
+    ]
+  end
+
+  @doc "The key a requirement's node carries in the projected graph."
+  def key(requirement), do: nkey(requirement)
 
   defp node_key(n), do: Topology.node_key(n)
   defp nkey(n), do: key_to_string(node_key(n))
@@ -833,22 +898,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   # -- Labels --
 
-  defp label(n) do
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{name} ✓", else: name
-  end
+  # Short: the node's colour says whether it holds, and the detail pane says
+  # which requirement it is.
+  defp label(n), do: String.replace(n.name, "_", " ")
 
-  defp story_label(n) do
-    title = short_title(n.entity_name)
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{title}: #{name} ✓", else: "#{title}: #{name}"
-  end
+  defp story_label(n), do: short_title(n.entity_name)
 
-  defp comp_label(n) do
-    mod = short_module(n.entity_name)
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{mod}: #{name} ✓", else: "#{mod}: #{name}"
-  end
+  defp comp_label(n), do: n.entity_name |> String.split(".") |> List.last()
 
   defp short_req_label(n) do
     mod = n.entity_name |> String.split(".") |> List.last()
@@ -857,11 +913,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   defp short_title(t), do: if(String.length(t) > 20, do: String.slice(t, 0, 20) <> "..", else: t)
-
-  defp short_module(m) do
-    parts = String.split(m, ".")
-    if length(parts) <= 2, do: m, else: Enum.drop(parts, 1) |> Enum.join(".")
-  end
 
   # -- Status --
 

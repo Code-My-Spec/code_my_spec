@@ -71,6 +71,42 @@ defmodule CmsHarness.Agents.CodexProviderLiveTest do
     assert File.read!(path) =~ "hi from codex"
   end
 
+  # Issue 199e6ac1: a resumed thread carries what its first turn was told, so
+  # an edit asked for in a later turn is the case a read-only policy blocked.
+  test "an edit asked for in a resumed turn is made", %{root: root} do
+    {id, engine} = launch(root)
+
+    assert {:ok, _} = execute(id, "Reply with just ONE.")
+    assert %{"codex_session" => %{"id" => thread}} = :sys.get_state(engine).provider_state
+
+    assert {:ok, _} =
+             execute(
+               id,
+               "Create a file named later.txt in the working directory containing exactly " <>
+                 "the text: written on resume"
+             )
+
+    assert get_in(:sys.get_state(engine).provider_state, ["codex_session", "id"]) == thread,
+           "the edit turn started a new thread, so it does not test a resumed session"
+
+    path = Path.join(root, "later.txt")
+    assert File.exists?(path), "Codex did not write later.txt in the resumed turn"
+    assert File.read!(path) =~ "written on resume"
+  end
+
+  # Writes are the outer tools', and those are scoped to the checkout: a file
+  # outside it is not written however the model asks.
+  test "a write outside the checkout is not made", %{root: root} do
+    {id, _engine} = launch(root)
+    outside = Path.join(Path.dirname(root), "outside-#{System.unique_integer([:positive])}.txt")
+    on_exit(fn -> File.rm(outside) end)
+
+    assert {:ok, _} =
+             execute(id, "Create the file #{outside} containing exactly the text: escaped")
+
+    refute File.exists?(outside), "a write outside the checkout was made"
+  end
+
   # The engine streams whenever someone is watching: text arrives as
   # `:text_delta` envelopes, handed to `on_draft` (the conversation page's live
   # draft) rather than reported as steps.

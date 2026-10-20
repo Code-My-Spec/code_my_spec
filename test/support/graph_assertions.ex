@@ -48,6 +48,19 @@ defmodule CodeMySpecSpex.GraphAssertions do
   end
 
   @doc """
+  A project gate's attributes as the graph page draws them — `"satisfied"` and
+  the checker's `"basis"` among them — read from the rendered HTML. Raises when
+  the page does not draw the gate.
+  """
+  @spec project_gate(String.t(), String.t(), String.t()) :: map()
+  def project_gate(html, project_id, name) do
+    case find_node(extract_graph!(html), "project", project_id, name) do
+      %{"attributes" => attributes} -> attributes
+      nil -> raise "the graph page draws no #{name} gate for this project"
+    end
+  end
+
+  @doc """
   Returns the list of edges originating from `from_key`.
   """
   @spec edges_from(map(), String.t()) :: [map()]

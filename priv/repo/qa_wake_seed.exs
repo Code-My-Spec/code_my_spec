@@ -449,42 +449,27 @@ for {role, tools, wanted} <- [
       from a in CodeMySpec.Agents.Agent,
         where:
           a.project_id == type(^project.id, :binary_id) and a.role == ^role and
-            a.continuous == true
+            a.working_copy_id == type(^copy.id, :binary_id) and is_nil(a.retired_at)
     )
 
-  # Re-asserted on every run, not only on create.
-  #
-  # `Work.runnable_state?/1` gates on `status == :running` before it evaluates
-  # eligibility at all, and `Agents.record_running_on_copy/3` reaps any row
-  # claiming to run with no live process behind it — correctly, since nothing
-  # has driven these rows since the last QA pass. So the ordinary case, a
-  # project that already exists, left all four agents `:stopped` and every one
-  # of story 1004's turn-admission criteria untestable through the fixture
-  # this seed exists to provide.
-  #
-  # The only two ways out were a direct DB write or a real `start_agent`
-  # against the connected harness — one denied to a QA session outright, the
-  # other a billed model call — so three separate QA attempts were blocked on
-  # a fixture that reported itself as freshly seeded. Refreshing the fixture
-  # has to actually refresh it (`f3157963`).
-  #
-  # `turn_started_at` and `work_request_id` go with it: a row left mid-turn or
-  # holding a reservation is not runnable either, and both are stale the
-  # moment the process behind them is gone.
+  # Refresh only this disposable copy's non-retired fixture agents.
+  # Duty is recorded by off_at/retired_at; running is derived from Presence.
+  # This explicit fixture reset clears the off record and stale turn marker,
+  # but does not manufacture process presence or erase durable Offers.
   for agent <- existing do
     {:ok, _} =
       agent
-      |> Ecto.Changeset.change(
-        status: :running,
+      |> CodeMySpec.Agents.Agent.changeset(%{
         continuous: true,
         turn_started_at: nil,
-        work_request_id: nil,
-        work_requested_at: nil,
-        tasks: cleared_tasks.(agent)
-      )
+        off_at: nil,
+        off_by: nil,
+        off_reason: nil
+      })
+      |> Ecto.Changeset.put_embed(:tasks, cleared_tasks.(agent))
       |> Repo.update()
 
-    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> running#{cleared_note.(agent)}")
+    IO.puts("  agent: refreshed #{role} (#{agent.id}) -> on duty#{cleared_note.(agent)}")
   end
 
   # Idempotent on the count rather than on presence, so re-running tops the set
@@ -500,8 +485,7 @@ for {role, tools, wanted} <- [
         project_id: project.id,
         account_id: account.id,
         tools: tools,
-        continuous: true,
-        status: :running
+        continuous: true
       })
 
     IO.puts("  agent: created #{role} (#{agent.id})")
@@ -536,7 +520,8 @@ Seeded.
   for "a story interview reaches the main agent", and no qa-role agent so that
   "QA work waiting does not wake the coding agent" keeps its premise.
 
-  The agents are rows, not processes. Nothing is running or spending tokens.
+  This seed does not start processes. On-duty agents may be restored by a
+  connected harness and consume tokens. Check live presence before testing wakes.
 
 Project:      #{project.id}
 Working copy: #{copy.id}

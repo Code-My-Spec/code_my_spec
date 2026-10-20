@@ -420,7 +420,9 @@ defmodule CodeMySpec.Analysis do
 
   defp apply_remote_result(_scope, run, %{"status" => "error"} = payload) do
     reason = payload["error"] || "the harness reported a failure with no reason"
-    Reconciler.fail(run, reason)
+
+    Reconciler.fail(run, reason, %{output: payload["output"], exit_status: payload["exit_status"]})
+
     {:error, reason}
   end
 

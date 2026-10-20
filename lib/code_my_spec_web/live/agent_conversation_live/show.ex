@@ -34,6 +34,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Epics
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Problems
+  alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.ScreenState
@@ -45,8 +48,11 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
+  alias CodeMySpecWeb.ProblemCharts
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
+  alias CodeMySpecWeb.TaskComponents
+  alias CodeMySpecWeb.WorkingCopyLive.Components.Copy, as: CopyComponents
   alias CodeMySpecWeb.WorkingCopyLive.Components.StoryGraph, as: StoryGraphComponents
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
   alias CodeMySpecWeb.WorkingCopyLive.Rows
@@ -155,6 +161,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     socket
     |> assign(:current_scope, scope)
     |> assign(:assigned_modal, nil)
+    |> assign(:copy_modal_id, nil)
+    |> assign(:task_modal, nil)
+    |> assign(:problems_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -226,16 +235,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
   defp main_copy_id(_error), do: nil
-
-  # Working once its process is alive (`Agents.Presence`); until then, getting
-  # ready.
-  defp main_summary({:ok, agent, _conversation}) do
-    if Agents.present?(agent.project_id, agent),
-      do: "Working on your project. Its steps appear below as it takes them.",
-      else: "Getting ready. It will start work as soon as its machine picks it up."
-  end
-
-  defp main_summary(_error), do: ""
 
   # Subscribe to the conversation on screen and unsubscribe from the previous
   # one: switching is a patch, and a leaked topic appends another agent's turns
@@ -451,22 +450,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     end
   end
 
-  # Every pie on the page: the header's, and one per agent row holding a story.
+  # Every pie on the page: the header's, and one per copy holding a story.
   defp story_progress_ids(assigns) do
     header = if Enum.any?(assigns.assigned, &(&1.kind == :story)), do: ["story-progress-header"]
 
     rows =
-      for copy <- assigns.copies,
-          a <- copy.agents,
-          Enum.any?(a.assigned, &(&1.kind == :story)),
-          do: "story-progress-#{a.agent.id}"
+      for %{assignment: %{kind: :story}} = copy <- assigns.copies,
+          do: "story-progress-copy-#{copy.row.harness.id}"
 
     List.wrap(header) ++ rows
   end
 
-  defp assigned_story(_scope, %Agent{story_id: nil}), do: nil
+  defp assigned_story(scope, %Agent{story_id: id}), do: story_assignment(scope, id)
 
-  defp assigned_story(scope, %Agent{story_id: id}) do
+  defp story_assignment(_scope, nil), do: nil
+
+  defp story_assignment(scope, id) do
     case Stories.get_story(scope, id) do
       nil ->
         nil
@@ -541,11 +540,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp talkable?(_scope, _conversation), do: false
 
-  # Whether this thread is the project's own agent, by identity
-  # (`Agents.main_agent/1`), not role: `agents.role` defaults to "main".
+  # Whether this thread is the project's own agent: the main role on the main
+  # copy, on duty, whatever its engine. Not `Agents.main_agent/1`, which also
+  # asks whether a terminal agent's process is connected — the right question
+  # for who to dispatch to, and the wrong one for what this page shows: a Claude
+  # Code main with its terminal closed is still the project's agent.
   defp main_agent?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    case Agents.main_agent(scope) do
-      %{id: ^agent_id} -> true
+    with %{id: copy_id} <- WorkingCopies.main(scope),
+         {:ok, %Agent{role: :main, working_copy_id: ^copy_id, off_at: nil, retired_at: nil}} <-
+           Agents.fetch_agent(scope, agent_id) do
+      true
+    else
       _ -> false
     end
   end
@@ -669,7 +674,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   # A story's pie opens the requirements graph the working copy status page
-  # draws, built the same way, over the cockpit.
+  # draws, built the same way, over the cockpit. From the timeline's stories
+  # chart it also carries the chart's stories, in its order, for the slider.
   def handle_event("show_story_graph", %{"story-id" => story_id} = params, socket) do
     scope = %{socket.assigns.current_scope | active_working_copy_id: blank_nil(params["copy-id"])}
 
@@ -678,19 +684,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         {:noreply, socket}
 
       story ->
-        {:noreply,
-         socket
-         |> assign(:graph_modal, %{
-           story: story,
-           copy_id: scope.active_working_copy_id,
-           flow: nil,
-           error: nil
-         })
-         |> start_async(:graph_modal, fn ->
-           {:ok, graph} = RequirementStoryGraph.read(scope, story.id)
+        slider = if params["from"] == "chart", do: chart_stories(socket)
+        {:noreply, open_story_graph(socket, scope, story, slider)}
+    end
+  end
 
-           {WorkingCopyStoryGraph.build(graph), RequirementStoryGraph.progress(graph)}
-         end)}
+  # The slider moved: the same modal, the story at that position.
+  def handle_event("slide_story", %{"index" => index}, socket) do
+    with %{slider: [_ | _] = stories} <- socket.assigns[:graph_modal],
+         {i, ""} <- Integer.parse(index),
+         %{id: id, working_copy_id: copy_id} <- Enum.at(stories, i),
+         scope = %{socket.assigns.current_scope | active_working_copy_id: copy_id},
+         %Story{} = story <- Stories.get_story(scope, id) do
+      {:noreply, open_story_graph(socket, scope, story, stories)}
+    else
+      _ -> {:noreply, socket}
     end
   end
 
@@ -738,6 +746,56 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_assigned", _params, socket),
     do: {:noreply, assign(socket, :assigned_modal, nil)}
+
+  def handle_event("show_copy", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, id)}
+
+  def handle_event("close_copy", _params, socket),
+    do: {:noreply, assign(socket, :copy_modal_id, nil)}
+
+  # The agent's active tasks as it was handed them, read off the LiveView
+  # process: the directive is a graph read at the agent's copy.
+  def handle_event("show_task", %{"agent-id" => agent_id}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, agent} ->
+        tasks = Enum.filter(agent.tasks || [], &(&1.status == :active))
+        vantage = %{scope | active_working_copy_id: agent.working_copy_id}
+
+        {:noreply,
+         socket
+         |> assign(:task_modal, %{title: task_title(agent, tasks), directive: :loading})
+         |> start_async(:task_modal, fn -> task_directive(vantage, tasks) end)}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("close_task", _params, socket),
+    do: {:noreply, assign(socket, :task_modal, nil)}
+
+  # Only a copy on this project: the id arrives from the client.
+  def handle_event("show_problems", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.copies, &(&1.row.harness.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      copy ->
+        scope = %{socket.assigns.current_scope | active_working_copy_id: id}
+
+        {:noreply,
+         assign(socket, :problems_modal, %{
+           counts: Problems.top_files(scope, 10),
+           copy_name: copy.row.heading,
+           href: ~p"/app/projects/#{socket.assigns.project.id}/problems?harness=#{id}"
+         })}
+    end
+  end
+
+  def handle_event("close_problems", _params, socket),
+    do: {:noreply, assign(socket, :problems_modal, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -1026,7 +1084,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> remember()}
   end
 
-
   # Kept so the composer survives patches it did not cause (panel toggles).
   def handle_event("draft", %{"message" => message}, socket) do
     {:noreply, assign(socket, :draft, message)}
@@ -1113,12 +1170,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     # Stopped agents stay listed here (this page can stop them); the working
     # copy pages do not pass this.
+    problems =
+      scope
+      |> Problems.counts_by_working_copy()
+      |> Enum.group_by(&elem(&1, 0), fn {_copy, source, severity, n} -> {source, severity, n} end)
+
     scope
     |> Rows.list(project, now, include_stopped?: true)
-    |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
+    |> Enum.map(&copy_status(&1, scope, now, pending_sessions, problems))
   end
 
-  defp copy_status(row, scope, now, pending_sessions) do
+  defp copy_status(row, scope, now, pending_sessions, problems) do
     agents =
       Enum.map(row.agents, fn agent ->
         chat = Enum.find(row.chats, &(&1.agent.id == agent.id))
@@ -1129,7 +1191,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           chat: chat,
           liveness: Liveness.agent(agent, now),
           question?: not is_nil(session) and MapSet.member?(pending_sessions, session),
-          assigned: assignments(scope, agent),
           task_label: task_label(scope, agent.id)
         }
       end)
@@ -1138,8 +1199,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     %{
       row: row,
       agents: agents,
+      assignment: copy_assignment(scope, row.harness.id),
+      problems: Map.get(problems, row.harness.id, []),
       question?: Enum.any?(agents, & &1.question?),
       empty_seats: empty_seats(row)
+    }
+  end
+
+  # Work is assigned to the copy and blown through to its agents: its issue
+  # bag, which dispatch takes first, or else its team's story.
+  defp copy_assignment(scope, copy_id) do
+    case Agents.assigned_issues(scope, copy_id) do
+      [] -> story_assignment(scope, WorkingCopies.team_story_id(copy_id))
+      issues -> issue_bag(issues)
+    end
+  end
+
+  defp issue_bag(issues) do
+    nodes = Requirements.issue_bag_graph(issues).nodes
+
+    %{
+      kind: :issues,
+      issues: issues,
+      progress: {Enum.count(nodes, & &1.satisfied), length(nodes)}
     }
   end
 
@@ -1200,6 +1282,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp empty_seats(row), do: Agents.empty_seats(row.agents, Agents.home_roles(row.harness))
 
   # One task names itself; more name only the count.
+  defp task_title(agent, [task]), do: "#{agent.role} · #{task.requirement_name}"
+  defp task_title(agent, tasks), do: "#{agent.role} · #{length(tasks)} tasks"
+
+  defp task_directive(scope, tasks) do
+    case tasks |> Enum.map(&Requirements.task_directive(scope, &1)) |> Enum.reject(&is_nil/1) do
+      [] -> nil
+      directives -> Enum.join(directives, "\n\n---\n\n")
+    end
+  end
+
   defp task_label(scope, agent_id) do
     with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
          [_ | _] = tasks <- Enum.filter(agent.tasks || [], &(&1.status == :active)) do
@@ -1466,17 +1558,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      socket
      |> assign(
        :graph_modal,
-       Map.merge(modal, %{flow: flow, progress: progress, needs_layout: true})
+       Map.merge(modal, %{flow: flow, progress: progress, needs_layout: true, loading: false})
      )}
   end
 
   def handle_async(:graph_modal, {:exit, _reason}, %{assigns: %{graph_modal: modal}} = socket)
       when is_map(modal) do
     {:noreply,
-     assign(socket, :graph_modal, %{modal | error: "Could not load this story’s requirements."})}
+     assign(socket, :graph_modal, %{
+       modal
+       | error: "Could not load this story’s requirements.",
+         loading: false
+     })}
   end
 
   def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
+
+  def handle_async(:task_modal, {:ok, directive}, %{assigns: %{task_modal: modal}} = socket)
+      when is_map(modal),
+      do: {:noreply, assign(socket, :task_modal, %{modal | directive: directive})}
+
+  def handle_async(:task_modal, _result, %{assigns: %{task_modal: modal}} = socket)
+      when is_map(modal),
+      do: {:noreply, assign(socket, :task_modal, %{modal | directive: nil})}
+
+  def handle_async(:task_modal, _result, socket), do: {:noreply, socket}
 
   @impl true
   def handle_info({:analysis, payload}, socket) do
@@ -1501,7 +1607,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      |> assign(:undelivered, undelivered_for(socket.assigns.conversation))
      |> assign_turns(upsert(socket.assigns.messages, message))}
   end
-
 
   # The agent's draft so far, or nil once said, for the conversation on screen.
   def handle_info({:agent_draft, conversation_id, text}, socket) do
@@ -1598,6 +1703,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_info({:graph_updated, _project_id}, socket) do
     for id <- story_progress_ids(socket.assigns),
         do: send_update(StoryProgress, id: id, refresh: true)
+
+    if socket.assigns.main_agent?,
+      do: send_update(ProjectTimeline, id: "project-timeline", refresh: true)
 
     {:noreply, socket}
   end
@@ -1735,8 +1843,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-8">
-          <h2 class="text-lg font-semibold">Story {@modal.story.number} · {@modal.story.title}</h2>
+        <div class="flex items-baseline gap-x-3 pr-8">
+          <h2 class="min-w-0 truncate text-lg font-semibold">
+            Story {@modal.story.number} · {@modal.story.title}
+          </h2>
           <span :if={@modal[:progress]} class="text-sm opacity-70" data-test="story-graph-progress">
             {elem(@modal.progress, 0)} of {elem(@modal.progress, 1)} requirements satisfied
           </span>
@@ -1744,20 +1854,65 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             Arrange
           </button>
         </div>
-        <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
-        <p :if={is_nil(@modal.flow) and is_nil(@modal.error)} class="text-sm opacity-60">
-          Loading requirements…
+        <%!-- The story itself, held to two lines so sliding between stories does
+        not move everything under it. --%>
+        <p data-test="story-graph-description" class="line-clamp-2 min-h-10 text-sm opacity-70">
+          {@modal.story.description}
         </p>
-        <p :if={@modal.flow && map_size(@modal.flow.nodes) == 0} class="text-sm opacity-60">
-          No published requirements for this story at this working copy.
-        </p>
-        <StoryGraphComponents.canvas
-          :if={@modal.flow && map_size(@modal.flow.nodes) > 0}
-          flow={@modal.flow}
-          id="story-graph-modal-flow"
-          class={@modal[:needs_layout] && "invisible"}
-          style="height: 65vh; min-height: 420px"
-        />
+        <form
+          :if={@modal[:slider]}
+          id="story-graph-slider"
+          phx-change="slide_story"
+          data-test="story-graph-slider"
+          class="flex items-center gap-3"
+        >
+          <input
+            type="range"
+            name="index"
+            min="0"
+            max={length(@modal.slider) - 1}
+            value={@modal.index}
+            phx-debounce="500"
+            class="range range-xs flex-1"
+            aria-label="Step through the stories"
+          />
+          <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
+            {(@modal.index || 0) + 1} / {length(@modal.slider)}
+          </span>
+        </form>
+        <%!-- One fixed-height stage for every state, so loading, empty and
+        drawn are the same size and the modal holds still while sliding. --%>
+        <div class="relative flex flex-col" style="height: 65vh; min-height: 420px">
+          <div
+            :if={is_nil(@modal.flow) || @modal.error || map_size(@modal.flow.nodes) == 0}
+            class="flex flex-1 items-center justify-center"
+          >
+            <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
+            <span
+              :if={is_nil(@modal.flow) and is_nil(@modal.error)}
+              data-test="story-graph-loading-empty"
+              class="loading loading-spinner loading-md opacity-60"
+              aria-label="Loading requirements"
+            ></span>
+            <p :if={@modal.flow && map_size(@modal.flow.nodes) == 0} class="text-sm opacity-60">
+              No published requirements for this story at this working copy.
+            </p>
+          </div>
+          <div
+            :if={@modal[:loading] && @modal.flow}
+            data-test="story-graph-loading"
+            class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-base-100/30"
+          >
+            <span class="loading loading-spinner loading-md opacity-70" aria-label="Loading"></span>
+          </div>
+          <StoryGraphComponents.canvas
+            :if={@modal.flow && map_size(@modal.flow.nodes) > 0}
+            flow={@modal.flow}
+            id="story-graph-modal-flow"
+            class={if @modal[:needs_layout], do: "flex-1 invisible", else: "flex-1"}
+            style="height: 100%"
+          />
+        </div>
         <div :if={@modal.copy_id} class="flex justify-end">
           <.link
             navigate={~p"/app/projects/#{@project_id}/working-copies/#{@modal.copy_id}/status"}
@@ -1771,6 +1926,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     </div>
     """
   end
+
+  defp open_story_graph(socket, scope, story, slider) do
+    socket
+    |> assign(:graph_modal, %{
+      story: story,
+      copy_id: scope.active_working_copy_id,
+      # Sliding keeps the last story's graph on the canvas until this one is
+      # in, so the stage never empties between stories.
+      flow: slider && socket.assigns[:graph_modal] && socket.assigns.graph_modal.flow,
+      loading: true,
+      error: nil,
+      slider: slider,
+      index: slider && Enum.find_index(slider, &(&1.id == story.id))
+    })
+    |> start_async(:graph_modal, fn ->
+      {:ok, graph} = RequirementStoryGraph.read(scope, story.id)
+
+      {WorkingCopyStoryGraph.build(graph), RequirementStoryGraph.progress(graph)}
+    end)
+  end
+
+  defp chart_stories(socket),
+    do: Bands.read(socket.assigns.current_scope).stories
 
   defp arrange_graph(socket) do
     case socket.assigns[:graph_modal] do
@@ -1799,17 +1977,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       projects={assigns[:projects] || []}
     >
       <CodeMySpecWeb.AppLive.DesktopSetupResults.results snapshot={@desktop_setup_results} />
-      <%!-- Only here, and only for the project's own agent.
-      John, seeing it on every page: "it should only show up on the chat for
-      the main agent on the main checkout." The timeline describes the whole
-      project, and this is the one conversation that is about the whole project
-      — on a working-copy agent's thread it would be describing something that
-      agent is not doing. --%>
-      <ProjectTimeline.project_timeline
-        :if={@main_agent?}
-        scope={@current_scope}
-        project={@project}
-      />
 
       <%!-- Order in the markup, not only in CSS. "Beside, with the conversation
       on the left" and "above the conversation" are the same two elements in two
@@ -1964,6 +2131,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         </LivePane.group>
       </div>
       <.assigned_modal :if={assigns[:assigned_modal]} item={@assigned_modal} />
+      <TaskComponents.modal
+        :if={@task_modal}
+        title={@task_modal.title}
+        directive={@task_modal.directive}
+        project_id={@project.id}
+        on_close="close_task"
+      />
+      <ProblemCharts.modal
+        :if={@problems_modal}
+        counts={@problems_modal.counts}
+        copy_name={@problems_modal.copy_name}
+        href={@problems_modal.href}
+        on_close="close_problems"
+      />
+      <CopyComponents.modal
+        :for={copy <- @copies}
+        :if={copy.row.harness.id == @copy_modal_id}
+        row={copy.row}
+        project_id={@project.id}
+        on_close="close_copy"
+      />
       <.graph_modal :if={assigns[:graph_modal]} modal={@graph_modal} project_id={@project.id} />
     </Layouts.app>
     """
@@ -2037,135 +2225,134 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test={@main_agent? && "main-agent"}
         data-agent-id={@main_agent? && @conversation.agent_id}
         data-working-copy-id={@main_agent? && main_copy_id(@main)}
-        class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3"
+        class="flex shrink-0 items-center gap-3 border-b border-base-300 pb-3"
       >
-        <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
-        <div class="flex min-w-0 flex-col">
-          <div class="flex min-w-0 items-baseline gap-2">
-            <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
-              {@conversation && Conversations.display_name(@conversation)}
-            </h1>
-            <button
-              :for={item <- @assigned}
-              type="button"
-              phx-click="show_assigned"
-              phx-value-kind={item.kind}
-              phx-value-key={item.key}
-              data-test={"assigned-#{item.kind}"}
-              title={item.title}
-              class="link link-hover min-w-0 truncate text-left text-xs opacity-70"
-            >
-              {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
-            </button>
-            <.live_component
-              :for={item <- @assigned}
-              :if={item.kind == :story}
-              module={StoryProgress}
-              id="story-progress-header"
-              scope={@current_scope}
-              story_id={item.story_id}
-              working_copy_id={item.working_copy_id}
-            />
-          </div>
-          <%!-- Where the project is, in the words somebody who does not read
-          code would use. Deliberately not a status line assembled from row
-          counts: the agent is what will write this, and a summary built out of
-          numbers here would have to be unbuilt when it does. Paths, module
-          names and commands are the vocabulary this agent exists to translate
-          out of, so they must not appear. --%>
-          <p
-            :if={@main_agent?}
-            data-test="project-summary"
-            class="min-w-0 truncate text-xs opacity-60"
-          >
-            {main_summary(@main)}
-          </p>
-        </div>
-        <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
-          {short_session(@conversation)}
-        </span>
+        <.icon name="hero-cpu-chip" class="size-10 shrink-0" />
+        <div class="flex min-w-0 flex-1 flex-col gap-1">
+          <div class="flex min-w-0 items-center gap-2">
+            <div class="flex min-w-0 flex-col">
+              <div class="flex min-w-0 items-baseline gap-2">
+                <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
+                  {@conversation && Conversations.display_name(@conversation)}
+                </h1>
+                <button
+                  :for={item <- @assigned}
+                  type="button"
+                  phx-click="show_assigned"
+                  phx-value-kind={item.kind}
+                  phx-value-key={item.key}
+                  data-test={"assigned-#{item.kind}"}
+                  title={item.title}
+                  class="link link-hover min-w-0 truncate text-left text-xs opacity-70"
+                >
+                  {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
+                </button>
+                <.live_component
+                  :for={item <- @assigned}
+                  :if={item.kind == :story}
+                  module={StoryProgress}
+                  id="story-progress-header"
+                  scope={@current_scope}
+                  story_id={item.story_id}
+                  working_copy_id={item.working_copy_id}
+                />
+              </div>
+            </div>
+            <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
+              {short_session(@conversation)}
+            </span>
 
-        <%!-- Story 538's R13, at the grain somebody is actually looking at.
+            <%!-- Story 538's R13, at the grain somebody is actually looking at.
         The working copy page moves all three roles together, which is right
         for staffing an epic and wrong when you have one agent's conversation
         open and want that one to carry on. --%>
-        <button
-          :if={@conversation && @conversation.agent_id}
-          type="button"
-          phx-click="toggle_agent_working"
-          data-test="toggle-agent-working"
-          data-working={to_string(@working?)}
-          class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
-          title={
-            if @working?,
-              do: "Let this agent stop after its current turn",
-              else: "Put this agent to work — it picks its own next task"
-          }
-        >
-          <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
-        </button>
+            <button
+              :if={@conversation && @conversation.agent_id}
+              type="button"
+              phx-click="toggle_agent_working"
+              data-test="toggle-agent-working"
+              data-working={to_string(@working?)}
+              class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
+              title={
+                if @working?,
+                  do: "Let this agent stop after its current turn",
+                  else: "Put this agent to work — it picks its own next task"
+              }
+            >
+              <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
+            </button>
 
-        <%!-- The power button (39af5611): green while on, red while off, and
+            <%!-- The power button (39af5611): green while on, red while off, and
         the label says what a click does, so colour is never the only signal.
         Off is a real shutdown; only this or `turn_on_agent` brings it back. --%>
-        <span
-          :if={@conversation && @conversation.agent_id && @retired?}
-          data-test="agent-retired"
-          class="badge badge-ghost badge-sm shrink-0"
-        >
-          Retired
-        </span>
-        <button
-          :if={@conversation && @conversation.agent_id && not @retired?}
-          type="button"
-          phx-click="toggle_agent_power"
-          data-test="agent-power"
-          data-on={to_string(@on?)}
-          class={[
-            "btn btn-ghost btn-sm btn-square shrink-0",
-            if(@on?, do: "text-success", else: "text-error")
-          ]}
-          aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
-          aria-pressed={to_string(@on?)}
-          title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
-        >
-          <.icon name="hero-power" class="size-4" />
-        </button>
+            <span
+              :if={@conversation && @conversation.agent_id && @retired?}
+              data-test="agent-retired"
+              class="badge badge-ghost badge-sm shrink-0"
+            >
+              Retired
+            </span>
+            <button
+              :if={@conversation && @conversation.agent_id && not @retired?}
+              type="button"
+              phx-click="toggle_agent_power"
+              data-test="agent-power"
+              data-on={to_string(@on?)}
+              class={[
+                "btn btn-ghost btn-sm btn-square shrink-0",
+                if(@on?, do: "text-success", else: "text-error")
+              ]}
+              aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
+              aria-pressed={to_string(@on?)}
+              title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
+            >
+              <.icon name="hero-power" class="size-4" />
+            </button>
 
-        <button
-          :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
-          type="button"
-          phx-click="fire_agent"
-          data-test="fire-agent"
-          class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
-          title="Fire this agent: retires it for good"
-        >
-          <.icon name="hero-fire" class="size-4" />
-        </button>
+            <button
+              :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
+              type="button"
+              phx-click="fire_agent"
+              data-test="fire-agent"
+              class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
+              title="Fire this agent: retires it for good"
+            >
+              <.icon name="hero-fire" class="size-4" />
+            </button>
 
-        <div
-          :if={@conversation && @conversation.agent_id && @firing?}
-          class="flex shrink-0 items-center gap-2 text-xs"
-        >
-          <span class="opacity-70" data-test="fire-agent-confirm-text">
-            Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
-          </span>
-          <button
-            type="button"
-            phx-click="confirm_fire_agent"
-            data-test="confirm-fire-agent"
-            class="btn btn-error btn-xs"
-          >
-            Fire
-          </button>
-          <button
-            type="button"
-            phx-click="cancel_fire_agent"
-            data-test="cancel-fire-agent"
-            class="btn btn-ghost btn-xs"
-          >
-            Cancel
-          </button>
+            <div
+              :if={@conversation && @conversation.agent_id && @firing?}
+              class="flex shrink-0 items-center gap-2 text-xs"
+            >
+              <span class="opacity-70" data-test="fire-agent-confirm-text">
+                Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
+              </span>
+              <button
+                type="button"
+                phx-click="confirm_fire_agent"
+                data-test="confirm-fire-agent"
+                class="btn btn-error btn-xs"
+              >
+                Fire
+              </button>
+              <button
+                type="button"
+                phx-click="cancel_fire_agent"
+                data-test="cancel-fire-agent"
+                class="btn btn-ghost btn-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <%!-- Where the project stands, on the one conversation about the
+          whole project: the project's own agent on the main copy. --%>
+          <ProjectTimeline.project_timeline
+            :if={@main_agent?}
+            scope={@current_scope}
+            project={@project}
+            variant={:header}
+          />
         </div>
       </header>
 

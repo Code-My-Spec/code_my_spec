@@ -213,9 +213,6 @@ defmodule CodeMySpecWeb.Layouts do
               <li class="menu-title">Specification</li>
               <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
               <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
               <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
 
               <li class="menu-title">Build</li>
@@ -225,21 +222,11 @@ defmodule CodeMySpecWeb.Layouts do
               <li>
                 <a href={~p"/app/projects/#{project.id}/console"}>Console</a>
               </li>
-              <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
               <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
               <li>
                 <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
               </li>
-              <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
               <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
-              <%!-- "Agent chat" opens whichever session the cockpit defaults to.
-                    This is the list of all of them — the way to reach the four a
-                    project with five agents would otherwise hide. --%>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
-              </li>
               <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
 
               <li class="menu-title">Project</li>
@@ -255,6 +242,20 @@ defmodule CodeMySpecWeb.Layouts do
               <li :if={can_manage_mailboxes?(@current_scope)}>
                 <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
               </li>
+
+              <li class="menu-title">Private</li>
+              <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+              <%!-- "Agent chat" opens whichever session the cockpit defaults to.
+                    This is the list of all of them — the way to reach the four a
+                    project with five agents would otherwise hide. --%>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+              </li>
+              <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
               <li :for={p <- @projects}>

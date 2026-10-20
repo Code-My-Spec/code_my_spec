@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.WorkingCopies
 
@@ -956,7 +957,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "what the agent is assigned" do
-    test "the header and the team panel open the agent's story and issue in a modal", %{
+    test "the header and the copy's row open the story and issue in a modal", %{
       conn: conn,
       scope: scope,
       project: project
@@ -973,12 +974,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       story_path = "/app/projects/#{project.id}/stories/#{story.number}"
       issue_path = "/app/projects/#{project.id}/issues/#{issue.id}"
-      row = "[data-test='team-agent'][data-agent-id='#{agent.id}']"
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
 
       assert has_element?(view, "header [data-test='assigned-story']", "Pay by card")
       assert has_element?(view, "header [data-test='assigned-issue']", "Card form 500s")
+      refute has_element?(view, "[data-test='team-agent'] [data-test^='team-agent-story']")
 
-      view |> element("#{row} [data-test='team-agent-story']") |> render_click()
+      view |> element("#{copy} [data-test='team-copy-story']") |> render_click()
 
       assert has_element?(view, "[data-test='assigned-modal-story']", "Pay by card")
       assert has_element?(view, "[data-test='assigned-modal-story'] a[href='#{story_path}']")
@@ -986,10 +988,372 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       render_click(view, "close_assigned", %{})
       refute has_element?(view, "[data-test^='assigned-modal']")
 
-      view |> element("#{row} [data-test='team-agent-issue']") |> render_click()
+      view |> element("header [data-test='assigned-issue']") |> render_click()
 
       assert has_element?(view, "[data-test='assigned-modal-issue']", "Card form 500s")
       assert has_element?(view, "[data-test='assigned-modal-issue'] a[href='#{issue_path}']")
+    end
+
+    test "a copy with an issue bag shows the bag, not its team's story", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope)
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      for title <- ["Card form 500s", "Receipt never sent"] do
+        issue = CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{title: title})
+        {:ok, issue} = CodeMySpec.Issues.accept_issue(project_scope, issue)
+
+        {:ok, _} =
+          CodeMySpec.Issues.set_assigned_working_copy(project_scope, issue, agent.working_copy_id)
+      end
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      status = "/app/projects/#{project.id}/working-copies/#{agent.working_copy_id}/status"
+
+      # Assigned is each issue's first milestone of three.
+      assert has_element?(
+               view,
+               "#{copy} a[data-test='team-copy-issues'][href='#{status}']",
+               "2 issues"
+             )
+
+      assert has_element?(
+               view,
+               "#{copy} [data-test='team-copy-issue-progress'][data-done='2'][data-total='6']"
+             )
+
+      refute has_element?(view, "#{copy} [data-test='team-copy-story']")
+    end
+
+    test "a copy with one issue names it and opens it", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {agent, conversation} = agent_with_conversation(scope, project)
+      issue = CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{title: "Card form 500s"})
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(project_scope, issue)
+
+      {:ok, issue} =
+        CodeMySpec.Issues.set_assigned_working_copy(project_scope, issue, agent.working_copy_id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      refute has_element?(view, "#{copy} [data-test='team-copy-issues']")
+
+      view
+      |> element("#{copy} [data-test='team-copy-issue']", String.slice(issue.id, 0, 8))
+      |> render_click()
+
+      assert has_element?(view, "[data-test='assigned-modal-issue']", "Card form 500s")
+    end
+
+    test "a copy with nothing assigned shows a greyed pie", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      copy = "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}']"
+      assert has_element?(view, "#{copy} [data-test='team-copy-unassigned']")
+    end
+  end
+
+  describe "the project's own agent" do
+    test "a Claude Code main on the main copy gets the timeline with no terminal connected", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} =
+        CodeMySpec.Staffing.designate_main(
+          %{scope | active_project_id: project.id},
+          agent.working_copy_id
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='project-timeline']")
+      assert has_element?(view, "[data-test='story-chart']")
+      assert has_element?(view, "[data-test='component-bar']")
+      assert has_element?(view, "[data-test='issue-bar']")
+      assert has_element?(view, "[data-test='architecture-mark'][data-cycles]")
+
+      assert has_element?(
+               view,
+               "[data-test='story-counts'][data-done][data-backlog][data-retired]"
+             )
+
+      view |> element("[data-test='open-graph']") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "[data-test='graph-modal'] #timeline-graph[data-graph]")
+      assert has_element?(view, "[data-test='graph-modal'] a[data-test='graph-modal-open']")
+
+      view |> element("[data-test='graph-modal'] .modal-backdrop") |> render_click()
+      refute has_element?(view, "[data-test='graph-modal']")
+
+      view
+      |> element("[data-test='timeline-step'][data-step='work_dispatched'] a")
+      |> render_click()
+
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "[data-test='graph-modal'] [data-test='node-detail'][data-node='work_dispatched']"
+             )
+    end
+
+    test "a story's column opens its graph with a slider through the chart's stories", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      [first, second] =
+        for title <- ["Pay by card", "Refund a payment"],
+            do: CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: title})
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      :ok =
+        RequirementGraph.settle(%{project_scope | active_working_copy_id: agent.working_copy_id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      view |> element("[data-test='story-column'][data-story-id='#{first.id}']") |> render_click()
+
+      assert has_element?(view, "[data-test='story-graph-modal']", first.title)
+      assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
+
+      # The graph arriving renders the stage drawn, not loading.
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading-empty']")
+
+      # Equal progress orders the two by number, so the second is at 1.
+      assert has_element?(view, "[data-test='story-graph-slider'] input[value='0']")
+      view |> element("#story-graph-slider") |> render_change(%{"index" => "1"})
+
+      assert has_element?(view, "[data-test='story-graph-modal']", second.title)
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading']")
+    end
+
+    test "a main-role agent on another copy does not", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='project-timeline']")
+    end
+  end
+
+  describe "a copy at a glance" do
+    test "a copy's row counts its problems; clicking shows where they are", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      copy_scope = %{
+        scope
+        | active_project_id: project.id,
+          active_working_copy_id: agent.working_copy_id
+      }
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(copy_scope, [
+          %{
+            severity: :error,
+            source: "exunit",
+            source_type: :test,
+            file_path: "test/a_test.exs",
+            line: 1,
+            message: "boom",
+            category: "t"
+          },
+          %{
+            severity: :info,
+            source: "credo",
+            source_type: :static_analysis,
+            file_path: "lib/a.ex",
+            line: 2,
+            message: "meh",
+            category: "c"
+          }
+        ])
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      marker =
+        "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}'] [data-test='copy-problems-marker']"
+
+      assert has_element?(view, marker <> "[data-total='2'][data-worst='error']")
+
+      view |> element(marker) |> render_click()
+
+      assert has_element?(view, "[data-test='problems-modal'] [data-test='problems-by-file']")
+
+      assert has_element?(
+               view,
+               "[data-test='problems-modal'] a[data-test='problems-modal-open'][href='/app/projects/#{project.id}/problems?harness=#{agent.working_copy_id}']"
+             )
+
+      render_click(view, "close_problems", %{})
+      refute has_element?(view, "[data-test='problems-modal']")
+    end
+
+    test "clicking a copy opens its facts with the way to its show and status pages", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+      copy_id = agent.working_copy_id
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      assert has_element?(
+               view,
+               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-preview-marker'][data-state='unchecked']"
+             )
+
+      assert has_element?(
+               view,
+               "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='copy-harness-marker'][data-state='unattached']"
+             )
+
+      view
+      |> element(
+        "[data-test='team-copy'][data-working-copy-id='#{copy_id}'] [data-test='team-copy-open']"
+      )
+      |> render_click()
+
+      modal = "[data-test='copy-modal']"
+
+      assert has_element?(
+               view,
+               "#{modal} [data-test='working-copy'][data-working-copy-id='#{copy_id}']"
+             )
+
+      assert has_element?(
+               view,
+               "#{modal} a[data-test='copy-modal-show'][href='/app/projects/#{project.id}/working-copies/#{copy_id}']"
+             )
+
+      assert has_element?(
+               view,
+               "#{modal} a[data-test='copy-modal-status'][href='/app/projects/#{project.id}/working-copies/#{copy_id}/status']"
+             )
+
+      render_click(view, "close_copy", %{})
+      refute has_element?(view, modal)
+    end
+  end
+
+  describe "an agent's task" do
+    defp active_task(scope, agent, attrs) do
+      {:ok, _agent} =
+        CodeMySpec.TaskOwner.add_task(
+          scope,
+          agent,
+          Map.merge(
+            %{id: Ecto.UUID.generate(), status: :active, started_at: DateTime.utc_now()},
+            Map.new(attrs)
+          )
+        )
+    end
+
+    test "clicking it shows the directive the next-task page gives for its requirement", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: "Pay by card"})
+      {agent, conversation} = agent_with_conversation(scope, project, %{story_id: story.id})
+
+      vantage = %{project_scope | active_working_copy_id: agent.working_copy_id}
+      :ok = RequirementGraph.settle(vantage)
+      {{nodes, _edges}, _at} = RequirementGraph.cached_graph(vantage)
+
+      node =
+        Enum.find(
+          nodes,
+          &(&1.entity_type == "story" and to_string(&1.entity_id) == to_string(story.id))
+        )
+
+      active_task(project_scope, agent, requirement_name: node.name, story_id: story.id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view
+      |> element(
+        "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-task']"
+      )
+      |> render_click()
+
+      render_async(view)
+
+      assert has_element?(view, "[data-test='task-modal']", node.name)
+      assert has_element?(view, "[data-test='task-modal-directive']")
+
+      render_click(view, "close_task", %{})
+      refute has_element?(view, "[data-test='task-modal']")
+    end
+
+    test "a task whose requirement the graph no longer holds says so", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      active_task(project_scope, agent, requirement_name: "no_such_requirement")
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      view
+      |> element(
+        "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='team-agent-task']"
+      )
+      |> render_click()
+
+      render_async(view)
+      assert has_element?(view, "[data-test='task-modal-gone']")
     end
   end
 
@@ -1020,7 +1384,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       open_team_panel(view)
 
       header = "header [data-test='story-progress']"
-      row = "[data-test='team-agent'][data-agent-id='#{agent.id}'] [data-test='story-progress']"
+
+      row =
+        "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}'] [data-test='story-progress']"
 
       render_async(view)
       {done, total} = slice_progress(scope, project, story)

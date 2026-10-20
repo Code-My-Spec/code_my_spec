@@ -14,8 +14,10 @@ defmodule CodeMySpecWeb.ProblemsLive do
   alias CodeMySpec.WorkingCopies
   import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.Problems
+  alias CodeMySpecWeb.ProblemCharts
 
   @per_page 25
+  @top_files 10
   @sources ~w(compiler credo exunit spex qa_validation)
 
   @impl true
@@ -31,6 +33,8 @@ defmodule CodeMySpecWeb.ProblemsLive do
      assign(socket,
        section: :problems,
        harnesses: [],
+       all?: false,
+       harness_param: nil,
        page: 1,
        filter: :all,
        result: nil,
@@ -42,19 +46,31 @@ defmodule CodeMySpecWeb.ProblemsLive do
   def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
     page = parse_page(params["page"])
     filter = parse_filter(params["filter"])
-    scope = scope_for(scope, params["harness"])
+    all? = params["harness"] == "all"
+    scope = if all?, do: WorkingCopies.viewing(scope), else: scope_for(scope, params["harness"])
+    copies = if all?, do: :all, else: :one
 
     result =
       Problems.list_problems_paginated(scope,
         page: page,
         per_page: @per_page,
-        filter: filter
+        filter: filter,
+        working_copy: copies
       )
+
+    harnesses = WorkingCopies.list_harnesses(scope)
 
     {:noreply,
      assign(socket,
        scope: scope,
-       harnesses: WorkingCopies.list_harnesses(scope),
+       all?: all?,
+       # Carried on every link, so filtering or paging keeps the copy picked.
+       harness_param: if(all?, do: "all", else: params["harness"]),
+       harnesses: harnesses,
+       copy_names: Map.new(harnesses, &{&1.id, WorkingCopies.display_name(&1)}),
+       copy_counts: if(all?, do: Problems.counts_by_working_copy(scope), else: []),
+       file_counts: if(all?, do: [], else: Problems.top_files(scope, @top_files)),
+       copy_name: copy_name(harnesses, scope.active_working_copy_id),
        page: page,
        filter: filter,
        result: result,
@@ -63,7 +79,16 @@ defmodule CodeMySpecWeb.ProblemsLive do
      )}
   end
 
+  # A bar in the per-copy chart picks that copy, as the picker does.
   @impl true
+  def handle_event("pick_copy", %{"id" => id}, socket),
+    do:
+      {:noreply,
+       push_patch(socket,
+         to:
+           problems_path(socket.assigns.slug, page: 1, filter: socket.assigns.filter, harness: id)
+       )}
+
   def handle_event("clear", _params, %{assigns: %{scope: scope, filter: filter}} = socket) do
     {:ok, count} =
       case filter do
@@ -82,7 +107,12 @@ defmodule CodeMySpecWeb.ProblemsLive do
 
     {:noreply,
      socket
-     |> assign(page: 1, result: result)
+     |> assign(
+       page: 1,
+       result: result,
+       copy_counts: if(socket.assigns.all?, do: Problems.counts_by_working_copy(scope), else: []),
+       file_counts: if(socket.assigns.all?, do: [], else: Problems.top_files(scope, @top_files))
+     )
      |> put_flash(:info, "Cleared #{count} problem(s) from #{label}.")}
   end
 
@@ -102,15 +132,28 @@ defmodule CodeMySpecWeb.ProblemsLive do
         </p>
       </div>
 
+      <%!-- Across every copy, which holds what; in one copy, where it sits.
+      A bar in the first picks its copy, which turns the page into the second. --%>
+      <div class="mb-6" data-test="problem-charts">
+        <ProblemCharts.by_copy
+          :if={@all?}
+          counts={@copy_counts}
+          harnesses={@harnesses}
+          pick_event="pick_copy"
+        />
+        <ProblemCharts.by_file :if={!@all?} counts={@file_counts} copy_name={@copy_name} />
+      </div>
+
       <.harness_picker
         harnesses={@harnesses}
-        active_id={@scope.active_working_copy_id}
+        active_id={if @all?, do: "all", else: @scope.active_working_copy_id}
         path_fun={&problems_path(@slug, page: 1, filter: @filter, harness: &1)}
+        all_path={problems_path(@slug, page: 1, filter: @filter, harness: "all")}
       />
 
       <div class="flex flex-wrap items-center gap-2 mb-4" data-test="problems-filters">
         <.link
-          patch={problems_path(@slug, page: 1, filter: :all)}
+          patch={problems_path(@slug, page: 1, filter: :all, harness: @harness_param)}
           data-test="filter-all"
           class={"btn btn-sm " <> if(@filter == :all, do: "btn-primary", else: "btn-ghost")}
         >
@@ -118,7 +161,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
         </.link>
         <.link
           :for={source <- sources()}
-          patch={problems_path(@slug, page: 1, filter: source)}
+          patch={problems_path(@slug, page: 1, filter: source, harness: @harness_param)}
           data-test={"filter-" <> source}
           class={"btn btn-sm " <> if(@filter == source, do: "btn-primary", else: "btn-ghost")}
         >
@@ -126,7 +169,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
         </.link>
 
         <button
-          :if={@result.problems != []}
+          :if={@result.problems != [] and not @all?}
           type="button"
           phx-click={show_confirm("clear-problems-dialog")}
           data-test="clear-problems"
@@ -153,6 +196,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
           <thead>
             <tr>
               <th>Severity</th>
+              <th :if={@all?}>Copy</th>
               <th>Source</th>
               <th>File</th>
               <th>Line</th>
@@ -171,6 +215,9 @@ defmodule CodeMySpecWeb.ProblemsLive do
               <td data-test="problem-severity">
                 <.severity_badge severity={problem.severity} />
               </td>
+              <td :if={@all?} data-test="problem-copy" class="text-xs">
+                {Map.get(@copy_names, problem.working_copy_id, "—")}
+              </td>
               <td data-test="problem-source" class="font-mono text-xs">{problem.source}</td>
               <td data-test="problem-file" class="font-mono text-xs">{problem.file_path || "—"}</td>
               <td class="font-mono text-xs">{problem.line || ""}</td>
@@ -186,7 +233,11 @@ defmodule CodeMySpecWeb.ProblemsLive do
               <td class="text-xs opacity-70">{problem.category || ""}</td>
             </tr>
             <tr :if={@result.problems == []}>
-              <td colspan="6" class="text-center opacity-60 py-8" data-test="problems-empty">
+              <td
+                colspan={if @all?, do: 7, else: 6}
+                class="text-center opacity-60 py-8"
+                data-test="problems-empty"
+              >
                 No problems match the current filter.
               </td>
             </tr>
@@ -205,7 +256,9 @@ defmodule CodeMySpecWeb.ProblemsLive do
         <div class="join">
           <.link
             :if={@result.page > 1}
-            patch={problems_path(@slug, page: @result.page - 1, filter: @filter)}
+            patch={
+              problems_path(@slug, page: @result.page - 1, filter: @filter, harness: @harness_param)
+            }
             data-test="prev-page"
             class="join-item btn btn-sm"
           >
@@ -213,7 +266,9 @@ defmodule CodeMySpecWeb.ProblemsLive do
           </.link>
           <.link
             :if={@result.page < @result.total_pages}
-            patch={problems_path(@slug, page: @result.page + 1, filter: @filter)}
+            patch={
+              problems_path(@slug, page: @result.page + 1, filter: @filter, harness: @harness_param)
+            }
             data-test="next-page"
             class="join-item btn btn-sm"
           >
@@ -269,6 +324,13 @@ defmodule CodeMySpecWeb.ProblemsLive do
   end
 
   defp sources, do: @sources
+
+  defp copy_name(harnesses, id) do
+    case Enum.find(harnesses, &(&1.id == id)) do
+      nil -> "this copy"
+      harness -> WorkingCopies.display_name(harness)
+    end
+  end
 
   defp parse_page(nil), do: 1
 
