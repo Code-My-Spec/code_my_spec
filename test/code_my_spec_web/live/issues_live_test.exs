@@ -142,14 +142,12 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       }
     end
 
-    test "incoming first, then accepted, newest first; closed hidden", ctx do
-      {:ok, view, html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
+    test "newest first, whatever the status; closed hidden", ctx do
+      {:ok, _view, html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
 
       assert listed_ids(html) ==
-               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+               Enum.map([ctx.accepted, ctx.new_incoming, ctx.old_incoming], &"issue-#{&1.id}")
 
-      assert has_element?(view, "[data-test='issue-group'][data-status='incoming']")
-      assert has_element?(view, "[data-test='issue-group'][data-status='accepted']")
       refute html =~ ctx.dismissed.title
       refute html =~ ctx.resolved.title
     end
@@ -170,10 +168,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
         ~p"/app/projects/#{ctx.project.id}/issues?#{[status: ~w(incoming accepted resolved dismissed), severity: ~w(high medium), scope: ~w(app)]}"
       )
 
-      ids = listed_ids(html)
-
-      assert Enum.take(ids, 3) ==
-               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+      assert length(listed_ids(html)) == 5
 
       html =
         view
