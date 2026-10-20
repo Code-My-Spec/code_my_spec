@@ -1257,6 +1257,53 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='issues-modal'] [data-test='issue-row']")
     end
 
+    test "the QA counts open each story's latest attempt worst first, and one in place", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      [passing, failing] =
+        for {title, status} <- [{"Pay by card", :pass}, {"Refund a payment", :fail}] do
+          story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: title})
+
+          CodeMySpec.Repo.insert!(%CodeMySpec.Qa.QaAttempt{
+            story_id: story.id,
+            status: status,
+            scenarios: [
+              %CodeMySpec.Qa.Scenario{name: "#{title} works", status: status, observation: "seen"}
+            ],
+            issue_ids: [],
+            submitted_at: DateTime.utc_now()
+          })
+        end
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='qa-counts'][data-pass='1'][data-partial='0'][data-fail='1']"
+             )
+
+      view |> element("[data-test='qa-counts']") |> render_click()
+      html = view |> element("[data-test='qa-modal']") |> render()
+      [first | _] = Regex.scan(~r/data-attempt-id="([^"]+)"/, html, capture: :all_but_first)
+      assert first == [to_string(failing.id)]
+      assert has_element?(view, "[data-test='qa-modal'] [data-test='qa-over-time']")
+
+      view |> element("[data-test='qa-row'][data-attempt-id='#{passing.id}']") |> render_click()
+      assert has_element?(view, "[data-test='qa-detail']", "Pay by card works")
+
+      view |> element("[data-test='qa-modal-back']") |> render_click()
+      assert has_element?(view, "[data-test='qa-modal'] [data-test='qa-row']")
+    end
+
     test "a main-role agent on another copy does not", %{
       conn: conn,
       scope: scope,

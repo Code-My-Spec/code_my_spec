@@ -24,11 +24,13 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   use CodeMySpecWeb, :live_component
 
   alias CodeMySpec.Architecture.BoundaryGraph
+  alias CodeMySpec.Qa
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.PlainLanguage
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpecWeb.QaComponents
   alias CodeMySpecWeb.RequirementGraphComponents
 
   @doc """
@@ -67,7 +69,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         {:ok,
          assign(socket,
            bands: Bands.read(socket.assigns.scope),
-           architecture: BoundaryGraph.build(socket.assigns.scope).summary
+           architecture: BoundaryGraph.build(socket.assigns.scope).summary,
+           qa: socket.assigns.scope |> Qa.list_project_attempts() |> QaComponents.counts()
          )},
       else: {:ok, socket}
   end
@@ -193,6 +196,11 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <li data-test="timeline-band" data-band="architecture">
             <.labelled label="Arch">
               <.architecture_mark summary={@architecture} project={@project} />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="qa">
+            <.labelled label="QA">
+              <QaComponents.counts_mark counts={@qa} phx-click="show_qa" />
             </.labelled>
           </li>
           <li data-test="timeline-band" data-band="issues">

@@ -36,6 +36,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems
+  alias CodeMySpec.Qa
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphInputs
@@ -52,6 +53,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.PermissionComponents
   alias CodeMySpecWeb.ProblemCharts
   alias CodeMySpecWeb.ProjectTimeline
+  alias CodeMySpecWeb.QaComponents
   alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.TaskComponents
   alias CodeMySpecWeb.WorkingCopyLive.Components.Copy, as: CopyComponents
@@ -167,6 +169,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:task_modal, nil)
     |> assign(:problems_modal, nil)
     |> assign(:issues_modal, nil)
+    |> assign(:qa_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -861,6 +864,33 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_issues", _params, socket),
     do: {:noreply, assign(socket, :issues_modal, nil)}
+
+  # The status bar's QA counts: each story's latest attempt, worst first, a
+  # chart of every attempt, and one picked from the list.
+  def handle_event("show_qa", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     assign(socket, :qa_modal, %{
+       latest: scope |> Qa.list_project_attempts() |> QaComponents.worst_first(),
+       attempts: Qa.list_project_attempts(scope, include_older: true),
+       picked: nil
+     })}
+  end
+
+  def handle_event("pick_qa", %{"id" => id}, %{assigns: %{qa_modal: %{} = modal}} = socket) do
+    {:noreply,
+     assign(socket, :qa_modal, %{
+       modal
+       | picked: Enum.find(modal.latest, &(to_string(&1.id) == id))
+     })}
+  end
+
+  def handle_event("qa_back", _params, %{assigns: %{qa_modal: %{} = modal}} = socket),
+    do: {:noreply, assign(socket, :qa_modal, %{modal | picked: nil})}
+
+  def handle_event("close_qa", _params, socket),
+    do: {:noreply, assign(socket, :qa_modal, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -2280,6 +2310,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         directive={@task_modal.directive}
         project_id={@project.id}
         on_close="close_task"
+      />
+      <QaComponents.modal
+        :if={@qa_modal}
+        latest={@qa_modal.latest}
+        attempts={@qa_modal.attempts}
+        picked={@qa_modal.picked}
+        project_id={@project.id}
+        on_pick="pick_qa"
+        on_back="qa_back"
+        on_close="close_qa"
       />
       <IssueComponents.modal
         :if={@issues_modal}
