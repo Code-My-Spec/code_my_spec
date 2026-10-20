@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2929Spex do
                  "stands, which is the one screen it belongs on"
 
         timeline = :binary.match(context.html, "data-test=\"project-timeline\"") |> elem(0)
-        thread = :binary.match(context.html, "data-test=\"agent-conversation\"") |> elem(0)
+        thread = :binary.match(context.html, "data-test=\"conversation-scroll\"") |> elem(0)
 
         assert timeline < thread,
                "the timeline renders below the conversation. Across the top is the whole " <>

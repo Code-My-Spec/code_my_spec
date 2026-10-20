@@ -372,16 +372,26 @@ defmodule CodeMySpec.Requirements do
   def task_directive(%Scope{} = scope, task) do
     {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
 
-    case Enum.filter(nodes, &task_node?(&1, task)) do
+    case Enum.filter(nodes, &task_on?(&1, task)) do
       [] -> nil
       found -> Directives.format_next_requirements(Directives.number_nodes(scope, found))
     end
   end
 
-  defp task_node?(%{name: name} = node, %{requirement_name: name} = task),
+  @doc """
+  Whether `task` is work on this requirement node: same requirement, same
+  owner. A task names its requirement and owner rather than a row id.
+  """
+  @spec task_on?(map(), map()) :: boolean()
+  def task_on?(%{name: name} = node, %{requirement_name: name} = task),
     do: owner_of(node) == owner_of(task)
 
-  defp task_node?(_node, _task), do: false
+  def task_on?(_node, _task), do: false
+
+  @doc "What `get_next_requirement` says about one requirement node."
+  @spec node_directive(Scope.t(), map()) :: String.t()
+  def node_directive(%Scope{} = scope, node),
+    do: Directives.format_next_requirements(Directives.number_nodes(scope, [node]))
 
   defp owner_of(%{entity_type: type, entity_id: id}), do: {type, to_string(id)}
   defp owner_of(%{issue_id: id}) when is_binary(id), do: {"issue", id}

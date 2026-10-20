@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
   Story 965 — A timeline across the top says where my project is.
   Criterion 2928 — A step is a way in, not a dead end.
 
-  Rule: Clicking a step opens the page that already answers for it.
+  Rule: Clicking a step opens the graph on its own requirement.
 
   The half that stops this being decoration. A timeline that only reports leaves
   somebody who wants to know more with a screen full of project pages and no
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
     :ok
   end
 
-  spex "Clicking a step opens the page that already answers for it", criterion: 1015 do
+  spex "Clicking a step opens the graph on its own requirement", criterion: 1015 do
     scenario "A step is a way in, not a dead end" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_2928")}
@@ -64,8 +64,15 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
         {:ok, context}
       end
 
-      then_ "I land on the page that answers for it", context do
-        assert_redirect(context.live)
+      then_ "I land on the graph, on its own requirement", context do
+        render_async(context.live)
+
+        assert has_element?(
+                 context.live,
+                 "[data-test='graph-modal'] [data-test='node-detail'][data-node='work_dispatched']"
+               ),
+               "clicking the step opened nothing about it, so the strip reports and " <>
+                 "cannot be opened"
 
         {:ok, context}
       end

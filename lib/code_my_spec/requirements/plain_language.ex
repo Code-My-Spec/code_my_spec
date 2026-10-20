@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
   @steps %{
     "personas_complete" => %{
       phase: :shaping,
-      title: "Who it is for",
+      title: "Interviewing the user",
       abbrev: "who",
       detail:
         "We are working out who will use your software and what they need from it. " <>
@@ -39,7 +39,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "stories_exist" => %{
       phase: :shaping,
-      title: "What it should do",
+      title: "Writing stories",
       abbrev: "stories",
       detail:
         "Your ideas are being turned into a list of things the software should do. " <>
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "technical_strategy" => %{
       phase: :design,
-      title: "How it will be built",
+      title: "Choosing the approach",
       abbrev: "strategy",
       detail:
         "We are deciding the big technical choices once, up front, so they do not get " <>
@@ -55,7 +55,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "code_generation" => %{
       phase: :design,
-      title: "The starting shape",
+      title: "Generating the scaffold",
       abbrev: "scaffold",
       detail:
         "The skeleton of your application is being laid down. It does nothing useful " <>
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "qa_integration_plan" => %{
       phase: :design,
-      title: "Talking to other services",
+      title: "Planning integrations",
       abbrev: "services",
       detail:
         "We are working out which outside services your software needs, and how we will " <>
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "architecture_designed" => %{
       phase: :design,
-      title: "How the pieces fit",
+      title: "Designing the architecture",
       abbrev: "arch",
       detail:
         "Your list of things to do is being organised into parts that fit together. " <>
@@ -79,7 +79,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "spex_boundary_ready" => %{
       phase: :design,
-      title: "Ready to be checked",
+      title: "Setting up specs",
       abbrev: "specs",
       detail:
         "We are setting up the machinery that proves your software does what you asked " <>
@@ -87,7 +87,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "work_dispatched" => %{
       phase: :building,
-      title: "Building it",
+      title: "Building",
       abbrev: "build",
       detail:
         "Your software is being written, one piece of what you asked for at a time. " <>
@@ -95,7 +95,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "issues_triaged" => %{
       phase: :checking,
-      title: "Looking at what turned up",
+      title: "Triaging issues",
       abbrev: "triage",
       detail:
         "Everything testing found is being read and sorted. Nothing gets quietly " <>
@@ -103,7 +103,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "issues_resolved" => %{
       phase: :checking,
-      title: "Fixing what mattered",
+      title: "Fixing issues",
       abbrev: "fixes",
       detail:
         "The problems worth fixing are being fixed. The ones you decided to live with " <>
@@ -111,7 +111,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "qa_setup" => %{
       phase: :proving,
-      title: "Getting ready to test",
+      title: "Setting up QA",
       abbrev: "qa setup",
       detail:
         "We are working out how to test your software the way a real person would use " <>
@@ -119,7 +119,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "qa_journey_plan" => %{
       phase: :proving,
-      title: "Planning the walkthrough",
+      title: "Planning the QA journey",
       abbrev: "plan",
       detail:
         "We are writing down the journeys a real user takes through your software, so " <>
@@ -127,7 +127,7 @@ defmodule CodeMySpec.Requirements.PlainLanguage do
     },
     "qa_journey_execute" => %{
       phase: :proving,
-      title: "Walking it through",
+      title: "Running the QA journey",
       abbrev: "walk",
       detail:
         "Somebody is going through your software the way your users will, and writing " <>

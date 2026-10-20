@@ -1073,6 +1073,108 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  describe "the project's own agent" do
+    test "a Claude Code main on the main copy gets the timeline with no terminal connected", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} =
+        CodeMySpec.Staffing.designate_main(
+          %{scope | active_project_id: project.id},
+          agent.working_copy_id
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='project-timeline']")
+      assert has_element?(view, "[data-test='story-chart']")
+      assert has_element?(view, "[data-test='component-bar']")
+      assert has_element?(view, "[data-test='issue-bar']")
+      assert has_element?(view, "[data-test='architecture-mark'][data-cycles]")
+
+      assert has_element?(
+               view,
+               "[data-test='story-counts'][data-done][data-backlog][data-retired]"
+             )
+
+      view |> element("[data-test='open-graph']") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "[data-test='graph-modal'] #timeline-graph[data-graph]")
+      assert has_element?(view, "[data-test='graph-modal'] a[data-test='graph-modal-open']")
+
+      view |> element("[data-test='graph-modal'] .modal-backdrop") |> render_click()
+      refute has_element?(view, "[data-test='graph-modal']")
+
+      view
+      |> element("[data-test='timeline-step'][data-step='work_dispatched'] a")
+      |> render_click()
+
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "[data-test='graph-modal'] [data-test='node-detail'][data-node='work_dispatched']"
+             )
+    end
+
+    test "a story's column opens its graph with a slider through the chart's stories", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      [first, second] =
+        for title <- ["Pay by card", "Refund a payment"],
+            do: CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: title})
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      :ok =
+        RequirementGraph.settle(%{project_scope | active_working_copy_id: agent.working_copy_id})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      view |> element("[data-test='story-column'][data-story-id='#{first.id}']") |> render_click()
+
+      assert has_element?(view, "[data-test='story-graph-modal']", first.title)
+      assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
+
+      # The graph arriving renders the stage drawn, not loading.
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading-empty']")
+
+      # Equal progress orders the two by number, so the second is at 1.
+      assert has_element?(view, "[data-test='story-graph-slider'] input[value='0']")
+      view |> element("#story-graph-slider") |> render_change(%{"index" => "1"})
+
+      assert has_element?(view, "[data-test='story-graph-modal']", second.title)
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading']")
+    end
+
+    test "a main-role agent on another copy does not", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='project-timeline']")
+    end
+  end
+
   describe "a copy at a glance" do
     test "a copy's row counts its problems; clicking shows where they are", %{
       conn: conn,
