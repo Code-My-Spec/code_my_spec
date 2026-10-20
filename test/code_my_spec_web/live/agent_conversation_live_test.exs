@@ -1122,7 +1122,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              )
     end
 
-    test "a story's column opens its graph with a slider through the chart's stories", %{
+    test "a story's column opens the story with a slider, and its graph from there", %{
       conn: conn,
       scope: scope,
       project: project
@@ -1145,6 +1145,16 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       view |> element("[data-test='story-column'][data-story-id='#{first.id}']") |> render_click()
 
+      # The column opens the story itself, with a slider through the chart's.
+      assert has_element?(view, "[data-test='assigned-modal-story']", first.title)
+      assert has_element?(view, "[data-test='chart-story-slider'] input[type='range'][max='1']")
+      view |> element("#chart-story-slider") |> render_change(%{"index" => "1"})
+      assert has_element?(view, "[data-test='assigned-modal-story']", second.title)
+      view |> element("#chart-story-slider") |> render_change(%{"index" => "0"})
+
+      # And from there, its requirements graph.
+      view |> element("[data-test='chart-story-graph']") |> render_click()
+      refute has_element?(view, "[data-test='assigned-modal-story']")
       assert has_element?(view, "[data-test='story-graph-modal']", first.title)
       assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
 

@@ -271,9 +271,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
-  # A column opens that story's requirements graph in the cockpit's story
-  # graph modal (`show_story_graph`), with a slider through the stories in this
-  # order.
+  # A column opens that story in the cockpit's story modal
+  # (`show_chart_story`), with a slider through the stories in this order and
+  # the way to its requirements graph.
   defp story_chart(assigns) do
     ~H"""
     <div
@@ -293,10 +293,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           data-test="story-column"
           data-story-id={story.id}
           title={story_title(story)}
-          phx-click="show_story_graph"
-          phx-value-story-id={story.id}
-          phx-value-copy-id={story.working_copy_id}
-          phx-value-from="chart"
+          phx-click="show_chart_story"
+          phx-value-number={story.number}
           class="flex min-w-0 flex-1 cursor-pointer flex-col-reverse transition-opacity group-hover:opacity-50 hover:opacity-100!"
         >
           <span

@@ -685,7 +685,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
       story ->
         slider = if params["from"] == "chart", do: chart_stories(socket)
-        {:noreply, open_story_graph(socket, scope, story, slider)}
+
+        {:noreply,
+         socket |> assign(:assigned_modal, nil) |> open_story_graph(scope, story, slider)}
     end
   end
 
@@ -752,6 +754,23 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_assigned", _params, socket),
     do: {:noreply, assign(socket, :assigned_modal, nil)}
+
+  # A story's column on the timeline: the story itself, with a slider through
+  # the chart's stories in its order.
+  def handle_event("show_chart_story", %{"number" => number}, socket) do
+    stories = chart_stories(socket)
+    {:noreply, assign(socket, :assigned_modal, chart_story(socket, stories, number))}
+  end
+
+  def handle_event("slide_chart_story", %{"index" => index}, socket) do
+    with %{slider: [_ | _] = stories} <- socket.assigns[:assigned_modal],
+         {i, ""} <- Integer.parse(index),
+         %{number: number} <- Enum.at(stories, i) do
+      {:noreply, assign(socket, :assigned_modal, chart_story(socket, stories, number))}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
 
   def handle_event("show_copy", %{"id" => id}, socket),
     do: {:noreply, assign(socket, :copy_modal_id, id)}
@@ -1763,8 +1782,44 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <.assigned_body item={@item} />
+        <form
+          :if={@item[:slider]}
+          id="chart-story-slider"
+          phx-change="slide_chart_story"
+          data-test="chart-story-slider"
+          class="mb-3 flex items-center gap-3 pr-8"
+        >
+          <input
+            type="range"
+            name="index"
+            min="0"
+            max={length(@item.slider) - 1}
+            value={@item.index}
+            phx-debounce="500"
+            class="range range-xs flex-1"
+            aria-label="Step through the stories"
+          />
+          <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
+            {(@item.index || 0) + 1} / {length(@item.slider)}
+          </span>
+        </form>
+        <%!-- Held to one height while sliding, so the modal does not jump. --%>
+        <div class={@item[:slider] && "h-[60dvh] overflow-y-auto"}>
+          <.assigned_body item={@item} />
+        </div>
         <div class="modal-action">
+          <button
+            :if={@item[:slider]}
+            type="button"
+            phx-click="show_story_graph"
+            phx-value-story-id={@item.story.id}
+            phx-value-copy-id={@item.story.working_copy_id}
+            phx-value-from="chart"
+            data-test="chart-story-graph"
+            class="btn btn-sm btn-ghost"
+          >
+            <.icon name="hero-share" class="size-4" /> Graph
+          </button>
           <.link navigate={@item.path} class="btn btn-sm btn-ghost">
             View full {if @item.kind == :issue, do: "issue", else: "story"}
             <.icon name="hero-arrow-top-right-on-square" class="size-4" />
@@ -1955,6 +2010,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp chart_stories(socket),
     do: Bands.read(socket.assigns.current_scope).stories
+
+  defp chart_story(socket, stories, number) do
+    number = if is_binary(number), do: String.to_integer(number), else: number
+
+    case assigned_modal(socket.assigns.scope, "story", number) do
+      nil ->
+        nil
+
+      item ->
+        Map.merge(item, %{
+          slider: stories,
+          index: Enum.find_index(stories, &(&1.number == number))
+        })
+    end
+  end
 
   defp arrange_graph(socket) do
     case socket.assigns[:graph_modal] do
