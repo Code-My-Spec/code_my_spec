@@ -1765,6 +1765,51 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   attr :story, :map, required: true
   attr :view, :atom, required: true, values: [:text, :graph]
+  attr :slider, :list, default: nil
+  attr :index, :integer, default: nil
+  attr :slide_event, :string, required: true
+  attr :form_id, :string, required: true
+  attr :arrange?, :boolean, default: false
+
+  # One header for the chart's story, text or graph: the switch, "Story N ·
+  # title", then on the right Arrange (graph only) and the slider.
+  defp story_modal_header(assigns) do
+    ~H"""
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 pr-8" data-test="story-modal-header">
+      <.story_view_switch :if={@slider} story={@story} view={@view} />
+      <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">
+        Story {@story.number} · {@story.title}
+      </h2>
+      <button :if={@arrange?} phx-click="lf:request_layout" class="btn btn-ghost btn-xs">
+        Arrange
+      </button>
+      <form
+        :if={@slider}
+        id={@form_id}
+        phx-change={@slide_event}
+        data-test={@form_id}
+        class="flex w-full items-center gap-2 sm:w-56"
+      >
+        <input
+          type="range"
+          name="index"
+          min="0"
+          max={length(@slider) - 1}
+          value={@index}
+          phx-debounce="500"
+          class="range range-xs flex-1"
+          aria-label="Step through the stories"
+        />
+        <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
+          {(@index || 0) + 1} / {length(@slider)}
+        </span>
+      </form>
+    </div>
+    """
+  end
+
+  attr :story, :map, required: true
+  attr :view, :atom, required: true, values: [:text, :graph]
 
   # Flips the chart's story between its text and its requirements graph,
   # keeping the slider's place.
@@ -1818,31 +1863,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <.story_view_switch :if={@item[:slider]} story={@item.story} view={:text} />
-        <form
+        <.story_modal_header
           :if={@item[:slider]}
-          id="chart-story-slider"
-          phx-change="slide_chart_story"
-          data-test="chart-story-slider"
-          class="my-3 flex items-center gap-3 pr-8"
-        >
-          <input
-            type="range"
-            name="index"
-            min="0"
-            max={length(@item.slider) - 1}
-            value={@item.index}
-            phx-debounce="500"
-            class="range range-xs flex-1"
-            aria-label="Step through the stories"
-          />
-          <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
-            {(@item.index || 0) + 1} / {length(@item.slider)}
-          </span>
-        </form>
+          story={@item.story}
+          view={:text}
+          slider={@item.slider}
+          index={@item.index}
+          slide_event="slide_chart_story"
+          form_id="chart-story-slider"
+        />
         <%!-- Held to one height while sliding, so the modal does not jump. --%>
-        <div class={@item[:slider] && "h-[60dvh] overflow-y-auto"}>
-          <.assigned_body item={@item} />
+        <div class={@item[:slider] && "mt-3 h-[60dvh] overflow-y-auto"}>
+          <.assigned_body item={@item} heading?={is_nil(@item[:slider])} />
         </div>
         <div class="modal-action">
           <.link navigate={@item.path} class="btn btn-sm btn-ghost">
@@ -1857,11 +1889,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   attr :item, :map, required: true
+  attr :heading?, :boolean, default: true
 
   defp assigned_body(%{item: %{kind: :story}} = assigns) do
     ~H"""
-    <p class="text-xs uppercase tracking-wide opacity-60">Story {@item.story.number}</p>
-    <h2 class="mt-1 pr-8 text-lg font-semibold text-balance">{@item.story.title}</h2>
+    <p :if={@heading?} class="text-xs uppercase tracking-wide opacity-60">
+      Story {@item.story.number}
+    </p>
+    <h2 :if={@heading?} class="mt-1 pr-8 text-lg font-semibold text-balance">
+      {@item.story.title}
+    </h2>
     <div class="prose prose-sm mt-3 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
       {md_html(@item.story.description)}
     </div>
@@ -1929,44 +1966,23 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <div class="flex items-baseline gap-x-3 pr-8">
-          <h2 class="min-w-0 truncate text-lg font-semibold">
-            Story {@modal.story.number} · {@modal.story.title}
-          </h2>
-          <span :if={@modal[:progress]} class="text-sm opacity-70" data-test="story-graph-progress">
-            {elem(@modal.progress, 0)} of {elem(@modal.progress, 1)} requirements satisfied
-          </span>
-          <button :if={@modal.flow} phx-click="lf:request_layout" class="btn btn-ghost btn-xs ml-auto">
-            Arrange
-          </button>
-        </div>
-        <%!-- The story itself, held to two lines so sliding between stories does
-        not move everything under it. --%>
+        <.story_modal_header
+          story={@modal.story}
+          view={:graph}
+          slider={@modal[:slider]}
+          index={@modal[:index]}
+          slide_event="slide_story"
+          form_id="story-graph-slider"
+          arrange?={not is_nil(@modal.flow)}
+        />
+        <%!-- The story itself and how far it has got, held to two lines so
+        sliding between stories does not move everything under it. --%>
         <p data-test="story-graph-description" class="line-clamp-2 min-h-10 text-sm opacity-70">
+          <span :if={@modal[:progress]} class="font-medium" data-test="story-graph-progress">
+            {elem(@modal.progress, 0)} of {elem(@modal.progress, 1)} requirements satisfied ·
+          </span>
           {@modal.story.description}
         </p>
-        <.story_view_switch :if={@modal[:slider]} story={@modal.story} view={:graph} />
-        <form
-          :if={@modal[:slider]}
-          id="story-graph-slider"
-          phx-change="slide_story"
-          data-test="story-graph-slider"
-          class="flex items-center gap-3"
-        >
-          <input
-            type="range"
-            name="index"
-            min="0"
-            max={length(@modal.slider) - 1}
-            value={@modal.index}
-            phx-debounce="500"
-            class="range range-xs flex-1"
-            aria-label="Step through the stories"
-          />
-          <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
-            {(@modal.index || 0) + 1} / {length(@modal.slider)}
-          </span>
-        </form>
         <%!-- One fixed-height stage for every state, so loading, empty and
         drawn are the same size and the modal holds still while sliding. --%>
         <div class="relative flex flex-col" style="height: 65vh; min-height: 420px">
