@@ -71,12 +71,8 @@ defmodule CodeMySpecSpex.Story1137.Criterion2334Spex do
       end
 
       when_ "the main agent messages the coding agent", context do
-        caller = self()
-
         task =
           Task.async(fn ->
-            send(caller, :asking)
-
             ToolLibrary.run(
               "message_agent",
               %{agent_id: context.coder_id, message: "Here's the next piece of work."},
@@ -88,7 +84,6 @@ defmodule CodeMySpecSpex.Story1137.Criterion2334Spex do
             )
           end)
 
-        assert_receive :asking, 1_000
         assert_push "mailbox_delivery", pushed, 2_000
 
         assert pushed["agent_id"] == context.coder_id,
