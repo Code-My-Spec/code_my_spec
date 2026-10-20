@@ -281,6 +281,9 @@ defmodule CodeMySpecWeb.Router do
     # checkout. Here rather than there for the same reason the lookup above is.
     post "/devices", DeviceController, :create
 
+    # A dev box trades its own token for a short-lived access token (story 1131).
+    post "/devices/token", DeviceTokenController, :create
+
     # The cached requirement graph — the local app's
     # `/api/projects/:project_name/requirements/graph`, for a caller holding a
     # deploy key or an OAuth token instead of a seat on the machine.

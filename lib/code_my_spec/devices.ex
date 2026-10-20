@@ -223,7 +223,9 @@ defmodule CodeMySpec.Devices do
   """
   @spec sign_in_with_token(String.t() | nil) :: Device.t() | nil
   def sign_in_with_token(token) when is_binary(token) and token != "" do
-    case Repo.get_by(Device, token_hash: hash_token(token)) do
+    hash = hash_token(token)
+
+    case Repo.one(from(d in Device, where: d.token_hash == ^hash and is_nil(d.token_revoked_at))) do
       nil ->
         nil
 
@@ -235,6 +237,47 @@ defmodule CodeMySpec.Devices do
   end
 
   def sign_in_with_token(_token), do: nil
+
+  @doc """
+  Revoke a dev box's token (story 1131). Owners and admins only; the box's token
+  stops signing in, and nothing else on the account is touched.
+  """
+  @spec revoke_dev_box(Scope.t(), String.t()) ::
+          {:ok, Device.t()} | {:error, :forbidden | :not_found | Ecto.Changeset.t()}
+  def revoke_dev_box(%Scope{active_account_id: account_id} = scope, id)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = box <- get_device(scope, id),
+         true <- Device.dev_box?(box) do
+      case box |> Device.revoked_changeset(DateTime.utc_now()) |> Repo.update() do
+        {:ok, box} ->
+          broadcast(box, {:dev_box_revoked, box.id})
+          {:ok, box}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def revoke_dev_box(%Scope{}, _id), do: {:error, :forbidden}
+
+  @doc """
+  The dev box with this id whose token has not been revoked, or nil. For an
+  access token issued to a box: it holds for as long as its box does.
+  """
+  @spec active_dev_box(String.t() | nil) :: Device.t() | nil
+  def active_dev_box(id) when is_binary(id) do
+    case Repo.get(Device, id) do
+      %Device{token_revoked_at: nil} = box -> if Device.dev_box?(box), do: box
+      _ -> nil
+    end
+  end
+
+  def active_dev_box(_id), do: nil
 
   @doc "Subscribe to changes to this account's dev boxes."
   @spec subscribe(String.t()) :: :ok | {:error, term()}

@@ -7,6 +7,9 @@ defmodule CodeMySpec.Oauth.AccessToken do
   schema "oauth_access_tokens" do
     access_token_fields()
 
+    # Story 1131: the dev box this token was issued to, or nil.
+    field :device_id, :binary_id
+
     timestamps()
   end
 
