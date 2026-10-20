@@ -10,7 +10,7 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Devices.Provider
+  alias CodeMySpec.Workspaces.Runner
   alias CodeMySpec.Repo
 
   setup do
@@ -26,10 +26,13 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
     user_scope_fixture(user, account)
   end
 
+  defp add(scope, params),
+    do: Devices.add_dev_box(scope, params, Runner.dev_box(params["provider"]))
+
   describe "adding a dev box" do
     test "an owner adds one, and its provider says what kind of machine it is", %{scope: scope} do
       assert {:ok, %Device{} = box, token} =
-               Devices.add_dev_box(scope, %{
+               add(scope, %{
                  "name" => "cloud-1",
                  "provider" => "claude_code_cloud"
                })
@@ -41,12 +44,12 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
       assert is_binary(token)
 
       assert {:ok, %Device{kind: :local}, _token} =
-               Devices.add_dev_box(scope, %{"name" => "laptop", "provider" => "local"})
+               add(scope, %{"name" => "laptop", "provider" => "local"})
     end
 
     test "only the token's hash is kept", %{scope: scope} do
       {:ok, box, token} =
-        Devices.add_dev_box(scope, %{"name" => "cloud-1", "provider" => "local"})
+        add(scope, %{"name" => "cloud-1", "provider" => "local"})
 
       stored = Repo.get!(Device, box.id)
       assert stored.token_hash != token
@@ -57,12 +60,12 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
       assert {:ok, _box, _token} =
                scope
                |> member_scope(:admin)
-               |> Devices.add_dev_box(%{"name" => "by-admin", "provider" => "local"})
+               |> add(%{"name" => "by-admin", "provider" => "local"})
 
       assert {:error, :forbidden} =
                scope
                |> member_scope(:member)
-               |> Devices.add_dev_box(%{"name" => "by-member", "provider" => "local"})
+               |> add(%{"name" => "by-member", "provider" => "local"})
 
       names = scope |> Devices.list_devices() |> Enum.map(& &1.label)
       assert "by-admin" in names
@@ -71,20 +74,20 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
     test "an unknown provider or a blank name adds nothing", %{scope: scope} do
       assert {:error, :unknown_provider} =
-               Devices.add_dev_box(scope, %{"name" => "x", "provider" => "mainframe"})
+               add(scope, %{"name" => "x", "provider" => "mainframe"})
 
       assert {:error, %Ecto.Changeset{}} =
-               Devices.add_dev_box(scope, %{"name" => "  ", "provider" => "local"})
+               add(scope, %{"name" => "  ", "provider" => "local"})
     end
   end
 
   describe "signing in with a box's token" do
     test "it resolves to that box, marks it connected, and never to another", %{scope: scope} do
       {:ok, one, one_token} =
-        Devices.add_dev_box(scope, %{"name" => "one", "provider" => "local"})
+        add(scope, %{"name" => "one", "provider" => "local"})
 
       {:ok, two, two_token} =
-        Devices.add_dev_box(scope, %{"name" => "two", "provider" => "local"})
+        add(scope, %{"name" => "two", "provider" => "local"})
 
       assert one_token != two_token
 
@@ -106,7 +109,7 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
     test "the account hears that the box connected", %{scope: scope} do
       :ok = Devices.subscribe(scope.active_account_id)
-      {:ok, box, token} = Devices.add_dev_box(scope, %{"name" => "one", "provider" => "local"})
+      {:ok, box, token} = add(scope, %{"name" => "one", "provider" => "local"})
 
       Devices.sign_in_with_token(token)
 
@@ -117,24 +120,24 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
   describe "providers" do
     test "each is listed, found by id, and tells how to bring its box up with the token" do
-      assert Provider.ids() == [:local, :claude_code_cloud]
-      assert Provider.get("local").label() == "Local"
-      assert Provider.get(:claude_code_cloud).label() == "Claude Code cloud"
-      assert Provider.get("mainframe") == nil
+      assert Enum.map(Runner.dev_boxes(), & &1.id()) == [:local, :claude_code_cloud]
+      assert Runner.dev_box("local").label() == "Local"
+      assert Runner.dev_box(:claude_code_cloud).label() == "Claude Code cloud"
+      assert Runner.dev_box("mainframe") == nil
 
       context = %{token: "cbt_abc", server_url: "https://dev.example.com"}
 
-      assert [%{key: "setup-local", body: body}] = Provider.get("local").instructions(context)
+      assert [%{key: "setup-local", body: body}] = Runner.dev_box("local").instructions(context)
       assert body =~ "cbt_abc"
       assert body =~ "cms"
 
-      keys = Provider.get("claude_code_cloud").instructions(context) |> Enum.map(& &1.key)
+      keys = Runner.dev_box("claude_code_cloud").instructions(context) |> Enum.map(& &1.key)
       assert keys == ["setup-script", "setup-hosts", "setup-network-secret"]
     end
 
     test "the cloud setup script carries no token and asks for no deploy key in the environment" do
       context = %{token: "cbt_abc", server_url: "https://dev.example.com"}
-      sections = Provider.get("claude_code_cloud").instructions(context)
+      sections = Runner.dev_box("claude_code_cloud").instructions(context)
 
       script = Enum.find(sections, &(&1.key == "setup-script")).body
       refute script =~ "cbt_abc"

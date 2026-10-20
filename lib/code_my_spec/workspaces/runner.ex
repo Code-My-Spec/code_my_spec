@@ -2,6 +2,10 @@ defmodule CodeMySpec.Workspaces.Runner do
   @moduledoc """
   Whatever actually runs an instance.
 
+  It is also what a dev box is added from (story 1130): `dev_boxes/0` lists the
+  runners that say who they are (`id/0`, `label/0`, `kind/0`) and what to show
+  for the token of a box added from them (`instructions/1`).
+
   Today that is a devbox container on the local Docker daemon. The shared
   multi-tenant host is a second implementation of this same behaviour, which is
   the point of it being a behaviour. Configure with:
@@ -59,6 +63,41 @@ defmodule CodeMySpec.Workspaces.Runner do
   @callback logs(container_name :: String.t()) :: String.t()
 
   @callback stop(container_name :: String.t()) :: :ok
+
+  @type section :: %{
+          required(:key) => String.t(),
+          required(:copy) => String.t(),
+          required(:title) => String.t(),
+          required(:body) => String.t()
+        }
+
+  @doc "As a dev box provider (story 1130): its id, as stored on the device and posted by the add form."
+  @callback id() :: atom()
+
+  @doc "As a dev box provider: what the person picks it by."
+  @callback label() :: String.t()
+
+  @doc "As a dev box provider: `:local` or `:cloud`, the kind of machine a box from it is."
+  @callback kind() :: :local | :cloud
+
+  @doc """
+  As a dev box provider: what to show with the token of a box just added,
+  sections each with a copy button. `context` carries the `:token` and this
+  server's `:server_url`.
+  """
+  @callback instructions(context :: %{token: String.t(), server_url: String.t()}) :: [section()]
+
+  @optional_callbacks id: 0, label: 0, kind: 0, instructions: 1
+
+  @dev_boxes [__MODULE__.Local, __MODULE__.ClaudeCodeCloud]
+
+  @doc "The runners a dev box can be added from."
+  @spec dev_boxes() :: [module()]
+  def dev_boxes, do: @dev_boxes
+
+  @doc "The dev box runner for an id (atom or string), or nil."
+  @spec dev_box(atom() | String.t() | nil) :: module() | nil
+  def dev_box(id), do: Enum.find(@dev_boxes, &(to_string(&1.id()) == to_string(id)))
 
   @spec start(String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
   def start(container_name, app_name, port, env \\ []),
