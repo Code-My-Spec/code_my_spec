@@ -17,12 +17,17 @@ defmodule CodeMySpec.QaFixtures do
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Insert a passed QaAttempt row for a story, satisfying `qa_complete`.
+  Insert a QaAttempt row for a story.
 
   Accepts a `Scope.t()` and keyword options:
   - `:story_id` — required, integer story id
   - `:agent_id` — optional string agent id (default: "fixture-agent")
-  - `:scenarios` — optional list of scenario maps (default: one placeholder)
+  - `:scenarios` — optional list of scenario maps (default: one passing placeholder)
+
+  The attempt's overall status is derived from `:scenarios` (fail beats
+  blocked beats pass), so `QaAttempt.validate_attempt/1` never rejects the
+  insert for declaring a pass alongside a failed or blocked scenario. With
+  the default scenario this satisfies `qa_complete`.
 
   Returns `{:ok, attempt}` or `{:error, changeset}`.
   """
@@ -59,7 +64,7 @@ defmodule CodeMySpec.QaFixtures do
       review_started_at: DateTime.utc_now(),
       review_certified_at: story.qa_ready_at,
       story_id: story_id,
-      status: :pass,
+      status: verdict_for(scenarios),
       scenarios: scenarios,
       issue_ids: [],
       agent_id: agent_id,
@@ -84,6 +89,14 @@ defmodule CodeMySpec.QaFixtures do
   #
   # Reads used to cover for it by recomputing on the way past. They serve rows
   # now, so a writer that announces nothing is a writer the graph never hears.
+  defp verdict_for(scenarios) do
+    cond do
+      Enum.any?(scenarios, &(&1[:status] == :fail)) -> :fail
+      Enum.any?(scenarios, &(&1[:status] == :blocked)) -> :partial
+      true -> :pass
+    end
+  end
+
   defp announce({:ok, _attempt} = result, %Scope{} = scope) do
     GraphInputs.announce(scope, "Qa", [], :project_wide)
     result
