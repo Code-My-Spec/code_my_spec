@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2934Spex do
 
   import Phoenix.LiveViewTest
 
+  alias CodeMySpecSpex.GraphAssertions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -31,7 +32,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2934Spex do
     :ok
   end
 
-  spex "The main agent has work to assign only when nothing is in progress and unassigned work exists", criterion: 1021 do
+  spex "The main agent has work to assign only when nothing is in progress and unassigned work exists",
+    criterion: 1021 do
     scenario "An idle project with nothing left to assign is finished, not stuck" do
       given_ "a project with no work in progress", context do
         {:ok, _live, copies} =
@@ -56,13 +58,17 @@ defmodule CodeMySpecSpex.Story964.Criterion2934Spex do
 
       when_ "the main agent asks whether it has work to assign", context do
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
-        {:ok, Map.put(context, :html, html)}
+        gate = GraphAssertions.project_gate(html, context.project.id, "work_dispatched")
+        {:ok, Map.put(context, :gate, gate)}
       end
 
       then_ "the answer is no, and the reason is that there is nothing left", context do
-        assert context.html =~ ~r/data-requirement="work_dispatched"[^>]*data-satisfied="true"/,
+        assert context.gate["satisfied"] == true,
                "a project with nothing to assign reports work to assign, so it nags " <>
                  "forever about work that does not exist"
 
@@ -70,7 +76,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2934Spex do
       end
 
       then_ "and that reads differently from idle-with-work-waiting", context do
-        assert context.html =~ ~r/data-requirement="work_dispatched"[^>]*data-basis="[^"]+"/,
+        assert is_binary(context.gate["basis"]) and context.gate["basis"] != "",
                "the node says satisfied and does not say why. Nothing-in-progress and " <>
                  "nothing-left-to-assign are both 'no work to assign' and only one of " <>
                  "them means the project is done — a screen that cannot tell them apart " <>

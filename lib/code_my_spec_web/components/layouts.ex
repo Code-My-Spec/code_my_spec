@@ -214,7 +214,6 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
               <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
               <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
               <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
               <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
 

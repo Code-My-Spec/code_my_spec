@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2941Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -37,7 +38,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2941Spex do
     :ok
   end
 
-  spex "The main agent sending an epic for approval and the user approving it are two separate acts", criterion: 1027 do
+  spex "The main agent sending an epic for approval and the user approving it are two separate acts",
+    criterion: 1027 do
     scenario "An idle project with work waiting gets an epic put in front of me" do
       given_ :synced_context_component
 
@@ -61,17 +63,21 @@ defmodule CodeMySpecSpex.Story964.Criterion2941Spex do
         # The node is what makes it notice. Asking is how the agent finds out it
         # has something to do, and acting on it is the next step rather than
         # something that happens invisibly.
-        {:ok, _live, requirements} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+        {:ok, _live, html} =
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
+
+        gate = GraphAssertions.project_gate(html, context.project.id, "work_dispatched")
 
         epic = EpicHelpers.propose(context, "The next set to build", stories: 1)
 
-        {:ok, context |> Map.put(:requirements, requirements) |> Map.put(:epic, epic)}
+        {:ok, context |> Map.put(:gate, gate) |> Map.put(:epic, epic)}
       end
 
       then_ "the node said there was work to assign", context do
-        assert context.requirements =~
-                 ~r/data-requirement="work_dispatched"[^>]*data-satisfied="false"/,
+        assert context.gate["satisfied"] == false,
                "nothing in progress and work waiting is the one state that wants somebody " <>
                  "to act, and the node reported nothing to do"
 

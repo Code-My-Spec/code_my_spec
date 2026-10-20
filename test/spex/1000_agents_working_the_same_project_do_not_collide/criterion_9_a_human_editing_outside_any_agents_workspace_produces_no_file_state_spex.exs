@@ -68,11 +68,13 @@ defmodule CodeMySpecSpex.Story1000.Criterion740Spex do
       end
 
       then_ "no requirement changes state as a result", context do
-        {:ok, _requirements_live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements")
+        {:ok, _graph_live, html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         refute html =~ "stray.ex"
-        assert html =~ context.project.name
 
         {:ok, context}
       end
