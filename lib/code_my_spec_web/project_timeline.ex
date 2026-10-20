@@ -179,7 +179,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.icon name="hero-chevron-down" class="timeline-expand-icon size-4 transition-transform" />
         </button>
         <%!-- Where it stands, counted. --%>
-        <ul class="timeline-more order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 max-sm:hidden sm:order-none sm:basis-auto sm:flex-nowrap">
+        <ul class="timeline-more order-4 flex basis-full flex-wrap items-center gap-x-3 gap-y-1 max-sm:hidden sm:order-none sm:basis-auto sm:flex-nowrap">
           <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
           </li>
@@ -353,7 +353,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-retired={@counts.retired}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@counts.done}</span>
       <span class="opacity-30">/</span>
@@ -447,7 +447,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-left flex items-center justify-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@resolved}</span>
       <span class="opacity-30">/</span>
@@ -486,7 +486,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@done}</span>
       <span class="opacity-30">/</span>
