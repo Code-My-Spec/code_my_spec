@@ -138,20 +138,34 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         @variant == :strip && "border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
       ]}
     >
-      <%!-- A grid, so the stories chart always keeps a track of its own:
-      gates, the chart taking what is left, gates, then the counts. --%>
-      <div class="grid w-full grid-cols-[auto_minmax(6rem,1fr)_auto_auto] items-center gap-3">
-        <div data-test="timeline-band" data-band="early" class="flex items-center gap-1">
+      <%!-- From sm up, a grid, so the stories chart always keeps a track of its
+      own: gates, the chart taking what is left, gates, then the counts. On a
+      phone it flows instead: both gate groups on one line, the chart across
+      the full width, then the counts wrapping as they need. --%>
+      <div class="flex w-full flex-wrap items-center gap-x-3 gap-y-2 sm:grid sm:grid-cols-[auto_minmax(6rem,1fr)_auto_auto]">
+        <div
+          data-test="timeline-band"
+          data-band="early"
+          class="order-1 flex shrink-0 flex-nowrap items-center gap-1 sm:order-none"
+        >
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </div>
-        <div data-test="timeline-band" data-band="stories" class="min-w-0">
+        <div
+          data-test="timeline-band"
+          data-band="stories"
+          class="order-3 min-w-0 basis-full sm:order-none sm:basis-auto"
+        >
           <.story_chart stories={@bands.stories} />
         </div>
-        <div data-test="timeline-band" data-band="late" class="flex items-center gap-1">
+        <div
+          data-test="timeline-band"
+          data-band="late"
+          class="order-2 flex shrink-0 flex-nowrap items-center gap-1 sm:order-none"
+        >
           <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
         </div>
         <%!-- Where it stands, counted. --%>
-        <ul class="flex items-center gap-4">
+        <ul class="order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:basis-auto sm:flex-nowrap">
           <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
           </li>
