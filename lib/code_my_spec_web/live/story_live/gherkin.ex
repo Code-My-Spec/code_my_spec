@@ -23,9 +23,6 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
     {:ok,
      assign(socket,
        section: :stories,
-       project: nil,
-       scope: nil,
-       slug: nil,
        story: nil,
        error: nil,
        page_title: "Gherkin",
@@ -35,7 +32,11 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   end
 
   @impl true
-  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(
+        %{"number" => number},
+        _uri,
+        %{assigns: %{current_scope: %{} = scope}} = socket
+      ) do
     case Stories.get_story_by_number(scope, number) do
       %Stories.Story{} = story ->
         socket =
@@ -83,7 +84,7 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
 
   defp refresh(%{assigns: %{story: nil}} = socket), do: socket
 
-  defp refresh(%{assigns: %{scope: scope, story: story}} = socket) do
+  defp refresh(%{assigns: %{current_scope: scope, story: story}} = socket) do
     assign_view(socket, scope, story)
   end
 
@@ -101,50 +102,58 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
   @impl true
   def render(assigns) do
     ~H"""
-    <.header>
-      Gherkin — {if @story, do: @story.title, else: "Story"}
-      <:subtitle :if={@story && @project}>
-        Rendered from
-        <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
-          class="link link-primary"
-        >
-          Three Amigos
-        </.link>
-        artifacts. The DB is the source of truth; this view assembles the <code>.feature</code>
-        on demand.
-      </:subtitle>
-      <:actions>
-        <.button
-          :if={@story && @project}
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}")}
-        >
-          <.icon name="hero-arrow-left" /> Back to story
-        </.button>
-        <.button
-          :if={@story && @project}
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")}
-        >
-          <.icon name="hero-squares-2x2" /> Three Amigos wall
-        </.button>
-      </:actions>
-    </.header>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <.header>
+        Gherkin — {if @story, do: @story.title, else: "Story"}
+        <:subtitle :if={@story && @project}>
+          Rendered from
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}/three-amigos"}
+            class="link link-primary"
+          >
+            Three Amigos
+          </.link>
+          artifacts. The DB is the source of truth; this view assembles the <code>.feature</code>
+          on demand.
+        </:subtitle>
+        <:actions>
+          <.button
+            :if={@story && @project}
+            navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}"}
+          >
+            <.icon name="hero-arrow-left" /> Back to story
+          </.button>
+          <.button
+            :if={@story && @project}
+            navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}/three-amigos"}
+          >
+            <.icon name="hero-squares-2x2" /> Three Amigos wall
+          </.button>
+        </:actions>
+      </.header>
 
-    <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-      <span>{@error || @scope_error}</span>
-    </div>
-
-    <div :if={!@error && @story}>
-      <div class="mockup-code w-full mb-4">
-        <pre><code id="gherkin-source" class="whitespace-pre">{@gherkin}</code></pre>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <p class="text-sm text-base-content/60">
-        Updated live as the agent and PM mutate the wall. Copy the block above
-        into a <code>.feature</code> file or feed it to SexySpex generation
-        downstream.
-      </p>
-    </div>
+      <div :if={!@error && @story}>
+        <div class="mockup-code w-full mb-4">
+          <pre><code id="gherkin-source" class="whitespace-pre">{@gherkin}</code></pre>
+        </div>
+
+        <p class="text-sm text-base-content/60">
+          Updated live as the agent and PM mutate the wall. Copy the block above
+          into a <code>.feature</code> file or feed it to SexySpex generation
+          downstream.
+        </p>
+      </div>
+    </Layouts.app>
     """
   end
 end

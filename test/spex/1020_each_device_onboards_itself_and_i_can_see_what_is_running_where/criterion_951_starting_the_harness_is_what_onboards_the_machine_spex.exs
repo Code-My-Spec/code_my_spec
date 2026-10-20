@@ -90,7 +90,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2846Spex do
 
       then_ "and the machine appears among my devices before it serves any checkout",
             context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         assert has_element?(
                  live,

@@ -32,6 +32,15 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   describe "Index" do
     setup [:create_issue]
 
+    # Rendered through a live mount: the page carries the app layout, whose
+    # notifications dropdown is a live component.
+    test "wraps the filter selects in a form so phx-change fires", %{project: project, conn: conn} do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
+
+      assert html =~ ~r/<form[^>]+phx-change="filter"/,
+             ~s(expected the filter selects to be wrapped in a <form phx-change="filter"> so events fire on bare-select change)
+    end
+
     test "lists all issues", %{project: project, conn: conn, issue: issue} do
       {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
@@ -66,7 +75,11 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       incoming: incoming,
       accepted: accepted
     } do
-      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
+      {:ok, live_view, html} =
+        live(
+          conn,
+          ~p"/app/projects/#{project.id}/issues?#{[severity: ~w(critical high medium low info)]}"
+        )
 
       # Both visible initially
       assert html =~ incoming.title
@@ -75,7 +88,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       # Filter to accepted only
       html =
         live_view
-        |> form("form[phx-change='filter']", %{status: "accepted"})
+        |> form("form[phx-change='filter']", %{status: ["accepted"]})
         |> render_change()
 
       assert html =~ accepted.title
@@ -93,7 +106,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       # Filter to critical only
       html =
         live_view
-        |> form("form[phx-change='filter']", %{severity: "critical"})
+        |> form("form[phx-change='filter']", %{severity: ["critical"]})
         |> render_change()
 
       assert html =~ accepted.title
@@ -138,14 +151,12 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       }
     end
 
-    test "incoming first, then accepted, newest first; closed hidden", ctx do
-      {:ok, view, html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
+    test "newest first, whatever the status; closed hidden", ctx do
+      {:ok, _view, html} = live(ctx.conn, ~p"/app/projects/#{ctx.project.id}/issues")
 
       assert listed_ids(html) ==
-               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+               Enum.map([ctx.accepted, ctx.new_incoming, ctx.old_incoming], &"issue-#{&1.id}")
 
-      assert has_element?(view, "[data-test='issue-group'][data-status='incoming']")
-      assert has_element?(view, "[data-test='issue-group'][data-status='accepted']")
       refute html =~ ctx.dismissed.title
       refute html =~ ctx.resolved.title
     end
@@ -155,21 +166,22 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
       html =
         view
-        |> form("form[phx-change='filter']", %{status: "all"})
+        |> form("form[phx-change='filter']", %{status: ~w(incoming accepted resolved dismissed)})
         |> render_change()
 
       assert html =~ ctx.dismissed.title
       assert html =~ ctx.resolved.title
-      assert_patch(view, ~p"/app/projects/#{ctx.project.id}/issues?status=all")
 
-      ids = listed_ids(html)
+      assert_patch(
+        view,
+        ~p"/app/projects/#{ctx.project.id}/issues?#{[status: ~w(incoming accepted resolved dismissed), severity: ~w(high medium), scope: ~w(app)]}"
+      )
 
-      assert Enum.take(ids, 3) ==
-               Enum.map([ctx.new_incoming, ctx.old_incoming, ctx.accepted], &"issue-#{&1.id}")
+      assert length(listed_ids(html)) == 5
 
       html =
         view
-        |> form("form[phx-change='filter']", %{status: "resolved"})
+        |> form("form[phx-change='filter']", %{status: ["resolved"]})
         |> render_change()
 
       assert listed_ids(html) == ["issue-#{ctx.resolved.id}"]

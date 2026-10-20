@@ -1,7 +1,8 @@
 defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
   @moduledoc """
-  The console's section navigation — Overview, Resources, Deploys, Secrets,
-  Credentials, Activity, Settings. A plain function component; `ConsoleLive`
+  The console's section navigation — Overview; production (Resources, Servers,
+  Inventory, Deploys); development (Dev boxes); then Secrets, Credentials,
+  Activity, Settings. A plain function component; `ConsoleLive`
   carries all the state.
   """
 
@@ -13,6 +14,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
   def sidebar(assigns) do
     ~H"""
     <ul data-test="console-sidebar" class="menu bg-base-200 min-h-full w-56 p-4 gap-1">
+      <li class="menu-title text-base text-base-content">DevOps</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console"}
@@ -22,6 +24,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
           Overview
         </.link>
       </li>
+      <li class="menu-title">Production</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console/resources"}
@@ -33,6 +36,24 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
       </li>
       <li>
         <.link
+          navigate={~p"/app/projects/#{@project_id}/console/servers"}
+          data-test="console-nav-servers"
+          class={nav_class(@live_action, :servers)}
+        >
+          Servers
+        </.link>
+      </li>
+      <li>
+        <.link
+          navigate={~p"/app/projects/#{@project_id}/console/inventory"}
+          data-test="console-nav-inventory"
+          class={nav_class(@live_action, :inventory)}
+        >
+          Inventory
+        </.link>
+      </li>
+      <li>
+        <.link
           navigate={~p"/app/projects/#{@project_id}/console/deploys"}
           data-test="console-nav-deploys"
           class={nav_class(@live_action, :deploys)}
@@ -40,6 +61,17 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
           Deploys
         </.link>
       </li>
+      <li class="menu-title">Development</li>
+      <li>
+        <.link
+          navigate={~p"/app/projects/#{@project_id}/console/dev-boxes"}
+          data-test="console-nav-dev-boxes"
+          class={nav_class(@live_action, :dev_boxes)}
+        >
+          Dev boxes
+        </.link>
+      </li>
+      <li class="menu-title">Project</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console/secrets"}

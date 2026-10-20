@@ -41,7 +41,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2838Spex do
       when_ "it comes online and starts serving a checkout", context do
         announce_device(context, hostname: context.hostname, kind: "local")
 
-        {:ok, live, html} = live(context.conn, "/app/devices")
+        {:ok, live, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end

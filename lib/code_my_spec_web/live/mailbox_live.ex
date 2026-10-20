@@ -15,6 +15,8 @@ defmodule CodeMySpecWeb.MailboxLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   alias CodeMySpec.{Accounts, Mail}
   alias CodeMySpec.Projects.Project
 
@@ -89,8 +91,11 @@ defmodule CodeMySpecWeb.MailboxLive do
 
   defp domain_error_message({:resend_error, status, body}) do
     case resend_message(body) do
-      nil -> "The email provider returned an error (HTTP #{status}). Check the domain and try again."
-      message -> "The email provider rejected the request (HTTP #{status}): #{message}"
+      nil ->
+        "The email provider returned an error (HTTP #{status}). Check the domain and try again."
+
+      message ->
+        "The email provider rejected the request (HTTP #{status}): #{message}"
     end
   end
 
@@ -118,109 +123,134 @@ defmodule CodeMySpecWeb.MailboxLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div class="mx-auto w-full max-w-4xl">
-        <header class="flex items-center justify-between gap-3 pb-4">
-          <h1 class="text-2xl font-semibold">Mailboxes</h1>
-          <div class="flex items-center gap-2">
-            <button
-              :if={@domain_verified?}
-              type="button"
-              phx-click="open_modal"
-              phx-value-modal="mailbox"
-              class="btn btn-primary btn-sm"
-            >
-              <.icon name="hero-plus" class="size-4" /> New mailbox
-            </button>
-            <button
-              :if={@domain_verified?}
-              type="button"
-              data-test="sync-inbound"
-              phx-click="sync_inbound"
-              class="btn btn-ghost btn-sm"
-            >
-              <.icon name="hero-arrow-path" class="size-4" /> Sync mail
-            </button>
-            <.link navigate={~p"/app/projects/#{@project.id}/mail"} class="btn btn-ghost btn-sm">
-              <.icon name="hero-envelope" class="size-4" /> Go to Mail
-            </.link>
-          </div>
-        </header>
-
-        <section :if={not @domain_verified?} data-test="domain-gate" class="space-y-4">
-          <div data-test="verify-notice" class="alert alert-warning">
-            <.icon name="hero-exclamation-triangle" class="size-5" />
-            <span>Verify your sending domain before mail can be sent or received.</span>
-          </div>
-
-          <div class="rounded-box bg-base-200 p-6 text-center">
-            <p :if={is_nil(@domain)} class="mb-3 opacity-70">No sending domain yet.</p>
-            <p :if={not is_nil(@domain)} class="mb-3 opacity-70">
-              <span class="font-mono">{@domain}</span> isn't verified yet.
-            </p>
-            <.link
-              :if={@project}
-              navigate={~p"/app/projects/#{@project}/edit"}
-              data-test="domain-settings-link"
-              class="btn btn-primary btn-sm"
-            >
-              <.icon name="hero-globe-alt" class="size-4" /> Set up the domain in project settings
-            </.link>
-          </div>
-        </section>
-
-        <section :if={@domain_verified?}>
-          <div class="overflow-x-auto rounded-box border border-base-300">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Address</th>
-                  <th>Assigned to</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr :if={@mailboxes == []} data-test="mailboxes-empty">
-                  <td colspan="2" class="text-center opacity-60">No mailboxes yet — create one above.</td>
-                </tr>
-                <tr :for={mailbox <- @mailboxes} data-test="mailbox">
-                  <td class="break-all font-medium">
-                    {mailbox.address}
-                    <span :if={mailbox.catch_all} class="badge badge-ghost badge-sm">catch-all</span>
-                  </td>
-                  <td class="break-all">{assigned_label(mailbox)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-
-      <%!-- New-mailbox modal --%>
-      <dialog class={["modal", @modal == :mailbox && "modal-open"]}>
-        <div class="modal-box">
-          <h3 class="text-lg font-semibold">New mailbox</h3>
-          <.form for={%{}} phx-submit="create_mailbox" data-test="new-mailbox-form" class="mt-4 space-y-3">
-            <.input name="mailbox[address]" value="" type="text" label="Address" placeholder={"support@#{@domain}"} />
-            <.input
-              name="mailbox[user_id]"
-              value=""
-              type="select"
-              label="Assigned to"
-              options={user_options(@assignable_users)}
-            />
-            <.input name="mailbox[catch_all]" value="false" type="checkbox" label="Catch-all mailbox" />
-            <div class="modal-action">
-              <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
-              <button type="submit" class="btn btn-primary">Create mailbox</button>
+      <Operations.frame
+        project_id={assigns[:project] && @project.id}
+        active={:mailboxes}
+        current_scope={@current_scope}
+      >
+        <div class="mx-auto w-full max-w-4xl">
+          <header class="flex items-center justify-between gap-3 pb-4">
+            <h1 class="text-2xl font-semibold">Mailboxes</h1>
+            <div class="flex items-center gap-2">
+              <button
+                :if={@domain_verified?}
+                type="button"
+                phx-click="open_modal"
+                phx-value-modal="mailbox"
+                class="btn btn-primary btn-sm"
+              >
+                <.icon name="hero-plus" class="size-4" /> New mailbox
+              </button>
+              <button
+                :if={@domain_verified?}
+                type="button"
+                data-test="sync-inbound"
+                phx-click="sync_inbound"
+                class="btn btn-ghost btn-sm"
+              >
+                <.icon name="hero-arrow-path" class="size-4" /> Sync mail
+              </button>
+              <.link navigate={~p"/app/projects/#{@project.id}/mail"} class="btn btn-ghost btn-sm">
+                <.icon name="hero-envelope" class="size-4" /> Go to Mail
+              </.link>
             </div>
-          </.form>
-        </div>
-        <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
-      </dialog>
+          </header>
 
+          <section :if={not @domain_verified?} data-test="domain-gate" class="space-y-4">
+            <div data-test="verify-notice" class="alert alert-warning">
+              <.icon name="hero-exclamation-triangle" class="size-5" />
+              <span>Verify your sending domain before mail can be sent or received.</span>
+            </div>
+
+            <div class="rounded-box bg-base-200 p-6 text-center">
+              <p :if={is_nil(@domain)} class="mb-3 opacity-70">No sending domain yet.</p>
+              <p :if={not is_nil(@domain)} class="mb-3 opacity-70">
+                <span class="font-mono">{@domain}</span> isn't verified yet.
+              </p>
+              <.link
+                :if={@project}
+                navigate={~p"/app/projects/#{@project}/edit"}
+                data-test="domain-settings-link"
+                class="btn btn-primary btn-sm"
+              >
+                <.icon name="hero-globe-alt" class="size-4" /> Set up the domain in project settings
+              </.link>
+            </div>
+          </section>
+
+          <section :if={@domain_verified?}>
+            <div class="overflow-x-auto rounded-box border border-base-300">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Assigned to</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr :if={@mailboxes == []} data-test="mailboxes-empty">
+                    <td colspan="2" class="text-center opacity-60">
+                      No mailboxes yet — create one above.
+                    </td>
+                  </tr>
+                  <tr :for={mailbox <- @mailboxes} data-test="mailbox">
+                    <td class="break-all font-medium">
+                      {mailbox.address}
+                      <span :if={mailbox.catch_all} class="badge badge-ghost badge-sm">catch-all</span>
+                    </td>
+                    <td class="break-all">{assigned_label(mailbox)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <%!-- New-mailbox modal --%>
+        <dialog class={["modal", @modal == :mailbox && "modal-open"]}>
+          <div class="modal-box">
+            <h3 class="text-lg font-semibold">New mailbox</h3>
+            <.form
+              for={%{}}
+              phx-submit="create_mailbox"
+              data-test="new-mailbox-form"
+              class="mt-4 space-y-3"
+            >
+              <.input
+                name="mailbox[address]"
+                value=""
+                type="text"
+                label="Address"
+                placeholder={"support@#{@domain}"}
+              />
+              <.input
+                name="mailbox[user_id]"
+                value=""
+                type="select"
+                label="Assigned to"
+                options={user_options(@assignable_users)}
+              />
+              <.input
+                name="mailbox[catch_all]"
+                value="false"
+                type="checkbox"
+                label="Catch-all mailbox"
+              />
+              <div class="modal-action">
+                <button type="button" phx-click="close_modal" class="btn btn-ghost">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create mailbox</button>
+              </div>
+            </.form>
+          </div>
+          <button type="button" class="modal-backdrop" phx-click="close_modal">close</button>
+        </dialog>
+      </Operations.frame>
     </Layouts.app>
     """
   end

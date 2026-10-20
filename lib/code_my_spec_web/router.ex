@@ -498,7 +498,8 @@ defmodule CodeMySpecWeb.Router do
       live "/accounts/:id/manage", AccountLive.Manage, :show
       live "/accounts/:id/members", AccountLive.Members, :show
       live "/accounts/:id/invitations", AccountLive.Invitations, :show
-      live "/accounts/:id/agents", AccountLive.Agents, :show
+      # Per user, whichever account is open: the credentials it names are.
+      live "/agent-models", AgentModelsLive, :show
     end
 
     live_session :require_active_account,
@@ -516,26 +517,22 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
 
       # Account-scoped: a box belongs to the account and can serve several projects.
-      live "/resources", ResourceLive.Index, :index
       live "/servers", ServerLive.Index, :index
 
-      # Account-scoped: one machine serves checkouts of several projects.
-      live "/devices", DeviceLive.Index, :index
       live "/servers/:name/edit", ServerLive.Index, :edit
       live "/servers/:name", ServerLive.Show, :show
     end
 
-    # Portable UI: scope arrives through `PortableHost`, so the views stay
-    # app-agnostic.
-    live_session :portable,
-      layout: {CodeMySpecWeb.Layouts, :live},
+    # Project pages. The project is named in the route; `:assign_project` puts
+    # it on `current_scope` and assigns `@project`.
+    live_session :project,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.Live.NotificationsHook, :default},
-        {CodeMySpecWeb.PortableHost, :default}
+        {CodeMySpecWeb.UserAuth, :assign_project}
       ] do
       # Static segments first so they win over `:id`.
       live "/projects/:project_id/init", InitLive, :index
@@ -580,30 +577,19 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/agent-performance", AgentPerformanceLive.Index, :index
       live "/projects/:project_id/agent-performance/:agent_id", AgentPerformanceLive.Show, :show
 
-      live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      # Docs: the project's own knowledge, then CodeMySpec's bundled guidance.
+      # The old per-library paths still open the same page.
+      live "/projects/:project_id/docs", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/docs/project/*path", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/docs/codemyspec/*path", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
-      live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
 
       live "/projects/:project_id/project-knowledge/*path",
            MarkdownBrowserLive,
            :project_knowledge
 
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
-    end
 
-    # Project-scoped surfaces. The project is named in the route and put on the
-    # scope by PortableHost — there is no session-held active project to fall
-    # back on, which is why every one of these carries :project_id.
-    live_session :project_scoped,
-      on_mount: [
-        {CodeMySpecWeb.Live.CurrentPathHook, :default},
-        {CodeMySpecWeb.UserAuth, :require_authenticated},
-        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
-        {CodeMySpecWeb.UserAuth, :require_active_account},
-        {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.Live.NotificationsHook, :default},
-        {CodeMySpecWeb.PortableHost, :default}
-      ] do
       live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
       live "/projects/:project_id/inbox", InboxLive, :index
@@ -618,6 +604,12 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/console", ConsoleLive, :overview
       live "/projects/:project_id/console/resources", ConsoleLive, :resources
       live "/projects/:project_id/console/resources/:key", ConsoleLive, :resource_detail
+      # The account's servers, in each project's console; `/app/servers` too.
+      live "/projects/:project_id/console/servers", ServerLive.Index, :index
+      live "/projects/:project_id/console/servers/:name/edit", ServerLive.Index, :edit
+      live "/projects/:project_id/console/servers/:name", ServerLive.Show, :show
+      live "/projects/:project_id/console/inventory", ResourceLive.Index, :index
+      live "/projects/:project_id/console/dev-boxes", DeviceLive.Index, :index
       live "/projects/:project_id/console/deploys", ConsoleLive, :deploys
       live "/projects/:project_id/console/secrets", ConsoleLive, :secrets
       live "/projects/:project_id/console/credentials", ConsoleLive, :credentials

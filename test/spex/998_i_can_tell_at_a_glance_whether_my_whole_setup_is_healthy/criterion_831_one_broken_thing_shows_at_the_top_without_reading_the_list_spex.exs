@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
   the reader that red means nothing, and then the page has cost them the one
   signal it existed to give.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -173,7 +173,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
       end
 
       when_ "someone who does not know what a DNS record is opens the page", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end

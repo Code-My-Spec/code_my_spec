@@ -84,6 +84,35 @@ defmodule CodeMySpec.AgentPerformance.Chart do
   end
 
   @doc """
+  The last 7 days in three numbers, counted as `option/2` charts them: tokens
+  spent, stories promoted, and messages sent to agents. Cheap enough for a
+  status bar — no per-story cycle times.
+  """
+  @spec week_summary(Scope.t()) :: %{
+          tokens: non_neg_integer(),
+          shipped: non_neg_integer(),
+          messages: non_neg_integer()
+        }
+  def week_summary(%Scope{} = scope) do
+    until = DateTime.utc_now()
+    since = DateTime.add(until, -@range_days * 86_400, :second)
+
+    %{
+      tokens: scope |> turns_for(%{}, since, until) |> Enum.reduce(0, &(&2 + token_total(&1))),
+      shipped: shipped_since(scope, since),
+      messages: scope |> messages_for(%{}, since, until) |> length()
+    }
+  end
+
+  defp shipped_since(%Scope{active_project_id: project_id}, since) when is_binary(project_id) do
+    CodeMySpec.Stories.Story
+    |> where([s], s.project_id == ^project_id and s.promoted_at >= ^since)
+    |> Repo.aggregate(:count)
+  end
+
+  defp shipped_since(_scope, _since), do: 0
+
+  @doc """
   The rates chart: offer acceptance and tool-call failure rate, hourly over
   the same 7 days and narrowed by the same filter. Both are fractions, so they
   share one axis apart from the counts on `option/2`.

@@ -22,24 +22,39 @@ defmodule CodeMySpecWeb.InitLive do
   end
 
   @impl true
-  def handle_params(%{"step" => step_id}, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket),
-    do: load_step(socket, project, scope, step_id)
+  def handle_params(
+        %{"step" => step_id},
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ),
+      do: load_step(socket, project, scope, step_id)
 
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket),
-    do: load_checklist(socket, project, scope)
+  def handle_params(
+        _params,
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ),
+      do: load_checklist(socket, project, scope)
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
 
       <div :if={@step}>
         <div class="mb-4">
-          <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/init")} class="btn btn-ghost btn-sm gap-1">
+          <.link navigate={~p"/app/projects/#{@project.id}/init"} class="btn btn-ghost btn-sm gap-1">
             ← Back to checklist
           </.link>
         </div>
@@ -81,7 +96,7 @@ defmodule CodeMySpecWeb.InitLive do
               ({Enum.count(@steps, & &1.done)}/{length(@steps)})
             </span>
           </h1>
-          <p class="text-sm opacity-60 font-mono mt-1">{@scope.cwd}</p>
+          <p class="text-sm opacity-60 font-mono mt-1">{@current_scope.cwd}</p>
         </div>
 
         <div :if={phoenix_project_failed?(@steps)} role="alert" class="alert alert-warning mb-6">
@@ -103,7 +118,7 @@ defmodule CodeMySpecWeb.InitLive do
               <span :if={!step.done} class="badge badge-ghost badge-sm">○</span>
               <.link
                 :if={!step.done}
-                navigate={path(@socket, ~p"/app/projects/#{@slug}/init/#{step.id}")}
+                navigate={~p"/app/projects/#{@project.id}/init/#{step.id}"}
                 class="link link-primary flex-1"
               >
                 {step.name}
@@ -114,6 +129,7 @@ defmodule CodeMySpecWeb.InitLive do
           </li>
         </ul>
       </div>
+    </Layouts.app>
     """
   end
 
@@ -127,8 +143,7 @@ defmodule CodeMySpecWeb.InitLive do
     {:noreply,
      assign(socket,
        project: project,
-       scope: scope,
-              steps: steps,
+       steps: steps,
        step: nil,
        page_title: "#{project.name} — Init (#{done}/#{total})",
        error: nil
@@ -141,8 +156,7 @@ defmodule CodeMySpecWeb.InitLive do
         {:noreply,
          assign(socket,
            project: project,
-           scope: scope,
-                      step: %{
+           step: %{
              name: Init.step_name(mod),
              id: Init.step_id(mod),
              status: status,
@@ -183,5 +197,4 @@ defmodule CodeMySpecWeb.InitLive do
   end
 
   defp step_prompt(_mod, _scope, :done), do: nil
-
 end

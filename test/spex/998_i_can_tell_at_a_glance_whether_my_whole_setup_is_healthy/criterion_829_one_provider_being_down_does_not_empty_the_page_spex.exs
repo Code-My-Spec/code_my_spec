@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8295Spex do
   nothing* and *we could not ask*. Only the first is safe to draw a conclusion
   from, and the health count must not treat an unreadable provider as clean.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8295Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "One provider being down does not empty the page", criterion: 829 do
     scenario "the providers that answered are listed; the one that did not says so" do
@@ -37,7 +38,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8295Spex do
       end
 
       when_ "he opens the resources page", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end

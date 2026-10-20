@@ -46,7 +46,11 @@ defmodule CodeMySpecWeb.FilesLive do
   end
 
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+  def handle_params(
+        params,
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ) do
     page = parse_page(params["page"])
     filter = parse_filter(params["filter"])
     scope = scope_for(scope, params["harness"])
@@ -59,7 +63,7 @@ defmodule CodeMySpecWeb.FilesLive do
 
     {:noreply,
      assign(socket,
-       scope: scope,
+       current_scope: scope,
        harnesses: WorkingCopies.list_harnesses(scope),
        watching?: connected?(socket),
        page: page,
@@ -75,9 +79,9 @@ defmodule CodeMySpecWeb.FilesLive do
   @impl true
   def handle_info({:watcher_synced, %{path: path, at: at}}, socket) do
     socket =
-      if socket.assigns.scope do
+      if socket.assigns.current_scope do
         result =
-          list_page(socket.assigns.scope,
+          list_page(socket.assigns.current_scope,
             page: socket.assigns.page,
             per_page: @per_page,
             filter: socket.assigns.filter
@@ -97,7 +101,7 @@ defmodule CodeMySpecWeb.FilesLive do
 
   @impl true
   def handle_event("sync", _params, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     socket = assign(socket, sync_status: :running, sync_result: nil)
 
     with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
@@ -136,227 +140,235 @@ defmodule CodeMySpecWeb.FilesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project && @result}>
-      <div
-        data-test="watcher-activity"
-        data-event-count={@watcher_event_count}
-        data-last-path={@watcher_last_event && @watcher_last_event.path}
-        data-last-at={@watcher_last_event && DateTime.to_iso8601(@watcher_last_event.at)}
-        class="hidden"
-      >
-      </div>
-      <div class="mb-6 flex justify-between items-start">
-        <div>
-          <h1 class="text-3xl font-bold">Files</h1>
-          <p class="text-base-content/60 mt-1">
-            Every tracked file in this project, projected from disk into the DB.
-            Use this view to spot drift between the filesystem and the projection.
-          </p>
-          <div
-            :if={@watcher_last_event}
-            data-test="watcher-last-event"
-            class="text-xs text-base-content/50 mt-1 font-mono"
-          >
-            Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
-          </div>
-          <.harness_picker
-            harnesses={@harnesses}
-            active_id={@scope.active_working_copy_id}
-            path_fun={&files_path(@slug, page: 1, filter: @filter, harness: &1)}
-          />
-        </div>
-        <div class="flex flex-row gap-2 shrink-0">
-          <button
-            type="button"
-            phx-click="sync"
-            data-test="sync-button"
-            disabled={@sync_status == :running}
-            class="btn btn-primary"
-            title="Walk filesystem and project files into the DB"
-          >
-            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-            {if @sync_status == :running, do: "Syncing…", else: "Sync"}
-          </button>
-        </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div
-        :if={@sync_status == :done && is_list(@sync_result)}
-        role="alert"
-        class="alert alert-success alert-soft mb-6"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          class="h-6 w-6 shrink-0 stroke-current"
+      <div :if={!@error && @project && @result}>
+        <div
+          data-test="watcher-activity"
+          data-event-count={@watcher_event_count}
+          data-last-path={@watcher_last_event && @watcher_last_event.path}
+          data-last-at={@watcher_last_event && DateTime.to_iso8601(@watcher_last_event.at)}
+          class="hidden"
         >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <div>
-          <h3 class="font-bold">Sync Complete</h3>
-          <ul class="mt-1 text-sm space-y-0.5">
-            <li :for={{label, value} <- @sync_result}>
-              <span class="opacity-70">{label}:</span>
-              <span class="font-mono">{value}</span>
-            </li>
-          </ul>
         </div>
-      </div>
-
-      <div
-        :if={@sync_status == :harness}
-        role="status"
-        data-test="sync-by-harness"
-        class="alert alert-info alert-soft mb-6"
-      >
-        This working copy is synced by its harness.
-      </div>
-
-      <div
-        :if={@sync_status == :error && is_map(@sync_result)}
-        role="alert"
-        class="alert alert-error alert-soft mb-6"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          class="h-6 w-6 shrink-0 stroke-current"
-        >
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-        <div>
-          <h3 class="font-bold">Sync Failed</h3>
-          <pre class="text-xs mt-2 whitespace-pre-wrap">{@sync_result.error}</pre>
-        </div>
-      </div>
-
-      <div class="flex gap-2 mb-4">
-        <.link
-          patch={files_path(@slug, page: 1, filter: :all)}
-          data-test="filter-all"
-          class={"btn btn-sm " <> if(@filter == :all, do: "btn-primary", else: "btn-ghost")}
-        >
-          All ({@result.unfiltered_count})
-        </.link>
-        <.link
-          patch={files_path(@slug, page: 1, filter: :invalid)}
-          data-test="filter-invalid"
-          class={"btn btn-sm " <> if(@filter == :invalid, do: "btn-error", else: "btn-ghost")}
-        >
-          Invalid only ({@result.invalid_count})
-        </.link>
-      </div>
-
-      <div class="overflow-x-auto">
-        <table class="table table-zebra table-sm" data-test="files-table">
-          <thead>
-            <tr>
-              <th>Path</th>
-              <th>Role</th>
-              <th>Validity</th>
-              <th>Component</th>
-              <th>Size</th>
-              <th>mtime</th>
-              <th>Fingerprint</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={file <- @result.files}
-              data-test="file-row"
-              data-file-path={file.path}
+        <div class="mb-6 flex justify-between items-start">
+          <div>
+            <h1 class="text-3xl font-bold">Files</h1>
+            <p class="text-base-content/60 mt-1">
+              Every tracked file in this project, projected from disk into the DB.
+              Use this view to spot drift between the filesystem and the projection.
+            </p>
+            <div
+              :if={@watcher_last_event}
+              data-test="watcher-last-event"
+              class="text-xs text-base-content/50 mt-1 font-mono"
             >
-              <td class="font-mono text-xs" data-test="file-path">{file.path}</td>
-              <td data-test="file-role">{format_role(file.role)}</td>
-              <td
-                data-test="file-validity"
-                data-validity={validity_label(file, @result.spec_problems)}
-              >
-                <.validity_badge file={file} problems={@result.spec_problems} />
-                <div
-                  :if={
-                    invalid?(file, @result.spec_problems) and
-                      invalid_reason(file, @result.spec_problems)
-                  }
-                  data-test="file-reason"
-                  class="text-xs opacity-70 mt-1 max-w-xs break-words"
-                >
-                  {invalid_reason(file, @result.spec_problems)}
-                </div>
-              </td>
-              <td>
-                <.component_cell file={file} />
-              </td>
-              <td class="font-mono text-xs">{file.size}</td>
-              <td
-                class="font-mono text-xs"
-                data-test="file-mtime"
-                data-mtime={raw_mtime(file.mtime)}
-              >
-                {format_mtime(file.mtime)}
-              </td>
-              <td
-                class="font-mono text-xs"
-                data-test="file-fingerprint"
-                data-fingerprint={file.fingerprint}
-                title={file.fingerprint}
-              >
-                {format_fingerprint(file.fingerprint)}
-              </td>
-            </tr>
-            <tr :if={@result.files == []}>
-              <td colspan="7" class="text-center opacity-60 py-8">
-                No files match the current filter.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
+            </div>
+            <.harness_picker
+              harnesses={@harnesses}
+              active_id={@current_scope.active_working_copy_id}
+              path_fun={&files_path(@project.id, page: 1, filter: @filter, harness: &1)}
+            />
+          </div>
+          <div class="flex flex-row gap-2 shrink-0">
+            <button
+              type="button"
+              phx-click="sync"
+              data-test="sync-button"
+              disabled={@sync_status == :running}
+              class="btn btn-primary"
+              title="Walk filesystem and project files into the DB"
+            >
+              <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+              {if @sync_status == :running, do: "Syncing…", else: "Sync"}
+            </button>
+          </div>
+        </div>
 
-      <nav
-        :if={@result.total_pages > 1}
-        data-test="pagination"
-        class="flex justify-between items-center mt-4"
-      >
-        <span class="text-sm opacity-60">
-          Page {@result.page} of {@result.total_pages} ({@result.total_count} files)
-        </span>
-        <div class="join">
-          <.link
-            :if={@result.page > 1}
-            patch={files_path(@slug, page: @result.page - 1, filter: @filter)}
-            data-test="prev-page"
-            class="join-item btn btn-sm"
+        <div
+          :if={@sync_status == :done && is_list(@sync_result)}
+          role="alert"
+          class="alert alert-success alert-soft mb-6"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="h-6 w-6 shrink-0 stroke-current"
           >
-            ← Prev
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <h3 class="font-bold">Sync Complete</h3>
+            <ul class="mt-1 text-sm space-y-0.5">
+              <li :for={{label, value} <- @sync_result}>
+                <span class="opacity-70">{label}:</span>
+                <span class="font-mono">{value}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div
+          :if={@sync_status == :harness}
+          role="status"
+          data-test="sync-by-harness"
+          class="alert alert-info alert-soft mb-6"
+        >
+          This working copy is synced by its harness.
+        </div>
+
+        <div
+          :if={@sync_status == :error && is_map(@sync_result)}
+          role="alert"
+          class="alert alert-error alert-soft mb-6"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            class="h-6 w-6 shrink-0 stroke-current"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+          <div>
+            <h3 class="font-bold">Sync Failed</h3>
+            <pre class="text-xs mt-2 whitespace-pre-wrap">{@sync_result.error}</pre>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-4">
+          <.link
+            patch={files_path(@project.id, page: 1, filter: :all)}
+            data-test="filter-all"
+            class={"btn btn-sm " <> if(@filter == :all, do: "btn-primary", else: "btn-ghost")}
+          >
+            All ({@result.unfiltered_count})
           </.link>
           <.link
-            :if={@result.page < @result.total_pages}
-            patch={files_path(@slug, page: @result.page + 1, filter: @filter)}
-            data-test="next-page"
-            class="join-item btn btn-sm"
+            patch={files_path(@project.id, page: 1, filter: :invalid)}
+            data-test="filter-invalid"
+            class={"btn btn-sm " <> if(@filter == :invalid, do: "btn-error", else: "btn-ghost")}
           >
-            Next →
+            Invalid only ({@result.invalid_count})
           </.link>
         </div>
-      </nav>
-    </div>
+
+        <div class="overflow-x-auto">
+          <table class="table table-zebra table-sm" data-test="files-table">
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Role</th>
+                <th>Validity</th>
+                <th>Component</th>
+                <th>Size</th>
+                <th>mtime</th>
+                <th>Fingerprint</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                :for={file <- @result.files}
+                data-test="file-row"
+                data-file-path={file.path}
+              >
+                <td class="font-mono text-xs" data-test="file-path">{file.path}</td>
+                <td data-test="file-role">{format_role(file.role)}</td>
+                <td
+                  data-test="file-validity"
+                  data-validity={validity_label(file, @result.spec_problems)}
+                >
+                  <.validity_badge file={file} problems={@result.spec_problems} />
+                  <div
+                    :if={
+                      invalid?(file, @result.spec_problems) and
+                        invalid_reason(file, @result.spec_problems)
+                    }
+                    data-test="file-reason"
+                    class="text-xs opacity-70 mt-1 max-w-xs break-words"
+                  >
+                    {invalid_reason(file, @result.spec_problems)}
+                  </div>
+                </td>
+                <td>
+                  <.component_cell file={file} />
+                </td>
+                <td class="font-mono text-xs">{file.size}</td>
+                <td
+                  class="font-mono text-xs"
+                  data-test="file-mtime"
+                  data-mtime={raw_mtime(file.mtime)}
+                >
+                  {format_mtime(file.mtime)}
+                </td>
+                <td
+                  class="font-mono text-xs"
+                  data-test="file-fingerprint"
+                  data-fingerprint={file.fingerprint}
+                  title={file.fingerprint}
+                >
+                  {format_fingerprint(file.fingerprint)}
+                </td>
+              </tr>
+              <tr :if={@result.files == []}>
+                <td colspan="7" class="text-center opacity-60 py-8">
+                  No files match the current filter.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <nav
+          :if={@result.total_pages > 1}
+          data-test="pagination"
+          class="flex justify-between items-center mt-4"
+        >
+          <span class="text-sm opacity-60">
+            Page {@result.page} of {@result.total_pages} ({@result.total_count} files)
+          </span>
+          <div class="join">
+            <.link
+              :if={@result.page > 1}
+              patch={files_path(@project.id, page: @result.page - 1, filter: @filter)}
+              data-test="prev-page"
+              class="join-item btn btn-sm"
+            >
+              ← Prev
+            </.link>
+            <.link
+              :if={@result.page < @result.total_pages}
+              patch={files_path(@project.id, page: @result.page + 1, filter: @filter)}
+              data-test="next-page"
+              class="join-item btn btn-sm"
+            >
+              Next →
+            </.link>
+          </div>
+        </nav>
+      </div>
+    </Layouts.app>
     """
   end
 

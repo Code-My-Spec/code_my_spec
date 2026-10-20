@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3011Spex do
       end
 
       when_ "the choices for the QA type are looked at", context do
-        {:ok, view, html} = live(context.conn, "/app/accounts/#{context.account.id}/agents")
+        {:ok, view, html} = live(context.conn, "/app/agent-models")
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
 

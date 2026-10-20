@@ -180,4 +180,25 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     assert %{server_id: nil} = EnvironmentRepository.get(project_scope, "uat")
   end
+
+  describe "in the project's console" do
+    setup [:setup_active_project]
+
+    test "the servers sit in the console frame, linking within it", %{
+      conn: conn,
+      project: project
+    } do
+      stub_hetzner(server("web-1"))
+      base = "/app/projects/#{project.id}/console/servers"
+
+      {:ok, view, _html} = live(conn, base)
+
+      assert has_element?(
+               view,
+               "[data-test='console'] [data-test='console-nav-servers'].menu-active"
+             )
+
+      assert has_element?(view, ~s([data-test='open-server'][href="#{base}/web-1"]))
+    end
+  end
 end

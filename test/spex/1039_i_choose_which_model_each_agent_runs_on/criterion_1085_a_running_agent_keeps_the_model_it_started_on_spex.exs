@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3010Spex do
   end
 
   defp set_model(context, type, provider, model) do
-    {:ok, view, _html} = live(context.conn, "/app/accounts/#{context.account.id}/agents")
+    {:ok, view, _html} = live(context.conn, "/app/agent-models")
 
     view
     |> form("[data-test='agent-models-form']", %{

@@ -1,6 +1,8 @@
-defmodule CodeMySpecWeb.AccountLive.Agents do
+defmodule CodeMySpecWeb.AgentModelsLive do
   @moduledoc """
-  Which provider and model each agent type runs on, for this account.
+  Which provider and model each agent type runs on, for you — per user, in
+  every account, because the provider credentials it names are
+  (`Agents.ModelSetting`). In the main nav, beside User settings.
 
   Story 983. Four types, four choices, and a launcher that knows nothing about
   any of them — a QA agent runs on something cheap because this page says so.
@@ -34,9 +36,7 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
 
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Accounts
   alias CodeMySpec.Agents
-  alias CodeMySpecWeb.AccountLive.Components.Navigation
 
   @impl true
   def render(assigns) do
@@ -48,15 +48,7 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <.live_component
-        module={Navigation}
-        id="navigation"
-        account={@account}
-        current_scope={@current_scope}
-        active_tab={:agents}
-      />
-
-      <div class="mt-6">
+      <div>
         <div class="card bg-base-100 border border-base-300">
           <div class="card-body">
             <h2 class="card-title">Agent models</h2>
@@ -143,16 +135,8 @@ defmodule CodeMySpecWeb.AccountLive.Agents do
   end
 
   @impl true
-  def mount(%{"id" => id}, _session, socket) do
-    scope = socket.assigns.current_scope
-
-    case Accounts.get_account(scope, id) do
-      nil ->
-        {:ok, socket |> put_flash(:error, "Account not found") |> redirect(to: ~p"/app/accounts")}
-
-      account ->
-        {:ok, socket |> assign(:account, account) |> load()}
-    end
+  def mount(_params, _session, socket) do
+    {:ok, socket |> assign(:page_title, "Agent models") |> load()}
   end
 
   @impl true

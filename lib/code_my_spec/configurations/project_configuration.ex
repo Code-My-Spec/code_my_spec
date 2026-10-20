@@ -87,7 +87,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     #
     # Defaults to `:off` — opt in, not out. Every project is a project;
     # only some are meant to have infrastructure. Defaulting to `:prod`
-    # made `/app/resources` report every project as missing all fifteen
+    # made the console's Inventory report every project as missing all fifteen
     # steps, which buries the one project that has a real problem, and
     # made the requirement graph demand DevOps work of projects nobody
     # intends to deploy. Turning it on is the act of saying "this one

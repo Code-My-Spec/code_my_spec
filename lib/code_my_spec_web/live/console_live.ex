@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpecWeb.ConsoleLive.Components.EnvironmentSwitcher
   alias CodeMySpecWeb.ConsoleLive.Components.ResourceDetail
   alias CodeMySpecWeb.ConsoleLive.Components.SetupOptionsForm
-  alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
+  alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.ConsoleLive.ResourceGroups
   alias CodeMySpecWeb.ProvisioningLive.Components.CredentialsForm
   alias CodeMySpecWeb.ProvisioningLive.Components.DeployConfig
@@ -179,34 +179,18 @@ defmodule CodeMySpecWeb.ConsoleLive do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div class="drawer lg:drawer-open drawer-end" data-test="console">
-        <input id="console-drawer" type="checkbox" class="drawer-toggle" />
-
-        <div class="drawer-content p-4 lg:p-8 flex flex-col gap-4">
-          <div class="flex items-center justify-between gap-4">
-            <label for="console-drawer" class="btn btn-ghost drawer-button lg:hidden">
-              Menu
-            </label>
-            <EnvironmentSwitcher.environment_switcher
-              :if={@live_action in [:overview, :resources, :resource_detail]}
-              environment={@environment}
-              environments={@environments}
-              base_path={~p"/app/projects/#{@current_scope.active_project_id}/console"}
-              live_action={@live_action}
-            />
-          </div>
-
-          {render_section(assigns)}
-        </div>
-
-        <div class="drawer-side">
-          <label for="console-drawer" class="drawer-overlay"></label>
-          <Sidebar.sidebar
+      <Shell.frame project_id={@current_scope.active_project_id} active={@live_action}>
+        <:toolbar>
+          <EnvironmentSwitcher.environment_switcher
+            :if={@live_action in [:overview, :resources, :resource_detail]}
+            environment={@environment}
+            environments={@environments}
+            base_path={~p"/app/projects/#{@current_scope.active_project_id}/console"}
             live_action={@live_action}
-            project_id={@current_scope.active_project_id}
           />
-        </div>
-      </div>
+        </:toolbar>
+        {render_section(assigns)}
+      </Shell.frame>
     </Layouts.app>
     """
   end

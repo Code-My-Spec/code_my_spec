@@ -46,7 +46,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2839Spex do
         # just as happily against an account that already has ten machines —
         # where "the server issues an identity" would be indistinguishable from
         # "it handed back one that was already there".
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         # By hostname, not by the list being empty. The account is not empty any
         # more — `working_copies.device_id` is required, so the fixture that

@@ -23,12 +23,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.AgentPerformance.Chart
   alias CodeMySpec.Architecture.BoundaryGraph
+  alias CodeMySpec.Qa
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.PlainLanguage
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpecWeb.ActivityComponents
+  alias CodeMySpecWeb.ArchitectureComponents
+  alias CodeMySpecWeb.QaComponents
   alias CodeMySpecWeb.RequirementGraphComponents
 
   @doc """
@@ -59,6 +64,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     socket =
       socket
       |> assign_new(:graph_modal, fn -> nil end)
+      |> assign_new(:architecture_open, fn -> false end)
       |> assign_new(:selected, fn -> nil end)
       |> assign_new(:detail, fn -> %{} end)
 
@@ -67,7 +73,12 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         {:ok,
          assign(socket,
            bands: Bands.read(socket.assigns.scope),
-           architecture: BoundaryGraph.build(socket.assigns.scope).summary
+           architecture: BoundaryGraph.build(socket.assigns.scope),
+           qa:
+             socket.assigns.scope
+             |> Qa.list_project_attempts(include_older: true)
+             |> QaComponents.recent_counts(),
+           activity: Chart.week_summary(socket.assigns.scope)
          )},
       else: {:ok, socket}
   end
@@ -90,6 +101,12 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   def handle_event("close_graph", _params, socket),
     do: {:noreply, assign(socket, graph_modal: nil, selected: nil)}
+
+  def handle_event("open_architecture", _params, socket),
+    do: {:noreply, assign(socket, :architecture_open, true)}
+
+  def handle_event("close_architecture", _params, socket),
+    do: {:noreply, assign(socket, :architecture_open, false)}
 
   @impl true
   def handle_async(:graph, {:ok, graph}, %{assigns: %{graph_modal: :loading}} = socket),
@@ -153,7 +170,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <div
           data-test="timeline-band"
           data-band="stories"
-          class="order-3 min-w-0 basis-full sm:order-none sm:basis-auto"
+          class="timeline-more order-3 min-w-0 basis-full max-sm:hidden sm:order-none sm:basis-auto"
         >
           <.story_chart stories={@bands.stories} />
         </div>
@@ -164,10 +181,26 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         >
           <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
         </div>
+        <%!-- On a phone only the gates show; this opens the rest. JS, so the
+        open state survives the page's own updates. --%>
+        <button
+          type="button"
+          data-test="timeline-expand"
+          aria-label="Show stories and counts"
+          phx-click={
+            JS.toggle_class("max-sm:hidden", to: "##{@id} .timeline-more")
+            |> JS.toggle_class("rotate-180", to: "##{@id} .timeline-expand-icon")
+          }
+          class="order-2 btn btn-ghost btn-xs btn-square sm:hidden"
+        >
+          <.icon name="hero-chevron-down" class="timeline-expand-icon size-4 transition-transform" />
+        </button>
         <%!-- Where it stands, counted. --%>
-        <ul class="order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:basis-auto sm:flex-nowrap">
+        <ul class="timeline-more order-4 flex basis-full flex-wrap items-center gap-x-3 gap-y-1 max-sm:hidden sm:order-none sm:basis-auto sm:flex-nowrap">
           <li data-test="timeline-band" data-band="story-counts">
-            <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
+            <.labelled label="Stories">
+              <.story_counts counts={@bands.story_counts} first={List.first(@bands.stories)} />
+            </.labelled>
           </li>
           <li data-test="timeline-band" data-band="components">
             <.labelled label="Impl">
@@ -176,7 +209,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           </li>
           <li data-test="timeline-band" data-band="architecture">
             <.labelled label="Arch">
-              <.architecture_mark summary={@architecture} project={@project} />
+              <.architecture_mark summary={@architecture.summary} target={@myself} />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="activity">
+            <.labelled label="Perf">
+              <ActivityComponents.summary_mark summary={@activity} phx-click="show_activity" />
+            </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="qa">
+            <.labelled label="QA">
+              <QaComponents.counts_mark counts={@qa} phx-click="show_qa" />
             </.labelled>
           </li>
           <li data-test="timeline-band" data-band="issues">
@@ -207,6 +250,13 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         href={@graph}
         target={@myself}
         target_selector={"##{@id}"}
+      />
+      <ArchitectureComponents.modal
+        :if={@architecture_open}
+        graph={@architecture}
+        href={~p"/app/projects/#{@project.id}/architecture"}
+        on_close="close_architecture"
+        target={@myself}
       />
     </nav>
     """
@@ -257,9 +307,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
-  # A column opens that story's requirements graph in the cockpit's story
-  # graph modal (`show_story_graph`), with a slider through the stories in this
-  # order.
+  # A column opens that story's requirements graph in the cockpit
+  # (`show_story_graph`), with a slider through the stories in this order and a
+  # switch to the story's text.
   defp story_chart(assigns) do
     ~H"""
     <div
@@ -320,6 +370,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
 
   attr(:counts, :map, required: true)
+  attr(:first, :map, default: nil, doc: "the chart's first story, which a tap opens")
 
   # The stories the chart leaves out: done (promoted), backlog (not yet ready
   # for development), retired.
@@ -332,21 +383,24 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       )
 
     ~H"""
-    <span
+    <button
+      type="button"
+      phx-click={@first && "show_chart_story"}
+      phx-value-number={@first && @first.number}
       data-test="story-counts"
       data-done={@counts.done}
       data-backlog={@counts.backlog}
       data-retired={@counts.retired}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@counts.done}</span>
       <span class="opacity-30">/</span>
       <span class="opacity-50">{@counts.backlog}</span>
       <span class="opacity-30">/</span>
       <span class="opacity-30">{@counts.retired}</span>
-    </span>
+    </button>
     """
   end
 
@@ -367,7 +421,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   attr(:summary, :map, required: true)
-  attr(:project, :map, required: true)
+  attr(:target, :any, required: true)
 
   # The architecture's health from `BoundaryGraph`: how many boundary cycles
   # (red when any) and how deep the longest chain of boundaries runs.
@@ -384,8 +438,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       )
 
     ~H"""
-    <.link
-      navigate={~p"/app/projects/#{@project.id}/architecture"}
+    <button
+      type="button"
+      phx-click="open_architecture"
+      phx-target={@target}
       data-test="architecture-mark"
       data-cycles={@cycles}
       data-depth={@summary.depth}
@@ -402,7 +458,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       <span data-test="architecture-depth" class="flex items-center gap-0.5 opacity-60">
         <.icon name="hero-list-bullet" class="size-3" />{@summary.depth}
       </span>
-    </.link>
+    </button>
     """
   end
 
@@ -425,15 +481,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     ~H"""
     <button
       type="button"
-      phx-click="open_graph"
-      phx-target={@target}
+      phx-click="show_issues"
       data-test="issue-bar"
       data-resolved={@resolved}
       data-dismissed={@dismissed}
       data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-left flex items-center justify-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@resolved}</span>
       <span class="opacity-30">/</span>
@@ -472,7 +527,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-0.5 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@done}</span>
       <span class="opacity-30">/</span>

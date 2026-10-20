@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.DeviceLive.Index do
   @moduledoc """
-  Every machine on this account, and what is on each.
+  Every dev box on this account — a machine running a harness — and what is on
+  each, in the console's Development section.
 
   One level above `WorkingCopyLive.Index`. That page lists checkouts and this
   one lists the machines they sit on, which is what turns 105 rows into a
@@ -45,11 +46,12 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok, assign(socket, :page_title, "Devices")}
+  def mount(params, _session, socket) do
+    {:ok, assign(socket, page_title: "Dev boxes", project_id: params["project_id"])}
   end
 
   @impl true
@@ -157,67 +159,69 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div data-test="devices" class="mx-auto w-full max-w-3xl">
-        <.header>
-          Devices
-          <:subtitle>
-            Every machine running a harness for this account. A machine onboards itself
-            when its harness comes up.
-          </:subtitle>
-        </.header>
+      <Shell.frame project_id={@project_id} active={:dev_boxes}>
+        <div data-test="devices" class="mx-auto w-full max-w-3xl">
+          <.header>
+            Dev boxes
+            <:subtitle>
+              Every machine running a harness for this account. A machine onboards itself
+              when its harness comes up.
+            </:subtitle>
+          </.header>
 
-        <p :if={@devices == []} data-test="devices-empty" class="py-16 text-center opacity-60">
-          No machines yet. One appears when a harness starts on it.
-        </p>
+          <p :if={@devices == []} data-test="devices-empty" class="py-16 text-center opacity-60">
+            No machines yet. One appears when a harness starts on it.
+          </p>
 
-        <ul class="mt-6 space-y-3">
-          <li
-            :for={row <- @devices}
-            data-test="device"
-            data-device-id={row.device.id}
-            data-kind={row.device.kind}
-            class="card card-compact border border-base-300 bg-base-100"
-          >
-            <div class="card-body gap-2">
-              <div class="flex items-start gap-3">
-                <div class="min-w-0 flex-1">
-                  <div data-test="device-name" class="font-medium truncate">{row.name}</div>
-                  <div data-test="device-kind" class="text-xs opacity-60">
-                    {kind_name(row.device.kind)}
+          <ul class="mt-6 space-y-3">
+            <li
+              :for={row <- @devices}
+              data-test="device"
+              data-device-id={row.device.id}
+              data-kind={row.device.kind}
+              class="card card-compact border border-base-300 bg-base-100"
+            >
+              <div class="card-body gap-2">
+                <div class="flex items-start gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div data-test="device-name" class="font-medium truncate">{row.name}</div>
+                    <div data-test="device-kind" class="text-xs opacity-60">
+                      {kind_name(row.device.kind)}
+                    </div>
+                  </div>
+
+                  <div data-test="device-presence" class="shrink-0 text-right text-sm">
+                    {row.presence.label}
+                    <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
                   </div>
                 </div>
 
-                <div data-test="device-presence" class="shrink-0 text-right text-sm">
-                  {row.presence.label}
-                  <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
+                <div class="flex items-center gap-2">
+                  <.button
+                    phx-click="revoke_authorization"
+                    phx-value-id={row.device.id}
+                    data-test="revoke-device-authorization"
+                    class="btn btn-sm btn-ghost"
+                  >
+                    Revoke my harness access
+                  </.button>
+                  <.button
+                    phx-click="destroy"
+                    phx-value-id={row.device.id}
+                    data-test="destroy-device"
+                    class="btn btn-sm btn-ghost"
+                  >
+                    Destroy
+                  </.button>
+                  <span class="text-xs opacity-60">
+                    its checkouts stay, with no machine
+                  </span>
                 </div>
               </div>
-
-              <div class="flex items-center gap-2">
-                <.button
-                  phx-click="revoke_authorization"
-                  phx-value-id={row.device.id}
-                  data-test="revoke-device-authorization"
-                  class="btn btn-sm btn-ghost"
-                >
-                  Revoke my harness access
-                </.button>
-                <.button
-                  phx-click="destroy"
-                  phx-value-id={row.device.id}
-                  data-test="destroy-device"
-                  class="btn btn-sm btn-ghost"
-                >
-                  Destroy
-                </.button>
-                <span class="text-xs opacity-60">
-                  its checkouts stay, with no machine
-                </span>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
+            </li>
+          </ul>
+        </div>
+      </Shell.frame>
     </Layouts.app>
     """
   end

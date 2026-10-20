@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2840Spex do
       given_ "a machine already among my devices", context do
         id = device_id(context, hostname: "the-restarting-machine", kind: "local")
 
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         assert has_element?(live, "[data-test='device']"),
                "the machine has to be on the list before restarting it means anything"
@@ -66,7 +67,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2840Spex do
           kind: "local"
         )
 
-        {:ok, live, html} = live(context.conn, "/app/devices")
+        {:ok, live, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end

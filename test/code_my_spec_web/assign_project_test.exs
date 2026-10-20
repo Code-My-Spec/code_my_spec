@@ -1,10 +1,10 @@
-defmodule CodeMySpecWeb.PortableHostTest do
+defmodule CodeMySpecWeb.AssignProjectTest do
   @moduledoc """
-  The seam `SessionsLiveTest` points at: a bad project id is the host's to
-  refuse, so every portable view can be written as though the project it was
+  `UserAuth.on_mount(:assign_project, ...)`: a bad project id is the hook's to
+  refuse, so every project view can be written as though the project it was
   handed is the one in the URL.
 
-  Before `d500df3b` the host assigned `scope_error` and continued. Only the
+  Before `d500df3b` the old host assigned `scope_error` and continued. Only the
   StoryLive views render that assign, so Sessions, Files, Configuration and Qa
   fell through to a clause still reading `current_scope` — the *previous*
   project — and rendered its data under the requested project's URL. The

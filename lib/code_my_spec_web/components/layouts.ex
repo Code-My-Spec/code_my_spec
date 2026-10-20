@@ -12,29 +12,6 @@ defmodule CodeMySpecWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Layout entry point for `live_session ..., layout: {__MODULE__, :live}`.
-
-  The cloud half of the same contract `CodeMySpecLocalWeb.Layouts.live/1`
-  implements: portable LiveViews render content only, and the router decides
-  which chrome wraps it.
-  """
-  attr :inner_content, :any, required: true
-
-  def live(assigns) do
-    ~H"""
-    <.app
-      flash={@flash}
-      current_scope={@current_scope}
-      current_path={@current_path}
-      project={assigns[:project]}
-      projects={assigns[:projects] || []}
-    >
-      {@inner_content}
-    </.app>
-    """
-  end
-
-  @doc """
   Renders your app layout.
 
   This function is typically invoked from every template,
@@ -56,15 +33,17 @@ defmodule CodeMySpecWeb.Layouts do
 
   attr :current_path, :string, default: "/"
 
-  # `project` is the one named in the path (set by PortableHost; nil switches the
-  # nav to the picker). `projects` is what the picker offers. Declared, because
-  # an undeclared assign silently renders the empty branch.
+  # `project` is the one named in the path; without one the nav falls back to
+  # the scope's active project, and only offers the picker when there is none.
+  # Declared, because an undeclared assign silently renders the empty branch.
   attr :project, :map, default: nil, doc: "project named in the current path, if any"
   attr :projects, :list, default: [], doc: "projects this user can open (CurrentPathHook)"
 
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns = assign(assigns, :project, nav_project(assigns.project, assigns.current_scope))
+
     ~H"""
     <%!-- `h-dvh`, not `min-h-dvh`: a *minimum* is a floor a tall page can stand
     on and then exceed, which is exactly what let one oversized analyzer result
@@ -182,80 +161,56 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
+            <li><a href={~p"/app/accounts"}>Accounts</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
-            <%!--
-                Account-scoped, so it sits with Projects rather than inside the
-                per-project block: a box is shared between projects, and one
-                left over from a project that no longer exists still bills.
-              --%>
-            <li><a href={~p"/app/servers"}>Servers</a></li>
-            <li><a href={~p"/app/devices"}>Devices</a></li>
-            <li><a href={~p"/app/resources"}>Resources</a></li>
-            <%!--
-                The path is the breadcrumb. Every surface below is addressed
-                per-project, and the project they point at is the one named in
-                the URL — `@project`, put there by PortableHost — never the
-                stored preference. A stored one could contradict the page you
-                are looking at; the preference now only decides where bare
-                `/app` sends you, which is a different question.
-
-                With no project in the path there is nothing to build links
-                from, so the sidebar offers the choice instead of going blank.
-
-                Persisted, not merely present: `/app/projects/new` assigns a
-                blank `%Project{}` as its form's subject under the same name,
-                and a struct with a nil id satisfied the old check and then
-                raised building the first link — so the page that creates a
-                project was the one page you could not open.
-              --%>
+            <%!-- The project in the path, else the one you were last in; the
+                  picker only when there is neither. --%>
             <%= if (project = @project) && project.id do %>
+              <%!-- Two consoles, each a sidebar over its own pages: DevOps for
+                    the infrastructure, Operations (below) for running the live
+                    app. Servers, inventory and dev boxes in DevOps are the
+                    account's, whichever project's console shows them. --%>
+              <li><a href={~p"/app/projects/#{project.id}/console"}>DevOps</a></li>
+
               <li class="menu-title truncate" title={project.name}>{project.name}</li>
-              <li class="menu-title">Specification</li>
+              <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
               <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
               <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
-
-              <li class="menu-title">Build</li>
-              <%!-- The step 6 console replaced Provisioning (gate 2): same
-                    project, a PaaS-style sidebar+tabs layout instead of one
-                    long page. --%>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/console"}>Console</a>
-              </li>
-              <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
-              </li>
-              <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
-
-              <li class="menu-title">Project</li>
-              <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
-              </li>
+              <li><a href={~p"/app/projects/#{project.id}/inbox"}>Operations</a></li>
               <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
-              <li :if={can_manage_mailboxes?(@current_scope)}>
-                <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
-              </li>
 
-              <li class="menu-title">Private</li>
-              <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
-              <%!-- "Agent chat" opens whichever session the cockpit defaults to.
+              <li><a href={~p"/app/agent-models"}>Agent models</a></li>
+              <li><a href={~p"/app/users/settings"}>User settings</a></li>
+
+              <%!-- Operator surfaces, folded away so the everyday nav stays short. --%>
+              <li>
+                <details data-test="nav-advanced">
+                  <summary>Advanced</summary>
+                  <ul>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/agent-performance"}>Agent performance</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/working-copies"}>Working copies</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+                    <%!-- "Agent chat" opens whichever session the cockpit defaults to.
                     This is the list of all of them — the way to reach the four a
                     project with five agents would otherwise hide. --%>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+                    <li>
+                      <a href={~p"/app/projects/#{project.id}/agent-conversations"}>Agent sessions</a>
+                    </li>
+                    <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
+                    <li><a href={~p"/app/projects/#{project.id}/docs"}>Docs</a></li>
+                  </ul>
+                </details>
               </li>
-              <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
               <li :for={p <- @projects}>
@@ -266,11 +221,11 @@ defmodule CodeMySpecWeb.Layouts do
               <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
                 No projects yet.
               </li>
+              <li><a href={~p"/app/agent-models"}>Agent models</a></li>
+              <li><a href={~p"/app/users/settings"}>User settings</a></li>
             <% end %>
-            <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
-            <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <%= if @current_scope do %>
-              <li class="border-t border-base-300 mt-2 pt-2">
+              <li class="border-t border-base-300 mt-auto pt-2">
                 <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
                   {@current_scope.user.email}
                 </div>
@@ -292,6 +247,15 @@ defmodule CodeMySpecWeb.Layouts do
 
   # Where the logo goes: the path's project's agent conversation. Guarded on a
   # real id: the new-project form renders this layout, and `~p` raises on nil.
+  # Persisted, not merely present: `/app/projects/new` assigns a blank
+  # `%Project{}` under the same name, and a nil id raises building the links.
+  defp nav_project(%{id: id} = project, _scope) when is_binary(id), do: project
+
+  defp nav_project(_project, %{active_project: %{id: id} = project}) when is_binary(id),
+    do: project
+
+  defp nav_project(_project, _scope), do: nil
+
   defp home_path(%{id: id}) when is_binary(id), do: ~p"/app/projects/#{id}/agent-conversation"
   defp home_path(_no_project), do: ~p"/app"
 
@@ -319,10 +283,6 @@ defmodule CodeMySpecWeb.Layouts do
   # Only owners/admins administer mailboxes, so the Mailboxes nav item is
   # theirs alone. Guarded on an active account so it never raises for a
   # half-onboarded scope.
-  defp can_manage_mailboxes?(%{active_account_id: account_id} = scope) when is_binary(account_id),
-    do: CodeMySpec.Mail.can_administer?(scope)
-
-  defp can_manage_mailboxes?(_), do: false
 
   @doc """
   Shows the flash group with standard titles and content.

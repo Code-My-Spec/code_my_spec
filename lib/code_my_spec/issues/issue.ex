@@ -122,6 +122,10 @@ defmodule CodeMySpec.Issues.Issue do
     # A list of attachment maps, e.g. a widget-reported screenshot copied into
     # our S3 bucket: %{"type" => "screenshot", "s3_key" => ..., "content_type" => ...}.
     field(:attachments, {:array, :map}, default: [])
+    # When it was accepted, and when it was resolved or dismissed — the status
+    # says which. Stamped by `stamp_status_times/1` on every status change.
+    field(:accepted_at, :utc_datetime_usec)
+    field(:closed_at, :utc_datetime_usec)
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -146,6 +150,7 @@ defmodule CodeMySpec.Issues.Issue do
   def changeset(issue, attrs) do
     issue
     |> cast(attrs, @castable_fields)
+    |> stamp_status_times()
     |> validate_required([:title, :severity, :description])
     |> unique_constraint([:title, :story_id, :project_id])
     |> unique_constraint([:fault_key, :project_id], name: :issues_fault_key_project_id_index)
@@ -176,10 +181,34 @@ defmodule CodeMySpec.Issues.Issue do
 
     issue
     |> cast(attrs, [:status, :category, :resolution, :story_id])
+    |> stamp_status_times()
     |> validate_required([:status])
     |> validate_transition(issue.status, new_status)
     |> maybe_require_resolution(new_status)
     |> maybe_require_story_for_requirements_change()
+  end
+
+  # Accepting stamps `accepted_at` the first time; resolving or dismissing
+  # stamps `closed_at`; going back to incoming or accepted clears it, so a
+  # reopened issue counts as open again.
+  defp stamp_status_times(changeset) do
+    now = DateTime.utc_now()
+
+    case get_change(changeset, :status) do
+      nil ->
+        changeset
+
+      :accepted ->
+        changeset
+        |> then(&if(get_field(&1, :accepted_at), do: &1, else: put_change(&1, :accepted_at, now)))
+        |> put_change(:closed_at, nil)
+
+      :incoming ->
+        put_change(changeset, :closed_at, nil)
+
+      closed when closed in [:resolved, :dismissed] ->
+        put_change(changeset, :closed_at, now)
+    end
   end
 
   @doc "Returns a numeric index for severity ordering (lower = more severe)."
