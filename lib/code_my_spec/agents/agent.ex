@@ -91,6 +91,9 @@ defmodule CodeMySpec.Agents.Agent do
     # A terminal Claude Code session's own session id (story 1122): how a
     # resumed session finds its agent again, and how its tool calls name it.
     field :engine_session_id, :string
+    # The file that session writes what it says and spends to, as its SessionStart
+    # hook named it: where a re-attached harness reads it from.
+    field :transcript_path, :string
     # When a terminal session last ran a Bash command able to move HEAD (rebase,
     # pull, checkout, ...). `Validation` reads it to tell inherited history from
     # this turn's work when no edits were recorded.
@@ -319,6 +322,7 @@ defmodule CodeMySpec.Agents.Agent do
     |> cast(attrs, [
       :engine,
       :engine_session_id,
+      :transcript_path,
       :git_rewrite_at,
       :current_tool,
       :waiting_since,

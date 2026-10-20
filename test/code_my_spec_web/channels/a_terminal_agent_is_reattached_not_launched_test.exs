@@ -66,6 +66,11 @@ defmodule CodeMySpecWeb.ATerminalAgentIsReattachedNotLaunchedTest do
     assert ours.id in launched
     refute terminal.id in launched
 
-    assert %{"agent_id" => terminal.id, "session_id" => session} in terminals
+    assert %{
+             "agent_id" => terminal.id,
+             "session_id" => session,
+             "engine" => "claude_code",
+             "transcript_path" => nil
+           } in terminals
   end
 end

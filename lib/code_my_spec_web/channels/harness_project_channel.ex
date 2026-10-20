@@ -674,7 +674,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
 
     reattach =
-      Enum.map(terminals, &%{"agent_id" => &1.id, "session_id" => &1.engine_session_id})
+      Enum.map(terminals, fn agent ->
+        %{
+          "agent_id" => agent.id,
+          "session_id" => agent.engine_session_id,
+          "engine" => to_string(agent.engine),
+          "transcript_path" => agent.transcript_path
+        }
+      end)
 
     {:reply, {:ok, %{"agents" => agents, "terminals" => reattach}}, socket}
   end

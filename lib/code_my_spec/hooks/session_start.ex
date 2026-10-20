@@ -29,7 +29,11 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
   defp create(scope, session_id, params) do
     messaging = params["messaging"]
-    registered = Agents.register_terminal(scope, session_id, :main, engine(params))
+
+    registered =
+      scope
+      |> Agents.register_terminal(session_id, :main, engine(params))
+      |> Agents.keep_transcript_path(scope, params["transcript_path"])
 
     {200,
      %{}

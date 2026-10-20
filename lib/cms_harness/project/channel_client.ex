@@ -1205,27 +1205,22 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # A terminal agent whose Claude Code session is still running comes back
-  # attached to its socket, found again in Claude Code's own registry; one
+  # A terminal agent whose session is still running comes back attached to it:
+  # a Claude Code session to its socket, found again in Claude Code's own
+  # registry; a Codex session by its thread id, which `codex queue` takes. One
   # whose session ended stays away until its session starts again.
   defp reattach_terminals(root, terminals) do
-    for %{"agent_id" => id, "session_id" => session_id} <- terminals,
-        %{"messagingSocketPath" => socket} = record when is_binary(socket) <-
-          [CmsHarness.Agents.terminal_session(session_id)] do
-      session = %{
-        socket: socket,
-        working_copy: root,
-        session_id: session_id,
-        transcript: transcript_path(record)
-      }
-
+    for %{"agent_id" => id, "session_id" => session_id} = terminal <- terminals,
+        session <- [terminal_session(terminal, root)],
+        session != nil do
       case CmsHarness.Agents.attach_terminal(id, session) do
         {:ok, _pid} ->
           Logger.info("[CmsHarness] re-attached terminal agent #{id}")
 
         {:error, reason} ->
           Logger.warning(
-            "[CmsHarness] could not re-attach terminal agent #{id}: #{inspect(reason)}"
+            "[CmsHarness] could not re-attach terminal agent #{id} (#{session_id}): " <>
+              inspect(reason)
           )
       end
     end
@@ -1233,15 +1228,59 @@ defmodule CmsHarness.Project.ChannelClient do
     :ok
   end
 
-  # Where Claude Code writes a session's transcript: its cwd with `/` and `.`
-  # as `-`, under `~/.claude/projects`. Nil when that file is not there.
-  defp transcript_path(%{"cwd" => cwd, "sessionId" => id}) when is_binary(cwd) do
-    dir = String.replace(cwd, ~r{[/.]}, "-")
-    path = Path.expand("~/.claude/projects/#{dir}/#{id}.jsonl")
+  defp terminal_session(%{"engine" => "codex", "session_id" => session_id} = terminal, root) do
+    %{
+      engine: :codex,
+      working_copy: root,
+      session_id: session_id,
+      transcript: stored_or(terminal, fn -> codex_rollout(session_id) end)
+    }
+  end
+
+  defp terminal_session(%{"session_id" => session_id} = terminal, root) do
+    case CmsHarness.Agents.terminal_session(session_id) do
+      %{"messagingSocketPath" => socket} = record when is_binary(socket) ->
+        %{
+          socket: socket,
+          working_copy: root,
+          session_id: session_id,
+          transcript: stored_or(terminal, fn -> transcript_path(record) end)
+        }
+
+      _ended_or_without_a_socket ->
+        nil
+    end
+  end
+
+  # The path the session's own SessionStart hook named, kept on the agent; only
+  # an agent that joined before that was kept works it out again.
+  defp stored_or(%{"transcript_path" => path}, _derive) when is_binary(path) and path != "",
+    do: path
+
+  defp stored_or(_terminal, derive), do: derive.()
+
+  @doc false
+  # Where Claude Code writes a session's transcript: its cwd with every
+  # character outside `[A-Za-z0-9-]` as `-`, under `~/.claude/projects`. Nil
+  # when that file is not there.
+  def transcript_path(record, projects \\ "~/.claude/projects")
+
+  def transcript_path(%{"cwd" => cwd, "sessionId" => id}, projects) when is_binary(cwd) do
+    dir = String.replace(cwd, ~r{[^A-Za-z0-9-]}, "-")
+    path = Path.join([Path.expand(projects), dir, "#{id}.jsonl"])
     if File.exists?(path), do: path
   end
 
-  defp transcript_path(_record), do: nil
+  def transcript_path(_record, _projects), do: nil
+
+  # Where Codex writes a session's rollout: the day it began is in the path, so
+  # it is found by the session id in the file's name.
+  defp codex_rollout(session_id) do
+    "~/.codex/sessions/*/*/*/rollout-*-#{session_id}.jsonl"
+    |> Path.expand()
+    |> Path.wildcard()
+    |> List.first()
+  end
 
   # One at a time, so a restore cannot stampede the box. Off this process: a
   # launch waits on the agent's MCP session, and inline it held every

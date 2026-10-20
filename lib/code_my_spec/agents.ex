@@ -381,6 +381,22 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  @doc """
+  Remember the file a terminal session writes, as its SessionStart hook named
+  it, so a harness that restarts reads it again instead of working it out.
+  Passes `registered` through.
+  """
+  @spec keep_transcript_path({:ok, Agent.t()} | {:error, term()}, Scope.t(), term()) ::
+          {:ok, Agent.t()} | {:error, term()}
+  def keep_transcript_path({:ok, %Agent{transcript_path: path} = agent}, _scope, path),
+    do: {:ok, agent}
+
+  def keep_transcript_path({:ok, %Agent{} = agent}, scope, path)
+      when is_binary(path) and path != "",
+      do: AgentsRepository.update_agent(scope, agent, %{transcript_path: path})
+
+  def keep_transcript_path(registered, _scope, _path), do: registered
+
   defp terminal_provider(:codex), do: "codex"
   defp terminal_provider(_engine), do: "claude-code"
 

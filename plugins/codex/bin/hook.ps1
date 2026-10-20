@@ -33,6 +33,7 @@ $endpoint = switch ($event) {
   'PostToolUse'   { '/api/hooks/post-tool-use' }
   'UserPromptSubmit' { '/api/hooks/user-prompt-submit' }
   'Stop'          { '/api/hooks/stop' }
+  'SessionEnd'    { '/api/hooks/session-end' }
   default         { exit 0 }
 }
 

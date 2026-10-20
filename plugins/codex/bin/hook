@@ -26,6 +26,7 @@ case "$EVENT" in
   PostToolUse)       ENDPOINT="/api/hooks/post-tool-use" ;;
   UserPromptSubmit)  ENDPOINT="/api/hooks/user-prompt-submit" ;;
   Stop)              ENDPOINT="/api/hooks/stop" ;;
+  SessionEnd)        ENDPOINT="/api/hooks/session-end" ;;
   *)                 exit 0 ;;
 esac
 
