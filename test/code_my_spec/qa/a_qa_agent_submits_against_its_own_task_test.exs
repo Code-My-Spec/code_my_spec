@@ -16,6 +16,8 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  require Phoenix.LiveViewTest
+
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.StoriesFixtures
@@ -90,6 +92,67 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
         }
       ]
     }
+  end
+
+  test "a passing verdict cannot contain a failed or blocked scenario", ctx do
+    blocker = Ecto.UUID.generate()
+
+    for status <- ["fail", "blocked"] do
+      params = attrs(ctx.task_id, :pass) |> Map.put(:issue_ids, [blocker])
+
+      scenarios =
+        Enum.map(params.scenarios, fn scenario ->
+          scenario |> Map.put("status", status) |> Map.put("blocker_issue_id", blocker)
+        end)
+
+      assert {:error, %Ecto.Changeset{}} =
+               Qa.submit_qa_result(ctx.scope, %{params | scenarios: scenarios})
+
+      assert Qa.list_qa_attempts(ctx.scope, ctx.story.id) == []
+      assert held_task(ctx.agent.id, ctx.task_id).status == :active
+    end
+  end
+
+  test "a partial verdict preserves a blocked scenario and its blocker", ctx do
+    blocker = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{severity: :high})
+
+    params =
+      attrs(ctx.task_id, :partial)
+      |> Map.put(:issue_ids, [blocker.id])
+      |> Map.put(:scenarios, [
+        %{
+          "name" => "live check",
+          "status" => "blocked",
+          "observation" => "The test service is unavailable",
+          "blocker_issue_id" => blocker.id
+        }
+      ])
+
+    assert {:ok, attempt} = Qa.submit_qa_result(ctx.scope, params)
+    stored = Repo.get!(Qa.QaAttempt, attempt.id)
+    assert [scenario] = stored.scenarios
+    assert scenario.status == :blocked
+    assert Map.fetch!(scenario, :blocker_issue_id) == blocker.id
+    refute Qa.qa_complete?(ctx.scope, ctx.story.id)
+
+    html =
+      Phoenix.LiveViewTest.render_component(
+        &CodeMySpecWeb.StoryLive.QaHistoryComponent.qa_history/1,
+        attempts: Repo.preload([stored], :invalidations)
+      )
+
+    assert html =~ "blocked"
+    assert html =~ "Blocked by issue"
+    assert html =~ blocker.id
+
+    assert {:ok, [row]} =
+             CodeMySpec.Qa.Tools.ListQaAttempts.script_result(
+               %{story_number: ctx.story.number},
+               %{scope: ctx.scope}
+             )
+
+    assert [%{"status" => "blocked", "blocker_issue_id" => exported_blocker}] = row["scenarios"]
+    assert exported_blocker == blocker.id
   end
 
   test "the attempt lands against a task held by the agent", ctx do

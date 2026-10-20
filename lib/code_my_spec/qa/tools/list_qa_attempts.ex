@@ -67,7 +67,12 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
       "issue_ids" => a.issue_ids || [],
       "scenarios" =>
         Enum.map(a.scenarios, fn s ->
-          %{"name" => s.name, "status" => to_string(s.status), "observation" => s.observation}
+          %{
+            "name" => s.name,
+            "status" => to_string(s.status),
+            "observation" => s.observation,
+            "blocker_issue_id" => s.blocker_issue_id
+          }
         end)
     }
   end
@@ -128,7 +133,8 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
 
   defp render_scenarios(scenarios) do
     Enum.map_join(scenarios, "\n", fn s ->
-      "  - #{s.name} [#{s.status}] — #{s.observation}"
+      blocker = if s.blocker_issue_id, do: " (blocker: #{s.blocker_issue_id})", else: ""
+      "  - #{s.name} [#{s.status}]#{blocker} — #{s.observation}"
     end)
   end
 

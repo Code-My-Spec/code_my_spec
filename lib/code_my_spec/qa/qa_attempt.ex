@@ -90,6 +90,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
     |> cast_embed(:evidence)
     |> validate_required([:story_id, :status, :submitted_at])
     |> validate_scenarios_non_empty()
+    |> Scenario.validate_attempt()
   end
 
   defp validate_scenarios_non_empty(changeset) do

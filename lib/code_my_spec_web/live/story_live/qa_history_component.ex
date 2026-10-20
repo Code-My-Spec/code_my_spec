@@ -112,6 +112,9 @@ defmodule CodeMySpecWeb.StoryLive.QaHistoryComponent do
               {status_label(scenario.status)}
             </span>
             <span class="font-medium">{scenario.name}</span>
+            <span :if={scenario.blocker_issue_id} class="text-xs ml-1" data-role="scenario-blocker">
+              Blocked by issue <code>{scenario.blocker_issue_id}</code>
+            </span>
             <span :if={scenario.observation} class="text-base-content/60 ml-1">
               — {scenario.observation}
             </span>

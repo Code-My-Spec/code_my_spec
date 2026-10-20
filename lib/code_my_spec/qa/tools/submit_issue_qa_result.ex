@@ -48,7 +48,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitIssueQaResult do
          {:meta, {:list, :map},
           [
             description:
-              "Structured list of scenarios probed. Required fields in each entry: name, status, observation. %{name: string, status: 'pass'|'partial'|'fail', observation: string}."
+              "Structured scenarios: %{name: string, status: 'pass'|'partial'|'fail'|'blocked', observation: string, blocker_issue_id: UUID}. Name, status, and observation are required. Use 'blocked' for a check that could not run; blocker_issue_id is required for blocked scenarios and must also appear in issue_ids. An overall pass cannot contain failed or blocked scenarios; submit partial when checks remain blocked."
           ]}},
       issue_ids:
         {:meta, {:list, :string},
