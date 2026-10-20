@@ -145,4 +145,80 @@ defmodule CodeMySpecSpex.TerminalCodexHelpers do
         []
     end
   end
+
+  @doc "A Codex session ending: its SessionEnd hook fires."
+  @spec codex_session_end(map(), String.t()) :: map()
+  def codex_session_end(context, session_id),
+    do: codex_hook(context, "session-end", session_id, %{"reason" => "exit"})
+
+  @doc """
+  Where Codex writes a session's rollout, empty for now: its
+  `~/.codex/sessions/<date>/rollout-<time>-<session>.jsonl`, in a directory
+  removed on exit. The SessionStart hook names it in `transcript_path`.
+  """
+  @spec codex_rollout_for(String.t()) :: String.t()
+  def codex_rollout_for(session_id) do
+    dir = Path.join(System.tmp_dir!(), "cx#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(dir) end)
+    path = Path.join(dir, "rollout-2026-10-20T00-00-00-#{session_id}.jsonl")
+    File.write!(path, "")
+    path
+  end
+
+  @doc "Codex writing one line to a session's rollout."
+  @spec write_codex_rollout(String.t(), map()) :: :ok
+  def write_codex_rollout(path, entry),
+    do: File.write!(path, Jason.encode!(entry) <> "\n", [:append])
+
+  @doc "What Codex writes when the model says something."
+  @spec codex_said(String.t()) :: map()
+  def codex_said(text) do
+    %{
+      "type" => "response_item",
+      "payload" => %{
+        "type" => "message",
+        "role" => "assistant",
+        "content" => [%{"type" => "output_text", "text" => text}]
+      }
+    }
+  end
+
+  @doc "What Codex writes when the model calls a tool."
+  @spec codex_called(String.t(), map()) :: map()
+  def codex_called(name, arguments) do
+    %{
+      "type" => "response_item",
+      "payload" => %{
+        "type" => "function_call",
+        "name" => name,
+        "call_id" => "call_#{System.unique_integer([:positive])}",
+        "arguments" => Jason.encode!(arguments)
+      }
+    }
+  end
+
+  @doc "What Codex writes when a turn has spent tokens."
+  @spec codex_spent(non_neg_integer(), non_neg_integer()) :: map()
+  def codex_spent(input, output) do
+    %{
+      "type" => "event_msg",
+      "payload" => %{
+        "type" => "token_count",
+        "info" => %{
+          "last_token_usage" => %{
+            "input_tokens" => input,
+            "cached_input_tokens" => 0,
+            "output_tokens" => output,
+            "total_tokens" => input + output
+          }
+        }
+      }
+    }
+  end
+
+  @doc "What Codex writes at the start of a turn: the model it runs on."
+  @spec codex_turn_context(String.t()) :: map()
+  def codex_turn_context(model),
+    do: %{"type" => "turn_context", "payload" => %{"model" => model}}
 end
