@@ -300,7 +300,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
           style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
         >
         </div>
-        <div class="rounded-box border border-base-300 p-3 lg:max-h-[80vh] lg:overflow-y-auto">
+        <div class="rounded-box border border-base-300 p-3 lg:h-[80vh] lg:overflow-y-auto">
           <RequirementGraphComponents.node_detail
             node={@selected && @requirements && @requirements[@selected]}
             edges={if is_map(@graph_data), do: @graph_data.edges, else: []}
