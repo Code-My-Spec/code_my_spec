@@ -95,7 +95,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       # Re-granted from each reader: the projector outlives whoever started it.
       [{pid, _}] ->
         SandboxAllowance.grant(pid)
-        GenServer.call(pid, {:drain, requested}, 30_000)
+        drained(pid, requested, settle_attempts())
 
       [] ->
         :ok
@@ -105,6 +105,32 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   def settle(_no_project, _requested), do: :ok
+
+  # A call that times out is not a drain that did not happen: the message is in
+  # the projector's mailbox and is still processed. Giving up at the first
+  # timeout served the rows as they were while the projector was seeding every
+  # vantage after a reload (about a minute, longer under load), and a reader that
+  # asked again got the same answer for the same reason (issue e3c09c4d: eight
+  # warnings in a minute right after landings, and 1055 reading a stale
+  # story_promoted). So a timeout is waited on again, a bounded number of times;
+  # only a projector that stays silent through all of them is unsettled. The
+  # attempts and the per-call timeout are config, for the test that makes a
+  # drain slower than the call.
+  defp drained(pid, requested, attempts_left) do
+    GenServer.call(pid, {:drain, requested}, settle_timeout_ms())
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} when attempts_left > 1 ->
+      Logger.info(
+        "[IncrementalGraph] drain still running after #{settle_timeout_ms()}ms; " <>
+          "waiting again (#{attempts_left - 1} left)"
+      )
+
+      drained(pid, requested, attempts_left - 1)
+  end
+
+  defp settle_attempts, do: Application.get_env(:code_my_spec, :graph_settle_attempts, 4)
+
+  defp settle_timeout_ms, do: Application.get_env(:code_my_spec, :graph_settle_timeout_ms, 30_000)
 
   @doc """
   Rebuild one vantage from the domain: forget that this process established it,
