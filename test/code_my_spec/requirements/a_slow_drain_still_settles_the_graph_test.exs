@@ -26,16 +26,13 @@ defmodule CodeMySpec.Requirements.ASlowDrainStillSettlesTheGraphTest do
     Application.put_env(:code_my_spec, :graph_settle_timeout_ms, 60)
     Application.put_env(:code_my_spec, :graph_settle_attempts, 4)
 
-    on_exit(fn ->
-      for {key, value} <- previous do
-        if is_nil(value),
-          do: Application.delete_env(:code_my_spec, key),
-          else: Application.put_env(:code_my_spec, key, value)
-      end
-    end)
+    on_exit(fn -> Enum.each(previous, &restore/1) end)
 
     %{scope: scope, projector: pid}
   end
+
+  defp restore({key, nil}), do: Application.delete_env(:code_my_spec, key)
+  defp restore({key, value}), do: Application.put_env(:code_my_spec, key, value)
 
   # The projector is suspended, so the reader's call outlives its timeout.
   defp settle_suspended(%{scope: scope, projector: pid}, suspended_for_ms, reader_fun) do
