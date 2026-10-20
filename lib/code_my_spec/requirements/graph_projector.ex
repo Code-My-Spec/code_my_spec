@@ -422,15 +422,15 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     }
   end
 
-  # The unplanned components as a square-ish grid to the right of everything
-  # in the plan, top-aligned with it.
+  # The unplanned components as a square-ish grid below everything in the
+  # plan, from its left edge: the issue branches already take the right.
   defp holding_area([], _placed), do: []
 
   defp holding_area(held, placed) do
     xs = Enum.map(placed, & &1.attributes.x)
     ys = Enum.map(placed, & &1.attributes.y)
-    left = Enum.max(xs, fn -> 0 end) + @row_gap
-    top = Enum.max(ys, fn -> 0 end)
+    left = Enum.min(xs, fn -> 0 end)
+    top = Enum.min(ys, fn -> 0 end) - @row_gap
     columns = held |> length() |> :math.sqrt() |> ceil()
 
     held
