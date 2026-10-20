@@ -34,8 +34,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   @doc """
   The timeline for a project, or nothing at all when there is none in scope.
   """
-  attr :scope, :map, required: true
-  attr :project, :any, default: nil
+  attr(:scope, :map, required: true)
+  attr(:project, :any, default: nil)
+  attr(:variant, :atom, default: :strip, values: [:strip, :header])
 
   def project_timeline(assigns) do
     ~H"""
@@ -45,6 +46,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       id="project-timeline"
       scope={@scope}
       project={@project}
+      variant={@variant}
     />
     """
   end
@@ -117,50 +119,60 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       id={@id}
       data-test="project-timeline"
       aria-label="Where this project stands"
-      class="w-full border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
+      class={[
+        "w-full",
+        @variant == :strip && "border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
+      ]}
     >
-      <ol class="flex w-full items-center gap-3">
-        <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
-          <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
-        </li>
-        <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
-          <span class="flex w-full items-center gap-3">
-            <span class="min-w-16 flex-1"><.story_chart stories={@bands.stories} /></span>
+      <div class="flex w-full flex-col gap-1.5">
+        <%!-- The sequence the project runs through: its gates, the stories,
+        its closing gates. --%>
+        <ol class="flex w-full items-center gap-2">
+          <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
+            <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
+          </li>
+          <li data-test="timeline-band" data-band="stories" class="min-w-24 flex-1">
+            <.story_chart stories={@bands.stories} />
+          </li>
+          <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
+            <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
+          </li>
+        </ol>
+        <%!-- Where it stands, counted. --%>
+        <ul class="flex items-center gap-4">
+          <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
-          </span>
-        </li>
-        <li data-test="timeline-band" data-band="components" class="shrink-0">
-          <span class="flex items-center gap-3">
+          </li>
+          <li data-test="timeline-band" data-band="components">
             <.labelled label="Impl">
               <.component_bar counts={@bands.components} target={@myself} />
             </.labelled>
+          </li>
+          <li data-test="timeline-band" data-band="architecture">
             <.labelled label="Arch">
               <.architecture_mark summary={@architecture} project={@project} />
             </.labelled>
-          </span>
-        </li>
-        <li data-test="timeline-band" data-band="issues" class="shrink-0">
-          <.labelled label="Issues">
-            <.issue_bar counts={@bands.issues} target={@myself} />
-          </.labelled>
-        </li>
-        <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
-          <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
-        </li>
-        <li class="shrink-0">
-          <button
-            type="button"
-            phx-click="open_graph"
-            phx-target={@myself}
-            data-test="open-graph"
-            title="Open the requirements graph"
-            aria-label="Open the requirements graph"
-            class="btn btn-ghost btn-xs btn-square"
-          >
-            <.icon name="hero-share" class="size-4" />
-          </button>
-        </li>
-      </ol>
+          </li>
+          <li data-test="timeline-band" data-band="issues">
+            <.labelled label="Issues">
+              <.issue_bar counts={@bands.issues} target={@myself} />
+            </.labelled>
+          </li>
+          <li>
+            <button
+              type="button"
+              phx-click="open_graph"
+              phx-target={@myself}
+              data-test="open-graph"
+              title="Open the requirements graph"
+              aria-label="Open the requirements graph"
+              class="btn btn-ghost btn-xs btn-square"
+            >
+              <.icon name="hero-share" class="size-4" />
+            </button>
+          </li>
+        </ul>
+      </div>
       <RequirementGraphComponents.modal
         :if={@graph_modal}
         graph={@graph_modal}
@@ -173,9 +185,9 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :step, :map, required: true
-  attr :tip, :string, required: true, doc: "which way the tooltip opens, away from the edge"
-  attr :target, :any, required: true
+  attr(:step, :map, required: true)
+  attr(:tip, :string, required: true, doc: "which way the tooltip opens, away from the edge")
+  attr(:target, :any, required: true)
 
   # A project gate: a dot, or the pill naming it when it is the one the project
   # is on. Exactly one gate is current, always — an idle project is the
@@ -211,7 +223,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :stories, :list, required: true
+  attr(:stories, :list, required: true)
 
   # Every story in progress, one thin column each, furthest along first. A column is the
   # story's steps stacked from the bottom: done (green), the one it is on
@@ -234,7 +246,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <span class={["size-2 rounded-sm", class]}></span>{label}
         </span>
       </span>
-      <span class="group flex h-5 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
+      <span class="group flex h-7 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
         <span
           :for={story <- @stories}
           data-test="story-column"
@@ -280,7 +292,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp story_title(story),
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
 
-  attr :counts, :map, required: true
+  attr(:counts, :map, required: true)
 
   # The stories the chart leaves out: done (promoted), backlog (not yet ready
   # for development), retired.
@@ -300,7 +312,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-retired={@counts.retired}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums"
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-sm tabular-nums"
     >
       <span class="text-success">{@counts.done}</span>
       <span class="opacity-30">/</span>
@@ -311,15 +323,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :label, :string, required: true
-  slot :inner_block, required: true
+  attr(:label, :string, required: true)
+  slot(:inner_block, required: true)
 
   # A small heading over a group of counts, so neighbouring numbers do not read
   # as one row.
   defp labelled(assigns) do
     ~H"""
     <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
-      <span class="text-[7px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+      <span class="text-xs font-normal uppercase leading-none tracking-[0.2em] opacity-40">
         {@label}
       </span>
       {render_slot(@inner_block)}
@@ -327,8 +339,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :summary, :map, required: true
-  attr :project, :map, required: true
+  attr(:summary, :map, required: true)
+  attr(:project, :map, required: true)
 
   # The architecture's health from `BoundaryGraph`: how many boundary cycles
   # (red when any) and how deep the longest chain of boundaries runs.
@@ -352,7 +364,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-depth={@summary.depth}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center gap-2 font-mono text-[10px] tabular-nums"
+      class="tooltip tooltip-left flex items-center gap-2 font-mono text-sm tabular-nums"
     >
       <span class={[
         "flex items-center gap-0.5",
@@ -360,13 +372,15 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       ]}>
         <.icon name="hero-arrow-path" class="size-3" />{@cycles}
       </span>
-      <span data-test="architecture-depth" class="opacity-60">{@summary.depth} deep</span>
+      <span data-test="architecture-depth" class="flex items-center gap-0.5 opacity-60">
+        <.icon name="hero-list-bullet" class="size-3" />{@summary.depth}
+      </span>
     </.link>
     """
   end
 
-  attr :counts, :map, required: true
-  attr :target, :any, required: true
+  attr(:counts, :map, required: true)
+  attr(:target, :any, required: true)
 
   # Issues as three counts, closed to open: resolved (green), dismissed
   # (grey), open (red).
@@ -392,7 +406,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-[10px] tabular-nums"
+      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-sm tabular-nums"
     >
       <span class="text-success">{@resolved}</span>
       <span class="opacity-30">/</span>
@@ -403,8 +417,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :counts, :map, required: true
-  attr :target, :any, required: true
+  attr(:counts, :map, required: true)
+  attr(:target, :any, required: true)
 
   # Components as three counts: planned and done (green), planned and not done
   # (grey), and found on disk without being planned (amber).
@@ -431,7 +445,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-[10px] tabular-nums"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-sm tabular-nums"
     >
       <span class="text-success">{@done}</span>
       <span class="opacity-30">/</span>

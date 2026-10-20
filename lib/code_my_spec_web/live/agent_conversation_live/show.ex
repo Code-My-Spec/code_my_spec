@@ -236,16 +236,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp main_copy_id({:ok, agent, _conversation}), do: agent.working_copy_id
   defp main_copy_id(_error), do: nil
 
-  # Working once its process is alive (`Agents.Presence`); until then, getting
-  # ready.
-  defp main_summary({:ok, agent, _conversation}) do
-    if Agents.present?(agent.project_id, agent),
-      do: "Working on your project. Its steps appear below as it takes them.",
-      else: "Getting ready. It will start work as soon as its machine picks it up."
-  end
-
-  defp main_summary(_error), do: ""
-
   # Subscribe to the conversation on screen and unsubscribe from the previous
   # one: switching is a patch, and a leaked topic appends another agent's turns
   # here.
@@ -1987,17 +1977,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       projects={assigns[:projects] || []}
     >
       <CodeMySpecWeb.AppLive.DesktopSetupResults.results snapshot={@desktop_setup_results} />
-      <%!-- Only here, and only for the project's own agent.
-      John, seeing it on every page: "it should only show up on the chat for
-      the main agent on the main checkout." The timeline describes the whole
-      project, and this is the one conversation that is about the whole project
-      — on a working-copy agent's thread it would be describing something that
-      agent is not doing. --%>
-      <ProjectTimeline.project_timeline
-        :if={@main_agent?}
-        scope={@current_scope}
-        project={@project}
-      />
 
       <%!-- Order in the markup, not only in CSS. "Beside, with the conversation
       on the left" and "above the conversation" are the same two elements in two
@@ -2246,7 +2225,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test={@main_agent? && "main-agent"}
         data-agent-id={@main_agent? && @conversation.agent_id}
         data-working-copy-id={@main_agent? && main_copy_id(@main)}
-        class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3"
+        class="flex shrink-0 flex-wrap items-center gap-2 border-b border-base-300 pb-3"
       >
         <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
         <div class="flex min-w-0 flex-col">
@@ -2276,19 +2255,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               working_copy_id={item.working_copy_id}
             />
           </div>
-          <%!-- Where the project is, in the words somebody who does not read
-          code would use. Deliberately not a status line assembled from row
-          counts: the agent is what will write this, and a summary built out of
-          numbers here would have to be unbuilt when it does. Paths, module
-          names and commands are the vocabulary this agent exists to translate
-          out of, so they must not appear. --%>
-          <p
-            :if={@main_agent?}
-            data-test="project-summary"
-            class="min-w-0 truncate text-xs opacity-60"
-          >
-            {main_summary(@main)}
-          </p>
         </div>
         <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
           {short_session(@conversation)}
@@ -2375,6 +2341,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           >
             Cancel
           </button>
+        </div>
+        <div :if={@main_agent?} class="basis-full">
+          <%!-- Where the project stands, on the one conversation about the
+          whole project: the project's own agent on the main copy. John, seeing
+          it on every page: "it should only show up on the chat for the main
+          agent on the main checkout." --%>
+          <ProjectTimeline.project_timeline
+            :if={@main_agent?}
+            scope={@current_scope}
+            project={@project}
+            variant={:header}
+          />
         </div>
       </header>
 
