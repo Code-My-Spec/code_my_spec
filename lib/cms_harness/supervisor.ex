@@ -35,7 +35,8 @@ defmodule CmsHarness.Supervisor do
     deps: [
       CmsHarness,
       CmsHarness.Web,
-      CodeMySpec.BootVersion
+      CodeMySpec.BootVersion,
+      CodeMySpec.RunGuard
     ]
 
   use Supervisor
@@ -64,6 +65,11 @@ defmodule CmsHarness.Supervisor do
       # `{kind, root}` so one registry serves every process in a project,
       # and a dead process deregisters itself.
       {Registry, keys: :unique, name: CmsHarness.Registry},
+
+      # Test and spex runs this harness starts never outlive it: orphans are
+      # reaped, and the groups an earlier harness left are swept at boot
+      # (issue bee745a0).
+      CodeMySpec.RunGuard,
 
       # How many analyzer runs this machine will execute at once, across every
       # working copy. `Project.AnalysisServer` serializes within a copy and
