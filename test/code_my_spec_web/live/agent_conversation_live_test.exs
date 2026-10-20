@@ -728,8 +728,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert {:error, {:live_redirect, %{to: "/app/projects", flash: %{"error" => error}}}} =
                live(conn, "/app/projects/does-not-exist/agent-conversation")
 
-      # `PortableHost` refuses this for every `/app/projects/:project_id/...`
-      # route now, so the wording is the host's rather than this view's — see
+      # `UserAuth.on_mount(:assign_project, ...)` refuses this for every
+      # `/app/projects/:project_id/...` route, so the wording is the hook's — see
       # `d500df3b`. Named as an account problem because the id is usually real.
       assert error =~ "not in the account you are in"
     end

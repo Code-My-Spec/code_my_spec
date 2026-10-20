@@ -21,7 +21,11 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+  def handle_params(
+        _params,
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ) do
     configuration = Configurations.get_or_create(scope)
 
     {:noreply,
@@ -38,7 +42,7 @@ defmodule CodeMySpecWeb.ConfigurationLive do
 
   @impl true
   def handle_event("save", %{"configuration" => attrs}, socket) do
-    case TaskOwner.update_configuration(socket.assigns.scope, attrs) do
+    case TaskOwner.update_configuration(socket.assigns.current_scope, attrs) do
       {:ok, configuration} ->
         {:noreply,
          socket
@@ -53,76 +57,89 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project}>
-      <div class="mb-6">
-        <h1 class="text-3xl font-bold">Configuration</h1>
-        <p class="text-base-content/60 mt-1">
-          Local quality gate settings. Never synced to the server.
-        </p>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <form id="configuration-form" data-test="configuration-form" phx-submit="save" class="space-y-6">
-        <section class="card bg-base-200 border border-base-300">
-          <div class="card-body">
-            <h2 class="card-title text-lg">Analyzer Settings</h2>
-            <p class="text-sm opacity-70">
-              Problems never block a stop; promotion is where they gate.
-            </p>
-
-            <div class="divider my-1"></div>
-
-            <.select_field
-              name="qa_validation"
-              label="QA Brief Validation"
-              value={if @configuration.qa_validation == :off, do: :off, else: :on}
-              modes={@switch}
-            />
-            <.select_field
-              name="architecture"
-              label="Architecture Drift"
-              value={if @configuration.architecture == :off, do: :off, else: :on}
-              modes={@switch}
-            />
-            <.select_field
-              name="advisory_findings"
-              label="Advisory Findings (low-priority credo) at promotion"
-              value={@configuration.advisory_findings || :dont_block}
-              modes={@advisory_modes}
-            />
-          </div>
-        </section>
-
-        <section class="card bg-base-200 border border-base-300">
-          <div class="card-body">
-            <h2 class="card-title text-lg">DevOps</h2>
-            <p class="text-sm opacity-70">
-              One ordered level: Off (deploy on your own terms), UAT Only
-              (staging; you promote to prod yourself), or Full Promotion —
-              cleared QA rides to UAT, then prod. We recommend Full Promotion.
-            </p>
-
-            <div class="divider my-1"></div>
-
-            <.select_field
-              name="devops"
-              label="DevOps Level"
-              value={@configuration.devops}
-              modes={[:off, :uat, :prod]}
-            />
-          </div>
-        </section>
-
-        <div class="flex justify-end">
-          <button type="submit" class="btn btn-primary" data-test="save-configuration">
-            Save Configuration
-          </button>
+      <div :if={!@error && @project}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Configuration</h1>
+          <p class="text-base-content/60 mt-1">
+            Local quality gate settings. Never synced to the server.
+          </p>
         </div>
-      </form>
-    </div>
+
+        <form
+          id="configuration-form"
+          data-test="configuration-form"
+          phx-submit="save"
+          class="space-y-6"
+        >
+          <section class="card bg-base-200 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title text-lg">Analyzer Settings</h2>
+              <p class="text-sm opacity-70">
+                Problems never block a stop; promotion is where they gate.
+              </p>
+
+              <div class="divider my-1"></div>
+
+              <.select_field
+                name="qa_validation"
+                label="QA Brief Validation"
+                value={if @configuration.qa_validation == :off, do: :off, else: :on}
+                modes={@switch}
+              />
+              <.select_field
+                name="architecture"
+                label="Architecture Drift"
+                value={if @configuration.architecture == :off, do: :off, else: :on}
+                modes={@switch}
+              />
+              <.select_field
+                name="advisory_findings"
+                label="Advisory Findings (low-priority credo) at promotion"
+                value={@configuration.advisory_findings || :dont_block}
+                modes={@advisory_modes}
+              />
+            </div>
+          </section>
+
+          <section class="card bg-base-200 border border-base-300">
+            <div class="card-body">
+              <h2 class="card-title text-lg">DevOps</h2>
+              <p class="text-sm opacity-70">
+                One ordered level: Off (deploy on your own terms), UAT Only
+                (staging; you promote to prod yourself), or Full Promotion —
+                cleared QA rides to UAT, then prod. We recommend Full Promotion.
+              </p>
+
+              <div class="divider my-1"></div>
+
+              <.select_field
+                name="devops"
+                label="DevOps Level"
+                value={@configuration.devops}
+                modes={[:off, :uat, :prod]}
+              />
+            </div>
+          </section>
+
+          <div class="flex justify-end">
+            <button type="submit" class="btn btn-primary" data-test="save-configuration">
+              Save Configuration
+            </button>
+          </div>
+        </form>
+      </div>
+    </Layouts.app>
     """
   end
 

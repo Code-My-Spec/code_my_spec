@@ -22,7 +22,11 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+  def handle_params(
+        _params,
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ) do
     view = compute_view(socket.assigns.live_action, scope)
 
     {:noreply,
@@ -48,45 +52,53 @@ defmodule CodeMySpecWeb.ArchitectureLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project}>
-      <div class="mb-6">
-        <h1 class="text-3xl font-bold">Architecture</h1>
-        <p class="text-base-content/60 mt-1">Structural views of the project's components.</p>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div role="tablist" class="tabs tabs-bordered mb-6">
-        <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture")}
-          role="tab"
-          class={["tab", @live_action == :dependency_graph && "tab-active"]}
-        >
-          Boundaries
-        </.link>
-        <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/architecture/namespaces")}
-          role="tab"
-          class={["tab", @live_action == :namespaces && "tab-active"]}
-        >
-          Namespace Hierarchy
-        </.link>
-      </div>
+      <div :if={!@error && @project}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Architecture</h1>
+          <p class="text-base-content/60 mt-1">Structural views of the project's components.</p>
+        </div>
 
-      <div :if={match?({:dependency_graph, _}, @view)}>
-        <ArchitectureComponents.summary summary={elem(@view, 1).summary} />
-        <p class="text-sm text-base-content/60 mt-4 mb-2">
-          ⌘/Ctrl-scroll or pinch to zoom; drag, or two fingers on a phone, to pan.
-        </p>
-        <ArchitectureComponents.graph id="sigma-graph" graph={elem(@view, 1)} />
-      </div>
+        <div role="tablist" class="tabs tabs-bordered mb-6">
+          <.link
+            patch={~p"/app/projects/#{@project.id}/architecture"}
+            role="tab"
+            class={["tab", @live_action == :dependency_graph && "tab-active"]}
+          >
+            Boundaries
+          </.link>
+          <.link
+            patch={~p"/app/projects/#{@project.id}/architecture/namespaces"}
+            role="tab"
+            class={["tab", @live_action == :namespaces && "tab-active"]}
+          >
+            Namespace Hierarchy
+          </.link>
+        </div>
 
-      <div :if={match?({:namespaces, _}, @view)}>
-        <pre class="bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto text-sm">{elem(@view, 1)}</pre>
+        <div :if={match?({:dependency_graph, _}, @view)}>
+          <ArchitectureComponents.summary summary={elem(@view, 1).summary} />
+          <p class="text-sm text-base-content/60 mt-4 mb-2">
+            ⌘/Ctrl-scroll or pinch to zoom; drag, or two fingers on a phone, to pan.
+          </p>
+          <ArchitectureComponents.graph id="sigma-graph" graph={elem(@view, 1)} />
+        </div>
+
+        <div :if={match?({:namespaces, _}, @view)}>
+          <pre class="bg-base-200 border border-base-300 rounded-box p-4 overflow-x-auto text-sm">{elem(@view, 1)}</pre>
+        </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 end

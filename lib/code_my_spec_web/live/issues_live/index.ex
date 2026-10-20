@@ -27,73 +27,81 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <.header>Issues</.header>
-
-    <form id="issues-filter" phx-change="filter" class="flex flex-wrap items-center gap-2">
-      <.multi_select
-        name="status"
-        label="Status"
-        options={@status_options}
-        chosen={@filter_status}
-      />
-      <.multi_select
-        name="severity"
-        label="Severity"
-        options={@severity_options}
-        chosen={@filter_severity}
-      />
-      <.multi_select name="scope" label="Scopes" options={@scope_options} chosen={@filter_scope} />
-      <.single_select name="sort" options={@sort_options} chosen={@sort} label={&sort_label/1} />
-    </form>
-
-    <div class="mt-6">
-      <IssueCharts.open_over_time issues={@chart_issues} range={@range} view={@chart} event="chart" />
-    </div>
-
-    <div :if={@issues == []} class="text-center py-12 text-base-content/60">
-      No issues found.
-    </div>
-
-    <div id="issues" class="space-y-4 mt-6">
-      <.issue_card
-        :for={issue <- @issues}
-        issue={issue}
-        href={path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}")}
-        story_number={issue.story_id && @story_numbers[issue.story_id]}
-      />
-    </div>
-
-    <nav
-      :if={@total_pages > 1}
-      data-test="pagination"
-      class="mt-4 flex items-center justify-between"
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
     >
-      <span class="text-sm opacity-60">
-        Page {@page} of {@total_pages} ({@total_count} issues)
-      </span>
-      <div class="join">
-        <button
-          :if={@page > 1}
-          type="button"
-          phx-click="page"
-          phx-value-page={@page - 1}
-          data-test="prev-page"
-          class="join-item btn btn-sm"
-        >
-          ← Prev
-        </button>
-        <button
-          :if={@page < @total_pages}
-          type="button"
-          phx-click="page"
-          phx-value-page={@page + 1}
-          data-test="next-page"
-          class="join-item btn btn-sm"
-        >
-          Next →
-        </button>
+      <.header>Issues</.header>
+
+      <form id="issues-filter" phx-change="filter" class="flex flex-wrap items-center gap-2">
+        <.multi_select
+          name="status"
+          label="Status"
+          options={@status_options}
+          chosen={@filter_status}
+        />
+        <.multi_select
+          name="severity"
+          label="Severity"
+          options={@severity_options}
+          chosen={@filter_severity}
+        />
+        <.multi_select name="scope" label="Scopes" options={@scope_options} chosen={@filter_scope} />
+        <.single_select name="sort" options={@sort_options} chosen={@sort} label={&sort_label/1} />
+      </form>
+
+      <div class="mt-6">
+        <IssueCharts.open_over_time issues={@chart_issues} range={@range} view={@chart} event="chart" />
       </div>
-    </nav>
+
+      <div :if={@issues == []} class="text-center py-12 text-base-content/60">
+        No issues found.
+      </div>
+
+      <div id="issues" class="space-y-4 mt-6">
+        <.issue_card
+          :for={issue <- @issues}
+          issue={issue}
+          href={~p"/app/projects/#{@project.id}/issues/#{issue.id}"}
+          story_number={issue.story_id && @story_numbers[issue.story_id]}
+        />
+      </div>
+
+      <nav
+        :if={@total_pages > 1}
+        data-test="pagination"
+        class="mt-4 flex items-center justify-between"
+      >
+        <span class="text-sm opacity-60">
+          Page {@page} of {@total_pages} ({@total_count} issues)
+        </span>
+        <div class="join">
+          <button
+            :if={@page > 1}
+            type="button"
+            phx-click="page"
+            phx-value-page={@page - 1}
+            data-test="prev-page"
+            class="join-item btn btn-sm"
+          >
+            ← Prev
+          </button>
+          <button
+            :if={@page < @total_pages}
+            type="button"
+            phx-click="page"
+            phx-value-page={@page + 1}
+            data-test="next-page"
+            class="join-item btn btn-sm"
+          >
+            Next →
+          </button>
+        </div>
+      </nav>
+    </Layouts.app>
     """
   end
 
@@ -125,7 +133,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   # out of the URL is at its default (the patch drops defaults), not at
   # whatever was showing before.
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
+  def handle_params(params, _uri, %{assigns: %{current_scope: %{}}} = socket) do
     {:noreply,
      socket
      |> assign(:filter_status, set_param(params["status"], @statuses, @default_statuses))
@@ -232,7 +240,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
         pair -> pair
       end)
 
-    push_patch(socket, to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/issues?#{query}"))
+    push_patch(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/issues?#{query}")
   end
 
   defp default(:range), do: "30d"

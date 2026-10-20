@@ -16,25 +16,26 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   """
   use ExUnit.Case, async: true
 
-  # Assigns the host puts on the socket; a component must declare any it uses.
-  @host_assigns ~w(slug project scope socket scope_error projects)
+  # Assigns the project hook puts on the socket; a component must declare any
+  # it uses.
+  @host_assigns ~w(project current_scope projects)
 
-  # Derived, not listed: a view is portable exactly when it is mounted inside
-  # the cloud router's `:portable` live_session. Hardcoding directories would
-  # rot on the first surface migrated, and a guard that silently stops
-  # covering things is worse than no guard.
-  defp portable_sources do
+  # Derived, not listed: a project view is one mounted inside the router's
+  # `:project` live_session. Hardcoding directories would rot on the first
+  # surface added, and a guard that silently stops covering things is worse
+  # than no guard.
+  defp project_sources do
     CodeMySpecWeb.Router.__routes__()
-    |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug and portable?(&1)))
+    |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug and project?(&1)))
     |> MapSet.new(&elem(&1.metadata.phoenix_live_view, 0))
     |> Enum.map(&(&1.__info__(:compile)[:source] |> to_string() |> Path.relative_to_cwd()))
     |> Enum.filter(&File.exists?/1)
     |> Enum.uniq()
   end
 
-  defp portable?(route) do
+  defp project?(route) do
     {_live_view, _action, _opts, live_session} = route.metadata.phoenix_live_view
-    live_session.name == :portable
+    live_session.name == :project
   end
 
   # `/`-rooted strings in a view that aren't navigation. Keep this short and
@@ -44,11 +45,7 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     # slash-commands shown to the user ("/codemyspec:next"), not URLs
     # static assets, served by Plug.Static rather than the router
     # section_path/1 renders a bare "/overview" into the terminal prompt strip
-    # Controller-served attachment bytes, not navigation. These live only in
-    # the cloud router because serving them needs an account scope the local
-    # app doesn't have yet; the portable view that links to one hides it
-    # behind the host's `serves_attachments?` capability. Delete this clause
-    # when the local app gets a cloud scope and can mount the controllers.
+    # Controller-served attachment bytes, not navigation
     String.contains?(path, [":", " "]) or
       String.starts_with?(path, "/local/") or
       path == "/overview" or
@@ -117,30 +114,30 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
         do: "#{Path.relative_to_cwd(file)}: #{raw}  →  no route in #{inspect(router)}"
   end
 
-  test "portable view links resolve against the cloud router" do
-    sources = portable_sources()
+  test "project view links resolve against the router" do
+    sources = project_sources()
 
     assert sources != [],
-           "no portable views found — the :portable live_session should include at least the stories surface"
+           "no project views found — the :project live_session should include at least the stories surface"
 
     dead = unresolvable(sources, [CodeMySpecWeb.Router])
 
     assert dead == [], """
-    A portable view links somewhere the cloud router can't serve:
+    A project view links somewhere the router can't serve:
 
     #{Enum.join(dead, "\n")}
     """
   end
 
-  test "no function component in a portable view reaches for a host assign" do
+  test "no function component in a project view reaches for an undeclared hook assign" do
     # A helper called as `render_index(assigns)` receives the whole assigns map
     # and sees everything. A component invoked as `<.thing attr={..}>` gets only
     # what it declares, so a host assign used there raises KeyError the first
     # time it renders — clean compile, failure only once it's on screen.
-    offenders = Enum.flat_map(portable_sources(), &offenders_in/1)
+    offenders = Enum.flat_map(project_sources(), &offenders_in/1)
 
     assert offenders == [], """
-    A function component in a portable view uses a host-provided assign it never
+    A function component in a project view uses a hook-provided assign it never
     declared. Pass it down as a declared attr.
 
     #{Enum.map_join(offenders, "\n", fn {f, n, l} -> "  #{Path.relative_to_cwd(f)}:#{n}  #{l}" end)}
@@ -205,27 +202,6 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
 
   defp report(used, file, n, line),
     do: [{file, n, "uses @" <> Enum.join(used, ", @") <> " — " <> String.trim(line)}]
-
-  test "every portable view assigns the layout's required assigns" do
-    # The router-level layout reads :page_title and :section from the socket.
-    # Before the migration each view passed them as literal attrs on its own
-    # `<Layouts.app page_title="...">`, so dropping the wrapper silently left
-    # them unassigned — a KeyError on first render, which took down nine spex
-    # once and eighty another time before this check existed.
-    missing =
-      for file <- portable_sources(),
-          src = File.read!(file),
-          key <- ["page_title", "section"],
-          # matches both `page_title: "x"` and `assign(:page_title, "x")`
-          not Regex.match?(~r/:?\b#{key}\b\s*[,:]/, src),
-          do: "#{Path.relative_to_cwd(file)} never assigns :#{key}"
-
-    assert missing == [], """
-    A portable view doesn't assign something the layout reads:
-
-    #{Enum.join(missing, "\n")}
-    """
-  end
 
   # A project-scoped page that wraps itself in `<Layouts.app>` has to hand the
   # layout the project, because a function component only receives what it
@@ -308,14 +284,14 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   # and reachable only by typing the URL — the migration looked complete from
   # every angle except opening the app. Route parity says both apps *serve*
   # the surface; this says the cloud app will actually take you there.
-  test "every portable surface the cloud serves is reachable from its sidebar" do
+  test "every project surface is reachable from its sidebar" do
     sidebar = File.read!("lib/code_my_spec_web/components/layouts.ex")
 
     served =
       CodeMySpecWeb.Router.__routes__()
       |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
       |> Enum.map(& &1.path)
-      # Every portable route whose tail is entirely static — not just the
+      # Every project route whose tail is entirely static — not just the
       # single-segment ones. `/requirements/graph` sat unlinked in the cloud
       # sidebar for exactly as long as this only matched one segment, and the
       # guard reported green the whole time. Routes with a dynamic tail

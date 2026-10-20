@@ -62,16 +62,17 @@ defmodule CodeMySpecSpex.Story599.Criterion1665Spex do
         {:ok, live, default} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/issues")
 
-        filter = fn status ->
-          live |> form("form[phx-change='filter']", %{status: status}) |> render_change()
+        # The status filter is a multi-select: the statuses ticked are shown.
+        filter = fn statuses ->
+          live |> form("form[phx-change='filter']", %{status: statuses}) |> render_change()
         end
 
         {:ok,
          Map.merge(context, %{
            default: default,
-           all: filter.("all"),
-           dismissed: filter.("dismissed"),
-           resolved: filter.("resolved")
+           all: filter.(~w(incoming accepted resolved dismissed)),
+           dismissed: filter.(~w(dismissed)),
+           resolved: filter.(~w(resolved))
          })}
       end
 

@@ -523,17 +523,16 @@ defmodule CodeMySpecWeb.Router do
       live "/servers/:name", ServerLive.Show, :show
     end
 
-    # Portable UI: scope arrives through `PortableHost`, so the views stay
-    # app-agnostic.
-    live_session :portable,
-      layout: {CodeMySpecWeb.Layouts, :live},
+    # Project pages. The project is named in the route; `:assign_project` puts
+    # it on `current_scope` and assigns `@project`.
+    live_session :project,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.Live.NotificationsHook, :default},
-        {CodeMySpecWeb.PortableHost, :default}
+        {CodeMySpecWeb.UserAuth, :assign_project}
       ] do
       # Static segments first so they win over `:id`.
       live "/projects/:project_id/init", InitLive, :index
@@ -590,21 +589,7 @@ defmodule CodeMySpecWeb.Router do
            :project_knowledge
 
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
-    end
 
-    # Project-scoped surfaces. The project is named in the route and put on the
-    # scope by PortableHost — there is no session-held active project to fall
-    # back on, which is why every one of these carries :project_id.
-    live_session :project_scoped,
-      on_mount: [
-        {CodeMySpecWeb.Live.CurrentPathHook, :default},
-        {CodeMySpecWeb.UserAuth, :require_authenticated},
-        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
-        {CodeMySpecWeb.UserAuth, :require_active_account},
-        {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.Live.NotificationsHook, :default},
-        {CodeMySpecWeb.PortableHost, :default}
-      ] do
       live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
       live "/projects/:project_id/inbox", InboxLive, :index

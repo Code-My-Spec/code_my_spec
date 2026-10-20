@@ -32,7 +32,7 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   end
 
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket),
+  def handle_params(params, _uri, %{assigns: %{current_scope: %{}}} = socket),
     do: load_view(socket, Map.get(params, "path", []))
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -41,11 +41,19 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
 
-    base_url = library_url(socket.assigns.slug, library)
+    base_url = library_url(socket.assigns.project.id, library)
 
-    case Knowledge.browse(socket.assigns.scope, library, path_segments) do
+    case Knowledge.browse(socket.assigns.current_scope, library, path_segments) do
       {:ok, result} ->
-        view = build_view(result, config, base_url, path_segments, socket.assigns.scope, library)
+        view =
+          build_view(
+            result,
+            config,
+            base_url,
+            path_segments,
+            socket.assigns.current_scope,
+            library
+          )
 
         {:noreply,
          assign(socket,
@@ -65,24 +73,32 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div role="tablist" class="tabs tabs-border mb-4" data-test="docs-tabs">
-      <.link
-        :for={library <- @tabs}
-        navigate={library_url(@slug, library)}
-        role="tab"
-        data-library={library}
-        class={["tab", library == @live_action && "tab-active"]}
-      >
-        {tab_label(library)}
-      </.link>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div role="tablist" class="tabs tabs-border mb-4" data-test="docs-tabs">
+        <.link
+          :for={library <- @tabs}
+          navigate={library_url(@project.id, library)}
+          role="tab"
+          data-library={library}
+          class={["tab", library == @live_action && "tab-active"]}
+        >
+          {tab_label(library)}
+        </.link>
+      </div>
 
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
-    <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
+      <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
+      <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
+    </Layouts.app>
     """
   end
 

@@ -12,29 +12,6 @@ defmodule CodeMySpecWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
-  Layout entry point for `live_session ..., layout: {__MODULE__, :live}`.
-
-  The cloud half of the same contract `CodeMySpecLocalWeb.Layouts.live/1`
-  implements: portable LiveViews render content only, and the router decides
-  which chrome wraps it.
-  """
-  attr :inner_content, :any, required: true
-
-  def live(assigns) do
-    ~H"""
-    <.app
-      flash={@flash}
-      current_scope={@current_scope}
-      current_path={@current_path}
-      project={assigns[:project]}
-      projects={assigns[:projects] || []}
-    >
-      {@inner_content}
-    </.app>
-    """
-  end
-
-  @doc """
   Renders your app layout.
 
   This function is typically invoked from every template,
@@ -56,15 +33,17 @@ defmodule CodeMySpecWeb.Layouts do
 
   attr :current_path, :string, default: "/"
 
-  # `project` is the one named in the path (set by PortableHost; nil switches the
-  # nav to the picker). `projects` is what the picker offers. Declared, because
-  # an undeclared assign silently renders the empty branch.
+  # `project` is the one named in the path; without one the nav falls back to
+  # the scope's active project, and only offers the picker when there is none.
+  # Declared, because an undeclared assign silently renders the empty branch.
   attr :project, :map, default: nil, doc: "project named in the current path, if any"
   attr :projects, :list, default: [], doc: "projects this user can open (CurrentPathHook)"
 
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns = assign(assigns, :project, nav_project(assigns.project, assigns.current_scope))
+
     ~H"""
     <%!-- `h-dvh`, not `min-h-dvh`: a *minimum* is a floor a tall page can stand
     on and then exceed, which is exactly what let one oversized analyzer result
@@ -184,23 +163,8 @@ defmodule CodeMySpecWeb.Layouts do
             <li><a href={~p"/app"}>Overview</a></li>
             <li><a href={~p"/app/accounts"}>Accounts</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
-            <%!--
-                The path is the breadcrumb. Every surface below is addressed
-                per-project, and the project they point at is the one named in
-                the URL — `@project`, put there by PortableHost — never the
-                stored preference. A stored one could contradict the page you
-                are looking at; the preference now only decides where bare
-                `/app` sends you, which is a different question.
-
-                With no project in the path there is nothing to build links
-                from, so the sidebar offers the choice instead of going blank.
-
-                Persisted, not merely present: `/app/projects/new` assigns a
-                blank `%Project{}` as its form's subject under the same name,
-                and a struct with a nil id satisfied the old check and then
-                raised building the first link — so the page that creates a
-                project was the one page you could not open.
-              --%>
+            <%!-- The project in the path, else the one you were last in; the
+                  picker only when there is neither. --%>
             <%= if (project = @project) && project.id do %>
               <%!-- Two consoles, each a sidebar over its own pages: DevOps for
                     the infrastructure, Operations (below) for running the live
@@ -283,6 +247,15 @@ defmodule CodeMySpecWeb.Layouts do
 
   # Where the logo goes: the path's project's agent conversation. Guarded on a
   # real id: the new-project form renders this layout, and `~p` raises on nil.
+  # Persisted, not merely present: `/app/projects/new` assigns a blank
+  # `%Project{}` under the same name, and a nil id raises building the links.
+  defp nav_project(%{id: id} = project, _scope) when is_binary(id), do: project
+
+  defp nav_project(_project, %{active_project: %{id: id} = project}) when is_binary(id),
+    do: project
+
+  defp nav_project(_project, _scope), do: nil
+
   defp home_path(%{id: id}) when is_binary(id), do: ~p"/app/projects/#{id}/agent-conversation"
   defp home_path(_no_project), do: ~p"/app"
 

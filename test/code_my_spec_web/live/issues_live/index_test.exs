@@ -15,8 +15,8 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
   re-enters through `handle_params`, so driving `handle_params` with the param
   shape the router produces is the honest test.
 
-  The project itself comes from `PortableHost` now, not from a `project_name`
-  param, so these build the socket the host would have handed over.
+  The project itself comes from `UserAuth.on_mount(:assign_project, ...)`, not
+  from a `project_name` param, so these build the socket that hook hands over.
   """
   use ExUnit.Case, async: true
 
@@ -267,8 +267,7 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
     {project, scope}
   end
 
-  # Mirrors what PortableHost leaves on the socket before handle_params runs —
-  # including `current_scope`, which is what this view actually queries with.
+  # Mirrors what `UserAuth.on_mount(:assign_project, ...)` leaves on the socket.
   defp build_socket(project, scope) do
     %Phoenix.LiveView.Socket{
       assigns: %{
@@ -276,9 +275,8 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
         live_action: :index,
         projects: [project],
         project: project,
-        scope: scope,
         current_scope: scope,
-        slug: project && project.id,
+        current_path: "/",
         section: :issues,
         page_title: "Issues",
         issues: [],

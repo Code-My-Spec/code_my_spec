@@ -82,8 +82,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp messages_for(nil), do: []
   defp messages_for(conversation), do: Conversations.list_messages(conversation, limit: @page)
 
-  # `PortableHost` assigns `:project` on `handle_params`, so this cannot run in
-  # `mount`. The first clause redirects the old path-style conversation link
+  # The first clause redirects the old path-style conversation link
   # (push notifications, bookmarks) to the canonical query-string address.
   @impl true
   def handle_params(%{"conversation_id" => id, "project_id" => project_id}, _uri, socket) do
@@ -758,7 +757,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # A story or issue opens over the cockpit rather than navigating away from it.
   def handle_event("show_assigned", %{"kind" => kind, "key" => key}, socket) do
-    {:noreply, assign(socket, :assigned_modal, assigned_modal(socket.assigns.scope, kind, key))}
+    {:noreply,
+     assign(socket, :assigned_modal, assigned_modal(socket.assigns.current_scope, kind, key))}
   end
 
   def handle_event("close_assigned", _params, socket),
@@ -2137,7 +2137,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   defp chart_story(socket, stories, number) do
     number = if is_binary(number), do: String.to_integer(number), else: number
 
-    case assigned_modal(socket.assigns.scope, "story", number) do
+    case assigned_modal(socket.assigns.current_scope, "story", number) do
       nil ->
         nil
 

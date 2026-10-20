@@ -1,8 +1,9 @@
 defmodule CodeMySpecWeb.Tasks.NextTaskLiveTest do
   @moduledoc """
   NextTaskLive no longer looks a project up from a `project_name` param —
-  `PortableHost` resolves it once for every portable view and assigns `scope`
-  and `project` before `handle_params` runs. These tests hand it that socket.
+  `UserAuth.on_mount(:assign_project, ...)` resolves it for every project route
+  and assigns `current_scope` and `project` before `handle_params` runs. These
+  tests hand it that socket.
 
   The "unknown project" case moved out with the lookup: this module cannot
   observe a bad project any more, because the host fails first. What is left
@@ -85,13 +86,13 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLiveTest do
     {project, scope}
   end
 
-  # Mirrors what PortableHost leaves on the socket before handle_params runs.
+  # Mirrors what `UserAuth.on_mount(:assign_project, ...)` leaves on the socket.
   defp build_socket(project, scope) do
     %Phoenix.LiveView.Socket{
       assigns: %{
         __changed__: %{},
         projects: [],
-        scope: scope,
+        current_scope: scope,
         project: project,
         markdown: nil,
         error: nil,

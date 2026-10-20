@@ -27,9 +27,6 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     {:ok,
      assign(socket,
        section: :stories,
-       project: nil,
-       scope: nil,
-       slug: nil,
        story: nil,
        error: nil,
        page_title: "Three Amigos",
@@ -41,7 +38,11 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   @impl true
-  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(
+        %{"number" => number},
+        _uri,
+        %{assigns: %{current_scope: %{} = scope}} = socket
+      ) do
     case Stories.get_story_by_number(scope, number) do
       %Stories.Story{} = story ->
         socket =
@@ -78,8 +79,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   def handle_info({:question_created, _q}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:question_updated, _q}, socket), do: {:noreply, refresh(socket)}
   def handle_info({:question_deleted, _q}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
-  def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:created, %AcceptanceCriteria.Criterion{}}, socket),
+    do: {:noreply, refresh(socket)}
+
+  def handle_info({:updated, %AcceptanceCriteria.Criterion{}}, socket),
+    do: {:noreply, refresh(socket)}
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ─── PM admin events ─────────────────────────────────────────────────
@@ -118,10 +124,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("save_rule", %{"id" => id, "rule" => %{"statement" => statement}}, socket) do
-    rule = BddRules.get_rule(socket.assigns.scope, id)
+    rule = BddRules.get_rule(socket.assigns.current_scope, id)
 
     if rule do
-      case BddRules.update_rule(socket.assigns.scope, rule, %{statement: statement}) do
+      case BddRules.update_rule(socket.assigns.current_scope, rule, %{statement: statement}) do
         {:ok, _updated} ->
           {:noreply, socket |> assign(editing: nil) |> put_flash(:info, "Rule updated")}
 
@@ -134,7 +140,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_rule", %{"id" => id}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     rule = BddRules.get_rule(scope, id)
 
     if rule do
@@ -163,10 +169,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
         %{"id" => id, "scenario" => %{"description" => description, "body" => body}},
         socket
       ) do
-    criterion = AcceptanceCriteria.get_criterion(socket.assigns.scope, id)
+    criterion = AcceptanceCriteria.get_criterion(socket.assigns.current_scope, id)
 
     if criterion do
-      case AcceptanceCriteria.update_criterion(socket.assigns.scope, criterion, %{
+      case AcceptanceCriteria.update_criterion(socket.assigns.current_scope, criterion, %{
              description: description,
              body: body
            }) do
@@ -182,10 +188,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_scenario", %{"id" => id}, socket) do
-    criterion = AcceptanceCriteria.get_criterion(socket.assigns.scope, id)
+    criterion = AcceptanceCriteria.get_criterion(socket.assigns.current_scope, id)
 
     if criterion do
-      case AcceptanceCriteria.retire_criterion(socket.assigns.scope, criterion) do
+      case AcceptanceCriteria.retire_criterion(socket.assigns.current_scope, criterion) do
         {:ok, _retired} ->
           {:noreply,
            socket
@@ -204,10 +210,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("save_question", %{"id" => id, "question" => %{"text" => text}}, socket) do
-    question = Questions.get_question(socket.assigns.scope, id)
+    question = Questions.get_question(socket.assigns.current_scope, id)
 
     if question do
-      case Questions.update_question(socket.assigns.scope, question, %{text: text}) do
+      case Questions.update_question(socket.assigns.current_scope, question, %{text: text}) do
         {:ok, _updated} ->
           {:noreply, socket |> assign(editing: nil) |> put_flash(:info, "Question updated")}
 
@@ -220,10 +226,10 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("delete_question", %{"id" => id}, socket) do
-    question = Questions.get_question(socket.assigns.scope, id)
+    question = Questions.get_question(socket.assigns.current_scope, id)
 
     if question do
-      case Questions.delete_question(socket.assigns.scope, question) do
+      case Questions.delete_question(socket.assigns.current_scope, question) do
         {:ok, _deleted} ->
           {:noreply,
            socket
@@ -242,13 +248,13 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   end
 
   def handle_event("toggle_question_status", %{"id" => id}, socket) do
-    question = Questions.get_question(socket.assigns.scope, id)
+    question = Questions.get_question(socket.assigns.current_scope, id)
 
     if question do
       result =
         case question.status do
-          :open -> Questions.resolve_question(socket.assigns.scope, question)
-          _ -> Questions.reopen_question(socket.assigns.scope, question)
+          :open -> Questions.resolve_question(socket.assigns.current_scope, question)
+          _ -> Questions.reopen_question(socket.assigns.current_scope, question)
         end
 
       case result do
@@ -263,7 +269,8 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
     end
   end
 
-  defp refresh(%{assigns: %{scope: scope, story: story}} = socket) when not is_nil(scope) and not is_nil(story) do
+  defp refresh(%{assigns: %{current_scope: scope, story: story}} = socket)
+       when not is_nil(scope) and not is_nil(story) do
     assign_session_state(socket, scope, story)
   end
 
@@ -312,11 +319,21 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-        <span>{@error || @scope_error}</span>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div :if={!@error && @story} class={"wv4-root #{if @session_state == :sealed, do: "sealed", else: ""}"}>
+      <div
+        :if={!@error && @story}
+        class={"wv4-root #{if @session_state == :sealed, do: "sealed", else: ""}"}
+      >
         <.wall_styles />
         <.wall_header
           story={@story}
@@ -373,6 +390,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
         <.delete_confirm_modal :if={@confirming_delete} confirming_delete={@confirming_delete} />
       </div>
+    </Layouts.app>
     """
   end
 
@@ -469,8 +487,20 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       >⋯</button>
 
       <div :if={@is_menu? && !@is_editing?} class="wv4-menu">
-        <button type="button" class="wv4-menu-item" phx-click="start_edit" phx-value-type="rule" phx-value-id={@rule.id}>Edit</button>
-        <button type="button" class="wv4-menu-item wv4-menu-danger" phx-click="confirm_delete" phx-value-type="rule" phx-value-id={@rule.id}>Delete</button>
+        <button
+          type="button"
+          class="wv4-menu-item"
+          phx-click="start_edit"
+          phx-value-type="rule"
+          phx-value-id={@rule.id}
+        >Edit</button>
+        <button
+          type="button"
+          class="wv4-menu-item wv4-menu-danger"
+          phx-click="confirm_delete"
+          phx-value-type="rule"
+          phx-value-id={@rule.id}
+        >Delete</button>
       </div>
 
       <%= if @is_editing? do %>
@@ -519,8 +549,20 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       >⋯</button>
 
       <div :if={@is_menu? && !@is_editing?} class="wv4-menu">
-        <button type="button" class="wv4-menu-item" phx-click="start_edit" phx-value-type="scenario" phx-value-id={@sid}>Edit</button>
-        <button type="button" class="wv4-menu-item wv4-menu-danger" phx-click="confirm_delete" phx-value-type="scenario" phx-value-id={@sid}>Delete</button>
+        <button
+          type="button"
+          class="wv4-menu-item"
+          phx-click="start_edit"
+          phx-value-type="scenario"
+          phx-value-id={@sid}
+        >Edit</button>
+        <button
+          type="button"
+          class="wv4-menu-item wv4-menu-danger"
+          phx-click="confirm_delete"
+          phx-value-type="scenario"
+          phx-value-id={@sid}
+        >Delete</button>
       </div>
 
       <%= if @is_editing? do %>
@@ -608,11 +650,28 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       >⋯</button>
 
       <div :if={@is_menu? && !@is_editing?} class="wv4-menu">
-        <button type="button" class="wv4-menu-item" phx-click="start_edit" phx-value-type="question" phx-value-id={@qid}>Edit</button>
-        <button type="button" class="wv4-menu-item" phx-click="toggle_question_status" phx-value-id={@qid}>
+        <button
+          type="button"
+          class="wv4-menu-item"
+          phx-click="start_edit"
+          phx-value-type="question"
+          phx-value-id={@qid}
+        >Edit</button>
+        <button
+          type="button"
+          class="wv4-menu-item"
+          phx-click="toggle_question_status"
+          phx-value-id={@qid}
+        >
           {if @question.status == :open, do: "Resolve", else: "Reopen"}
         </button>
-        <button type="button" class="wv4-menu-item wv4-menu-danger" phx-click="confirm_delete" phx-value-type="question" phx-value-id={@qid}>Delete</button>
+        <button
+          type="button"
+          class="wv4-menu-item wv4-menu-danger"
+          phx-click="confirm_delete"
+          phx-value-type="question"
+          phx-value-id={@qid}
+        >Delete</button>
       </div>
 
       <%= if @is_editing? do %>
@@ -656,7 +715,7 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
       <span class="wv4-ribbon-time">{@last.time}</span>
       <span>
         <span class="wv4-ribbon-verb">{@last.verb}</span>
-        <span :if={@last.target} class="wv4-ribbon-target"> {@last.target}</span>
+        <span :if={@last.target} class="wv4-ribbon-target">{@last.target}</span>
         <span :if={@last.detail} class="wv4-ribbon-detail"> — {@last.detail}</span>
       </span>
       <span class="wv4-ribbon-chev">▴ activity</span>
@@ -670,14 +729,24 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   defp derive_last_event(%{session_state: :sealed}),
     do: %{time: "now", verb: "Three Amigos sealed", target: nil, detail: "readiness gate cleared"}
 
-  defp derive_last_event(%{rules: rules, scenarios: scenarios, questions: questions, story: story}) do
+  defp derive_last_event(%{
+         rules: rules,
+         scenarios: scenarios,
+         questions: questions,
+         story: story
+       }) do
     candidates =
       [
         Enum.map(rules, fn r ->
           %{at: r.inserted_at, verb: "Pinned rule", target: short_id(r.id), detail: r.statement}
         end),
         Enum.map(scenarios, fn s ->
-          %{at: s.inserted_at, verb: "Pinned #{kind_label(s.kind) |> String.downcase()}", target: short_id(s.id), detail: s.description}
+          %{
+            at: s.inserted_at,
+            verb: "Pinned #{kind_label(s.kind) |> String.downcase()}",
+            target: short_id(s.id),
+            detail: s.description
+          }
         end),
         Enum.map(questions, fn q ->
           verb = if q.status == :open, do: "Raised question", else: "Resolved question"

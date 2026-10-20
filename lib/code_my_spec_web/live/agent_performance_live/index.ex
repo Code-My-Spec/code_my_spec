@@ -67,7 +67,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   end
 
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
+  def handle_params(params, _uri, %{assigns: %{current_scope: %{}}} = socket) do
     {:noreply, load(socket, params)}
   end
 
@@ -369,327 +369,339 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <.header>Agent Performance</.header>
-
-    <form
-      id="performance-filter"
-      phx-change="filter"
-      data-test="performance-filter"
-      class="mt-4 flex flex-wrap gap-4 items-end"
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
     >
-      <div>
-        <label class="label" for="filter-working-copy">Working copy</label>
-        <select
-          id="filter-working-copy"
-          name="working_copy_id"
-          class="select select-bordered select-sm"
-        >
-          <option value="">All</option>
-          <option
-            :for={wc <- @working_copies}
-            value={wc.id}
-            selected={wc.id == @filter[:working_copy_id]}
-          >
-            {WorkingCopies.display_name(wc)}
-          </option>
-        </select>
-      </div>
-      <div>
-        <label class="label" for="filter-story">Story</label>
-        <select id="filter-story" name="story_id" class="select select-bordered select-sm">
-          <option value="">All</option>
-          <option
-            :for={story <- @story_options}
-            value={story.id}
-            selected={story.id == @filter[:story_id]}
-          >
-            {story.title}
-          </option>
-        </select>
-      </div>
-      <div>
-        <label class="label" for="filter-agent">Agent</label>
-        <select id="filter-agent" name="agent_id" class="select select-bordered select-sm">
-          <option value="">All</option>
-          <option :for={agent <- @agents} value={agent.id} selected={agent.id == @filter[:agent_id]}>
-            {agent_label(agent)}
-          </option>
-        </select>
-      </div>
-      <button
-        type="button"
-        phx-click="export_report"
-        data-test="export-report"
-        class="btn btn-sm btn-outline ml-auto"
-        disabled={@exporting?}
-      >
-        <.icon name="hero-arrow-down-tray" class="size-4" />
-        {if @exporting?, do: "Preparing…", else: "Download for agents (.md)"}
-      </button>
-      <span :if={@page_loading?} data-test="performance-loading" class="text-sm text-base-content/60">
-        Loading...
-      </span>
-    </form>
+      <.header>Agent Performance</.header>
 
-    <%!--
+      <form
+        id="performance-filter"
+        phx-change="filter"
+        data-test="performance-filter"
+        class="mt-4 flex flex-wrap gap-4 items-end"
+      >
+        <div>
+          <label class="label" for="filter-working-copy">Working copy</label>
+          <select
+            id="filter-working-copy"
+            name="working_copy_id"
+            class="select select-bordered select-sm"
+          >
+            <option value="">All</option>
+            <option
+              :for={wc <- @working_copies}
+              value={wc.id}
+              selected={wc.id == @filter[:working_copy_id]}
+            >
+              {WorkingCopies.display_name(wc)}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="filter-story">Story</label>
+          <select id="filter-story" name="story_id" class="select select-bordered select-sm">
+            <option value="">All</option>
+            <option
+              :for={story <- @story_options}
+              value={story.id}
+              selected={story.id == @filter[:story_id]}
+            >
+              {story.title}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="label" for="filter-agent">Agent</label>
+          <select id="filter-agent" name="agent_id" class="select select-bordered select-sm">
+            <option value="">All</option>
+            <option :for={agent <- @agents} value={agent.id} selected={agent.id == @filter[:agent_id]}>
+              {agent_label(agent)}
+            </option>
+          </select>
+        </div>
+        <button
+          type="button"
+          phx-click="export_report"
+          data-test="export-report"
+          class="btn btn-sm btn-outline ml-auto"
+          disabled={@exporting?}
+        >
+          <.icon name="hero-arrow-down-tray" class="size-4" />
+          {if @exporting?, do: "Preparing…", else: "Download for agents (.md)"}
+        </button>
+        <span
+          :if={@page_loading?}
+          data-test="performance-loading"
+          class="text-sm text-base-content/60"
+        >
+          Loading...
+        </span>
+      </form>
+
+      <%!--
       A failed read keeps the frame: the selects above still work and the page
       says what happened rather than showing an empty report.
     --%>
-    <p :if={@report_error} data-test="performance-error" class="mt-4 text-sm text-error">
-      The report could not be read: {@report_error}
-    </p>
-
-    <section id="section-standouts" data-test="standouts" class="mt-6 scroll-mt-4">
-      <.heading>What stands out</.heading>
-      <p class="mb-2 text-xs text-base-content/60">
-        This week against last. Click a card for the chart behind it.
+      <p :if={@report_error} data-test="performance-error" class="mt-4 text-sm text-error">
+        The report could not be read: {@report_error}
       </p>
-      <div :if={@page_loading?} class="h-40 w-full animate-pulse rounded bg-base-200"></div>
-      <Scorecard.standouts :if={not @page_loading?} kpis={@scorecard.kpis} />
-    </section>
 
-    <section id="section-activity" data-test="performance-chart" class="mt-8 scroll-mt-4">
-      <.heading>Activity over time</.heading>
-      <div
-        :if={not @page_loading?}
-        id="performance-chart"
-        phx-hook="EChart"
-        phx-update="ignore"
-        data-option={Jason.encode!(@chart_option)}
-        style="width: 100%; height: 340px;"
-      >
-      </div>
-      <div
-        :if={@page_loading?}
-        data-test="chart-loading"
-        class="h-[340px] w-full animate-pulse rounded bg-base-200"
-      >
-      </div>
-      <div data-test="chart-detail" class="mt-2 flex gap-4 text-sm text-base-content/70">
-        <span :if={not @page_loading?} data-test="chart-detail-tokens">
-          {chart_tokens_label(@chart_detail.tokens_total)}
-        </span>
-        <span :if={not @page_loading?} data-test="chart-detail-messages">
-          Messages: {@chart_detail.messages}
-        </span>
-      </div>
-      <p
-        :if={@page_loading?}
-        data-test="chart-detail-loading"
-        class="mt-2 text-sm text-base-content/60"
-      >
-        Loading the chart's detail...
-      </p>
-      <div data-test="rates-chart" class="mt-6">
-        <h3 class="text-xs font-medium text-base-content/70">Rates over time</h3>
+      <section id="section-standouts" data-test="standouts" class="mt-6 scroll-mt-4">
+        <.heading>What stands out</.heading>
+        <p class="mb-2 text-xs text-base-content/60">
+          This week against last. Click a card for the chart behind it.
+        </p>
+        <div :if={@page_loading?} class="h-40 w-full animate-pulse rounded bg-base-200"></div>
+        <Scorecard.standouts :if={not @page_loading?} kpis={@scorecard.kpis} />
+      </section>
+
+      <section id="section-activity" data-test="performance-chart" class="mt-8 scroll-mt-4">
+        <.heading>Activity over time</.heading>
         <div
           :if={not @page_loading?}
-          id="rates-chart"
+          id="performance-chart"
           phx-hook="EChart"
           phx-update="ignore"
-          data-option={Jason.encode!(@rates_option)}
-          style="width: 100%; height: 260px;"
+          data-option={Jason.encode!(@chart_option)}
+          style="width: 100%; height: 340px;"
         >
         </div>
-        <div :if={@page_loading?} class="h-[260px] w-full animate-pulse rounded bg-base-200"></div>
-        <p class="mt-1 text-xs text-base-content/60">
-          Offer acceptance is the share of settled offers an agent claimed; tool failure rate is the
-          share of tool calls that failed. Hours with neither are skipped.
+        <div
+          :if={@page_loading?}
+          data-test="chart-loading"
+          class="h-[340px] w-full animate-pulse rounded bg-base-200"
+        >
+        </div>
+        <div data-test="chart-detail" class="mt-2 flex gap-4 text-sm text-base-content/70">
+          <span :if={not @page_loading?} data-test="chart-detail-tokens">
+            {chart_tokens_label(@chart_detail.tokens_total)}
+          </span>
+          <span :if={not @page_loading?} data-test="chart-detail-messages">
+            Messages: {@chart_detail.messages}
+          </span>
+        </div>
+        <p
+          :if={@page_loading?}
+          data-test="chart-detail-loading"
+          class="mt-2 text-sm text-base-content/60"
+        >
+          Loading the chart's detail...
         </p>
-      </div>
-    </section>
+        <div data-test="rates-chart" class="mt-6">
+          <h3 class="text-xs font-medium text-base-content/70">Rates over time</h3>
+          <div
+            :if={not @page_loading?}
+            id="rates-chart"
+            phx-hook="EChart"
+            phx-update="ignore"
+            data-option={Jason.encode!(@rates_option)}
+            style="width: 100%; height: 260px;"
+          >
+          </div>
+          <div :if={@page_loading?} class="h-[260px] w-full animate-pulse rounded bg-base-200"></div>
+          <p class="mt-1 text-xs text-base-content/60">
+            Offer acceptance is the share of settled offers an agent claimed; tool failure rate is the
+            share of tool calls that failed. Hours with neither are skipped.
+          </p>
+        </div>
+      </section>
 
-    <section id="section-roles" data-test="roles" class="mt-8 scroll-mt-4">
-      <.heading>Activity by role</.heading>
-      <p class="mb-2 text-xs text-base-content/60">
-        Tool failure rate this week by role and provider; hover for replies, calls, failed turns and tokens.
-      </p>
-      <.bar_chart
-        :if={not @loading?}
-        id="roles-chart"
-        chart={@role_chart}
-        empty="No agent has made a tool call this week."
-      />
-      <div data-test="agents" class="mt-6">
-        <h3 class="text-xs font-medium text-base-content/70">By agent</h3>
-        <p :if={@loading?} data-test="agents-loading" class="text-base-content/60">
-          Loading the project's agents...
+      <section id="section-roles" data-test="roles" class="mt-8 scroll-mt-4">
+        <.heading>Activity by role</.heading>
+        <p class="mb-2 text-xs text-base-content/60">
+          Tool failure rate this week by role and provider; hover for replies, calls, failed turns and tokens.
         </p>
-        <p :if={not @loading? and @agent_chart["categories"] == []} class="text-base-content/60">
-          No agent has made a tool call yet.
+        <.bar_chart
+          :if={not @loading?}
+          id="roles-chart"
+          chart={@role_chart}
+          empty="No agent has made a tool call this week."
+        />
+        <div data-test="agents" class="mt-6">
+          <h3 class="text-xs font-medium text-base-content/70">By agent</h3>
+          <p :if={@loading?} data-test="agents-loading" class="text-base-content/60">
+            Loading the project's agents...
+          </p>
+          <p :if={not @loading? and @agent_chart["categories"] == []} class="text-base-content/60">
+            No agent has made a tool call yet.
+          </p>
+          <.paged_chart
+            :if={not @loading? and @agent_chart["categories"] != []}
+            id="agents-chart"
+            chart={@agent_chart}
+            page={@agent_page}
+            name="agents"
+          />
+        </div>
+      </section>
+
+      <section id="section-qa" data-test="qa" class="mt-8 scroll-mt-4">
+        <.heading>QA</.heading>
+        <div class="grid gap-6 md:grid-cols-3">
+          <div data-test="qa-attempts">
+            <Offers.chart
+              :if={not @page_loading?}
+              agent_id="qa-attempts"
+              results={@qa_results}
+              title="QA attempts"
+              label="QA attempts"
+              empty="No QA attempts yet."
+              test="qa-results"
+            />
+          </div>
+          <div data-test="teams" class="md:col-span-2">
+            <h3 class="text-xs font-medium text-base-content/70">By team</h3>
+            <.bar_chart
+              :if={not @loading?}
+              id="teams-chart"
+              chart={@team_chart}
+              empty="No team has QA attempts or promotions yet."
+            />
+          </div>
+        </div>
+      </section>
+
+      <section id="section-stories" data-test="story-stages" class="mt-8 scroll-mt-4">
+        <.heading>Time per story</.heading>
+        <p :if={@loading?} data-test="stories-loading" class="text-base-content/60">
+          Loading the project's stories...
+        </p>
+        <p :if={not @loading? and @stage_chart["categories"] == []} class="text-base-content/60">
+          No story has been released yet.
         </p>
         <.paged_chart
-          :if={not @loading? and @agent_chart["categories"] != []}
-          id="agents-chart"
-          chart={@agent_chart}
-          page={@agent_page}
-          name="agents"
+          :if={not @loading? and @stage_chart["categories"] != []}
+          id="story-stages-chart"
+          chart={@stage_chart}
+          page={@stage_page}
+          name="stages"
         />
-      </div>
-    </section>
+        <p class="mt-1 text-xs text-base-content/60">
+          Stage times are active time; waiting is time blocked on a person. Stages can overlap,
+          so a story's bar may run past its total. Hover a story for its QA rounds, waits,
+          messages and tokens.
+        </p>
+      </section>
 
-    <section id="section-qa" data-test="qa" class="mt-8 scroll-mt-4">
-      <.heading>QA</.heading>
-      <div class="grid gap-6 md:grid-cols-3">
-        <div data-test="qa-attempts">
-          <Offers.chart
-            :if={not @page_loading?}
-            agent_id="qa-attempts"
-            results={@qa_results}
-            title="QA attempts"
-            label="QA attempts"
-            empty="No QA attempts yet."
-            test="qa-results"
-          />
-        </div>
-        <div data-test="teams" class="md:col-span-2">
-          <h3 class="text-xs font-medium text-base-content/70">By team</h3>
-          <.bar_chart
-            :if={not @loading?}
-            id="teams-chart"
-            chart={@team_chart}
-            empty="No team has QA attempts or promotions yet."
-          />
-        </div>
-      </div>
-    </section>
-
-    <section id="section-stories" data-test="story-stages" class="mt-8 scroll-mt-4">
-      <.heading>Time per story</.heading>
-      <p :if={@loading?} data-test="stories-loading" class="text-base-content/60">
-        Loading the project's stories...
-      </p>
-      <p :if={not @loading? and @stage_chart["categories"] == []} class="text-base-content/60">
-        No story has been released yet.
-      </p>
-      <.paged_chart
-        :if={not @loading? and @stage_chart["categories"] != []}
-        id="story-stages-chart"
-        chart={@stage_chart}
-        page={@stage_page}
-        name="stages"
-      />
-      <p class="mt-1 text-xs text-base-content/60">
-        Stage times are active time; waiting is time blocked on a person. Stages can overlap,
-        so a story's bar may run past its total. Hover a story for its QA rounds, waits,
-        messages and tokens.
-      </p>
-    </section>
-
-    <section id="section-blocked" data-test="project-blocked" class="mt-8 scroll-mt-4">
-      <.heading>Blocked time</.heading>
-      <p :if={@loading?} data-test="project-blocked-loading" class="text-base-content/60">
-        Loading...
-      </p>
-      <div :if={not @loading?} class="grid gap-6 lg:grid-cols-3">
-        <div>
-          <h3 class="text-xs font-medium text-base-content/70">Hours waiting, by who held it</h3>
-          <.bar_chart id="blocked-chart" chart={@blocked_chart} empty="Nothing waited." />
-        </div>
-        <div>
-          <h3 class="text-xs font-medium text-base-content/70">Tap-outs this week, by role</h3>
-          <.bar_chart id="tap-outs-chart" chart={@tap_out_chart} empty="No tap-outs this week." />
-        </div>
-        <div>
-          <h3 class="text-xs font-medium text-base-content/70">
-            Wait for an answer this week, by who asked
-          </h3>
-          <.bar_chart id="questions-chart" chart={@question_chart} empty="No questions this week." />
-        </div>
-      </div>
-    </section>
-
-    <section id="section-offers" data-test="offers" class="mt-8 scroll-mt-4">
-      <.heading>Offers</.heading>
-      <div class="grid gap-6 md:grid-cols-3">
-        <div data-test="offer-health">
-          <form
-            id="offer-role-filter"
-            phx-change="offer_role"
-            data-test="offer-role-filter"
-            class="mb-1"
-          >
-            <label class="sr-only" for="offer-role">Role</label>
-            <select id="offer-role" name="role" class="select select-bordered select-xs">
-              <option value="">All roles</option>
-              <option
-                :for={h <- @summary.offer_health}
-                value={h.role}
-                selected={h.role == @offer_role}
-              >
-                {h.role}
-              </option>
-            </select>
-          </form>
-          <Offers.chart
-            :if={not @page_loading? and not @offer_loading?}
-            agent_id={"performance-#{@offer_role || "all"}"}
-            results={@offer_results}
-          />
-          <div
-            :if={@offer_loading?}
-            data-test="offer-results-loading"
-            class="h-36 w-full animate-pulse rounded bg-base-200"
-          >
+      <section id="section-blocked" data-test="project-blocked" class="mt-8 scroll-mt-4">
+        <.heading>Blocked time</.heading>
+        <p :if={@loading?} data-test="project-blocked-loading" class="text-base-content/60">
+          Loading...
+        </p>
+        <div :if={not @loading?} class="grid gap-6 lg:grid-cols-3">
+          <div>
+            <h3 class="text-xs font-medium text-base-content/70">Hours waiting, by who held it</h3>
+            <.bar_chart id="blocked-chart" chart={@blocked_chart} empty="Nothing waited." />
           </div>
-          <div
-            :for={h <- @summary.offer_health}
-            :if={is_nil(@offer_role) or h.role == @offer_role}
-            data-test="offer-health-role"
-            data-role={h.role}
-            class="text-xs text-base-content/70"
-          >
-            <span>{h.role}</span> -- claim rate {percent(h.claim_rate)}
-            <span :if={h.claim_rate != nil}>, ignored {h.ignored}, declined {h.declined}</span>
-            <span :if={h.superseded > 0}>, superseded {h.superseded}</span>
+          <div>
+            <h3 class="text-xs font-medium text-base-content/70">Tap-outs this week, by role</h3>
+            <.bar_chart id="tap-outs-chart" chart={@tap_out_chart} empty="No tap-outs this week." />
+          </div>
+          <div>
+            <h3 class="text-xs font-medium text-base-content/70">
+              Wait for an answer this week, by who asked
+            </h3>
+            <.bar_chart id="questions-chart" chart={@question_chart} empty="No questions this week." />
           </div>
         </div>
-        <div class="md:col-span-2">
-          <h3 class="text-xs font-medium text-base-content/70">By kind this week</h3>
-          <.bar_chart
-            :if={not @loading?}
-            id="offer-kinds-chart"
-            chart={@offer_kind_chart}
-            empty="No offers this week."
-          />
+      </section>
+
+      <section id="section-offers" data-test="offers" class="mt-8 scroll-mt-4">
+        <.heading>Offers</.heading>
+        <div class="grid gap-6 md:grid-cols-3">
+          <div data-test="offer-health">
+            <form
+              id="offer-role-filter"
+              phx-change="offer_role"
+              data-test="offer-role-filter"
+              class="mb-1"
+            >
+              <label class="sr-only" for="offer-role">Role</label>
+              <select id="offer-role" name="role" class="select select-bordered select-xs">
+                <option value="">All roles</option>
+                <option
+                  :for={h <- @summary.offer_health}
+                  value={h.role}
+                  selected={h.role == @offer_role}
+                >
+                  {h.role}
+                </option>
+              </select>
+            </form>
+            <Offers.chart
+              :if={not @page_loading? and not @offer_loading?}
+              agent_id={"performance-#{@offer_role || "all"}"}
+              results={@offer_results}
+            />
+            <div
+              :if={@offer_loading?}
+              data-test="offer-results-loading"
+              class="h-36 w-full animate-pulse rounded bg-base-200"
+            >
+            </div>
+            <div
+              :for={h <- @summary.offer_health}
+              :if={is_nil(@offer_role) or h.role == @offer_role}
+              data-test="offer-health-role"
+              data-role={h.role}
+              class="text-xs text-base-content/70"
+            >
+              <span>{h.role}</span> -- claim rate {percent(h.claim_rate)}
+              <span :if={h.claim_rate != nil}>, ignored {h.ignored}, declined {h.declined}</span>
+              <span :if={h.superseded > 0}>, superseded {h.superseded}</span>
+            </div>
+          </div>
+          <div class="md:col-span-2">
+            <h3 class="text-xs font-medium text-base-content/70">By kind this week</h3>
+            <.bar_chart
+              :if={not @loading?}
+              id="offer-kinds-chart"
+              chart={@offer_kind_chart}
+              empty="No offers this week."
+            />
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section id="section-messages" data-test="project-interventions" class="mt-8 scroll-mt-4">
-      <.heading>Messages to agents</.heading>
-      <p :if={@loading?} data-test="project-interventions-loading" class="text-base-content/60">
-        Loading...
-      </p>
-      <Offers.chart
-        :if={not @loading?}
-        agent_id="interventions"
-        results={@intervention_results}
-        title="Messages"
-        label="Messages to agents by kind"
-        empty="None recorded."
-        test="intervention-results"
-      />
-      <p
-        :if={not @loading? and @summary.project_level_interventions != []}
-        data-test="project-interventions-summary"
-        class="text-sm"
-      >
-        {length(@summary.project_level_interventions)} at project level, serving no story ({intervention_kind_counts(
-          @summary.project_level_interventions
-        )})
-      </p>
-    </section>
+      <section id="section-messages" data-test="project-interventions" class="mt-8 scroll-mt-4">
+        <.heading>Messages to agents</.heading>
+        <p :if={@loading?} data-test="project-interventions-loading" class="text-base-content/60">
+          Loading...
+        </p>
+        <Offers.chart
+          :if={not @loading?}
+          agent_id="interventions"
+          results={@intervention_results}
+          title="Messages"
+          label="Messages to agents by kind"
+          empty="None recorded."
+          test="intervention-results"
+        />
+        <p
+          :if={not @loading? and @summary.project_level_interventions != []}
+          data-test="project-interventions-summary"
+          class="text-sm"
+        >
+          {length(@summary.project_level_interventions)} at project level, serving no story ({intervention_kind_counts(
+            @summary.project_level_interventions
+          )})
+        </p>
+      </section>
 
-    <section id="section-changes" data-test="changes" class="mt-8 scroll-mt-4">
-      <.heading>What I'd change first</.heading>
-      <Scorecard.changes :if={not @page_loading?} kpis={@scorecard.kpis} />
-    </section>
+      <section id="section-changes" data-test="changes" class="mt-8 scroll-mt-4">
+        <.heading>What I'd change first</.heading>
+        <Scorecard.changes :if={not @page_loading?} kpis={@scorecard.kpis} />
+      </section>
 
-    <section id="section-limits" data-test="limits" class="mt-8 scroll-mt-4">
-      <.heading>Limits of this report</.heading>
-      <Scorecard.limits />
-    </section>
+      <section id="section-limits" data-test="limits" class="mt-8 scroll-mt-4">
+        <.heading>Limits of this report</.heading>
+        <Scorecard.limits />
+      </section>
+    </Layouts.app>
     """
   end
 

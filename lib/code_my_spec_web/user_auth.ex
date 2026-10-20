@@ -7,6 +7,7 @@ defmodule CodeMySpecWeb.UserAuth do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Projects
+  alias CodeMySpec.Resources
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
@@ -205,6 +206,9 @@ defmodule CodeMySpecWeb.UserAuth do
       where the wizard handles project creation. Must be used after
       `:require_active_account` so the active-account is in scope.
 
+    * `:assign_project` - Puts the route's `:project_id` project on
+      `current_scope` and assigns `@project`; refuses one outside the account.
+
     * `:require_active_project` - Requires that the user has an active
       project selected in their scope. Auto-picks the first project when
       one exists but none is active. Stack after `:require_at_least_one_project`.
@@ -301,6 +305,36 @@ defmodule CodeMySpecWeb.UserAuth do
       {:cont, socket}
     end
   end
+
+  # The project named in the route goes onto the scope, and becomes the one you
+  # were last in. One you cannot see is refused here, for every project route
+  # at once, so no view can render another project's data under its URL.
+  def on_mount(:assign_project, %{"project_id" => id}, _session, socket) do
+    %Scope{} = scope = socket.assigns.current_scope
+
+    with {:ok, _} <- Ecto.UUID.cast(id),
+         {:ok, project} <- Projects.get_project(scope, id) do
+      if scope.active_project_id != project.id,
+        do: UserPreferences.update_user_preferences(scope, %{active_project_id: project.id})
+
+      scope =
+        %Scope{scope | active_project: project, active_project_id: project.id}
+        |> Resources.project_scope(project)
+
+      {:cont, Phoenix.Component.assign(socket, current_scope: scope, project: project)}
+    else
+      _ ->
+        {:halt,
+         socket
+         |> Phoenix.LiveView.put_flash(
+           :error,
+           "That project is not in the account you are in. Switch accounts to open it."
+         )
+         |> Phoenix.LiveView.push_navigate(to: ~p"/app/projects")}
+    end
+  end
+
+  def on_mount(:assign_project, _params, _session, socket), do: {:cont, socket}
 
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->

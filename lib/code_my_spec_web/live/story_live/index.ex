@@ -8,16 +8,23 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
       <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}
+          navigate={~p"/app/projects/#{@project.id}/stories"}
           role="tab"
           class={["tab", "tab-active"]}
         >
           Stories
         </.link>
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/scheduler")}
+          navigate={~p"/app/projects/#{@project.id}/stories/scheduler"}
           role="tab"
           class="tab"
         >
@@ -42,18 +49,21 @@ defmodule CodeMySpecWeb.StoryLive.Index do
             <button phx-click="export_markdown" class="btn btn-sm btn-outline">
               <.icon name="hero-arrow-down-tray" /> Export
             </button>
-            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/import")} class="btn btn-sm btn-outline">
+            <.button
+              navigate={~p"/app/projects/#{@project.id}/stories/import"}
+              class="btn btn-sm btn-outline"
+            >
               <.icon name="hero-arrow-up-tray" /> Import
             </.button>
-            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/new")} class="btn btn-sm">
+            <.button navigate={~p"/app/projects/#{@project.id}/stories/new"} class="btn btn-sm">
               <.icon name="hero-plus" /> New Story
             </.button>
           </div>
         </:actions>
       </.header>
 
-      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-        <span>{@error || @scope_error}</span>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
       <div :if={!@error && @project} id="stories" phx-update="stream" class="space-y-8">
@@ -62,9 +72,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
             <div class="flex items-start justify-between mb-4">
               <h2
                 class="card-title text-2xl cursor-pointer hover:text-primary flex-1"
-                phx-click={
-                  JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}"))
-                }
+                phx-click={JS.navigate(~p"/app/projects/#{@project.id}/stories/#{story.number}")}
               >
                 {story.title}
               </h2>
@@ -204,21 +212,19 @@ defmodule CodeMySpecWeb.StoryLive.Index do
             <div class="flex items-center justify-between">
               <div class="card-actions">
                 <.link
-                  navigate={
-                    path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/three-amigos")
-                  }
+                  navigate={~p"/app/projects/#{@project.id}/stories/#{story.number}/three-amigos"}
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-squares-2x2" class="size-4" /> Three Amigos
                 </.link>
                 <.link
-                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/gherkin")}
+                  navigate={~p"/app/projects/#{@project.id}/stories/#{story.number}/gherkin"}
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-document-text" class="size-4" /> Gherkin
                 </.link>
                 <.link
-                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.number}/edit")}
+                  navigate={~p"/app/projects/#{@project.id}/stories/#{story.number}/edit"}
                   class="btn btn-sm btn-outline"
                 >
                   Edit
@@ -242,6 +248,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
           </div>
         </div>
       </div>
+    </Layouts.app>
     """
   end
 
@@ -251,9 +258,6 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      socket
      |> assign(
        section: :stories,
-       project: nil,
-       scope: nil,
-       slug: nil,
        error: nil,
        show_criteria: true,
        page_title: "Stories",
@@ -263,7 +267,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(_params, _uri, %{assigns: %{current_scope: %{} = scope}} = socket) do
     {:noreply,
      socket
      |> maybe_subscribe(scope)
@@ -316,14 +320,14 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      |> assign(:show_criteria, new_show)
      |> stream(
        :stories,
-       Stories.list_project_stories_by_priority(socket.assigns.scope),
+       Stories.list_project_stories_by_priority(socket.assigns.current_scope),
        reset: true
      )}
   end
 
   @impl true
   def handle_event("delete", %{"id" => id}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     story = Stories.get_story!(scope, id)
     {:ok, _} = Stories.retire_story(scope, story)
 
@@ -332,7 +336,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
 
   @impl true
   def handle_event("toggle_story_ready", %{"id" => id}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     story = Stories.get_story!(scope, id)
 
     case Stories.update_story(scope, story, %{ready_for_dev: !(story.ready_for_dev == true)}) do
@@ -349,7 +353,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
   # is a promote's job (e1174640), so a click never enforces.
   @impl true
   def handle_event("toggle_story_specs_ready", %{"id" => id}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     story = Stories.get_story!(scope, id)
 
     case Stories.set_specs_ready(scope, story, false) do
@@ -364,7 +368,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
 
   @impl true
   def handle_event("export_markdown", _params, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     {:ok, stories} = Stories.list_project_stories(scope)
     project_name = scope.active_project.name
 
@@ -391,7 +395,7 @@ defmodule CodeMySpecWeb.StoryLive.Index do
      stream(
        socket,
        :stories,
-       Stories.list_project_stories_by_priority(socket.assigns.scope),
+       Stories.list_project_stories_by_priority(socket.assigns.current_scope),
        reset: true
      )}
   end

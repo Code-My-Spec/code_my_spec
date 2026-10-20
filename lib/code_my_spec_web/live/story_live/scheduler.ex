@@ -7,16 +7,23 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
       <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}
+          navigate={~p"/app/projects/#{@project.id}/stories"}
           role="tab"
           class="tab"
         >
           Stories
         </.link>
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/scheduler")}
+          navigate={~p"/app/projects/#{@project.id}/stories/scheduler"}
           role="tab"
           class={["tab", "tab-active"]}
         >
@@ -24,8 +31,8 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
         </.link>
       </div>
 
-      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-        <span>{@error || @scope_error}</span>
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
       <div :if={!@error && @project}>
@@ -114,6 +121,7 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
           }
         </script>
       </div>
+    </Layouts.app>
     """
   end
 
@@ -123,9 +131,6 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
      socket
      |> assign(
        section: :scheduler,
-       project: nil,
-       scope: nil,
-       slug: nil,
        error: nil,
        page_title: "Story Scheduler",
        story_count: 0,
@@ -135,7 +140,7 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(_params, _uri, %{assigns: %{current_scope: %{} = scope}} = socket) do
     stories = Stories.list_project_stories_by_priority(scope)
 
     {:noreply,
@@ -160,7 +165,7 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
 
   @impl true
   def handle_event("reorder_priorities", %{"story_ids" => story_ids}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
 
     story_ids
     |> Enum.with_index(1)
@@ -181,7 +186,7 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
 
   @impl true
   def handle_info({type, %Story{}}, socket) when type in [:created, :updated, :deleted] do
-    stories = Stories.list_project_stories_by_priority(socket.assigns.scope)
+    stories = Stories.list_project_stories_by_priority(socket.assigns.current_scope)
 
     {:noreply,
      socket
@@ -190,5 +195,4 @@ defmodule CodeMySpecWeb.StoryLive.Scheduler do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
-
 end

@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.Live.CurrentPathHook do
   Assigns what the app chrome needs on every authenticated LiveView: where the
   user is, and where they could go instead.
 
-  The project list lives here rather than in `PortableHost` because the sidebar
+  The project list lives here rather than in `UserAuth`'s project hook: the sidebar
   needs it precisely when the host has nothing to say — on `/app`, on
   `/app/accounts`, on any page with no project in its path. That is exactly
   when the sidebar offers a picker, and a picker with nothing to pick from is

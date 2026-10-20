@@ -11,130 +11,134 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error || @scope_error} role="alert" class="alert alert-error">
-      <span>{@error || @scope_error}</span>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={!@error && @story && @project}>
-      <.header>
-        <%!--
+      <div :if={!@error && @story && @project}>
+        <.header>
+          <%!--
         The number, not the id. A story carries both, and the number is what
         names its spex directory — story id 1031 is number 1065, and its specs
         live in `test/spex/1065_…/`. They coincide on a young project and
         diverge later, which is how "Story 1031" stayed on this page for months
         while naming a directory that does not exist (1ab62ffd).
         --%>
-        Story {@story.number}
-        <:subtitle>Story detail, acceptance criteria, tags, and QA history.</:subtitle>
-        <:actions>
-          <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}>
-            <.icon name="hero-arrow-left" />
-          </.button>
-          <.button navigate={
-            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/three-amigos")
-          }>
-            <.icon name="hero-squares-2x2" /> Three Amigos
-          </.button>
-          <.button navigate={
-            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/gherkin")
-          }>
-            <.icon name="hero-document-text" /> View Gherkin
-          </.button>
-          <.button navigate={
-            path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.number}/edit?return_to=show")
-          }>
-            <.icon name="hero-pencil-square" /> Edit story
-          </.button>
-        </:actions>
-      </.header>
+          Story {@story.number}
+          <:subtitle>Story detail, acceptance criteria, tags, and QA history.</:subtitle>
+          <:actions>
+            <.button navigate={~p"/app/projects/#{@project.id}/stories"}>
+              <.icon name="hero-arrow-left" />
+            </.button>
+            <.button navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}/three-amigos"}>
+              <.icon name="hero-squares-2x2" /> Three Amigos
+            </.button>
+            <.button navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}/gherkin"}>
+              <.icon name="hero-document-text" /> View Gherkin
+            </.button>
+            <.button navigate={
+              ~p"/app/projects/#{@project.id}/stories/#{@story.number}/edit?return_to=show"
+            }>
+              <.icon name="hero-pencil-square" /> Edit story
+            </.button>
+          </:actions>
+        </.header>
 
-      <.list>
-        <:item title="Title">{@story.title}</:item>
-        <:item title="Description">{@story.description}</:item>
-        <:item title="Component">
-          <div :if={@component} class="flex items-center gap-2 flex-wrap">
-            <span class="badge badge-secondary font-mono">{@component.module_name}</span>
-            <span class="badge badge-ghost badge-sm">{@component.type}</span>
-          </div>
-          <div
-            :if={!@component && @story.component_id}
-            role="alert"
-            class="alert alert-warning alert-soft text-sm"
-          >
-            <.icon name="hero-exclamation-triangle" class="size-4" />
-            <span>
-              Linked to a missing component (<span class="font-mono">{String.slice(@story.component_id, 0, 8)}…</span>) — dangling reference; re-link this story to a real component.
-            </span>
-          </div>
-          <div :if={!@component && !@story.component_id} class="text-base-content/60 italic">
-            Not linked to a component.
-          </div>
-        </:item>
-        <:item title="Acceptance criteria">
-          <div :if={Enum.empty?(@story.criteria)} class="text-base-content/60 italic">
-            No criteria defined
-          </div>
-          <ul :if={!Enum.empty?(@story.criteria)} class="space-y-2">
-            <li :for={criterion <- @story.criteria} class="flex items-center gap-3">
-              <button
-                phx-click="toggle_verified"
-                phx-value-id={criterion.id}
-                class={[
-                  "flex items-center gap-2 px-2 py-1 rounded transition-colors",
-                  criterion.verified && "bg-success/10 text-success",
-                  !criterion.verified && "bg-base-200 text-base-content/60 hover:bg-base-300"
-                ]}
-              >
-                <.icon
-                  name={if criterion.verified, do: "hero-lock-closed", else: "hero-lock-open"}
-                  class="size-4"
-                />
-              </button>
-              <span class={[criterion.verified && "font-medium"]}>{criterion.description}</span>
-              <span
-                :if={criterion.verified && criterion.verified_at}
-                class="text-xs text-base-content/50"
-              >
-                (locked {Calendar.strftime(criterion.verified_at, "%b %d, %Y")})
+        <.list>
+          <:item title="Title">{@story.title}</:item>
+          <:item title="Description">{@story.description}</:item>
+          <:item title="Component">
+            <div :if={@component} class="flex items-center gap-2 flex-wrap">
+              <span class="badge badge-secondary font-mono">{@component.module_name}</span>
+              <span class="badge badge-ghost badge-sm">{@component.type}</span>
+            </div>
+            <div
+              :if={!@component && @story.component_id}
+              role="alert"
+              class="alert alert-warning alert-soft text-sm"
+            >
+              <.icon name="hero-exclamation-triangle" class="size-4" />
+              <span>
+                Linked to a missing component (<span class="font-mono">{String.slice(@story.component_id, 0, 8)}…</span>) — dangling reference; re-link this story to a real component.
               </span>
-            </li>
-          </ul>
-        </:item>
-        <:item title="Tags">
-          <div class="flex flex-wrap gap-2 items-center">
-            <span :for={tag <- @tags} class="badge badge-primary gap-1">
-              {tag.name}
-              <button
-                type="button"
-                phx-click="remove_tag"
-                phx-value-tag={tag.name}
-                class="hover:text-error"
-              >
-                <.icon name="hero-x-mark" class="size-3" />
-              </button>
-            </span>
-            <form phx-submit="add_tag" class="flex items-center gap-1">
-              <input
-                type="text"
-                name="tag"
-                placeholder="Add tag..."
-                class="input input-xs input-bordered w-32"
-              />
-              <button type="submit" class="btn btn-xs btn-ghost">
-                <.icon name="hero-plus" class="size-3" />
-              </button>
-            </form>
-          </div>
-        </:item>
-        <:item title="Locked at">{@story.locked_at}</:item>
-        <:item title="Lock expires at">{@story.lock_expires_at}</:item>
-      </.list>
+            </div>
+            <div :if={!@component && !@story.component_id} class="text-base-content/60 italic">
+              Not linked to a component.
+            </div>
+          </:item>
+          <:item title="Acceptance criteria">
+            <div :if={Enum.empty?(@story.criteria)} class="text-base-content/60 italic">
+              No criteria defined
+            </div>
+            <ul :if={!Enum.empty?(@story.criteria)} class="space-y-2">
+              <li :for={criterion <- @story.criteria} class="flex items-center gap-3">
+                <button
+                  phx-click="toggle_verified"
+                  phx-value-id={criterion.id}
+                  class={[
+                    "flex items-center gap-2 px-2 py-1 rounded transition-colors",
+                    criterion.verified && "bg-success/10 text-success",
+                    !criterion.verified && "bg-base-200 text-base-content/60 hover:bg-base-300"
+                  ]}
+                >
+                  <.icon
+                    name={if criterion.verified, do: "hero-lock-closed", else: "hero-lock-open"}
+                    class="size-4"
+                  />
+                </button>
+                <span class={[criterion.verified && "font-medium"]}>{criterion.description}</span>
+                <span
+                  :if={criterion.verified && criterion.verified_at}
+                  class="text-xs text-base-content/50"
+                >
+                  (locked {Calendar.strftime(criterion.verified_at, "%b %d, %Y")})
+                </span>
+              </li>
+            </ul>
+          </:item>
+          <:item title="Tags">
+            <div class="flex flex-wrap gap-2 items-center">
+              <span :for={tag <- @tags} class="badge badge-primary gap-1">
+                {tag.name}
+                <button
+                  type="button"
+                  phx-click="remove_tag"
+                  phx-value-tag={tag.name}
+                  class="hover:text-error"
+                >
+                  <.icon name="hero-x-mark" class="size-3" />
+                </button>
+              </span>
+              <form phx-submit="add_tag" class="flex items-center gap-1">
+                <input
+                  type="text"
+                  name="tag"
+                  placeholder="Add tag..."
+                  class="input input-xs input-bordered w-32"
+                />
+                <button type="submit" class="btn btn-xs btn-ghost">
+                  <.icon name="hero-plus" class="size-3" />
+                </button>
+              </form>
+            </div>
+          </:item>
+          <:item title="Locked at">{@story.locked_at}</:item>
+          <:item title="Lock expires at">{@story.lock_expires_at}</:item>
+        </.list>
 
-      <QaHistoryComponent.qa_history
-        attempts={@qa_attempts}
-        invalidating_attempt_id={@invalidating_attempt_id}
-      />
-    </div>
+        <QaHistoryComponent.qa_history
+          attempts={@qa_attempts}
+          invalidating_attempt_id={@invalidating_attempt_id}
+        />
+      </div>
+    </Layouts.app>
     """
   end
 
@@ -143,9 +147,6 @@ defmodule CodeMySpecWeb.StoryLive.Show do
     {:ok,
      assign(socket,
        section: :stories,
-       project: nil,
-       scope: nil,
-       slug: nil,
        story: nil,
        component: nil,
        tags: [],
@@ -158,7 +159,11 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   end
 
   @impl true
-  def handle_params(%{"number" => number}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(
+        %{"number" => number},
+        _uri,
+        %{assigns: %{current_scope: %{} = scope}} = socket
+      ) do
     case Stories.get_story_by_number(scope, number) do
       %Stories.Story{} = story ->
         tags = Tags.list_story_tags(scope, story)
@@ -202,7 +207,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   @impl true
   def handle_event("add_tag", %{"tag" => tag_name}, socket) do
     tag_name = String.trim(tag_name)
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     story = socket.assigns.story
 
     if tag_name == "" do
@@ -216,7 +221,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
   @impl true
   def handle_event("remove_tag", %{"tag" => tag_name}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     story = socket.assigns.story
 
     case Tags.remove_tag(scope, story, tag_name) do
@@ -231,7 +236,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
   @impl true
   def handle_event("toggle_verified", %{"id" => id}, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     criterion = AcceptanceCriteria.get_criterion!(scope, id)
 
     result =
@@ -272,7 +277,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
     case Qa.invalidate_qa_attempt(scope, attempt_id, reason) do
       {:ok, _invalidation} ->
-        qa_attempts = Qa.list_qa_attempts(socket.assigns.scope, story.id)
+        qa_attempts = Qa.list_qa_attempts(socket.assigns.current_scope, story.id)
 
         {:noreply,
          socket
@@ -294,12 +299,12 @@ defmodule CodeMySpecWeb.StoryLive.Show do
 
   def handle_info(
         {:deleted, %CodeMySpec.Stories.Story{id: id}},
-        %{assigns: %{story: %{id: id}, slug: slug}} = socket
+        %{assigns: %{story: %{id: id}, project: %{id: slug}}} = socket
       ) do
     {:noreply,
      socket
      |> put_flash(:error, "The current story was deleted.")
-     |> push_navigate(to: path(socket, ~p"/app/projects/#{slug}/stories"))}
+     |> push_navigate(to: ~p"/app/projects/#{slug}/stories")}
   end
 
   def handle_info({type, %CodeMySpec.Stories.Story{}}, socket)
@@ -311,7 +316,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
         {_type, %CodeMySpec.Stories.AcceptanceCriteria.Criterion{story_id: story_id}},
         %{assigns: %{story: %{id: story_id}}} = socket
       ) do
-    story = Stories.get_story!(socket.assigns.scope, story_id)
+    story = Stories.get_story!(socket.assigns.current_scope, story_id)
     {:noreply, assign(socket, :story, story)}
   end
 
@@ -325,7 +330,7 @@ defmodule CodeMySpecWeb.StoryLive.Show do
   # the project scope happens to carry, so the `invalidated_by_user_id` FK
   # records the person who actually clicked the button.
   defp build_invalidation_scope(socket) do
-    base_scope = socket.assigns.scope
+    base_scope = socket.assigns.current_scope
 
     case socket.assigns.current_scope do
       %{user: %{} = user} -> %{base_scope | user: user, user_id: user.id}

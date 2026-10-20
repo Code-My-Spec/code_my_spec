@@ -36,7 +36,11 @@ defmodule CodeMySpecWeb.QaLive do
   end
 
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{} = _scope, project: project}} = socket) do
+  def handle_params(
+        params,
+        _uri,
+        %{assigns: %{current_scope: %{} = _scope, project: project}} = socket
+      ) do
     socket =
       socket
       |> assign(
@@ -89,7 +93,7 @@ defmodule CodeMySpecWeb.QaLive do
     end
   end
 
-  defp load_attempts(%{assigns: %{scope: scope}} = socket) do
+  defp load_attempts(%{assigns: %{current_scope: scope}} = socket) do
     attempts =
       Qa.list_project_attempts(scope,
         include_older: socket.assigns.include_older,
@@ -132,129 +136,129 @@ defmodule CodeMySpecWeb.QaLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error && @project}>
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-3xl font-bold">
-          QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
-        </h1>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <div class="mb-6">
-        <QaComponents.attempts_chart
-          attempts={@chart_attempts}
-          range={@range}
-          view={@chart_view}
-          event="qa_chart"
-        />
-      </div>
+      <div :if={!@error && @project}>
+        <div class="flex items-center justify-between mb-6">
+          <h1 class="text-3xl font-bold">
+            QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
+          </h1>
+        </div>
 
-      <div class="flex flex-wrap gap-3 mb-6">
-        <label class="label cursor-pointer gap-2">
-          <input
-            type="checkbox"
-            class="checkbox checkbox-sm"
-            data-role="qa-index-filter-older"
-            phx-click="toggle_older"
-            checked={@include_older}
+        <div class="mb-6">
+          <QaComponents.attempts_chart
+            attempts={@chart_attempts}
+            range={@range}
+            view={@chart_view}
+            event="qa_chart"
           />
-          <span class="label-text">Include older attempts</span>
-        </label>
+        </div>
 
-        <label class="label cursor-pointer gap-2">
-          <input
-            type="checkbox"
-            class="checkbox checkbox-sm"
-            data-role="qa-index-filter-invalidated"
-            phx-click="toggle_invalidated"
-            checked={@include_invalidated}
-          />
-          <span class="label-text">Include invalidated</span>
-        </label>
-      </div>
-
-      <div
-        :if={@attempts == []}
-        class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box"
-      >
-        No QA attempts recorded.
-      </div>
-
-      <div :if={@attempts != []} class="overflow-x-auto rounded-box border border-base-300">
-        <table class="table table-zebra">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Story</th>
-              <th>Agent</th>
-              <th class="hidden md:table-cell">Scenarios</th>
-              <th>Issues</th>
-              <th>Submitted</th>
-            </tr>
-          </thead>
-          <tbody>
-            <.attempt_row
-              :for={attempt <- @page_attempts}
-              attempt={attempt}
-              project={@project}
-              socket={@socket}
-              slug={@slug}
+        <div class="flex flex-wrap gap-3 mb-6">
+          <label class="label cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              data-role="qa-index-filter-older"
+              phx-click="toggle_older"
+              checked={@include_older}
             />
-          </tbody>
-        </table>
+            <span class="label-text">Include older attempts</span>
+          </label>
+
+          <label class="label cursor-pointer gap-2">
+            <input
+              type="checkbox"
+              class="checkbox checkbox-sm"
+              data-role="qa-index-filter-invalidated"
+              phx-click="toggle_invalidated"
+              checked={@include_invalidated}
+            />
+            <span class="label-text">Include invalidated</span>
+          </label>
+        </div>
+
+        <div
+          :if={@attempts == []}
+          class="text-base-content/50 py-12 text-center border border-dashed border-base-300 rounded-box"
+        >
+          No QA attempts recorded.
+        </div>
+
+        <div :if={@attempts != []} class="overflow-x-auto rounded-box border border-base-300">
+          <table class="table table-zebra">
+            <thead>
+              <tr>
+                <th>Status</th>
+                <th>Story</th>
+                <th>Agent</th>
+                <th class="hidden md:table-cell">Scenarios</th>
+                <th>Issues</th>
+                <th>Submitted</th>
+              </tr>
+            </thead>
+            <tbody>
+              <.attempt_row
+                :for={attempt <- @page_attempts}
+                attempt={attempt}
+                project={@project}
+              />
+            </tbody>
+          </table>
+        </div>
+
+        <nav
+          :if={@total_pages > 1}
+          class="flex items-center justify-between mt-4"
+          aria-label="QA index pagination"
+          data-role="qa-index-pagination"
+        >
+          <div class="text-sm text-base-content/60">
+            Showing {page_first(@page, @per_page, @total)}–{page_last(@page, @per_page, @total)} of {@total}
+          </div>
+
+          <div class="join">
+            <button
+              type="button"
+              class="btn btn-sm join-item"
+              data-role="qa-index-page-prev"
+              phx-click="go_to_page"
+              phx-value-page={@page - 1}
+              disabled={@page <= 1}
+            >
+              Prev
+            </button>
+            <span class="btn btn-sm join-item btn-disabled no-animation">
+              Page {@page} / {@total_pages}
+            </span>
+            <button
+              type="button"
+              class="btn btn-sm join-item"
+              data-role="qa-index-page-next"
+              phx-click="go_to_page"
+              phx-value-page={@page + 1}
+              disabled={@page >= @total_pages}
+            >
+              Next
+            </button>
+          </div>
+        </nav>
       </div>
-
-      <nav
-        :if={@total_pages > 1}
-        class="flex items-center justify-between mt-4"
-        aria-label="QA index pagination"
-        data-role="qa-index-pagination"
-      >
-        <div class="text-sm text-base-content/60">
-          Showing {page_first(@page, @per_page, @total)}–{page_last(@page, @per_page, @total)} of {@total}
-        </div>
-
-        <div class="join">
-          <button
-            type="button"
-            class="btn btn-sm join-item"
-            data-role="qa-index-page-prev"
-            phx-click="go_to_page"
-            phx-value-page={@page - 1}
-            disabled={@page <= 1}
-          >
-            Prev
-          </button>
-          <span class="btn btn-sm join-item btn-disabled no-animation">
-            Page {@page} / {@total_pages}
-          </span>
-          <button
-            type="button"
-            class="btn btn-sm join-item"
-            data-role="qa-index-page-next"
-            phx-click="go_to_page"
-            phx-value-page={@page + 1}
-            disabled={@page >= @total_pages}
-          >
-            Next
-          </button>
-        </div>
-      </nav>
-    </div>
+    </Layouts.app>
     """
   end
 
   attr :attempt, :map, required: true
   attr :project, :map, required: true
-
-  # Function components don't get @socket the way a LiveView's own render does,
-  # and a portable view can't use a bare `~p` — the sigil resolves through the
-  # endpoint it compiled against, which isn't the one serving the local app.
-  attr :socket, :map, required: true
-  attr :slug, :string, required: true
 
   defp attempt_row(assigns) do
     invalidated? = match?([_ | _], assigns.attempt.invalidations)
@@ -273,7 +277,7 @@ defmodule CodeMySpecWeb.QaLive do
       <td class="font-medium">
         <.link
           :if={story_number(@attempt)}
-          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story_number(@attempt)}")}
+          navigate={~p"/app/projects/#{@project.id}/stories/#{story_number(@attempt)}"}
           class="link link-hover"
         >
           {story_title(@attempt)}
