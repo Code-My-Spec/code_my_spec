@@ -76,7 +76,7 @@ defmodule CodeMySpec.Agents.Tools.TapOut do
     end
   end
 
-  defp wake_main(_scope, %Agent{engine: :claude_code}), do: :ok
+  defp wake_main(_scope, %Agent{engine: engine}) when engine in [:claude_code, :codex], do: :ok
 
   defp wake_main(scope, %Agent{id: id}) do
     :ok = MainAgent.question_raised(scope, %{agent_id: id})

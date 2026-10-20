@@ -31,6 +31,7 @@ $endpoint = switch ($event) {
   'SessionStart'  { '/api/hooks/session-start' }
   'PreToolUse'    { '/api/hooks/pre-tool-use' }
   'PostToolUse'   { '/api/hooks/post-tool-use' }
+  'UserPromptSubmit' { '/api/hooks/user-prompt-submit' }
   'Stop'          { '/api/hooks/stop' }
   default         { exit 0 }
 }
@@ -64,6 +65,7 @@ try {
     -Headers @{
       'Content-Type' = 'application/json'
       'X-Harness-Id' = Get-HarnessId
+      'X-Agent-Engine' = 'codex'
     } `
     -Body $stdin `
     -UseBasicParsing `

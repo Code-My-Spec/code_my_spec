@@ -47,7 +47,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     Agent
     |> where(
       [a],
-      a.working_copy_id == ^working_copy_id and a.engine == :claude_code and
+      a.working_copy_id == ^working_copy_id and a.engine in ^Agent.terminal_engines() and
         not is_nil(a.engine_session_id) and is_nil(a.off_at) and is_nil(a.retired_at)
     )
     |> order_by([a], desc: a.inserted_at)
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     Agent
     |> where(
       [a],
-      a.project_id == ^project_id and a.engine == :claude_code and a.id != ^id and
+      a.project_id == ^project_id and a.engine in ^Agent.terminal_engines() and a.id != ^id and
         is_nil(a.off_at) and is_nil(a.retired_at) and a.updated_at > ^cutoff
     )
     |> Repo.all()

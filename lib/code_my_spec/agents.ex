@@ -329,11 +329,11 @@ defmodule CodeMySpec.Agents do
   already holds: the one-per-role rule is for the agents we start. Main by
   default; the agent changes it with the person (`set_terminal_role/3`).
   """
-  @spec register_terminal(Scope.t(), String.t(), atom()) ::
+  @spec register_terminal(Scope.t(), String.t(), atom(), :claude_code | :codex) ::
           {:ok, Agent.t()} | {:error, term()}
-  def register_terminal(scope, session_id, role \\ :main)
+  def register_terminal(scope, session_id, role \\ :main, engine \\ :claude_code)
 
-  def register_terminal(%Scope{active_working_copy_id: copy_id} = scope, session_id, role)
+  def register_terminal(%Scope{active_working_copy_id: copy_id} = scope, session_id, role, engine)
       when is_binary(copy_id) and is_binary(session_id) and session_id != "" do
     case AgentsRepository.get_by_engine_session(scope, session_id) do
       %Agent{retired_at: nil} = agent ->
@@ -343,25 +343,25 @@ defmodule CodeMySpec.Agents do
       # the retired row lets go of the session id, keeping its history.
       %Agent{} = retired ->
         {:ok, _} = AgentsRepository.update_agent(scope, retired, %{engine_session_id: nil})
-        create_terminal(scope, copy_id, session_id, role)
+        create_terminal(scope, copy_id, session_id, role, engine)
 
       nil ->
-        create_terminal(scope, copy_id, session_id, role)
+        create_terminal(scope, copy_id, session_id, role, engine)
     end
   end
 
-  def register_terminal(%Scope{active_working_copy_id: nil}, _session_id, _role),
+  def register_terminal(%Scope{active_working_copy_id: nil}, _session_id, _role, _engine),
     do: {:error, :no_working_copy}
 
-  def register_terminal(_scope, _session_id, _role), do: {:error, :session_id_required}
+  def register_terminal(_scope, _session_id, _role, _engine), do: {:error, :session_id_required}
 
-  defp create_terminal(scope, copy_id, session_id, role) do
+  defp create_terminal(scope, copy_id, session_id, role, engine) do
     with {:ok, copy} <- WorkingCopies.fetch(copy_id),
          {:ok, agent} <-
            AgentsRepository.create_agent(scope, %{
-             engine: :claude_code,
+             engine: engine,
              engine_session_id: session_id,
-             provider: "claude-code",
+             provider: terminal_provider(engine),
              role: role,
              working_copy_id: copy_id,
              working_copy: copy.root,
@@ -380,6 +380,9 @@ defmodule CodeMySpec.Agents do
         error
     end
   end
+
+  defp terminal_provider(:codex), do: "codex"
+  defp terminal_provider(_engine), do: "claude-code"
 
   @doc """
   The id of the terminal agent a Claude Code session is, or nil: how a call
@@ -492,7 +495,8 @@ defmodule CodeMySpec.Agents do
   """
   @spec set_terminal_role(Scope.t(), Agent.t(), atom() | String.t()) ::
           {:ok, Agent.t()} | {:error, term()}
-  def set_terminal_role(%Scope{} = scope, %Agent{engine: :claude_code} = agent, role) do
+  def set_terminal_role(%Scope{} = scope, %Agent{engine: engine} = agent, role)
+      when engine in [:claude_code, :codex] do
     with {:ok, role} <- role_of(%{role: role}),
          {:ok, updated} <- AgentsRepository.update_agent(scope, agent, role_attrs(agent, role)) do
       broadcast(scope, {:agent_started, updated})
@@ -1134,7 +1138,7 @@ defmodule CodeMySpec.Agents do
   # A terminal session holds no seat (story 1122): it may share any role, and
   # an agent we start is never refused on its account.
   defp seat_holders(scope),
-    do: scope |> AgentsRepository.list_on_duty() |> Enum.reject(&(&1.engine == :claude_code))
+    do: scope |> AgentsRepository.list_on_duty() |> Enum.reject(&Agent.terminal?/1)
 
   # Root as well as id: a root with no row of its own is recorded under the
   # caller's copy id (`id_for/2`), and is still a different tree.
@@ -1675,7 +1679,7 @@ defmodule CodeMySpec.Agents do
     {terminal, ours} =
       scope
       |> AgentsRepository.list_running_main()
-      |> Enum.split_with(&(&1.engine == :claude_code))
+      |> Enum.split_with(&Agent.terminal?/1)
 
     Enum.filter(
       terminal,
@@ -2132,7 +2136,7 @@ defmodule CodeMySpec.Agents do
   # Only a main we run moves with the main copy: a terminal session is a
   # person's, and stays where they are.
   defp main_agent_anywhere(%Scope{} = scope),
-    do: scope |> running_main_agents() |> Enum.find(&(&1.engine != :claude_code))
+    do: scope |> running_main_agents() |> Enum.find(&(not Agent.terminal?(&1)))
 
   @doc """
   Send an operator's message at a running agent, without waiting for the turn.
@@ -2379,7 +2383,7 @@ defmodule CodeMySpec.Agents do
       case AgentsRepository.fetch_agent(scope, id) do
         # A terminal session reads it at its next tool call; nothing stops its
         # turn (story 1123), and the caller says so.
-        {:ok, %Agent{engine: :claude_code}} ->
+        {:ok, %Agent{engine: engine}} when engine in [:claude_code, :codex] ->
           {:ok, {:not_interruptible, entry}}
 
         _ ->
@@ -2479,7 +2483,8 @@ defmodule CodeMySpec.Agents do
       when is_binary(generation) do
     # Not `Mailbox.ready/4`: that reads a turn ending unreported as one a
     # restart cut, and a terminal turn always ends this way.
-    with {:ok, %Agent{engine: :claude_code, mailbox_generation: ^generation} = agent} <-
+    with {:ok, %Agent{engine: engine, mailbox_generation: ^generation} = agent}
+         when engine in [:claude_code, :codex] <-
            AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, settled} <-
            AgentsRepository.update_agent(
@@ -3136,6 +3141,7 @@ defmodule CodeMySpec.Agents do
   # The engine decides whether an agent has presence and can be talked to, so a
   # Claude Code report must not default to `:alloy`.
   defp engine(%{"engine" => "claude_code"}), do: :claude_code
+  defp engine(%{"engine" => "codex"}), do: :codex
   defp engine(_report), do: :alloy
 
   # A report naming no role is the copy's one lane, called "main".

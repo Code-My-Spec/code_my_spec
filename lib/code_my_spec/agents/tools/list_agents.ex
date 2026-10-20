@@ -49,6 +49,7 @@ defmodule CodeMySpec.Agents.Tools.ListAgents do
     %{
       "id" => a.id,
       "role" => to_string(a.role),
+      "engine" => to_string(a.engine),
       "status" => to_string(a.status),
       "working_copy" => a.working_copy,
       "provider" => a.provider,

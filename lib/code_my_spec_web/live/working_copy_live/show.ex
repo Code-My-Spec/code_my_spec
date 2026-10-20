@@ -696,5 +696,6 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Show do
 
   defp engine_name(:alloy), do: "Alloy"
   defp engine_name(:claude_code), do: "Claude Code"
+  defp engine_name(:codex), do: "Codex"
   defp engine_name(other), do: to_string(other)
 end

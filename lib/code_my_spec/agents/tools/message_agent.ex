@@ -177,6 +177,13 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
             "and its turn cannot be interrupted."
         )
 
+      {:ok, %{engine: :codex}} ->
+        append(
+          response,
+          "This agent is a Codex terminal session: the message is queued and Codex reads " <>
+            "it when it chooses, and its turn cannot be interrupted."
+        )
+
       _ ->
         response
     end
@@ -188,13 +195,14 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   # Claude Code, or holding cross-session messages — is handed this at its
   # next stop, and the sender hears why it was not delivered now.
   defp held_for_stop(response, scope, target_id) do
-    with {:ok, %{engine: :claude_code, id: id}} <- Agents.fetch_agent(scope, target_id),
+    with {:ok, %{engine: engine, id: id}} when engine in [:claude_code, :codex] <-
+           Agents.fetch_agent(scope, target_id),
          false <- MapSet.member?(Agents.present_ids(scope), id) do
       append(
         response,
         "This agent is a terminal session with no live inbox — its session has ended, its " <>
-          "Claude Code cannot take messages directly, or it holds them — so it reads this " <>
-          "when it next stops."
+          "Claude Code or Codex cannot take messages directly, or it holds them — so it " <>
+          "reads this when it next stops."
       )
     else
       _ -> response

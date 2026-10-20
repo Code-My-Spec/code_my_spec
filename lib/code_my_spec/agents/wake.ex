@@ -262,7 +262,7 @@ defmodule CodeMySpec.Agents.Wake do
   # A terminal agent is admitted either way (story 1123): what waits for it is
   # handed over by its stop hook, or by its socket when the session is back.
   # Delivery itself still waits for presence (`Mailbox`).
-  defp running(%Agent{engine: :claude_code}), do: :ok
+  defp running(%Agent{engine: engine}) when engine in [:claude_code, :codex], do: :ok
 
   defp running(%Agent{project_id: project_id, id: id}) do
     if Presence.present?(project_id, id), do: :ok, else: {:hold, :not_running}
