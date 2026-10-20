@@ -1,16 +1,92 @@
 defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   @moduledoc """
   Timeout cleanup retains the OS groups created at spawn, sends TERM then
-  KILL, and confirms termination without delaying queue or slot release.
+  KILL, and confirms termination before releasing the queue or machine-wide slot.
   The real fixture ignores TERM and includes a reparented grandchild.
   Both normal cleanup and overdue recovery must kill both descendants.
   Overdue recovery reports its outcome on the run within the original
   deadline; unsuccessful confirmation identifies observed surviving PIDs.
   """
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Sync
+
+  test "a waiting command starts after descendants die and timeout output survives" do
+    alias CmsHarness.AnalysisSlots
+    previous_limit = Application.fetch_env(:code_my_spec, :analysis_slots)
+    Application.put_env(:code_my_spec, :analysis_slots, 1)
+
+    on_exit(fn ->
+      case previous_limit do
+        {:ok, value} -> Application.put_env(:code_my_spec, :analysis_slots, value)
+        :error -> Application.delete_env(:code_my_spec, :analysis_slots)
+      end
+    end)
+
+    eventually(fn -> AnalysisSlots.in_use() == 0 end)
+    root = "/tmp/timeout-slot-output-#{Ecto.UUID.generate()}"
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    {:ok, capture} = StringIO.open("")
+    {task, child_pids} = spawn_hanging_task(capture, true)
+    {:ok, supervisor} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+
+    next_command =
+      Task.Supervisor.async_nolink(supervisor, fn ->
+        :ok = AnalysisSlots.acquire()
+
+        System.cmd(
+          System.find_executable("python3"),
+          [
+            "-c",
+            """
+            import os, sys
+            survivors = []
+            for pid in sys.argv[1:]:
+                try:
+                    os.kill(int(pid), 0)
+                    survivors.append(pid)
+                except ProcessLookupError:
+                    pass
+            if survivors:
+                print(' '.join(survivors))
+                sys.exit(1)
+            """
+            | child_pids
+          ],
+          stderr_to_stdout: true
+        )
+      end)
+
+    on_exit(fn -> Process.exit(next_command.pid, :kill) end)
+    eventually(fn -> AnalysisSlots.waiting() == 1 end)
+
+    state = %{
+      project: %{root: root},
+      running: %{
+        run_id: 1,
+        source: "exunit",
+        task: task,
+        args: [],
+        tied_run_ids: [],
+        output_capture: capture
+      },
+      queue: [],
+      pending_cleanups: [],
+      timer: nil
+    }
+
+    assert {:noreply, pending} = AnalysisServer.handle_info({:timeout, 1}, state)
+    [%{cleanup: %{ref: ref}}] = pending.pending_cleanups
+    assert_receive {^ref, :ok}, 6_000
+    assert {:noreply, finished} = AnalysisServer.handle_info({ref, :ok}, pending)
+    assert {"", 0} = Task.await(next_command, 6_000)
+    assert finished.pending_cleanups == []
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["output"] == "stdout-before-timeout\nstderr-without-newline"
+    assert payload["error"] =~ "Subprocess termination confirmed"
+    refute_alive(child_pids)
+  end
 
   test "timeout delivers partial output after confirming descendant termination" do
     root = "/tmp/timeout-output-#{Ecto.UUID.generate()}"
@@ -67,8 +143,8 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     assert {:noreply, mid_state} = AnalysisServer.handle_info({:timeout, 1}, state)
 
-    # The queue already moved on -- there is nothing queued here, so
-    # `running` is nil immediately, not held waiting on this run's kill.
+    # The timed-out entry moves to pending cleanup. Running is nil, but
+    # pending cleanup prevents queued work from starting before confirmation.
     assert mid_state.running == nil
     assert [%{run_id: 1, cleanup: %Task{ref: cleanup_ref}}] = mid_state.pending_cleanups
 
@@ -83,7 +159,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     refute_alive(child_pid)
   end
 
-  test "the next queued run starts before its predecessor's kill confirmation reports back" do
+  test "the next queued run waits for its predecessor's confirmed termination" do
     root = "/tmp/a-queue-advances-test-#{System.unique_integer([:positive])}"
     {task, _child_pid} = spawn_hanging_task()
 
@@ -102,17 +178,19 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     assert {:noreply, next_state} = AnalysisServer.handle_info({:timeout, 1}, state)
 
-    # The queue advanced immediately: `running` is already the next entry,
-    # with its own new task, rather than held waiting on the first run's
-    # kill confirmation. Only the machine-wide slot (not this project's own
-    # queue) still has to wait for that -- `AnalysisSlots` enforces that on
-    # its own once the new task calls `acquire/1`.
-    assert %{run_id: 2, task: %Task{}} = next_state.running
-    assert next_state.queue == []
+    # Neither this queue nor another slot waiter may start work until the
+    # timed-out process tree has been confirmed dead.
+    assert next_state.running == nil
+    assert next_state.queue == [next_entry]
+    assert [%{run_id: 1, cleanup: %Task{ref: ref}}] = next_state.pending_cleanups
 
-    # The timed-out run's own cleanup is tracked separately and still
-    # pending, not lost in the handoff.
-    assert [%{run_id: 1, cleanup: %Task{}}] = next_state.pending_cleanups
+    assert_receive {^ref, :ok}, 6_000
+    assert {:noreply, finished} = AnalysisServer.handle_info({ref, :ok}, next_state)
+    assert %{run_id: 2, task: %Task{} = next_task} = finished.running
+    assert finished.queue == []
+    assert finished.pending_cleanups == []
+    Task.Supervisor.terminate_child(Sync.task_supervisor(root), next_task.pid)
+    Process.demonitor(next_task.ref, [:flush])
   end
 
   test "while a timed-out run's kill is being confirmed, the server still answers other calls" do
@@ -308,6 +386,65 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     refute_alive(child_pids)
   end
 
+  test "failed confirmation retains the owner and queue until a successful retry" do
+    alias CmsHarness.Agents.Engine.Execution
+    root = "/tmp/cleanup-retry-#{Ecto.UUID.generate()}"
+    {:ok, _} = Registry.register(CmsHarness.Registry, {:channel, root}, nil)
+    {:ok, supervisor} = Task.Supervisor.start_link(name: Sync.task_supervisor(root))
+    task = Task.Supervisor.async_nolink(supervisor, fn -> Process.sleep(:infinity) end)
+    on_exit(fn -> Process.exit(task.pid, :kill) end)
+    ownership = Execution.capture(task.pid)
+    result = Execution.stop_owned(ownership, System.monotonic_time(:millisecond) - 1)
+    assert {:error, _} = result
+    assert Process.alive?(task.pid)
+    {:ok, capture} = StringIO.open("")
+    IO.binwrite(capture, "partial output")
+    ref = make_ref()
+
+    pending = %{
+      run_id: 1,
+      source: "exunit",
+      args: [],
+      tied_run_ids: [],
+      output_capture: capture,
+      cleanup: %{ref: ref, pid: task.pid},
+      cleanup_timer: nil,
+      cleanup_ownership: ownership
+    }
+
+    entry = %{run_id: 2, source: "exunit", args: [], tied_run_ids: []}
+
+    state = %{
+      project: %{root: root},
+      running: nil,
+      queue: [entry],
+      pending_cleanups: [pending],
+      timer: nil
+    }
+
+    assert {:noreply, blocked} = AnalysisServer.handle_info({ref, result}, state)
+    assert blocked.running == nil
+    assert blocked.queue == [entry]
+    assert Process.alive?(task.pid)
+    assert_receive {:"$gen_cast", {:analysis_result, payload}}
+    assert payload["output"] == "partial output"
+    [retry] = blocked.pending_cleanups
+    Process.cancel_timer(retry.cleanup_timer)
+    # The completed cleanup worker is distinct from the retained analyzer.
+    retry = Map.put(retry, :cleanup, nil)
+    blocked = %{blocked | pending_cleanups: [retry]}
+
+    assert {:noreply, finished} =
+             AnalysisServer.handle_info({:cleanup_overdue, 1, task.pid}, blocked)
+
+    assert finished.pending_cleanups == []
+    assert %{run_id: 2, task: next_task} = finished.running
+    eventually(fn -> not Process.alive?(task.pid) end)
+    refute_receive {:"$gen_cast", {:analysis_result, _}}
+    Task.Supervisor.terminate_child(supervisor, next_task.pid)
+    Process.demonitor(next_task.ref, [:flush])
+  end
+
   test "a stray overdue message for a run already resolved is ignored" do
     state = %{
       project: %{root: "/tmp/not-used"},
@@ -321,7 +458,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
              AnalysisServer.handle_info({:cleanup_overdue, 1, self()}, state)
   end
 
-  defp spawn_hanging_task(capture \\ nil) do
+  defp spawn_hanging_task(capture \\ nil, hold_slot \\ false) do
     pid_file =
       Path.join(System.tmp_dir!(), "analysis_kill_test_#{Ecto.UUID.generate()}")
 
@@ -333,6 +470,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     task =
       Task.Supervisor.async_nolink(supervisor, fn ->
+        if hold_slot, do: :ok = CmsHarness.AnalysisSlots.acquire()
         env = CodeMySpec.Environments.Environment.new(:local, File.cwd!())
 
         CodeMySpec.Environments.cmd(
@@ -371,7 +509,10 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
             time.sleep(30)
             """,
             pid_file
-          ], stderr_to_stdout: true, output_capture: capture)
+          ],
+          stderr_to_stdout: true,
+          output_capture: capture
+        )
       end)
 
     pids = pid_file |> wait_for_pid_file() |> String.split()
