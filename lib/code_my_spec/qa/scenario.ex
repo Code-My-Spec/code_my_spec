@@ -23,7 +23,7 @@ defmodule CodeMySpec.Qa.Scenario do
     field :name, :string
     field :status, Ecto.Enum, values: @statuses
     field :observation, :string
-    field :blocker_issue_id, :binary_id
+    field :blocker_issue_id, Ecto.UUID
   end
 
   @doc "Changeset for a Scenario."
