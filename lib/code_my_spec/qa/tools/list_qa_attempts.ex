@@ -41,7 +41,7 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, story} <- fetch_story(scope, params.story_number) do
       attempts = Qa.list_qa_attempts(scope, story.id)
-      attempts_response(story.number, attempts)
+      attempts_response(story, attempts)
     else
       {:error, reason} ->
         error_response(reason)
@@ -52,11 +52,11 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
   def script_result(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, story} <- fetch_story(scope, params.story_number) do
-      {:ok, Enum.map(Qa.list_qa_attempts(scope, story.id), &script_row/1)}
+      {:ok, Enum.map(Qa.list_qa_attempts(scope, story.id), &script_row(&1, story))}
     end
   end
 
-  defp script_row(a) do
+  defp script_row(a, story) do
     %{
       "id" => a.id,
       "status" => to_string(a.status),
@@ -64,6 +64,7 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
       "submitted_at" => a.submitted_at && DateTime.to_iso8601(a.submitted_at),
       "parent_attempt_id" => a.parent_attempt_id,
       "stale" => a.stale,
+      "stale_because" => stale_reason(a, story),
       "issue_ids" => a.issue_ids || [],
       "scenarios" =>
         Enum.map(a.scenarios, fn s ->
@@ -84,12 +85,13 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
     end
   end
 
-  defp attempts_response(story_number, []) do
-    {:ok, "No QA attempts recorded for story #{story_number}."}
+  defp attempts_response(story, []) do
+    {:ok, "No QA attempts recorded for story #{story.number}."}
   end
 
-  defp attempts_response(story_number, attempts) do
-    body = Enum.map_join(attempts, "\n\n---\n\n", &render_attempt/1)
+  defp attempts_response(story, attempts) do
+    body = Enum.map_join(attempts, "\n\n---\n\n", &render_attempt(&1, story))
+    story_number = story.number
 
     {:ok,
      """
@@ -99,7 +101,7 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
      """}
   end
 
-  defp render_attempt(attempt) do
+  defp render_attempt(attempt, story) do
     invalidation = render_invalidation(attempt)
 
     """
@@ -108,7 +110,7 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
     agent_id:   #{attempt.agent_id || "(unknown)"}
     submitted_at: #{attempt.submitted_at}
     parent_attempt_id: #{attempt.parent_attempt_id || "none"}
-    stale: #{attempt.stale}
+    stale: #{attempt.stale}#{render_stale_reason(attempt, story)}
     #{render_review(attempt)}
     scenarios (#{length(attempt.scenarios)}):
     #{render_scenarios(attempt.scenarios)}
@@ -117,6 +119,49 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
     """
     |> String.trim_trailing()
   end
+
+  defp render_stale_reason(attempt, story) do
+    case stale_reason(attempt, story) do
+      nil -> ""
+      reason -> "\nstale_because: #{reason}"
+    end
+  end
+
+  @doc """
+  Why `attempt` is stale, or nil when it is not.
+
+  Staleness is decided when the attempt is submitted, against the story's own
+  certification at that moment (`Qa.StoryReviews`): never against main, and not
+  against the copy's HEAD. A pass is stale when what it reviewed was not what the
+  story was then certified at — it reviewed commit R (stamped when QA started,
+  because a pass takes an hour) and the story had been re-certified at C by the
+  time it submitted. This names both, compared with the story's certification
+  now (issue 746895bf).
+  """
+  @spec stale_reason(map(), map()) :: String.t() | nil
+  def stale_reason(%{stale: true} = attempt, story) do
+    reviewed = Map.get(attempt, :reviewed_commit)
+    certified = Map.get(story, :qa_ready_commit)
+
+    cond do
+      not is_binary(reviewed) ->
+        "no review was recorded for it, so it cannot be matched to a certification"
+
+      reviewed != certified and is_binary(certified) ->
+        "it reviewed commit #{reviewed}, but the story is certified at #{certified}" <>
+          " — a re-certification at a different commit supersedes a pass on the earlier one" <>
+          " unless nothing QA exercises changed between them"
+
+      is_nil(certified) ->
+        "it reviewed commit #{reviewed}, but the story is not certified for QA now"
+
+      true ->
+        "it reviewed the story's certification of #{reviewed} made at #{Map.get(attempt, :review_certified_at)}," <>
+          " which has since been replaced, or the issue fixes it saw no longer match those submitted"
+    end
+  end
+
+  def stale_reason(_attempt, _story), do: nil
 
   defp render_review(%{
          reviewed_commit: revision,
