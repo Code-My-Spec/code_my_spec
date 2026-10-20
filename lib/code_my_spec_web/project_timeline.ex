@@ -445,8 +445,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     ~H"""
     <button
       type="button"
-      phx-click="open_graph"
-      phx-target={@target}
+      phx-click="show_issues"
       data-test="issue-bar"
       data-resolved={@resolved}
       data-dismissed={@dismissed}

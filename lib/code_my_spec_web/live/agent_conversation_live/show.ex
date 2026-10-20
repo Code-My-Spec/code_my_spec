@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
+  alias CodeMySpecWeb.IssueComponents
   alias CodeMySpecWeb.ProblemCharts
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
@@ -164,6 +165,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:copy_modal_id, nil)
     |> assign(:task_modal, nil)
     |> assign(:problems_modal, nil)
+    |> assign(:issues_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -825,6 +827,37 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   def handle_event("close_problems", _params, socket),
     do: {:noreply, assign(socket, :problems_modal, nil)}
+
+  # The status bar's issue counts: the issues page's default view, compact —
+  # open, high and medium, the app's, newest first — and one picked from it.
+  def handle_event("show_issues", _params, socket) do
+    issues =
+      socket.assigns.current_scope
+      |> Issues.list_filtered(%{})
+      |> Enum.filter(
+        &(&1.status in [:incoming, :accepted] and &1.severity in [:high, :medium] and
+            &1.scope == :app)
+      )
+      |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+
+    {:noreply,
+     assign(socket, :issues_modal, %{
+       issues: Enum.take(issues, 50),
+       total: length(issues),
+       picked: nil
+     })}
+  end
+
+  def handle_event("pick_issue", %{"id" => id}, %{assigns: %{issues_modal: %{} = modal}} = socket) do
+    {:noreply,
+     assign(socket, :issues_modal, %{modal | picked: Enum.find(modal.issues, &(&1.id == id))})}
+  end
+
+  def handle_event("issues_back", _params, %{assigns: %{issues_modal: %{} = modal}} = socket),
+    do: {:noreply, assign(socket, :issues_modal, %{modal | picked: nil})}
+
+  def handle_event("close_issues", _params, socket),
+    do: {:noreply, assign(socket, :issues_modal, nil)}
 
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
@@ -1927,23 +1960,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp assigned_body(%{item: %{kind: :issue}} = assigns) do
     ~H"""
-    <p class="text-xs uppercase tracking-wide opacity-60">
-      Issue {String.slice(@item.issue.id, 0, 8)}
-    </p>
-    <h2 class="mt-1 pr-8 text-lg font-semibold text-balance">{@item.issue.title}</h2>
-    <div class="mt-2 flex flex-wrap gap-2">
-      <span class="badge badge-sm">{@item.issue.severity}</span>
-      <span class="badge badge-sm badge-ghost">{@item.issue.status}</span>
-    </div>
-    <div class="prose prose-sm mt-3 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
-      {md_html(@item.issue.description)}
-    </div>
-    <div :if={@item.issue.resolution} class="mt-4">
-      <h3 class="text-sm font-semibold">Resolution</h3>
-      <div class="prose prose-sm mt-1 max-w-none prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-pre:my-2 prose-headings:mt-4 prose-headings:mb-1">
-        {md_html(@item.issue.resolution)}
-      </div>
-    </div>
+    <IssueComponents.issue_detail issue={@item.issue} />
     """
   end
 
@@ -2260,6 +2277,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         directive={@task_modal.directive}
         project_id={@project.id}
         on_close="close_task"
+      />
+      <IssueComponents.modal
+        :if={@issues_modal}
+        issues={@issues_modal.issues}
+        total={@issues_modal.total}
+        picked={@issues_modal.picked}
+        project_id={@project.id}
+        on_pick="pick_issue"
+        on_back="issues_back"
+        on_close="close_issues"
       />
       <ProblemCharts.modal
         :if={@problems_modal}

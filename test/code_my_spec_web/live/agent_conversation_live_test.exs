@@ -1193,6 +1193,54 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       refute has_element?(view, "[data-test='story-graph-loading']")
     end
 
+    test "the issue counts open the open issues, and one opens in place with the way back", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      issue =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Card form 500s",
+          severity: :high
+        })
+
+      _low =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Typo in footer",
+          severity: :low
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      view |> element("[data-test='issue-bar']") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-test='issues-modal'] [data-test='issue-row']",
+               "Card form 500s"
+             )
+
+      refute has_element?(view, "[data-test='issues-modal']", "Typo in footer")
+
+      view |> element("[data-test='issue-row'][data-issue-id='#{issue.id}']") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-test='issues-modal'] [data-test='issue-detail']",
+               "Card form 500s"
+             )
+
+      view |> element("[data-test='issues-modal-back']") |> render_click()
+      assert has_element?(view, "[data-test='issues-modal'] [data-test='issue-row']")
+    end
+
     test "a main-role agent on another copy does not", %{
       conn: conn,
       scope: scope,

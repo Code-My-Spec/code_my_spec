@@ -6,6 +6,9 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   alias CodeMySpec.Stories
   alias CodeMySpecWeb.IssueCharts
 
+  import CodeMySpecWeb.FilterComponents
+  import CodeMySpecWeb.IssueComponents, only: [issue_card: 1]
+
   # Status and severity are each a set to show. Incoming and accepted — open —
   # by default; high and medium by default, since below is noise somebody looks
   # at on purpose.
@@ -52,45 +55,12 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     </div>
 
     <div id="issues" class="space-y-4 mt-6">
-      <div
+      <.issue_card
         :for={issue <- @issues}
-        id={"issue-#{issue.id}"}
-        class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-        phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
-      >
-        <div class="card-body py-4">
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex-1 min-w-0">
-              <h2 class="card-title text-base">{issue.title}</h2>
-              <p class="text-sm text-base-content/70 mt-1 line-clamp-2">
-                {issue.description}
-              </p>
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <.badge color={severity_color(issue.severity)}>
-                {issue.severity}
-              </.badge>
-              <.badge color={status_color(issue.status)}>
-                {issue.status}
-              </.badge>
-            </div>
-          </div>
-          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-base-content/50">
-            <span data-test="issue-created">Created {day(issue.inserted_at)}</span>
-            <span :if={issue.accepted_at} data-test="issue-accepted">
-              Accepted {day(issue.accepted_at)}
-            </span>
-            <span :if={issue.closed_at} data-test="issue-closed">
-              Closed {day(issue.closed_at)}
-            </span>
-            <span data-test="issue-updated">Updated {day(issue.updated_at)}</span>
-            <span :if={issue.story_id}>Story #{@story_numbers[issue.story_id]}</span>
-            <span :if={issue.scope != :app} class="badge badge-xs badge-outline">
-              {issue.scope}
-            </span>
-          </div>
-        </div>
-      </div>
+        issue={issue}
+        href={path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}")}
+        story_number={issue.story_id && @story_numbers[issue.story_id]}
+      />
     </div>
 
     <nav
@@ -126,94 +96,6 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     </nav>
     """
   end
-
-  attr :name, :string, required: true
-  attr :label, :string, required: true
-  attr :options, :list, required: true
-  attr :chosen, :list, required: true
-
-  # A dropdown of checkboxes. The empty hidden value is what lets every box be
-  # cleared: without it an all-unchecked form sends nothing, and nothing reads
-  # as the default.
-  defp multi_select(assigns) do
-    ~H"""
-    <div class="dropdown dropdown-end" data-test={"filter-#{@name}"}>
-      <div
-        tabindex="0"
-        role="button"
-        class="btn btn-sm btn-outline shrink-0 whitespace-nowrap font-normal"
-      >
-        {summary(@chosen, @options, @label)}
-      </div>
-      <ul
-        tabindex="0"
-        class="dropdown-content menu z-10 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow"
-      >
-        <input type="hidden" name={"#{@name}[]"} value="" />
-        <li :for={option <- @options}>
-          <label class="flex items-center gap-2">
-            <input
-              type="checkbox"
-              name={"#{@name}[]"}
-              value={option}
-              checked={option in @chosen}
-              class="checkbox checkbox-xs"
-            />
-            {String.capitalize(option)}
-          </label>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :name, :string, required: true
-  attr :options, :list, required: true
-  attr :chosen, :string, required: true
-  attr :label, :any, required: true, doc: "option -> its name"
-
-  # The multi-select's dropdown with radios, so a one-of picker looks the same.
-  defp single_select(assigns) do
-    ~H"""
-    <div class="dropdown dropdown-end" data-test={"filter-#{@name}"}>
-      <div
-        tabindex="0"
-        role="button"
-        class="btn btn-sm btn-outline shrink-0 whitespace-nowrap font-normal"
-      >
-        {@label.(@chosen)}
-      </div>
-      <ul
-        tabindex="0"
-        class="dropdown-content menu z-10 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow"
-      >
-        <li :for={option <- @options}>
-          <label class="flex items-center gap-2">
-            <input
-              type="radio"
-              name={@name}
-              value={option}
-              checked={option == @chosen}
-              class="radio radio-xs"
-            />
-            {@label.(option)}
-          </label>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  # Short enough for the header: one choice by name, several as the first and
-  # a count. `label` stands in for the field when the choice says nothing.
-  defp summary(chosen, options, label) when length(chosen) == length(options),
-    do: "All #{String.downcase(label)}"
-
-  defp summary([], _options, label), do: "No #{String.downcase(label)}"
-  defp summary([one], _options, _label), do: String.capitalize(one)
-
-  defp summary([first | rest], _options, _label),
-    do: "#{String.capitalize(first)} +#{length(rest)}"
 
   @impl true
   def mount(_params, _session, socket) do
@@ -423,20 +305,4 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   # `list_project_stories/1`, which would preload `:criteria` and `:tags` for
   # the whole project to hand back two integers per row.
   defp story_numbers(scope), do: Stories.story_numbers(scope)
-
-  defp day(%DateTime{} = at), do: Calendar.strftime(at, "%b %-d, %Y")
-  defp day(_at), do: "—"
-
-  defp severity_color(:critical), do: "error"
-  defp severity_color(:high), do: "warning"
-  defp severity_color(:medium), do: "info"
-  defp severity_color(:low), do: "ghost"
-  defp severity_color(:info), do: "ghost"
-  defp severity_color(_), do: "ghost"
-
-  defp status_color(:incoming), do: "warning"
-  defp status_color(:accepted), do: "info"
-  defp status_color(:resolved), do: "success"
-  defp status_color(:dismissed), do: "ghost"
-  defp status_color(_), do: "ghost"
 end
