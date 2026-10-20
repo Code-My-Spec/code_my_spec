@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1128.Criterion2288Spex do
     work
   end
 
-  defp message(context, text, extra \\ %{}) do
+  defp message(context, text, extra) do
     ToolLibrary.run(
       "message_agent",
       Map.merge(%{"agent_id" => context.agent_id, "message" => text}, extra),
