@@ -358,9 +358,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       ]}>
         <.icon name="hero-arrow-path" class="size-3" />{@cycles}
       </span>
-      <span class="flex items-center gap-0.5 opacity-60">
-        <.icon name="hero-bars-arrow-down" class="size-3" />{@summary.depth}
-      </span>
+      <span data-test="architecture-depth" class="opacity-60">{@summary.depth} deep</span>
     </.link>
     """
   end
