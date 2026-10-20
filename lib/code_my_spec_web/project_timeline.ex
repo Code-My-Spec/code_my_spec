@@ -124,22 +124,20 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         @variant == :strip && "border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
       ]}
     >
-      <div class="flex w-full items-center gap-4">
-        <%!-- The sequence the project runs through: its gates, the stories,
-        its closing gates. --%>
-        <ol class="flex min-w-0 flex-1 items-center gap-2">
-          <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
-            <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
-          </li>
-          <li data-test="timeline-band" data-band="stories" class="min-w-24 flex-1">
-            <.story_chart stories={@bands.stories} />
-          </li>
-          <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
-            <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
-          </li>
-        </ol>
+      <%!-- A grid, so the stories chart always keeps a track of its own:
+      gates, the chart taking what is left, gates, then the counts. --%>
+      <div class="grid w-full grid-cols-[auto_minmax(6rem,1fr)_auto_auto] items-center gap-3">
+        <div data-test="timeline-band" data-band="early" class="flex items-center gap-1">
+          <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
+        </div>
+        <div data-test="timeline-band" data-band="stories" class="min-w-0">
+          <.story_chart stories={@bands.stories} />
+        </div>
+        <div data-test="timeline-band" data-band="late" class="flex items-center gap-1">
+          <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
+        </div>
         <%!-- Where it stands, counted. --%>
-        <ul class="flex shrink-0 items-center gap-4">
+        <ul class="flex items-center gap-4">
           <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
           </li>
