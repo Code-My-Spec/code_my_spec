@@ -94,7 +94,6 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
       Generate the implementation for a Phoenix component.
 
       Project: #{project.name}
-      Project Description: #{project.description}
       Component Name: #{component.name}
       Component Description: #{component.description || "No description provided"}
       Type: #{component.type}

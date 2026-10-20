@@ -120,7 +120,6 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
       end
 
       Project: #{project.name}
-      Project Description: #{project.description}
       Component Name: #{component.name}
       Component Type: #{component.type}
 
