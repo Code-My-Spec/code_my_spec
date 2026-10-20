@@ -66,7 +66,11 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       incoming: incoming,
       accepted: accepted
     } do
-      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
+      {:ok, live_view, html} =
+        live(
+          conn,
+          ~p"/app/projects/#{project.id}/issues?#{[severity: ~w(critical high medium low info)]}"
+        )
 
       # Both visible initially
       assert html =~ incoming.title
@@ -75,7 +79,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       # Filter to accepted only
       html =
         live_view
-        |> form("form[phx-change='filter']", %{status: "accepted"})
+        |> form("form[phx-change='filter']", %{status: ["accepted"]})
         |> render_change()
 
       assert html =~ accepted.title
@@ -93,7 +97,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       # Filter to critical only
       html =
         live_view
-        |> form("form[phx-change='filter']", %{severity: "critical"})
+        |> form("form[phx-change='filter']", %{severity: ["critical"]})
         |> render_change()
 
       assert html =~ accepted.title
@@ -155,12 +159,16 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
       html =
         view
-        |> form("form[phx-change='filter']", %{status: "all"})
+        |> form("form[phx-change='filter']", %{status: ~w(incoming accepted resolved dismissed)})
         |> render_change()
 
       assert html =~ ctx.dismissed.title
       assert html =~ ctx.resolved.title
-      assert_patch(view, ~p"/app/projects/#{ctx.project.id}/issues?status=all")
+
+      assert_patch(
+        view,
+        ~p"/app/projects/#{ctx.project.id}/issues?#{[status: ~w(incoming accepted resolved dismissed), severity: ~w(high medium)]}"
+      )
 
       ids = listed_ids(html)
 
@@ -169,7 +177,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
       html =
         view
-        |> form("form[phx-change='filter']", %{status: "resolved"})
+        |> form("form[phx-change='filter']", %{status: ["resolved"]})
         |> render_change()
 
       assert listed_ids(html) == ["issue-#{ctx.resolved.id}"]

@@ -38,9 +38,9 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       issue_fixture(scope, %{title: "wrong severity", severity: :low})
 
       socket = build_socket(project, scope)
-      {:noreply, socket} = Index.handle_params(%{"severity" => "high"}, "/", socket)
+      {:noreply, socket} = Index.handle_params(%{"severity" => ["high"]}, "/", socket)
 
-      assert socket.assigns.filter_severity == "high"
+      assert socket.assigns.filter_severity == ["high"]
       assert Enum.map(socket.assigns.issues, & &1.title) == ["match"]
     end
 
@@ -53,10 +53,10 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       socket = build_socket(project, scope)
 
       {:noreply, socket} =
-        Index.handle_params(%{"status" => "accepted", "severity" => "high"}, "/", socket)
+        Index.handle_params(%{"status" => ["accepted"], "severity" => ["high"]}, "/", socket)
 
-      assert socket.assigns.filter_status == "accepted"
-      assert socket.assigns.filter_severity == "high"
+      assert socket.assigns.filter_status == ["accepted"]
+      assert socket.assigns.filter_severity == ["high"]
       assert Enum.map(socket.assigns.issues, & &1.title) == ["match"]
     end
 
@@ -69,9 +69,44 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       {:noreply, socket} =
         Index.handle_params(%{"status" => "", "severity" => "bogus"}, "/", socket)
 
-      assert socket.assigns.filter_status == "open"
-      assert socket.assigns.filter_severity == "all"
+      assert socket.assigns.filter_status == ~w(incoming accepted)
+      assert socket.assigns.filter_severity == ~w(high medium)
       assert Enum.map(socket.assigns.issues, & &1.title) == ["kept"]
+    end
+
+    test "severity is a set, high and medium unless asked otherwise" do
+      {project, scope} = setup_local_project()
+
+      for {title, severity} <- [
+            {"crit", :critical},
+            {"high", :high},
+            {"med", :medium},
+            {"low", :low}
+          ],
+          do: issue_fixture(scope, %{title: title, severity: severity})
+
+      socket = build_socket(project, scope)
+      {:noreply, socket} = Index.handle_params(%{}, "/", socket)
+      assert socket.assigns.issues |> Enum.map(& &1.title) |> Enum.sort() == ["high", "med"]
+
+      {:noreply, socket} =
+        Index.handle_params(%{"severity" => ["critical", "low"]}, "/", socket)
+
+      assert socket.assigns.issues |> Enum.map(& &1.title) |> Enum.sort() == ["crit", "low"]
+
+      {:noreply, socket} = Index.handle_params(%{"severity" => "none"}, "/", socket)
+      assert socket.assigns.issues == []
+    end
+
+    test "a filter left out of the URL goes back to its default" do
+      {project, scope} = setup_local_project()
+      socket = build_socket(project, scope)
+
+      {:noreply, socket} = Index.handle_params(%{"range" => "7d"}, "/", socket)
+      assert socket.assigns.range == "7d"
+
+      {:noreply, socket} = Index.handle_params(%{}, "/", socket)
+      assert socket.assigns.range == "30d"
     end
 
     test "scope is filterable again, as it was on the local index" do
@@ -87,14 +122,14 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       assert Enum.map(socket.assigns.issues, & &1.title) == ["qa issue"]
     end
 
-    test "empty params default to open issues, any severity and scope" do
+    test "empty params default to open issues, high and medium, any scope" do
       {project, scope} = setup_local_project()
 
       socket = build_socket(project, scope)
       {:noreply, socket} = Index.handle_params(%{}, "/", socket)
 
-      assert socket.assigns.filter_status == "open"
-      assert socket.assigns.filter_severity == "all"
+      assert socket.assigns.filter_status == ~w(incoming accepted)
+      assert socket.assigns.filter_severity == ~w(high medium)
       assert socket.assigns.filter_scope == "all"
     end
 
@@ -213,8 +248,10 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
         section: :issues,
         page_title: "Issues",
         issues: [],
-        filter_status: "open",
-        filter_severity: "all",
+        filter_status: ~w(incoming accepted),
+        filter_severity: ~w(high medium),
+        range: "30d",
+        chart: "status",
         filter_scope: "all",
         status_options: ~w(open all incoming accepted dismissed resolved),
         severity_options: ~w(all critical high medium low info),

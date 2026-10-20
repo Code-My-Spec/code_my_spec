@@ -3,13 +3,16 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
+  alias CodeMySpecWeb.IssueCharts
 
-  # "open" is incoming + accepted, the default — what `list_issues` means by
-  # open. Resolved and dismissed show only when asked for.
-  @statuses ~w(open all incoming accepted dismissed resolved)
-  @open [:incoming, :accepted]
+  # Status and severity are each a set to show. Incoming and accepted — open —
+  # by default; high and medium by default, since below is noise somebody looks
+  # at on purpose.
+  @statuses ~w(incoming accepted resolved dismissed)
+  @default_statuses ~w(incoming accepted)
   @status_order [:incoming, :accepted, :dismissed, :resolved]
-  @severities ~w(all critical high medium low info)
+  @severities ~w(critical high medium low info)
+  @default_severities ~w(high medium)
   # The local index this view replaced could filter by scope; the cloud one
   # could not, so the merge quietly dropped it. Restored here rather than
   # left as a capability the move cost us.
@@ -21,17 +24,19 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     <.header>
       Issues
       <:actions>
-        <form id="issues-filter" phx-change="filter" class="flex items-center gap-2">
-          <select class="select select-sm select-bordered" name="status">
-            <option :for={s <- @status_options} value={s} selected={s == @filter_status}>
-              {String.capitalize(s)}
-            </option>
-          </select>
-          <select class="select select-sm select-bordered" name="severity">
-            <option :for={s <- @severity_options} value={s} selected={s == @filter_severity}>
-              {String.capitalize(s)}
-            </option>
-          </select>
+        <form id="issues-filter" phx-change="filter" class="flex flex-wrap items-center gap-2">
+          <.multi_select
+            name="status"
+            label="Status"
+            options={@status_options}
+            chosen={@filter_status}
+          />
+          <.multi_select
+            name="severity"
+            label="Severity"
+            options={@severity_options}
+            chosen={@filter_severity}
+          />
           <select class="select select-sm select-bordered" name="scope">
             <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
               {String.capitalize(s)}
@@ -40,6 +45,10 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
         </form>
       </:actions>
     </.header>
+
+    <div class="mt-6">
+      <IssueCharts.open_over_time issues={@chart_issues} range={@range} view={@chart} event="chart" />
+    </div>
 
     <div :if={@issues == []} class="text-center py-12 text-base-content/60">
       No issues found.
@@ -79,10 +88,15 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
                 </.badge>
               </div>
             </div>
-            <div
-              :if={issue.story_id || issue.scope != :app}
-              class="flex gap-2 mt-2 text-xs text-base-content/50"
-            >
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-base-content/50">
+              <span data-test="issue-created">Created {day(issue.inserted_at)}</span>
+              <span :if={issue.accepted_at} data-test="issue-accepted">
+                Accepted {day(issue.accepted_at)}
+              </span>
+              <span :if={issue.closed_at} data-test="issue-closed">
+                Closed {day(issue.closed_at)}
+              </span>
+              <span data-test="issue-updated">Updated {day(issue.updated_at)}</span>
               <span :if={issue.story_id}>Story #{@story_numbers[issue.story_id]}</span>
               <span :if={issue.scope != :app} class="badge badge-xs badge-outline">
                 {issue.scope}
@@ -95,6 +109,57 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     """
   end
 
+  attr :name, :string, required: true
+  attr :label, :string, required: true
+  attr :options, :list, required: true
+  attr :chosen, :list, required: true
+
+  # A dropdown of checkboxes. The empty hidden value is what lets every box be
+  # cleared: without it an all-unchecked form sends nothing, and nothing reads
+  # as the default.
+  defp multi_select(assigns) do
+    ~H"""
+    <div class="dropdown dropdown-end" data-test={"filter-#{@name}"}>
+      <div
+        tabindex="0"
+        role="button"
+        class="btn btn-sm btn-outline shrink-0 whitespace-nowrap font-normal"
+      >
+        {summary(@chosen, @options, @label)}
+      </div>
+      <ul
+        tabindex="0"
+        class="dropdown-content menu z-10 mt-1 w-44 rounded-box border border-base-300 bg-base-100 p-2 shadow"
+      >
+        <input type="hidden" name={"#{@name}[]"} value="" />
+        <li :for={option <- @options}>
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              name={"#{@name}[]"}
+              value={option}
+              checked={option in @chosen}
+              class="checkbox checkbox-xs"
+            />
+            {String.capitalize(option)}
+          </label>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  # Short enough for the header: one choice by name, several as the first and
+  # a count. `label` stands in for the field when the choice says nothing.
+  defp summary(chosen, options, label) when length(chosen) == length(options),
+    do: "All #{String.downcase(label)}"
+
+  defp summary([], _options, label), do: "No #{String.downcase(label)}"
+  defp summary([one], _options, _label), do: String.capitalize(one)
+
+  defp summary([first | rest], _options, _label),
+    do: "#{String.capitalize(first)} +#{length(rest)}"
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -105,26 +170,29 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      socket
      |> assign(:section, :issues)
      |> assign(:page_title, "Issues")
-     |> assign(:filter_status, "open")
-     |> assign(:filter_severity, "all")
+     |> assign(:filter_status, @default_statuses)
+     |> assign(:filter_severity, @default_severities)
      |> assign(:filter_scope, "all")
+     |> assign(:range, "30d")
+     |> assign(:chart, "status")
      |> assign(:status_options, @statuses)
      |> assign(:scope_options, @scopes)
      |> assign(:severity_options, @severities)}
   end
 
   # Filters live in the query string, not just in assigns — a filtered list is
-  # then a link you can send someone, and it survives a reload.
+  # then a link you can send someone, and it survives a reload. A filter left
+  # out of the URL is at its default (the patch drops defaults), not at
+  # whatever was showing before.
   @impl true
   def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
     {:noreply,
      socket
-     |> assign(:filter_status, param(params["status"], @statuses, socket.assigns.filter_status))
-     |> assign(
-       :filter_severity,
-       param(params["severity"], @severities, socket.assigns.filter_severity)
-     )
-     |> assign(:filter_scope, param(params["scope"], @scopes, socket.assigns.filter_scope))
+     |> assign(:filter_status, set_param(params["status"], @statuses, @default_statuses))
+     |> assign(:filter_severity, set_param(params["severity"], @severities, @default_severities))
+     |> assign(:filter_scope, param(params["scope"], @scopes, "all"))
+     |> assign(:range, param(params["range"], IssueCharts.ranges(), "30d"))
+     |> assign(:chart, param(params["chart"], IssueCharts.views(), "status"))
      |> load_issues()}
   end
 
@@ -136,48 +204,101 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
   defp param(_value, _allowed, fallback), do: fallback
 
+  # A list in the URL (`severity[]=high&severity[]=medium`); "none" for an
+  # empty set, which is a choice and not the absence of one.
+  defp set_param("none", _allowed, _default), do: []
+
+  defp set_param(value, allowed, default) when is_binary(value),
+    do: set_param([value], allowed, default)
+
+  defp set_param(values, allowed, default) when is_list(values) do
+    case Enum.filter(allowed, &(&1 in values)) do
+      [] -> default
+      chosen -> chosen
+    end
+  end
+
+  defp set_param(_value, _allowed, default), do: default
+
   @impl true
   def handle_event("filter", params, socket) do
-    query =
-      [
-        status: params["status"] || socket.assigns.filter_status,
-        severity: params["severity"] || socket.assigns.filter_severity,
-        scope: params["scope"] || socket.assigns.filter_scope
-      ]
-      |> Enum.reject(fn {k, v} -> v in [nil, "", default(k)] end)
+    a = socket.assigns
 
     {:noreply,
-     push_patch(socket,
-       to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/issues?#{query}")
+     patch(socket,
+       status: chosen(params["status"], @statuses) || a.filter_status,
+       severity: chosen(params["severity"], @severities) || a.filter_severity,
+       scope: params["scope"] || a.filter_scope,
+       range: a.range,
+       chart: a.chart
      )}
   end
+
+  # The chart's range or view; the rest of the query stays as it is.
+  def handle_event("chart", params, socket) do
+    a = socket.assigns
+
+    {:noreply,
+     patch(socket,
+       status: a.filter_status,
+       severity: a.filter_severity,
+       scope: a.filter_scope,
+       range: params["range"] || a.range,
+       chart: params["view"] || a.chart
+     )}
+  end
+
+  defp chosen(nil, _allowed), do: nil
+  defp chosen(value, allowed) when is_binary(value), do: chosen([value], allowed)
+  defp chosen(values, allowed) when is_list(values), do: Enum.filter(allowed, &(&1 in values))
+
+  defp patch(socket, query) do
+    # The two sets always travel, defaults included, so a link always says what
+    # it shows; the single values only when they are not the default.
+    query =
+      query
+      |> Enum.reject(fn {key, value} -> not is_list(value) and value == default(key) end)
+      |> Enum.map(fn
+        {key, []} -> {key, "none"}
+        pair -> pair
+      end)
+
+    push_patch(socket, to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/issues?#{query}"))
+  end
+
+  defp default(:range), do: "30d"
+  defp default(:chart), do: "status"
+  defp default(_key), do: "all"
 
   @impl true
   def handle_info({_action, %Issues.Issue{}}, socket) do
     {:noreply, load_issues(socket)}
   end
 
-  defp default(:status), do: "open"
-  defp default(_key), do: "all"
-
   defp load_issues(socket) do
     scope = socket.assigns.current_scope
-    filters = build_filters(socket.assigns)
+    statuses = Enum.map(socket.assigns.filter_status, &String.to_existing_atom/1)
+    severities = Enum.map(socket.assigns.filter_severity, &String.to_existing_atom/1)
+
+    filters =
+      if socket.assigns.filter_scope == "all",
+        do: %{},
+        else: %{scope: String.to_existing_atom(socket.assigns.filter_scope)}
 
     issues =
       scope
-      |> Issues.list_filtered(Map.new(filters))
-      |> only_open(socket.assigns.filter_status)
+      |> Issues.list_filtered(filters)
+      |> Enum.filter(&(&1.status in statuses and &1.severity in severities))
       |> Enum.sort_by(&{status_rank(&1.status), -DateTime.to_unix(&1.inserted_at, :microsecond)})
 
     socket
     |> assign(:issues, issues)
+    # Every issue, whatever the filters: the chart is the project's issues
+    # over time.
+    |> assign(:chart_issues, Issues.list_filtered(scope, %{}))
     |> assign(:groups, Enum.chunk_by(issues, & &1.status) |> Enum.map(&{hd(&1).status, &1}))
     |> assign(:story_numbers, story_numbers(scope))
   end
-
-  defp only_open(issues, "open"), do: Enum.filter(issues, &(&1.status in @open))
-  defp only_open(issues, _status), do: issues
 
   defp status_rank(status),
     do: Enum.find_index(@status_order, &(&1 == status)) || length(@status_order)
@@ -198,15 +319,8 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   # the whole project to hand back two integers per row.
   defp story_numbers(scope), do: Stories.story_numbers(scope)
 
-  defp build_filters(assigns) do
-    []
-    |> maybe_add(:status, assigns.filter_status)
-    |> maybe_add(:severity, assigns.filter_severity)
-    |> maybe_add(:scope, assigns.filter_scope)
-  end
-
-  defp maybe_add(filters, _key, value) when value in ["all", "open"], do: filters
-  defp maybe_add(filters, key, value), do: [{key, String.to_existing_atom(value)} | filters]
+  defp day(%DateTime{} = at), do: Calendar.strftime(at, "%b %-d, %Y")
+  defp day(_at), do: "—"
 
   defp severity_color(:critical), do: "error"
   defp severity_color(:high), do: "warning"
