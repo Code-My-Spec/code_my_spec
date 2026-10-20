@@ -32,6 +32,15 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   describe "Index" do
     setup [:create_issue]
 
+    # Rendered through a live mount: the page carries the app layout, whose
+    # notifications dropdown is a live component.
+    test "wraps the filter selects in a form so phx-change fires", %{project: project, conn: conn} do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
+
+      assert html =~ ~r/<form[^>]+phx-change="filter"/,
+             ~s(expected the filter selects to be wrapped in a <form phx-change="filter"> so events fire on bare-select change)
+    end
+
     test "lists all issues", %{project: project, conn: conn, issue: issue} do
       {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 

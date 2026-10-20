@@ -200,19 +200,6 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
     end
   end
 
-  describe "render" do
-    test "wraps the filter selects in a form so phx-change fires" do
-      {project, scope} = setup_local_project()
-      socket = build_socket(project, scope)
-      {:noreply, socket} = Index.handle_params(%{}, "/", socket)
-
-      html = Phoenix.LiveViewTest.rendered_to_string(Index.render(socket.assigns))
-
-      assert html =~ ~r/<form[^>]+phx-change="filter"/,
-             ~s(expected the filter selects to be wrapped in a <form phx-change="filter"> so events fire on bare-select change)
-    end
-  end
-
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
