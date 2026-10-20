@@ -11,6 +11,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
   """
   use CodeMySpecWeb, :html
 
+  alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Utils.MapAccess
 
   @doc """
@@ -102,7 +103,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
   end
 
   def node_detail(assigns) do
-    key = CodeMySpec.Requirements.GraphProjector.key(assigns.node)
+    key = GraphProjector.key(assigns.node)
 
     assigns =
       assign(assigns,
