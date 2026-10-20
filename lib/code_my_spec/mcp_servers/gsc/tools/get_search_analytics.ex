@@ -9,9 +9,16 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetSearchAnalytics do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :days, :integer, description: "Days to look back (default 28)"
-    field :dimensions, :string, description: "Comma-separated dimensions: query, page, device, country, date (default query)"
+
+    field :dimensions, :string,
+      description:
+        "Comma-separated dimensions: query, page, device, country, date (default query)"
+
     field :row_limit, :integer, description: "Rows to return (default 20, max 500)"
   end
 
@@ -28,8 +35,11 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetSearchAnalytics do
          {:ok, data} <- Gsc.get_search_analytics(token, params.site_url, opts) do
       {:reply, GoogleTools.ok("Search analytics for #{params.site_url}.", data), frame}
     else
-      {:error, {:gsc_error, 404, _}} -> {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
-      {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
+      {:error, {:gsc_error, 404, _}} ->
+        {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
+
+      {:error, reason} ->
+        {:reply, GoogleTools.error(reason), frame}
     end
   end
 end

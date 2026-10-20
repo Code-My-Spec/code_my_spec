@@ -17,7 +17,8 @@ defmodule CodeMySpecWeb.ProjectLive.Components.ProjectBreadcrumb do
   attr :current_path, :string, default: "/"
 
   def project_breadcrumb(assigns) do
-    assigns = assign_new(assigns, :current_project, fn -> resolve_current_project(assigns.scope) end)
+    assigns =
+      assign_new(assigns, :current_project, fn -> resolve_current_project(assigns.scope) end)
 
     ~H"""
     <div class="breadcrumbs text-sm">

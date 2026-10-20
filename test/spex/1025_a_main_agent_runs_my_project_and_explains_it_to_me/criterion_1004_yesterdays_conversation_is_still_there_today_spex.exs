@@ -42,7 +42,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2916Spex do
     :ok
   end
 
-  spex "The main agent picks up the same conversation every time, however long it has been", criterion: 1004 do
+  spex "The main agent picks up the same conversation every time, however long it has been",
+    criterion: 1004 do
     scenario "Yesterday's conversation is still there today" do
       given_ "I talked to the main agent yesterday about my project", context do
         context = given_a_main_checkout(context, "spex_2916")

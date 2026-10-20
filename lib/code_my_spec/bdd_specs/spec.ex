@@ -26,7 +26,15 @@ defmodule CodeMySpec.BddSpecs.Spec do
         }
 
   @derive {Jason.Encoder,
-           only: [:name, :description, :file_path, :story_number, :criterion_id, :tags, :scenarios]}
+           only: [
+             :name,
+             :description,
+             :file_path,
+             :story_number,
+             :criterion_id,
+             :tags,
+             :scenarios
+           ]}
   defstruct name: nil,
             description: nil,
             file_path: nil,
@@ -122,6 +130,8 @@ defmodule CodeMySpec.BddSpecs.Spec do
 
   defp apply_scenario_changes(scenarios), do: scenarios
 
-  defp apply_scenario_change(%Ecto.Changeset{} = cs), do: Ecto.Changeset.apply_action!(cs, :insert)
+  defp apply_scenario_change(%Ecto.Changeset{} = cs),
+    do: Ecto.Changeset.apply_action!(cs, :insert)
+
   defp apply_scenario_change(scenario), do: scenario
 end

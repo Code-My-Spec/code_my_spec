@@ -88,7 +88,8 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     end
 
     test "a page broken by the outage fails even if the widget marks itself unavailable" do
-      body = ~s(<html><body>Application error<div data-cms-widget data-cms-widget-state="unavailable"></div></body></html>)
+      body =
+        ~s(<html><body>Application error<div data-cms-widget data-cms-widget-state="unavailable"></div></body></html>)
 
       assert {:error, %{page_usable: false}} =
                Widget.probe_degraded("https://sams-site.com", fetch: page(body))
@@ -281,7 +282,9 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
       post = fn _url, _key, probe -> {:ok, %{status: 202, probe: probe, body: %{}}} end
 
       assert {:ok, %{probe: first}} = Widget.trigger_message("https://a.example", "k", post: post)
-      assert {:ok, %{probe: second}} = Widget.trigger_message("https://a.example", "k", post: post)
+
+      assert {:ok, %{probe: second}} =
+               Widget.trigger_message("https://a.example", "k", post: post)
 
       refute first == second
     end

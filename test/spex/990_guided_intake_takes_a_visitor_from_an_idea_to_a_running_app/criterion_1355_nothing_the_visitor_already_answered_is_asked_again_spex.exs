@@ -128,7 +128,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3407Spex do
       flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
 
-  spex "The interview's first question is written with the shaping answers already in hand", criterion: 1355 do
+  spex "The interview's first question is written with the shaping answers already in hand",
+    criterion: 1355 do
     scenario "Nothing the visitor already answered is asked again" do
       given_ "a visitor who described their idea and answered the shaping questions",
              context do

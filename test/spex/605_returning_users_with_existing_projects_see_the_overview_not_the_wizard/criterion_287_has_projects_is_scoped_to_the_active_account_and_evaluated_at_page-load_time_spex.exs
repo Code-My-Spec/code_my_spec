@@ -19,7 +19,8 @@ defmodule CodeMySpecSpex.Story605.Criterion5510Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  spex "Switching to an empty account re-shows the project-name form on refresh", criterion: 287 do
+  spex "Switching to an empty account re-shows the project-name form on refresh",
+    criterion: 287 do
     scenario "Switching from a populated account to an empty one re-shows the form on refresh" do
       given_ :registered_user_with_magic_link
       given_ :empty_state_user_on_onboarding

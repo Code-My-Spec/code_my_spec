@@ -30,7 +30,8 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
 
   setup :set_deploy_key
 
-  spex "A complete manifest parses and drives the sync; an incomplete one aborts", criterion: 480 do
+  spex "A complete manifest parses and drives the sync; an incomplete one aborts",
+    criterion: 480 do
     scenario "Well-formed manifest parses into the expected fields" do
       given_ "a well-formed manifest and a hash-matching blob are served", context do
         blob = [content_row("welcome", "Welcome Post")]

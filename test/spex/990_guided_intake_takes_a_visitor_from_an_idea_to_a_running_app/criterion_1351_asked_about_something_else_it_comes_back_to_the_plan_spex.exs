@@ -115,7 +115,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3403Spex do
       flunk("no Anthropic key. Set ANTHROPIC_API_KEY to re-record.")
   end
 
-  spex "An answer that is not about the application does not move the plan forward", criterion: 1351 do
+  spex "An answer that is not about the application does not move the plan forward",
+    criterion: 1351 do
     scenario "Asked about something else, it comes back to the plan" do
       given_ "a visitor part way through intake, having just been asked a question",
              context do

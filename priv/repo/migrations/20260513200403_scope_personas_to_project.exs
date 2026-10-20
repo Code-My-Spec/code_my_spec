@@ -70,7 +70,6 @@ defmodule CodeMySpec.Repo.Migrations.ScopePersonasToProject do
 
   def down do
     raise Ecto.MigrationError,
-      message:
-        "Down migration for ScopePersonasToProject is not supported — it deletes data."
+      message: "Down migration for ScopePersonasToProject is not supported — it deletes data."
   end
 end

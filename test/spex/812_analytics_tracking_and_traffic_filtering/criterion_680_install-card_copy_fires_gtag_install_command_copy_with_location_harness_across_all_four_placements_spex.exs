@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story812.Criterion6535Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  spex "Install-card copy fires gtag install_command_copy with location + harness across all four placements", criterion: 680 do
+  spex "Install-card copy fires gtag install_command_copy with location + harness across all four placements",
+    criterion: 680 do
     scenario "all four install-card placements render install_command_copy with harness + location" do
       given_ "the rendered install page that hosts the install cards", context do
         install = html_response(get(context.conn, "/install"), 200)

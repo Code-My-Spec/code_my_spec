@@ -78,5 +78,7 @@ defmodule CodeMySpec.Agents.TheStopDecisionsDispositionToolsAreCarriedByEveryRol
   end
 
   defp directive_block([block], _source), do: block
-  defp directive_block(_miss, source), do: flunk("could not find the {:task, count} directive in #{source}")
+
+  defp directive_block(_miss, source),
+    do: flunk("could not find the {:task, count} directive in #{source}")
 end

@@ -72,7 +72,10 @@ defmodule CodeMySpecWeb.ResendWebhookControllerTest do
     assert email.direction == :inbound
   end
 
-  test "a bad signature is rejected with 400 and nothing is routed", %{conn: conn, mailbox: mailbox} do
+  test "a bad signature is rejected with 400 and nothing is routed", %{
+    conn: conn,
+    mailbox: mailbox
+  } do
     body = event_body()
 
     conn =

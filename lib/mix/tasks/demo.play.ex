@@ -45,7 +45,8 @@ defmodule Mix.Tasks.Demo.Play do
   def run(argv) do
     {opts, paths, _} = OptionParser.parse(argv, strict: @switches)
 
-    path = List.first(paths) || Mix.raise("usage: mix demo.play PATH [--delay MS --from N --to N]")
+    path =
+      List.first(paths) || Mix.raise("usage: mix demo.play PATH [--delay MS --from N --to N]")
 
     {:ok, _} = Application.ensure_all_started(:req)
 

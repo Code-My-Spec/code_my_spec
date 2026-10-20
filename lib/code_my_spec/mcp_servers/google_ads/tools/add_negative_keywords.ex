@@ -7,14 +7,20 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.AddNegativeKeywords do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string,
+      required: true,
+      description: "Customer ID (e.g. \"123-456-7890\")"
+
     field :campaign_resource_name, :string,
       required: true,
       description: "Full campaign resource name, e.g. customers/123/campaigns/456"
+
     field :keywords, {:list, :map},
       required: true,
       description: "List of {text, match_type} where match_type is EXACT, PHRASE, or BROAD"
-    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
+
+    field :login_customer_id, :string,
+      description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true
@@ -28,7 +34,8 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.AddNegativeKeywords do
              params.keywords,
              Tools.write_opts(params)
            ) do
-      {:reply, GoogleTools.ok("Added #{length(params.keywords)} negative keyword(s).", data), frame}
+      {:reply, GoogleTools.ok("Added #{length(params.keywords)} negative keyword(s).", data),
+       frame}
     else
       {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
     end

@@ -34,7 +34,10 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     Req.Test.set_req_test_to_shared()
     Application.put_env(:code_my_spec, :embedding_serving, CodeMySpecTest.FakeEmbeddingServing)
     Application.put_env(:code_my_spec, HexPackageFetch, plug: {Req.Test, HexPackageFetch})
-    start_supervised!({FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend})
+
+    start_supervised!(
+      {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: FLAME.LocalBackend}
+    )
 
     on_exit(fn ->
       Application.delete_env(:code_my_spec, :embedding_serving)
@@ -184,7 +187,11 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     test "a differently-versioned row with the same path does not block storing this version", %{
       scope: scope
     } do
-      tarball = HexTarballFixtures.build(%{"lib/race.ex" => "defmodule Race do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/race.ex" => "defmodule Race do\n  @moduledoc \"hi\"\nend\n"
+        })
+
       seed_dependency(scope, "race_pkg", "1.0.0", tarball)
       stub_tarball("race_pkg", "1.0.0", tarball)
 
@@ -215,7 +222,8 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     test "a package with no documented modules is marked no_docs, not retried forever", %{
       scope: scope
     } do
-      tarball = HexTarballFixtures.build(%{"lib/undocumented.ex" => "defmodule Undocumented do\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{"lib/undocumented.ex" => "defmodule Undocumented do\nend\n"})
 
       seed_dependency(scope, "bare_pkg", "2.0.0", tarball)
       stub_tarball("bare_pkg", "2.0.0", tarball)
@@ -231,8 +239,15 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     test "a checksum mismatch is marked failed, not embedded from untrusted bytes", %{
       scope: scope
     } do
-      real_tarball = HexTarballFixtures.build(%{"lib/evil.ex" => "defmodule Evil do\n  @moduledoc \"nope\"\nend\n"})
-      wrong_tarball = HexTarballFixtures.build(%{"lib/other.ex" => "defmodule Other do\n  @moduledoc \"swapped\"\nend\n"})
+      real_tarball =
+        HexTarballFixtures.build(%{
+          "lib/evil.ex" => "defmodule Evil do\n  @moduledoc \"nope\"\nend\n"
+        })
+
+      wrong_tarball =
+        HexTarballFixtures.build(%{
+          "lib/other.ex" => "defmodule Other do\n  @moduledoc \"swapped\"\nend\n"
+        })
 
       seed_dependency(scope, "swapped_pkg", "1.0.0", real_tarball)
       stub_tarball("swapped_pkg", "1.0.0", wrong_tarball)
@@ -243,12 +258,17 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
                Repo.get_by(DocPackage, package: "swapped_pkg", version: "1.0.0")
 
       assert error =~ "checksum_mismatch"
+
       assert from(e in DocEmbedding, where: e.package == "swapped_pkg", select: e.id)
              |> Repo.all() == []
     end
 
     test "hex.pm unreachable leaves the package pending for the next sweep", %{scope: scope} do
-      tarball = HexTarballFixtures.build(%{"lib/flaky.ex" => "defmodule Flaky do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/flaky.ex" => "defmodule Flaky do\n  @moduledoc \"hi\"\nend\n"
+        })
+
       seed_dependency(scope, "flaky_pkg", "1.0.0", tarball)
       stub_http_error("flaky_pkg", "1.0.0", 500)
 
@@ -265,15 +285,23 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     end
 
     test "a deferred package exhausts its attempts and becomes failed", %{scope: scope} do
-      tarball = HexTarballFixtures.build(%{"lib/dying.ex" => "defmodule Dying do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/dying.ex" => "defmodule Dying do\n  @moduledoc \"hi\"\nend\n"
+        })
+
       seed_dependency(scope, "dying_pkg", "1.0.0", tarball)
       stub_http_error("dying_pkg", "1.0.0", 500)
 
       :ok = HexDocReconciler.reconcile_all()
-      assert %DocPackage{status: "pending", attempts: 1} = Repo.get_by(DocPackage, package: "dying_pkg")
+
+      assert %DocPackage{status: "pending", attempts: 1} =
+               Repo.get_by(DocPackage, package: "dying_pkg")
 
       :ok = HexDocReconciler.reconcile_all()
-      assert %DocPackage{status: "pending", attempts: 2} = Repo.get_by(DocPackage, package: "dying_pkg")
+
+      assert %DocPackage{status: "pending", attempts: 2} =
+               Repo.get_by(DocPackage, package: "dying_pkg")
 
       :ok = HexDocReconciler.reconcile_all()
 
@@ -285,7 +313,9 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     end
 
     test "a git dependency is never sent to hex.pm", %{scope: scope} do
-      lock = ~s(%{\n  "git_pkg": {:git, "https://example.com/git_pkg.git", "abc123", [branch: "main"]}\n}\n)
+      lock =
+        ~s(%{\n  "git_pkg": {:git, "https://example.com/git_pkg.git", "abc123", [branch: "main"]}\n}\n)
+
       {:ok, _} = Dependencies.record_lockfile(scope, lock)
 
       assert HexDocReconciler.pending() == []
@@ -295,16 +325,23 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     end
 
     test "two projects pinning the same package@version embed it once", %{scope: scope} do
-      tarball = HexTarballFixtures.build(%{"lib/shared.ex" => "defmodule Shared do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/shared.ex" => "defmodule Shared do\n  @moduledoc \"hi\"\nend\n"
+        })
+
       checksum = HexTarballFixtures.checksum(tarball)
 
       other_scope = full_scope_fixture()
-      {:ok, _} = Dependencies.record_lockfile(scope, lockfile_text("shared_pkg", "1.0.0", checksum))
+
+      {:ok, _} =
+        Dependencies.record_lockfile(scope, lockfile_text("shared_pkg", "1.0.0", checksum))
 
       {:ok, _} =
         Dependencies.record_lockfile(other_scope, lockfile_text("shared_pkg", "1.0.0", checksum))
 
       fetch_count = :counters.new(1, [])
+
       Req.Test.stub(HexPackageFetch, fn conn ->
         :counters.add(fetch_count, 1, 1)
         Plug.Conn.send_resp(conn, 200, tarball)
@@ -317,7 +354,10 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     end
 
     test "no more than @max_concurrency packages are fetched at once", %{scope: scope} do
-      tarball = HexTarballFixtures.build(%{"lib/concurrent.ex" => "defmodule Concurrent do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/concurrent.ex" => "defmodule Concurrent do\n  @moduledoc \"hi\"\nend\n"
+        })
 
       entries = for n <- 1..8, do: {"concurrent_pkg_#{n}", "1.0.0", tarball}
       :ok = seed_dependencies(scope, entries)
@@ -343,7 +383,11 @@ defmodule CodeMySpec.Embeddings.HexDocReconcilerTest do
     end
 
     test "a package already embedded at this model is not reconciled again", %{scope: scope} do
-      tarball = HexTarballFixtures.build(%{"lib/once.ex" => "defmodule Once do\n  @moduledoc \"hi\"\nend\n"})
+      tarball =
+        HexTarballFixtures.build(%{
+          "lib/once.ex" => "defmodule Once do\n  @moduledoc \"hi\"\nend\n"
+        })
+
       seed_dependency(scope, "once_pkg", "1.0.0", tarball)
       stub_tarball("once_pkg", "1.0.0", tarball)
 

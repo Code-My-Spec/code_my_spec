@@ -21,7 +21,12 @@ defmodule CodeMySpec.Dependencies.Lockfile do
   by the developer's own lock file and on the same trust footing as `mix.exs`.
   """
 
-  @type entry :: %{name: String.t(), version: String.t(), source: String.t(), checksum: String.t() | nil}
+  @type entry :: %{
+          name: String.t(),
+          version: String.t(),
+          source: String.t(),
+          checksum: String.t() | nil
+        }
 
   @doc """
   Parse lock file contents into one entry per package.

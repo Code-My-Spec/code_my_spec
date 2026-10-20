@@ -47,7 +47,6 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every step the timeline can draw is a node the graph produces", %{scope: scope} do
-
     # Reads serve rows and compute nothing. Something has to have computed them,
     # and in production that is `GraphWatcher` reacting to a writer's
     # announcement — said out loud here, because a test that reads a graph
@@ -68,7 +67,6 @@ defmodule CodeMySpec.Requirements.PlainLanguageMatchesGraphTest do
   end
 
   test "every node the graph produces has words the timeline can draw", %{scope: scope} do
-
     # Reads serve rows and compute nothing. Something has to have computed them,
     # and in production that is `GraphWatcher` reacting to a writer's
     # announcement — said out loud here, because a test that reads a graph

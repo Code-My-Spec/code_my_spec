@@ -60,7 +60,9 @@ defmodule CodeMySpec.Compile.UnsatisfiedDepsAreTheAgentsProblemTest do
   # output carries `Can't continue due to errors on dependencies`, and a checkout
   # mid-failure often prints a transient-looking banner alongside.
   test "it wins over a transient marker in the same output" do
-    output = @unchecked <> "\n** (RuntimeError) You must restart your server after changing configuration files\n"
+    output =
+      @unchecked <>
+        "\n** (RuntimeError) You must restart your server after changing configuration files\n"
 
     assert [problem] = Compile.extract_compiler_errors(output)
     assert problem["message"] =~ "mix deps.get"
@@ -71,7 +73,8 @@ defmodule CodeMySpec.Compile.UnsatisfiedDepsAreTheAgentsProblemTest do
     # stop on a machine that is about to be fine, which is the failure the
     # transient classification exists to prevent.
     test "a config change asking for a restart" do
-      output = "==> code_my_spec\n** (RuntimeError) You must restart your server after changing configuration files\n"
+      output =
+        "==> code_my_spec\n** (RuntimeError) You must restart your server after changing configuration files\n"
 
       assert Compile.extract_compiler_errors(output) == []
     end

@@ -22,7 +22,8 @@ defmodule CodeMySpecSpex.Story1033.Criterion3417Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  spex "A correction made in the panel is a turn in the conversation, not a silent write", criterion: 1359 do
+  spex "A correction made in the panel is a turn in the conversation, not a silent write",
+    criterion: 1359 do
     scenario "Confirming the plan produces a visible turn in the transcript" do
       given_ "the plan-confirmation card is showing in the panel", context do
         conn = get(build_conn(), "/build")
@@ -50,7 +51,11 @@ defmodule CodeMySpecSpex.Story1033.Criterion3417Spex do
                "expected the confirmation to stay in this same conversation, but the " <>
                  "view was navigated away instead: #{inspect(context.html)}"
 
-        assert has_element?(context.view, "[data-test='intake-said'][data-from='visitor']", "Acme") ||
+        assert has_element?(
+                 context.view,
+                 "[data-test='intake-said'][data-from='visitor']",
+                 "Acme"
+               ) ||
                  context.html =~ "Acme",
                "expected the confirmed name to appear in the transcript as something the " <>
                  "visitor said, got: #{context.html}"
@@ -61,7 +66,11 @@ defmodule CodeMySpecSpex.Story1033.Criterion3417Spex do
       then_ "the agent's next message responds to the confirmed values, not the original guesses",
             context do
         assert has_element?(context.view, "[data-test='intake-said'][data-from='agent']", "Acme") ||
-                 has_element?(context.view, "[data-test='intake-said'][data-from='agent']", "Salon Book"),
+                 has_element?(
+                   context.view,
+                   "[data-test='intake-said'][data-from='agent']",
+                   "Salon Book"
+                 ),
                "expected the agent to respond to what was actually confirmed rather than " <>
                  "leaving its last message referring to the superseded guess, got: " <>
                  "#{context.html}"

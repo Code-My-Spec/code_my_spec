@@ -55,7 +55,13 @@ defmodule CodeMySpecSpex.Story966.Criterion2954Spex do
 
       when_ "an agent's turn starts", context do
         agent = CodeMySpec.Agents.main_agent(context.scope)
-        CodeMySpec.Agents.record_turn_event(context.scope, agent.id, %{"kind" => "turn_started"}, [])
+
+        CodeMySpec.Agents.record_turn_event(
+          context.scope,
+          agent.id,
+          %{"kind" => "turn_started"},
+          []
+        )
 
         {:ok, Map.put(context, :html, render(context.live))}
       end

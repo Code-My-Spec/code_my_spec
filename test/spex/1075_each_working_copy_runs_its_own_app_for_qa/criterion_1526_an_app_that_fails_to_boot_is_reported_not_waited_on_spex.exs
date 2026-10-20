@@ -24,7 +24,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4650Spex do
 
   spex "An app that never answers is reported, not waited on forever", criterion: 1526 do
     scenario "the process starts but nothing ever answers its health check" do
-      given_ "a working copy whose app never answers, with no patience left to give it", context do
+      given_ "a working copy whose app never answers, with no patience left to give it",
+             context do
         set_first_start_ceiling(0)
         rig = app_instance_rig(probe: :down)
         {:ok, Map.merge(context, rig)}
@@ -34,14 +35,16 @@ defmodule CodeMySpecSpex.Story1108.Criterion4650Spex do
         {:ok, Map.put(context, :result, push_app_event("ensure_app_running"))}
       end
 
-      then_ "it is not held open — answered right away, with the address it will be at", context do
+      then_ "it is not held open — answered right away, with the address it will be at",
+            context do
         assert %{"status" => "ok", "app_status" => "starting", "app_url" => url} = context.result
         assert url, "starting still names where the app will answer once it is up"
 
         {:ok, context}
       end
 
-      then_ "the harness did launch it — this is a boot that is failing, not one skipped", context do
+      then_ "the harness did launch it — this is a boot that is failing, not one skipped",
+            context do
         assert Enum.any?(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1)),
                "a starting report with no launch call would mean the harness gave up before trying"
 
@@ -49,7 +52,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4650Spex do
       end
 
       then_ "once its ceiling passes without ever answering, it is reported erroring", context do
-        assert_receive {:app_status, %{"status" => "erroring"} = payload}, 1_000,
+        assert_receive {:app_status, %{"status" => "erroring"} = payload},
+                       1_000,
                        "the background watch never reported the ceiling passing"
 
         assert payload["reason"] =~ "first start exceeded",

@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Tools.Responses, as: AgentsMapper
   alias CodeMySpec.Utils.MapAccess
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def name, do: "message_agent"
@@ -68,12 +69,18 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   def call(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, target_id} <- resolve_target(scope, agent_id(params)),
-         :ok <- reachable(scope, context[:agent_id], target_id),
-         {:ok, reply, sent} <-
-           Agents.dispatch_message(scope, target_id, message(params), :operator_message,
-             send_now: MapAccess.get(params, :send_now) == true
-           ) do
-      response =
+         :ok <- reachable(scope, context[:agent_id], target_id) do
+      dispatch(scope, target_id, params, context)
+    else
+      {:error, reason} -> AgentsMapper.error(reason, nil)
+    end
+  end
+
+  defp dispatch(scope, target_id, params, context) do
+    case Agents.dispatch_message(scope, target_id, message(params), :operator_message,
+           send_now: MapAccess.get(params, :send_now) == true
+         ) do
+      {:ok, reply, sent} ->
         target_id
         |> AgentsMapper.replied(reply)
         |> withdrawable(reply, sent)
@@ -81,11 +88,31 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
         |> not_interruptible(scope, target_id, MapAccess.get(params, :send_now) == true)
         |> held_for_stop(scope, target_id)
 
-      response
-    else
-      {:error, reason} -> AgentsMapper.error(reason, nil)
+      {:error, :harness_not_connected} ->
+        harness_not_connected_error(scope, target_id)
+
+      {:error, reason} ->
+        AgentsMapper.error(reason, nil)
     end
   end
+
+  # The dispatch itself only knows a working copy was unreachable, not what to
+  # call it — naming the box is this tool's job, since it is the one place an
+  # operator reads the refusal. A box never joins with a label is still named
+  # by its root, or failing that its id; it is never left to a bare reason
+  # atom (issue 739eb4bd).
+  defp harness_not_connected_error(scope, target_id) do
+    with {:ok, %{working_copy_id: working_copy_id}} <- Agents.fetch_agent(scope, target_id),
+         {:ok, copy} <- WorkingCopies.fetch(working_copy_id) do
+      {:error, "Message not delivered: #{box_name(copy)} is not connected."}
+    else
+      _ -> {:error, "Message not delivered: the target machine is not connected."}
+    end
+  end
+
+  defp box_name(%{label: label}) when is_binary(label) and label != "", do: label
+  defp box_name(%{root: root}) when is_binary(root) and root != "", do: root
+  defp box_name(%{id: id}), do: id
 
   # "main" addresses the project's current main agent by role rather than by
   # id, since its id changes across restarts and nothing in an agent's own

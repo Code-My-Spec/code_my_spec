@@ -6,7 +6,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetPerformanceOverview do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :days, :integer, description: "Days to look back (default 28)"
   end
 
@@ -16,8 +19,11 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetPerformanceOverview do
          {:ok, data} <- Gsc.get_performance_overview(token, params.site_url, params[:days] || 28) do
       {:reply, GoogleTools.ok("Performance overview for #{params.site_url}.", data), frame}
     else
-      {:error, {:gsc_error, 404, _}} -> {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
-      {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
+      {:error, {:gsc_error, 404, _}} ->
+        {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
+
+      {:error, reason} ->
+        {:reply, GoogleTools.error(reason), frame}
     end
   end
 end

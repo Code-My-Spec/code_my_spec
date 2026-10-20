@@ -260,8 +260,7 @@ defmodule CodeMySpecWeb.NotificationLive.Components.Dropdown do
         class="modal-backdrop"
         phx-click={JS.push("collapse", target: @target)}
         aria-label="Close"
-      >
-      </button>
+      ></button>
     </div>
     """
   end

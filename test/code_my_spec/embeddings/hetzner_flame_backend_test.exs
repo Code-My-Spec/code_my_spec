@@ -68,7 +68,10 @@ defmodule CodeMySpec.Embeddings.HetznerFlameBackendTest do
     end
 
     test "application config and opts merge, with opts winning" do
-      Application.put_env(:flame, HetznerFlameBackend, box_name: "burst-from-config", boot_timeout: 5_000)
+      Application.put_env(:flame, HetznerFlameBackend,
+        box_name: "burst-from-config",
+        boot_timeout: 5_000
+      )
 
       on_exit(fn -> Application.delete_env(:flame, HetznerFlameBackend) end)
 

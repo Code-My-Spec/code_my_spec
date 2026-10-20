@@ -59,10 +59,11 @@ defmodule CodeMySpecSpex.Story990.Criterion2980Spex do
     :ok
   end
 
-  spex "The shaping budget forces a plan even from a model that never wants to stop", criterion: 1059 do
+  spex "The shaping budget forces a plan even from a model that never wants to stop",
+    criterion: 1059 do
     scenario "A visitor who talks past the budget is told, not dropped" do
       given_ "a visitor who keeps answering, past the point a real model would ever ask",
-            context do
+             context do
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 

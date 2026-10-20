@@ -21,6 +21,7 @@ defmodule CodeMySpec.Repo.Migrations.CreateQaAttempts do
 
     create table(:qa_invalidations, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :qa_attempt_id, references(:qa_attempts, type: :binary_id, on_delete: :delete_all),
         null: false
 
@@ -32,6 +33,9 @@ defmodule CodeMySpec.Repo.Migrations.CreateQaAttempts do
     end
 
     create index(:qa_invalidations, [:qa_attempt_id])
-    create unique_index(:qa_invalidations, [:qa_attempt_id], name: :qa_invalidations_unique_attempt_index)
+
+    create unique_index(:qa_invalidations, [:qa_attempt_id],
+             name: :qa_invalidations_unique_attempt_index
+           )
   end
 end

@@ -52,7 +52,8 @@ defmodule CodeMySpec.Intake.Planner.Llm do
           },
           first_build: %{
             type: "string",
-            description: "One sentence naming the first thing worth building, and why it comes first."
+            description:
+              "One sentence naming the first thing worth building, and why it comes first."
           },
           account_name: %{
             type: "string",

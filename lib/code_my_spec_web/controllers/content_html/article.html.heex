@@ -1,4 +1,8 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+>
   <div class="max-w-7xl mx-auto px-4 py-8">
     <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
       <!-- Series sidebar (only when series exists) -->
@@ -11,7 +15,10 @@
               href={post.path}
               class={"block text-sm px-3 py-2 rounded-lg transition-colors #{if post.slug == @series_info.current_slug, do: "bg-primary/10 text-primary font-medium", else: "hover:bg-base-200 text-base-content/70"}"}
             >
-              <span :if={get_in(post.metadata || %{}, ["metadata", "series_part"])} class="text-xs opacity-60 mr-1">
+              <span
+                :if={get_in(post.metadata || %{}, ["metadata", "series_part"])}
+                class="text-xs opacity-60 mr-1"
+              >
                 {get_in(post.metadata || %{}, ["metadata", "series_part"])}.
               </span>
               {post.title || post.slug}
@@ -24,7 +31,8 @@
         <!-- Series banner -->
         <div :if={@series_info} class="mb-6 flex items-center gap-2 text-sm text-base-content/60">
           <.icon name="hero-document-text" class="w-4 h-4" />
-          <span>Part of the <strong class="text-base-content/80">{@series_info.name}</strong> series</span>
+          <span>Part of the <strong class="text-base-content/80">{@series_info.name}</strong>
+          series</span>
         </div>
 
         <%= if hero_image = blog_hero_image(@content) do %>
@@ -42,9 +50,14 @@
         <% end %>
 
         <header class="mb-8">
-          <h1 class="text-4xl font-bold tracking-tight mb-4">{@content.title || @content.slug}</h1>
+          <h1 class="text-4xl font-bold tracking-tight mb-4">
+            {@content.title || @content.slug}
+          </h1>
           <div class="flex items-center gap-3 text-sm text-base-content/60 mb-4">
-            <a href="/author/john-davenport" class="link link-hover hover:text-primary transition-colors">By John Davenport</a>
+            <a
+              href="/author/john-davenport"
+              class="link link-hover hover:text-primary transition-colors"
+            >By John Davenport</a>
             <span>&middot;</span>
             <span>{format_publish_date(@content.publish_at)}</span>
           </div>
@@ -65,9 +78,11 @@
           <% end %>
         </div>
 
-
         <!-- Prev/Next navigation -->
-        <div :if={@series_info && (@series_info.prev_post || @series_info.next_post)} class="mt-12 pt-8 border-t border-base-300">
+        <div
+          :if={@series_info && (@series_info.prev_post || @series_info.next_post)}
+          class="mt-12 pt-8 border-t border-base-300"
+        >
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <a

@@ -25,7 +25,8 @@ defmodule CodeMySpecSpex.Story607.Criterion5523Spex do
     {:ok, %{first_account: account}}
   end
 
-  spex "Single-account user with no active selection auto-advances past the picker", criterion: 299 do
+  spex "Single-account user with no active selection auto-advances past the picker",
+    criterion: 299 do
     scenario "User with one account loads /app/projects without seeing the picker" do
       given_ "the user has one account but no active selection", context do
         # given: already true — the `setup` block above creates one owned

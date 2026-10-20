@@ -11,11 +11,24 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunConversionsReport do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :property_id, :string, required: true, description: "Property ID (number or \"properties/123\")"
-    field :date_ranges, {:list, :map}, required: true, description: "List of {startDate, endDate} objects"
-    field :dimensions, {:list, :string}, required: true, description: "Allowed conversion dimensions"
+    field :property_id, :string,
+      required: true,
+      description: "Property ID (number or \"properties/123\")"
+
+    field :date_ranges, {:list, :map},
+      required: true,
+      description: "List of {startDate, endDate} objects"
+
+    field :dimensions, {:list, :string},
+      required: true,
+      description: "Allowed conversion dimensions"
+
     field :metrics, {:list, :string}, required: true, description: "Allowed conversion metrics"
-    field :conversion_spec, :map, required: true, description: "{conversion_actions, attribution_model}"
+
+    field :conversion_spec, :map,
+      required: true,
+      description: "{conversion_actions, attribution_model}"
+
     field :dimension_filter, :map, description: "Data API FilterExpression for dimensions"
     field :metric_filter, :map, description: "Data API FilterExpression for metrics"
     field :order_bys, {:list, :map}, description: "List of Data API OrderBy objects"

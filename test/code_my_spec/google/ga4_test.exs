@@ -26,9 +26,9 @@ defmodule CodeMySpec.Google.Ga4Test do
   end
 
   defp run(name, fun) do
-    with_cassette name, cassette_opts(), fn plug ->
+    with_cassette(name, cassette_opts(), fn plug ->
       with_plug(Ga4, plug, fun)
-    end
+    end)
   end
 
   test "property_rn normalizes integers, numeric strings, and resource names" do
@@ -45,7 +45,10 @@ defmodule CodeMySpec.Google.Ga4Test do
       assert Enum.all?(summaries, &Map.has_key?(&1, "account"))
 
       assert Enum.any?(summaries, fn s ->
-               Enum.any?(Map.get(s, "propertySummaries", []), &(&1["property"] == "properties/#{@prop}"))
+               Enum.any?(
+                 Map.get(s, "propertySummaries", []),
+                 &(&1["property"] == "properties/#{@prop}")
+               )
              end)
     end)
   end

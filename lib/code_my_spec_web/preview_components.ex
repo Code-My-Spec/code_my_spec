@@ -138,8 +138,7 @@ defmodule CodeMySpecWeb.PreviewComponents do
         title={@title}
         data-test="preview-frame"
         class={["border border-base-300 rounded h-[640px]", @width_class]}
-      >
-      </iframe>
+      ></iframe>
     </div>
     """
   end

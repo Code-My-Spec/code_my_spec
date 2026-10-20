@@ -85,8 +85,7 @@ defmodule CodeMySpecWeb.PersonasLive.FormComponent do
       <.header>
         {if @action == :new, do: "New Persona", else: "Edit Persona"}
         <:subtitle>
-          Identity + metadata only — research artifacts live in the local repo at
-          <code>.code_my_spec/personas/&lt;slug&gt;/</code>.
+          Identity + metadata only — research artifacts live in the local repo at <code>.code_my_spec/personas/&lt;slug&gt;/</code>.
         </:subtitle>
       </.header>
 

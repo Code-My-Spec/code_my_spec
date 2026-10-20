@@ -33,7 +33,12 @@ defmodule CodeMySpec.Content.ExAwsReqClient do
 
     case Req.request(opts) do
       {:ok, resp} ->
-        {:ok, %{status_code: resp.status, headers: Map.to_list(resp.headers), body: to_iodata(resp.body)}}
+        {:ok,
+         %{
+           status_code: resp.status,
+           headers: Map.to_list(resp.headers),
+           body: to_iodata(resp.body)
+         }}
 
       {:error, reason} ->
         {:error, %{reason: reason}}

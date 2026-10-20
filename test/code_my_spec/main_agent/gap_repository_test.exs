@@ -146,7 +146,12 @@ defmodule CodeMySpec.Agents.Main.GapRepositoryTest do
       [first_wording | rest] = @wordings
 
       {:ok, gap} =
-        GapRepository.record(scope.active_project_id, "qa", "submit_issue_qa_result", first_wording)
+        GapRepository.record(
+          scope.active_project_id,
+          "qa",
+          "submit_issue_qa_result",
+          first_wording
+        )
 
       {:ok, issue} =
         CodeMySpec.Issues.create_issue(scope, %{

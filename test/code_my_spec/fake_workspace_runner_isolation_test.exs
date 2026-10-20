@@ -37,7 +37,8 @@ defmodule CodeMySpecTest.FakeWorkspaceRunnerIsolationTest do
 
         send(
           parent,
-          {:result, FakeWorkspaceRunner.serving(5001), container_names(FakeWorkspaceRunner.calls())}
+          {:result, FakeWorkspaceRunner.serving(5001),
+           container_names(FakeWorkspaceRunner.calls())}
         )
 
         Agent.stop(agent)

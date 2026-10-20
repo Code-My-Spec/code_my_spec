@@ -36,16 +36,12 @@ defmodule CodeMySpec.Notifications.NotificationClient do
             :ok
 
           {:ok, %{status: status, body: body}} ->
-            Logger.warning(
-              "[NotificationClient] Server returned #{status}: #{inspect(body)}"
-            )
+            Logger.warning("[NotificationClient] Server returned #{status}: #{inspect(body)}")
 
             :ok
 
           {:error, reason} ->
-            Logger.warning(
-              "[NotificationClient] Failed to reach server: #{inspect(reason)}"
-            )
+            Logger.warning("[NotificationClient] Failed to reach server: #{inspect(reason)}")
 
             :ok
         end

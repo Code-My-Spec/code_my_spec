@@ -41,7 +41,8 @@ defmodule CmsHarness.WorkingCopies.SyncToMain do
         {:error,
          %{
            tag: :dirty_tree,
-           detail: "this checkout has uncommitted changes; sync refused rather than merging into them"
+           detail:
+             "this checkout has uncommitted changes; sync refused rather than merging into them"
          }}
 
       {out, status} ->

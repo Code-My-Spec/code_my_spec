@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story1070.Criterion3537Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A behaviour is asserted as a rate over repeated runs, not a single pass", criterion: 1435 do
+  spex "A behaviour is asserted as a rate over repeated runs, not a single pass",
+    criterion: 1435 do
     scenario "A criterion is judged on how often the agent does the right thing" do
       given_ "a criterion whose agent did the right thing in eight runs of ten", context do
         held = [true, true, false, true, true, true, true, false, true, true]

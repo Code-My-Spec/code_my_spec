@@ -51,7 +51,8 @@ defmodule CodeMySpecSpex.Fakes.CloudflareTest do
   # The behaviour that killed 8027's premise. A wrong value does not stay
   # wrong: the step finds the record and corrects it.
   test "updating a record replaces its content rather than adding a second", %{agent: agent} do
-    record = publish(agent, %{"name" => "resend._domainkey", "type" => "TXT", "content" => "wrong"})
+    record =
+      publish(agent, %{"name" => "resend._domainkey", "type" => "TXT", "content" => "wrong"})
 
     request(agent, :put, "/zones/zone-1/dns_records/#{record["id"]}", %{
       "name" => "resend._domainkey",
@@ -81,8 +82,19 @@ defmodule CodeMySpecSpex.Fakes.CloudflareTest do
   # 969/8029: the sending records go on `send`, and the apex MX Sam already has
   # must still be there afterwards.
   test "publishing sending records leaves an apex MX alone", %{agent: agent} do
-    publish(agent, %{"name" => "@", "type" => "MX", "content" => "inbound.example", "priority" => 10})
-    publish(agent, %{"name" => "send", "type" => "MX", "content" => "feedback-smtp", "priority" => 10})
+    publish(agent, %{
+      "name" => "@",
+      "type" => "MX",
+      "content" => "inbound.example",
+      "priority" => 10
+    })
+
+    publish(agent, %{
+      "name" => "send",
+      "type" => "MX",
+      "content" => "feedback-smtp",
+      "priority" => 10
+    })
 
     apex = Enum.filter(listed(agent), &(&1["name"] == "@"))
     assert [%{"content" => "inbound.example"}] = apex

@@ -42,7 +42,8 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
   setup :fake_providers
   setup :real_working_directory
 
-  spex "Old images stop costing money without anyone remembering to delete them", criterion: 793 do
+  spex "Old images stop costing money without anyone remembering to delete them",
+    criterion: 793 do
     scenario "the registry expires old images on its own" do
       given_ "Sam has deployed, so an image exists", context do
         # The bucket lifecycle rule is `retention_enforced?/1`'s :s3 branch —

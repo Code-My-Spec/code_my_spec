@@ -59,12 +59,14 @@
       },
       %{
         name: "Kamal + Hetzner",
-        description: "Fleet deploy to UAT and production, boot-time migrations, TLS via kamal-proxy",
+        description:
+          "Fleet deploy to UAT and production, boot-time migrations, TLS via kamal-proxy",
         icon: "hero-server"
       },
       %{
         name: "Google OAuth + Resend",
-        description: "Sign-in and transactional mail, both scaffolded by the harness in one evening",
+        description:
+          "Sign-in and transactional mail, both scaffolded by the harness in one evening",
         icon: "hero-key"
       },
       %{

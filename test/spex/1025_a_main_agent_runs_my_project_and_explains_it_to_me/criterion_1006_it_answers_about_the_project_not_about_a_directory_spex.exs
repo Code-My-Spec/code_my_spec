@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2918Spex do
     :ok
   end
 
-  spex "The main agent has the run of the whole project — its records, its code, its tests and its problems", criterion: 1006 do
+  spex "The main agent has the run of the whole project — its records, its code, its tests and its problems",
+    criterion: 1006 do
     scenario "It answers about the project, not about a directory" do
       given_ "a project with several working copies", context do
         first = CodeMySpec.TempFile.dir("spex_2918_first")

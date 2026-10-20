@@ -75,7 +75,8 @@ defmodule CodeMySpec.CompileTest do
 
       errors = Compile.extract_compiler_errors(output)
 
-      assert [%{"severity" => "error", "message" => "error: undefined variable \"scope\""}] = errors
+      assert [%{"severity" => "error", "message" => "error: undefined variable \"scope\""}] =
+               errors
     end
 
     test "a real error wins even alongside dep banners" do

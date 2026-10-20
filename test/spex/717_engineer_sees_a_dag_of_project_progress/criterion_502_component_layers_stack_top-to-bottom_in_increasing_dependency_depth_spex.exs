@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6423Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The component zone lays out components by dependency depth — layers stack top-to-bottom in increasing depth", criterion: 502 do
+  spex "The component zone lays out components by dependency depth — layers stack top-to-bottom in increasing depth",
+    criterion: 502 do
     scenario "Component layers stack top-to-bottom in increasing dependency depth" do
       given_ :cross_context_dependency
 

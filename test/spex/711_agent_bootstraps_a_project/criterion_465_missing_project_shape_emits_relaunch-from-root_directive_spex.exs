@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance", criterion: 465 do
+  spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance",
+    criterion: 465 do
     scenario "Missing project shape emits relaunch-from-root directive on the per-step page" do
       given_ "the working directory has no mix.exs", context do
         # Establish the full shape first, then take mix.exs away. Removing it

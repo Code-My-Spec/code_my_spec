@@ -1,4 +1,9 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+  page_title={@page_title}
+>
   <%!-- ───────────── HERO ───────────── --%>
   <section class="bg-base-200 border-b border-base-300">
     <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
@@ -68,10 +73,14 @@
         </div>
         <div class="p-5 bg-base-200/40">
           <div class="chat chat-start">
-            <div class="chat-bubble text-sm">Hi! Do you do custom cakes for about 40 people? Need it for the 22nd 🎂</div>
+            <div class="chat-bubble text-sm">
+              Hi! Do you do custom cakes for about 40 people? Need it for the 22nd 🎂
+            </div>
           </div>
           <div class="chat chat-start">
-            <div class="chat-footer text-xs text-base-content/50 mt-1">Dana · from the chat widget on your site</div>
+            <div class="chat-footer text-xs text-base-content/50 mt-1">
+              Dana · from the chat widget on your site
+            </div>
           </div>
           <div class="chat chat-end">
             <div class="chat-bubble chat-bubble-primary text-sm">
@@ -182,7 +191,11 @@
               Start free. Work with the model, ship the first version, own everything you make.
             </p>
             <div class="card-actions mt-3">
-              <.link href={~p"/install"} class="btn btn-primary" data-event-label="cta-start-free-home-hero">Start free</.link>
+              <.link
+                href={~p"/install"}
+                class="btn btn-primary"
+                data-event-label="cta-start-free-home-hero"
+              >Start free</.link>
             </div>
           </div>
         </div>
@@ -197,7 +210,11 @@
             </p>
             <p class="text-sm font-medium text-secondary mt-1">This is how most people start.</p>
             <div class="card-actions mt-3">
-              <a href={ExternalLinks.cal_john()} class="btn btn-secondary" data-event-label="cta-service-inquiry-home-card">Talk to John</a>
+              <a
+                href={ExternalLinks.cal_john()}
+                class="btn btn-secondary"
+                data-event-label="cta-service-inquiry-home-card"
+              >Talk to John</a>
             </div>
           </div>
         </div>
@@ -236,7 +253,9 @@
                 <span class="font-semibold">MetricFlow</span>
                 <span class="badge badge-primary badge-sm">13 days</span>
               </div>
-              <p class="text-sm text-base-content/60">A real app with real integrations, built end to end.</p>
+              <p class="text-sm text-base-content/60">
+                A real app with real integrations, built end to end.
+              </p>
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
@@ -245,7 +264,9 @@
                 <span class="font-semibold">Fuellytics</span>
                 <span class="badge badge-primary badge-sm">live</span>
               </div>
-              <p class="text-sm text-base-content/60">A client product in the hands of paying customers.</p>
+              <p class="text-sm text-base-content/60">
+                A client product in the hands of paying customers.
+              </p>
             </div>
           </div>
           <div class="card bg-base-100 border border-base-300 shadow-sm">
@@ -254,7 +275,9 @@
                 <span class="font-semibold">This website</span>
                 <span class="badge badge-primary badge-sm">recursive</span>
               </div>
-              <p class="text-sm text-base-content/60">And every email, chat, and post you get from us — same way.</p>
+              <p class="text-sm text-base-content/60">
+                And every email, chat, and post you get from us — same way.
+              </p>
             </div>
           </div>
         </div>
@@ -308,8 +331,16 @@
         run and grow it are right here.
       </p>
       <div class="mt-8 flex flex-wrap gap-4 justify-center">
-        <.link href={~p"/install"} class="btn btn-primary btn-lg" data-event-label="cta-start-free-home-final">Start free</.link>
-        <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-lg" data-event-label="cta-service-inquiry-home-final">Build it with me</a>
+        <.link
+          href={~p"/install"}
+          class="btn btn-primary btn-lg"
+          data-event-label="cta-start-free-home-final"
+        >Start free</.link>
+        <a
+          href={ExternalLinks.cal_john()}
+          class="btn btn-outline btn-lg"
+          data-event-label="cta-service-inquiry-home-final"
+        >Build it with me</a>
       </div>
     </div>
   </section>

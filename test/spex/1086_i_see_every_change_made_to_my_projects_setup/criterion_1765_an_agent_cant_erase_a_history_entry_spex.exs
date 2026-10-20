@@ -37,7 +37,8 @@ defmodule CodeMySpecSpex.Story1086.Criterion1765Spex do
       then_ "no delete, remove or update function exists to call", context do
         erasing_names = ~w(delete delete_entry remove remove_entry update update_entry)a
 
-        found = Enum.filter(context.exported_functions, fn {name, _arity} -> name in erasing_names end)
+        found =
+          Enum.filter(context.exported_functions, fn {name, _arity} -> name in erasing_names end)
 
         assert found == [],
                "Activity exposes #{inspect(found)} — an erase path exists after all"

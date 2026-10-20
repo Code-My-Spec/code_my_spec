@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6417Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Intra-entity dependency edges flow toward their target — downward in vertical bands like the component zone", criterion: 498 do
+  spex "Intra-entity dependency edges flow toward their target — downward in vertical bands like the component zone",
+    criterion: 498 do
     scenario "Component zone edges flow downward toward later tiers" do
       given_ :cross_context_dependency
 

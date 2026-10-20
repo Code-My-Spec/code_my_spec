@@ -120,7 +120,10 @@ defmodule CodeMySpec.Provisioning.TeardownApexTest do
   defp json(conn, result) do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, Jason.encode!(%{"success" => true, "errors" => [], "result" => result}))
+    |> Plug.Conn.send_resp(
+      200,
+      Jason.encode!(%{"success" => true, "errors" => [], "result" => result})
+    )
   end
 
   defp deleted, do: Enum.sort(Process.get(:deleted, []))

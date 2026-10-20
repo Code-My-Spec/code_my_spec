@@ -38,7 +38,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalyticsTest do
   end
 
   test "dispatching :sign_up POSTs a GA4 MP envelope to /mp/collect" do
-    with_cassette "ga4_mp_sign_up", cassette_opts(), fn plug ->
+    with_cassette("ga4_mp_sign_up", cassette_opts(), fn plug ->
       with_plug(plug, fn ->
         # Trip the full stack: telemetry → GoogleAnalytics.handle_event →
         # HTTPAdapter.post → Req with our injected plug → ReqCassette
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalyticsTest do
           method: "oauth_github"
         })
       end)
-    end
+    end)
   end
 
   defp with_plug(plug, fun) do

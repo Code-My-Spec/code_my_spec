@@ -380,6 +380,7 @@ defmodule CodeMySpec.UsersTest do
           from(u in User, where: u.id == ^user.id),
           set: [hashed_password: "hashed"]
         )
+
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
       assert {:error, :unconfirmed_with_password} =

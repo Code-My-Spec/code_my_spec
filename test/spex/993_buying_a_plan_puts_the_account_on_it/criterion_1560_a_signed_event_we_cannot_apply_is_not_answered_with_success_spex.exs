@@ -29,7 +29,9 @@ defmodule CodeMySpecSpex.Story993.Criterion4684Spex do
 
   # The unapplied event logs :error on purpose — that log is how anyone finds
   # out a payment did not land, so it is the behaviour under test, not noise.
-  spex "An event we could not apply stays retryable", fail_on_error_logs: false, criterion: 1560 do
+  spex "An event we could not apply stays retryable",
+    fail_on_error_logs: false,
+    criterion: 1560 do
     scenario "A signed event naming no account is not answered with success" do
       when_ "Stripe posts a properly signed event we cannot attribute", context do
         body =

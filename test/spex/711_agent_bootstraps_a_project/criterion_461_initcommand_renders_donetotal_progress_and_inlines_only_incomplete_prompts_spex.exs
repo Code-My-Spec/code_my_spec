@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init aggregates sub-steps into one checklist with progress and per-step prompts", criterion: 461 do
+  spex "Init aggregates sub-steps into one checklist with progress and per-step prompts",
+    criterion: 461 do
     scenario "Init checklist shows 2/3 with Auth as the incomplete step, and the Auth page exposes the auth prompt" do
       given_ "the working directory has the full Phoenix project shape (mix.exs, lib/, config/)",
              context do

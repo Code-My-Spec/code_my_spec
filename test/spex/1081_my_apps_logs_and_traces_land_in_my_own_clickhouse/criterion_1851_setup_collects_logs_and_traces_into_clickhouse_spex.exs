@@ -41,7 +41,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1851Spex do
         await_console_step(servers_view, :server)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end

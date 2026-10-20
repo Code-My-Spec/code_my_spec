@@ -261,7 +261,13 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     end
 
     test "takes criterion_id from the spex call, not the filename" do
-      content = String.replace(valid_minimal_spex(), ~s(spex "minimal spec" do), ~s(spex "minimal spec", criterion: 456 do))
+      content =
+        String.replace(
+          valid_minimal_spex(),
+          ~s(spex "minimal spec" do),
+          ~s(spex "minimal spec", criterion: 456 do)
+        )
+
       path = temp_story_criterion_file(content, 123, 999)
       on_exit(fn -> cleanup_file(path) end)
 

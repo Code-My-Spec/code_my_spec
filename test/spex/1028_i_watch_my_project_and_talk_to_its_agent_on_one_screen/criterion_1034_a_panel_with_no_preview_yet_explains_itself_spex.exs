@@ -35,7 +35,8 @@ defmodule CodeMySpecSpex.Story966.Criterion2948Spex do
     :ok
   end
 
-  spex "A panel with nothing to show says why, rather than appearing broken or empty", criterion: 1034 do
+  spex "A panel with nothing to show says why, rather than appearing broken or empty",
+    criterion: 1034 do
     scenario "A panel with no preview yet explains itself" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_966")}

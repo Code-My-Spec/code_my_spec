@@ -53,7 +53,8 @@ defmodule CodeMySpecSpex.Story812.Criterion6539Spex do
     :ok
   end
 
-  spex "Server MP sign_up carries the gtag session_id from the _ga session cookie", criterion: 684 do
+  spex "Server MP sign_up carries the gtag session_id from the _ga session cookie",
+    criterion: 684 do
     scenario "GS2 cookie (current gtag format) → session_id in the sign_up MP params" do
       given_ "a conn seeded with _ga + a GS2 _ga_<container> cookie", context do
         {:ok, seed_cookies(context, @gs2_cookie)}

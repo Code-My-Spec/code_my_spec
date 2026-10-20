@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2050Spex do
   end
 
   spex "The performance page carries controls to pick a working copy or a story",
-       criterion: 2050 do
+    criterion: 2050 do
     scenario "the performance page is opened" do
       given_ "a project with the performance page available", context do
         # given: already true — `setup :setup_active_project` creates it.

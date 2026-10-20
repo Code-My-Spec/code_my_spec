@@ -302,11 +302,14 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetup do
 
   def handle_event("check_prerequisites", _params, socket) do
     owner = self()
+    platform = CmsHarness.Setup.Platform.detect()
 
     {:noreply,
      socket
      |> assign(setup_busy: true, setup_error: nil)
-     |> start_async(:machine_checks, fn -> Setup.check_prerequisites(notify: owner) end)}
+     |> start_async(:machine_checks, fn ->
+       Setup.check_prerequisites(notify: owner, platform: platform)
+     end)}
   end
 
   def handle_async(:setup_project, {:ok, {:ok, result}}, socket) do

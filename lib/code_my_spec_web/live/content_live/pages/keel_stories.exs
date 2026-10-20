@@ -9,13 +9,27 @@
     criteria: [
       %{description: "Balanced single-currency transaction posts", verified: true},
       %{description: "Unbalanced transaction is rejected and nothing persists", verified: true},
-      %{description: "Cross-currency transaction balanced in every currency posts", verified: true},
-      %{description: "Transaction balanced in one currency but not another is rejected", verified: true},
-      %{description: "Multi-leg transaction assembled across inserts commits when it nets to zero", verified: true},
+      %{
+        description: "Cross-currency transaction balanced in every currency posts",
+        verified: true
+      },
+      %{
+        description: "Transaction balanced in one currency but not another is rejected",
+        verified: true
+      },
+      %{
+        description:
+          "Multi-leg transaction assembled across inserts commits when it nets to zero",
+        verified: true
+      },
       %{description: "Empty transaction is rejected", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "Every transaction's entries must net to zero in each currency.",
@@ -42,26 +56,31 @@ Then the commit is rejected and no entries or transaction are persisted"
             %{
               kind: "happy path",
               title: "Cross-currency transaction balanced in every currency posts",
-              body: "Given a transaction whose CAD entries net to zero and whose USD entries net to zero
+              body:
+                "Given a transaction whose CAD entries net to zero and whose USD entries net to zero
 When the transaction is committed
 Then it is persisted successfully"
             },
             %{
               kind: "failure path",
               title: "Transaction balanced in one currency but not another is rejected",
-              body: "Given a transaction whose CAD entries net to zero but whose USD entries net to +5.00
+              body:
+                "Given a transaction whose CAD entries net to zero but whose USD entries net to +5.00
 When the transaction is committed
 Then the commit is rejected because USD does not net to zero"
             }
           ]
         },
         %{
-          statement: "The balance check is deferred to commit, so legs may be inserted in any order within one database transaction.",
+          statement:
+            "The balance check is deferred to commit, so legs may be inserted in any order within one database transaction.",
           scenarios: [
             %{
               kind: "happy path",
-              title: "Multi-leg transaction assembled across inserts commits when it nets to zero",
-              body: "Given a database transaction that inserts four entries one at a time, momentarily unbalanced after each of the first three
+              title:
+                "Multi-leg transaction assembled across inserts commits when it nets to zero",
+              body:
+                "Given a database transaction that inserts four entries one at a time, momentarily unbalanced after each of the first three
 When all four entries leave every currency netting to zero and the database transaction commits
 Then the transaction is persisted successfully without tripping the check mid-insert"
             }
@@ -81,7 +100,12 @@ Then it is rejected — a transaction must carry entries that net to zero"
         }
       ],
       questions: [
-        %{body: "Should a transaction with no entries (degenerate zero-sum) be allowed, or rejected as invalid?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Should a transaction with no entries (degenerate zero-sum) be allowed, or rejected as invalid?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -95,14 +119,22 @@ Then it is rejected — a transaction must carry entries that net to zero"
     tags: [%{name: "operator"}],
     criteria: [
       %{description: "Balance equals the sum of all entries", verified: true},
-      %{description: "Backdated entry updates the balance with no recompute of other rows", verified: true}
+      %{
+        description: "Backdated entry updates the balance with no recompute of other rows",
+        verified: true
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "An account's balance is the sum of its entries, computed on demand — never stored as a per-row running balance.",
+          statement:
+            "An account's balance is the sum of its entries, computed on demand — never stored as a per-row running balance.",
           scenarios: [
             %{
               kind: "happy path",
@@ -114,12 +146,14 @@ Then it returns 110.00 CAD computed from the sum of entries"
           ]
         },
         %{
-          statement: "A backdated or out-of-order entry is reflected in the balance immediately, without recomputing any other rows.",
+          statement:
+            "A backdated or out-of-order entry is reflected in the balance immediately, without recomputing any other rows.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Backdated entry updates the balance with no recompute of other rows",
-              body: "Given an account whose latest entry is dated today with a balance of 110.00 CAD
+              body:
+                "Given an account whose latest entry is dated today with a balance of 110.00 CAD
 When an entry of +50.00 CAD dated last month is posted
 Then the balance immediately reads 160.00 CAD and no existing entry rows are modified"
             }
@@ -127,7 +161,12 @@ Then the balance immediately reads 160.00 CAD and no existing entry rows are mod
         }
       ],
       questions: [
-        %{body: "At what entry volume (if ever) do we introduce materialized balance rollups as a speed optimization, per NFR-3?", status: :open, resolution: nil}
+        %{
+          body:
+            "At what entry volume (if ever) do we introduce materialized balance rollups as a speed optimization, per NFR-3?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -146,10 +185,15 @@ Then the balance immediately reads 160.00 CAD and no existing entry rows are mod
       %{description: "Adding two different currencies is not allowed implicitly", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "Monetary amounts are stored and computed as exact values, never as floating point.",
+          statement:
+            "Monetary amounts are stored and computed as exact values, never as floating point.",
           scenarios: [
             %{
               kind: "happy path",
@@ -188,7 +232,12 @@ Then the operation is refused — cross-currency arithmetic requires an explicit
         }
       ],
       questions: [
-        %{body: "Are any non-2-decimal currencies in scope (e.g. zero-decimal or 3-decimal), or can we assume CAD/USD 2-decimal minor units for v1?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Are any non-2-decimal currencies in scope (e.g. zero-decimal or 3-decimal), or can we assume CAD/USD 2-decimal minor units for v1?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -202,12 +251,22 @@ Then the operation is refused — cross-currency arithmetic requires an explicit
     tags: [%{name: "operator"}],
     criteria: [
       %{description: "Attempt to edit or delete a posted entry is refused", verified: true},
-      %{description: "A mistaken transaction is corrected with a reversing transaction", verified: true},
-      %{description: "A posted entry links to its originating import row and file", verified: true},
+      %{
+        description: "A mistaken transaction is corrected with a reversing transaction",
+        verified: true
+      },
+      %{
+        description: "A posted entry links to its originating import row and file",
+        verified: true
+      },
       %{description: "Manual transaction posts with manual provenance", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "Posted entries are never edited or deleted.",
@@ -222,12 +281,14 @@ Then the operation is refused and the entry is unchanged"
           ]
         },
         %{
-          statement: "A correction is made by posting a reversing entry, not by changing the original.",
+          statement:
+            "A correction is made by posting a reversing entry, not by changing the original.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A mistaken transaction is corrected with a reversing transaction",
-              body: "Given a posted transaction that was categorized incorrectly
+              body:
+                "Given a posted transaction that was categorized incorrectly
 When a reversing transaction is posted that negates its entries and a corrected transaction is posted
 Then the original, the reversal, and the correction all remain visible and the net effect is correct"
             }
@@ -246,12 +307,14 @@ Then it references the import row and the source file it came from"
           ]
         },
         %{
-          statement: "A transaction may be created manually without a source import row, recorded with manual provenance.",
+          statement:
+            "A transaction may be created manually without a source import row, recorded with manual provenance.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Manual transaction posts with manual provenance",
-              body: "Given the operator creates a balanced transaction by hand, not from an import
+              body:
+                "Given the operator creates a balanced transaction by hand, not from an import
 When it is posted
 Then it persists with a manual provenance marker (no import row) and is fully traceable in history"
             }
@@ -259,7 +322,12 @@ Then it persists with a manual provenance marker (no import row) and is fully tr
         }
       ],
       questions: [
-        %{body: "For manually created transactions (no source import row), how is the traceability rule satisfied — a \"manual\" provenance marker, or is an import row always required?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "For manually created transactions (no source import row), how is the traceability rule satisfied — a \"manual\" provenance marker, or is an import row always required?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -275,10 +343,17 @@ Then it persists with a manual provenance marker (no import row) and is fully tr
       %{description: "A new account is scoped to an entity", verified: true},
       %{description: "Same-entity transaction posts", verified: true},
       %{description: "Cross-entity transaction is rejected", verified: true},
-      %{description: "A second entity can be introduced later with isolated books", verified: true}
+      %{
+        description: "A second entity can be introduced later with isolated books",
+        verified: true
+      }
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "Every account belongs to exactly one entity.",
@@ -305,19 +380,22 @@ Then it posts successfully"
             %{
               kind: "failure path",
               title: "Cross-entity transaction is rejected",
-              body: "Given one account belonging to the person entity and one belonging to a second entity
+              body:
+                "Given one account belonging to the person entity and one belonging to a second entity
 When a single transaction tries to reference both accounts
 Then it is rejected — entities never commingle within one transaction"
             }
           ]
         },
         %{
-          statement: "The entity dimension exists from day one even though v1 runs a single entity.",
+          statement:
+            "The entity dimension exists from day one even though v1 runs a single entity.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A second entity can be introduced later with isolated books",
-              body: "Given v1 running with a single person entity and its accounts
+              body:
+                "Given v1 running with a single person entity and its accounts
 When a second entity is later added
 Then its accounts and transactions are isolated from the person entity with no restructuring of existing data"
             }
@@ -325,7 +403,12 @@ Then its accounts and transactions are isolated from the person entity with no r
         }
       ],
       questions: [
-        %{body: "Should the single v1 person entity be auto-seeded during setup, or created explicitly by the operator on first run?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Should the single v1 person entity be auto-seeded during setup, or created explicitly by the operator on first run?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -345,33 +428,41 @@ Then its accounts and transactions are isolated from the person entity with no r
       %{description: "An investment holding imports with units and market value", verified: true},
       %{description: "Re-importing the same database is a no-op", verified: true},
       %{description: "A 401(k) imports as an investment-type account", verified: true},
-      %{description: "A holding is marked to market, the gap booking as unrealized gain/loss", verified: true}
+      %{
+        description: "A holding is marked to market, the gap booking as unrealized gain/loss",
+        verified: true
+      }
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "A QFX/OFX file is parsed into one staging row per bank transaction.",
-          scenarios: [
-          ]
+          scenarios: []
         },
         %{
-          statement: "Each staging row carries the bank-assigned FITID and the currency from the file's CURDEF.",
-          scenarios: [
-          ]
+          statement:
+            "Each staging row carries the bank-assigned FITID and the currency from the file's CURDEF.",
+          scenarios: []
         },
         %{
-          statement: "Imported rows are single-sided (the bank leg only); the contra leg is assigned downstream.",
-          scenarios: [
-          ]
+          statement:
+            "Imported rows are single-sided (the bank leg only); the contra leg is assigned downstream.",
+          scenarios: []
         },
         %{
-          statement: "Each account imports with the currency and type recorded in the Quicken database — never inferred from the account name.",
+          statement:
+            "Each account imports with the currency and type recorded in the Quicken database — never inferred from the account name.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Account currency and type come from the database",
-              body: "Given a Quicken database with \"RBC USA Checking (John)\" recorded as USD/CHECKING and \"RBC Avion Visa Infinite\" as CAD/CREDITCARD
+              body:
+                "Given a Quicken database with \"RBC USA Checking (John)\" recorded as USD/CHECKING and \"RBC Avion Visa Infinite\" as CAD/CREDITCARD
 When the database is imported
 Then \"RBC USA Checking (John)\" is a USD asset account and \"RBC Avion Visa Infinite\" is a CAD liability account
 And no currency was guessed from the account name"
@@ -379,7 +470,8 @@ And no currency was guessed from the account name"
             %{
               kind: "happy path",
               title: "A 401(k) imports as an investment-type account",
-              body: "Given a Quicken account \"OPENFORCE 401(K)\" of type DEFERREDCOMPRETIREMENT401K
+              body:
+                "Given a Quicken account \"OPENFORCE 401(K)\" of type DEFERREDCOMPRETIREMENT401K
 When the database is imported
 Then it is a Keel account of type :investment
 And a CREDITCARD account imports as :liability"
@@ -392,7 +484,8 @@ And a CREDITCARD account imports as :liability"
             %{
               kind: "happy path",
               title: "A closed TD account still imports",
-              body: "Given a Quicken database with a closed \"TD UNLIMITED CHEQUING ACCOUNT\" that carries transactions
+              body:
+                "Given a Quicken database with a closed \"TD UNLIMITED CHEQUING ACCOUNT\" that carries transactions
 When the database is imported
 Then the account exists and is marked closed
 And its transactions are posted"
@@ -400,24 +493,28 @@ And its transactions are posted"
           ]
         },
         %{
-          statement: "A transaction imports the raw bank statement description from the database when one exists, not just the renamed payee.",
+          statement:
+            "A transaction imports the raw bank statement description from the database when one exists, not just the renamed payee.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A renamed payee imports with its raw bank description",
-              body: "Given a transaction whose Quicken payee is \"Tin\" but whose bank statement description is \"WWW PMT TIN0-02418\"
+              body:
+                "Given a transaction whose Quicken payee is \"Tin\" but whose bank statement description is \"WWW PMT TIN0-02418\"
 When the database is imported
 Then the posted transaction carries the raw description \"WWW PMT TIN0-02418\""
             }
           ]
         },
         %{
-          statement: "A transfer Quicken already linked imports as one already-linked transfer between the two accounts, not as unmatched legs in the review queue.",
+          statement:
+            "A transfer Quicken already linked imports as one already-linked transfer between the two accounts, not as unmatched legs in the review queue.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A Quicken-linked transfer arrives already paired",
-              body: "Given a Quicken database with a transfer Quicken linked between \"RBC Day to Day Banking (John)\" and a loan account
+              body:
+                "Given a Quicken database with a transfer Quicken linked between \"RBC Day to Day Banking (John)\" and a loan account
 When the database is imported
 Then it posts as one linked transfer touching both accounts
 And neither side appears in the unmatched transfer queue"
@@ -425,12 +522,14 @@ And neither side appears in the unmatched transfer queue"
           ]
         },
         %{
-          statement: "An investment transaction imports its share units and the security's quoted market value.",
+          statement:
+            "An investment transaction imports its share units and the security's quoted market value.",
           scenarios: [
             %{
               kind: "happy path",
               title: "An investment holding imports with units and market value",
-              body: "Given a Quicken database with a brokerage purchase of a security that has a price quote
+              body:
+                "Given a Quicken database with a brokerage purchase of a security that has a price quote
 When the database is imported
 Then the position records its share units
 And the security's quoted market value is available for the account"
@@ -438,7 +537,8 @@ And the security's quoted market value is available for the account"
             %{
               kind: "happy path",
               title: "A holding is marked to market, the gap booking as unrealized gain/loss",
-              body: "Given an investment account whose holdings cost a total of X and whose units at the security's latest quote are worth Y
+              body:
+                "Given an investment account whose holdings cost a total of X and whose units at the security's latest quote are worth Y
 When the database is imported
 Then the investment account's balance reflects the market value Y
 And the difference Y minus X is booked as unrealized gain/loss"
@@ -446,7 +546,8 @@ And the difference Y minus X is booked as unrealized gain/loss"
           ]
         },
         %{
-          statement: "Re-importing the same database posts nothing new — import is idempotent on Quicken's stable transaction id.",
+          statement:
+            "Re-importing the same database posts nothing new — import is idempotent on Quicken's stable transaction id.",
           scenarios: [
             %{
               kind: "happy path",
@@ -460,9 +561,24 @@ And the ledger totals are unchanged"
         }
       ],
       questions: [
-        %{body: "Which OFX variants must we handle for your QuickBooks/bank exports — OFX 1.x SGML with Intuit extensions (INTU.BID), OFX 2.x XML, or both? (Determines parser robustness needed.)", status: :open, resolution: nil},
-        %{body: "Quicken account-type mapping to Keel types: CHECKING/SAVINGS -> asset, CREDITCARD -> liability, BROKERAGENORMAL/DEFERREDCOMPRETIREMENT401K -> asset (investment). Is there a loan/liability account type to handle, and should retirement/brokerage be a distinct :investment type or just :asset?", status: :resolved, resolution: nil},
-        %{body: "Investment market value: represent it as a dated valuation/holding (units x latest security quote) separate from the cost-basis transactions, or per-lot? And use the latest quote or the quote as of a chosen date? This drives whether net worth reflects market value vs cost basis.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Which OFX variants must we handle for your QuickBooks/bank exports — OFX 1.x SGML with Intuit extensions (INTU.BID), OFX 2.x XML, or both? (Determines parser robustness needed.)",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Quicken account-type mapping to Keel types: CHECKING/SAVINGS -> asset, CREDITCARD -> liability, BROKERAGENORMAL/DEFERREDCOMPRETIREMENT401K -> asset (investment). Is there a loan/liability account type to handle, and should retirement/brokerage be a distinct :investment type or just :asset?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Investment market value: represent it as a dated valuation/holding (units x latest security quote) separate from the cost-basis transactions, or per-lot? And use the latest quote or the quote as of a chosen date? This drives whether net worth reflects market value vs cost basis.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -475,11 +591,18 @@ And the ledger totals are unchanged"
       "As John, I want the file's ACCTID mapped to a ledger account via accounts.external_id, with unmapped accounts rejected/flagged rather than silently imported, so that transactions always land in the right account. (Covers: FR-IMP-03)",
     tags: [%{name: "operator"}],
     criteria: [
-      %{description: "Rows land in the account whose external_id matches the file's ACCTID", verified: true},
+      %{
+        description: "Rows land in the account whose external_id matches the file's ACCTID",
+        verified: true
+      },
       %{description: "Unmapped ACCTID is flagged rather than silently imported", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "The file's ACCTID maps to a ledger account via accounts.external_id.",
@@ -494,7 +617,8 @@ Then the staging rows are associated with that account"
           ]
         },
         %{
-          statement: "Transactions whose ACCTID has no mapped account are flagged, not silently imported.",
+          statement:
+            "Transactions whose ACCTID has no mapped account are flagged, not silently imported.",
           scenarios: [
             %{
               kind: "failure path",
@@ -507,7 +631,12 @@ Then its rows are flagged as unmapped (quarantined) rather than landing in an ar
         }
       ],
       questions: [
-        %{body: "How does the operator create the ACCTID→account mapping — set external_id when creating the account, or a prompt on first import of an unknown ACCTID?", status: :open, resolution: nil}
+        %{
+          body:
+            "How does the operator create the ACCTID→account mapping — set external_id when creating the account, or a prompt on first import of an unknown ACCTID?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -524,10 +653,15 @@ Then its rows are flagged as unmapped (quarantined) rather than landing in an ar
       %{description: "Overlapping range adds only the genuinely new transactions", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A staging row whose (account, FITID) already exists is marked duplicate rather than re-imported.",
+          statement:
+            "A staging row whose (account, FITID) already exists is marked duplicate rather than re-imported.",
           scenarios: [
             %{
               kind: "happy path",
@@ -539,7 +673,8 @@ Then no new staging rows are created and the repeated transactions are marked du
           ]
         },
         %{
-          statement: "Re-importing an overlapping date range creates no new rows for transactions already seen.",
+          statement:
+            "Re-importing an overlapping date range creates no new rows for transactions already seen.",
           scenarios: [
             %{
               kind: "happy path",
@@ -552,7 +687,12 @@ Then only the Jan 16–20 transactions are added and the Jan 10–15 overlap is 
         }
       ],
       questions: [
-        %{body: "If a transaction has no FITID in the file, what identity do we use for dedup — a hash of (date, amount, descriptor)?", status: :open, resolution: nil}
+        %{
+          body:
+            "If a transaction has no FITID in the file, what identity do we use for dedup — a hash of (date, amount, descriptor)?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -569,7 +709,11 @@ Then only the Jan 16–20 transactions are added and the Jan 10–15 overlap is 
       %{description: "Good rows import while the bad row is quarantined", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "A row that cannot be parsed is moved to quarantine status.",
@@ -597,7 +741,12 @@ Then the nine valid rows are staged and only the malformed row is quarantined"
         }
       ],
       questions: [
-        %{body: "How does the operator resolve a quarantined row — fix and re-import, or edit it in the review surface?", status: :open, resolution: nil}
+        %{
+          body:
+            "How does the operator resolve a quarantined row — fix and re-import, or edit it in the review surface?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -614,7 +763,11 @@ Then the nine valid rows are staged and only the malformed row is quarantined"
       %{description: "Institution-specific columns map to the normalized fields", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "A CSV file is parsed into the same import_rows shape as a QFX file.",
@@ -622,19 +775,22 @@ Then the nine valid rows are staged and only the malformed row is quarantined"
             %{
               kind: "happy path",
               title: "A CSV import produces the same staging shape as QFX",
-              body: "Given a CSV export from an institution that offers no QFX
+              body:
+                "Given a CSV export from an institution that offers no QFX
 When the CSV is imported
 Then it produces staging rows in the same shape (account, date, amount, currency, descriptor, fitid) as a QFX import"
             }
           ]
         },
         %{
-          statement: "A per-institution column mapping normalizes CSV columns into the staging shape.",
+          statement:
+            "A per-institution column mapping normalizes CSV columns into the staging shape.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Institution-specific columns map to the normalized fields",
-              body: "Given a CSV whose columns are \"Transaction Date\", \"Debit\", \"Credit\", and \"Description\"
+              body:
+                "Given a CSV whose columns are \"Transaction Date\", \"Debit\", \"Credit\", and \"Description\"
 When it is imported with that institution's mapping
 Then the date, signed amount, and descriptor are normalized into the staging row correctly"
             }
@@ -642,7 +798,12 @@ Then the date, signed amount, and descriptor are normalized into the staging row
         }
       ],
       questions: [
-        %{body: "Which of your institutions (RBC/TD/Tangerine/Redstone) lack QFX and need CSV, and can you provide a sample CSV header for each?", status: :open, resolution: nil}
+        %{
+          body:
+            "Which of your institutions (RBC/TD/Tangerine/Redstone) lack QFX and need CSV, and can you provide a sample CSV header for each?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -655,19 +816,28 @@ Then the date, signed amount, and descriptor are normalized into the staging row
       "As John, I want the same import pipeline to serve both bulk historical migration (years of Quicken data) and recurring weekly imports, so that migrating my history requires zero manual re-keying and ongoing use is the same path. (Covers: FR-IMP-09, G2)",
     tags: [%{name: "operator"}],
     criteria: [
-      %{description: "A large historical file and a weekly file go through the same pipeline", verified: true},
+      %{
+        description: "A large historical file and a weekly file go through the same pipeline",
+        verified: true
+      },
       %{description: "Years of Quicken history import without manual data entry", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The same import pipeline serves both bulk historical migration and recurring weekly imports.",
+          statement:
+            "The same import pipeline serves both bulk historical migration and recurring weekly imports.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A large historical file and a weekly file go through the same pipeline",
-              body: "Given a multi-year historical export and a single-week export
+              body:
+                "Given a multi-year historical export and a single-week export
 When each is imported
 Then both are processed by the same pipeline with the same staging, dedup, and quarantine behavior"
             }
@@ -687,7 +857,12 @@ Then every transaction is staged automatically with no manual re-keying required
         }
       ],
       questions: [
-        %{body: "For very large historical files, do we stream/chunk the parse, and is there a file-size or row-count ceiling to plan for?", status: :open, resolution: nil}
+        %{
+          body:
+            "For very large historical files, do we stream/chunk the parse, and is there a file-size or row-count ceiling to plan for?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -704,7 +879,11 @@ Then every transaction is staged automatically with no manual re-keying required
       %{description: "A retried import job does not create duplicate rows", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "Imports run as background jobs so the interface is not blocked.",
@@ -719,7 +898,8 @@ Then it is enqueued and processed by a background worker while the interface sta
           ]
         },
         %{
-          statement: "A background job retries on transient failure without duplicating already-staged rows.",
+          statement:
+            "A background job retries on transient failure without duplicating already-staged rows.",
           scenarios: [
             %{
               kind: "happy path",
@@ -732,7 +912,12 @@ Then rows already staged are recognized as duplicates and not re-created"
         }
       ],
       questions: [
-        %{body: "For a single-user local app, is Oban warranted in v1, or is a synchronous/Task-based import enough until import volume justifies it?", status: :open, resolution: nil}
+        %{
+          body:
+            "For a single-user local app, is Oban warranted in v1, or is a synchronous/Task-based import enough until import volume justifies it?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -744,14 +929,15 @@ Then rows already staged are recognized as duplicates and not re-created"
     description:
       "As the system, I want a deterministic rules engine that matches a transaction row by regex (and optional account scope) and applies a categorize action, so rows are classified to income/expense accounts; transfers are handled separately by two-sided transfer rules.",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -762,14 +948,15 @@ Then rows already staged are recognized as duplicates and not re-created"
     description:
       "As John, I want rows matched by rules to transition to approved (or proposed, configurable) without any LLM call, so that the deterministic majority of transactions are categorized cheaply and predictably. (Covers: FR-CAT-02)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -780,14 +967,15 @@ Then rows already staged are recognized as duplicates and not re-created"
     description:
       "As John, I want only rows unmatched by rules sent to the LLM, which proposes a contra account and sets status proposed, so that model spend is confined to the genuine unknown tail. (Covers: FR-CAT-03, AD7)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -798,14 +986,15 @@ Then rows already staged are recognized as duplicates and not re-created"
     description:
       "As John, I want to edit and extend the categorization rules over time, so that the unknown tail sent to the LLM shrinks as I encode more known merchants. (Covers: FR-CAT-05)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -817,15 +1006,26 @@ Then rows already staged are recognized as duplicates and not re-created"
       "As John, I want a \"Desert First distribution\" category present in the personal chart of accounts, so that irregular owner draws — which carry cross-border tax weight — are never left uncategorized. (Covers: FR-ENT-03)",
     tags: [%{name: "operator"}],
     criteria: [
-      %{description: "Desert First distribution category exists in the personal chart", verified: true},
+      %{
+        description: "Desert First distribution category exists in the personal chart",
+        verified: true
+      },
       %{description: "An owner draw is categorized as Desert First distribution", verified: true},
-      %{description: "Desert First distribution appears as income in personal reports", verified: true}
+      %{
+        description: "Desert First distribution appears as income in personal reports",
+        verified: true
+      }
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The personal chart of accounts includes a \"Desert First distribution\" category.",
+          statement:
+            "The personal chart of accounts includes a \"Desert First distribution\" category.",
           scenarios: [
             %{
               kind: "happy path",
@@ -837,12 +1037,14 @@ Then a \"Desert First distribution\" category is present"
           ]
         },
         %{
-          statement: "Owner draws from Desert First are categorized to that account, never left uncategorized.",
+          statement:
+            "Owner draws from Desert First are categorized to that account, never left uncategorized.",
           scenarios: [
             %{
               kind: "happy path",
               title: "An owner draw is categorized as Desert First distribution",
-              body: "Given an irregular deposit into a personal account that represents an owner draw from Desert First
+              body:
+                "Given an irregular deposit into a personal account that represents an owner draw from Desert First
 When it is categorized
 Then the \"Desert First distribution\" category is available and applied so the draw is never left uncategorized"
             }
@@ -862,7 +1064,12 @@ Then the draw appears on the income side with the correct sign"
         }
       ],
       questions: [
-        %{body: "Is \"Desert First distribution\" classified as an equity/draw account or an income account in the personal books? (Affects cross-border tax treatment of the draw.)", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Is \"Desert First distribution\" classified as an equity/draw account or an income account in the personal books? (Affects cross-border tax treatment of the draw.)",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -881,7 +1088,11 @@ Then the draw appears on the income side with the correct sign"
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "Each account holds exactly one currency, fixed once set.",
@@ -916,7 +1127,12 @@ Then CAD totals and USD totals are presented separately, never summed into one n
         }
       ],
       questions: [
-        %{body: "Do we ever present a single combined net-worth figure across currencies, and if so at what exchange rate (and does that conversion belong only in reporting, not the ledger)?", status: :open, resolution: nil}
+        %{
+          body:
+            "Do we ever present a single combined net-worth figure across currencies, and if so at what exchange rate (and does that conversion belong only in reporting, not the ledger)?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -929,57 +1145,72 @@ Then CAD totals and USD totals are presented separately, never summed into one n
       "As John, I want a cross-currency movement recorded as a multi-leg transaction that balances each currency independently, with the rate difference flowing into a dedicated FX gain/loss account and no implicit base-currency conversion, so that CAD/USD conversions are explicit and correct. (Covers: FR-FX-02, FR-FX-03)",
     tags: [%{name: "operator"}],
     criteria: [
-      %{description: "CAD-to-USD transfer records as a balanced multi-leg transaction", verified: true},
+      %{
+        description: "CAD-to-USD transfer records as a balanced multi-leg transaction",
+        verified: true
+      },
       %{description: "Rate difference lands in the FX gain/loss account", verified: true},
       %{description: "A two-leg implicit cross-currency entry is not allowed", verified: true},
       %{description: "Conversion realizes gain against the average-cost basis", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A cross-currency movement is a single transaction whose legs balance each currency independently.",
+          statement:
+            "A cross-currency movement is a single transaction whose legs balance each currency independently.",
           scenarios: [
             %{
               kind: "happy path",
               title: "CAD-to-USD transfer records as a balanced multi-leg transaction",
-              body: "Given 1000.00 CAD leaving a CAD account and 730.00 USD arriving in a USD account
+              body:
+                "Given 1000.00 CAD leaving a CAD account and 730.00 USD arriving in a USD account
 When the transfer is recorded
 Then the transaction has legs that net to zero in CAD and net to zero in USD independently"
             }
           ]
         },
         %{
-          statement: "The exchange-rate difference is posted to a dedicated FX gain/loss account.",
+          statement:
+            "The exchange-rate difference is posted to a dedicated FX gain/loss account.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Rate difference lands in the FX gain/loss account",
-              body: "Given a conversion where the realized rate differs from the cost basis of the currency given up
+              body:
+                "Given a conversion where the realized rate differs from the cost basis of the currency given up
 When the transfer is posted
 Then the gain or loss is posted to the dedicated FX gain/loss account so each currency still balances"
             }
           ]
         },
         %{
-          statement: "There is no implicit base-currency conversion; every conversion is explicit legs.",
+          statement:
+            "There is no implicit base-currency conversion; every conversion is explicit legs.",
           scenarios: [
             %{
               kind: "failure path",
               title: "A two-leg implicit cross-currency entry is not allowed",
-              body: "Given an attempt to record a CAD outflow and a USD inflow as a single two-leg entry that \"just converts\"
+              body:
+                "Given an attempt to record a CAD outflow and a USD inflow as a single two-leg entry that \"just converts\"
 When it is submitted
 Then it is rejected — the conversion must be modeled with explicit legs that balance each currency"
             }
           ]
         },
         %{
-          statement: "FX gain/loss uses a per-currency average-cost basis and is realized on CAD↔USD conversions.",
+          statement:
+            "FX gain/loss uses a per-currency average-cost basis and is realized on CAD↔USD conversions.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Conversion realizes gain against the average-cost basis",
-              body: "Given a CAD pool with an average USD cost basis of 0.72 USD per CAD
+              body:
+                "Given a CAD pool with an average USD cost basis of 0.72 USD per CAD
 When 1000.00 CAD is converted at an actual rate of 0.73 USD per CAD
 Then a 10.00 USD FX gain is posted to the FX gain/loss account and the CAD pool is reduced by 1000.00 CAD"
             }
@@ -987,7 +1218,12 @@ Then a 10.00 USD FX gain is posted to the FX gain/loss account and the CAD pool 
         }
       ],
       questions: [
-        %{body: "What rate/cost-basis method do we use to compute FX gain/loss — the bank's posted rate from the file, an IRS yearly-average rate, or a cost-basis lot method? (Affects §988 reporting.)", status: :resolved, resolution: nil}
+        %{
+          body:
+            "What rate/cost-basis method do we use to compute FX gain/loss — the bank's posted rate from the file, an IRS yearly-average rate, or a cost-basis lot method? (Affects §988 reporting.)",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -999,14 +1235,15 @@ Then a 10.00 USD FX gain is posted to the FX gain/loss account and the CAD pool 
     description:
       "As John, I want FX gain/loss reportable as its own line, so that my cross-border USD filing can surface currency gains/losses explicitly. (Covers: FR-FX-04, G3)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1017,14 +1254,15 @@ Then a 10.00 USD FX gain is posted to the FX gain/loss account and the CAD pool 
     description:
       "As John, I want to match staged ↔ posted ↔ statement balances per account and surface unmatched/unreconciled items for review, so that I can trust each account ties out to its statement. (Covers: FR-REC-01, FR-REC-03)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1037,18 +1275,27 @@ Then a 10.00 USD FX gain is posted to the FX gain/loss account and the CAD pool 
     tags: [%{name: "operator"}],
     criteria: [
       %{description: "Owner draw creates one transaction in each entity", verified: true},
-      %{description: "Both sides of the draw are findable via the shared reference", verified: true}
+      %{
+        description: "Both sides of the draw are findable via the shared reference",
+        verified: true
+      }
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "Cross-entity movement is modeled as two mirror transactions, one per entity.",
+          statement:
+            "Cross-entity movement is modeled as two mirror transactions, one per entity.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner draw creates one transaction in each entity",
-              body: "Given a draw moving money from Desert First (c_corp) to the person
+              body:
+                "Given a draw moving money from Desert First (c_corp) to the person
 When the movement is recorded
 Then one balanced transaction is posted in the Desert First entity and a separate balanced transaction is posted in the person entity"
             }
@@ -1068,7 +1315,12 @@ Then the other side is found through the same shared reference"
         }
       ],
       questions: [
-        %{body: "Must both mirror sides be created atomically (both or neither), and what happens if only one side appears at import time (the other entity's data arrives later)?", status: :open, resolution: nil}
+        %{
+          body:
+            "Must both mirror sides be created atomically (both or neither), and what happens if only one side appears at import time (the other entity's data arrives later)?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1080,14 +1332,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want a trial balance where the sum across all entries equals zero, so that I have a one-glance integrity check on the whole ledger. (Covers: FR-RPT-01)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1098,14 +1351,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want a Profit & Loss report with correct sign conventions per account type, so that income and expense net out correctly for the period. (Covers: FR-RPT-02)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1116,14 +1370,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want a balance sheet of assets, liabilities, and equity, so that I get a real net-worth view as a byproduct of double-entry books. (Covers: FR-RPT-03)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1134,14 +1389,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want a spend report grouped by descriptor, so that I can see vendor/category spend without maintaining vendor accounts (vendors are a normalized descriptor field, not ledger accounts). (Covers: FR-RPT-04, §7)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1152,14 +1408,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want all reports scoped to a single entity, so that personal and any future corporate books are reported separately and never mixed. (Covers: FR-RPT-05)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1170,14 +1427,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want cash flow and net-worth-over-time reports, so that I can see trends over time. (Nice-to-have.) (Covers: FR-RPT-06)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1188,14 +1446,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want the agent to drive the ledger through intent-level MCP tools — stage_import, propose_categorization, post_transaction, reconcile, balance, trial_balance, pnl/report — that each enforce invariants server-side within a single entity context, so that the agent (the primary interface) operates the system safely. (Covers: FR-MCP-01 through FR-MCP-07)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1206,14 +1465,15 @@ Then the other side is found through the same shared reference"
     description:
       "As John, I want the MCP surface to expose no raw row-manipulation tools (no create_entry, etc.), so that the agent can never bypass the invariants by manipulating rows directly. (Covers: FR-MCP-08, AD8)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1232,7 +1492,11 @@ Then the other side is found through the same shared reference"
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "The operator can browse posted transactions.",
@@ -1279,7 +1543,12 @@ Then there is no control to edit or delete it from this view"
         }
       ],
       questions: [
-        %{body: "What is the default view when no filter is applied — current tax year, last 90 days, or all time?", status: :open, resolution: nil}
+        %{
+          body:
+            "What is the default view when no filter is applied — current tax year, last 90 days, or all time?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1297,7 +1566,11 @@ Then there is no control to edit or delete it from this view"
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
           statement: "An account register lists that account's entries in date order.",
@@ -1325,7 +1598,12 @@ Then the register shows a 1,250.00 CAD balance derived from the entries"
         }
       ],
       questions: [
-        %{body: "Should the register show a running balance per row (computed for display), or only the current total — given running balances are never stored (story 762)?", status: :open, resolution: nil}
+        %{
+          body:
+            "Should the register show a running balance per row (computed for display), or only the current total — given running balances are never stored (story 762)?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1337,14 +1615,15 @@ Then the register shows a 1,250.00 CAD balance derived from the entries"
     description:
       "As John, I want to manually set or override a transaction's category (contra account) in the UI — working alongside the agent's proposals rather than only through it — so that I can do hands-on cleanup of the categorization tail. Operates on staging rows before posting; corrections to posted entries flow through reversing entries. (Complements FR-CAT-03, FR-REV-04, AD5)",
     tags: [%{name: "operator"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
-      rules: [
-      ],
-      questions: [
-      ],
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -1362,10 +1641,15 @@ Then the register shows a 1,250.00 CAD balance derived from the entries"
       %{description: "Ambiguous ties are not auto-linked", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "Two unmatched same-currency transfer legs on different accounts with equal absolute amount, opposite sign, and dates within the matching window form an exact match.",
+          statement:
+            "Two unmatched same-currency transfer legs on different accounts with equal absolute amount, opposite sign, and dates within the matching window form an exact match.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1378,7 +1662,8 @@ Then the two legs are identified as an exact match"
           ]
         },
         %{
-          statement: "An exact same-currency match is linked automatically, with no human review.",
+          statement:
+            "An exact same-currency match is linked automatically, with no human review.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1392,7 +1677,8 @@ And the Transfer Clearing balance for that pair nets to zero"
           ]
         },
         %{
-          statement: "An automatic link is stored as a reversible match record, never a destructive merge.",
+          statement:
+            "An automatic link is stored as a reversible match record, never a destructive merge.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1405,7 +1691,8 @@ And both return to the unmatched queue"
           ]
         },
         %{
-          statement: "A leg auto-links only when it has exactly one exact-match candidate; ties go to review instead.",
+          statement:
+            "A leg auto-links only when it has exactly one exact-match candidate; ties go to review instead.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1420,7 +1707,12 @@ And all three are sent to the review queue as candidates"
         }
       ],
       questions: [
-        %{body: "Same-currency matching window: how many days apart can two legs be and still match (±1? ±3? ±5?)? And does an \"exact\" match require strictly equal amounts, or equal within a small cent tolerance?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Same-currency matching window: how many days apart can two legs be and still match (±1? ±3? ±5?)? And does an \"exact\" match require strictly equal amounts, or equal within a small cent tolerance?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1440,43 +1732,59 @@ This mapping is OPTIONAL, controlled by an `import_categories` flag (default on)
       %{description: "A split transaction posts a contra leg per split", verified: true},
       %{description: "An uncategorized entry falls back to Uncategorized", verified: true},
       %{description: "The P&L breaks down by category", verified: true},
-      %{description: "A ZTYPE 0 category lands in Uncategorized, not a guessed transfer", verified: true},
-      %{description: "Importing with categories off sends tagged rows to Uncategorized", verified: true}
+      %{
+        description: "A ZTYPE 0 category lands in Uncategorized, not a guessed transfer",
+        verified: true
+      },
+      %{
+        description: "Importing with categories off sends tagged rows to Uncategorized",
+        verified: true
+      }
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A cash-flow entry's contra is the category (ZTAG) it references, resolved to the category's full parent:child name.",
+          statement:
+            "A cash-flow entry's contra is the category (ZTAG) it references, resolved to the category's full parent:child name.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A subcategory resolves to its full parent:child path",
-              body: "Given a transaction whose entry references the \"Restaurants\" category, child of \"Food & Dining\"
+              body:
+                "Given a transaction whose entry references the \"Restaurants\" category, child of \"Food & Dining\"
 When the database is imported
 Then the contra account is \"Food & Dining:Restaurants\""
             }
           ]
         },
         %{
-          statement: "A ZTYPE 2 category posts to an income contra account; a ZTYPE 1 category posts to an expense contra account.",
+          statement:
+            "A ZTYPE 2 category posts to an income contra account; a ZTYPE 1 category posts to an expense contra account.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Paycheck posts as income, Parking as expense",
-              body: "Given a transaction categorized \"Paycheck\" (ZTYPE 2) and another categorized \"Parking\" (ZTYPE 1)
+              body:
+                "Given a transaction categorized \"Paycheck\" (ZTYPE 2) and another categorized \"Parking\" (ZTYPE 1)
 When the database is imported
 Then \"Paycheck\" is an income account and \"Parking\" is an expense account"
             }
           ]
         },
         %{
-          statement: "A split transaction posts one contra leg per split entry, each to its own category.",
+          statement:
+            "A split transaction posts one contra leg per split entry, each to its own category.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A split transaction posts a contra leg per split",
-              body: "Given a transaction with two split entries categorized \"Groceries\" and \"Household\"
+              body:
+                "Given a transaction with two split entries categorized \"Groceries\" and \"Household\"
 When the database is imported
 Then the transaction has a Groceries contra leg and a Household contra leg, each for its split amount
 And the transaction still balances per currency"
@@ -1484,7 +1792,8 @@ And the transaction still balances per currency"
           ]
         },
         %{
-          statement: "An entry with no category — or one referencing a user tag rather than a category — posts to Uncategorized.",
+          statement:
+            "An entry with no category — or one referencing a user tag rather than a category — posts to Uncategorized.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1496,12 +1805,14 @@ Then its contra account is \"Uncategorized\""
           ]
         },
         %{
-          statement: "After import the P&L lists each category separately, not collapsed into one Uncategorized bucket.",
+          statement:
+            "After import the P&L lists each category separately, not collapsed into one Uncategorized bucket.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The P&L breaks down by category",
-              body: "Given an imported database with transactions in Restaurants, Groceries, and Paycheck
+              body:
+                "Given an imported database with transactions in Restaurants, Groceries, and Paycheck
 When the P&L is requested
 Then Restaurants, Groceries, and Paycheck each appear as their own line
 And none of those amounts are lumped under Uncategorized"
@@ -1509,12 +1820,14 @@ And none of those amounts are lumped under Uncategorized"
           ]
         },
         %{
-          statement: "A ZTYPE 0 (investment/special) category on a cash-flow entry posts to Uncategorized — it is never implicitly reclassified as a transfer or equity. Only unambiguous income/expense categories and Quicken's explicit transfer links are auto-classified; everything else is a work-queue item.",
+          statement:
+            "A ZTYPE 0 (investment/special) category on a cash-flow entry posts to Uncategorized — it is never implicitly reclassified as a transfer or equity. Only unambiguous income/expense categories and Quicken's explicit transfer links are auto-classified; everything else is a work-queue item.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A ZTYPE 0 category lands in Uncategorized, not a guessed transfer",
-              body: "Given a cash-flow entry categorized \"Credit Card Payment\" (ZTYPE 0) that is NOT one of Quicken's explicit transfer links
+              body:
+                "Given a cash-flow entry categorized \"Credit Card Payment\" (ZTYPE 0) that is NOT one of Quicken's explicit transfer links
 When the database is imported
 Then its contra account is \"Uncategorized\"
 And it is not silently turned into a transfer or an equity adjustment"
@@ -1522,12 +1835,14 @@ And it is not silently turned into a transfer or an equity adjustment"
           ]
         },
         %{
-          statement: "Quicken category import is optional: when disabled, Quicken's ZTAG category tags are ignored and each non-transfer contra lands in Uncategorized, while Keel rule matches and transfer links still apply.",
+          statement:
+            "Quicken category import is optional: when disabled, Quicken's ZTAG category tags are ignored and each non-transfer contra lands in Uncategorized, while Keel rule matches and transfer links still apply.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Importing with categories off sends tagged rows to Uncategorized",
-              body: "Given the Quicken sample database whose paycheck row carries an income category and whose parking row carries an expense category
+              body:
+                "Given the Quicken sample database whose paycheck row carries an income category and whose parking row carries an expense category
 When it is imported with import_categories set to false
 Then neither category account is credited/debited — both contras land in Uncategorized instead"
             }
@@ -1535,7 +1850,12 @@ Then neither category account is credited/debited — both contras land in Uncat
         }
       ],
       questions: [
-        %{body: "ZTYPE 0 categories (investment/special actions like Buy Bonds, Add Shares, Stock Dividend, plus Credit Card Payment and Adjustment) — investment actions are handled by the investment path, Credit Card Payment is really a transfer, and Adjustment maps to Opening Balance Equity. When a ZTYPE 0 category lands on an ordinary cash-flow entry, how should its contra be treated — transfer (Credit Card Payment), equity (Adjustment), or a catch-all?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "ZTYPE 0 categories (investment/special actions like Buy Bonds, Add Shares, Stock Dividend, plus Credit Card Payment and Adjustment) — investment actions are handled by the investment path, Credit Card Payment is really a transfer, and Adjustment maps to Opening Balance Equity. When a ZTYPE 0 category lands on an ordinary cash-flow entry, how should its contra be treated — transfer (Credit Card Payment), equity (Adjustment), or a catch-all?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1553,10 +1873,16 @@ Then neither category account is credited/debited — both contras land in Uncat
       %{description: "Shared reference key pairs exactly", verified: true},
       %{description: "Keyless sides pair by amount/FX/date as a proposal", verified: true},
       %{description: "Keyless legs that don't reconcile are not proposed", verified: true},
-      %{description: "One side without a counterpart waits in clearing, then links", verified: true},
+      %{
+        description: "One side without a counterpart waits in clearing, then links",
+        verified: true
+      },
       %{description: "FX cost computed from implied vs Bank of Canada rate", verified: true},
       %{description: "No rule, no transfer guess", verified: true},
-      %{description: "Agent proposes a transfer rule; apply to the queue is explicit", verified: true},
+      %{
+        description: "Agent proposes a transfer rule; apply to the queue is explicit",
+        verified: true
+      },
       %{description: "Masked and unmasked refs pair on the shared suffix", verified: true},
       %{description: "Tolerances govern a keyless match", verified: true},
       %{description: "A candidate outside the date window is not proposed", verified: true},
@@ -1569,15 +1895,21 @@ Then neither category account is credited/debited — both contras land in Uncat
       %{description: "Window 0 pairs same-day legs only", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A transfer rule defines two sides; each side is an optional account filter plus a descriptor/payee regex.",
+          statement:
+            "A transfer rule defines two sides; each side is an optional account filter plus a descriptor/payee regex.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A transfer rule names both sides",
-              body: "Given a transfer rule whose side A is account \"RBC U.S. High Interest eSavings\" + regex \"(?i)online banking foreign exchange\"
+              body:
+                "Given a transfer rule whose side A is account \"RBC U.S. High Interest eSavings\" + regex \"(?i)online banking foreign exchange\"
 And whose side B is account \"RBC Staff Banking\" + regex \"(?i)online banking foreign exchange\"
 When the engine evaluates a USD leg on RBC U.S. High Interest eSavings and a CAD leg on RBC Staff Banking, both with that descriptor
 Then the USD leg matches side A and the CAD leg matches side B"
@@ -1585,12 +1917,14 @@ Then the USD leg matches side A and the CAD leg matches side B"
           ]
         },
         %{
-          statement: "When one leg matches side A and another leg matches side B, the engine pairs them into a single linked transfer, off the P&L.",
+          statement:
+            "When one leg matches side A and another leg matches side B, the engine pairs them into a single linked transfer, off the P&L.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Two matched sides become one linked transfer",
-              body: "Given a leg matching side A for -10000 USD and a leg matching side B for +13710 CAD
+              body:
+                "Given a leg matching side A for -10000 USD and a leg matching side B for +13710 CAD
 When the transfer rule is applied
 Then the two legs are linked as a single transfer
 And neither leg appears as income or expense on the P&L"
@@ -1598,12 +1932,14 @@ And neither leg appears as income or expense on the P&L"
           ]
         },
         %{
-          statement: "When both sides' regexes capture a shared reference key, the pair is matched exactly and auto-confirmed — no amount or date heuristic needed.",
+          statement:
+            "When both sides' regexes capture a shared reference key, the pair is matched exactly and auto-confirmed — no amount or date heuristic needed.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Shared reference key pairs exactly",
-              body: "Given a USD leg \"Ref 3WWXXXXXXXX8470 Online Banking foreign exchange\" and a CAD leg \"Ref 3WWXXXXXXXX8470 Online Banking foreign exchange\"
+              body:
+                "Given a USD leg \"Ref 3WWXXXXXXXX8470 Online Banking foreign exchange\" and a CAD leg \"Ref 3WWXXXXXXXX8470 Online Banking foreign exchange\"
 And both sides' regexes capture the key \"8470\"
 When the engine pairs them
 Then they are matched on the shared key alone and auto-confirmed
@@ -1612,7 +1948,8 @@ And no amount or date heuristic is used"
             %{
               kind: "happy path",
               title: "Masked and unmasked refs pair on the shared suffix",
-              body: "Given a USD leg \"...Ref 3WW742041628540...\" (full) and a CAD leg \"...Ref 3WWXXXXXXXX8540...\" (masked)
+              body:
+                "Given a USD leg \"...Ref 3WW742041628540...\" (full) and a CAD leg \"...Ref 3WWXXXXXXXX8540...\" (masked)
 And each side's regex captures the trailing suffix \"8540\" as the key
 When the engine pairs them
 Then they match on the shared suffix \"8540\" despite the differing full ref strings
@@ -1621,12 +1958,14 @@ And the pair is auto-confirmed"
           ]
         },
         %{
-          statement: "When there is no shared key, the two sides pair by amount-via-daily-FX-rate and date within tolerance, surfaced as a proposal for review — never auto-applied.",
+          statement:
+            "When there is no shared key, the two sides pair by amount-via-daily-FX-rate and date within tolerance, surfaced as a proposal for review — never auto-applied.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Keyless sides pair by amount/FX/date as a proposal",
-              body: "Given side-A and side-B legs that capture no shared key: -2279.29 USD and +3097.66 CAD within a few days
+              body:
+                "Given side-A and side-B legs that capture no shared key: -2279.29 USD and +3097.66 CAD within a few days
 When the engine evaluates them
 Then it proposes the pair using the daily FX rate and date proximity
 And the proposal is surfaced for review, not auto-confirmed"
@@ -1634,7 +1973,8 @@ And the proposal is surfaced for review, not auto-confirmed"
             %{
               kind: "failure path",
               title: "Keyless legs that don't reconcile are not proposed",
-              body: "Given keyless side-A and side-B legs whose amounts do not reconcile at the daily FX rate within tolerance
+              body:
+                "Given keyless side-A and side-B legs whose amounts do not reconcile at the daily FX rate within tolerance
 When the engine evaluates them
 Then no pair is proposed
 And both legs remain unpaired"
@@ -1642,12 +1982,14 @@ And both legs remain unpaired"
           ]
         },
         %{
-          statement: "A leg matching only one side, with no counterpart yet, parks in Transfer Clearing pending its pair; Transfer Clearing is internal and the user sees the linked transfer, not the clearing account.",
+          statement:
+            "A leg matching only one side, with no counterpart yet, parks in Transfer Clearing pending its pair; Transfer Clearing is internal and the user sees the linked transfer, not the clearing account.",
           scenarios: [
             %{
               kind: "happy path",
               title: "One side without a counterpart waits in clearing, then links",
-              body: "Given only the side-A leg has been imported and its side-B counterpart has not arrived yet
+              body:
+                "Given only the side-A leg has been imported and its side-B counterpart has not arrived yet
 When the transfer rule is applied
 Then the side-A leg parks in Transfer Clearing pending its pair
 And when the side-B leg is later imported, the two link into one transfer that the user sees as a single movement (not a Transfer Clearing entry)"
@@ -1655,12 +1997,14 @@ And when the side-B leg is later imported, the two link into one transfer that t
           ]
         },
         %{
-          statement: "On pairing, the FX cost is computed from the implied rate (the two legs' amounts) against the Bank of Canada daily rate for the transfer date.",
+          statement:
+            "On pairing, the FX cost is computed from the implied rate (the two legs' amounts) against the Bank of Canada daily rate for the transfer date.",
           scenarios: [
             %{
               kind: "happy path",
               title: "FX cost computed from implied vs Bank of Canada rate",
-              body: "Given a pair of -10000 USD and +13710 CAD legs dated 2026-05-20 (implied rate 1.371)
+              body:
+                "Given a pair of -10000 USD and +13710 CAD legs dated 2026-05-20 (implied rate 1.371)
 When they are linked
 Then the implied rate 1.371 is recorded on the transfer
 And the difference against the Bank of Canada rate for 2026-05-20 is booked as the transfer's FX cost"
@@ -1668,7 +2012,8 @@ And the difference against the Bank of Canada rate for 2026-05-20 is booked as t
           ]
         },
         %{
-          statement: "Transfer rules run in the one deterministic engine before any LLM, and a row matching no rule stays Uncategorized — never an implicit transfer guess.",
+          statement:
+            "Transfer rules run in the one deterministic engine before any LLM, and a row matching no rule stays Uncategorized — never an implicit transfer guess.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1681,12 +2026,14 @@ And it is never implicitly treated as a transfer"
           ]
         },
         %{
-          statement: "Transfer rules are agent-proposable via MCP and applied at import; re-applying them to rows already in the queue is an explicit, user- or agent-triggered action.",
+          statement:
+            "Transfer rules are agent-proposable via MCP and applied at import; re-applying them to rows already in the queue is an explicit, user- or agent-triggered action.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Agent proposes a transfer rule; apply to the queue is explicit",
-              body: "Given an agent adds a two-sided transfer rule via MCP
+              body:
+                "Given an agent adds a two-sided transfer rule via MCP
 When a later import contains rows matching both sides
 Then those rows are paired per the rule at import
 And existing Uncategorized rows are reclassified only when \"apply rules\" is explicitly triggered"
@@ -1694,12 +2041,14 @@ And existing Uncategorized rows are reclassified only when \"apply rules\" is ex
           ]
         },
         %{
-          statement: "A transfer rule provisions its matching tolerances — a date window (± days) and an amount tolerance applied after FX conversion — which govern the keyless pairing path.",
+          statement:
+            "A transfer rule provisions its matching tolerances — a date window (± days) and an amount tolerance applied after FX conversion — which govern the keyless pairing path.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Tolerances govern a keyless match",
-              body: "Given a transfer rule with a date window of ±5 days and an amount tolerance of 2%
+              body:
+                "Given a transfer rule with a date window of ±5 days and an amount tolerance of 2%
 And keyless side-A (-2279.29 USD) and side-B (+3097.66 CAD) legs 3 days apart that reconcile within 2% at the daily FX rate
 When the engine evaluates them
 Then the pair is proposed (inside both the date window and the amount tolerance)"
@@ -1715,7 +2064,8 @@ Then no pair is proposed (the date window is exceeded)"
           ]
         },
         %{
-          statement: "A transfer rule has a rate band (min_rate/max_rate); a keyless cross-currency pair matches only when its implied CAD/USD rate falls within the band, replacing the fixed 1.15–1.55 plausibility band.",
+          statement:
+            "A transfer rule has a rate band (min_rate/max_rate); a keyless cross-currency pair matches only when its implied CAD/USD rate falls within the band, replacing the fixed 1.15–1.55 plausibility band.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1730,7 +2080,8 @@ And the 9.0 candidate is not paired (outside the band)"
           ]
         },
         %{
-          statement: "John can edit the rate band on a transfer-rule proposal and the previewed pairs recompute against it.",
+          statement:
+            "John can edit the rate band on a transfer-rule proposal and the previewed pairs recompute against it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1742,19 +2093,22 @@ Then the 1.37 pair drops from the preview"
           ]
         },
         %{
-          statement: "A transfer rule can name a remainder account; on approve, the difference between the two matched legs is posted to it so the two legs plus the remainder form one balanced transaction.",
+          statement:
+            "A transfer rule can name a remainder account; on approve, the difference between the two matched legs is posted to it so the two legs plus the remainder form one balanced transaction.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Approving a mortgage pair books interest as the remainder",
-              body: "Given a proposed match of a bank payment -3527.01 (RBC Staff Banking) and a mortgage principal +1320.66 (Mortgage), with remainder account \"Home:Mortgage Interest\"
+              body:
+                "Given a proposed match of a bank payment -3527.01 (RBC Staff Banking) and a mortgage principal +1320.66 (Mortgage), with remainder account \"Home:Mortgage Interest\"
 When John approves it
 Then one balanced transaction results: RBC Staff Banking -3527.01, Mortgage +1320.66, Home:Mortgage Interest +2206.35"
             }
           ]
         },
         %{
-          statement: "The remainder is currency-aware: a same-currency pair posts |A| − |B| to the remainder account, a cross-currency pair posts the FX cost, and no remainder leg is posted when the difference is zero.",
+          statement:
+            "The remainder is currency-aware: a same-currency pair posts |A| − |B| to the remainder account, a cross-currency pair posts the FX cost, and no remainder leg is posted when the difference is zero.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1767,36 +2121,42 @@ And an exact same-currency pair (-500 CAD, +500 CAD) posts no remainder leg"
           ]
         },
         %{
-          statement: "A same-currency two-sided rule pairs its legs by date window (rate band applied to the amount ratio), surfaced as a reviewable proposal — so a recurring payment pairs with its principal leg.",
+          statement:
+            "A same-currency two-sided rule pairs its legs by date window (rate band applied to the amount ratio), surfaced as a reviewable proposal — so a recurring payment pairs with its principal leg.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A mortgage payment pairs with its principal leg",
-              body: "Given a bank \"Meridian Credit\" payment and a Mortgage \"Transfer in From Interest Payment\" leg on the same date
+              body:
+                "Given a bank \"Meridian Credit\" payment and a Mortgage \"Transfer in From Interest Payment\" leg on the same date
 When the rule is previewed
 Then the two legs are paired as a proposal (matched by date, not equal amounts)"
             }
           ]
         },
         %{
-          statement: "The proposal preview shows the remainder line (its destination account and amount) alongside the two matched legs before approval.",
+          statement:
+            "The proposal preview shows the remainder line (its destination account and amount) alongside the two matched legs before approval.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Preview shows the interest remainder",
-              body: "Given a proposed mortgage pair with remainder account \"Home:Mortgage Interest\"
+              body:
+                "Given a proposed mortgage pair with remainder account \"Home:Mortgage Interest\"
 When John views the proposal
 Then it shows the two matched legs and a remainder line: Home:Mortgage Interest 2206.35"
             }
           ]
         },
         %{
-          statement: "A date window of 0 matches only same-day legs — two legs on the same date pair, but a candidate one day apart is not paired.",
+          statement:
+            "A date window of 0 matches only same-day legs — two legs on the same date pair, but a candidate one day apart is not paired.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Window 0 pairs same-day legs only",
-              body: "Given a same-currency out-leg and an equal in-leg on the same date, plus another in-leg one day later
+              body:
+                "Given a same-currency out-leg and an equal in-leg on the same date, plus another in-leg one day later
 When a transfer rule with date_window_days 0 is applied
 Then the same-day pair is linked and the one-day-apart leg is left unmatched"
             }
@@ -1804,12 +2164,42 @@ Then the same-day pair is linked and the one-day-apart leg is left unmatched"
         }
       ],
       questions: [
-        %{body: "Rule precedence: when more than one rule matches a row (e.g. a category rule and a transfer rule, or two transfer rules), which wins — first by explicit priority/order, most-specific (account-scoped beats unscoped), or is an ambiguous multi-match itself an Uncategorized work-queue item?", status: :resolved, resolution: nil},
-        %{body: "Do rules apply only at import time, or also retroactively — re-running the rule set over already-imported Uncategorized/unmatched rows to reclassify them (so adding a new rule clears matching items already in the work queue)?", status: :resolved, resolution: nil},
-        %{body: "How is the reference key specified — a named capture group in each side's regex (e.g. the captured substring IS the key), so two legs pair when their captures are equal? Lean: yes, a capture group defines the key; no capture → keyless (fuzzy) path.", status: :resolved, resolution: nil},
-        %{body: "Masking: one leg can show the full ref (3WW742041628540) while its partner is masked (3WWXXXXXXXX8540) — the full strings differ but the trailing suffix (8540) is shared. Do we key on the stable trailing suffix rather than the whole token? Lean: yes, key on the suffix so masked/unmasked partners still pair.", status: :resolved, resolution: nil},
-        %{body: "On approve, the two legs currently carry placeholder/wrong contras (bank leg → Uncategorized; mortgage principal → \"Interest Earned\" income). To end up with one clean balanced transaction (bank / principal / interest), approve must undo those. Given the append-only ledger (corrections = reversing entries), the mechanism is: reverse the two junk contras and post the corrected transfer+remainder transaction. Confirm that's the approach?", status: :resolved, resolution: nil},
-        %{body: "Does a remainder account apply to ANY matched pair (keyed-by-ref or keyless), or only keyless? Lean: any matched pair can carry a remainder account; the mortgage happens to be keyless (date-matched, unequal amounts).", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Rule precedence: when more than one rule matches a row (e.g. a category rule and a transfer rule, or two transfer rules), which wins — first by explicit priority/order, most-specific (account-scoped beats unscoped), or is an ambiguous multi-match itself an Uncategorized work-queue item?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Do rules apply only at import time, or also retroactively — re-running the rule set over already-imported Uncategorized/unmatched rows to reclassify them (so adding a new rule clears matching items already in the work queue)?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "How is the reference key specified — a named capture group in each side's regex (e.g. the captured substring IS the key), so two legs pair when their captures are equal? Lean: yes, a capture group defines the key; no capture → keyless (fuzzy) path.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Masking: one leg can show the full ref (3WW742041628540) while its partner is masked (3WWXXXXXXXX8540) — the full strings differ but the trailing suffix (8540) is shared. Do we key on the stable trailing suffix rather than the whole token? Lean: yes, key on the suffix so masked/unmasked partners still pair.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "On approve, the two legs currently carry placeholder/wrong contras (bank leg → Uncategorized; mortgage principal → \"Interest Earned\" income). To end up with one clean balanced transaction (bank / principal / interest), approve must undo those. Given the append-only ledger (corrections = reversing entries), the mechanism is: reverse the two junk contras and post the corrected transfer+remainder transaction. Confirm that's the approach?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Does a remainder account apply to ANY matched pair (keyed-by-ref or keyless), or only keyless? Lean: any matched pair can carry a remainder account; the mortgage happens to be keyless (date-matched, unequal amounts).",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1833,15 +2223,21 @@ Then the same-day pair is linked and the one-day-apart leg is left unmatched"
     ],
     qa: %{final: :pass, attempts: 2, history: [:pass, :pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The queue contains exactly the transactions whose contra leg is the Uncategorized account; rows a rule already classified never appear.",
+          statement:
+            "The queue contains exactly the transactions whose contra leg is the Uncategorized account; rows a rule already classified never appear.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Only uncategorized rows appear",
-              body: "Given a transaction posted with its contra leg in the \"Uncategorized\" account
+              body:
+                "Given a transaction posted with its contra leg in the \"Uncategorized\" account
 And another transaction a rule classified to \"Groceries\"
 When John opens the uncategorized queue
 Then the Uncategorized transaction appears in the queue
@@ -1850,7 +2246,8 @@ And the Groceries transaction does not appear"
           ]
         },
         %{
-          statement: "The queue is entity-wide: it aggregates uncategorized rows across every account and both currencies into one shared list.",
+          statement:
+            "The queue is entity-wide: it aggregates uncategorized rows across every account and both currencies into one shared list.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1863,12 +2260,14 @@ Then both the CAD and the USD transactions appear in the same list"
           ]
         },
         %{
-          statement: "Each queue row shows date, description/descriptor, amount, currency, and source account — enough to decide a rule or a one-off without opening the transaction.",
+          statement:
+            "Each queue row shows date, description/descriptor, amount, currency, and source account — enough to decide a rule or a one-off without opening the transaction.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A row carries enough to decide",
-              body: "Given an uncategorized transaction \"WWW PMT TIN0-02418\" for -420.00 CAD dated 2026-03-01 from \"RBC Chequing\"
+              body:
+                "Given an uncategorized transaction \"WWW PMT TIN0-02418\" for -420.00 CAD dated 2026-03-01 from \"RBC Chequing\"
 When John views it in the uncategorized queue
 Then the row shows the date 2026-03-01
 And the description \"WWW PMT TIN0-02418\"
@@ -1878,7 +2277,8 @@ And the source account \"RBC Chequing\""
           ]
         },
         %{
-          statement: "Rows are ordered by absolute amount descending, so the highest-dollar unclassified work surfaces first.",
+          statement:
+            "Rows are ordered by absolute amount descending, so the highest-dollar unclassified work surfaces first.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1890,7 +2290,8 @@ Then they are listed in the order 5,000.00 then 1,200.00 then 50.00"
           ]
         },
         %{
-          statement: "A transaction leaves the queue once its contra is no longer Uncategorized — whether a new rule matched it or it was categorized manually.",
+          statement:
+            "A transaction leaves the queue once its contra is no longer Uncategorized — whether a new rule matched it or it was categorized manually.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1902,7 +2303,8 @@ Then \"ACME LOAN PMT\" no longer appears in the uncategorized queue"
           ]
         },
         %{
-          statement: "The queue displays its total count and per-currency totals so progress is visible as the tail shrinks.",
+          statement:
+            "The queue displays its total count and per-currency totals so progress is visible as the tail shrinks.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1923,12 +2325,14 @@ And a total count of 0"
           ]
         },
         %{
-          statement: "The agent can retrieve the same queue programmatically via MCP, so John and the agent work from one shared list.",
+          statement:
+            "The agent can retrieve the same queue programmatically via MCP, so John and the agent work from one shared list.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Agent reads the same queue as John",
-              body: "Given uncategorized transactions exist
+              body:
+                "Given uncategorized transactions exist
 When the agent requests the uncategorized queue via MCP
 Then it receives the same rows John sees in the UI, with description, amount, currency, date, and source account"
             }
@@ -1936,8 +2340,18 @@ Then it receives the same rows John sees in the UI, with description, amount, cu
         }
       ],
       questions: [
-        %{body: "~7,500 rows are uncategorized on the real data today. Does the flat queue paginate/page through results, or is a single virtualized LiveView stream acceptable for v1?", status: :resolved, resolution: nil},
-        %{body: "Default order is absolute-amount descending. Once clustering (next story) lands, should the queue group by cluster and order by cluster dollar-impact instead of a flat amount sort — or keep the flat list and put clusters on a separate view?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "~7,500 rows are uncategorized on the real data today. Does the flat queue paginate/page through results, or is a single virtualized LiveView stream acceptable for v1?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Default order is absolute-amount descending. Once clustering (next story) lands, should the queue group by cluster and order by cluster dollar-impact instead of a flat amount sort — or keep the flat list and put clusters on a separate view?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1957,14 +2371,18 @@ Then it receives the same rows John sees in the UI, with description, amount, cu
       %{description: "Biggest-dollar clusters first", verified: true},
       %{description: "A unique row forms a size-one cluster", verified: true},
       %{description: "Agent pulls clusters over MCP", verified: true},
-      %{description: "Singletons are one-offs, multi-row clusters are rule candidates", verified: true}
+      %{
+        description: "Singletons are one-offs, multi-row clusters are rule candidates",
+        verified: true
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Keel Categorization Agent", slug: "categorization-agent", type: "proto"},
       rules: [
         %{
-          statement: "Clustering is deterministic — the same uncategorized rows always produce the same clusters, with no LLM or randomness.",
+          statement:
+            "Clustering is deterministic — the same uncategorized rows always produce the same clusters, with no LLM or randomness.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1976,7 +2394,8 @@ Then both runs produce the identical set of clusters in the identical order"
           ]
         },
         %{
-          statement: "Rows are grouped by a normalized descriptor: lowercase, strip digit/reference/date runs, collapse whitespace — so descriptions differing only by an embedded number land in one cluster.",
+          statement:
+            "Rows are grouped by a normalized descriptor: lowercase, strip digit/reference/date runs, collapse whitespace — so descriptions differing only by an embedded number land in one cluster.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1988,7 +2407,8 @@ Then both rows fall into one cluster whose normalized pattern is \"www pmt tin\"
           ]
         },
         %{
-          statement: "Clustering operates only over uncategorized rows, never transactions a rule already classified.",
+          statement:
+            "Clustering operates only over uncategorized rows, never transactions a rule already classified.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2002,19 +2422,22 @@ And the Groceries row appears in no cluster"
           ]
         },
         %{
-          statement: "Each cluster reports its normalized pattern, a sample description, member count, and per-currency dollar total.",
+          statement:
+            "Each cluster reports its normalized pattern, a sample description, member count, and per-currency dollar total.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A cluster carries everything needed to draft a rule",
-              body: "Given 41 uncategorized rows that normalize to \"www pmt tin\" totaling -12,000.00 CAD
+              body:
+                "Given 41 uncategorized rows that normalize to \"www pmt tin\" totaling -12,000.00 CAD
 When the agent reads that cluster
 Then it sees the pattern \"www pmt tin\", a sample description, a member count of 41, and a total of -12,000.00 CAD"
             }
           ]
         },
         %{
-          statement: "Clusters are ordered by total absolute dollar impact descending, so the biggest rule opportunities surface first.",
+          statement:
+            "Clusters are ordered by total absolute dollar impact descending, so the biggest rule opportunities surface first.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2026,7 +2449,8 @@ Then the -12,000.00 cluster is listed before the +300.00 cluster"
           ]
         },
         %{
-          statement: "Every uncategorized row belongs to exactly one cluster; a unique description forms a cluster of size one, so nothing is hidden.",
+          statement:
+            "Every uncategorized row belongs to exactly one cluster; a unique description forms a cluster of size one, so nothing is hidden.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2050,7 +2474,8 @@ Then it receives the clusters, each with its pattern, sample, count, and per-cur
           ]
         },
         %{
-          statement: "A size-one cluster is surfaced as a one-off for manual categorization, not flagged as a rule candidate — rules are only for repeating patterns.",
+          statement:
+            "A size-one cluster is surfaced as a one-off for manual categorization, not flagged as a rule candidate — rules are only for repeating patterns.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2064,8 +2489,18 @@ And the size-1 cluster is marked a one-off for manual categorization"
         }
       ],
       questions: [
-        %{body: "How aggressive should normalization be — strip all digit-runs + punctuation, or use a curated noise-token list? Over-stripping risks merging genuinely distinct payees (e.g. two different \"PAYPAL *MERCHANT\" rows collapsing into one). Lean: strip digit/ref/date runs only, keep alpha tokens.", status: :resolved, resolution: nil},
-        %{body: "Is there a minimum cluster size to flag as a rule *candidate* (e.g. 3+ rows), or does the agent see all clusters including singletons and decide for itself? Lean: surface all, sorted by dollar impact, and let the agent judge.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "How aggressive should normalization be — strip all digit-runs + punctuation, or use a curated noise-token list? Over-stripping risks merging genuinely distinct payees (e.g. two different \"PAYPAL *MERCHANT\" rows collapsing into one). Lean: strip digit/ref/date runs only, keep alpha tokens.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is there a minimum cluster size to flag as a rule *candidate* (e.g. 3+ rows), or does the agent see all clusters including singletons and decide for itself? Lean: surface all, sorted by dollar impact, and let the agent judge.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2093,7 +2528,8 @@ And the size-1 cluster is marked a one-off for manual categorization"
       persona: %{name: "Keel Categorization Agent", slug: "categorization-agent", type: "proto"},
       rules: [
         %{
-          statement: "A dry-run preview returns exactly which currently-uncategorized transactions the rule would classify and how (categorize to a target, or transfer), without persisting the rule or changing the ledger.",
+          statement:
+            "A dry-run preview returns exactly which currently-uncategorized transactions the rule would classify and how (categorize to a target, or transfer), without persisting the rule or changing the ledger.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2107,7 +2543,8 @@ And the rule is not saved"
           ]
         },
         %{
-          statement: "The preview reports the affected count and a sample of matched rows so John can judge impact before approving.",
+          statement:
+            "The preview reports the affected count and a sample of matched rows so John can judge impact before approving.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2120,7 +2557,8 @@ And includes a sample of the matched rows"
           ]
         },
         %{
-          statement: "Nothing is persisted or applied without John's explicit approval; a rejected draft leaves the rule unsaved and the rows uncategorized.",
+          statement:
+            "Nothing is persisted or applied without John's explicit approval; a rejected draft leaves the rule unsaved and the rows uncategorized.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2141,7 +2579,8 @@ And all 41 rows remain uncategorized"
           ]
         },
         %{
-          statement: "Preview and apply consider only still-uncategorized rows — neither overrides a transaction an existing rule already classified.",
+          statement:
+            "Preview and apply consider only still-uncategorized rows — neither overrides a transaction an existing rule already classified.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2155,7 +2594,8 @@ And only still-uncategorized matches are affected"
           ]
         },
         %{
-          statement: "On approval, applying persists the rule and reclassifies the matched uncategorized rows in one operation, then re-runs transfer auto-linking.",
+          statement:
+            "On approval, applying persists the rule and reclassifies the matched uncategorized rows in one operation, then re-runs transfer auto-linking.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2169,7 +2609,8 @@ And transfer auto-linking is re-run"
           ]
         },
         %{
-          statement: "The applied outcome matches the preview — the rows shown in the preview are exactly the rows reclassified, no more and no fewer.",
+          statement:
+            "The applied outcome matches the preview — the rows shown in the preview are exactly the rows reclassified, no more and no fewer.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2181,7 +2622,8 @@ Then exactly those 41 rows are reclassified, no more and no fewer"
           ]
         },
         %{
-          statement: "Proposed rules appear on a durable UI surface that updates live as the agent posts proposals, where John approves, edits, or rejects each.",
+          statement:
+            "Proposed rules appear on a durable UI surface that updates live as the agent posts proposals, where John approves, edits, or rejects each.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2194,7 +2636,8 @@ And offers approve, edit, and reject actions"
           ]
         },
         %{
-          statement: "John can edit a proposed rule's regex, target, and priority before approving; the preview re-computes against the edited rule so he sees the new impact before committing.",
+          statement:
+            "John can edit a proposed rule's regex, target, and priority before approving; the preview re-computes against the edited rule so he sees the new impact before committing.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2208,8 +2651,18 @@ And John can approve the edited rule, applying exactly the re-previewed rows"
         }
       ],
       questions: [
-        %{body: "Where does approval happen — a \"proposed rules\" surface in the queue UI (approve/reject per draft), or conversationally (the agent proposes in chat and John says \"apply\")? Lean: a durable UI surface so proposals are visible and auditable, with chat as a shortcut.", status: :resolved, resolution: nil},
-        %{body: "Can John edit the agent's drafted regex/target/priority before approving, or only approve/reject as-is? Lean: edit-then-approve, since John will often tighten a too-broad regex.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Where does approval happen — a \"proposed rules\" surface in the queue UI (approve/reject per draft), or conversationally (the agent proposes in chat and John says \"apply\")? Lean: a durable UI surface so proposals are visible and auditable, with chat as a shortcut.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Can John edit the agent's drafted regex/target/priority before approving, or only approve/reject as-is? Lean: edit-then-approve, since John will often tighten a too-broad regex.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2229,14 +2682,18 @@ And John can approve the edited rule, applying exactly the re-previewed rows"
       %{description: "Approval links keyed pairs and queues keyless ones", verified: true},
       %{description: "Editing the proposed rule re-computes the pair preview", verified: true},
       %{description: "Rejecting leaves the legs untouched", verified: true},
-      %{description: "Transfer-rule and categorization proposals are distinguishable", verified: true}
+      %{
+        description: "Transfer-rule and categorization proposals are distinguishable",
+        verified: true
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Keel Categorization Agent", slug: "categorization-agent", type: "proto"},
       rules: [
         %{
-          statement: "The agent proposes a two-sided transfer rule (each side: account filter + descriptor regex) and it appears on the workbench proposals board.",
+          statement:
+            "The agent proposes a two-sided transfer rule (each side: account filter + descriptor regex) and it appears on the workbench proposals board.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2248,7 +2705,8 @@ Then a transfer-rule proposal appears on the board live, naming both sides"
           ]
         },
         %{
-          statement: "The proposal shows a dry-run preview of the exact pairs it would link — each pair's side-A leg, side-B leg, key (or \"fuzzy\"), implied rate, and FX cost — without linking anything.",
+          statement:
+            "The proposal shows a dry-run preview of the exact pairs it would link — each pair's side-A leg, side-B leg, key (or \"fuzzy\"), implied rate, and FX cost — without linking anything.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2261,7 +2719,8 @@ And no transfer has been linked yet"
           ]
         },
         %{
-          statement: "Proposing and previewing persists no links and reclassifies no legs; nothing changes until John approves.",
+          statement:
+            "Proposing and previewing persists no links and reclassifies no legs; nothing changes until John approves.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2274,12 +2733,14 @@ And no legs have been reclassified out of the uncategorized queue"
           ]
         },
         %{
-          statement: "Keyed proposals preview exact key-matched pairs; keyless proposals preview amount/FX/date candidate pairs, flagged as fuzzy for review.",
+          statement:
+            "Keyed proposals preview exact key-matched pairs; keyless proposals preview amount/FX/date candidate pairs, flagged as fuzzy for review.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Keyed and keyless proposals preview differently",
-              body: "Given a keyed proposal (regexes capture a shared ref suffix) and a keyless proposal (no key capture)
+              body:
+                "Given a keyed proposal (regexes capture a shared ref suffix) and a keyless proposal (no key capture)
 When John views each
 Then the keyed proposal's pairs each show the shared key
 And the keyless proposal's pairs are flagged fuzzy, showing the amount/FX/date match basis"
@@ -2287,12 +2748,14 @@ And the keyless proposal's pairs are flagged fuzzy, showing the amount/FX/date m
           ]
         },
         %{
-          statement: "On approval the rule is applied and the outcome matches the preview: keyed pairs are auto-confirmed (linked); keyless pairs land in the /transfers review queue.",
+          statement:
+            "On approval the rule is applied and the outcome matches the preview: keyed pairs are auto-confirmed (linked); keyless pairs land in the /transfers review queue.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Approval links keyed pairs and queues keyless ones",
-              body: "Given a previewed transfer-rule proposal with keyed pairs and keyless candidates
+              body:
+                "Given a previewed transfer-rule proposal with keyed pairs and keyless candidates
 When John approves it
 Then exactly the previewed keyed pairs are linked as confirmed transfers
 And the keyless candidates appear in the /transfers review queue
@@ -2301,7 +2764,8 @@ And the previewed legs leave the uncategorized queue"
           ]
         },
         %{
-          statement: "John can edit the proposed rule (regex, account filters, tolerances) before approving, and the pair preview re-computes against the edit.",
+          statement:
+            "John can edit the proposed rule (regex, account filters, tolerances) before approving, and the pair preview re-computes against the edit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2313,7 +2777,8 @@ Then the pair preview re-computes to the smaller set of pairs that still match"
           ]
         },
         %{
-          statement: "Rejecting a proposed transfer rule discards it; no legs are linked and they remain as they were.",
+          statement:
+            "Rejecting a proposed transfer rule discards it; no legs are linked and they remain as they were.",
           scenarios: [
             %{
               kind: "failure path",
@@ -2326,12 +2791,14 @@ And no legs are linked and they remain uncategorized"
           ]
         },
         %{
-          statement: "The board distinguishes transfer-rule proposals (two sides, pair preview) from single-transaction categorization-rule proposals.",
+          statement:
+            "The board distinguishes transfer-rule proposals (two sides, pair preview) from single-transaction categorization-rule proposals.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Transfer-rule and categorization proposals are distinguishable",
-              body: "Given both a categorization-rule proposal and a transfer-rule proposal are on the board
+              body:
+                "Given both a categorization-rule proposal and a transfer-rule proposal are on the board
 When John views the board
 Then the transfer-rule proposal is shown as two-sided with a pair preview
 And the categorization-rule proposal is shown as single-sided with its matched-rows preview"
@@ -2340,8 +2807,18 @@ And the categorization-rule proposal is shown as single-sided with its matched-r
         }
       ],
       questions: [
-        %{body: "How does the agent pick the candidate cluster of transfer legs to propose a rule from — reuse the deterministic clusterer (story 809) over transfer-ish uncategorized legs (e.g. legs whose normalized descriptor is \"online banking foreign exchange ref\")? Lean: yes, propose from a cluster.", status: :resolved, resolution: nil},
-        %{body: "Granularity of approval: John approves the RULE once (having seen the full pair preview) and the keyed pairs then auto-confirm as a batch — vs. confirming each pair individually? Lean: approve the rule once; keyed pairs auto-confirm, keyless go to /transfers for per-pair confirmation.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "How does the agent pick the candidate cluster of transfer legs to propose a rule from — reuse the deterministic clusterer (story 809) over transfer-ish uncategorized legs (e.g. legs whose normalized descriptor is \"online banking foreign exchange ref\")? Lean: yes, propose from a cluster.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Granularity of approval: John approves the RULE once (having seen the full pair preview) and the keyed pairs then auto-confirm as a batch — vs. confirming each pair individually? Lean: approve the rule once; keyed pairs auto-confirm, keyless go to /transfers for per-pair confirmation.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2364,10 +2841,15 @@ And the categorization-rule proposal is shown as single-sided with its matched-r
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The transfers screen lists linked transfers, one row per pair, newest first, paginated with a total count.",
+          statement:
+            "The transfers screen lists linked transfers, one row per pair, newest first, paginated with a total count.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2380,12 +2862,14 @@ And the 2026-05-20 transfer is listed above the 2024-07-29 one"
           ]
         },
         %{
-          statement: "Each transfer row shows the date, both legs' accounts, both amounts with currencies, the implied rate, and the FX cost.",
+          statement:
+            "Each transfer row shows the date, both legs' accounts, both amounts with currencies, the implied rate, and the FX cost.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A cross-currency transfer row shows full detail",
-              body: "Given a confirmed cross-currency transfer of -10000 USD ↔ 13710 CAD on 2026-05-20
+              body:
+                "Given a confirmed cross-currency transfer of -10000 USD ↔ 13710 CAD on 2026-05-20
 When John views the transfers screen
 Then the row shows the date, both accounts, -10000 USD and 13710 CAD, the implied rate (~1.371), and the FX cost"
             },
@@ -2399,19 +2883,22 @@ Then the row appears in the same roster with implied rate 1.00 and FX cost 0"
           ]
         },
         %{
-          statement: "Each row labels how the transfer was matched (shared-ref rule, rate-band rule, manual link, Quicken-linked, or exact auto-link).",
+          statement:
+            "Each row labels how the transfer was matched (shared-ref rule, rate-band rule, manual link, Quicken-linked, or exact auto-link).",
           scenarios: [
             %{
               kind: "happy path",
               title: "A row shows its match source",
-              body: "Given a transfer that was linked by a shared-ref transfer rule
+              body:
+                "Given a transfer that was linked by a shared-ref transfer rule
 When John views its row
 Then the row labels the match source as the shared-ref rule (distinct from manual or Quicken-linked)"
             }
           ]
         },
         %{
-          statement: "John can unlink a transfer from the screen; both legs return to unmatched and the row leaves the roster (reversible, not destructive).",
+          statement:
+            "John can unlink a transfer from the screen; both legs return to unmatched and the row leaves the roster (reversible, not destructive).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2424,7 +2911,8 @@ And both legs are unmatched again (the underlying transactions still exist)"
           ]
         },
         %{
-          statement: "The screen shows only linked transfers — no match proposals and no review queue.",
+          statement:
+            "The screen shows only linked transfers — no match proposals and no review queue.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2450,8 +2938,18 @@ Then an empty state is shown instead of a table"
         }
       ],
       questions: [
-        %{body: "Volume: there can be hundreds of linked transfers (Quicken pre-linked ~279 + rule-linked + exact). Show all, or paginate / show top-N with a total count? Lean: paginate (or top-N with total), newest first.", status: :resolved, resolution: nil},
-        %{body: "Same-currency transfers (exact mirrors): show them in the same roster with implied rate 1.00 / FX cost 0, or only show cross-currency transfers here? Lean: one roster for all linked transfers regardless of currency.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Volume: there can be hundreds of linked transfers (Quicken pre-linked ~279 + rule-linked + exact). Show all, or paginate / show top-N with a total count? Lean: paginate (or top-N with total), newest first.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Same-currency transfers (exact mirrors): show them in the same roster with implied rate 1.00 / FX cost 0, or only show cross-currency transfers here? Lean: one roster for all linked transfers regardless of currency.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2475,10 +2973,15 @@ Then an empty state is shown instead of a table"
       %{description: "Adding a transfer rule lists it", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The rules admin page lists all categorization rules in priority order (the order they are evaluated).",
+          statement:
+            "The rules admin page lists all categorization rules in priority order (the order they are evaluated).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2491,19 +2994,22 @@ And the priority-10 rule appears above the priority-50 rule"
           ]
         },
         %{
-          statement: "Each rule row shows its match regex, action (categorize or transfer), target, account scope, priority, and enabled state.",
+          statement:
+            "Each rule row shows its match regex, action (categorize or transfer), target, account scope, priority, and enabled state.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A rule row shows its full detail",
-              body: "Given a categorize rule matching \"(?i)hetzner\" → \"Discussit:Hosting\", priority 100, enabled
+              body:
+                "Given a categorize rule matching \"(?i)hetzner\" → \"Discussit:Hosting\", priority 100, enabled
 When John views the page
 Then the row shows the regex, the categorize action, the target Discussit:Hosting, the priority, and that it is enabled"
             }
           ]
         },
         %{
-          statement: "John can enable or disable any rule (categorization or transfer) from the page without deleting it.",
+          statement:
+            "John can enable or disable any rule (categorization or transfer) from the page without deleting it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2516,7 +3022,8 @@ And it is shown as disabled (and would no longer apply on the next run)"
           ]
         },
         %{
-          statement: "John can edit a rule's fields (match regex, target, priority) from the page.",
+          statement:
+            "John can edit a rule's fields (match regex, target, priority) from the page.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2552,19 +3059,22 @@ Then an empty state is shown instead of a table"
           ]
         },
         %{
-          statement: "The page also lists the two-sided transfer rules, each showing both sides (account + regex), the rate band, date window, priority, and enabled state.",
+          statement:
+            "The page also lists the two-sided transfer rules, each showing both sides (account + regex), the rate band, date window, priority, and enabled state.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Transfer rules listed with both sides and band",
-              body: "Given a two-sided transfer rule (RBC eSavings ↔ RBC Staff Banking, rate band 1.30–1.50, ±5 days)
+              body:
+                "Given a two-sided transfer rule (RBC eSavings ↔ RBC Staff Banking, rate band 1.30–1.50, ±5 days)
 When John opens the rules admin page
 Then the transfer rule is listed showing both sides, the rate band, the date window, priority, and enabled state"
             }
           ]
         },
         %{
-          statement: "John can add a new categorization rule from the page (regex, action, target, priority).",
+          statement:
+            "John can add a new categorization rule from the page (regex, action, target, priority).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2576,7 +3086,8 @@ Then the new rule appears in the list"
           ]
         },
         %{
-          statement: "John can add a new two-sided transfer rule from the page (both sides, rate band, date window).",
+          statement:
+            "John can add a new two-sided transfer rule from the page (both sides, rate band, date window).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2589,8 +3100,18 @@ Then the new transfer rule appears in the transfer-rules section"
         }
       ],
       questions: [
-        %{body: "Scope: does this page cover ONLY the single-row categorize/transfer rules (the Rule table), or also the two-sided transfer rules (TransferRule)? Lean: single-row Rule table for this story; two-sided transfer rules get their own admin later.", status: :resolved, resolution: nil},
-        %{body: "Can John ADD a brand-new rule from this page, or is creation still only via the workbench proposal flow / MCP and this page is manage-existing-only? Lean: manage-existing only for now (review/edit/toggle/delete); creation stays in the proposal flow.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Scope: does this page cover ONLY the single-row categorize/transfer rules (the Rule table), or also the two-sided transfer rules (TransferRule)? Lean: single-row Rule table for this story; two-sided transfer rules get their own admin later.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Can John ADD a brand-new rule from this page, or is creation still only via the workbench proposal flow / MCP and this page is manage-existing-only? Lean: manage-existing only for now (review/edit/toggle/delete); creation stays in the proposal flow.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2614,15 +3135,21 @@ Then the new transfer rule appears in the transfer-rules section"
       %{description: "Closed accounts grouped at the bottom", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The right sidebar lists each balance-sheet account (asset, liability, investment, equity) with its current balance; income/expense category accounts are excluded.",
+          statement:
+            "The right sidebar lists each balance-sheet account (asset, liability, investment, equity) with its current balance; income/expense category accounts are excluded.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Sidebar lists accounts with balances, not categories",
-              body: "Given an asset account \"RBC Chequing\" and an expense category \"Discussit:Hosting\"
+              body:
+                "Given an asset account \"RBC Chequing\" and an expense category \"Discussit:Hosting\"
 When John views any main page
 Then the right sidebar lists RBC Chequing with its balance
 And the expense category does not appear in the sidebar"
@@ -2630,7 +3157,8 @@ And the expense category does not appear in the sidebar"
           ]
         },
         %{
-          statement: "Accounts are grouped by type, each group labeled (e.g. Assets, Liabilities, Investments).",
+          statement:
+            "Accounts are grouped by type, each group labeled (e.g. Assets, Liabilities, Investments).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2642,7 +3170,8 @@ Then the asset is under an \"Assets\" group and the liability under a \"Liabilit
           ]
         },
         %{
-          statement: "Each account's balance is shown in its own currency (CAD or USD), never summed across currencies.",
+          statement:
+            "Each account's balance is shown in its own currency (CAD or USD), never summed across currencies.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2666,7 +3195,8 @@ Then the group shows a CAD subtotal of 350"
           ]
         },
         %{
-          statement: "The sidebar is present on the main app pages (workbench, transactions, transfers, rules).",
+          statement:
+            "The sidebar is present on the main app pages (workbench, transactions, transfers, rules).",
           scenarios: [
             %{
               kind: "happy path",
@@ -2690,7 +3220,8 @@ Then he is taken to that account's register at /accounts/RBC Chequing"
           ]
         },
         %{
-          statement: "All accounts are shown including zero-balance ones; closed accounts are still listed but explicitly marked as closed.",
+          statement:
+            "All accounts are shown including zero-balance ones; closed accounts are still listed but explicitly marked as closed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2703,7 +3234,8 @@ And the closed account is marked as closed"
           ]
         },
         %{
-          statement: "A per-currency net worth (total assets − total liabilities) is shown at the bottom of the sidebar.",
+          statement:
+            "A per-currency net worth (total assets − total liabilities) is shown at the bottom of the sidebar.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2715,12 +3247,14 @@ Then the bottom shows a CAD net worth of 700"
           ]
         },
         %{
-          statement: "Closed accounts appear in a single separate \"Closed\" group at the bottom of the sidebar, not within their type group.",
+          statement:
+            "Closed accounts appear in a single separate \"Closed\" group at the bottom of the sidebar, not within their type group.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Closed accounts grouped at the bottom",
-              body: "Given an open asset account \"RBC Chequing\" and a closed asset account \"Old Savings\"
+              body:
+                "Given an open asset account \"RBC Chequing\" and a closed asset account \"Old Savings\"
 When John views the sidebar
 Then \"Old Savings\" appears under a \"Closed\" group
 And the open \"RBC Chequing\" appears under the \"Assets\" group above it"
@@ -2729,8 +3263,18 @@ And the open \"RBC Chequing\" appears under the \"Assets\" group above it"
         }
       ],
       questions: [
-        %{body: "Closed and zero-balance accounts: hide them from the sidebar, or show all? Lean: hide closed; show zero-balance open accounts.", status: :resolved, resolution: nil},
-        %{body: "Bottom-line total: show a per-currency net worth (assets − liabilities) at the bottom, or just per-group subtotals? Cross-currency can't be summed without an FX conversion. Lean: per-currency net worth line, no cross-currency conversion for now.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Closed and zero-balance accounts: hide them from the sidebar, or show all? Lean: hide closed; show zero-balance open accounts.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Bottom-line total: show a per-currency net worth (assets − liabilities) at the bottom, or just per-group subtotals? Cross-currency can't be summed without an FX conversion. Lean: per-currency net worth line, no cross-currency conversion for now.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2752,10 +3296,15 @@ And the open \"RBC Chequing\" appears under the \"Assets\" group above it"
       %{description: "Creating with an opening balance starts the account there", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The accounts admin page lists every account with its name, type, currency, current balance, and open/closed status.",
+          statement:
+            "The accounts admin page lists every account with its name, type, currency, current balance, and open/closed status.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2804,7 +3353,8 @@ And when John reopens it, it is shown as open again"
           ]
         },
         %{
-          statement: "An account that has transactions cannot be deleted; it can only be closed. An account with no entries may be deleted.",
+          statement:
+            "An account that has transactions cannot be deleted; it can only be closed. An account with no entries may be deleted.",
           scenarios: [
             %{
               kind: "failure path",
@@ -2829,12 +3379,14 @@ Then the currency is fixed (not editable) and stays CAD after saving other chang
           ]
         },
         %{
-          statement: "On create, John may optionally enter an opening balance, which is posted as an opening transaction (contra to Opening Balance Equity) so the account starts at that balance.",
+          statement:
+            "On create, John may optionally enter an opening balance, which is posted as an opening transaction (contra to Opening Balance Equity) so the account starts at that balance.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Creating with an opening balance starts the account there",
-              body: "Given John is creating a new CAD asset account
+              body:
+                "Given John is creating a new CAD asset account
 When he sets an opening balance of 500
 Then the account is created with a balance of 500 CAD (an opening transaction is posted against Opening Balance Equity)"
             }
@@ -2842,8 +3394,18 @@ Then the account is created with a balance of 500 CAD (an opening transaction is
         }
       ],
       questions: [
-        %{body: "Where does this live: a new /accounts index page (lists + manages all accounts), with the per-account register staying at /accounts/:name? Lean: yes — /accounts is the admin list, /accounts/:name stays the register.", status: :resolved, resolution: nil},
-        %{body: "On create, do we set an opening balance, or just create the account shell (balance comes from transactions/import)? Lean: shell only; opening balances are a separate concern (posted as a transaction / from import).", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Where does this live: a new /accounts index page (lists + manages all accounts), with the per-account register staying at /accounts/:name? Lean: yes — /accounts is the admin list, /accounts/:name stays the register.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "On create, do we set an opening balance, or just create the account shell (balance comes from transactions/import)? Lean: shell only; opening balances are a separate concern (posted as a transaction / from import).",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2862,15 +3424,21 @@ Then the account is created with a balance of 500 CAD (an opening transaction is
       %{description: "System account has no mutate controls", verified: true}
     ],
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "The accounts sidebar excludes system accounts (Transfer Clearing, Opening Balance Equity, Uncategorized) — they appear in no group.",
+          statement:
+            "The accounts sidebar excludes system accounts (Transfer Clearing, Opening Balance Equity, Uncategorized) — they appear in no group.",
           scenarios: [
             %{
               kind: "happy path",
               title: "System accounts absent from the sidebar",
-              body: "Given a real asset \"RBC Chequing\" and a system account \"Transfer Clearing\", both funded
+              body:
+                "Given a real asset \"RBC Chequing\" and a system account \"Transfer Clearing\", both funded
 When John views the sidebar
 Then \"RBC Chequing\" is listed
 And \"Transfer Clearing\" does not appear anywhere in the sidebar"
@@ -2890,7 +3458,8 @@ Then the CAD net worth is 1000 (the system account's 400 is excluded)"
           ]
         },
         %{
-          statement: "The accounts admin lists system accounts in a separate \"System\" section, distinct from the regular (user) accounts.",
+          statement:
+            "The accounts admin lists system accounts in a separate \"System\" section, distinct from the regular (user) accounts.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2902,7 +3471,8 @@ Then \"Transfer Clearing\" appears under a \"System\" section, not among the reg
           ]
         },
         %{
-          statement: "System accounts are protected in the admin: they offer no edit, close, retype, or delete controls.",
+          statement:
+            "System accounts are protected in the admin: they offer no edit, close, retype, or delete controls.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2914,8 +3484,7 @@ Then it has no edit, close, or delete buttons"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -2958,10 +3527,15 @@ This story is the LEDGER CAPABILITY: the account/currency model, the transaction
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "Each crypto asset is held as units in its own asset-denominated account, not as a USD dollar value.",
+          statement:
+            "Each crypto asset is held as units in its own asset-denominated account, not as a USD dollar value.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2974,7 +3548,8 @@ And it is not stored as a USD dollar amount"
           ]
         },
         %{
-          statement: "A buy increases the asset's units and sets that acquisition's cost basis to the price paid including fees.",
+          statement:
+            "A buy increases the asset's units and sets that acquisition's cost basis to the price paid including fees.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2987,7 +3562,8 @@ And the acquisition's cost basis is recorded as $541.62"
           ]
         },
         %{
-          statement: "A convert disposes the source asset (realizing gain or loss) and acquires the target asset at its fair value.",
+          statement:
+            "A convert disposes the source asset (realizing gain or loss) and acquires the target asset at its fair value.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3000,7 +3576,8 @@ And 29,080 USDC is acquired with a cost basis of $29,819"
           ]
         },
         %{
-          statement: "A sell to fiat disposes units and realizes gain or loss against their cost basis.",
+          statement:
+            "A sell to fiat disposes units and realizes gain or loss against their cost basis.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3013,7 +3590,8 @@ And the realized gain or loss equals proceeds minus the disposed units' cost bas
           ]
         },
         %{
-          statement: "Reward or staking income is booked as income at the asset's fair market value on receipt, which becomes its cost basis.",
+          statement:
+            "Reward or staking income is booked as income at the asset's fair market value on receipt, which becomes its cost basis.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3026,7 +3604,8 @@ And USDC increases by 0.042246 with a cost basis of $0.04"
           ]
         },
         %{
-          statement: "Moving value off the platform (withdrawal) is a transfer, never income or expense.",
+          statement:
+            "Moving value off the platform (withdrawal) is a transfer, never income or expense.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3044,7 +3623,8 @@ And it reconciles to the bank deposit rather than counting as income"
             %{
               kind: "happy path",
               title: "Average-cost (ACB) basis applied to every disposal",
-              body: "Given John bought 5 ETH at $108 and later 5 ETH at $400, an average cost of $254 per ETH
+              body:
+                "Given John bought 5 ETH at $108 and later 5 ETH at $400, an average cost of $254 per ETH
 And average cost (ACB) is the configured cost-basis method
 When he disposes 3 ETH
 Then the cost basis of the disposed units is 3 x $254 = $762
@@ -3053,12 +3633,14 @@ And the same average-cost method is applied to every other disposal"
           ]
         },
         %{
-          statement: "A holding's value equals its units times the latest known price; unrealized change is not booked until disposal.",
+          statement:
+            "A holding's value equals its units times the latest known price; unrealized change is not booked until disposal.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Unrealized gain shows in net worth but is not booked",
-              body: "Given John holds 5 ETH bought at about $108 each
+              body:
+                "Given John holds 5 ETH bought at about $108 each
 When ETH's latest known price is $2,000
 Then his holding is valued at $10,000
 And the roughly $9,460 unrealized gain is reflected in net worth but not booked as income until he disposes"
@@ -3067,9 +3649,24 @@ And the roughly $9,460 unrealized gain is reflected in net worth but not booked 
         }
       ],
       questions: [
-        %{body: "Technical feasibility (main risk): can ex_money register custom high-precision crypto \"currencies\" (8+ decimals, e.g. ETH/USDC/BTC) — or do we need a parallel units representation alongside Money? Determines whether asset-as-currency is viable as designed.", status: :resolved, resolution: nil},
-        %{body: "What is the price/market-value source for holdings — the CSV's last-known transaction price, or a live price feed (and refresh cadence)? Affects the \"units × latest price\" market-value rule.", status: :resolved, resolution: nil},
-        %{body: "Does realized crypto gain/loss book to a dedicated Crypto Gains account, or reuse the existing FX gain/loss account?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Technical feasibility (main risk): can ex_money register custom high-precision crypto \"currencies\" (8+ decimals, e.g. ETH/USDC/BTC) — or do we need a parallel units representation alongside Money? Determines whether asset-as-currency is viable as designed.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "What is the price/market-value source for holdings — the CSV's last-known transaction price, or a live price feed (and refresh cadence)? Affects the \"units × latest price\" market-value rule.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Does realized crypto gain/loss book to a dedicated Crypto Gains account, or reuse the existing FX gain/loss account?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3115,10 +3712,15 @@ Prerequisite for story 855 (\"trace a transaction and auto-tag downstream withdr
     ],
     qa: %{final: :pass, attempts: 2, history: [:pass, :pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A transaction can carry many tags and a tag can apply to many transactions.",
+          statement:
+            "A transaction can carry many tags and a tag can apply to many transactions.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3131,7 +3733,8 @@ And the \"Trip: Italy 2025\" tag lists both the flight and the hotel once he tag
           ]
         },
         %{
-          statement: "Adding or removing a tag never changes the transaction's category or its ledger entries.",
+          statement:
+            "Adding or removing a tag never changes the transaction's category or its ledger entries.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3144,7 +3747,8 @@ And its ledger entries and balances are unchanged — only the tag was added"
           ]
         },
         %{
-          statement: "A tag's report totals its transactions per currency, never blending currencies into one number.",
+          statement:
+            "A tag's report totals its transactions per currency, never blending currencies into one number.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3157,12 +3761,14 @@ And it does not blend them into a single converted number"
           ]
         },
         %{
-          statement: "Transfers between the owner's own accounts are excluded from a tag's spend total.",
+          statement:
+            "Transfers between the owner's own accounts are excluded from a tag's spend total.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Internal transfer excluded from trip spend",
-              body: "Given John tagged both a $2,000 hotel expense and a $2,000 transfer between his own accounts with \"Trip: Italy 2025\"
+              body:
+                "Given John tagged both a $2,000 hotel expense and a $2,000 transfer between his own accounts with \"Trip: Italy 2025\"
 When he pulls the trip spend total
 Then only the $2,000 hotel counts as spend
 And the internal transfer is excluded from the total"
@@ -3170,24 +3776,28 @@ And the internal transfer is excluded from the total"
           ]
         },
         %{
-          statement: "A tag stays attached to the same real-world transaction across a re-import.",
+          statement:
+            "A tag stays attached to the same real-world transaction across a re-import.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Tag survives a Quicken re-import",
-              body: "Given John tagged a flight charge \"Trip: Italy 2025\"
+              body:
+                "Given John tagged a flight charge \"Trip: Italy 2025\"
 When he re-imports from Quicken (which wipes and re-creates transactions)
 Then the same flight, matched by source and external id, still carries the \"Trip: Italy 2025\" tag"
             }
           ]
         },
         %{
-          statement: "A report can total a single tag or roll up every tag sharing a namespace prefix.",
+          statement:
+            "A report can total a single tag or roll up every tag sharing a namespace prefix.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Roll up all trips under a namespace prefix",
-              body: "Given transactions tagged \"trip:italy-2025\" and others tagged \"trip:japan-2024\"
+              body:
+                "Given transactions tagged \"trip:italy-2025\" and others tagged \"trip:japan-2024\"
 When John pulls the \"trip:\" rollup report
 Then he sees the per-currency spend total for each trip
 And a combined all-trips total per currency across the \"trip:\" namespace"
@@ -3195,12 +3805,14 @@ And a combined all-trips total per currency across the \"trip:\" namespace"
           ]
         },
         %{
-          statement: "All tags are browsable in the web UI, grouped by namespace prefix, with per-currency spend totals.",
+          statement:
+            "All tags are browsable in the web UI, grouped by namespace prefix, with per-currency spend totals.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Tags index lists every tag with per-currency totals",
-              body: "Given transactions tagged \"trip:italy-2025\" and \"trip:japan-2024\" in USD and CAD
+              body:
+                "Given transactions tagged \"trip:italy-2025\" and \"trip:japan-2024\" in USD and CAD
 When John opens the Tags page in the app
 Then he sees each tag grouped under the \"trip:\" namespace
 And each tag shows its per-currency spend total and transaction count"
@@ -3208,7 +3820,8 @@ And each tag shows its per-currency spend total and transaction count"
           ]
         },
         %{
-          statement: "A tag's own web page shows its per-currency spend totals and lists every transaction carrying it.",
+          statement:
+            "A tag's own web page shows its per-currency spend totals and lists every transaction carrying it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3221,12 +3834,14 @@ And a list of every transaction carrying that tag with date, description, accoun
           ]
         },
         %{
-          statement: "The transactions view can be filtered to a single tag and shows each transaction's tags inline.",
+          statement:
+            "The transactions view can be filtered to a single tag and shows each transaction's tags inline.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Filter transactions by tag and see tag badges",
-              body: "Given transactions tagged \"trip:italy-2025\" among many untagged transactions
+              body:
+                "Given transactions tagged \"trip:italy-2025\" among many untagged transactions
 When John filters the transactions view by \"trip:italy-2025\"
 Then only transactions carrying that tag are listed
 And each listed transaction shows its tags as badges"
@@ -3235,9 +3850,24 @@ And each listed transaction shows its tags as badges"
         }
       ],
       questions: [
-        %{body: "Flat tags vs namespaced/hierarchical tags (e.g. `trip:italy-2025`, `trip:japan-2024` grouped under `trip`)? Affects the report grouping and whether a \"all trips\" rollup is possible.", status: :resolved, resolution: nil},
-        %{body: "Should tags be agent-proposable/rule-driven (like categorize rules — e.g. auto-tag by payee/date-range), or manual-only for v1? The trace story (855) implies programmatic tagging, but that may be out of scope for this story.", status: :resolved, resolution: nil},
-        %{body: "Report surface: a dedicated per-tag report (MCP tool + workbench page) vs. adding a tag filter to existing transaction/P&L views? And does \"spend total\" reuse the existing P&L/expense logic or a new aggregation?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Flat tags vs namespaced/hierarchical tags (e.g. `trip:italy-2025`, `trip:japan-2024` grouped under `trip`)? Affects the report grouping and whether a \"all trips\" rollup is possible.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Should tags be agent-proposable/rule-driven (like categorize rules — e.g. auto-tag by payee/date-range), or manual-only for v1? The trace story (855) implies programmatic tagging, but that may be out of scope for this story.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Report surface: a dedicated per-tag report (MCP tool + workbench page) vs. adding a tag filter to existing transaction/P&L views? And does \"spend total\" reuse the existing P&L/expense logic or a new aggregation?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3275,10 +3905,15 @@ A $140,000 USD transaction landed and I want to understand where the money went.
     ],
     qa: %{final: :pass, attempts: 2, history: [:pass, :pass]},
     three_amigos: %{
-      persona: %{name: "John — Cross-Border Owner-Operator", slug: "cross-border-owner-operator", type: "proto"},
+      persona: %{
+        name: "John — Cross-Border Owner-Operator",
+        slug: "cross-border-owner-operator",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "A trace starts from a chosen source inflow and follows its money forward in time.",
+          statement:
+            "A trace starts from a chosen source inflow and follows its money forward in time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3291,12 +3926,14 @@ And only outflows dated on or after 2025-03-01 are considered"
           ]
         },
         %{
-          statement: "Traced money funds later outflows in date order (FIFO) until the traced amount is exhausted.",
+          statement:
+            "Traced money funds later outflows in date order (FIFO) until the traced amount is exhausted.",
           scenarios: [
             %{
               kind: "happy path",
               title: "FIFO attribution until the traced amount runs out",
-              body: "Given the $140,000 landed and the account then has outflows of $50,000, $60,000, and $40,000 in date order
+              body:
+                "Given the $140,000 landed and the account then has outflows of $50,000, $60,000, and $40,000 in date order
 When John traces the $140,000
 Then the $50,000 and $60,000 outflows are attributed to the trace
 And the $40,000 outflow is attributed (it exhausts the remaining $30,000)
@@ -3305,12 +3942,14 @@ And any outflow after the $140,000 is used up is not tagged"
           ]
         },
         %{
-          statement: "A transfer of traced money into another of the owner's own accounts carries the trace into that account.",
+          statement:
+            "A transfer of traced money into another of the owner's own accounts carries the trace into that account.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Trace follows a transfer into another own account",
-              body: "Given John transferred $80,000 of the traced $140,000 from checking to his savings account
+              body:
+                "Given John transferred $80,000 of the traced $140,000 from checking to his savings account
 When the trace runs
 Then it follows the $80,000 into savings
 And tags the outflows that the $80,000 funds from savings"
@@ -3318,7 +3957,8 @@ And tags the outflows that the $80,000 funds from savings"
           ]
         },
         %{
-          statement: "The trace stops when the traced amount is exhausted or the money leaves to an external or untracked account.",
+          statement:
+            "The trace stops when the traced amount is exhausted or the money leaves to an external or untracked account.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3332,7 +3972,8 @@ Then the trace stops following at that boundary"
           ]
         },
         %{
-          statement: "An outflow only partly funded by traced money is tagged in full and marked partially funded, never split.",
+          statement:
+            "An outflow only partly funded by traced money is tagged in full and marked partially funded, never split.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3345,7 +3986,8 @@ And it is marked as partially funded, not split into a $30,000 amount"
           ]
         },
         %{
-          statement: "Every transaction the trace touches is tagged with one trace tag, reportable through the tagging feature.",
+          statement:
+            "Every transaction the trace touches is tagged with one trace tag, reportable through the tagging feature.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3371,7 +4013,8 @@ And the per-currency totals of the traced chain are shown"
           ]
         },
         %{
-          statement: "A traced transaction's page indicates when an outflow was only partially funded by the traced money.",
+          statement:
+            "A traced transaction's page indicates when an outflow was only partially funded by the traced money.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3385,8 +4028,18 @@ And it is visibly marked as partially funded"
         }
       ],
       questions: [
-        %{body: "One-shot vs live: is a trace a snapshot (tag applied once, frozen) or a re-runnable/live view that re-attributes when new transactions arrive? Affects whether the trace is stored as a definition it can replay vs. just the resulting tags.", status: :resolved, resolution: nil},
-        %{body: "FIFO with commingled funds: if the account already held money BEFORE the traced inflow, does FIFO draw down the older pre-existing dollars first (so the inflow funds only outflows after the prior balance is spent), or does the trace treat the inflow as funding the immediate next outflows regardless of prior balance? True account-FIFO is more correct but needs the full balance's dollar queue.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "One-shot vs live: is a trace a snapshot (tag applied once, frozen) or a re-runnable/live view that re-attributes when new transactions arrive? Affects whether the trace is stored as a definition it can replay vs. just the resulting tags.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "FIFO with commingled funds: if the account already held money BEFORE the traced inflow, does FIFO draw down the older pre-existing dollars first (so the inflow funds only outflows after the prior balance is spent), or does the trace treat the inflow as funding the immediate next outflows regardless of prior balance? True account-FIFO is more correct but needs the full balance's dollar queue.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }

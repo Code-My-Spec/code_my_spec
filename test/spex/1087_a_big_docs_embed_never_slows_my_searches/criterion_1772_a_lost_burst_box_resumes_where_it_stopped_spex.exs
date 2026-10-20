@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
   end
 
   @pkg_a %{
-    "lib/pkg_a.ex" => "defmodule PkgA do\n  @moduledoc \"PkgA finished before the box died.\"\nend\n"
+    "lib/pkg_a.ex" =>
+      "defmodule PkgA do\n  @moduledoc \"PkgA finished before the box died.\"\nend\n"
   }
   @pkg_b %{
     "lib/pkg_b.ex" =>
@@ -41,7 +42,8 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
   # this test, so the real-kill scenario needs its own, never-touched
   # packages or its own sweep would find nothing pending at all.
   @pkg_c %{
-    "lib/pkg_c.ex" => "defmodule PkgC do\n  @moduledoc \"PkgC finished before the runner was killed.\"\nend\n"
+    "lib/pkg_c.ex" =>
+      "defmodule PkgC do\n  @moduledoc \"PkgC finished before the runner was killed.\"\nend\n"
   }
   @pkg_d %{
     "lib/pkg_d.ex" =>
@@ -51,7 +53,8 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
   # Same reasoning as pkg_c/pkg_d — fresh names so this scenario's own sweep
   # has real pending work of its own.
   @pkg_e %{
-    "lib/pkg_e.ex" => "defmodule PkgE do\n  @moduledoc \"PkgE finished before the caller died.\"\nend\n"
+    "lib/pkg_e.ex" =>
+      "defmodule PkgE do\n  @moduledoc \"PkgE finished before the caller died.\"\nend\n"
   }
   @pkg_f %{
     "lib/pkg_f.ex" =>
@@ -77,7 +80,8 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
   # A duplicate row reads as the same result block appearing twice in a
   # search — checking that off the surface rather than `doc_embeddings`
   # directly, same reasoning as every other assertion in this file.
-  defp count_occurrences(text, marker), do: text |> String.split(marker) |> length() |> Kernel.-(1)
+  defp count_occurrences(text, marker),
+    do: text |> String.split(marker) |> length() |> Kernel.-(1)
 
   # The real-kill scenario below deliberately crashes a Task — a genuine
   # `[error]` log is the expected shape of that failure mode, not a sign
@@ -87,7 +91,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
     fail_on_error_logs: false do
     scenario "half a docs set was embedded when the burst box died" do
       given_ "pkg_a finished embedding before the box died, and pkg_b had not started",
-              context do
+             context do
         main = checkout(context, main?: true)
         harness_up(main)
         {tarball_a, checksum_a} = Fixtures.hex_tarball(@pkg_a)
@@ -146,7 +150,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
     # modes this story has to survive, so both stay.
     scenario "the burst box's own runner process is killed mid-batch" do
       given_ "pkg_c finished embedding, and the next batch will block until released",
-              context do
+             context do
         # Independent of the scenario above and its own `fail_embedding`
         # toggle — never assume the order scenarios run in left this clean.
         :ok = Fixtures.fail_embedding(false)
@@ -236,7 +240,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1772Spex do
     # (idempotent, not redone).
     scenario "the reconciler's own caller dies, but the runner it started keeps working" do
       given_ "pkg_e finished embedding, and the next batch will block until released",
-              context do
+             context do
         :ok = Fixtures.fail_embedding(false)
 
         main = checkout(context, main?: true)

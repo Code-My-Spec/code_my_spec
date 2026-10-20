@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story966.Criterion2944Spex do
     :ok
   end
 
-  spex "The conversation and the project's panels are on screen together, with no navigation between them", criterion: 1030 do
+  spex "The conversation and the project's panels are on screen together, with no navigation between them",
+    criterion: 1030 do
     scenario "Both halves are there on arrival" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_966")}

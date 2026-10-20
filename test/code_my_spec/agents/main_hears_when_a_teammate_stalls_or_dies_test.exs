@@ -265,7 +265,9 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
 
       text = told(main)
       assert text =~ "e5f6a7b8"
-      assert text =~ "STALLED", "the work it holds (or lack of it) should be named, not just that it stalled"
+
+      assert text =~ "STALLED",
+             "the work it holds (or lack of it) should be named, not just that it stalled"
     end
 
     defp ids({entries, seen}), do: {Enum.map(entries, & &1.agent_id), seen}

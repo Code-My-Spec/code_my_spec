@@ -52,7 +52,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3401Spex do
     |> Plug.Conn.send_resp(200, Jason.encode!(body))
   end
 
-  spex "A visitor running their own copy gets a 7-day free trial, not a charge", criterion: 1349 do
+  spex "A visitor running their own copy gets a 7-day free trial, not a charge",
+    criterion: 1349 do
     scenario "Choosing local starts a trial rather than a charge" do
       given_ "a visitor who has signed up and reaches the local-or-cloud choice", context do
         conn = get(context.conn, "/build")

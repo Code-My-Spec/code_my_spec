@@ -22,10 +22,18 @@ defmodule CodeMySpecSpex.Story1077.Criterion4669Spex do
   spex "Moving a spec does not lose its criterion", criterion: 1545 do
     scenario "a spec moved to another directory still covers its criterion" do
       given_ "a spec naming the criterion covers it", context do
-        story = CriterionScript.create_story(context.scope, "Capture a task", ["A task is captured"])
+        story =
+          CriterionScript.create_story(context.scope, "Capture a task", ["A task is captured"])
+
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
-        :ok = Environments.write_file(context.environment, @old_path, CriterionScript.spex_naming(number))
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @old_path,
+            CriterionScript.spex_naming(number)
+          )
+
         Fixtures.deliver_manifest(context.scope)
 
         {:ok, context |> Map.put(:story, story) |> Map.put(:number, number)}

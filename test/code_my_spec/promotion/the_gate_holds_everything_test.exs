@@ -140,6 +140,7 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
     assert story.specs_ready
 
     {:ok, story} = CodeMySpec.Stories.update_story(scope, story, %{ready_for_dev: false})
+
     refute story.specs_ready,
            "parking should still clear the latch -- this test is about what " <>
              "happens next, not about restoring the latch"

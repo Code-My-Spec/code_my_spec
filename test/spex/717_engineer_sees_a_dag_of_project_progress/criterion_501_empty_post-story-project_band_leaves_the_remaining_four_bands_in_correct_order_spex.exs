@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6422Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Bands with zero nodes collapse cleanly without breaking the order of the bands that do", criterion: 501 do
+  spex "Bands with zero nodes collapse cleanly without breaking the order of the bands that do",
+    criterion: 501 do
     scenario "Empty post-story-project band leaves the remaining four bands in correct order" do
       given_ :cross_context_dependency
 

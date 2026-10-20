@@ -26,9 +26,17 @@ defmodule CodeMySpecSpex.Story1077.Criterion4678Spex do
         broken =
           number
           |> CriterionScript.spex_naming()
-          |> String.replace("{:ok, context}\n      end\n\n      when_", "{:ok, context\n      end\n\n      when_")
+          |> String.replace(
+            "{:ok, context}\n      end\n\n      when_",
+            "{:ok, context\n      end\n\n      when_"
+          )
 
-        :ok = Environments.write_file(context.environment, "test/spex/story_a/broken_spex.exs", broken)
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "test/spex/story_a/broken_spex.exs",
+            broken
+          )
 
         {:ok, Map.merge(context, %{story: story, number: number})}
       end
@@ -41,7 +49,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion4678Spex do
       then_ "the criterion is uncovered", context do
         text = CriterionScript.specs_requirement(context.scope, context.story)
 
-        assert text =~ "**Status:** Not satisfied", "the only spec does not compile. Got:\n#{text}"
+        assert text =~ "**Status:** Not satisfied",
+               "the only spec does not compile. Got:\n#{text}"
+
         assert text =~ "criterion #{context.number}"
 
         {:ok, context}

@@ -41,9 +41,14 @@ defmodule CodeMySpec.Content.Pull do
     case Jason.decode(bytes) do
       {:ok, manifest} when is_map(manifest) ->
         cond do
-          not Enum.all?(@required_fields, &Map.has_key?(manifest, &1)) -> {:error, :malformed_manifest}
-          manifest["version"] != @supported_version -> {:error, :wrong_version}
-          true -> {:ok, manifest}
+          not Enum.all?(@required_fields, &Map.has_key?(manifest, &1)) ->
+            {:error, :malformed_manifest}
+
+          manifest["version"] != @supported_version ->
+            {:error, :wrong_version}
+
+          true ->
+            {:ok, manifest}
         end
 
       _ ->

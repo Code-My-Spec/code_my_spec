@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story990.Criterion2978Spex do
   spex "The first conversation runs without the visitor connecting anything", criterion: 1058 do
     scenario "A brand new visitor talks to their agent without connecting anything" do
       given_ "a visitor who signed up through intake and has connected no provider",
-            context do
+             context do
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 
@@ -69,7 +69,11 @@ defmodule CodeMySpecSpex.Story990.Criterion2978Spex do
         # hook would, to reach the running instance this scenario is about.
         html = render_hook(workspace_view, "payment_confirmed", %{})
 
-        {:ok, context |> Map.put(:conn, conn) |> Map.put(:workspace_html, html) |> Map.put(:workspace_view, workspace_view)}
+        {:ok,
+         context
+         |> Map.put(:conn, conn)
+         |> Map.put(:workspace_html, html)
+         |> Map.put(:workspace_view, workspace_view)}
       end
 
       when_ "their project comes up", context do

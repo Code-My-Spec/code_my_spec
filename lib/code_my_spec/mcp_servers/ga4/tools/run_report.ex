@@ -14,8 +14,14 @@ defmodule CodeMySpec.McpServers.Ga4.Tools.RunReport do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :property_id, :string, required: true, description: "Property ID (number or \"properties/123\")"
-    field :date_ranges, {:list, :map}, required: true, description: "List of {startDate, endDate} objects"
+    field :property_id, :string,
+      required: true,
+      description: "Property ID (number or \"properties/123\")"
+
+    field :date_ranges, {:list, :map},
+      required: true,
+      description: "List of {startDate, endDate} objects"
+
     field :dimensions, {:list, :string}, required: true, description: "Dimension field names"
     field :metrics, {:list, :string}, required: true, description: "Metric field names"
     field :dimension_filter, :map, description: "Data API FilterExpression for dimensions"

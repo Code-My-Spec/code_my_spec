@@ -15,18 +15,18 @@ defmodule CodeMySpec.Repo.Migrations.AddStoryAndProjectToRequirements do
     drop unique_index(:requirements, [:component_id, :name])
 
     create unique_index(:requirements, [:component_id, :name],
-      where: "component_id IS NOT NULL",
-      name: :requirements_component_id_name_index
-    )
+             where: "component_id IS NOT NULL",
+             name: :requirements_component_id_name_index
+           )
 
     create unique_index(:requirements, [:story_id, :name],
-      where: "story_id IS NOT NULL",
-      name: :requirements_story_id_name_index
-    )
+             where: "story_id IS NOT NULL",
+             name: :requirements_story_id_name_index
+           )
 
     create unique_index(:requirements, [:project_id, :name],
-      where: "project_id IS NOT NULL",
-      name: :requirements_project_id_name_index
-    )
+             where: "project_id IS NOT NULL",
+             name: :requirements_project_id_name_index
+           )
   end
 end

@@ -28,7 +28,12 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
   setup :devops_on
   setup :fake_providers
 
-  @groups %{repository: :repository, server: :servers, domain: :dns_domain, storage: :storage_backups}
+  @groups %{
+    repository: :repository,
+    server: :servers,
+    domain: :dns_domain,
+    storage: :storage_backups
+  }
 
   spex "Sam reads back what he now owns", criterion: 574 do
     scenario "the record lists each provisioned resource and where it lives" do
