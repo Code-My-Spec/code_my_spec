@@ -205,7 +205,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
             </.labelled>
           </li>
           <li data-test="timeline-band" data-band="activity">
-            <.labelled label="Week">
+            <.labelled label="Perf">
               <ActivityComponents.summary_mark summary={@activity} phx-click="show_activity" />
             </.labelled>
           </li>
