@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
   import ExUnit.Assertions
+  require Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -74,4 +75,60 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
     |> post("/api/devices", %{"hostname" => hostname, "kind" => "cloud"})
     |> json_response(200)
   end
+
+  @doc """
+  Add a box through the page and return what Sam is shown for it: `%{id:, token:}`.
+  """
+  def add_box(live, name, provider) do
+    add_dev_box(live, name, provider)
+    %{id: box_device_id(live, name), token: shown_token(live)}
+  end
+
+  @doc """
+  A harness trades its box token for an access token: `POST /api/devices/token`
+  with the box token as the bearer credential (story 1131). The conn, undecoded,
+  so a refusal can be read as well as a success. A nil token sends no credential.
+  """
+  def exchange(token), do: exchange(token, %{})
+
+  def exchange(token, params) do
+    build_conn()
+    |> bearer(token)
+    |> Plug.Conn.put_req_header("content-type", "application/json")
+    |> post("/api/devices/token", params)
+  end
+
+  @doc "The same trade, expected to succeed: the decoded reply."
+  def exchanged(token), do: token |> exchange() |> json_response(200)
+
+  @doc """
+  A request as Claude Code cloud sends it: the harness holds no token and sends
+  none; the environment's proxy puts the box's token on the request as a bearer
+  header, outside the box.
+  """
+  def through_cloud_proxy(harness_conn, token), do: bearer(harness_conn, token)
+
+  @doc "Open the harness's channel socket with `access_token`: `{:ok, socket}` or an error."
+  def connect_socket(access_token),
+    do: Phoenix.ChannelTest.connect(CodeMySpecWeb.UserSocket, %{"token" => access_token})
+
+  @doc "Access tokens lasting `seconds`, for the rest of this spex."
+  def short_lived_access_tokens(seconds) do
+    key = CodeMySpec.Devices
+    previous = Application.get_env(:code_my_spec, key, [])
+    Application.put_env(:code_my_spec, key, Keyword.put(previous, :access_token_ttl, seconds))
+    ExUnit.Callbacks.on_exit(fn -> Application.put_env(:code_my_spec, key, previous) end)
+  end
+
+  @doc "Sam revokes the box's token from its row on the Dev boxes page."
+  def revoke_dev_box(live, device_id) do
+    live
+    |> element("[data-test='revoke-dev-box'][data-device-id='#{device_id}']")
+    |> render_click()
+  end
+
+  defp bearer(conn, nil), do: conn
+
+  defp bearer(conn, token),
+    do: Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> token)
 end
