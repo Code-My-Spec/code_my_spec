@@ -89,13 +89,17 @@ function toOption(data) {
     tooltip: { trigger: "axis" },
     legend: compact ? { show: false } : {},
     grid: compact
-      ? { left: 32, right: 8, top: 8, bottom: 24 }
+      ? { left: 4, right: 4, top: 4, bottom: 4 }
       : { left: 64, right: 24 + 56 * Math.max(axes.length - 1, 0) },
-    xAxis: { type: "category", data: categories },
+    xAxis: {
+      type: "category",
+      data: categories,
+      ...(compact ? { axisLabel: { show: false }, axisTick: { show: false } } : {})
+    },
     yAxis: axes.map(({ key: _key, ...axis }) => ({
       type: "value",
       ...axis,
-      ...(compact ? { name: "" } : {})
+      ...(compact ? { name: "", axisLabel: { show: false }, splitLine: { show: false } } : {})
     })),
     series: series.map((one, index) => {
       const placed = { ...one, yAxisIndex: axisIndex(axes, one.y_axis), ...tooltipFor(one) }
