@@ -1152,6 +1152,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       render_async(view)
       refute has_element?(view, "[data-test='story-graph-loading-empty']")
 
+      # A phone's canvas with no size yet reports its viewport as nulls.
+      render_hook(view, "lf:viewport_change", %{"x" => nil, "y" => nil, "zoom" => nil})
+      assert has_element?(view, "[data-test='story-graph-modal']")
+
       # Equal progress orders the two by number, so the second is at 1.
       assert has_element?(view, "[data-test='story-graph-slider'] input[value='0']")
       view |> element("#story-graph-slider") |> render_change(%{"index" => "1"})

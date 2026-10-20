@@ -85,6 +85,12 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Status do
     end
   end
 
+  # A canvas with no size yet (a phone laying out the modal) reports its fit
+  # as nulls; LiveFlow cannot do arithmetic on those, so the report is dropped.
+  def handle_event("lf:viewport_change", %{"x" => x, "y" => y, "zoom" => zoom}, socket)
+      when not (is_number(x) and is_number(y) and is_number(zoom)),
+      do: {:noreply, socket}
+
   def handle_event("lf:viewport_change", params, socket) do
     if socket.assigns.flow do
       {:noreply,
