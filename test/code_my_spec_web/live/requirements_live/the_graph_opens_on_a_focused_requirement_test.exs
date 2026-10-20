@@ -47,5 +47,6 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphOpensOnAFocusedRequirementTest 
     render_hook(view, "select_node", %{"key" => key})
 
     assert has_element?(view, "[data-test='node-detail'][data-node='work_dispatched']")
+    assert has_element?(view, "[data-test='node-detail'] [data-test='node-directive']")
   end
 end

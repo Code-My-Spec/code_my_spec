@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
        graph_timer: nil,
        selected: nil,
        requirements: nil,
+       detail: %{},
        error: nil,
        setup_error: nil
      )}
@@ -71,7 +72,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # requirements behind the nodes are read on the first pick and kept.
   @impl true
   def handle_event("select_node", %{"key" => key}, socket),
-    do: {:noreply, socket |> assign(:selected, key) |> with_requirements()}
+    do: {:noreply, socket |> assign(:selected, key) |> with_requirements() |> with_detail()}
 
   defp with_requirements(%{assigns: %{requirements: nil, scope: scope}} = socket)
        when not is_nil(scope) do
@@ -80,6 +81,18 @@ defmodule CodeMySpecWeb.RequirementsLive do
   end
 
   defp with_requirements(socket), do: socket
+
+  defp with_detail(%{assigns: %{selected: key, requirements: %{} = requirements}} = socket) do
+    case requirements[key] do
+      nil ->
+        assign(socket, :detail, %{})
+
+      node ->
+        assign(socket, :detail, RequirementGraphComponents.detail(socket.assigns.scope, node))
+    end
+  end
+
+  defp with_detail(socket), do: socket
 
   # --- Async work ---
 
@@ -198,7 +211,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
     socket
     |> assign(graph_data: graph_data)
-    |> then(&if(&1.assigns.selected, do: with_requirements(&1), else: &1))
+    |> then(&if(&1.assigns.selected, do: &1 |> with_requirements() |> with_detail(), else: &1))
     |> assign(graph_provenance: provenance(metrics, socket.assigns[:scope]))
     |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
   end
@@ -246,6 +259,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       focus={assigns[:focus]}
       selected={@selected}
       requirements={@requirements}
+      detail={@detail}
       slug={@slug}
       socket={@socket}
     />
@@ -266,6 +280,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   attr :focus, :string, default: nil
   attr :selected, :string, default: nil
   attr :requirements, :map, default: nil
+  attr :detail, :map, default: %{}
 
   defp graph_view(assigns) do
     ~H"""
@@ -290,6 +305,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
             node={@selected && @requirements && @requirements[@selected]}
             edges={if is_map(@graph_data), do: @graph_data.edges, else: []}
             requirements={@requirements || %{}}
+            extra={@detail}
             target={nil}
           />
         </div>

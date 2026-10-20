@@ -60,6 +60,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       socket
       |> assign_new(:graph_modal, fn -> nil end)
       |> assign_new(:selected, fn -> nil end)
+      |> assign_new(:detail, fn -> %{} end)
 
     if refresh? or not Map.has_key?(socket.assigns, :bands),
       do:
@@ -85,19 +86,32 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   def handle_event("select_node", %{"key" => key}, socket),
-    do: {:noreply, assign(socket, :selected, key)}
+    do: {:noreply, socket |> assign(:selected, key) |> with_detail()}
 
   def handle_event("close_graph", _params, socket),
     do: {:noreply, assign(socket, graph_modal: nil, selected: nil)}
 
   @impl true
   def handle_async(:graph, {:ok, graph}, %{assigns: %{graph_modal: :loading}} = socket),
-    do: {:noreply, assign(socket, :graph_modal, graph)}
+    do: {:noreply, socket |> assign(:graph_modal, graph) |> with_detail()}
 
   def handle_async(:graph, {:exit, _reason}, %{assigns: %{graph_modal: :loading}} = socket),
     do: {:noreply, assign(socket, :graph_modal, :error)}
 
   def handle_async(:graph, _result, socket), do: {:noreply, socket}
+
+  defp with_detail(%{assigns: %{graph_modal: %{requirements: reqs}, selected: key}} = socket)
+       when is_binary(key) do
+    case reqs[key] do
+      nil ->
+        assign(socket, :detail, %{})
+
+      node ->
+        assign(socket, :detail, RequirementGraphComponents.detail(socket.assigns.scope, node))
+    end
+  end
+
+  defp with_detail(socket), do: assign(socket, :detail, %{})
 
   defp load_graph(scope) do
     {data, _metrics} = GraphProjector.project_graph_with_metrics(scope)
@@ -175,6 +189,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         :if={@graph_modal}
         graph={@graph_modal}
         selected={@selected}
+        detail={@detail}
         href={@graph}
         target={@myself}
         target_selector={"##{@id}"}
@@ -310,7 +325,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-retired={@counts.retired}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-sm tabular-nums"
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@counts.done}</span>
       <span class="opacity-30">/</span>
@@ -362,7 +377,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-depth={@summary.depth}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center gap-2 font-mono text-sm tabular-nums"
+      class="tooltip tooltip-left flex items-center gap-2 font-mono text-xs tabular-nums"
     >
       <span class={[
         "flex items-center gap-0.5",
@@ -404,7 +419,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-sm tabular-nums"
+      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@resolved}</span>
       <span class="opacity-30">/</span>
@@ -443,7 +458,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-sm tabular-nums"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-xs tabular-nums"
     >
       <span class="text-success">{@done}</span>
       <span class="opacity-30">/</span>

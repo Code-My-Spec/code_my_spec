@@ -11,7 +11,12 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
   """
   use CodeMySpecWeb, :html
 
+  import CodeMySpecWeb.Markdown, only: [md_html: 1]
+
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
+  alias CodeMySpec.Stories
   alias CodeMySpec.Utils.MapAccess
 
   @doc """
@@ -19,6 +24,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
   """
   attr :graph, :any, required: true
   attr :selected, :string, default: nil
+  attr :detail, :map, default: %{}
   attr :href, :string, required: true
   attr :target, :any, required: true, doc: "where close_graph and select_node go"
 
@@ -71,6 +77,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
             node={@selected && @graph.requirements[@selected]}
             edges={@graph.data.edges}
             requirements={@graph.requirements}
+            extra={@detail}
             target={@target}
           />
         </div>
@@ -90,6 +97,38 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
     </div>
     """
   end
+
+  @doc """
+  What the detail pane shows beyond the node itself, read when a node is
+  picked: the page that owns it, the directive `get_next_requirement` gives
+  for it, and the agents with an active task on it.
+  """
+  def detail(scope, node) do
+    %{
+      href: owner_path(scope, node),
+      directive: Requirements.node_directive(scope, node),
+      agents: working_on(scope, node)
+    }
+  end
+
+  defp working_on(scope, node) do
+    Enum.filter(Agents.list_agents(scope), fn agent ->
+      Agents.on_duty?(agent) and
+        Enum.any?(agent.tasks || [], &(&1.status == :active and Requirements.task_on?(node, &1)))
+    end)
+  end
+
+  defp owner_path(scope, %{entity_type: "story", entity_id: id}) do
+    case Stories.get_story(scope, id) do
+      nil -> nil
+      story -> ~p"/app/projects/#{scope.active_project_id}/stories/#{story.number}"
+    end
+  end
+
+  defp owner_path(scope, %{entity_type: "issue", entity_id: id}),
+    do: ~p"/app/projects/#{scope.active_project_id}/issues/#{id}"
+
+  defp owner_path(_scope, _node), do: nil
 
   @doc """
   What the node colours mean — the same three the canvas paints from the
@@ -116,6 +155,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
 
   @doc "One requirement in the graph, or a prompt to pick one."
   attr :node, :any, required: true
+  attr :extra, :map, default: %{}, doc: "from `detail/2`"
   attr :edges, :list, required: true
   attr :requirements, :map, required: true
   attr :target, :any, required: true
@@ -146,7 +186,11 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
     >
       <header>
         <p :if={@node.entity_name} class="text-xs opacity-60">
-          {@node.entity_type} · {@node.entity_name}
+          {@node.entity_type} ·
+          <.link :if={@extra[:href]} navigate={@extra[:href]} data-test="node-owner" class="link">
+            {@node.entity_name}
+          </.link>
+          <span :if={!@extra[:href]}>{@node.entity_name}</span>
         </p>
         <h3 class="break-all font-mono font-semibold">{@node.name}</h3>
         <p class="mt-1 opacity-80">{@node.description}</p>
@@ -163,8 +207,24 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
         Satisfied by <code class="font-mono">{short(@node.satisfied_by)}</code>
       </p>
 
+      <section :if={@extra[:agents] not in [nil, []]} data-test="node-agents">
+        <h4 class="mb-1 text-xs font-semibold opacity-60">Being worked on by</h4>
+        <ul class="flex flex-wrap gap-1.5">
+          <li :for={agent <- @extra.agents} class="badge badge-sm badge-primary badge-soft">
+            {agent.role} · {String.slice(agent.id, 0, 8)}
+          </li>
+        </ul>
+      </section>
+
       <.links :if={@waits_on != []} title="Waits on" links={@waits_on} target={@target} />
       <.links :if={@unblocks != []} title="Unblocks" links={@unblocks} target={@target} />
+
+      <details :if={@extra[:directive] not in [nil, ""]} data-test="node-directive" open>
+        <summary class="cursor-pointer text-xs opacity-60">What an agent is told</summary>
+        <div class="prose prose-sm mt-1 max-w-none rounded-box bg-base-200 p-2 text-xs">
+          {md_html(@extra.directive)}
+        </div>
+      </details>
 
       <details :if={(@node.details || %{}) != %{}}>
         <summary class="cursor-pointer text-xs opacity-60">Details</summary>
