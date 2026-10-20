@@ -242,14 +242,6 @@ export const SigmaGraph = {
       // name is on hover, and its detail in the page's pane when selected.
       renderLabels: false,
       hideEdgesOnMove: true,
-      // Sizes follow the zoom, so nodes keep their proportion to the space
-      // between them: small at fit-to-view, larger as you zoom in. Fixed pixel
-      // sizes are what piled them into blobs when zoomed out.
-      nodeReducer: (node, attrs) => {
-        const ratio = this.sigma ? this.sigma.getCamera().getState().ratio : 1
-        const size = attrs.size / Math.max(ratio, 0.25)
-        return { ...attrs, size: Math.min(Math.max(size, 1.5), attrs.size * 4) }
-      },
       labelColor: { color: t.baseContent },
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: 11,
