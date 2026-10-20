@@ -118,7 +118,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
-          <.story_chart stories={@bands.stories} target={@myself} />
+          <.story_chart stories={@bands.stories} />
         </li>
         <li data-test="timeline-band" data-band="components" class="min-w-16 flex-1">
           <.component_bar counts={@bands.components} target={@myself} />
@@ -194,19 +194,18 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   attr :stories, :list, required: true
-  attr :target, :any, required: true
 
   # Every story, one thin column each, most complete first. A column is the
   # story's steps stacked from the bottom: done (green), the one it is on
   # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
+  # A column opens that story's requirements graph in the cockpit's story
+  # graph modal (`show_story_graph`), with a slider through the stories in this
+  # order.
   defp story_chart(assigns) do
     ~H"""
-    <button
-      type="button"
-      phx-click="open_graph"
-      phx-target={@target}
+    <div
       data-test="story-chart"
       data-stories={length(@stories)}
       aria-label={"#{length(@stories)} stories, by how far each has got"}
@@ -217,12 +216,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <span class={["size-2 rounded-sm", class]}></span>{label}
         </span>
       </span>
-      <span class="flex h-5 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
+      <span class="group flex h-5 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
         <span
           :for={story <- @stories}
           data-test="story-column"
+          data-story-id={story.id}
           title={story_title(story)}
-          class="flex min-w-0 flex-1 flex-col-reverse"
+          phx-click="show_story_graph"
+          phx-value-story-id={story.id}
+          phx-value-copy-id={story.working_copy_id}
+          phx-value-from="chart"
+          class="flex min-w-0 flex-1 cursor-pointer flex-col-reverse transition-opacity group-hover:opacity-50 hover:opacity-100!"
         >
           <span
             :for={{key, class} <- step_segments()}
@@ -232,7 +236,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           ></span>
         </span>
       </span>
-    </button>
+    </div>
     """
   end
 

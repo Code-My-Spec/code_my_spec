@@ -36,6 +36,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
   alias CodeMySpec.ScreenState
@@ -683,7 +684,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   # A story's pie opens the requirements graph the working copy status page
-  # draws, built the same way, over the cockpit.
+  # draws, built the same way, over the cockpit. From the timeline's stories
+  # chart it also carries the chart's stories, in its order, for the slider.
   def handle_event("show_story_graph", %{"story-id" => story_id} = params, socket) do
     scope = %{socket.assigns.current_scope | active_working_copy_id: blank_nil(params["copy-id"])}
 
@@ -692,19 +694,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         {:noreply, socket}
 
       story ->
-        {:noreply,
-         socket
-         |> assign(:graph_modal, %{
-           story: story,
-           copy_id: scope.active_working_copy_id,
-           flow: nil,
-           error: nil
-         })
-         |> start_async(:graph_modal, fn ->
-           {:ok, graph} = RequirementStoryGraph.read(scope, story.id)
+        slider = if params["from"] == "chart", do: chart_stories(socket)
+        {:noreply, open_story_graph(socket, scope, story, slider)}
+    end
+  end
 
-           {WorkingCopyStoryGraph.build(graph), RequirementStoryGraph.progress(graph)}
-         end)}
+  # The slider moved: the same modal, the story at that position.
+  def handle_event("slide_story", %{"index" => index}, socket) do
+    with %{slider: [_ | _] = stories} <- socket.assigns[:graph_modal],
+         {i, ""} <- Integer.parse(index),
+         %{id: id, working_copy_id: copy_id} <- Enum.at(stories, i),
+         scope = %{socket.assigns.current_scope | active_working_copy_id: copy_id},
+         %Story{} = story <- Stories.get_story(scope, id) do
+      {:noreply, open_story_graph(socket, scope, story, stories)}
+    else
+      _ -> {:noreply, socket}
     end
   end
 
@@ -1564,14 +1568,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      socket
      |> assign(
        :graph_modal,
-       Map.merge(modal, %{flow: flow, progress: progress, needs_layout: true})
+       Map.merge(modal, %{flow: flow, progress: progress, needs_layout: true, loading: false})
      )}
   end
 
   def handle_async(:graph_modal, {:exit, _reason}, %{assigns: %{graph_modal: modal}} = socket)
       when is_map(modal) do
     {:noreply,
-     assign(socket, :graph_modal, %{modal | error: "Could not load this story’s requirements."})}
+     assign(socket, :graph_modal, %{
+       modal
+       | error: "Could not load this story’s requirements.",
+         loading: false
+     })}
   end
 
   def handle_async(:graph_modal, _result, socket), do: {:noreply, socket}
@@ -1845,8 +1853,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 pr-8">
-          <h2 class="text-lg font-semibold">Story {@modal.story.number} · {@modal.story.title}</h2>
+        <div class="flex items-baseline gap-x-3 pr-8">
+          <h2 class="min-w-0 truncate text-lg font-semibold">
+            Story {@modal.story.number} · {@modal.story.title}
+          </h2>
           <span :if={@modal[:progress]} class="text-sm opacity-70" data-test="story-graph-progress">
             {elem(@modal.progress, 0)} of {elem(@modal.progress, 1)} requirements satisfied
           </span>
@@ -1854,20 +1864,65 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             Arrange
           </button>
         </div>
-        <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
-        <p :if={is_nil(@modal.flow) and is_nil(@modal.error)} class="text-sm opacity-60">
-          Loading requirements…
+        <%!-- The story itself, held to two lines so sliding between stories does
+        not move everything under it. --%>
+        <p data-test="story-graph-description" class="line-clamp-2 min-h-10 text-sm opacity-70">
+          {@modal.story.description}
         </p>
-        <p :if={@modal.flow && map_size(@modal.flow.nodes) == 0} class="text-sm opacity-60">
-          No published requirements for this story at this working copy.
-        </p>
-        <StoryGraphComponents.canvas
-          :if={@modal.flow && map_size(@modal.flow.nodes) > 0}
-          flow={@modal.flow}
-          id="story-graph-modal-flow"
-          class={@modal[:needs_layout] && "invisible"}
-          style="height: 65vh; min-height: 420px"
-        />
+        <form
+          :if={@modal[:slider]}
+          id="story-graph-slider"
+          phx-change="slide_story"
+          data-test="story-graph-slider"
+          class="flex items-center gap-3"
+        >
+          <input
+            type="range"
+            name="index"
+            min="0"
+            max={length(@modal.slider) - 1}
+            value={@modal.index}
+            phx-throttle="150"
+            class="range range-xs flex-1"
+            aria-label="Step through the stories"
+          />
+          <span class="shrink-0 font-mono text-xs tabular-nums opacity-60">
+            {(@modal.index || 0) + 1} / {length(@modal.slider)}
+          </span>
+        </form>
+        <%!-- One fixed-height stage for every state, so loading, empty and
+        drawn are the same size and the modal holds still while sliding. --%>
+        <div class="relative flex flex-col" style="height: 65vh; min-height: 420px">
+          <div
+            :if={is_nil(@modal.flow) or @modal.error or map_size(@modal.flow.nodes) == 0}
+            class="flex flex-1 items-center justify-center"
+          >
+            <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
+            <span
+              :if={is_nil(@modal.flow) and is_nil(@modal.error)}
+              data-test="story-graph-loading-empty"
+              class="loading loading-spinner loading-md opacity-60"
+              aria-label="Loading requirements"
+            ></span>
+            <p :if={@modal.flow && map_size(@modal.flow.nodes) == 0} class="text-sm opacity-60">
+              No published requirements for this story at this working copy.
+            </p>
+          </div>
+          <div
+            :if={@modal[:loading] && @modal.flow}
+            data-test="story-graph-loading"
+            class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-base-100/30"
+          >
+            <span class="loading loading-spinner loading-md opacity-70" aria-label="Loading"></span>
+          </div>
+          <StoryGraphComponents.canvas
+            :if={@modal.flow && map_size(@modal.flow.nodes) > 0}
+            flow={@modal.flow}
+            id="story-graph-modal-flow"
+            class={if @modal[:needs_layout], do: "flex-1 invisible", else: "flex-1"}
+            style="height: 100%"
+          />
+        </div>
         <div :if={@modal.copy_id} class="flex justify-end">
           <.link
             navigate={~p"/app/projects/#{@project_id}/working-copies/#{@modal.copy_id}/status"}
@@ -1881,6 +1936,29 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     </div>
     """
   end
+
+  defp open_story_graph(socket, scope, story, slider) do
+    socket
+    |> assign(:graph_modal, %{
+      story: story,
+      copy_id: scope.active_working_copy_id,
+      # Sliding keeps the last story's graph on the canvas until this one is
+      # in, so the stage never empties between stories.
+      flow: slider && socket.assigns[:graph_modal] && socket.assigns.graph_modal.flow,
+      loading: true,
+      error: nil,
+      slider: slider,
+      index: slider && Enum.find_index(slider, &(&1.id == story.id))
+    })
+    |> start_async(:graph_modal, fn ->
+      {:ok, graph} = RequirementStoryGraph.read(scope, story.id)
+
+      {WorkingCopyStoryGraph.build(graph), RequirementStoryGraph.progress(graph)}
+    end)
+  end
+
+  defp chart_stories(socket),
+    do: Bands.read(socket.assigns.current_scope).stories
 
   defp arrange_graph(socket) do
     case socket.assigns[:graph_modal] do
