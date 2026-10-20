@@ -118,6 +118,23 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     end
   end
 
+  # Revoking cuts off exactly one box: its token stops signing in, the access
+  # tokens already issued to it die, and its open connections are closed.
+  def handle_event("revoke_dev_box", %{"id" => id}, socket) do
+    case Devices.revoke_dev_box(socket.assigns.current_scope, id) do
+      {:ok, box} ->
+        CodeMySpec.Oauth.revoke_box_tokens(box.id)
+        CodeMySpecWeb.Endpoint.broadcast("dev_box:#{box.id}", "disconnect", %{})
+
+        {:noreply,
+         socket |> put_flash(:info, "#{Device.display_name(box)} was revoked.") |> load()}
+
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can revoke a dev box.")}
+    end
+  end
+
   def handle_event("cancel_dev_box", _params, socket),
     do: {:noreply, assign(socket, adding?: false)}
 
@@ -154,6 +171,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   @impl true
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
+  def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
@@ -213,6 +231,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: %{label: "Last seen", since: Liveness.since(at, now)}
 
   # A dev box says whether anything has ever signed in with its token.
+  defp box_status(%Device{token_revoked_at: %DateTime{}}), do: "Revoked"
   defp box_status(%Device{token_last_used_at: nil}), do: "Never connected"
   defp box_status(%Device{}), do: "Connected"
 
@@ -343,6 +362,16 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   >
                     <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
                     <span data-test="dev-box-status">{row.status}</span>
+                    <.button
+                      :if={@can_add? and is_nil(row.device.token_revoked_at)}
+                      phx-click="revoke_dev_box"
+                      phx-value-id={row.device.id}
+                      data-test="revoke-dev-box"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-ghost"
+                    >
+                      Revoke
+                    </.button>
                   </div>
 
                   <div data-test="device-presence" class="shrink-0 text-right text-sm">

@@ -417,8 +417,7 @@ defmodule CodeMySpecWeb.UserAuth do
 
   defp maybe_assign_scope_for_token(conn, token) do
     if AccessTokens.is_accessible?(token) do
-      user = Users.get_user!(token.resource_owner_id)
-      assign(conn, :current_scope, UserPreferences.scope_for(user))
+      assign_token_owner(conn, token)
     else
       send_unauthorized_response(
         conn,
@@ -426,6 +425,25 @@ defmodule CodeMySpecWeb.UserAuth do
         "The access token is expired or invalid"
       )
     end
+  end
+
+  # A token issued to a dev box (story 1131) acts as that box and as nothing
+  # else: an account-only scope, never the owner it was minted against.
+  defp assign_token_owner(conn, %{device_id: device_id}) when is_binary(device_id) do
+    case CodeMySpec.Devices.active_dev_box(device_id) do
+      nil ->
+        send_unauthorized_response(conn, "invalid_token", "The dev box was revoked")
+
+      box ->
+        conn
+        |> assign(:current_scope, %CodeMySpec.Users.Scope{active_account_id: box.account_id})
+        |> assign(:box_device, box)
+    end
+  end
+
+  defp assign_token_owner(conn, token) do
+    user = Users.get_user!(token.resource_owner_id)
+    assign(conn, :current_scope, UserPreferences.scope_for(user))
   end
 
   defp send_missing_auth_header(conn) do
