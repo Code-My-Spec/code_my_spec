@@ -118,7 +118,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
-          <.story_chart steps={@bands.story_steps} target={@myself} />
+          <.story_chart stories={@bands.stories} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="components" class="min-w-16 flex-1">
           <.component_bar counts={@bands.components} target={@myself} />
@@ -193,15 +193,16 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :steps, :list, required: true
+  attr :stories, :list, required: true
   attr :target, :any, required: true
 
-  # The stories, step by step, left to right: each step a column the height of
-  # every story, stacked from the bottom — passed it (green), on it (yellow),
-  # held there by open issues (red). Side by side the columns read as a stacked
-  # line, and where the green drops is where the stories are piling up.
+  # Every story, one thin column each, most complete first. A column is the
+  # story's steps stacked from the bottom: done (green), the one it is on
+  # (yellow), held by open issues (red). Side by side they fall away left to
+  # right like a stacked line, and the shape says how far along the stories
+  # are as a body of work.
   defp story_chart(assigns) do
-    assigns = assign(assigns, :tip, Enum.map_join(assigns.steps, " · ", &step_tip/1))
+    assigns = assign(assigns, :tip, stories_tip(assigns.stories))
 
     ~H"""
     <button
@@ -209,25 +210,23 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       phx-click="open_graph"
       phx-target={@target}
       data-test="story-chart"
+      data-stories={length(@stories)}
       data-tip={@tip}
-      aria-label={"Stories: " <> @tip}
+      aria-label={@tip}
       class="tooltip tooltip-bottom block w-full"
     >
-      <span class="flex h-5 w-full items-stretch gap-px">
+      <span class="flex h-5 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
         <span
-          :for={step <- @steps}
-          data-test="story-step"
-          data-step={step.name}
-          data-done={step.done}
-          data-working={step.working}
-          data-issues={step.issues}
-          class="flex min-w-0 flex-1 flex-col-reverse overflow-hidden rounded-sm bg-base-content/10"
+          :for={story <- @stories}
+          data-test="story-column"
+          title={story_title(story)}
+          class="flex min-w-0 flex-1 flex-col-reverse"
         >
           <span
             :for={{key, class} <- step_segments()}
-            :if={step[key] > 0}
+            :if={story[key] > 0}
             class={["w-full shrink-0", class]}
-            style={"height: #{step[key] / max(step_total(step), 1) * 100}%"}
+            style={"height: #{story[key] / max(step_total(story), 1) * 100}%"}
           ></span>
         </span>
       </span>
@@ -237,10 +236,16 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   defp step_segments, do: [done: "bg-success", working: "bg-warning", issues: "bg-error"]
 
-  defp step_total(step), do: step.done + step.working + step.issues + step.none
+  defp step_total(story), do: story.done + story.working + story.issues + story.none
 
-  defp step_tip(step),
-    do: "#{String.replace(step.name, "_", " ")} #{step.done}/#{step_total(step)}"
+  defp story_title(story),
+    do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
+
+  defp stories_tip(stories) do
+    finished = Enum.count(stories, &(&1.done == step_total(&1)))
+    held = Enum.count(stories, &(&1.issues > 0))
+    "#{length(stories)} stories: #{finished} through every step, #{held} held by open issues"
+  end
 
   attr :counts, :map, required: true
   attr :target, :any, required: true
