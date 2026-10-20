@@ -117,14 +117,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="pre_stories" class="min-w-0 flex-1">
-          <.story_bar tally={@bands.pre_stories} label="Stories, before build" href={@graph} />
+        <li data-test="timeline-band" data-band="stories" class="min-w-0 flex-[2]">
+          <.story_chart steps={@bands.story_steps} target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="components" class="min-w-0 flex-[2]">
-          <.component_bar counts={@bands.components} href={@graph} />
+        <li data-test="timeline-band" data-band="components" class="min-w-0 flex-1">
+          <.component_bar counts={@bands.components} target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="post_stories" class="min-w-0 flex-1">
-          <.story_bar tally={@bands.post_stories} label="Stories, after build" href={@graph} />
+        <li data-test="timeline-band" data-band="issues" class="min-w-0 flex-1">
+          <.issue_bar counts={@bands.issues} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
           <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
@@ -193,48 +193,96 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :tally, :map, required: true
-  attr :label, :string, required: true
-  attr :href, :string, required: true
+  attr :steps, :list, required: true
+  attr :target, :any, required: true
 
-  # Stories as one bar, split by how far each has got: green done, pale green
-  # partial, red with open issues, grey not started.
-  defp story_bar(assigns) do
-    total = assigns.tally |> Map.values() |> Enum.sum()
-    assigns = assign(assigns, total: total, tip: story_tip(assigns.label, assigns.tally))
+  # The stories, step by step, top to bottom: each row how many have passed
+  # that step (green), are on it (yellow), or are held there by open issues
+  # (red). Where the green runs short is where the stories are piling up.
+  defp story_chart(assigns) do
+    assigns = assign(assigns, :tip, Enum.map_join(assigns.steps, " · ", &step_tip/1))
 
     ~H"""
-    <.link
-      navigate={@href}
-      data-test="story-bar"
-      data-done={@tally.done}
-      data-partial={@tally.partial}
-      data-issues={@tally.issues}
-      data-none={@tally.none}
+    <button
+      type="button"
+      phx-click="open_graph"
+      phx-target={@target}
+      data-test="story-chart"
       data-tip={@tip}
-      aria-label={@tip}
-      class="tooltip tooltip-bottom flex h-2 w-full overflow-hidden rounded-full bg-base-content/15"
+      aria-label={"Stories: " <> @tip}
+      class="tooltip tooltip-bottom flex w-full flex-col gap-px"
     >
       <span
-        :for={{key, class} <- segments()}
-        :if={@total > 0 and @tally[key] > 0}
-        class={["h-full", class]}
-        style={"width: #{@tally[key] / @total * 100}%"}
-      ></span>
-    </.link>
+        :for={step <- @steps}
+        data-test="story-step"
+        data-step={step.name}
+        data-done={step.done}
+        data-working={step.working}
+        data-issues={step.issues}
+        class="flex h-[3px] w-full overflow-hidden rounded-full bg-base-content/15"
+      >
+        <span
+          :for={{key, class} <- step_segments()}
+          :if={step[key] > 0}
+          class={["h-full", class]}
+          style={"width: #{step[key] / max(step_total(step), 1) * 100}%"}
+        ></span>
+      </span>
+    </button>
     """
   end
 
-  defp segments,
-    do: [done: "bg-success", partial: "bg-success/40", issues: "bg-error", none: ""]
+  defp step_segments, do: [done: "bg-success", working: "bg-warning", issues: "bg-error"]
 
-  defp story_tip(label, tally),
-    do:
-      "#{label}: #{tally.done} done · #{tally.partial} partial · #{tally.issues} with issues · " <>
-        "#{tally.none} not started"
+  defp step_total(step), do: step.done + step.working + step.issues + step.none
+
+  defp step_tip(step),
+    do: "#{String.replace(step.name, "_", " ")} #{step.done}/#{step_total(step)}"
+
+  attr :counts, :map, required: true
+  attr :target, :any, required: true
+
+  # Issues: resolved against still open, with the open count beside it.
+  defp issue_bar(assigns) do
+    %{open: open, resolved: resolved} = assigns.counts
+    total = open + resolved
+    pct = if total == 0, do: 0, else: resolved / total * 100
+
+    assigns =
+      assign(assigns,
+        open: open,
+        resolved: resolved,
+        pct: pct,
+        tip: "Issues: #{open} open, #{resolved} resolved"
+      )
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="open_graph"
+      phx-target={@target}
+      data-test="issue-bar"
+      data-open={@open}
+      data-resolved={@resolved}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-bottom flex w-full items-center gap-1.5"
+    >
+      <span class="flex h-2 w-full overflow-hidden rounded-full bg-error/60">
+        <span class="h-full bg-success" style={"width: #{@pct}%"}></span>
+      </span>
+      <span class={[
+        "shrink-0 font-mono text-[10px] tabular-nums",
+        if(@open > 0, do: "text-error", else: "opacity-60")
+      ]}>
+        {@open}
+      </span>
+    </button>
+    """
+  end
 
   attr :counts, :any, required: true
-  attr :href, :string, required: true
+  attr :target, :any, required: true
 
   # The components as one continuous bar: how much of their work is satisfied.
   defp component_bar(assigns) do
@@ -244,20 +292,22 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     assigns = assign(assigns, done: done, total: total, pct: pct, tip: tip)
 
     ~H"""
-    <.link
-      navigate={@href}
+    <button
+      type="button"
+      phx-click="open_graph"
+      phx-target={@target}
       data-test="component-bar"
       data-done={@done}
       data-total={@total}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex items-center gap-1.5"
+      class="tooltip tooltip-bottom flex w-full items-center gap-1.5"
     >
       <span class="flex h-2 w-full overflow-hidden rounded-full bg-base-content/15">
         <span class="h-full bg-primary" style={"width: #{@pct}%"}></span>
       </span>
       <span class="shrink-0 font-mono text-[10px] tabular-nums opacity-60">{@pct}%</span>
-    </.link>
+    </button>
     """
   end
 

@@ -1,14 +1,13 @@
 defmodule CodeMySpec.Requirements.Bands do
   @moduledoc """
-  The project's progress in the five bands the graph runs through: the serial
-  project gates before stories join, each story's work before components join,
-  the components, each story's work after, and the project gates after.
+  Where the project stands, for the timeline: the project gates either side of
+  where stories join, the stories step by step, the components, and the issues.
 
-  Which band a requirement is in comes from the templates and the two places
-  `RequirementGraph` joins entities (`component_join/0`, `story_join/0`), so it
-  is fixed per requirement name — no graph is loaded to find it. The counts are
-  grouped queries over the stored rows at the scope's vantage, so this is cheap
-  enough to read wherever the timeline is drawn.
+  Which side of the join a gate is on comes from the project template and
+  `RequirementGraph.story_join/0`, so it is fixed per requirement name — no
+  graph is loaded to find it. The counts are grouped queries over the stored
+  rows at the scope's vantage, cheap enough to read wherever the timeline is
+  drawn.
   """
 
   import Ecto.Query
@@ -23,9 +22,10 @@ defmodule CodeMySpec.Requirements.Bands do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
-  @type tally :: %{
+  @type step :: %{
+          name: String.t(),
           done: non_neg_integer(),
-          partial: non_neg_integer(),
+          working: non_neg_integer(),
           issues: non_neg_integer(),
           none: non_neg_integer()
         }
@@ -33,35 +33,49 @@ defmodule CodeMySpec.Requirements.Bands do
   @type t :: %{
           satisfied: MapSet.t(String.t()),
           late_names: MapSet.t(String.t()),
-          pre_stories: tally(),
+          story_steps: [step()],
           components: {non_neg_integer(), non_neg_integer()},
-          post_stories: tally()
+          issues: %{open: non_neg_integer(), resolved: non_neg_integer()}
         }
 
   @doc "Project gates from where stories join onward."
-  def late_project_names,
-    do: from_join(RequirementDefinitionData.project_graph(), RequirementGraph.story_join())
+  def late_project_names do
+    definitions = RequirementDefinitionData.project_graph()
+    by_id = Map.new(definitions, &{&1.id, &1})
+    join = Enum.find(definitions, &(&1.name == RequirementGraph.story_join()))
 
-  @doc "Story requirements from where components join onward."
-  def post_story_names,
-    do: from_join(RequirementDefinitionData.story_graph(), RequirementGraph.component_join())
+    definitions
+    |> Enum.filter(&(&1 == join or reaches?(&1, join.id, by_id, MapSet.new())))
+    |> MapSet.new(& &1.name)
+  end
+
+  @doc "The story template's steps, prerequisites first."
+  def story_step_names do
+    definitions = RequirementDefinitionData.story_graph()
+    by_id = Map.new(definitions, &{&1.id, &1})
+
+    definitions
+    |> Enum.with_index()
+    |> Enum.sort_by(fn {definition, index} -> {depth(definition, by_id), index} end)
+    |> Enum.map(fn {definition, _index} -> definition.name end)
+  end
 
   @doc """
-  Where the project stands, band by band. A story counts as done in a band
-  when every one of its requirements there is satisfied, partial when some
-  are, and — after components join — as having issues when it has any open.
+  Where the project stands. Each story step counts every story once: done when
+  that step is satisfied, held by issues when it is not and the story has any
+  open, working when the story's own earlier steps are done, and not started
+  otherwise.
   """
   @spec read(Scope.t()) :: t()
   def read(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     vantage = Projection.vantage(scope)
-    post = post_story_names()
 
     %{
       satisfied: satisfied_gates(project_id, vantage),
       late_names: late_project_names(),
-      pre_stories: tally(story_counts(project_id, vantage, post, false), %{}),
+      story_steps: story_steps(project_id, vantage),
       components: component_counts(project_id, vantage),
-      post_stories: tally(story_counts(project_id, vantage, post, true), open_issues(project_id))
+      issues: issue_counts(project_id)
     }
   end
 
@@ -78,22 +92,68 @@ defmodule CodeMySpec.Requirements.Bands do
     |> MapSet.new()
   end
 
-  # `[{story_id, satisfied, total}]` for one side of the component join.
-  defp story_counts(project_id, vantage, post, post?) do
-    post = MapSet.to_list(post)
+  defp story_steps(project_id, vantage) do
+    satisfied_by_story =
+      Node
+      |> join(:inner, [r], s in Story, on: s.id == r.story_id)
+      |> where([_r, s], s.project_id == ^project_id)
+      |> at_vantage(vantage)
+      |> select([r], {r.story_id, r.name, r.satisfied})
+      |> Repo.all()
+      |> Enum.reduce(%{}, fn {story_id, name, satisfied}, acc ->
+        Map.update(acc, story_id, done_set(name, satisfied), &add_done(&1, name, satisfied))
+      end)
 
-    Node
-    |> join(:inner, [r], s in Story, on: s.id == r.story_id)
-    |> where([_r, s], s.project_id == ^project_id)
-    |> where_side(post, post?)
-    |> at_vantage(vantage)
-    |> group_by([r], r.story_id)
-    |> select([r], {r.story_id, count(r.id) |> filter(r.satisfied), count(r.id)})
-    |> Repo.all()
+    with_issues = stories_with_open_issues(project_id)
+    prereqs = story_prerequisite_names()
+
+    for name <- story_step_names() do
+      satisfied_by_story
+      |> Enum.map(fn {story_id, done} ->
+        step_status(name, done, prereqs[name], MapSet.member?(with_issues, story_id))
+      end)
+      |> Enum.frequencies()
+      |> then(&Map.merge(%{done: 0, working: 0, issues: 0, none: 0}, &1))
+      |> Map.put(:name, name)
+    end
   end
 
-  defp where_side(query, post, true), do: where(query, [r], r.name in ^post)
-  defp where_side(query, post, false), do: where(query, [r], r.name not in ^post)
+  defp done_set(name, true), do: MapSet.new([name])
+  defp done_set(_name, _satisfied), do: MapSet.new()
+
+  defp add_done(set, name, true), do: MapSet.put(set, name)
+  defp add_done(set, _name, _satisfied), do: set
+
+  defp step_status(name, done, prereqs, issues?) do
+    cond do
+      MapSet.member?(done, name) -> :done
+      issues? -> :issues
+      MapSet.subset?(prereqs, done) -> :working
+      true -> :none
+    end
+  end
+
+  # Each story step's own prerequisites, by name — the story-internal ones; the
+  # components feeding `ready_for_qa` are the components bar's business.
+  defp story_prerequisite_names do
+    definitions = RequirementDefinitionData.story_graph()
+    names = Map.new(definitions, &{&1.id, &1.name})
+
+    Map.new(definitions, fn definition ->
+      {definition.name,
+       definition.prerequisites |> Enum.flat_map(&List.wrap(names[&1])) |> MapSet.new()}
+    end)
+  end
+
+  defp stories_with_open_issues(project_id) do
+    Issue
+    |> where([i], i.project_id == ^project_id and i.status in [:incoming, :accepted])
+    |> where([i], not is_nil(i.story_id))
+    |> distinct(true)
+    |> select([i], i.story_id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
 
   defp component_counts(project_id, vantage) do
     Node
@@ -104,36 +164,26 @@ defmodule CodeMySpec.Requirements.Bands do
     |> Repo.one()
   end
 
-  defp open_issues(project_id) do
-    Issue
-    |> where([i], i.project_id == ^project_id and i.status in [:incoming, :accepted])
-    |> where([i], not is_nil(i.story_id))
-    |> group_by([i], i.story_id)
-    |> select([i], {i.story_id, count(i.id)})
-    |> Repo.all()
-    |> Map.new()
+  defp issue_counts(project_id) do
+    counts =
+      Issue
+      |> where([i], i.project_id == ^project_id)
+      |> group_by([i], i.status)
+      |> select([i], {i.status, count(i.id)})
+      |> Repo.all()
+      |> Map.new()
+
+    %{
+      open: Map.get(counts, :incoming, 0) + Map.get(counts, :accepted, 0),
+      resolved: Map.get(counts, :resolved, 0)
+    }
   end
 
-  defp tally(counts, issues) do
-    Enum.reduce(counts, %{done: 0, partial: 0, issues: 0, none: 0}, fn {story_id, done, total},
-                                                                       acc ->
-      Map.update!(acc, status(done, total, Map.get(issues, story_id, 0)), &(&1 + 1))
-    end)
-  end
-
-  defp status(_done, _total, open) when open > 0, do: :issues
-  defp status(done, total, _open) when total > 0 and done == total, do: :done
-  defp status(done, _total, _open) when done > 0, do: :partial
-  defp status(_done, _total, _open), do: :none
-
-  # The join and every requirement whose prerequisites reach it.
-  defp from_join(definitions, join) do
-    by_id = Map.new(definitions, &{&1.id, &1})
-    start = Enum.find(definitions, &(&1.name == join))
-
-    definitions
-    |> Enum.filter(&(&1 == start or reaches?(&1, start.id, by_id, MapSet.new())))
-    |> MapSet.new(& &1.name)
+  defp depth(definition, by_id) do
+    definition.prerequisites
+    |> Enum.flat_map(&List.wrap(by_id[&1]))
+    |> Enum.map(&(depth(&1, by_id) + 1))
+    |> Enum.max(fn -> 0 end)
   end
 
   defp reaches?(definition, target, by_id, seen) do

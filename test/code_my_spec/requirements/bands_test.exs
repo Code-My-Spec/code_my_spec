@@ -3,11 +3,6 @@ defmodule CodeMySpec.Requirements.BandsTest do
 
   alias CodeMySpec.Requirements.Bands
 
-  test "a story's work after components join is ready_for_qa and everything it unblocks" do
-    assert Bands.post_story_names() ==
-             MapSet.new(~w(ready_for_qa qa_complete story_promoted deploy))
-  end
-
   test "the project's gates after stories join are the QA journey" do
     late = Bands.late_project_names()
 
@@ -15,5 +10,16 @@ defmodule CodeMySpec.Requirements.BandsTest do
     assert MapSet.member?(late, "qa_journey_execute")
     refute MapSet.member?(late, "work_dispatched")
     refute MapSet.member?(late, "personas_complete")
+  end
+
+  test "a story's steps run prerequisites first" do
+    steps = Bands.story_step_names()
+    position = &Enum.find_index(steps, fn name -> name == &1 end)
+
+    assert hd(steps) == "component_linked"
+    assert position.("three_amigos_complete") < position.("bdd_specs_exist")
+    assert position.("bdd_specs_exist") < position.("ready_for_qa")
+    assert position.("ready_for_qa") < position.("qa_complete")
+    assert position.("story_promoted") < position.("deploy")
   end
 end

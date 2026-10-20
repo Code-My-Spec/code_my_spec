@@ -1091,8 +1091,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       assert has_element?(view, "[data-test='project-timeline']")
-      assert has_element?(view, "[data-test='story-bar']")
+      assert has_element?(view, "[data-test='story-chart']")
       assert has_element?(view, "[data-test='component-bar']")
+      assert has_element?(view, "[data-test='issue-bar']")
 
       view |> element("[data-test='open-graph']") |> render_click()
       render_async(view)
