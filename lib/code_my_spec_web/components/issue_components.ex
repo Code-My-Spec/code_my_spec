@@ -125,10 +125,10 @@ defmodule CodeMySpecWeb.IssueComponents do
   attr :on_pick, :string, required: true
   attr :on_back, :string, required: true
   attr :on_close, :string, required: true
-  attr :chart_issues, :list, default: [], doc: "every issue, for the chart"
-  attr :chart_range, :string, default: "30d"
-  attr :chart_view, :string, default: "status"
-  attr :on_chart, :string, default: nil, doc: "pushed with `range` or `view`; no chart without it"
+
+  attr :chart_issues, :list,
+    default: [],
+    doc: "every issue, for the compact chart; none, no chart"
 
   def modal(assigns) do
     ~H"""
@@ -156,12 +156,12 @@ defmodule CodeMySpecWeb.IssueComponents do
             <span class="text-xs opacity-60">open · medium and up · worst first</span>
           </div>
           <IssueCharts.open_over_time
-            :if={@on_chart}
+            :if={@chart_issues != []}
             issues={@chart_issues}
-            range={@chart_range}
-            view={@chart_view}
-            event={@on_chart}
-            height={160}
+            range="30d"
+            view="severity"
+            height={120}
+            compact
           />
           <p :if={@issues == []} class="py-6 text-center text-sm opacity-60">No open issues.</p>
           <div class="max-h-[60dvh] divide-y divide-base-200 overflow-y-auto">

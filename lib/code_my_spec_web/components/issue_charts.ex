@@ -32,17 +32,21 @@ defmodule CodeMySpecWeb.IssueCharts do
   attr :issues, :list, required: true
   attr :range, :string, required: true
   attr :view, :string, default: "status"
-  attr :event, :string, required: true, doc: "pushed with `range` or `view`"
+  attr :event, :string, default: nil, doc: "pushed with `range` or `view`"
   attr :height, :integer, default: 220
+  attr :compact, :boolean, default: false, doc: "no title, controls or legend"
 
   def open_over_time(assigns) do
     days = days(assigns.issues, assigns.range)
-    option = option(assigns.view, assigns.issues, days)
+    option = assigns.view |> option(assigns.issues, days) |> Map.put(:compact, assigns.compact)
     assigns = assign(assigns, option: option, empty?: assigns.issues == [])
 
     ~H"""
-    <section data-test="issues-over-time" class="rounded-box border border-base-300 p-4">
-      <div class="flex items-center justify-between gap-3">
+    <section
+      data-test="issues-over-time"
+      class={["rounded-box border border-base-300", if(@compact, do: "p-2", else: "p-4")]}
+    >
+      <div :if={!@compact} class="flex items-center justify-between gap-3">
         <div class="join" data-test="issues-view">
           <button
             :for={view <- views()}

@@ -1241,9 +1241,9 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       refute has_element?(view, "[data-test='issues-modal']", "Typo in footer")
 
+      # The compact chart: no controls.
       assert has_element?(view, "[data-test='issues-modal'] [data-test='issues-over-time']")
-      view |> element("[data-test='issues-modal'] [data-range='7d']") |> render_click()
-      assert has_element?(view, "[data-test='issues-modal'] [data-range='7d'].btn-active")
+      refute has_element?(view, "[data-test='issues-modal'] [data-test='issues-range']")
 
       view |> element("[data-test='issue-row'][data-issue-id='#{issue.id}']") |> render_click()
 

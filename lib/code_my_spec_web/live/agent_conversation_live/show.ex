@@ -847,15 +847,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
        issues: Enum.take(issues, 50),
        total: length(issues),
        picked: nil,
-       all: all,
-       range: "30d",
-       view: "status"
+       all: all
      })}
-  end
-
-  def handle_event("issues_chart", params, %{assigns: %{issues_modal: %{} = modal}} = socket) do
-    modal = %{modal | range: params["range"] || modal.range, view: params["view"] || modal.view}
-    {:noreply, assign(socket, :issues_modal, modal)}
   end
 
   def handle_event("pick_issue", %{"id" => id}, %{assigns: %{issues_modal: %{} = modal}} = socket) do
@@ -2298,9 +2291,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         on_back="issues_back"
         on_close="close_issues"
         chart_issues={@issues_modal.all}
-        chart_range={@issues_modal.range}
-        chart_view={@issues_modal.view}
-        on_chart="issues_chart"
       />
       <ProblemCharts.modal
         :if={@problems_modal}
