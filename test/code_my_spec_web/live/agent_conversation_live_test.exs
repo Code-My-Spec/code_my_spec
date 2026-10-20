@@ -1096,6 +1096,11 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='issue-bar']")
       assert has_element?(view, "[data-test='architecture-mark'][data-cycles]")
 
+      assert has_element?(
+               view,
+               "[data-test='story-counts'][data-done][data-backlog][data-retired]"
+             )
+
       view |> element("[data-test='open-graph']") |> render_click()
       render_async(view)
 

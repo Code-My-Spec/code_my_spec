@@ -37,6 +37,11 @@ defmodule CodeMySpec.Requirements.Bands do
           satisfied: MapSet.t(String.t()),
           late_names: MapSet.t(String.t()),
           stories: [story()],
+          story_counts: %{
+            done: non_neg_integer(),
+            backlog: non_neg_integer(),
+            retired: non_neg_integer()
+          },
           components: %{
             done: non_neg_integer(),
             not_done: non_neg_integer(),
@@ -72,7 +77,8 @@ defmodule CodeMySpec.Requirements.Bands do
   end
 
   @doc """
-  Where the project stands. Each story is its steps counted four ways: done
+  Where the project stands. The stories in progress — ready for development,
+  not promoted, not retired — are each their steps counted four ways: done
   when satisfied; held by issues when not and the story has any open; working
   when its own earlier steps are done; not started otherwise. Furthest reached
   first.
@@ -85,6 +91,7 @@ defmodule CodeMySpec.Requirements.Bands do
       satisfied: satisfied_gates(project_id, vantage),
       late_names: late_project_names(),
       stories: stories(project_id, vantage),
+      story_counts: story_counts(project_id),
       components: component_counts(project_id, vantage),
       issues: issue_counts(project_id)
     }
@@ -108,6 +115,7 @@ defmodule CodeMySpec.Requirements.Bands do
       Node
       |> join(:inner, [r], s in Story, on: s.id == r.story_id)
       |> where([_r, s], s.project_id == ^project_id)
+      |> where([_r, s], s.ready_for_dev and is_nil(s.promoted_at) and is_nil(s.retired_at))
       |> at_vantage(vantage)
       |> select([r, s], {{r.story_id, s.number, s.title, s.working_copy_id}, r.name, r.satisfied})
       |> Repo.all()
@@ -132,6 +140,19 @@ defmodule CodeMySpec.Requirements.Bands do
     # Furthest reached first, then most done: grey only grows toward the end,
     # so the columns' tops fall away in one line.
     |> Enum.sort_by(&{&1.none, -&1.done, &1.issues, &1.number})
+  end
+
+  # The stories outside the chart: promoted (done), not yet ready for
+  # development (backlog), and retired.
+  defp story_counts(project_id) do
+    Story
+    |> where([s], s.project_id == ^project_id)
+    |> select([s], %{
+      done: count(s.id) |> filter(not is_nil(s.promoted_at) and is_nil(s.retired_at)),
+      backlog: count(s.id) |> filter(not s.ready_for_dev and is_nil(s.retired_at)),
+      retired: count(s.id) |> filter(not is_nil(s.retired_at))
+    })
+    |> Repo.one()
   end
 
   defp done_set(name, true), do: MapSet.new([name])

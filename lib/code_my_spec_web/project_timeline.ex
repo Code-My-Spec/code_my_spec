@@ -124,7 +124,12 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
-          <.story_chart stories={@bands.stories} />
+          <.labelled label="Stories">
+            <span class="flex w-full items-center gap-3">
+              <span class="min-w-16 flex-1"><.story_chart stories={@bands.stories} /></span>
+              <.story_counts counts={@bands.story_counts} />
+            </span>
+          </.labelled>
         </li>
         <li data-test="timeline-band" data-band="components" class="shrink-0">
           <.labelled label="Arch">
@@ -208,7 +213,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   attr :stories, :list, required: true
 
-  # Every story, one thin column each, most complete first. A column is the
+  # Every story in progress, one thin column each, furthest along first. A column is the
   # story's steps stacked from the bottom: done (green), the one it is on
   # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
@@ -275,6 +280,37 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp story_title(story),
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
 
+  attr :counts, :map, required: true
+
+  # The stories the chart leaves out: done (promoted), backlog (not yet ready
+  # for development), retired.
+  defp story_counts(assigns) do
+    assigns =
+      assign(assigns,
+        tip:
+          "Stories: #{assigns.counts.done} done · #{assigns.counts.backlog} in the backlog · " <>
+            "#{assigns.counts.retired} retired"
+      )
+
+    ~H"""
+    <span
+      data-test="story-counts"
+      data-done={@counts.done}
+      data-backlog={@counts.backlog}
+      data-retired={@counts.retired}
+      data-tip={@tip}
+      aria-label={@tip}
+      class="tooltip tooltip-bottom flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums"
+    >
+      <span class="text-success">{@counts.done}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@counts.backlog}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-30">{@counts.retired}</span>
+    </span>
+    """
+  end
+
   attr :label, :string, required: true
   slot :inner_block, required: true
 
@@ -282,7 +318,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # as one row.
   defp labelled(assigns) do
     ~H"""
-    <span class="flex flex-col items-center leading-none">
+    <span class="flex w-full flex-col items-center leading-none">
       <span class="text-[9px] font-semibold uppercase tracking-wide opacity-40">{@label}</span>
       {render_slot(@inner_block)}
     </span>
