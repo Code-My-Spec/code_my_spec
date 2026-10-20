@@ -124,12 +124,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
-          <.labelled label="Stories">
-            <span class="flex w-full items-center gap-3">
-              <span class="min-w-16 flex-1"><.story_chart stories={@bands.stories} /></span>
-              <.story_counts counts={@bands.story_counts} />
-            </span>
-          </.labelled>
+          <span class="flex w-full items-center gap-3">
+            <span class="min-w-16 flex-1"><.story_chart stories={@bands.stories} /></span>
+            <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
+          </span>
         </li>
         <li data-test="timeline-band" data-band="components" class="shrink-0">
           <.labelled label="Arch">
@@ -318,8 +316,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # as one row.
   defp labelled(assigns) do
     ~H"""
-    <span class="flex w-full flex-col items-center leading-none">
-      <span class="text-[9px] font-semibold uppercase tracking-wide opacity-40">{@label}</span>
+    <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
+      <span class="text-[8px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+        {@label}
+      </span>
       {render_slot(@inner_block)}
     </span>
     """
