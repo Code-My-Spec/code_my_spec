@@ -264,6 +264,9 @@ defmodule CodeMySpecWeb.QaLive do
             {scenario.status}
           </span>
           {scenario.name}
+          <span :if={scenario.blocker_issue_id} class="text-xs" data-role="scenario-blocker">
+            Blocked by issue <code>{scenario.blocker_issue_id}</code>
+          </span>
         </div>
         <div
           :for={inv <- @attempt.invalidations}

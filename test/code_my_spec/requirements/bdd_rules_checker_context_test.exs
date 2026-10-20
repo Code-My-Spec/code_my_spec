@@ -253,7 +253,9 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
     })
   end
 
-  # Fixture results still carry the immutable input review required by QA.
+  # The fixture derives the attempt's overall status from the scenario status
+  # given here, so a `:fail` scenario yields a `:fail` attempt without a
+  # second write.
   defp attempt!(scope, story, status) do
     {:ok, attempt} =
       CodeMySpec.QaFixtures.passed_qa_attempt(scope,
@@ -261,6 +263,6 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
         scenarios: [%{name: "the only scenario", status: status, observation: "seen"}]
       )
 
-    attempt |> Ecto.Changeset.change(status: status) |> Repo.update!()
+    attempt
   end
 end
