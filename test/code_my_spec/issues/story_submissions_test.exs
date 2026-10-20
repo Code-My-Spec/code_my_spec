@@ -215,4 +215,35 @@ defmodule CodeMySpec.Issues.StorySubmissionsTest do
                %{revision: "a", evidence: "tested"}
              )
   end
+
+  # Issue 64bd087b: 2a269214 and eeeeeb3d were low severity, below the medium
+  # threshold the review snapshot filtered on, so their landings never completed
+  # them. ba08757e and bd7e2b6c (medium) resolved normally.
+  describe "a fix below the severity threshold" do
+    setup ctx do
+      low = issue_fixture(ctx.scope, %{status: :accepted, story_id: ctx.story.id, severity: :low})
+      Map.put(ctx, :low, low)
+    end
+
+    test "holds nothing back until it is submitted", ctx do
+      refute Map.has_key?(Issues.story_submission_snapshot(ctx.scope, ctx.story.id), ctx.low.id)
+    end
+
+    test "is reviewed and completed by the landing once submitted", ctx do
+      {:ok, low} =
+        Issues.submit_story_issue(ctx.scope, ctx.low, %{revision: "fix-sha", evidence: "fixed"})
+
+      snapshot = Issues.story_submission_snapshot(ctx.scope, ctx.story.id)
+      assert snapshot[low.id] == low.story_submission_ref
+
+      other = Map.delete(snapshot, ctx.issue.id)
+
+      assert {:ok, [resolved]} =
+               Issues.complete_story_submissions(ctx.scope, ctx.story.id, other, "landed-sha")
+
+      assert resolved.id == low.id
+      assert resolved.status == :resolved
+      assert resolved.landed_commit == "landed-sha"
+    end
+  end
 end

@@ -19,7 +19,13 @@ defmodule CodeMySpec.Issues.StorySubmissions do
       where: i.story_id in ^story_ids and is_nil(i.assigned_working_copy_id),
       where:
         i.status == :accepted or (i.status == :resolved and not is_nil(i.story_submission_ref)),
-      where: i.severity in ^Issue.severities_at_or_above(threshold)
+      # Severity decides which *unsubmitted* issues hold a story back. A fix the coder
+      # submitted is a promise to review and land whatever its severity: left out of
+      # the snapshot, a low-severity fix is never reviewed, never completed by the
+      # landing that carried it, and stays accepted for good (issue 64bd087b).
+      where:
+        i.severity in ^Issue.severities_at_or_above(threshold) or
+          not is_nil(i.story_submission_ref)
     )
     |> Repo.all()
     |> Enum.group_by(& &1.story_id)
