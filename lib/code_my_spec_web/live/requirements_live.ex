@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.GraphReport
+  alias CodeMySpecWeb.RequirementGraphComponents
 
   @impl true
   def mount(_params, _session, socket) do
@@ -248,17 +249,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
     <div id="graph-page">
       <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
       <.graph_provenance :if={@provenance} provenance={@provenance} />
-      <div class="flex flex-wrap gap-4 text-sm mb-4">
-        <span class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
-        </span>
-        <span class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
-        </span>
-      </div>
+      <RequirementGraphComponents.legend />
       <div
         id="sigma-graph"
         phx-hook="SigmaGraph"

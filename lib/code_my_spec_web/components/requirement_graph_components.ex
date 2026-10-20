@@ -47,7 +47,10 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <h2 class="pr-8 text-lg font-semibold">Requirements graph</h2>
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 pr-8">
+          <h2 class="text-lg font-semibold">Requirements graph</h2>
+          <.legend />
+        </div>
         <p :if={@graph == :loading} class="text-sm opacity-60">Computing the graph…</p>
         <p :if={@graph == :error} role="alert" class="text-sm text-error">
           The graph could not be computed. Try the full page.
@@ -84,6 +87,26 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
         phx-target={@target}
         aria-label="Close"
       ></button>
+    </div>
+    """
+  end
+
+  @doc """
+  What the node colours mean — the same three the canvas paints from the
+  theme by each node's status (`statusColor` in `sigma_graph.js`).
+  """
+  def legend(assigns) do
+    ~H"""
+    <div data-test="graph-legend" class="flex flex-wrap gap-4 text-xs">
+      <span class="flex items-center gap-1.5">
+        <span class="size-2.5 rounded-full bg-success"></span> Satisfied
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="size-2.5 rounded-full bg-warning"></span> Ready to work on
+      </span>
+      <span class="flex items-center gap-1.5">
+        <span class="size-2.5 rounded-full bg-base-content/35"></span> Waiting
+      </span>
     </div>
     """
   end

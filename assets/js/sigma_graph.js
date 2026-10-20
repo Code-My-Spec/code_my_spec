@@ -87,6 +87,22 @@ function mix(base, over, amount) {
   return "#" + b.map((v, i) => Math.round(v + (o[i] - v) * amount).toString(16).padStart(2, "0")).join("")
 }
 
+// A node with a status is coloured by it from the theme, the same three the
+// legend draws: green holds, yellow is ready to work on, grey waits. Nodes
+// without one (the architecture graph) keep their own colour.
+export function statusColor(status, t) {
+  switch (status) {
+    case "satisfied": return t.success
+    case "actionable": return t.warning
+    case "blocked": return mix(t.base100, t.baseContent, 0.35)
+    default: return null
+  }
+}
+
+function nodeColor(attrs, t) {
+  return statusColor(attrs.status, t) || remapColor(attrs.color, t)
+}
+
 // GraphProjector emits hex colors; remap them to the active theme's semantic tokens.
 function remapColor(hex, t) {
   switch ((hex || "").toLowerCase()) {
@@ -199,7 +215,7 @@ export const SigmaGraph = {
     // Add nodes with theme-remapped colors
     data.nodes.forEach(n => {
       if (!graph.hasNode(n.key)) {
-        const attrs = { ...n.attributes, color: remapColor(n.attributes.color, t) }
+        const attrs = { ...n.attributes, color: nodeColor(n.attributes, t) }
         graph.addNode(n.key, attrs)
       }
     })
@@ -224,8 +240,8 @@ export const SigmaGraph = {
       renderLabels: true,
       labelColor: { color: t.baseContent },
       labelFont: "Inter, system-ui, sans-serif",
-      labelSize: 16,
-      labelWeight: "bold",
+      labelSize: 11,
+      labelWeight: "normal",
       hoverRenderer: (context, data, settings) => {
         const size = data.size + 4
         const label = data.label || ""
@@ -249,9 +265,11 @@ export const SigmaGraph = {
       defaultEdgeType: "arrow",
       defaultEdgeColor: t.baseContent,
       stagePadding: 80,
-      labelRenderedSizeThreshold: 8,
-      labelDensity: 0.5,
-      labelGridCellSize: 200,
+      // Few labels, and only once zoomed in far enough to read them: at fit
+      // view every label at once is one grey smear.
+      labelRenderedSizeThreshold: 9,
+      labelDensity: 0.12,
+      labelGridCellSize: 140,
       defaultNodeColor: t.neutral,
       enableEdgeClickEvents: true,
       enableEdgeHoverEvents: true
@@ -369,7 +387,7 @@ ${outHtml || "  (none)"}`
     // place near already-positioned neighbors.
     data.nodes.forEach(n => {
       const { x, y, ...rest } = n.attributes
-      const attrs = { ...rest, color: remapColor(n.attributes.color, t) }
+      const attrs = { ...rest, color: nodeColor(n.attributes, t) }
       if (g.hasNode(n.key)) {
         g.mergeNodeAttributes(n.key, attrs)
       } else {

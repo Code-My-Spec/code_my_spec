@@ -77,6 +77,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # viewport's: Sigma preserves aspect ratio when fitting, so a wide, short
   # layout collapses into a thin line at default zoom.
   @row_gap 2000
+  @node_scale 0.6
   @story_col_gap 500
   @story_row_gap 1400
   @ctx_req_gap 1000
@@ -389,7 +390,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
           key: "#{f}->#{t}",
           source: f,
           target: t,
-          attributes: %{size: 2, color: edge_color(e), type: "arrow"}
+          attributes: %{size: 1, color: edge_color(e), type: "arrow"}
         }
       end)
 
@@ -400,10 +401,27 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
       |> MapSet.new(& &1.key)
 
+    # A component nothing in the plan reaches has no context here — it is a
+    # file the scan found, not a step in the project — so it is left out
+    # rather than drawn floating beside the graph.
     reachable_keys = bfs_reachable(project_keys, sigma_edges)
-    all_sigma = mark_orphan_references(all_sigma, reachable_keys)
 
-    %{nodes: all_sigma, edges: sigma_edges}
+    nodes =
+      all_sigma
+      |> mark_orphan_references(reachable_keys)
+      |> Enum.reject(& &1.attributes.orphan_reference)
+
+    kept = MapSet.new(nodes, & &1.key)
+
+    %{
+      nodes: nodes,
+      edges:
+        Enum.filter(
+          sigma_edges,
+          &(MapSet.member?(kept, &1.source) and MapSet.member?(kept, &1.target))
+        ),
+      edge_alpha: 0.12
+    }
   end
 
   # Overwrite the y coordinate of every component sigma node using the node's
@@ -809,12 +827,24 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   # -- Node builders --
 
+  # `status` is what the page colours by, from its theme, so the canvas and the
+  # legend cannot disagree; `color` stays for callers that draw it as given.
+  # Sizes are scaled down: at fit-to-view 2,000+ nodes at full size overlap
+  # into one blob.
   defp mk_node(key, label, x, y, size, status, extra) do
     %{
       key: key,
       attributes:
         Map.merge(
-          %{label: label, x: x, y: y, size: size, color: color(status), type: "circle"},
+          %{
+            label: label,
+            x: x,
+            y: y,
+            size: size * @node_scale,
+            color: color(status),
+            status: Atom.to_string(status),
+            type: "circle"
+          },
           Map.new(extra)
         )
     }
@@ -845,22 +875,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   # -- Labels --
 
-  defp label(n) do
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{name} ✓", else: name
-  end
+  # Short: the node's colour says whether it holds, and the detail pane says
+  # which requirement it is.
+  defp label(n), do: String.replace(n.name, "_", " ")
 
-  defp story_label(n) do
-    title = short_title(n.entity_name)
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{title}: #{name} ✓", else: "#{title}: #{name}"
-  end
+  defp story_label(n), do: short_title(n.entity_name)
 
-  defp comp_label(n) do
-    mod = short_module(n.entity_name)
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{mod}: #{name} ✓", else: "#{mod}: #{name}"
-  end
+  defp comp_label(n), do: n.entity_name |> String.split(".") |> List.last()
 
   defp short_req_label(n) do
     mod = n.entity_name |> String.split(".") |> List.last()
@@ -869,11 +890,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   defp short_title(t), do: if(String.length(t) > 20, do: String.slice(t, 0, 20) <> "..", else: t)
-
-  defp short_module(m) do
-    parts = String.split(m, ".")
-    if length(parts) <= 2, do: m, else: Enum.drop(parts, 1) |> Enum.join(".")
-  end
 
   # -- Status --
 
