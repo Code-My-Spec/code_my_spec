@@ -198,7 +198,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   # Every story, one thin column each, most complete first. A column is the
   # story's steps stacked from the bottom: done (green), the one it is on
-  # (yellow), held by open issues (red). Side by side they fall away left to
+  # (yellow), held by open issues (red), not reached yet (grey). Side by side they fall away left to
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
   defp story_chart(assigns) do
@@ -234,7 +234,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  defp step_segments, do: [done: "bg-success", working: "bg-warning", issues: "bg-error"]
+  # Not-started steps on top in grey, so every column is the story's full height.
+  defp step_segments,
+    do: [
+      done: "bg-success",
+      working: "bg-warning",
+      issues: "bg-error",
+      none: "bg-base-content/25"
+    ]
 
   defp step_total(story), do: story.done + story.working + story.issues + story.none
 
