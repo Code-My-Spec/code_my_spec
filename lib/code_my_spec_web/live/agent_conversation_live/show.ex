@@ -1854,7 +1854,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       phx-window-keydown="close_assigned"
       phx-key="Escape"
     >
-      <div class="modal-box max-w-2xl max-h-[85dvh] overflow-y-auto">
+      <%!-- From the chart, the graph view's width, so flipping between the two
+      does not resize the modal. --%>
+      <div class={[
+        "modal-box max-h-[85dvh] overflow-y-auto",
+        if(@item[:slider], do: "w-11/12 max-w-6xl", else: "max-w-2xl")
+      ]}>
         <button
           type="button"
           phx-click="close_assigned"
