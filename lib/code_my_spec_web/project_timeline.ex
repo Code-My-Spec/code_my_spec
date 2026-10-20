@@ -117,7 +117,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="stories" class="min-w-0 flex-[2]">
+        <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
           <.story_chart steps={@bands.story_steps} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="components" class="min-w-0 flex-1">
