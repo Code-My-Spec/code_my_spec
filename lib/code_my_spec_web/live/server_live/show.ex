@@ -32,9 +32,14 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   alias CodeMySpec.Accounts
   alias CodeMySpec.Provisioning.ServerView
   alias CodeMySpec.Servers
+  alias CodeMySpecWeb.ConsoleLive.Components.Shell
+  alias CodeMySpecWeb.ServerLive.Paths
 
   @impl true
-  def mount(%{"name" => name}, _session, socket) do
+  def mount(%{"name" => name} = params, _session, socket) do
+    socket =
+      assign(socket, project_id: params["project_id"], servers_path: Paths.base(params))
+
     case Servers.get(socket.assigns.current_scope, name) do
       {:ok, server} ->
         {:ok,
@@ -52,7 +57,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
         {:ok,
          socket
          |> put_flash(:error, "No server named #{name} in this account.")
-         |> push_navigate(to: ~p"/app/servers")}
+         |> push_navigate(to: socket.assigns.servers_path)}
     end
   end
 
@@ -93,12 +98,11 @@ defmodule CodeMySpecWeb.ServerLive.Show do
 
   @impl true
   def handle_event("filter", %{"app" => ""}, socket) do
-    {:noreply, push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}")}
+    {:noreply, push_patch(socket, to: server_path(socket))}
   end
 
   def handle_event("filter", %{"app" => app}, socket) do
-    {:noreply,
-     push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}?#{[app: app]}")}
+    {:noreply, push_patch(socket, to: "#{server_path(socket)}?#{URI.encode_query(app: app)}")}
   end
 
   def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket),
@@ -110,7 +114,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
         {:noreply,
          socket
          |> put_flash(:info, "#{socket.assigns.server.name} is no longer linked to this account.")
-         |> push_navigate(to: ~p"/app/servers")}
+         |> push_navigate(to: socket.assigns.servers_path)}
 
       {:error, {:in_use, projects}} ->
         {:noreply, assign(socket, :retire_error, in_use_message(projects))}
@@ -119,9 +123,11 @@ defmodule CodeMySpecWeb.ServerLive.Show do
         {:noreply,
          socket
          |> put_flash(:error, "That server is not linked to this account.")
-         |> push_navigate(to: ~p"/app/servers")}
+         |> push_navigate(to: socket.assigns.servers_path)}
     end
   end
+
+  defp server_path(socket), do: "#{socket.assigns.servers_path}/#{socket.assigns.server.name}"
 
   defp in_use_message(projects),
     do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
@@ -234,191 +240,195 @@ defmodule CodeMySpecWeb.ServerLive.Show do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
     >
-      <div class="mx-auto max-w-5xl">
-        <.link navigate={~p"/app/servers"} class="text-sm opacity-70">← Servers</.link>
+      <Shell.frame project_id={@project_id} active={:servers}>
+        <div class="mx-auto max-w-5xl w-full">
+          <.link navigate={@servers_path} class="text-sm opacity-70">← Servers</.link>
 
-        <div data-test="server-detail" data-name={@server.name} class="mt-2 mb-8">
-          <div class="flex items-center justify-between gap-4">
-            <h1 class="text-2xl font-semibold flex items-center gap-2">
-              <span class="font-mono">{@server.name}</span>
-              <span :if={@server.environment} class="badge badge-primary badge-sm">
-                {@server.environment}
-              </span>
-            </h1>
+          <div data-test="server-detail" data-name={@server.name} class="mt-2 mb-8">
+            <div class="flex items-center justify-between gap-4">
+              <h1 class="text-2xl font-semibold flex items-center gap-2">
+                <span class="font-mono">{@server.name}</span>
+                <span :if={@server.environment} class="badge badge-primary badge-sm">
+                  {@server.environment}
+                </span>
+              </h1>
 
-            <button
-              :if={@can_manage}
-              type="button"
-              data-test="retire-server"
-              phx-click="retire"
-              class="btn btn-sm btn-ghost text-error"
-            >
-              Retire
-            </button>
-          </div>
-          <p class="text-base-content/70 mt-1 text-sm">
-            <span :if={@server.ip}>{@server.ip}</span>
-            <span :if={@server.size} class="ml-2">{@server.size}</span>
-            <span :if={@server.status} class="ml-2">{@server.status}</span>
-            <span :if={@server.unverified} class="ml-2 text-warning">state unavailable</span>
-          </p>
-
-          <div
-            :if={@retire_error}
-            data-test="retire-error"
-            role="alert"
-            class="alert alert-error alert-soft mt-3"
-          >
-            <span>{@retire_error}</span>
-          </div>
-        </div>
-
-        <section class="mb-10">
-          <h2 class="text-lg font-semibold mb-1">Running</h2>
-          <p class="text-base-content/70 text-sm mb-4">
-            Read from the box each time this page loads — not from what the last deploy recorded.
-          </p>
-
-          <p :if={@containers == :loading} data-test="containers-pending" class="text-sm opacity-70">
-            Reading the box…
-          </p>
-
-          <form
-            :if={is_list(@containers) and length(options(@containers)) > 1}
-            phx-change="filter"
-            class="mb-4"
-          >
-            <select name="app" data-test="app-filter" class="select select-bordered select-sm w-72">
-              <option value="" selected={is_nil(@app)}>
-                Everything on this box ({length(@containers)})
-              </option>
-              <option
-                :for={option <- options(@containers)}
-                value={option.value}
-                selected={@app == option.value}
+              <button
+                :if={@can_manage}
+                type="button"
+                data-test="retire-server"
+                phx-click="retire"
+                class="btn btn-sm btn-ghost text-error"
               >
-                {option.label} ({option.count})
-              </option>
-            </select>
-          </form>
+                Retire
+              </button>
+            </div>
+            <p class="text-base-content/70 mt-1 text-sm">
+              <span :if={@server.ip}>{@server.ip}</span>
+              <span :if={@server.size} class="ml-2">{@server.size}</span>
+              <span :if={@server.status} class="ml-2">{@server.status}</span>
+              <span :if={@server.unverified} class="ml-2 text-warning">state unavailable</span>
+            </p>
 
-          <div
-            :if={@containers_error}
-            data-test="containers-error"
-            role="alert"
-            class="alert alert-warning alert-soft"
-          >
-            <span>{@containers_error}</span>
-          </div>
-
-          <p
-            :if={@containers == [] and is_nil(@containers_error)}
-            data-test="no-containers"
-            class="text-base-content/60"
-          >
-            The box answered, and nothing is running on it.
-          </p>
-
-          <div :if={is_list(@containers)} class="space-y-2">
             <div
-              :for={container <- for_app(@containers, @app)}
-              data-test="container"
-              data-name={container.name}
-              data-state={container.state}
-              data-status={container.status}
-              data-image={container.image}
-              data-exit-code={container.exit_code}
-              data-service={container.service}
-              data-project-id={container.project_id}
-              class={[
-                "card bg-base-200",
-                container.state != "running" && "border border-error"
-              ]}
+              :if={@retire_error}
+              data-test="retire-error"
+              role="alert"
+              class="alert alert-error alert-soft mt-3"
             >
-              <div class="card-body py-3 flex-row items-center gap-3">
-                <span class={[
-                  "inline-block size-2.5 rounded-full shrink-0",
-                  container_class(container.state)
-                ]}></span>
-                <span class="font-mono">{container.name}</span>
-                <.link
-                  :if={container.project_id}
-                  navigate={~p"/app/projects/#{container.project_id}/console"}
-                  class="badge badge-ghost badge-sm link link-hover"
-                >
-                  {container.project_name}
-                </.link>
-                <span class="text-xs opacity-70">{container.image}</span>
-                <span class="ml-auto text-xs">{container.status}</span>
-              </div>
+              <span>{@retire_error}</span>
             </div>
           </div>
-        </section>
 
-        <section>
-          <h2 class="text-lg font-semibold mb-1">Set up here</h2>
-          <p class="text-base-content/70 text-sm mb-4">
-            What setup recorded against this box. These are our records, not a reading of the machine.
-          </p>
+          <section class="mb-10">
+            <h2 class="text-lg font-semibold mb-1">Running</h2>
+            <p class="text-base-content/70 text-sm mb-4">
+              Read from the box each time this page loads — not from what the last deploy recorded.
+            </p>
 
-          <p :if={@entries == []} data-test="no-entries" class="text-base-content/60">
-            Nothing points at this server. Nothing deploys to it, and nothing was made for it.
-          </p>
+            <p :if={@containers == :loading} data-test="containers-pending" class="text-sm opacity-70">
+              Reading the box…
+            </p>
 
-          <%!--
+            <form
+              :if={is_list(@containers) and length(options(@containers)) > 1}
+              phx-change="filter"
+              class="mb-4"
+            >
+              <select name="app" data-test="app-filter" class="select select-bordered select-sm w-72">
+                <option value="" selected={is_nil(@app)}>
+                  Everything on this box ({length(@containers)})
+                </option>
+                <option
+                  :for={option <- options(@containers)}
+                  value={option.value}
+                  selected={@app == option.value}
+                >
+                  {option.label} ({option.count})
+                </option>
+              </select>
+            </form>
+
+            <div
+              :if={@containers_error}
+              data-test="containers-error"
+              role="alert"
+              class="alert alert-warning alert-soft"
+            >
+              <span>{@containers_error}</span>
+            </div>
+
+            <p
+              :if={@containers == [] and is_nil(@containers_error)}
+              data-test="no-containers"
+              class="text-base-content/60"
+            >
+              The box answered, and nothing is running on it.
+            </p>
+
+            <div :if={is_list(@containers)} class="space-y-2">
+              <div
+                :for={container <- for_app(@containers, @app)}
+                data-test="container"
+                data-name={container.name}
+                data-state={container.state}
+                data-status={container.status}
+                data-image={container.image}
+                data-exit-code={container.exit_code}
+                data-service={container.service}
+                data-project-id={container.project_id}
+                class={[
+                  "card bg-base-200",
+                  container.state != "running" && "border border-error"
+                ]}
+              >
+                <div class="card-body py-3 flex-row items-center gap-3">
+                  <span class={[
+                    "inline-block size-2.5 rounded-full shrink-0",
+                    container_class(container.state)
+                  ]}></span>
+                  <span class="font-mono">{container.name}</span>
+                  <.link
+                    :if={container.project_id}
+                    navigate={~p"/app/projects/#{container.project_id}/console"}
+                    class="badge badge-ghost badge-sm link link-hover"
+                  >
+                    {container.project_name}
+                  </.link>
+                  <span class="text-xs opacity-70">{container.image}</span>
+                  <span class="ml-auto text-xs">{container.status}</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h2 class="text-lg font-semibold mb-1">Set up here</h2>
+            <p class="text-base-content/70 text-sm mb-4">
+              What setup recorded against this box. These are our records, not a reading of the machine.
+            </p>
+
+            <p :if={@entries == []} data-test="no-entries" class="text-base-content/60">
+              Nothing points at this server. Nothing deploys to it, and nothing was made for it.
+            </p>
+
+            <%!--
             a654ed04: this used to be where you came to actually point a
             project's environment at the box, as a second step after setting
             its label on /app/servers. Now the label on that one screen is
             the whole link; this page only shows what it produced.
           --%>
 
-          <div :for={entry <- entries_for_app(@entries, @app)} class="mb-8">
-            <h3 class="font-medium mb-2">
-              {entry.project_name}
-              <span class="badge badge-ghost badge-sm ml-1">{entry.environment}</span>
-            </h3>
+            <div :for={entry <- entries_for_app(@entries, @app)} class="mb-8">
+              <h3 class="font-medium mb-2">
+                {entry.project_name}
+                <span class="badge badge-ghost badge-sm ml-1">{entry.environment}</span>
+              </h3>
 
-            <%!--
+              <%!--
               The error lives inside the step it belongs to, not in a list
               underneath. A failure separated from the thing that failed makes
               the reader match them up by name, and on a box carrying several
               projects there is more than one candidate.
             --%>
-            <div class="flex flex-wrap gap-2 mb-3">
-              <div
-                :for={step <- entry.steps}
-                data-test="step"
-                data-key={step.key}
-                data-state={step.state}
-                class={[
-                  "badge badge-outline gap-1",
-                  step.state == :errored && "badge-error badge-outline h-auto py-1"
-                ]}
-              >
-                <span class={["inline-block size-2 rounded-full", state_class(step.state)]}></span>
-                <span>{step.key}: {state_label(step.state)}</span>
-                <span :if={step.provider_error} class="text-xs opacity-80 max-w-md">
-                  — {step.provider_error}
-                </span>
+              <div class="flex flex-wrap gap-2 mb-3">
+                <div
+                  :for={step <- entry.steps}
+                  data-test="step"
+                  data-key={step.key}
+                  data-state={step.state}
+                  class={[
+                    "badge badge-outline gap-1",
+                    step.state == :errored && "badge-error badge-outline h-auto py-1"
+                  ]}
+                >
+                  <span class={["inline-block size-2 rounded-full", state_class(step.state)]}></span>
+                  <span>{step.key}: {state_label(step.state)}</span>
+                  <span :if={step.provider_error} class="text-xs opacity-80 max-w-md">
+                    — {step.provider_error}
+                  </span>
+                </div>
               </div>
-            </div>
 
-            <ul class="text-sm space-y-1">
-              <li
-                :for={resource <- entry.resources}
-                data-test="resource"
-                data-kind={resource.kind}
-                data-location={resource.location}
-                class="flex gap-2"
-              >
-                <span class="badge badge-ghost badge-sm">{resource.kind}</span>
-                <span class="font-mono opacity-80">{resource.location}</span>
-              </li>
-            </ul>
-          </div>
-        </section>
-      </div>
+              <ul class="text-sm space-y-1">
+                <li
+                  :for={resource <- entry.resources}
+                  data-test="resource"
+                  data-kind={resource.kind}
+                  data-location={resource.location}
+                  class="flex gap-2"
+                >
+                  <span class="badge badge-ghost badge-sm">{resource.kind}</span>
+                  <span class="font-mono opacity-80">{resource.location}</span>
+                </li>
+              </ul>
+            </div>
+          </section>
+        </div>
+      </Shell.frame>
     </Layouts.app>
     """
   end

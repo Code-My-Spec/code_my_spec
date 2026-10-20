@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.ServerLive.Index do
   @moduledoc """
-  Every box the account owns, linked or not, at `/app/servers`.
+  Every box the account owns, linked or not, at `/app/servers` and in each
+  project's console (`ServerLive.Paths`).
 
   ## Why unlinked servers are collapsed and not omitted
 
@@ -27,12 +28,16 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Servers
+  alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.ServerLive.FormComponent
+  alias CodeMySpecWeb.ServerLive.Paths
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     {:ok,
      socket
+     |> assign(:project_id, params["project_id"])
+     |> assign(:servers_path, Paths.base(params))
      |> assign(:page_title, "Servers")
      |> assign(:show_unlinked, false)
      |> assign(:pending, nil)
@@ -67,7 +72,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       nil ->
         socket
         |> put_flash(:error, "That server is not linked to this account.")
-        |> push_patch(to: ~p"/app/servers")
+        |> push_patch(to: socket.assigns.servers_path)
 
       server ->
         socket |> assign(:server, server) |> assign(:page_title, "Edit #{server.name}")
@@ -111,7 +116,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
          socket
          |> assign(:retire_error, nil)
          |> load_servers()
-         |> push_patch(to: ~p"/app/servers")}
+         |> push_patch(to: socket.assigns.servers_path)}
 
       {:error, {:in_use, projects}} ->
         {:noreply,
@@ -122,7 +127,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
          socket
          |> assign(:retire_error, nil)
          |> load_servers()
-         |> push_patch(to: ~p"/app/servers")}
+         |> push_patch(to: socket.assigns.servers_path)}
     end
   end
 
@@ -280,89 +285,95 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       flash={@flash}
       current_scope={@current_scope}
       current_path={@current_path}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
     >
-      <div class="mx-auto max-w-5xl">
-        <h1 class="text-2xl font-semibold mb-1">Servers</h1>
-        <p class="text-base-content/70 mb-6">
-          Every box in your account, whether CodeMySpec made it or you did.
-        </p>
+      <Shell.frame project_id={@project_id} active={:servers}>
+        <div class="mx-auto max-w-5xl w-full">
+          <h1 class="text-2xl font-semibold mb-1">Servers</h1>
+          <p class="text-base-content/70 mb-6">
+            Every box in your account, whether CodeMySpec made it or you did.
+          </p>
 
-        <div
-          :if={@provider_error}
-          data-test="provider-error"
-          role="alert"
-          class="alert alert-error alert-soft mb-6"
-        >
-          <span>{@provider_error}</span>
-        </div>
+          <div
+            :if={@provider_error}
+            data-test="provider-error"
+            role="alert"
+            class="alert alert-error alert-soft mb-6"
+          >
+            <span>{@provider_error}</span>
+          </div>
 
-        <div :for={server <- linked(@servers)} class="mb-2">
-          <.server_row
-            server={server}
-            can_manage={@can_manage}
-            retire_error={@retire_error}
-            account_id={@current_scope.active_account_id}
-          />
-        </div>
-
-        <p
-          :if={@servers == [] and is_nil(@provider_error)}
-          data-test="no-servers"
-          class="text-base-content/60 my-6"
-        >
-          No servers in this account yet.
-        </p>
-
-        <button
-          :if={unlinked(@servers) != []}
-          type="button"
-          data-test="unlinked-count"
-          data-count={length(unlinked(@servers))}
-          phx-click="toggle-unlinked"
-          class="btn btn-ghost btn-sm my-4"
-        >
-          {if @show_unlinked, do: "Hide", else: "+#{length(unlinked(@servers))} more"} not linked
-        </button>
-
-        <div :if={@show_unlinked} data-test="unlinked-servers">
-          <div :for={server <- unlinked(@servers)} class="mb-2">
+          <div :for={server <- linked(@servers)} class="mb-2">
             <.server_row
               server={server}
               can_manage={@can_manage}
               retire_error={@retire_error}
               account_id={@current_scope.active_account_id}
+              servers_path={@servers_path}
             />
           </div>
+
+          <p
+            :if={@servers == [] and is_nil(@provider_error)}
+            data-test="no-servers"
+            class="text-base-content/60 my-6"
+          >
+            No servers in this account yet.
+          </p>
+
+          <button
+            :if={unlinked(@servers) != []}
+            type="button"
+            data-test="unlinked-count"
+            data-count={length(unlinked(@servers))}
+            phx-click="toggle-unlinked"
+            class="btn btn-ghost btn-sm my-4"
+          >
+            {if @show_unlinked, do: "Hide", else: "+#{length(unlinked(@servers))} more"} not linked
+          </button>
+
+          <div :if={@show_unlinked} data-test="unlinked-servers">
+            <div :for={server <- unlinked(@servers)} class="mb-2">
+              <.server_row
+                server={server}
+                can_manage={@can_manage}
+                retire_error={@retire_error}
+                account_id={@current_scope.active_account_id}
+                servers_path={@servers_path}
+              />
+            </div>
+          </div>
+
+          <.provision_panel
+            :if={@can_manage}
+            options={@options}
+            location={@location}
+            pending={@pending}
+            error={@provision_error}
+          />
+
+          <dialog
+            :if={@live_action == :edit and @server}
+            id="server-form-modal"
+            class="modal modal-open"
+          >
+            <div class="modal-box max-w-lg">
+              <.live_component
+                module={FormComponent}
+                id={@server.id}
+                server={@server}
+                environments={@environments}
+                current_scope={@current_scope}
+                return_to={@servers_path}
+              />
+            </div>
+            <form method="dialog" class="modal-backdrop">
+              <button phx-click={JS.patch(@servers_path)}>close</button>
+            </form>
+          </dialog>
         </div>
-
-        <.provision_panel
-          :if={@can_manage}
-          options={@options}
-          location={@location}
-          pending={@pending}
-          error={@provision_error}
-        />
-
-        <dialog
-          :if={@live_action == :edit and @server}
-          id="server-form-modal"
-          class="modal modal-open"
-        >
-          <div class="modal-box max-w-lg">
-            <.live_component
-              module={FormComponent}
-              id={@server.id}
-              server={@server}
-              environments={@environments}
-              current_scope={@current_scope}
-              return_to={~p"/app/servers"}
-            />
-          </div>
-          <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/app/servers")}>close</button>
-          </form>
-        </dialog>
-      </div>
+      </Shell.frame>
     </Layouts.app>
     """
   end
@@ -371,6 +382,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   attr :can_manage, :boolean, default: false
   attr :retire_error, :map, default: nil
   attr :account_id, :string, default: nil
+  attr :servers_path, :string, required: true
 
   defp server_row(assigns) do
     ~H"""
@@ -406,7 +418,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           ></span>
 
           <.link
-            navigate={~p"/app/servers/#{@server.name}"}
+            navigate={"#{@servers_path}/#{@server.name}"}
             data-test="open-server"
             class="font-mono link link-hover"
           >
@@ -456,7 +468,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
             same as retiring.
           --%>
           <.link
-            patch={~p"/app/servers/#{@server.name}/edit"}
+            patch={"#{@servers_path}/#{@server.name}/edit"}
             data-test="edit-server"
             class="btn btn-sm btn-ghost"
           >

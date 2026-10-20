@@ -621,6 +621,10 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/console", ConsoleLive, :overview
       live "/projects/:project_id/console/resources", ConsoleLive, :resources
       live "/projects/:project_id/console/resources/:key", ConsoleLive, :resource_detail
+      # The account's servers, in each project's console; `/app/servers` too.
+      live "/projects/:project_id/console/servers", ServerLive.Index, :index
+      live "/projects/:project_id/console/servers/:name/edit", ServerLive.Index, :edit
+      live "/projects/:project_id/console/servers/:name", ServerLive.Show, :show
       live "/projects/:project_id/console/deploys", ConsoleLive, :deploys
       live "/projects/:project_id/console/secrets", ConsoleLive, :secrets
       live "/projects/:project_id/console/credentials", ConsoleLive, :credentials

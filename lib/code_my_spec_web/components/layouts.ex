@@ -188,7 +188,6 @@ defmodule CodeMySpecWeb.Layouts do
                 per-project block: a box is shared between projects, and one
                 left over from a project that no longer exists still bills.
               --%>
-            <li><a href={~p"/app/servers"}>Servers</a></li>
             <li><a href={~p"/app/devices"}>Devices</a></li>
             <li><a href={~p"/app/resources"}>Resources</a></li>
             <%!--
