@@ -53,9 +53,10 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
         >
           <.icon name="hero-x-mark" class="size-5" />
         </button>
-        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 pr-8">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 pr-10">
           <h2 class="text-lg font-semibold">Requirements graph</h2>
           <.legend />
+          <div id="timeline-graph-debug" class="ml-auto"></div>
         </div>
         <p :if={@graph == :loading} class="text-sm opacity-60">Computing the graph…</p>
         <p :if={@graph == :error} role="alert" class="text-sm text-error">
@@ -81,8 +82,7 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
             target={@target}
           />
         </div>
-        <div class="flex items-center justify-between">
-          <div id="timeline-graph-debug"></div>
+        <div class="flex justify-end">
           <.link navigate={@href} data-test="graph-modal-open" class="btn btn-sm btn-ghost">
             Full page <.icon name="hero-arrow-top-right-on-square" class="size-4" />
           </.link>

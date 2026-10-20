@@ -285,7 +285,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp graph_view(assigns) do
     ~H"""
     <div id="graph-page">
-      <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <h1 class="text-2xl font-bold">Requirements Graph</h1>
+        <%!-- The hook puts its "Copy graph debug" action here. --%>
+        <div id="sigma-graph-debug"></div>
+      </div>
       <.graph_provenance :if={@provenance} provenance={@provenance} />
       <RequirementGraphComponents.legend />
       <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -310,8 +314,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
           />
         </div>
       </div>
-      <%!-- The hook's debug text lands here, in the page, for copying. --%>
-      <div id="sigma-graph-debug"></div>
     </div>
     """
   end
