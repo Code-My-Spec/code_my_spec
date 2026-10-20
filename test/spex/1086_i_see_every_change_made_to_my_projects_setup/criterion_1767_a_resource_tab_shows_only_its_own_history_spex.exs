@@ -59,6 +59,7 @@ defmodule CodeMySpecSpex.Story1086.Criterion1767Spex do
         text = Floki.text(entries)
 
         assert text =~ "server"
+
         refute text =~ "ran the dns step",
                "the servers tab is showing an entry that belongs to DNS and domain"
 

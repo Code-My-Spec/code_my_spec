@@ -23,9 +23,7 @@ defmodule CodeMySpec.Repo.Migrations.FixDocEmbeddingsUniqueness do
            name: :doc_embeddings_project_content_hash_index
          )
 
-    drop index(:doc_embeddings, [:content_hash],
-           name: :doc_embeddings_shared_content_hash_index
-         )
+    drop index(:doc_embeddings, [:content_hash], name: :doc_embeddings_shared_content_hash_index)
 
     create unique_index(:doc_embeddings, [:project_id, :source, :path, :chunk_index],
              where: "project_id IS NOT NULL",

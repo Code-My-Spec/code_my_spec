@@ -7,7 +7,14 @@ defmodule CodeMySpec.BddSpecs.StampTest do
 
   defp criterion(attrs) do
     Map.merge(
-      %{id: 1482, number: 7, story_id: 10, description: "A missing spec is reported", spec_path: nil, retired_at: nil},
+      %{
+        id: 1482,
+        number: 7,
+        story_id: 10,
+        description: "A missing spec is reported",
+        spec_path: nil,
+        retired_at: nil
+      },
       attrs
     )
   end

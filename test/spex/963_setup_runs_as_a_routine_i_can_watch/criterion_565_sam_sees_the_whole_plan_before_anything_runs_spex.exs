@@ -88,9 +88,17 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
         end
 
         # Nothing has run, so no step may claim a terminal or in-flight state.
-        refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='running']")
+        refute has_element?(
+                 context.view,
+                 "[data-test='setup-checklist-item'][data-state='running']"
+               )
+
         refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='done']")
-        refute has_element?(context.view, "[data-test='setup-checklist-item'][data-state='errored']")
+
+        refute has_element?(
+                 context.view,
+                 "[data-test='setup-checklist-item'][data-state='errored']"
+               )
 
         {:ok, context}
       end

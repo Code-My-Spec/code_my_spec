@@ -30,7 +30,10 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
   end
 
   defp other_server(overrides \\ %{}) do
-    Map.merge(%{"id" => 1, "name" => "builder-abc123", "created" => "2026-08-03T12:00:00Z"}, overrides)
+    Map.merge(
+      %{"id" => 1, "name" => "builder-abc123", "created" => "2026-08-03T12:00:00Z"},
+      overrides
+    )
   end
 
   # Carries only `Builder.bootstrap_role_label/0` — a server whose snapshot
@@ -74,7 +77,8 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
         {:ok, %{}}
       end
 
-      results = Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
+      results =
+        Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
 
       assert :deleted in results
       assert :kept in results
@@ -119,7 +123,9 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
 
       log =
         capture_log(fn ->
-          results = Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
+          results =
+            Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
+
           assert Enum.any?(results, &match?({:error, _}, &1))
           assert :deleted in results
         end)

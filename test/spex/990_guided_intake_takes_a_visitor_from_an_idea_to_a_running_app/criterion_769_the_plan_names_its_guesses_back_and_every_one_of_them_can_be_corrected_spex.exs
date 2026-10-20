@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story990.Criterion2230Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  spex "Every inference the plan makes is stated, and stated as something to change", criterion: 769 do
+  spex "Every inference the plan makes is stated, and stated as something to change",
+    criterion: 769 do
     scenario "The plan names its guesses back, and every one of them can be corrected" do
       given_ "a visitor who has described what they want to build", context do
         conn = get(context.conn, "/build")

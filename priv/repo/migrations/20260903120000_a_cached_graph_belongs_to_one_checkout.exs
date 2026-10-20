@@ -56,9 +56,7 @@ defmodule CodeMySpec.Repo.Migrations.ACachedGraphBelongsToOneCheckout do
       )
     """
 
-    drop unique_index(:requirement_graphs, [:project_id, :working_copy_id],
-           nulls_distinct: false
-         )
+    drop unique_index(:requirement_graphs, [:project_id, :working_copy_id], nulls_distinct: false)
 
     create unique_index(:requirement_graphs, [:project_id])
 

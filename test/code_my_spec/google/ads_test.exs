@@ -30,9 +30,9 @@ defmodule CodeMySpec.Google.AdsTest do
   end
 
   defp run(name, fun) do
-    with_cassette name, cassette_opts(), fn plug ->
+    with_cassette(name, cassette_opts(), fn plug ->
       with_plug(Ads, plug, fun)
-    end
+    end)
   end
 
   test "normalize_customer_id strips dashes, slashes, and resource prefixes" do

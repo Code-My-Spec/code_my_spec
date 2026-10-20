@@ -5,7 +5,10 @@ defmodule CodeMySpec.Repo.Migrations.CreateExternalUsers do
     create table(:external_users, primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :account_id, :binary_id, null: false
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :external_id, :string
       add :email, :string, null: false
       add :name, :string

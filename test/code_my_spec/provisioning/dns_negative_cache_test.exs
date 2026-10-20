@@ -163,6 +163,7 @@ defmodule CodeMySpec.Provisioning.DnsNegativeCacheTest do
       end
 
       started = System.monotonic_time(:millisecond)
+
       assert Dns.resolution_status("x.astralbi.com", :a, resolver: resolver, settle_ms: 50) ==
                :resolves
 

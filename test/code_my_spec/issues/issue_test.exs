@@ -102,7 +102,9 @@ defmodule CodeMySpec.Issues.IssueTest do
 
     test "allows incoming → dismissed transition (requires resolution)" do
       issue = %Issue{status: :incoming}
-      changeset = Issue.status_changeset(issue, %{status: :dismissed, resolution: "Not reproducible"})
+
+      changeset =
+        Issue.status_changeset(issue, %{status: :dismissed, resolution: "Not reproducible"})
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :status) == :dismissed
@@ -111,7 +113,9 @@ defmodule CodeMySpec.Issues.IssueTest do
 
     test "allows accepted → resolved transition (requires resolution)" do
       issue = %Issue{status: :accepted}
-      changeset = Issue.status_changeset(issue, %{status: :resolved, resolution: "Fixed in PR #42"})
+
+      changeset =
+        Issue.status_changeset(issue, %{status: :resolved, resolution: "Fixed in PR #42"})
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :status) == :resolved

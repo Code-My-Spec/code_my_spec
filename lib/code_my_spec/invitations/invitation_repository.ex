@@ -73,7 +73,11 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
     do: from(i in Invitation, where: false, preload: [:account])
 
   defp scoped_invitation(%Scope{active_account_id: account_id}, id),
-    do: from(i in Invitation, where: i.id == ^id and i.account_id == ^account_id, preload: [:account])
+    do:
+      from(i in Invitation,
+        where: i.id == ^id and i.account_id == ^account_id,
+        preload: [:account]
+      )
 
   @spec update_invitation(scope :: Scope.t(), Invitation.t(), attrs :: map()) ::
           {:ok, Invitation.t()} | {:error, Ecto.Changeset.t()}

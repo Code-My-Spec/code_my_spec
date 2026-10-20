@@ -81,7 +81,9 @@ defmodule CodeMySpecSpex.Story990.Criterion3406Spex do
           end)
 
         project_id = find_new_project_id(context.conn)
-        {:ok, _live, agent_html} = live(context.conn, "/app/projects/#{project_id}/agent-conversation")
+
+        {:ok, _live, agent_html} =
+          live(context.conn, "/app/projects/#{project_id}/agent-conversation")
 
         assert agent_html =~ "phx-submit=\"send_message\"",
                "expected an agent already in the instance, ready to talk, got: #{agent_html}"

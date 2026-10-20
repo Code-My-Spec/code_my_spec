@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1977Spex do
   end
 
   spex "A Codex QA turn's tokens are recorded in the same shape as a Claude Code turn",
-       criterion: 1977 do
+    criterion: 1977 do
     scenario "a QA agent on Codex finishes a turn" do
       given_ "a QA agent running on Codex", context do
         reply = join_working_copy(context, "/tmp/spex-1977", "the checkout")

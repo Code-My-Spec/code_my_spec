@@ -52,7 +52,10 @@ defmodule CodeMySpecSpex.Story1030.Criterion1588Spex do
       end
 
       then_ "launch was told this copy is not main", context do
-        assert [{:launch, [_root, _port, _https_port, _database, _log_path, main?, _tunnel_held?, _host]}] =
+        assert [
+                 {:launch,
+                  [_root, _port, _https_port, _database, _log_path, main?, _tunnel_held?, _host]}
+               ] =
                  Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
         refute main?,
@@ -83,7 +86,10 @@ defmodule CodeMySpecSpex.Story1030.Criterion1588Spex do
       end
 
       then_ "launch was told this copy is main, same as before this existed", context do
-        assert [{:launch, [_root, _port, _https_port, _database, _log_path, main?, _tunnel_held?, _host]}] =
+        assert [
+                 {:launch,
+                  [_root, _port, _https_port, _database, _log_path, main?, _tunnel_held?, _host]}
+               ] =
                  Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
         assert main?,

@@ -14,18 +14,19 @@ defmodule CodeMySpec.AgentTasks.Init.Auth do
   end
 
   def command(_scope, _task) do
-    {:ok, """
-    # Authenticate with CodeMySpec
+    {:ok,
+     """
+     # Authenticate with CodeMySpec
 
-    Ask the user to authenticate with CodeMySpec. They need to:
+     Ask the user to authenticate with CodeMySpec. They need to:
 
-    1. Open the CodeMySpec web app and sign in
-    2. Run the auth flow from the CLI or visit the auth URL
+     1. Open the CodeMySpec web app and sign in
+     2. Run the auth flow from the CLI or visit the auth URL
 
-    This step requires user interaction — you cannot complete it automatically.
+     This step requires user interaction — you cannot complete it automatically.
 
-    Once authenticated, call `get_next_requirement` to continue.
-    """}
+     Once authenticated, call `get_next_requirement` to continue.
+     """}
   end
 
   defp auth_ok? do

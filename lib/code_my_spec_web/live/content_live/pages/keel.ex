@@ -182,7 +182,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Keel do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       {hero_section(assigns)}
       {overview_section(assigns)}
       {stories_section(assigns)}
@@ -788,5 +792,4 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Keel do
     </section>
     """
   end
-
 end

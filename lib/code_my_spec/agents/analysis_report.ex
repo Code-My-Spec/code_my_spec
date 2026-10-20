@@ -184,7 +184,10 @@ defmodule CodeMySpec.Agents.AnalysisReport do
 
   defp requesting_agents(%Scope{active_project_id: project_id}, copy_id, agent_ids) do
     Agent
-    |> where([a], a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id)
+    |> where(
+      [a],
+      a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id
+    )
     |> Repo.all()
   end
 

@@ -5,8 +5,7 @@ defmodule CodeMySpec.Documents do
 
   use Boundary,
     top_level?: true,
-    deps: [
-    ],
+    deps: [],
     exports: :all
 
   alias CodeMySpec.Documents.MarkdownParser

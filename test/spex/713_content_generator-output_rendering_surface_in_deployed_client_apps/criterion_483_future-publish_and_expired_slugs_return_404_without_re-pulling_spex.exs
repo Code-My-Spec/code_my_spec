@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
 
   setup :set_deploy_key
 
-  spex "Schedule windows are enforced at render time, with no background re-pull", criterion: 483 do
+  spex "Schedule windows are enforced at render time, with no background re-pull",
+    criterion: 483 do
     scenario "Future-publish and expired slugs return 404 without re-pulling" do
       given_ "three posts with different schedule windows are synced", context do
         now = DateTime.utc_now()

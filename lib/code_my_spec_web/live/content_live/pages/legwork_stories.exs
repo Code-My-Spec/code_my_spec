@@ -20,7 +20,8 @@
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "A pipeline is owned by the account it's created in and is visible only to that account's operators.",
+          statement:
+            "A pipeline is owned by the account it's created in and is visible only to that account's operators.",
           scenarios: [
             %{
               kind: "happy path",
@@ -33,7 +34,8 @@ Then operator B does not see \"Denver crane cos\" in their pipeline list"
           ]
         },
         %{
-          statement: "A pipeline requires a name and a free-text target type before it can be run.",
+          statement:
+            "A pipeline requires a name and a free-text target type before it can be run.",
           scenarios: [
             %{
               kind: "happy path",
@@ -52,7 +54,8 @@ Then I see a validation error and the pipeline is not saved"
           ]
         },
         %{
-          statement: "A runbook has exactly the five stages — Gather, Qualify, Resolve, Enrich, Launch — each with free-form markdown instructions.",
+          statement:
+            "A runbook has exactly the five stages — Gather, Qualify, Resolve, Enrich, Launch — each with free-form markdown instructions.",
           scenarios: [
             %{
               kind: "happy path",
@@ -64,7 +67,8 @@ Then I see instruction sections for Gather, Qualify, Resolve, Enrich, and Launch
           ]
         },
         %{
-          statement: "A pipeline can be saved and edited incrementally, without every stage's instructions filled in.",
+          statement:
+            "A pipeline can be saved and edited incrementally, without every stage's instructions filled in.",
           scenarios: [
             %{
               kind: "happy path",
@@ -77,7 +81,8 @@ And I can reopen it later to fill in the remaining stages"
           ]
         },
         %{
-          statement: "A run always uses the pipeline's current runbook, so editing a runbook takes effect immediately for in-flight runs.",
+          statement:
+            "A run always uses the pipeline's current runbook, so editing a runbook takes effect immediately for in-flight runs.",
           scenarios: [
             %{
               kind: "happy path",
@@ -89,7 +94,8 @@ Then the in-flight run uses the updated Qualify instructions when it reaches tha
           ]
         },
         %{
-          statement: "An operator can clone an existing pipeline as the starting point for a new one.",
+          statement:
+            "An operator can clone an existing pipeline as the starting point for a new one.",
           scenarios: [
             %{
               kind: "happy path",
@@ -102,8 +108,7 @@ And I can edit the clone without changing the original"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -128,7 +133,8 @@ And I can edit the clone without changing the original"
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "The Gather stage is where the model produces the targets (e.g. via web search or a Places API call); the operator does not supply them.",
+          statement:
+            "The Gather stage is where the model produces the targets (e.g. via web search or a Places API call); the operator does not supply them.",
           scenarios: [
             %{
               kind: "happy path",
@@ -140,7 +146,8 @@ Then it produces target companies (e.g. via web search) and records them to the 
           ]
         },
         %{
-          statement: "The model records targets, people, and contacts through MCP tools and a run-scoped API endpoint it can call from code.",
+          statement:
+            "The model records targets, people, and contacts through MCP tools and a run-scoped API endpoint it can call from code.",
           scenarios: [
             %{
               kind: "happy path",
@@ -152,7 +159,8 @@ Then the target is recorded on that run"
           ]
         },
         %{
-          statement: "When a run starts, the model is given the full runbook (all five stages' instructions) up front, not one stage at a time.",
+          statement:
+            "When a run starts, the model is given the full runbook (all five stages' instructions) up front, not one stage at a time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -164,7 +172,8 @@ Then it receives all five stages' instructions at once, not just Gather's"
           ]
         },
         %{
-          statement: "When one action yields data for several stages (e.g. a scrape that finds a person and their contact together), the model records all of it in that pass rather than waiting for a later stage.",
+          statement:
+            "When one action yields data for several stages (e.g. a scrape that finds a person and their contact together), the model records all of it in that pass rather than waiting for a later stage.",
           scenarios: [
             %{
               kind: "happy path",
@@ -176,7 +185,8 @@ Then both the person and the contact are saved without waiting for a later stage
           ]
         },
         %{
-          statement: "Once a run is started the model does the work hands-free over the MCP session; the operator does not run each step and there is no pause/resume.",
+          statement:
+            "Once a run is started the model does the work hands-free over the MCP session; the operator does not run each step and there is no pause/resume.",
           scenarios: [
             %{
               kind: "happy path",
@@ -188,7 +198,8 @@ Then it completes the stages on its own with no pause or manual step from me"
           ]
         },
         %{
-          statement: "Multiple runs can execute concurrently, each addressed by its run ID via MCP tools or a run-scoped API endpoint/key.",
+          statement:
+            "Multiple runs can execute concurrently, each addressed by its run ID via MCP tools or a run-scoped API endpoint/key.",
           scenarios: [
             %{
               kind: "happy path",
@@ -208,7 +219,12 @@ Then the write is rejected"
         }
       ],
       questions: [
-        %{body: "Given the model works the runbook opportunistically (not strictly stage-by-stage), what marks a stage \"done\", and does the gate apply per target (e.g. does this target have a contact yet?) rather than as a hard sequential barrier for the whole run? Resolve in stories 828 (gate) and 831 (agent).", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Given the model works the runbook opportunistically (not strictly stage-by-stage), what marks a stage \"done\", and does the gate apply per target (e.g. does this target have a contact yet?) rather than as a hard sequential barrier for the whole run? Resolve in stories 828 (gate) and 831 (agent).",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -233,7 +249,8 @@ Then the write is rejected"
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "Every finding the model records is saved as a structured database record and survives after the model's session ends — not left as chat output.",
+          statement:
+            "Every finding the model records is saved as a structured database record and survives after the model's session ends — not left as chat output.",
           scenarios: [
             %{
               kind: "happy path",
@@ -245,7 +262,8 @@ Then all 40 targets are still there for the operator to review"
           ]
         },
         %{
-          statement: "A run's data is targets, each with the people found for it, and each person's contacts (target → person → contact).",
+          statement:
+            "A run's data is targets, each with the people found for it, and each person's contacts (target → person → contact).",
           scenarios: [
             %{
               kind: "happy path",
@@ -257,7 +275,8 @@ Then I see the person nested under the target and the contact nested under the p
           ]
         },
         %{
-          statement: "Each record carries its annotations — a target its qualify verdict and reason, a person its role/identity, a contact its verified email/phone.",
+          statement:
+            "Each record carries its annotations — a target its qualify verdict and reason, a person its role/identity, a contact its verified email/phone.",
           scenarios: [
             %{
               kind: "happy path",
@@ -269,7 +288,8 @@ Then I see its qualify verdict and the reason the model gave"
           ]
         },
         %{
-          statement: "The operator can list and filter a run's targets and open any target to see its people and contacts.",
+          statement:
+            "The operator can list and filter a run's targets and open any target to see its people and contacts.",
           scenarios: [
             %{
               kind: "happy path",
@@ -281,7 +301,8 @@ Then only the qualified targets are listed"
           ]
         },
         %{
-          statement: "A run's records belong to that run and account; an operator only sees their own account's data.",
+          statement:
+            "A run's records belong to that run and account; an operator only sees their own account's data.",
           scenarios: [
             %{
               kind: "happy path",
@@ -293,7 +314,8 @@ Then they cannot see the account A target"
           ]
         },
         %{
-          statement: "The operator can edit or correct any recorded finding; edits overwrite the current value in place, with no change history kept.",
+          statement:
+            "The operator can edit or correct any recorded finding; edits overwrite the current value in place, with no change history kept.",
           scenarios: [
             %{
               kind: "happy path",
@@ -305,8 +327,7 @@ Then the corrected email is shown and the old value is not retained"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -321,7 +342,10 @@ Then the corrected email is shown and the old value is not retained"
       %{description: "Cannot attach a contact without a person", verified: true},
       %{description: "Empty Gather holds the run", verified: true},
       %{description: "Blocked target shows why", verified: true},
-      %{description: "A target becomes launch-eligible automatically once its data is complete", verified: true},
+      %{
+        description: "A target becomes launch-eligible automatically once its data is complete",
+        verified: true
+      },
       %{description: "Resume a held run", verified: true}
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
@@ -329,7 +353,8 @@ Then the corrected email is shown and the old value is not retained"
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "A target can only receive a later stage's data if it has the prior stage's — no person on an ungathered target, no contact on an unresolved person, no launch without a verified contact.",
+          statement:
+            "A target can only receive a later stage's data if it has the prior stage's — no person on an ungathered target, no contact on an unresolved person, no launch without a verified contact.",
           scenarios: [
             %{
               kind: "failure path",
@@ -341,7 +366,8 @@ Then the write is rejected because there is no person to attach it to"
           ]
         },
         %{
-          statement: "If a stage yields zero valid output for the run — zero targets from Gather, zero people from Resolve, or no contact info from Enrich — the run is held and the operator is alerted rather than proceeding.",
+          statement:
+            "If a stage yields zero valid output for the run — zero targets from Gather, zero people from Resolve, or no contact info from Enrich — the run is held and the operator is alerted rather than proceeding.",
           scenarios: [
             %{
               kind: "failure path",
@@ -353,7 +379,8 @@ Then it is held and the operator is alerted that Gather found nothing"
           ]
         },
         %{
-          statement: "A target that cannot advance shows as blocked at its stage, with the reason (e.g. no contact was found).",
+          statement:
+            "A target that cannot advance shows as blocked at its stage, with the reason (e.g. no contact was found).",
           scenarios: [
             %{
               kind: "happy path",
@@ -365,7 +392,8 @@ Then that target shows as blocked at Enrich because it has no contact"
           ]
         },
         %{
-          statement: "Advancement is gated by whether the required data exists, not by a manual approval; the only human gate is the launch review.",
+          statement:
+            "Advancement is gated by whether the required data exists, not by a manual approval; the only human gate is the launch review.",
           scenarios: [
             %{
               kind: "happy path",
@@ -377,7 +405,8 @@ Then the target becomes launch-eligible with no operator approval step before th
           ]
         },
         %{
-          statement: "A held or blocked run just sits; the operator can point the agent at that run again to work it further.",
+          statement:
+            "A held or blocked run just sits; the operator can point the agent at that run again to work it further.",
           scenarios: [
             %{
               kind: "happy path",
@@ -389,8 +418,7 @@ Then the agent continues working the blocked targets from where they left off"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -413,7 +441,8 @@ Then the agent continues working the blocked targets from where they left off"
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "Nothing proceeds to actual outreach until the operator has done their part and approved the draft — the launch review is the one human gate.",
+          statement:
+            "Nothing proceeds to actual outreach until the operator has done their part and approved the draft — the launch review is the one human gate.",
           scenarios: [
             %{
               kind: "failure path",
@@ -425,7 +454,8 @@ Then it is not allowed until the operator approves"
           ]
         },
         %{
-          statement: "The operator reviews the agent's launch draft and supplies the human parts (e.g. records a video, approves or edits the copy); the video is optional, not required.",
+          statement:
+            "The operator reviews the agent's launch draft and supplies the human parts (e.g. records a video, approves or edits the copy); the video is optional, not required.",
           scenarios: [
             %{
               kind: "happy path",
@@ -456,20 +486,21 @@ Then the approved draft carries the edited copy"
           ]
         },
         %{
-          statement: "After the operator approves, the agent assembles and creates the actual outreach (e.g. the Gmail draft) via its own tools; Legwork records the human parts and approval but does not create the Gmail draft or handle the outbound channel.",
+          statement:
+            "After the operator approves, the agent assembles and creates the actual outreach (e.g. the Gmail draft) via its own tools; Legwork records the human parts and approval but does not create the Gmail draft or handle the outbound channel.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Agent creates the Gmail draft after approval",
-              body: "Given the operator has approved a draft with their human parts
+              body:
+                "Given the operator has approved a draft with their human parts
 When the agent picks it up
 Then the agent creates the Gmail draft via its own tools, and Legwork only records that it was approved"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -493,7 +524,8 @@ Then the agent creates the Gmail draft via its own tools, and Legwork only recor
       persona: %{name: "The Outbound Operator", slug: "outbound-operator", type: "proto"},
       rules: [
         %{
-          statement: "For a run, the operator sees each target's current stage and status — done, stuck, or dropped.",
+          statement:
+            "For a run, the operator sees each target's current stage and status — done, stuck, or dropped.",
           scenarios: [
             %{
               kind: "happy path",
@@ -505,7 +537,8 @@ Then each target shows as done, stuck, or dropped"
           ]
         },
         %{
-          statement: "The operator sees the run's overall status (in progress, held, or done) with how many targets sit at each stage.",
+          statement:
+            "The operator sees the run's overall status (in progress, held, or done) with how many targets sit at each stage.",
           scenarios: [
             %{
               kind: "happy path",
@@ -517,19 +550,22 @@ Then I see its overall status and how many targets sit at each stage"
           ]
         },
         %{
-          statement: "A stuck target is shown with the stage it is blocked at and why; a dropped (disqualified) target is shown distinctly.",
+          statement:
+            "A stuck target is shown with the stage it is blocked at and why; a dropped (disqualified) target is shown distinctly.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Stuck and dropped are distinguishable",
-              body: "Given one target blocked at Enrich with no contact and one target disqualified in Qualify
+              body:
+                "Given one target blocked at Enrich with no contact and one target disqualified in Qualify
 When I view the run
 Then the first shows as stuck at Enrich with the reason and the second shows as dropped"
             }
           ]
         },
         %{
-          statement: "Each run carries an explicit free-text scope the agent records (e.g. \"heavy equipment dealers in Houston\"), and the operator can see it across their runs so they don't repeat covered ground.",
+          statement:
+            "Each run carries an explicit free-text scope the agent records (e.g. \"heavy equipment dealers in Houston\"), and the operator can see it across their runs so they don't repeat covered ground.",
           scenarios: [
             %{
               kind: "happy path",
@@ -565,8 +601,7 @@ Then the progress updates on screen without me refreshing"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -595,7 +630,8 @@ Then the progress updates on screen without me refreshing"
       persona: %{name: "The Pipeline Agent", slug: "pipeline-agent", type: "proto"},
       rules: [
         %{
-          statement: "Starting a run mints a run ID and a secret; every tool/API write must present that secret and applies only to that run, so the endpoints can't be spammed.",
+          statement:
+            "Starting a run mints a run ID and a secret; every tool/API write must present that secret and applies only to that run, so the endpoints can't be spammed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -614,7 +650,8 @@ Then the write is rejected"
           ]
         },
         %{
-          statement: "The stage tools are plain CRUD — create a target, set a qualify verdict, attach a person, attach a contact, store a launch draft — that just persist what the agent produces; the agent does the heavy lifting.",
+          statement:
+            "The stage tools are plain CRUD — create a target, set a qualify verdict, attach a person, attach a contact, store a launch draft — that just persist what the agent produces; the agent does the heavy lifting.",
           scenarios: [
             %{
               kind: "happy path",
@@ -626,19 +663,22 @@ Then the target is persisted on the run exactly as supplied"
           ]
         },
         %{
-          statement: "Whether a target is qualified is the agent's judgment from the runbook's Qualify instructions (it may script the decision, e.g. checking whether the target is already AI-recommended); the system enforces no qualification rules of its own.",
+          statement:
+            "Whether a target is qualified is the agent's judgment from the runbook's Qualify instructions (it may script the decision, e.g. checking whether the target is already AI-recommended); the system enforces no qualification rules of its own.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Agent sets the qualify verdict from its own judgment",
-              body: "Given the runbook's Qualify instructions say to exclude targets already recommended by AI
+              body:
+                "Given the runbook's Qualify instructions say to exclude targets already recommended by AI
 When the agent determines a target is not AI-recommended
 Then it sets qualified = true with its reason, and the system stores that verdict without overriding it"
             }
           ]
         },
         %{
-          statement: "A target the agent marks qualified = false is excluded from Resolve, Enrich, and Launch.",
+          statement:
+            "A target the agent marks qualified = false is excluded from Resolve, Enrich, and Launch.",
           scenarios: [
             %{
               kind: "happy path",
@@ -650,7 +690,8 @@ Then that target is skipped in all three"
           ]
         },
         %{
-          statement: "The agent may record data for any stage as it discovers it; it needn't finish one stage before recording another.",
+          statement:
+            "The agent may record data for any stage as it discovers it; it needn't finish one stage before recording another.",
           scenarios: [
             %{
               kind: "happy path",
@@ -662,7 +703,8 @@ Then both are saved on the target without needing a separate later stage"
           ]
         },
         %{
-          statement: "A target is Launch-eligible only when it is qualified and has a person with a verified contact; the launch endpoint rejects a draft for a target that hasn't met the gate.",
+          statement:
+            "A target is Launch-eligible only when it is qualified and has a person with a verified contact; the launch endpoint rejects a draft for a target that hasn't met the gate.",
           scenarios: [
             %{
               kind: "happy path",
@@ -681,7 +723,8 @@ Then the launch endpoint rejects it as not gate-eligible"
           ]
         },
         %{
-          statement: "The agent composes the launch draft (copy and video ask) and passes it to the tool/API to store as-is; the system does not generate the draft and nothing is sent — the operator reviews it.",
+          statement:
+            "The agent composes the launch draft (copy and video ask) and passes it to the tool/API to store as-is; the system does not generate the draft and nothing is sent — the operator reviews it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -693,7 +736,8 @@ Then the draft is stored as-is for operator review and no outreach is sent"
           ]
         },
         %{
-          statement: "Tool writes are idempotent — re-recording the same finding or retrying a write does not create duplicates.",
+          statement:
+            "Tool writes are idempotent — re-recording the same finding or retrying a write does not create duplicates.",
           scenarios: [
             %{
               kind: "happy path",
@@ -705,7 +749,8 @@ Then no duplicate target is created"
           ]
         },
         %{
-          statement: "A target's stage is derived from the data it has; the run is done when every qualified target has been taken as far as it can, with no manual per-stage done signal.",
+          statement:
+            "A target's stage is derived from the data it has; the run is done when every qualified target has been taken as far as it can, with no manual per-stage done signal.",
           scenarios: [
             %{
               kind: "happy path",
@@ -717,8 +762,7 @@ Then the run shows as done without any manual done signal"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   }

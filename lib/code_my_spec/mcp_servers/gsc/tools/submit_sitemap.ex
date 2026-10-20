@@ -6,8 +6,13 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.SubmitSitemap do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
-    field :sitemap_url, :string, required: true, description: "The full URL of the sitemap to submit"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
+    field :sitemap_url, :string,
+      required: true,
+      description: "The full URL of the sitemap to submit"
   end
 
   @impl true

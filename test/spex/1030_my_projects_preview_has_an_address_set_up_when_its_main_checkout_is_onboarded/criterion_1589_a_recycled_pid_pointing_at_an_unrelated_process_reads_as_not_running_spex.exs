@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1589Spex do
   alias CmsHarnessTest.FakeAppInstanceRunner
 
   spex "A recycled pid pointing at an unrelated process reads as not running",
-       criterion: 1589 do
+    criterion: 1589 do
     scenario "restarting a copy whose tracked pid now belongs elsewhere" do
       given_ "a working copy whose app is running", context do
         rig = app_instance_rig(database_exists?: true)

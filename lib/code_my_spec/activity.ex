@@ -85,5 +85,7 @@ defmodule CodeMySpec.Activity do
   defp project_query(project_id), do: from(e in Entry, where: e.project_id == ^project_id)
 
   defp environment_scoped(query, nil), do: query
-  defp environment_scoped(query, environment), do: where(query, [e], e.environment == ^environment)
+
+  defp environment_scoped(query, environment),
+    do: where(query, [e], e.environment == ^environment)
 end

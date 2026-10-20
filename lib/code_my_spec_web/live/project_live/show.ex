@@ -8,7 +8,9 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -93,7 +95,10 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
          |> assign(:project, project)
          |> assign(:oauth_app, project.oauth_application)
          |> assign(:plaintext_secret, plaintext_secret)
-         |> put_flash(:info, "OAuth credentials generated. Copy the secret now — it won't be shown again.")}
+         |> put_flash(
+           :info,
+           "OAuth credentials generated. Copy the secret now — it won't be shown again."
+         )}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Failed to generate OAuth credentials.")}

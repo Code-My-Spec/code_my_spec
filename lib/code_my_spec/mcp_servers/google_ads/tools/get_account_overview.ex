@@ -7,15 +7,21 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.GetAccountOverview do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string,
+      required: true,
+      description: "Customer ID (e.g. \"123-456-7890\")"
+
     field :date_range, :string, description: "GAQL date range, e.g. LAST_30_DAYS, LAST_7_DAYS"
-    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
+
+    field :login_customer_id, :string,
+      description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true
   def execute(params, frame) do
     with {:ok, {_scope, token}} <- GoogleTools.resolve(frame, params),
-         {:ok, data} <- Ads.get_account_overview(token, params.customer_id, Tools.read_opts(params)) do
+         {:ok, data} <-
+           Ads.get_account_overview(token, params.customer_id, Tools.read_opts(params)) do
       {:reply, GoogleTools.ok("Account overview.", data), frame}
     else
       {:error, reason} -> {:reply, GoogleTools.error(reason), frame}

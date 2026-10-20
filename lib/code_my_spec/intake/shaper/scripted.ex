@@ -23,7 +23,8 @@ defmodule CodeMySpec.Intake.Shaper.Scripted do
 
   @impl true
   def conclude(%Plan{} = plan, turns) do
-    said = [plan.description | Enum.map(turns, & &1.answer)] |> Enum.join(" ") |> String.downcase()
+    said =
+      [plan.description | Enum.map(turns, & &1.answer)] |> Enum.join(" ") |> String.downcase()
 
     {:ok,
      %{

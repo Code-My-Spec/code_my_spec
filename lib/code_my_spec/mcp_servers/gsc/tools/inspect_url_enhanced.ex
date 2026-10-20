@@ -6,7 +6,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.InspectUrlEnhanced do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :page_url, :string, required: true, description: "The specific URL to inspect"
   end
 
@@ -16,8 +19,11 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.InspectUrlEnhanced do
          {:ok, data} <- Gsc.inspect_url_enhanced(token, params.site_url, params.page_url) do
       {:reply, GoogleTools.ok("Inspection of #{params.page_url}.", data), frame}
     else
-      {:error, {:gsc_error, 404, _}} -> {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
-      {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
+      {:error, {:gsc_error, 404, _}} ->
+        {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
+
+      {:error, reason} ->
+        {:reply, GoogleTools.error(reason), frame}
     end
   end
 end

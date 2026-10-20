@@ -35,7 +35,8 @@ defmodule CodeMySpecSpex.Story966.Criterion2945Spex do
     :ok
   end
 
-  spex "On a wide screen the conversation sits beside the panels, with the conversation on the left", criterion: 1031 do
+  spex "On a wide screen the conversation sits beside the panels, with the conversation on the left",
+    criterion: 1031 do
     scenario "A desktop screen puts the talking on the left" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_966")}

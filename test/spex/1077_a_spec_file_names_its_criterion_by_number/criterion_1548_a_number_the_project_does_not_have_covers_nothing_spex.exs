@@ -21,12 +21,16 @@ defmodule CodeMySpecSpex.Story1077.Criterion4672Spex do
   spex "An unknown criterion number binds to nothing", criterion: 1548 do
     scenario "a spec naming criterion 9999 in a project without one" do
       given_ "the project has no criterion 9999", context do
-        story = CriterionScript.create_story(context.scope, "A real story", ["A real thing happens"])
+        story =
+          CriterionScript.create_story(context.scope, "A real story", ["A real thing happens"])
+
         {:ok, Map.put(context, :story, story)}
       end
 
       when_ "a spec naming criterion: 9999 syncs", context do
-        :ok = Environments.write_file(context.environment, @path, CriterionScript.spex_naming(9999))
+        :ok =
+          Environments.write_file(context.environment, @path, CriterionScript.spex_naming(9999))
+
         Fixtures.deliver_manifest(context.scope)
         {:ok, context}
       end

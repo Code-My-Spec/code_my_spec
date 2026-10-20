@@ -39,7 +39,8 @@ defmodule CodeMySpecSpex.Story990.Criterion2971Spex do
     :ok
   end
 
-  spex "A cloud project is a checkout the visitor owns, not an artifact we run", criterion: 1055 do
+  spex "A cloud project is a checkout the visitor owns, not an artifact we run",
+    criterion: 1055 do
     scenario "A cloud copy is a checkout, not a running artifact" do
       given_ "a visitor who chose to have their project run in the cloud", context do
         # Cloudflare answering. The tunnel is real work against a real account,

@@ -19,7 +19,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6254Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init.CliConfig is satisfied by a Project row whose local_path matches the working directory", criterion: 468 do
+  spex "Init.CliConfig is satisfied by a Project row whose local_path matches the working directory",
+    criterion: 468 do
     scenario "Project row with local_path matching cwd renders CliConfig as Done" do
       given_ "the local DB contains a Project row whose local_path equals the working directory",
              context do

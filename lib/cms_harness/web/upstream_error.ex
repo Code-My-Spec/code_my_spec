@@ -85,5 +85,4 @@ defmodule CmsHarness.Web.UpstreamError do
     |> String.replace("&gt;", ">")
     |> String.replace("&amp;", "&")
   end
-
 end

@@ -37,7 +37,10 @@ defmodule CodeMySpec.Mail.Attachments do
         |> Enum.reject(&is_nil/1)
 
       {:error, reason} ->
-        Logger.warning("Mail.Attachments: could not list attachments for #{rid}: #{inspect(reason)}")
+        Logger.warning(
+          "Mail.Attachments: could not list attachments for #{rid}: #{inspect(reason)}"
+        )
+
         []
     end
   end

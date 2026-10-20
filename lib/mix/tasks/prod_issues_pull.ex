@@ -127,7 +127,10 @@ defmodule Mix.Tasks.ProdIssues.Pull do
         if String.printable?(blob) do
           String.trim(blob)
         else
-          Mix.shell().error("Token file is neither a Cloak-encrypted blob nor printable plaintext.")
+          Mix.shell().error(
+            "Token file is neither a Cloak-encrypted blob nor printable plaintext."
+          )
+
           System.halt(1)
         end
     end

@@ -30,8 +30,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1769Spex do
     RecordingFlameBackend.listen(self())
 
     start_supervised!(
-      {FLAME.Pool,
-       name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: RecordingFlameBackend}
+      {FLAME.Pool, name: CodeMySpec.EmbedPool, min: 0, max: 1, backend: RecordingFlameBackend}
     )
 
     on_exit(fn -> RecordingFlameBackend.reset() end)
@@ -39,7 +38,8 @@ defmodule CodeMySpecSpex.Story1087.Criterion1769Spex do
     :ok
   end
 
-  defp read(_path), do: {:ok, "defmodule Big do\n  @moduledoc \"big enough to bulk embed.\"\nend\n"}
+  defp read(_path),
+    do: {:ok, "defmodule Big do\n  @moduledoc \"big enough to bulk embed.\"\nend\n"}
 
   spex "Bulk embedding work reaches the pool's configured burst backend", criterion: 1769 do
     scenario "a project's knowledge is reconciled with a burst backend configured" do
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1087.Criterion1769Spex do
 
       then_ "the embed call booted the pool's own configured backend", context do
         assert_received {CodeMySpecSpex.RecordingFlameBackend, :booted},
-                         "the bulk embed never reached the pool's backend boot step — it ran without going through the burst path at all"
+                        "the bulk embed never reached the pool's backend boot step — it ran without going through the burst path at all"
 
         {:ok, context}
       end

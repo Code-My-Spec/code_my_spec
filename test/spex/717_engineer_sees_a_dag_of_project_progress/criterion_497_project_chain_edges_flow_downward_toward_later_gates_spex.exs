@@ -18,7 +18,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6416Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Intra-entity dependency edges flow toward their target — downward in the vertical project chain column", criterion: 497 do
+  spex "Intra-entity dependency edges flow toward their target — downward in the vertical project chain column",
+    criterion: 497 do
     scenario "Project chain edges flow downward toward later gates" do
       given_ "the project chain has at least two project nodes (the default project always exposes a chain of gates)",
              context do

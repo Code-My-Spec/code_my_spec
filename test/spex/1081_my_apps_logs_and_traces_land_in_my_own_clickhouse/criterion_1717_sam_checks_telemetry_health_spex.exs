@@ -34,7 +34,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1717Spex do
         on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         run_console_step(view, :telemetry)
         await_console_step(view, :telemetry)

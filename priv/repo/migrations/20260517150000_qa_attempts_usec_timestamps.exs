@@ -15,7 +15,8 @@ defmodule CodeMySpec.Repo.Migrations.QaAttemptsUsecTimestamps do
     end
 
     alter table(:qa_invalidations) do
-      modify :invalidated_at, :utc_datetime_usec, null: false,
+      modify :invalidated_at, :utc_datetime_usec,
+        null: false,
         from: {:utc_datetime, null: false}
 
       modify :inserted_at, :utc_datetime_usec, null: false, from: {:utc_datetime, null: false}

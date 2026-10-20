@@ -35,7 +35,11 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
   describe "ensure_box/3 — finding" do
     test "returns the box as-is when it already exists, touching neither the image nor create" do
       find = fn _scope, "burst-platform" -> {:ok, server()} end
-      ensure_image = fn _scope, _arch, _opts -> flunk("an existing box must not build an image") end
+
+      ensure_image = fn _scope, _arch, _opts ->
+        flunk("an existing box must not build an image")
+      end
+
       create = fn _scope, _name, _opts -> flunk("an existing box must not be created again") end
 
       assert {:ok, %{"id" => 7}} =
@@ -75,7 +79,11 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       end
 
       assert {:ok, %{"id" => 7}} =
-               BurstBox.ensure_box(platform_scope(), "burst-platform", creating_opts(create: create))
+               BurstBox.ensure_box(
+                 platform_scope(),
+                 "burst-platform",
+                 creating_opts(create: create)
+               )
 
       assert_received {:created, "burst-platform", create_opts}
       assert create_opts[:image] == 555
@@ -187,7 +195,11 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       create = fn _scope, _name, _opts -> {:error, {:hetzner_error, 403, %{}}} end
 
       assert {:error, {:hetzner_error, 403, %{}}} =
-               BurstBox.ensure_box(platform_scope(), "burst-platform", creating_opts(create: create))
+               BurstBox.ensure_box(
+                 platform_scope(),
+                 "burst-platform",
+                 creating_opts(create: create)
+               )
     end
   end
 
@@ -310,7 +322,9 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       run = fn [_cmd] -> {"connection refused", 255} end
 
       assert {:error, {255, "connection refused"}} =
-               BurstBox.start_runner(platform_scope(), server(), "cms-flame-abc123", %{}, run: run)
+               BurstBox.start_runner(platform_scope(), server(), "cms-flame-abc123", %{},
+                 run: run
+               )
     end
   end
 
@@ -408,7 +422,10 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
       run = fn [_cmd] -> {"800ac1dcb78a\n", 0} end
       embed_runner_busy? = fn -> flunk("docker ps already found a build — no need to ask") end
 
-      assert BurstBox.busy?(platform_scope(), server(), run: run, embed_runner_busy?: embed_runner_busy?)
+      assert BurstBox.busy?(platform_scope(), server(),
+               run: run,
+               embed_runner_busy?: embed_runner_busy?
+             )
     end
   end
 
@@ -420,7 +437,10 @@ defmodule CodeMySpec.Provisioning.BurstBoxTest do
     defp recorder(responses) do
       responses =
         responses ++
-          [{"docker run -d --label cms-build-in-progress", {"marker123\n", 0}}, {"docker rm -f", {"", 0}}]
+          [
+            {"docker run -d --label cms-build-in-progress", {"marker123\n", 0}},
+            {"docker rm -f", {"", 0}}
+          ]
 
       fn [command] ->
         Enum.find_value(responses, fn {pattern, response} ->

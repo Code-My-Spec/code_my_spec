@@ -4,8 +4,10 @@ defmodule CodeMySpec.Repo.Migrations.CreatePersonaStories do
   def change do
     create table(:persona_stories, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :persona_id, references(:personas, type: :binary_id, on_delete: :delete_all),
         null: false
+
       add :story_id, references(:stories, type: :id, on_delete: :delete_all), null: false
 
       timestamps(type: :utc_datetime)

@@ -68,8 +68,8 @@ defmodule CmsHarness.Agents.Tools.AToolDocsArgumentReachesTheRealToolTest do
     ToolDocs.execute(%{"names" => "get_criterion"}, context)
 
     assert_received {:called_with, %{"names" => "get_criterion"}},
-                     "the real tool's own schema validation refuses a malformed names " <>
-                       "argument by name -- it must see it, not have it silently dropped here"
+                    "the real tool's own schema validation refuses a malformed names " <>
+                      "argument by name -- it must see it, not have it silently dropped here"
   end
 
   test "no arguments at all still sends none", %{context: context} do

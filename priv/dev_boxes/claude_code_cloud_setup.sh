@@ -18,6 +18,7 @@ set -euo pipefail
 OTP_VERSION=28.1
 ELIXIR_VERSION=1.19.4
 SOPS_VERSION=3.10.2
+ONNXRUNTIME_VERSION=1.20.1
 
 # The base image already has what OTP needs (curl, libssl, libncurses). apt is
 # only a fallback: the Custom network setting usually blocks the Ubuntu
@@ -69,6 +70,39 @@ MIX_HOME=/opt/mix HEX_HOME=/opt/hex mix local.rebar --force >/dev/null
 service postgresql start >/dev/null 2>&1 || true
 su postgres -c "psql -qc \"ALTER USER postgres PASSWORD 'postgres'\"" >/dev/null 2>&1 || true
 
+# This sandbox's default mirrors are http, and this network 403s them; apt
+# only works over https here. inotify-tools is not optional: without it the
+# harness file watcher crashes and takes the whole channel down with it.
+sed -i 's#http://#https://#g' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true
+apt-get update -qq >/dev/null 2>&1 || true
+apt-get install -y -qq inotify-tools just >/dev/null 2>&1 \
+  || echo "WARN: inotify-tools or just did not install"
+
+# pgvector ships from the PGDG apt repo, not the base Ubuntu archive.
+if [ ! -f /etc/apt/sources.list.d/pgdg.list ]; then
+  install -d /usr/share/postgresql-common/pgdg
+  curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    https://www.postgresql.org/media/keys/ACCC4CF8.asc 2>/dev/null || true
+  codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+  echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${codename}-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list
+  apt-get update -qq >/dev/null 2>&1 || true
+fi
+apt-get install -y -qq postgresql-16-pgvector >/dev/null 2>&1 \
+  || echo "WARN: postgresql-16-pgvector did not install"
+
+# ort-sys (behind the ortex NIF) fetches its ONNX Runtime build from pyke's
+# own host, which this sandbox blocks outright. Microsoft's own release is on
+# a different host and is allowed; ORT_LIB_LOCATION/ORT_PREFER_DYNAMIC_LINK
+# point ort-sys at it instead of letting it try to fetch or compile its own.
+if [ ! -d /opt/onnxruntime ]; then
+  curl -fsSL -o /tmp/onnxruntime.tgz \
+    "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/onnxruntime-linux-x64-${ONNXRUNTIME_VERSION}.tgz" \
+    && mkdir -p /opt/onnxruntime \
+    && tar xzf /tmp/onnxruntime.tgz -C /opt/onnxruntime --strip-components=1 \
+    || echo "WARN: onnxruntime did not download"
+fi
+
 cat > /usr/local/bin/cms-cloud-session <<'SESSION'
 #!/usr/bin/env bash
 # SessionStart hook: onboard this checkout and start its harness, detached, so
@@ -94,6 +128,14 @@ setsid bash -c '
   fi
   (sudo -n service postgresql start || service postgresql start) >/dev/null 2>&1 || true
   cd "$root" || exit 0
+  # This sandbox exempts index.crates.io from the proxy and then 403s it
+  # directly; routing it back through the proxy like everything else fixes
+  # cargo (pip stays broken regardless, so pypi.org/files.pythonhosted.org
+  # are left alone). ort-sys gets pointed at the onnxruntime build the setup
+  # script already fetched from Microsoft instead of pyke'\''s blocked host.
+  export NO_PROXY="$(printf '\''%s'\'' "${NO_PROXY:-}" | tr ',' '\''\n'\'' | grep -vx '\''index.crates.io'\'' | paste -sd, -)"
+  export ORT_LIB_LOCATION=/opt/onnxruntime/lib
+  export ORT_PREFER_DYNAMIC_LINK=1
   git submodule update --init || echo "WARN: .code_my_spec submodule did not initialise"
   MIX_ENV=harness mix deps.get >/dev/null
   if [ ! -f .cms_harness.json ]; then

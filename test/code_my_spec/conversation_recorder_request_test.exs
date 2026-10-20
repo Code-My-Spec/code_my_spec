@@ -24,7 +24,8 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderRequestTest do
             %{"type" => "text", "text" => "Fix the failing backups spex."},
             %{
               "type" => "text",
-              "text" => "<system-reminder>Available agent types for the Agent tool: …</system-reminder>"
+              "text" =>
+                "<system-reminder>Available agent types for the Agent tool: …</system-reminder>"
             }
           ])
         )
@@ -36,7 +37,10 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderRequestTest do
       text =
         ConversationRecorder.request_text(
           request([
-            %{"type" => "text", "text" => "<system-reminder>Available agent types…</system-reminder>"},
+            %{
+              "type" => "text",
+              "text" => "<system-reminder>Available agent types…</system-reminder>"
+            },
             %{"type" => "text", "text" => "Record story 969."}
           ])
         )

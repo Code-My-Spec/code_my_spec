@@ -6,7 +6,9 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetSiteDetails do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
   end
 
   @impl true

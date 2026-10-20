@@ -35,7 +35,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion1524Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "A copy's app answers on a port of its own and uses a database of its own", criterion: 1524 do
+  spex "A copy's app answers on a port of its own and uses a database of its own",
+    criterion: 1524 do
     scenario "a feature copy starting while main's address and database are already spoken for" do
       given_ "a working copy, with main's own port pair and database name reserved", context do
         rig = app_instance_rig(current_commit: "feature1524")

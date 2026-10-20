@@ -58,6 +58,7 @@ defmodule CodeMySpec.CodeMode.ARefusalDoesNotTellAnAgentToCallWhatItLacksTest do
     result = run_without_the_tool(~s|return list_user_questions({})|)
 
     assert result.error.message =~ "cannot be called from a script"
+
     assert result.error.message =~ ~r/role|carry/i,
            "the refusal must name that the role withholds it, not leave the agent " <>
              "hunting for a tool the role deliberately does not grant"

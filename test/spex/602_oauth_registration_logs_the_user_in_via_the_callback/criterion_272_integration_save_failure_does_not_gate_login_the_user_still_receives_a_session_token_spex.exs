@@ -23,7 +23,8 @@ defmodule CodeMySpecSpex.Story602.Criterion5498Spex do
 
   alias CodeMySpecSpex.OAuthHelpers
 
-  spex "Integration save failure still leaves the user logged in with user and personal account", criterion: 272 do
+  spex "Integration save failure still leaves the user logged in with user and personal account",
+    criterion: 272 do
     scenario "Google callback with missing access_token: user is logged in, account exists, integration is absent" do
       given_ "the Google token response carries an empty access_token (simulating a save-failure path)",
              context do

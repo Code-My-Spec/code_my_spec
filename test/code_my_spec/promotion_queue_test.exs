@@ -290,6 +290,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     origin = CodeMySpec.TempFile.dir("conflict-origin")
     File.mkdir_p!(seed)
     File.mkdir_p!(origin)
+
     on_exit(fn ->
       File.rm_rf(seed)
       File.rm_rf(origin)
@@ -322,7 +323,13 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     File.write!(Path.join(root, "app.ex"), "candidate's App\n")
     git!(root, ["add", "app.ex"])
-    git!(root, ["update-index", "--cacheinfo", "160000,#{String.duplicate("a", 40)},.code_my_spec"])
+
+    git!(root, [
+      "update-index",
+      "--cacheinfo",
+      "160000,#{String.duplicate("a", 40)},.code_my_spec"
+    ])
+
     git!(root, ["commit", "-q", "-m", "candidate"])
     candidate_commit = git!(root, ["rev-parse", "HEAD"])
 

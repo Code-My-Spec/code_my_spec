@@ -46,7 +46,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2919Spex do
     :ok
   end
 
-  spex "Work the main agent delegates does not become a second conversation with the user", criterion: 1007 do
+  spex "Work the main agent delegates does not become a second conversation with the user",
+    criterion: 1007 do
     scenario "A subagent's work reports back through the main agent" do
       given_ "the main agent has delegated something like persona research", context do
         copy = CodeMySpec.TempFile.dir("spex_2919")

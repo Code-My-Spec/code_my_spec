@@ -33,6 +33,7 @@ defmodule CodeMySpec.Provisioning.DnsTest do
       records = Dns.mx_records("cloudflare.com")
 
       assert records != []
+
       assert Enum.all?(records, &(&1 =~ ~r/^\d+ \S+/)),
              "an MX without its priority is not comparable — priority decides which host is used"
     end

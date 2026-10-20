@@ -42,8 +42,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.ToolDocs do
       {:ok, scope} ->
         {:reply,
          Response.tool()
-         |> Response.text(docs(scope, params, carried(frame), scriptable_grant(frame))),
-         frame}
+         |> Response.text(docs(scope, params, carried(frame), scriptable_grant(frame))), frame}
 
       {:error, reason} ->
         {:reply, Response.tool() |> Response.error("#{inspect(reason)}"), frame}

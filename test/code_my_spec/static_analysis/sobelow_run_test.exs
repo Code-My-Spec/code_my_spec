@@ -36,7 +36,9 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRunTest do
     end
 
     test "output with no document at all is an error, not an empty sweep" do
-      assert :error = SobelowRun.extract_json(~s(** \(Mix\) The task "sobelow" could not be found))
+      assert :error =
+               SobelowRun.extract_json(~s(** \(Mix\) The task "sobelow" could not be found))
+
       assert :error = SobelowRun.extract_json(@warning)
     end
 
@@ -49,9 +51,7 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRunTest do
       assert :error = SobelowRun.extract_json("21:36:49.068 [info] something happened\n")
 
       assert {:ok, %{"findings" => %{}}} =
-               SobelowRun.extract_json(
-                 "21:36:49.068 [info] chatter\n" <> ~s({"findings": {}})
-               ),
+               SobelowRun.extract_json("21:36:49.068 [info] chatter\n" <> ~s({"findings": {}})),
              "a log line before a real document must not lose the document"
     end
 

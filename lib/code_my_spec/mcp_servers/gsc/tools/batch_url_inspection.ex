@@ -6,7 +6,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.BatchUrlInspection do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :urls, :string, required: true, description: "URLs to inspect, one per line (max 10)"
   end
 

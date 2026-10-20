@@ -75,7 +75,9 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirects do
                       "/landing/vibe-coding-rebuild" => "/vibe-coding-rebuild"
                     }
                     |> Map.merge(
-                      Map.new(@retired_feature_pages, fn slug -> {"/pages/#{slug}", "/product"} end)
+                      Map.new(@retired_feature_pages, fn slug ->
+                        {"/pages/#{slug}", "/product"}
+                      end)
                     )
 
   @redirects @page_to_blog_slugs

@@ -113,9 +113,14 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
 
   defp mark(agent_id, type, id) do
     case Agents.await_promotion(agent_id, to_string(type), id) do
-      :ok -> :ok
-      {:ok, _marked} -> :ok
-      {:error, reason} -> Logger.warning("promote: could not mark task awaiting: #{inspect(reason)}")
+      :ok ->
+        :ok
+
+      {:ok, _marked} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("promote: could not mark task awaiting: #{inspect(reason)}")
     end
   end
 end

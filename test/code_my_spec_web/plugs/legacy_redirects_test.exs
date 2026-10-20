@@ -5,14 +5,20 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirectsTest do
 
   describe "call/2 — /pages/{slug} → /blog/{slug}" do
     test "301 redirects a migrated blog slug", %{conn: conn} do
-      conn = LegacyRedirects.call(%{conn | method: "GET", request_path: "/pages/cli-agents-compared-2026"}, [])
+      conn =
+        LegacyRedirects.call(
+          %{conn | method: "GET", request_path: "/pages/cli-agents-compared-2026"},
+          []
+        )
 
       assert conn.status == 301
       assert get_resp_header(conn, "location") == ["/blog/cli-agents-compared-2026"]
       assert conn.halted
     end
 
-    test "301 redirects newer Reddit-target slugs that used to fall through to homepage", %{conn: conn} do
+    test "301 redirects newer Reddit-target slugs that used to fall through to homepage", %{
+      conn: conn
+    } do
       for slug <- ~w(cursor-3-agent-first bdd-attention-thesis bdd-attention-three-amigos) do
         result =
           LegacyRedirects.call(%{conn | method: "GET", request_path: "/pages/#{slug}"}, [])
@@ -42,6 +48,7 @@ defmodule CodeMySpecWeb.Plugs.LegacyRedirectsTest do
         |> LegacyRedirects.call([])
 
       assert conn.status == 301
+
       assert get_resp_header(conn, "location") == [
                "/blog/the-harness-layer?utm_source=reddit&utm_medium=comment"
              ]

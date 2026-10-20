@@ -71,7 +71,8 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
         user_code: generate_user_code(),
         device_id: device_id,
         scopes: Keyword.get(opts, :scopes),
-        expires_at: DateTime.utc_now() |> DateTime.add(ttl_seconds, :second) |> DateTime.truncate(:second),
+        expires_at:
+          DateTime.utc_now() |> DateTime.add(ttl_seconds, :second) |> DateTime.truncate(:second),
         interval: interval
       },
       [:device_code, :user_code, :device_id, :scopes, :expires_at, :interval]

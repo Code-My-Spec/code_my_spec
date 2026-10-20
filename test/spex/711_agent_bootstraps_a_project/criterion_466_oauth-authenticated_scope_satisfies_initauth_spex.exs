@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6252Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init.Auth gates init on OAuthClient.authenticated?; failure emits manual sign-in guidance", criterion: 466 do
+  spex "Init.Auth gates init on OAuthClient.authenticated?; failure emits manual sign-in guidance",
+    criterion: 466 do
     scenario "OAuth-authenticated scope renders the Auth step as Done on the per-step page" do
       given_ "the local OAuth client reports authenticated? = true",
              context do

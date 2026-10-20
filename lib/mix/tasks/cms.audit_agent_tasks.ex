@@ -230,7 +230,10 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
     over_250 = Enum.count(reports, &(&1.source_lines > 250))
     big_heredocs = Enum.count(reports, &(&1.largest_heredoc > 60))
     eval_export_registered = Enum.count(reports, &(:evaluate in &1.exports and &1.in_custom_eval))
-    eval_export_unregistered = Enum.count(reports, &(:evaluate in &1.exports and not &1.in_custom_eval))
+
+    eval_export_unregistered =
+      Enum.count(reports, &(:evaluate in &1.exports and not &1.in_custom_eval))
+
     no_orchestrate = Enum.count(reports, &(:orchestrate not in &1.exports))
     no_use_when = Enum.count(reports, &(:orchestrate in &1.exports and not &1.has_use_when))
 
@@ -279,11 +282,18 @@ defmodule Mix.Tasks.Cms.AuditAgentTasks do
   defp build_flags(r) do
     flags =
       []
-      |> add_flag(is_nil(r.registered_as), "orphan: not in @session_type_map — won't be dispatchable")
-      |> add_flag(:evaluate not in r.exports and r.in_custom_eval,
-        "stale: in custom_evaluate_modules but evaluate/2 not exported")
-      |> add_flag(:evaluate in r.exports and not r.in_custom_eval,
-        "soft: exports evaluate/2 without registering — may be expressible as RequirementCalculator definition")
+      |> add_flag(
+        is_nil(r.registered_as),
+        "orphan: not in @session_type_map — won't be dispatchable"
+      )
+      |> add_flag(
+        :evaluate not in r.exports and r.in_custom_eval,
+        "stale: in custom_evaluate_modules but evaluate/2 not exported"
+      )
+      |> add_flag(
+        :evaluate in r.exports and not r.in_custom_eval,
+        "soft: exports evaluate/2 without registering — may be expressible as RequirementCalculator definition"
+      )
       |> add_flag(r.source_lines > 250, "bloat: extract static content to priv/knowledge/")
       |> add_flag(r.largest_heredoc > 60, "heredoc: move long static block to priv/knowledge/")
 

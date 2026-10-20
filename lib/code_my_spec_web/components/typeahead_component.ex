@@ -83,8 +83,8 @@ defmodule CodeMySpecWeb.TypeaheadComponent do
       >
         {@placeholder || "Add..."}
       </button>
-      
-    <!-- Input state -->
+
+      <!-- Input state -->
       <div :if={@show_input} class="flex gap-1 items-center">
         <input
           type="text"
@@ -99,8 +99,8 @@ defmodule CodeMySpecWeb.TypeaheadComponent do
           ×
         </button>
       </div>
-      
-    <!-- Dropdown -->
+
+      <!-- Dropdown -->
       <div
         :if={@show_input and @show_dropdown and length(@filtered_items) > 0}
         class="absolute top-full left-0 right-0 bg-base-100 border border-base-300 rounded-box shadow-lg z-50 max-h-60 overflow-y-auto mt-1"
@@ -116,8 +116,8 @@ defmodule CodeMySpecWeb.TypeaheadComponent do
           </li>
         </ul>
       </div>
-      
-    <!-- No results -->
+
+      <!-- No results -->
       <div
         :if={@show_input and @show_dropdown and @search_value != "" and length(@filtered_items) == 0}
         class="absolute top-full left-0 right-0 bg-base-100 border border-base-300 rounded-box shadow-lg z-50 mt-1"

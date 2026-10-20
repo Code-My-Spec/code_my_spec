@@ -53,10 +53,17 @@ defmodule Mix.Tasks.Demo.Assemble do
           out = "/tmp/demo_assemble_norm_#{i}.mp4"
 
           sh!("ffmpeg", [
-            "-y", "-i", p,
-            "-vf", "fps=30",
-            "-vsync", "cfr",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-y",
+            "-i",
+            p,
+            "-vf",
+            "fps=30",
+            "-vsync",
+            "cfr",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
             out
           ])
 
@@ -66,7 +73,9 @@ defmodule Mix.Tasks.Demo.Assemble do
       durations = Enum.map(normalized, &probe_duration!/1)
 
       Enum.zip(paths, durations)
-      |> Enum.each(fn {p, d} -> Mix.shell().info("    #{Float.round(d, 2)}s  #{Path.basename(p)}") end)
+      |> Enum.each(fn {p, d} ->
+        Mix.shell().info("    #{Float.round(d, 2)}s  #{Path.basename(p)}")
+      end)
 
       filter = build_xfade_filter(durations, transition, dur)
       last_label = "[v#{length(paths) - 1}]"

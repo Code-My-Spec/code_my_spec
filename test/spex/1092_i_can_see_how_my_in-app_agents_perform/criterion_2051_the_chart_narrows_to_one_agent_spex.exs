@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2051Spex do
   end
 
   spex "The performance page carries a control to pick one agent",
-       criterion: 2051 do
+    criterion: 2051 do
     scenario "the performance page is opened" do
       given_ "a project with the performance page available", context do
         # given: already true — `setup :setup_active_project` creates it.

@@ -38,9 +38,9 @@ defmodule CodeMySpec.Google.GscTest do
   end
 
   defp run(name, fun) do
-    with_cassette name, cassette_opts(), fn plug ->
+    with_cassette(name, cassette_opts(), fn plug ->
       with_plug(Gsc, plug, fun)
-    end
+    end)
   end
 
   # ── Read-only tools (recorded live) ──────────────────────────────────
@@ -63,7 +63,13 @@ defmodule CodeMySpec.Google.GscTest do
 
   test "get_search_analytics shapes rows by dimension" do
     run("gsc/get_search_analytics", fn ->
-      assert {:ok, data} = Gsc.get_search_analytics(token(), @site, days: 28, dimensions: "query", row_limit: 20)
+      assert {:ok, data} =
+               Gsc.get_search_analytics(token(), @site,
+                 days: 28,
+                 dimensions: "query",
+                 row_limit: 20
+               )
+
       assert data.dimensions == ["query"]
       assert is_integer(data.row_count)
       assert is_list(data.rows)
@@ -83,7 +89,10 @@ defmodule CodeMySpec.Google.GscTest do
   test "get_advanced_search_analytics returns rows with pagination metadata" do
     run("gsc/get_advanced_search_analytics", fn ->
       assert {:ok, data} =
-               Gsc.get_advanced_search_analytics(token(), @site, dimensions: "query,page", row_limit: 100)
+               Gsc.get_advanced_search_analytics(token(), @site,
+                 dimensions: "query,page",
+                 row_limit: 100
+               )
 
       assert data.search_type == "WEB"
       assert is_list(data.rows)
@@ -207,7 +216,8 @@ defmodule CodeMySpec.Google.GscTest do
 
   test "delete_site removes the (throwaway) property" do
     run("gsc/delete_site", fn ->
-      assert {:ok, %{site_url: @prefix_site, removed: true}} = Gsc.delete_site(token(), @prefix_site)
+      assert {:ok, %{site_url: @prefix_site, removed: true}} =
+               Gsc.delete_site(token(), @prefix_site)
     end)
   end
 end

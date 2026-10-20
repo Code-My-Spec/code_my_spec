@@ -29,7 +29,10 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloaderTest do
     opts =
       SafeCodeReloader.init(
         reloader: fn _endpoint, _opts ->
-          exit({:noproc, {GenServer, :call, [Phoenix.CodeReloader.Server, {:reload!, nil, []}, :infinity]}})
+          exit(
+            {:noproc,
+             {GenServer, :call, [Phoenix.CodeReloader.Server, {:reload!, nil, []}, :infinity]}}
+          )
         end
       )
 
@@ -58,9 +61,7 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloaderTest do
 
   test "a genuine compile error still halts with its own 500, unchanged" do
     opts =
-      SafeCodeReloader.init(
-        reloader: fn _endpoint, _opts -> {:error, "a real compile error"} end
-      )
+      SafeCodeReloader.init(reloader: fn _endpoint, _opts -> {:error, "a real compile error"} end)
 
     result = SafeCodeReloader.call(conn(), opts)
 

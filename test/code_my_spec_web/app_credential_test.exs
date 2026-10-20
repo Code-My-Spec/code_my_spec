@@ -119,7 +119,10 @@ defmodule CodeMySpecWeb.AppCredentialTest do
 
       assert build_conn()
              |> bearer(secret)
-             |> post(~p"/api/content/sync", %{"content" => [], "synced_at" => "2026-08-01T00:00:00Z"})
+             |> post(~p"/api/content/sync", %{
+               "content" => [],
+               "synced_at" => "2026-08-01T00:00:00Z"
+             })
              |> Map.fetch!(:status) == 401
     end
 

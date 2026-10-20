@@ -79,9 +79,8 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
     # that is arm64; the point is that it came from `docker image inspect`.
     assert architecture in [:arm, :x86]
 
-    assert {_, 0} = System.cmd("docker", ["image", "inspect", ctx.reference],
-             stderr_to_stdout: true
-           )
+    assert {_, 0} =
+             System.cmd("docker", ["image", "inspect", ctx.reference], stderr_to_stdout: true)
   end
 
   @tag :registry
@@ -136,7 +135,8 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   defp await_registry(_port, 0), do: flunk("the test registry never answered")
 
   defp await_registry(port, attempts) do
-    {_, status} = System.cmd("curl", ["-sf", "http://127.0.0.1:#{port}/v2/"], stderr_to_stdout: true)
+    {_, status} =
+      System.cmd("curl", ["-sf", "http://127.0.0.1:#{port}/v2/"], stderr_to_stdout: true)
 
     retry_registry(port, attempts, status)
   end

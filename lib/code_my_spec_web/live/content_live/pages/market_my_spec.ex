@@ -30,7 +30,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MarketMySpec do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       {hero_section(assigns)}
       {overview_section(assigns)}
       {stories_section(assigns)}
@@ -576,7 +580,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MarketMySpec do
                         <span class="badge badge-accent badge-xs">{scenario.kind}</span>
                         <span class="text-xs font-medium">{scenario.title}</span>
                       </div>
-                      <pre :if={scenario.body} class="text-xs whitespace-pre-wrap text-base-content/80 mt-1 font-mono leading-relaxed">{scenario.body}</pre>
+                      <pre
+                        :if={scenario.body}
+                        class="text-xs whitespace-pre-wrap text-base-content/80 mt-1 font-mono leading-relaxed"
+                      >{scenario.body}</pre>
                       <p :if={!scenario.body} class="text-xs text-base-content/50 italic">
                         Scenario title only; full GWT body not included in this excerpt.
                       </p>
@@ -600,9 +607,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MarketMySpec do
                 <div class="flex gap-2 items-start mb-2">
                   <span class="badge badge-warning badge-sm flex-shrink-0">Q{idx}</span>
                   <span class="text-sm leading-relaxed flex-1">{question.body}</span>
-                  <span
-                    class={"badge badge-xs flex-shrink-0 #{question_status_class(question.status)}"}
-                  >
+                  <span class={"badge badge-xs flex-shrink-0 #{question_status_class(question.status)}"}>
                     {question.status}
                   </span>
                 </div>

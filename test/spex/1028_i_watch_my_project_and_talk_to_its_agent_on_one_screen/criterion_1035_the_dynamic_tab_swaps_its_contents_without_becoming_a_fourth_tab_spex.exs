@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story966.Criterion2949Spex do
     :ok
   end
 
-  spex "The accordion has three tabs: the preview, a dynamic tab whose content changes, and activity from the rest of the project", criterion: 1035 do
+  spex "The accordion has three tabs: the preview, a dynamic tab whose content changes, and activity from the rest of the project",
+    criterion: 1035 do
     scenario "The dynamic tab swaps its contents without becoming a fourth tab" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_966")}

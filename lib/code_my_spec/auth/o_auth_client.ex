@@ -317,7 +317,9 @@ defmodule CodeMySpec.Auth.OAuthClient do
     }
 
     case save_client_user(user.id, user.email, token_data) do
-      {:ok, _} -> {:ok, token_data["access_token"]}
+      {:ok, _} ->
+        {:ok, token_data["access_token"]}
+
       {:error, reason} ->
         Logger.error("Failed to save refreshed token: #{inspect(reason)}")
         {:error, :needs_authentication}

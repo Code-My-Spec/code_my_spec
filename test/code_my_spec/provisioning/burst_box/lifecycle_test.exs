@@ -16,7 +16,10 @@ defmodule CodeMySpec.Provisioning.BurstBox.LifecycleTest do
   defp scope, do: %Scope{}
 
   defp server(overrides \\ %{}) do
-    Map.merge(%{"id" => 7, "name" => "burst-platform", "created" => "2026-08-03T12:00:00Z"}, overrides)
+    Map.merge(
+      %{"id" => 7, "name" => "burst-platform", "created" => "2026-08-03T12:00:00Z"},
+      overrides
+    )
   end
 
   describe "due_for_check?/2" do
@@ -94,7 +97,11 @@ defmodule CodeMySpec.Provisioning.BurstBox.LifecycleTest do
 
       busy? = fn _scope, _server -> false end
 
-      assert Lifecycle.check(scope(), server(%{"id" => 99}), now: due_now(), busy?: busy?, destroy: destroy) ==
+      assert Lifecycle.check(scope(), server(%{"id" => 99}),
+               now: due_now(),
+               busy?: busy?,
+               destroy: destroy
+             ) ==
                :deleted
 
       assert_received {:destroyed, 99}
@@ -106,7 +113,11 @@ defmodule CodeMySpec.Provisioning.BurstBox.LifecycleTest do
 
       log =
         capture_log(fn ->
-          assert Lifecycle.check(scope(), server(), now: due_now(), busy?: busy?, destroy: destroy) ==
+          assert Lifecycle.check(scope(), server(),
+                   now: due_now(),
+                   busy?: busy?,
+                   destroy: destroy
+                 ) ==
                    {:error, {:hetzner_error, 423, %{}}}
         end)
 
@@ -136,7 +147,10 @@ defmodule CodeMySpec.Provisioning.BurstBox.LifecycleTest do
 
       log =
         capture_log(fn ->
-          assert Lifecycle.check(scope(), server(%{"created" => nil}), now: due_now(), busy?: busy?) ==
+          assert Lifecycle.check(scope(), server(%{"created" => nil}),
+                   now: due_now(),
+                   busy?: busy?
+                 ) ==
                    :not_due
         end)
 

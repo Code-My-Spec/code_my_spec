@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2011Spex do
   end
 
   spex "A failed tool call is shown against its agent and the tool that failed",
-       criterion: 2011 do
+    criterion: 2011 do
     scenario "an agent's tool call failed during a period" do
       given_ "a running agent", context do
         reply = join_working_copy(context, "/tmp/spex-2011", "the checkout")
@@ -78,7 +78,10 @@ defmodule CodeMySpecSpex.Story1092.Criterion2011Spex do
                 }
               ]
             },
-            %{"model" => "claude-sonnet-5-5", "content" => [%{"type" => "text", "text" => "retrying"}]},
+            %{
+              "model" => "claude-sonnet-5-5",
+              "content" => [%{"type" => "text", "text" => "retrying"}]
+            },
             session_id: "spex-2011",
             agent_role: "coding"
           )

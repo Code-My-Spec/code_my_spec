@@ -72,6 +72,7 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
     assert {:ok, _counts} = Staffing.offboard(scope, sibling)
 
     assert_receive {:put_config, ingress}
+
     refute Enum.any?(ingress, &(&1["hostname"] == host)),
            "the copy's own hostname was still in the tunnel's ingress after offboarding"
 

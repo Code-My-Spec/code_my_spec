@@ -40,7 +40,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2920Spex do
     :ok
   end
 
-  spex "A project's main working copy is one somebody designated, not one that was guessed", criterion: 1008 do
+  spex "A project's main working copy is one somebody designated, not one that was guessed",
+    criterion: 1008 do
     scenario "A checkout becomes the main one because somebody said so" do
       given_ "a project with more than one working copy", context do
         first = CodeMySpec.TempFile.dir("spex_2920_first")

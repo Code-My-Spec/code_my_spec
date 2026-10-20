@@ -198,7 +198,8 @@
   ],
   proof: %{
     title: "The Proof",
-    description: "I built CodeMySpec using this method. Every feature went through the full loop.",
+    description:
+      "I built CodeMySpec using this method. Every feature went through the full loop.",
     evidence: [
       "Stories with acceptance criteria drive every feature",
       "Architecture review catches design problems before implementation",

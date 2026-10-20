@@ -78,7 +78,8 @@ defmodule CmsHarness.Agents.Shell do
       {:ok, output, exit_code} ->
         case write_redirect(target, output, mode) do
           :ok ->
-            {:ok, "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"}
+            {:ok,
+             "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"}
 
           {:error, reason} ->
             {:error,
