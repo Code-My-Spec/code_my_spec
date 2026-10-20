@@ -119,7 +119,9 @@ defmodule CodeMySpec.Requirements.Bands do
       |> then(&Map.merge(%{done: 0, working: 0, issues: 0, none: 0}, &1))
       |> Map.merge(%{number: number, title: title})
     end)
-    |> Enum.sort_by(&{-&1.done, &1.issues, -&1.working, &1.number})
+    # Furthest reached first, then most done: grey only grows toward the end,
+    # so the columns' tops fall away in one line.
+    |> Enum.sort_by(&{&1.none, -&1.done, &1.issues, &1.number})
   end
 
   defp done_set(name, true), do: MapSet.new([name])
