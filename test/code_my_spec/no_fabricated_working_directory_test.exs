@@ -32,6 +32,12 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     "lib/code_my_spec/environments/local.ex" => "adapter primitive: explicit :working_dir opt",
     "lib/code_my_spec/environments/cli.ex" => "adapter primitive, same as local",
 
+    # The dev endpoint's plug, mounted only where the app runs from the checkout
+    # it serves (code reloading is on): the marker a landing leaves is in that
+    # checkout's own .git, and the cwd of the process serving it is that checkout.
+    "lib/code_my_spec_web/plugs/hold_during_landing.ex" =>
+      "dev-only plug: the serving process's cwd is the checkout a landing merges into",
+
     # Mix tasks and the CLI-only init path run on the machine holding the code.
     "lib/mix/tasks/set_story_component.ex" => "mix task: cwd is the project by definition",
     # `target_root/1` takes the path as an argument and only falls back to cwd
