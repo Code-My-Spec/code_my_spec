@@ -588,19 +588,7 @@ defmodule CodeMySpecWeb.Router do
            MarkdownBrowserLive,
            :project_knowledge
 
-      live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
-      live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
-      live "/projects/:project_id/requirements/:name", RequirementsLive, :show
-
-      # A story's own requirements.
-      live "/projects/:project_id/stories/:story_number/requirements",
-           RequirementsLive,
-           :story_show
-
-      live "/projects/:project_id/stories/:story_number/requirements/:name",
-           RequirementsLive,
-           :story_req_show
     end
 
     # Project-scoped surfaces. The project is named in the route and put on the

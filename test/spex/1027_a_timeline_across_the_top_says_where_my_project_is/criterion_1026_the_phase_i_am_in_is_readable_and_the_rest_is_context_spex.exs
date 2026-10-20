@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
   import CodeMySpecSpex.MainAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphAssertions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -42,7 +43,8 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
     :ok
   end
 
-  spex "The phase the project is in is shown in detail; the phases either side are collapsed", criterion: 1026 do
+  spex "The phase the project is in is shown in detail; the phases either side are collapsed",
+    criterion: 1026 do
     scenario "The phase I am in is readable and the rest is context" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_timeline")}
@@ -54,10 +56,18 @@ defmodule CodeMySpecSpex.Story965.Criterion2940Spex do
         # where everything is satisfied the timeline is a different picture and
         # a block that only says so would not notice.
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
-        assert html =~ "requirement",
-               "the requirements page shows nothing, so there is no project state for " <>
+        gates =
+          for %{"attributes" => %{"entity_type" => "project"}} = node <-
+                GraphAssertions.extract_graph!(html)["nodes"],
+              do: node
+
+        assert gates != [],
+               "the graph draws no project gates, so there is no project state for " <>
                  "the timeline to be part-way through"
 
         {:ok, context}

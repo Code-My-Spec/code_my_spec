@@ -34,6 +34,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Epics
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.StoryGraph, as: RequirementStoryGraph
@@ -46,6 +47,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
+  alias CodeMySpecWeb.ProblemCharts
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
   alias CodeMySpecWeb.TaskComponents
@@ -160,6 +162,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign(:assigned_modal, nil)
     |> assign(:copy_modal_id, nil)
     |> assign(:task_modal, nil)
+    |> assign(:problems_modal, nil)
     |> assign(:graph_modal, nil)
     |> assign(:project, project)
     |> assign(:desktop_setup_results, CodeMySpecWeb.AppLive.DesktopSetupResults.load(project.id))
@@ -773,6 +776,27 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_event("close_task", _params, socket),
     do: {:noreply, assign(socket, :task_modal, nil)}
 
+  # Only a copy on this project: the id arrives from the client.
+  def handle_event("show_problems", %{"id" => id}, socket) do
+    case Enum.find(socket.assigns.copies, &(&1.row.harness.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      copy ->
+        scope = %{socket.assigns.current_scope | active_working_copy_id: id}
+
+        {:noreply,
+         assign(socket, :problems_modal, %{
+           counts: Problems.top_files(scope, 10),
+           copy_name: copy.row.heading,
+           href: ~p"/app/projects/#{socket.assigns.project.id}/problems?harness=#{id}"
+         })}
+    end
+  end
+
+  def handle_event("close_problems", _params, socket),
+    do: {:noreply, assign(socket, :problems_modal, nil)}
+
   # The team panel's row for any agent; the header's clause below acts on this
   # conversation's.
   def handle_event("toggle_agent_working", %{"agent-id" => agent_id}, socket) do
@@ -1146,12 +1170,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     # Stopped agents stay listed here (this page can stop them); the working
     # copy pages do not pass this.
+    problems =
+      scope
+      |> Problems.counts_by_working_copy()
+      |> Enum.group_by(&elem(&1, 0), fn {_copy, source, severity, n} -> {source, severity, n} end)
+
     scope
     |> Rows.list(project, now, include_stopped?: true)
-    |> Enum.map(&copy_status(&1, scope, now, pending_sessions))
+    |> Enum.map(&copy_status(&1, scope, now, pending_sessions, problems))
   end
 
-  defp copy_status(row, scope, now, pending_sessions) do
+  defp copy_status(row, scope, now, pending_sessions, problems) do
     agents =
       Enum.map(row.agents, fn agent ->
         chat = Enum.find(row.chats, &(&1.agent.id == agent.id))
@@ -1171,6 +1200,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       row: row,
       agents: agents,
       assignment: copy_assignment(scope, row.harness.id),
+      problems: Map.get(problems, row.harness.id, []),
       question?: Enum.any?(agents, & &1.question?),
       empty_seats: empty_seats(row)
     }
@@ -2041,6 +2071,13 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         directive={@task_modal.directive}
         project_id={@project.id}
         on_close="close_task"
+      />
+      <ProblemCharts.modal
+        :if={@problems_modal}
+        counts={@problems_modal.counts}
+        copy_name={@problems_modal.copy_name}
+        href={@problems_modal.href}
+        on_close="close_problems"
       />
       <CopyComponents.modal
         :for={copy <- @copies}

@@ -478,6 +478,11 @@ defmodule CodeMySpecWeb.ConversationPanels do
             {copy.row.heading}
           </button>
           <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
+          <Copy.problems_marker
+            tally={copy.problems}
+            phx-click="show_problems"
+            phx-value-id={copy.row.harness.id}
+          />
           <Copy.harness_marker row={copy.row} />
           <Copy.preview_marker harness={copy.row.harness} />
         </div>

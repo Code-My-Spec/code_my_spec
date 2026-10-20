@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2925Spex do
   import CodeMySpecSpex.MainAgentHelpers
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.GraphAssertions
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -47,10 +48,18 @@ defmodule CodeMySpecSpex.Story965.Criterion2925Spex do
         # where everything is satisfied the timeline is a different picture and
         # a block that only says so would not notice.
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
-        assert html =~ "requirement",
-               "the requirements page shows nothing, so there is no project state for " <>
+        gates =
+          for %{"attributes" => %{"entity_type" => "project"}} = node <-
+                GraphAssertions.extract_graph!(html)["nodes"],
+              do: node
+
+        assert gates != [],
+               "the graph draws no project gates, so there is no project state for " <>
                  "the timeline to be part-way through"
 
         {:ok, context}

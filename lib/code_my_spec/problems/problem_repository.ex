@@ -62,6 +62,8 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     (`"credo"`, `"compiler"`, `"exunit"`, `"spex"`,
     `"qa_validation"`).
   - `:severity` — `:error`, `:warning` or `:info`. Omit for all.
+  - `:working_copy` — `:all` reads every copy on the project instead of the
+    scope's own.
 
   Severity narrows the scope before the counts are taken, so
   `counts_by_source` and `unfiltered_count` describe the same population the
@@ -85,7 +87,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     project_scope =
       Problem
       |> where([p], p.project_id == ^project_id)
-      |> scope_to_harness(scope)
+      |> scope_to_copies(scope, Keyword.get(opts, :working_copy))
       |> apply_severity(Keyword.get(opts, :severity))
 
     unfiltered_count = Repo.aggregate(project_scope, :count, :id)
@@ -524,16 +526,18 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # `default_id/1` is pure, so this creates no row.
   # See knowledge/analysis, "Problems".
   @doc """
-  Problem counts across every working copy on the project, by source:
-  `[{working_copy_id, source, count}]`. Ignores the scope's own copy — it is
-  the comparison between copies.
+  Problem counts across every working copy on the project, by source and
+  severity: `[{working_copy_id, source, severity, count}]`. Ignores the scope's
+  own copy — it is the comparison between copies.
   """
-  @spec counts_by_working_copy(Scope.t()) :: [{String.t() | nil, String.t(), non_neg_integer()}]
+  @spec counts_by_working_copy(Scope.t()) :: [
+          {String.t() | nil, String.t(), atom() | nil, non_neg_integer()}
+        ]
   def counts_by_working_copy(%Scope{active_project_id: project_id}) do
     Problem
     |> where([p], p.project_id == ^project_id)
-    |> group_by([p], [p.working_copy_id, p.source])
-    |> select([p], {p.working_copy_id, p.source, count(p.id)})
+    |> group_by([p], [p.working_copy_id, p.source, p.severity])
+    |> select([p], {p.working_copy_id, p.source, p.severity, count(p.id)})
     |> Repo.all()
   end
 
@@ -562,6 +566,9 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     |> select([p], {p.file_path, p.source, count(p.id)})
     |> Repo.all()
   end
+
+  defp scope_to_copies(query, _scope, :all), do: query
+  defp scope_to_copies(query, scope, _one), do: scope_to_harness(query, scope)
 
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil, active_project_id: project_id})
        when is_binary(project_id),

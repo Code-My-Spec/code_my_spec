@@ -4,6 +4,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2037Spex do
 
   alias CodeMySpec.Environments
   alias CodeMySpecSpex.DesktopSetupHelpers
+  alias CodeMySpecSpex.GraphAssertions
 
   setup :fresh_machine
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
@@ -87,25 +88,28 @@ defmodule CodeMySpecSpex.Story1112.Criterion2037Spex do
 
       when_ "the developer removes pgvector and later opens the project requirements", context do
         DesktopSetupHelpers.without_pgvector(context)
-        {:ok, graph, _} = live(context.conn, "/app/projects/#{context.project_id}/requirements")
-        render_async(graph, 10_000)
-        {:ok, Map.put(context, :graph, graph)}
+
+        {:ok, _view, html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.project_id}/requirements/graph?preload=true"
+          )
+
+        {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
 
       then_ "the populated graph contains no machine setup requirement or offer", context do
-        assert has_element?(context.graph, "[data-test='requirement']")
+        nodes = Enum.map(context.graph["nodes"], & &1["attributes"])
+        assert nodes != []
 
-        refute has_element?(
-                 context.graph,
-                 "[data-test='requirement'][data-entity-type='machine']"
-               )
-
-        names =
-          render(context.graph) |> Floki.parse_fragment!() |> Floki.attribute("data-requirement")
+        refute Enum.any?(nodes, &(&1["entity_type"] == "machine"))
 
         refute Enum.any?(
-                 names,
-                 &Regex.match?(~r/(machine.*setup|setup.*machine|prerequisite|pgvector)/i, &1)
+                 nodes,
+                 &Regex.match?(
+                   ~r/(machine.*setup|setup.*machine|prerequisite|pgvector)/i,
+                   to_string(&1["name"])
+                 )
                )
 
         {:ok, context}

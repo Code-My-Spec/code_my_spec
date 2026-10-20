@@ -60,6 +60,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Utils.MapAccess
 
   # Resolved hex for the legend's bg-primary / bg-success / bg-warning tokens
   # (assets/css/app.css): Sigma renders to canvas, not CSS. Keep in lockstep.
@@ -165,10 +166,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.map(fn {n, idx} ->
         y = -(idx * @story_row_gap)
 
-        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
-          entity_type: "project",
-          name: n.name
-        )
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set), project_attrs(n))
       end)
 
     # --- Layer 2: Pre-component story reqs (all stories, same Y band) ---
@@ -341,10 +339,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.map(fn {n, idx} ->
         y = late_start_y - idx * @story_row_gap
 
-        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set),
-          entity_type: "project",
-          name: n.name
-        )
+        mk_node(nkey(n), label(n), 0, y, 12, cls(n, actionable_set), project_attrs(n))
       end)
 
     base_sigma = early_sigma ++ pre_sigma ++ comp_sigma ++ post_sigma ++ late_sigma
@@ -823,6 +818,20 @@ defmodule CodeMySpec.Requirements.GraphProjector do
           Map.new(extra)
         )
     }
+  end
+
+  # A project gate says whether it holds and, from its checker, why: a
+  # satisfied `work_dispatched` means finished or merely busy, and only the
+  # basis tells the two apart.
+  defp project_attrs(n) do
+    details = n.details || %{}
+
+    [
+      entity_type: "project",
+      name: n.name,
+      satisfied: n.satisfied == true,
+      basis: MapAccess.get(details, :status) || MapAccess.get(details, :reason)
+    ]
   end
 
   defp node_key(n), do: Topology.node_key(n)

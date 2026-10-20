@@ -1074,6 +1074,62 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
   end
 
   describe "a copy at a glance" do
+    test "a copy's row counts its problems; clicking shows where they are", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} = agent_with_conversation(scope, project)
+
+      copy_scope = %{
+        scope
+        | active_project_id: project.id,
+          active_working_copy_id: agent.working_copy_id
+      }
+
+      {:ok, _} =
+        CodeMySpec.Problems.create_problems(copy_scope, [
+          %{
+            severity: :error,
+            source: "exunit",
+            source_type: :test,
+            file_path: "test/a_test.exs",
+            line: 1,
+            message: "boom",
+            category: "t"
+          },
+          %{
+            severity: :info,
+            source: "credo",
+            source_type: :static_analysis,
+            file_path: "lib/a.ex",
+            line: 2,
+            message: "meh",
+            category: "c"
+          }
+        ])
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+      open_team_panel(view)
+
+      marker =
+        "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}'] [data-test='copy-problems-marker']"
+
+      assert has_element?(view, marker <> "[data-total='2'][data-worst='error']")
+
+      view |> element(marker) |> render_click()
+
+      assert has_element?(view, "[data-test='problems-modal'] [data-test='problems-by-file']")
+
+      assert has_element?(
+               view,
+               "[data-test='problems-modal'] a[data-test='problems-modal-open'][href='/app/projects/#{project.id}/problems?harness=#{agent.working_copy_id}']"
+             )
+
+      render_click(view, "close_problems", %{})
+      refute has_element?(view, "[data-test='problems-modal']")
+    end
+
     test "clicking a copy opens its facts with the way to its show and status pages", %{
       conn: conn,
       scope: scope,

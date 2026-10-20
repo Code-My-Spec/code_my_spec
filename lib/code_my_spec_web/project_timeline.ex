@@ -110,8 +110,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
                 phase_complete?(phase) && "ring-success/60",
                 not phase_complete?(phase) && "ring-base-content/25"
               ]}
-            >
-            </span>
+            ></span>
 
             <span class="sr-only">{phase.label}</span>
           </.link>
@@ -167,8 +166,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
                   step.state == "done" && "bg-success",
                   step.state == "todo" && "bg-base-content/20"
                 ]}
-              >
-              </span>
+              ></span>
               <span class="sr-only">{step.title}</span>
             </.link>
           </span>
@@ -311,5 +309,5 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp path_for("issues_triaged", project), do: ~p"/app/projects/#{project.id}/issues"
   defp path_for("issues_resolved", project), do: ~p"/app/projects/#{project.id}/issues"
   defp path_for("qa_" <> _, project), do: ~p"/app/projects/#{project.id}/qa"
-  defp path_for(_name, project), do: ~p"/app/projects/#{project.id}/requirements"
+  defp path_for(_name, project), do: ~p"/app/projects/#{project.id}/requirements/graph"
 end

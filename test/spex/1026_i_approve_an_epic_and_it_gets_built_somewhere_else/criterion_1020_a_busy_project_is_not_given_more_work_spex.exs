@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story964.Criterion2933Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias CodeMySpecSpex.EpicHelpers
+  alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.StoryHelpers
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -42,7 +43,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2933Spex do
     :ok
   end
 
-  spex "The main agent has work to assign only when nothing is in progress and unassigned work exists", criterion: 1020 do
+  spex "The main agent has work to assign only when nothing is in progress and unassigned work exists",
+    criterion: 1020 do
     scenario "A busy project is not given more work" do
       given_ :synced_context_component
 
@@ -64,13 +66,17 @@ defmodule CodeMySpecSpex.Story964.Criterion2933Spex do
 
       when_ "the main agent asks whether it has work to assign", context do
         {:ok, _live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements")
+          live(
+            context.conn,
+            ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
-        {:ok, Map.put(context, :html, html)}
+        gate = GraphAssertions.project_gate(html, context.project.id, "work_dispatched")
+        {:ok, Map.put(context, :gate, gate)}
       end
 
       then_ "the answer is no, because something is already in progress", context do
-        assert context.html =~ ~r/data-requirement="work_dispatched"[^>]*data-satisfied="true"/,
+        assert context.gate["satisfied"] == true,
                "the project reports work to assign while an epic is already being built. " <>
                  "If an agent is working on our story the main agent does not need to " <>
                  "assign more, and the alternative is epics piled onto a copy that is busy."

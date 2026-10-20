@@ -45,6 +45,10 @@ defmodule CodeMySpecWeb.HarnessPicker do
   attr :active_id, :string, default: nil
   attr :path_fun, :any, required: true, doc: "fn working_copy_id -> path"
 
+  attr :all_path, :string,
+    default: nil,
+    doc: "where every copy at once is shown; no All button without one"
+
   def harness_picker(assigns) do
     {shown, rest} = split(assigns.harnesses, assigns.active_id)
     assigns = assigns |> assign(:shown, shown) |> assign(:rest, rest)
@@ -56,6 +60,14 @@ defmodule CodeMySpecWeb.HarnessPicker do
       data-test="harness-picker"
     >
       <span class="text-sm text-base-content/60">Working copy:</span>
+      <.link
+        :if={@all_path}
+        patch={@all_path}
+        data-test="harness-all"
+        class={"btn btn-xs " <> if(@active_id == "all", do: "btn-primary", else: "btn-ghost")}
+      >
+        All
+      </.link>
       <.link
         :for={harness <- @shown}
         patch={@path_fun.(harness.id)}

@@ -146,6 +146,99 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
   end
 
   @doc """
+  How many problems this copy holds, coloured by the worst of them: red with
+  any error, amber with warnings, grey with only advisory findings, nothing at
+  zero. A count rather than a shape — at this size a proportion cannot be read
+  — with the split by source and severity in the tooltip. A link with `href`;
+  otherwise a button carrying whatever `phx-click` the page gives it.
+
+  `:small` is the compact number alone (`7`, `214`, `1.2k`); `:normal` says
+  "214 problems".
+  """
+  attr :tally, :list, required: true, doc: "`[{source, severity, count}]` for this copy"
+  attr :href, :string, default: nil
+  attr :rest, :global
+  attr :size, :atom, default: :small, values: [:small, :normal]
+  attr :class, :any, default: "tooltip-left"
+
+  def problems_marker(assigns) do
+    total = assigns.tally |> Enum.map(&elem(&1, 2)) |> Enum.sum()
+    assigns = assign(assigns, total: total, worst: worst(assigns.tally))
+
+    ~H"""
+    <.dynamic_tag
+      :if={@total > 0}
+      tag_name={if @href, do: "a", else: "button"}
+      {if @href, do: [href: @href], else: [type: "button"]}
+      data-test="copy-problems-marker"
+      data-total={@total}
+      data-worst={@worst}
+      data-tip={problems_tip(@tally, @total)}
+      aria-label={problems_tip(@tally, @total)}
+      class={[
+        "tooltip shrink-0 cursor-pointer font-mono tabular-nums",
+        @size == :small && "text-[11px]",
+        @size == :normal && "text-xs",
+        worst_color(@worst),
+        @class
+      ]}
+      {@rest}
+    >
+      {compact(@total)}{if @size == :normal,
+        do: " #{if @total == 1, do: "problem", else: "problems"}"}
+    </.dynamic_tag>
+    """
+  end
+
+  defp worst(tally) do
+    severities = MapSet.new(tally, &elem(&1, 1))
+
+    cond do
+      MapSet.member?(severities, :error) -> :error
+      MapSet.member?(severities, :warning) -> :warning
+      true -> :info
+    end
+  end
+
+  defp worst_color(:error), do: "text-error"
+  defp worst_color(:warning), do: "text-warning"
+  defp worst_color(:info), do: "opacity-50"
+
+  # "214 problems — exunit 5 error · credo 4 error · credo 205 info", worst first.
+  defp problems_tip(tally, total) do
+    split =
+      tally
+      |> Enum.sort_by(fn {source, severity, count} ->
+        {severity_rank(severity), -count, source}
+      end)
+      |> Enum.map_join(" · ", fn {source, severity, count} ->
+        "#{source} #{count} #{severity || "unrated"}"
+      end)
+
+    "#{total} #{if total == 1, do: "problem", else: "problems"} — #{split}"
+  end
+
+  defp severity_rank(:error), do: 0
+  defp severity_rank(:warning), do: 1
+  defp severity_rank(_other), do: 2
+
+  @doc "A count in at most four characters: `999`, `1.2k`, `12k`, `1.2M`."
+  def compact(n) when n < 1_000, do: Integer.to_string(n)
+  def compact(n) when n < 10_000, do: one_decimal(n / 1_000) <> "k"
+  def compact(n) when n < 1_000_000, do: "#{div(n, 1_000)}k"
+  def compact(n) when n < 10_000_000, do: one_decimal(n / 1_000_000) <> "M"
+  def compact(n), do: "#{div(n, 1_000_000)}M"
+
+  # 1.0 reads as 1: the decimal is only there when it says something.
+  defp one_decimal(x) do
+    tenths = trunc(x * 10)
+
+    if rem(tenths, 10) == 0,
+      do: "#{div(tenths, 10)}",
+      else: "#{div(tenths, 10)}.#{rem(tenths, 10)}"
+  end
+
+  @doc """
   Whether a harness holds this checkout — the process on its machine that
   agents run through. Not the app: a copy can serve its app with no harness,
   and then nothing can start its agents. A worktree created for an agent has
