@@ -216,6 +216,26 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     context
   end
 
+  @doc """
+  Add a fake `name` to the machine's PATH that only logs its invocation and
+  exits 0, for a platform's installer (`winget`, `arch -arm64 brew`, ...).
+  What it would really install is not something a spec can observe through
+  the desktop UI -- only that it ran, like every other fake binary here.
+  """
+  def with_fake_installer(context, name) do
+    path = Path.join([context.machine_root, "bin", name])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf '#{name}' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    """)
+
+    File.chmod!(path, 0o700)
+    context
+  end
+
   def without_pgvector(context) do
     path = Path.join([context.machine_root, "bin", "psql"])
 

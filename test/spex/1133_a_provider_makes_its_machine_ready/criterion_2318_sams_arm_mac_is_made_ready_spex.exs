@@ -14,7 +14,8 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
 
   defp fresh_machine(context) do
     {:ok, context} = DesktopSetupHelpers.fresh_machine(context)
-    {:ok, DesktopSetupHelpers.as_platform(context, :darwin, :aarch64)}
+    context = DesktopSetupHelpers.as_platform(context, :darwin, :aarch64)
+    {:ok, DesktopSetupHelpers.with_fake_installer(context, "arch")}
   end
 
   spex "Every prerequisite on an ARM Mac is installed for ARM", criterion: 2318 do

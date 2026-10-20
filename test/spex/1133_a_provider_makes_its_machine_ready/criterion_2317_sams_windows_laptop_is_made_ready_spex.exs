@@ -19,7 +19,8 @@ defmodule CodeMySpecSpex.Story1133.Criterion2317Spex do
 
   defp fresh_machine(context) do
     {:ok, context} = DesktopSetupHelpers.fresh_machine(context)
-    {:ok, DesktopSetupHelpers.as_platform(context, :windows, :x86_64)}
+    context = DesktopSetupHelpers.as_platform(context, :windows, :x86_64)
+    {:ok, DesktopSetupHelpers.with_fake_installer(context, "winget")}
   end
 
   spex "A Windows laptop is set up through mise and Windows installers", criterion: 2317 do
