@@ -8,7 +8,6 @@ defmodule CodeMySpecSpex.Story1128.Criterion2285Spex do
   import CodeMySpecSpex.TerminalAgentHelpers, only: [agents: 1, set_role: 3]
   import CodeMySpecSpex.TerminalCodexHelpers
 
-  alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
