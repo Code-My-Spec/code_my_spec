@@ -33,6 +33,7 @@ defmodule CodeMySpecWeb.IssueCharts do
   attr :range, :string, required: true
   attr :view, :string, default: "status"
   attr :event, :string, required: true, doc: "pushed with `range` or `view`"
+  attr :height, :integer, default: 220
 
   def open_over_time(assigns) do
     days = days(assigns.issues, assigns.range)
@@ -74,7 +75,7 @@ defmodule CodeMySpecWeb.IssueCharts do
         phx-hook="EChart"
         phx-update="ignore"
         data-option={Jason.encode!(@option)}
-        style="height: 220px"
+        style={"height: #{@height}px"}
       >
       </div>
     </section>

@@ -831,9 +831,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # The status bar's issue counts: the issues page's default view, compact —
   # open, high and medium, the app's, newest first — and one picked from it.
   def handle_event("show_issues", _params, socket) do
+    all = Issues.list_filtered(socket.assigns.current_scope, %{})
+
     issues =
-      socket.assigns.current_scope
-      |> Issues.list_filtered(%{})
+      all
       |> Enum.filter(
         &(&1.status in [:incoming, :accepted] and &1.severity in [:high, :medium] and
             &1.scope == :app)
@@ -844,8 +845,16 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
      assign(socket, :issues_modal, %{
        issues: Enum.take(issues, 50),
        total: length(issues),
-       picked: nil
+       picked: nil,
+       all: all,
+       range: "30d",
+       view: "status"
      })}
+  end
+
+  def handle_event("issues_chart", params, %{assigns: %{issues_modal: %{} = modal}} = socket) do
+    modal = %{modal | range: params["range"] || modal.range, view: params["view"] || modal.view}
+    {:noreply, assign(socket, :issues_modal, modal)}
   end
 
   def handle_event("pick_issue", %{"id" => id}, %{assigns: %{issues_modal: %{} = modal}} = socket) do
@@ -2287,6 +2296,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         on_pick="pick_issue"
         on_back="issues_back"
         on_close="close_issues"
+        chart_issues={@issues_modal.all}
+        chart_range={@issues_modal.range}
+        chart_view={@issues_modal.view}
+        on_chart="issues_chart"
       />
       <ProblemCharts.modal
         :if={@problems_modal}

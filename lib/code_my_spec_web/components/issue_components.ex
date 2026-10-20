@@ -8,6 +8,8 @@ defmodule CodeMySpecWeb.IssueComponents do
 
   import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
+  alias CodeMySpecWeb.IssueCharts
+
   @doc "One issue on the issues page: title, description, badges and dates."
   attr :issue, :map, required: true
   attr :href, :string, required: true
@@ -123,6 +125,10 @@ defmodule CodeMySpecWeb.IssueComponents do
   attr :on_pick, :string, required: true
   attr :on_back, :string, required: true
   attr :on_close, :string, required: true
+  attr :chart_issues, :list, default: [], doc: "every issue, for the chart"
+  attr :chart_range, :string, default: "30d"
+  attr :chart_view, :string, default: "status"
+  attr :on_chart, :string, default: nil, doc: "pushed with `range` or `view`; no chart without it"
 
   def modal(assigns) do
     ~H"""
@@ -149,6 +155,14 @@ defmodule CodeMySpecWeb.IssueComponents do
             <h2 class="text-lg font-semibold">Issues</h2>
             <span class="text-xs opacity-60">open · high and medium · app · newest first</span>
           </div>
+          <IssueCharts.open_over_time
+            :if={@on_chart}
+            issues={@chart_issues}
+            range={@chart_range}
+            view={@chart_view}
+            event={@on_chart}
+            height={160}
+          />
           <p :if={@issues == []} class="py-6 text-center text-sm opacity-60">No open issues.</p>
           <div class="max-h-[60dvh] divide-y divide-base-200 overflow-y-auto">
             <.issue_row :for={issue <- @issues} issue={issue} on_pick={@on_pick} />
