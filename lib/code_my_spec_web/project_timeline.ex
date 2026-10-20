@@ -124,10 +124,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         @variant == :strip && "border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
       ]}
     >
-      <div class="flex w-full flex-col gap-1.5">
+      <div class="flex w-full items-center gap-4">
         <%!-- The sequence the project runs through: its gates, the stories,
         its closing gates. --%>
-        <ol class="flex w-full items-center gap-2">
+        <ol class="flex min-w-0 flex-1 items-center gap-2">
           <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
             <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
           </li>
@@ -139,7 +139,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           </li>
         </ol>
         <%!-- Where it stands, counted. --%>
-        <ul class="flex items-center gap-4">
+        <ul class="flex shrink-0 items-center gap-4">
           <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
           </li>
