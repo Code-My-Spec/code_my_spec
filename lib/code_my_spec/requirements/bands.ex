@@ -64,7 +64,7 @@ defmodule CodeMySpec.Requirements.Bands do
   @doc """
   Where the project stands. Each story is its steps counted four ways: done
   when satisfied; held by issues when not and the story has any open; working
-  when its own earlier steps are done; not started otherwise. Most complete
+  when its own earlier steps are done; not started otherwise. Furthest reached
   first.
   """
   @spec read(Scope.t()) :: t()
