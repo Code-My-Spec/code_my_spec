@@ -215,6 +215,7 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/inbox"}>Operations</a></li>
               <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
 
+              <li><a href={~p"/app/agent-models"}>Agent models</a></li>
               <li><a href={~p"/app/users/settings"}>User settings</a></li>
 
               <%!-- Operator surfaces, folded away so the everyday nav stays short. --%>
@@ -256,6 +257,7 @@ defmodule CodeMySpecWeb.Layouts do
               <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
                 No projects yet.
               </li>
+              <li><a href={~p"/app/agent-models"}>Agent models</a></li>
               <li><a href={~p"/app/users/settings"}>User settings</a></li>
             <% end %>
             <%= if @current_scope do %>

@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.AccountLive.AgentsDefaultsTest do
+defmodule CodeMySpecWeb.AgentModelsDefaultsTest do
   @moduledoc """
   Saving one agent type does not pin the other three.
 
@@ -60,7 +60,7 @@ defmodule CodeMySpecWeb.AccountLive.AgentsDefaultsTest do
 
   test "submitting with everything left alone writes nothing", %{conn: conn, scope: scope} do
     {:ok, _} = Agents.put_model_setting(scope, :qa, "anthropic", "some-model")
-    {:ok, live, _} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
+    {:ok, live, _} = live(conn, ~p"/app/agent-models")
 
     # What the form posts when nobody touches it: every provider blank, which is
     # now "use the default" rather than a missing field.
@@ -74,7 +74,7 @@ defmodule CodeMySpecWeb.AccountLive.AgentsDefaultsTest do
   end
 
   test "submitting one choice writes that one and no others", %{conn: conn, scope: scope} do
-    {:ok, live, _} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
+    {:ok, live, _} = live(conn, ~p"/app/agent-models")
 
     params =
       Agents.roles()
@@ -89,7 +89,7 @@ defmodule CodeMySpecWeb.AccountLive.AgentsDefaultsTest do
   end
 
   test "the form offers the default as a choice", %{conn: conn, scope: scope} do
-    {:ok, _live, html} = live(conn, ~p"/app/accounts/#{scope.active_account_id}/agents")
+    {:ok, _live, html} = live(conn, ~p"/app/agent-models")
 
     assert html =~ "use-default",
            "there is no way to say 'leave this alone' in the payload, so an untouched " <>

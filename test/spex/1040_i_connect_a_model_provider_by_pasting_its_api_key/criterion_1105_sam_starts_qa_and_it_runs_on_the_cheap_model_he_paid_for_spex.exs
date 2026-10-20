@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3030Spex do
       end
 
       given_ "and points QA at a cheap model on it", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         view
         |> form("[data-test='agent-models-form']", %{
