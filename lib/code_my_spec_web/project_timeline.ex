@@ -70,7 +70,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
          assign(socket,
            bands: Bands.read(socket.assigns.scope),
            architecture: BoundaryGraph.build(socket.assigns.scope).summary,
-           qa: socket.assigns.scope |> Qa.list_project_attempts() |> QaComponents.counts()
+           qa:
+             socket.assigns.scope
+             |> Qa.list_project_attempts(include_older: true)
+             |> QaComponents.recent_counts()
          )},
       else: {:ok, socket}
   end

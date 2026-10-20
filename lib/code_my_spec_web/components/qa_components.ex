@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.QaComponents do
   @moduledoc """
-  A story's QA attempts, at the grains a page needs: counts of where each story
-  stands, a chart of attempts over time, a compact row, an attempt's detail,
+  A story's QA attempts, at the grains a page needs: counts of recent attempts,
+  a chart of attempts over time, a compact row, an attempt's detail,
   and a modal that holds the list and the detail of one picked from it.
 
   Where a story stands is its latest attempt that was not invalidated — what
@@ -12,7 +12,16 @@ defmodule CodeMySpecWeb.QaComponents do
   @statuses [:pass, :partial, :fail]
   @colors %{pass: "#22c55e", partial: "#eab308", fail: "#ef4444"}
 
-  @doc "How many stories' latest attempts passed, partly passed and failed."
+  @doc """
+  Attempts submitted in the last `days`, by outcome — the same window the
+  attempts chart draws.
+  """
+  def recent_counts(attempts, days \\ 30) do
+    since = Date.add(Date.utc_today(), -(days - 1))
+    attempts |> Enum.filter(&(Date.compare(DateTime.to_date(at(&1)), since) != :lt)) |> counts()
+  end
+
+  @doc "How many of `attempts` passed, partly passed and failed."
   def counts(attempts) do
     tally = Enum.frequencies_by(attempts, & &1.status)
     Map.new(@statuses, &{&1, Map.get(tally, &1, 0)})
@@ -37,7 +46,7 @@ defmodule CodeMySpecWeb.QaComponents do
       data-pass={@counts.pass}
       data-partial={@counts.partial}
       data-fail={@counts.fail}
-      data-tip={"QA: #{@counts.pass} passing · #{@counts.partial} partial · #{@counts.fail} failing"}
+      data-tip={"QA attempts, last 30 days: #{@counts.pass} passed · #{@counts.partial} partial · #{@counts.fail} failed"}
       class="tooltip tooltip-left flex items-center justify-center gap-0.5 font-mono text-xs tabular-nums"
       {@rest}
     >
