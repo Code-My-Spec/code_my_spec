@@ -196,9 +196,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   attr :steps, :list, required: true
   attr :target, :any, required: true
 
-  # The stories, step by step, top to bottom: each row how many have passed
-  # that step (green), are on it (yellow), or are held there by open issues
-  # (red). Where the green runs short is where the stories are piling up.
+  # The stories, step by step, left to right: each step a column the height of
+  # every story, stacked from the bottom — passed it (green), on it (yellow),
+  # held there by open issues (red). Side by side the columns read as a stacked
+  # line, and where the green drops is where the stories are piling up.
   defp story_chart(assigns) do
     assigns = assign(assigns, :tip, Enum.map_join(assigns.steps, " · ", &step_tip/1))
 
@@ -210,23 +211,25 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       data-test="story-chart"
       data-tip={@tip}
       aria-label={"Stories: " <> @tip}
-      class="tooltip tooltip-bottom flex w-full flex-col gap-px"
+      class="tooltip tooltip-bottom block w-full"
     >
-      <span
-        :for={step <- @steps}
-        data-test="story-step"
-        data-step={step.name}
-        data-done={step.done}
-        data-working={step.working}
-        data-issues={step.issues}
-        class="flex h-[3px] w-full overflow-hidden rounded-full bg-base-content/15"
-      >
+      <span class="flex h-5 w-full items-stretch gap-px">
         <span
-          :for={{key, class} <- step_segments()}
-          :if={step[key] > 0}
-          class={["h-full", class]}
-          style={"width: #{step[key] / max(step_total(step), 1) * 100}%"}
-        ></span>
+          :for={step <- @steps}
+          data-test="story-step"
+          data-step={step.name}
+          data-done={step.done}
+          data-working={step.working}
+          data-issues={step.issues}
+          class="flex min-w-0 flex-1 flex-col-reverse overflow-hidden rounded-sm bg-base-content/10"
+        >
+          <span
+            :for={{key, class} <- step_segments()}
+            :if={step[key] > 0}
+            class={["w-full shrink-0", class]}
+            style={"height: #{step[key] / max(step_total(step), 1) * 100}%"}
+          ></span>
+        </span>
       </span>
     </button>
     """
