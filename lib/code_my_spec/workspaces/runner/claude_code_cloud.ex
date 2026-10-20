@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Devices.Providers.ClaudeCodeCloud do
+defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
   @moduledoc """
   A dev box in a Claude Code cloud environment (claude.ai/code).
 
@@ -7,8 +7,12 @@ defmodule CodeMySpec.Devices.Providers.ClaudeCodeCloud do
   its value is the bare token, because Anthropic's proxy adds `Bearer ` itself
   (story 1131). Never an environment variable, which anyone using the
   environment can read.
+
+  Anthropic runs the machine, so the lifecycle callbacks have nothing to start
+  or stop here: whether it is up is the harness's presence (story 1138), not a
+  process this server can look at.
   """
-  @behaviour CodeMySpec.Devices.Provider
+  @behaviour CodeMySpec.Workspaces.Runner
 
   # John's working setup (2026-10-20), less the two probe leftovers; this
   # server's own host is added.
@@ -24,6 +28,27 @@ defmodule CodeMySpec.Devices.Providers.ClaudeCodeCloud do
     apt.postgresql.org
     *.crates.io
   )
+
+  @impl true
+  def start(_container_name, _app_name, _port, _env), do: {:error, :hosted_by_provider}
+
+  @impl true
+  def url(_container_name, _port), do: ""
+
+  @impl true
+  def healthy?(_port), do: false
+
+  @impl true
+  def serving(_port), do: :down
+
+  @impl true
+  def alive?(_container_name), do: false
+
+  @impl true
+  def logs(_container_name), do: ""
+
+  @impl true
+  def stop(_container_name), do: :ok
 
   @impl true
   def id, do: :claude_code_cloud

@@ -46,8 +46,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
@@ -64,7 +64,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
        project_id: params["project_id"],
        adding?: false,
        new_box: nil,
-       providers: Provider.all(),
+       providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
      )}
   end
@@ -85,9 +85,13 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   # An add sent by someone who cannot add is refused, whether or not the page
   # offered it: the check is the context's, not the button's.
   def handle_event("add_dev_box", %{"dev_box" => params}, socket) do
-    case Devices.add_dev_box(socket.assigns.current_scope, params) do
+    case Devices.add_dev_box(
+           socket.assigns.current_scope,
+           params,
+           Runner.dev_box(params["provider"])
+         ) do
       {:ok, box, token} ->
-        provider = Provider.get(box.provider)
+        provider = Runner.dev_box(box.provider)
         context = %{token: token, server_url: CodeMySpecWeb.Endpoint.url()}
 
         {:noreply,
@@ -171,7 +175,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     %{
       device: device,
       status: box_status(device),
-      provider: Provider.get(device.provider),
+      provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
       presence: presence(reachable?(copy_ids), device, now)
     }

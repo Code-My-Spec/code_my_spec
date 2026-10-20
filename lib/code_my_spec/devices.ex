@@ -51,7 +51,6 @@ defmodule CodeMySpec.Devices do
 
   alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Accounts.Member
-  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -178,20 +177,20 @@ defmodule CodeMySpec.Devices do
   Owners and admins only: `{:error, :forbidden}` for anyone else, checked here and
   not left to the page that offers the button. The token is minted here, shown
   once by the caller, and only its hash is kept. A box is announced `kind` by its
-  provider, since the provider is what knows what it runs on.
+  provider (a `Workspaces.Runner`, resolved by the caller: Workspaces sits above
+  Devices), since the provider is what knows what it runs on.
   """
-  @spec add_dev_box(Scope.t(), map()) ::
+  @spec add_dev_box(Scope.t(), map(), module() | nil) ::
           {:ok, Device.t(), String.t()}
           | {:error, :forbidden | :unknown_provider | Ecto.Changeset.t()}
-  def add_dev_box(%Scope{active_account_id: account_id} = scope, params)
+  def add_dev_box(%Scope{active_account_id: account_id} = scope, params, provider)
       when is_binary(account_id) do
     with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
-         provider when not is_nil(provider) <-
-           Provider.get(params["provider"] || params[:provider]) do
+         {:ok, provider} <- known_provider(provider) do
       token = mint_token()
 
       attrs = %{
-        label: String.trim(to_string(params["name"] || params[:name] || "")),
+        label: String.trim(to_string(params["name"] || "")),
         provider: provider.id(),
         kind: provider.kind(),
         account_id: account_id,
@@ -204,11 +203,14 @@ defmodule CodeMySpec.Devices do
       end
     else
       false -> {:error, :forbidden}
-      nil -> {:error, :unknown_provider}
+      :unknown -> {:error, :unknown_provider}
     end
   end
 
-  def add_dev_box(%Scope{}, _params), do: {:error, :forbidden}
+  def add_dev_box(%Scope{}, _params, _provider), do: {:error, :forbidden}
+
+  defp known_provider(nil), do: :unknown
+  defp known_provider(provider), do: {:ok, provider}
 
   defp mint_token, do: "cbt_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
 
