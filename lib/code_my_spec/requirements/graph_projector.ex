@@ -78,6 +78,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # layout collapses into a thin line at default zoom.
   @row_gap 2000
   @node_scale 0.6
+  @holding_gap 120
   @story_col_gap 500
   @story_row_gap 1400
   @ctx_req_gap 1000
@@ -401,27 +402,50 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
       |> MapSet.new(& &1.key)
 
-    # A component nothing in the plan reaches has no context here — it is a
-    # file the scan found, not a step in the project — so it is left out
-    # rather than drawn floating beside the graph.
+    # A component nothing in the plan reaches has no place in it — a file the
+    # scan found, not a step in the project — so it waits in a holding area
+    # off to the side, drawn faint and unlinked, rather than floating among
+    # the steps.
     reachable_keys = bfs_reachable(project_keys, sigma_edges)
-
-    nodes =
-      all_sigma
-      |> mark_orphan_references(reachable_keys)
-      |> Enum.reject(& &1.attributes.orphan_reference)
-
-    kept = MapSet.new(nodes, & &1.key)
+    nodes = mark_orphan_references(all_sigma, reachable_keys)
+    {placed, held} = Enum.split_with(nodes, &(not &1.attributes.orphan_reference))
+    in_plan = MapSet.new(placed, & &1.key)
 
     %{
-      nodes: nodes,
+      nodes: placed ++ holding_area(held, placed),
       edges:
         Enum.filter(
           sigma_edges,
-          &(MapSet.member?(kept, &1.source) and MapSet.member?(kept, &1.target))
+          &(MapSet.member?(in_plan, &1.source) and MapSet.member?(in_plan, &1.target))
         ),
       edge_alpha: 0.12
     }
+  end
+
+  # The unplanned components as a square-ish grid to the right of everything
+  # in the plan, top-aligned with it.
+  defp holding_area([], _placed), do: []
+
+  defp holding_area(held, placed) do
+    xs = Enum.map(placed, & &1.attributes.x)
+    ys = Enum.map(placed, & &1.attributes.y)
+    left = Enum.max(xs, fn -> 0 end) + @row_gap
+    top = Enum.max(ys, fn -> 0 end)
+    columns = held |> length() |> :math.sqrt() |> ceil()
+
+    held
+    |> Enum.sort_by(& &1.attributes.label)
+    |> Enum.with_index()
+    |> Enum.map(fn {node, i} ->
+      attrs =
+        Map.merge(node.attributes, %{
+          x: left + rem(i, columns) * @holding_gap,
+          y: top - div(i, columns) * @holding_gap,
+          status: "unplanned"
+        })
+
+      %{node | attributes: attrs}
+    end)
   end
 
   # Overwrite the y coordinate of every component sigma node using the node's

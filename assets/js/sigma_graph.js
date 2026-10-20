@@ -95,6 +95,7 @@ export function statusColor(status, t) {
     case "satisfied": return t.success
     case "actionable": return t.warning
     case "blocked": return mix(t.base100, t.baseContent, 0.35)
+    case "unplanned": return mix(t.base100, t.baseContent, 0.15)
     default: return null
   }
 }
@@ -237,7 +238,18 @@ export const SigmaGraph = {
     const container = this.el
     const SigmaClass = window.Sigma?.default || window.Sigma
     this.sigma = new SigmaClass(graph, container, {
-      renderLabels: true,
+      // No labels: at this density any label is part of a smear. A node's
+      // name is on hover, and its detail in the page's pane when selected.
+      renderLabels: false,
+      hideEdgesOnMove: true,
+      // Sizes follow the zoom, so nodes keep their proportion to the space
+      // between them: small at fit-to-view, larger as you zoom in. Fixed pixel
+      // sizes are what piled them into blobs when zoomed out.
+      nodeReducer: (node, attrs) => {
+        const ratio = this.sigma ? this.sigma.getCamera().getState().ratio : 1
+        const size = attrs.size / Math.max(ratio, 0.25)
+        return { ...attrs, size: Math.min(Math.max(size, 1.5), attrs.size * 4) }
+      },
       labelColor: { color: t.baseContent },
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: 11,

@@ -107,6 +107,9 @@ defmodule CodeMySpecWeb.RequirementGraphComponents do
       <span class="flex items-center gap-1.5">
         <span class="size-2.5 rounded-full bg-base-content/35"></span> Waiting
       </span>
+      <span class="flex items-center gap-1.5">
+        <span class="size-2.5 rounded-full bg-base-content/15"></span> Not in the plan
+      </span>
     </div>
     """
   end
