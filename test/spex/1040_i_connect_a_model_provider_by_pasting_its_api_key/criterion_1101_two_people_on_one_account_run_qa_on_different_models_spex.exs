@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3026Spex do
       given_ "Sam has Z.ai connected and QA pointed at it", context do
         Fixtures.connect_provider(context.scope, "zai")
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         view
         |> form("[data-test='agent-models-form']", %{
@@ -43,13 +43,12 @@ defmodule CodeMySpecSpex.Story1040.Criterion3026Spex do
         Fixtures.select_active_account(contractor_scope, context.account.id)
         Fixtures.connect_provider(contractor_scope, "openai")
 
-        {:ok,
-         Map.put(context, :contractor_conn, log_in_user(build_conn(), contractor))}
+        {:ok, Map.put(context, :contractor_conn, log_in_user(build_conn(), contractor))}
       end
 
       when_ "the contractor opens the agent models page", context do
         {:ok, view, _html} =
-          live(context.contractor_conn, ~p"/app/accounts/#{context.account.id}/agents")
+          live(context.contractor_conn, ~p"/app/agent-models")
 
         {:ok, Map.put(context, :contractor_view, view)}
       end
@@ -67,7 +66,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3026Spex do
       end
 
       then_ "and Sam's own choice is unchanged", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         assert view |> element("[data-test='agent-type-qa']") |> render() =~ "glm-cheap"
 

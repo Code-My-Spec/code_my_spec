@@ -10,149 +10,157 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <.header>
-      {@issue.title}
-      <:subtitle>
-        <div class="flex items-center gap-2 mt-1">
-          <.badge color={severity_color(@issue.severity)}>{@issue.severity}</.badge>
-          <.badge color={status_color(@issue.status)}>{@issue.status}</.badge>
-          <span :if={@issue.scope != :app} class="badge badge-sm badge-outline">{@issue.scope}</span>
-        </div>
-      </:subtitle>
-      <:actions>
-        <.button navigate={path(@socket, ~p"/app/projects/#{@project.id}/issues")}>
-          <.icon name="hero-arrow-left" />
-        </.button>
-      </:actions>
-    </.header>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <.header>
+        {@issue.title}
+        <:subtitle>
+          <div class="flex items-center gap-2 mt-1">
+            <.badge color={severity_color(@issue.severity)}>{@issue.severity}</.badge>
+            <.badge color={status_color(@issue.status)}>{@issue.status}</.badge>
+            <span :if={@issue.scope != :app} class="badge badge-sm badge-outline">{@issue.scope}</span>
+          </div>
+        </:subtitle>
+        <:actions>
+          <.button navigate={~p"/app/projects/#{@project.id}/issues"}>
+            <.icon name="hero-arrow-left" />
+          </.button>
+        </:actions>
+      </.header>
 
-    <.list>
-      <:item title="Description">
-        <p class="whitespace-pre-wrap">{@issue.description}</p>
-      </:item>
-      <:item :if={has_screenshot?(@issue) and @serves_attachments?} title="Screenshot">
-        <a
-          href={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
-          target="_blank"
-          rel="noopener"
+      <.list>
+        <:item title="Description">
+          <p class="whitespace-pre-wrap">{@issue.description}</p>
+        </:item>
+        <:item :if={has_screenshot?(@issue)} title="Screenshot">
+          <a
+            href={~p"/app/issues/#{@issue.id}/screenshot"}
+            target="_blank"
+            rel="noopener"
+          >
+            <img
+              src={~p"/app/issues/#{@issue.id}/screenshot"}
+              alt="Reported screenshot"
+              class="max-h-96 rounded border border-base-300"
+            />
+          </a>
+        </:item>
+        <:item :if={@story} title="Story">
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/stories/#{@story.number}"}
+            class="link link-hover"
+          >
+            Story {@story.number} — {@story.title}
+          </.link>
+        </:item>
+        <:item :if={@issue.source_path} title="Source path">
+          <code class="text-sm">{@issue.source_path}</code>
+        </:item>
+        <:item :if={@issue.resolution} title="Resolution">
+          <p class="whitespace-pre-wrap">{@issue.resolution}</p>
+        </:item>
+        <:item :if={@issue.assigned_working_copy_id} title="Assigned to">
+          <span data-test="assigned-working-copy">
+            {assigned_copy_name(@issue, @working_copies)}
+          </span>
+        </:item>
+        <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
+      </.list>
+
+      <div :if={available_actions(@issue) != []} class="mt-8">
+        <h3 class="text-lg font-semibold mb-4">Actions</h3>
+        <div class="flex gap-2">
+          <button
+            :if={:accept in available_actions(@issue)}
+            phx-click="accept"
+            class="btn btn-sm btn-primary"
+          >
+            Accept
+          </button>
+          <button
+            :if={:dismiss in available_actions(@issue)}
+            phx-click="show_dismiss_form"
+            class="btn btn-sm btn-ghost"
+          >
+            Dismiss
+          </button>
+          <button
+            :if={:resolve in available_actions(@issue)}
+            phx-click="show_resolve_form"
+            class="btn btn-sm btn-success"
+          >
+            Resolve
+          </button>
+        </div>
+
+        <form
+          :if={:assign in available_actions(@issue)}
+          phx-submit="assign_to_working_copy"
+          data-test="issue-assignment-form"
+          class="mt-4 flex items-end gap-2"
         >
-          <img
-            src={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
-            alt="Reported screenshot"
-            class="max-h-96 rounded border border-base-300"
+          <.input
+            type="select"
+            name="working_copy_id"
+            label="Assign to working copy"
+            prompt="Choose a working copy"
+            value=""
+            options={Enum.map(@working_copies, &{WorkingCopies.display_name(&1), &1.id})}
           />
-        </a>
-      </:item>
-      <:item :if={@story} title="Story">
-        <.link
-          navigate={path(@socket, ~p"/app/projects/#{@project.id}/stories/#{@story.number}")}
-          class="link link-hover"
-        >
-          Story {@story.number} — {@story.title}
-        </.link>
-      </:item>
-      <:item :if={@issue.source_path} title="Source path">
-        <code class="text-sm">{@issue.source_path}</code>
-      </:item>
-      <:item :if={@issue.resolution} title="Resolution">
-        <p class="whitespace-pre-wrap">{@issue.resolution}</p>
-      </:item>
-      <:item :if={@issue.assigned_working_copy_id} title="Assigned to">
-        <span data-test="assigned-working-copy">
-          {assigned_copy_name(@issue, @working_copies)}
-        </span>
-      </:item>
-      <:item title="Created">{Calendar.strftime(@issue.inserted_at, "%b %d, %Y %H:%M")}</:item>
-    </.list>
+          <button type="submit" class="btn btn-sm btn-primary">Assign</button>
+        </form>
 
-    <div :if={available_actions(@issue) != []} class="mt-8">
-      <h3 class="text-lg font-semibold mb-4">Actions</h3>
-      <div class="flex gap-2">
         <button
-          :if={:accept in available_actions(@issue)}
-          phx-click="accept"
-          class="btn btn-sm btn-primary"
+          :if={@issue.status == :accepted and @issue.assigned_working_copy_id != nil}
+          phx-click="unassign_from_working_copy"
+          data-test="unassign-issue-from-working-copy"
+          class="btn btn-sm btn-ghost mt-4"
         >
-          Accept
+          Remove from working copy
         </button>
-        <button
-          :if={:dismiss in available_actions(@issue)}
-          phx-click="show_dismiss_form"
-          class="btn btn-sm btn-ghost"
+
+        <form
+          :if={@show_form == :dismiss}
+          phx-submit="dismiss"
+          class="mt-4 space-y-3"
         >
-          Dismiss
-        </button>
-        <button
-          :if={:resolve in available_actions(@issue)}
-          phx-click="show_resolve_form"
-          class="btn btn-sm btn-success"
+          <.input
+            type="textarea"
+            name="reason"
+            label="Dismissal reason"
+            value=""
+            required
+          />
+          <div class="flex gap-2">
+            <button type="submit" class="btn btn-sm btn-ghost">Dismiss issue</button>
+            <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
+          </div>
+        </form>
+
+        <form
+          :if={@show_form == :resolve}
+          phx-submit="resolve"
+          class="mt-4 space-y-3"
         >
-          Resolve
-        </button>
+          <.input
+            type="textarea"
+            name="resolution"
+            label="Resolution"
+            value=""
+            required
+          />
+          <div class="flex gap-2">
+            <button type="submit" class="btn btn-sm btn-success">Resolve issue</button>
+            <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
+          </div>
+        </form>
       </div>
-
-      <form
-        :if={:assign in available_actions(@issue)}
-        phx-submit="assign_to_working_copy"
-        data-test="issue-assignment-form"
-        class="mt-4 flex items-end gap-2"
-      >
-        <.input
-          type="select"
-          name="working_copy_id"
-          label="Assign to working copy"
-          prompt="Choose a working copy"
-          value=""
-          options={Enum.map(@working_copies, &{WorkingCopies.display_name(&1), &1.id})}
-        />
-        <button type="submit" class="btn btn-sm btn-primary">Assign</button>
-      </form>
-
-      <button
-        :if={@issue.status == :accepted and @issue.assigned_working_copy_id != nil}
-        phx-click="unassign_from_working_copy"
-        data-test="unassign-issue-from-working-copy"
-        class="btn btn-sm btn-ghost mt-4"
-      >
-        Remove from working copy
-      </button>
-
-      <form
-        :if={@show_form == :dismiss}
-        phx-submit="dismiss"
-        class="mt-4 space-y-3"
-      >
-        <.input
-          type="textarea"
-          name="reason"
-          label="Dismissal reason"
-          value=""
-          required
-        />
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-sm btn-ghost">Dismiss issue</button>
-          <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
-        </div>
-      </form>
-
-      <form
-        :if={@show_form == :resolve}
-        phx-submit="resolve"
-        class="mt-4 space-y-3"
-      >
-        <.input
-          type="textarea"
-          name="resolution"
-          label="Resolution"
-          value=""
-          required
-        />
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-sm btn-success">Resolve issue</button>
-          <button type="button" phx-click="hide_form" class="btn btn-sm btn-outline">Cancel</button>
-        </div>
-      </form>
-    </div>
+    </Layouts.app>
     """
   end
 

@@ -82,12 +82,25 @@ function toOption(data) {
     index === 0 ? { ...axis, position: "left", offset: 0 } : axis
   )
 
+  // A compact chart asks for no legend and a tight frame.
+  const compact = data.compact === true
+
   return {
     tooltip: { trigger: "axis" },
-    legend: {},
-    grid: { left: 64, right: 24 + 56 * Math.max(axes.length - 1, 0) },
-    xAxis: { type: "category", data: categories },
-    yAxis: axes.map(({ key: _key, ...axis }) => ({ type: "value", ...axis })),
+    legend: compact ? { show: false } : {},
+    grid: compact
+      ? { left: 4, right: 4, top: 4, bottom: 4 }
+      : { left: 64, right: 24 + 56 * Math.max(axes.length - 1, 0) },
+    xAxis: {
+      type: "category",
+      data: categories,
+      ...(compact ? { axisLabel: { show: false }, axisTick: { show: false } } : {})
+    },
+    yAxis: axes.map(({ key: _key, ...axis }) => ({
+      type: "value",
+      ...axis,
+      ...(compact ? { name: "", axisLabel: { show: false }, splitLine: { show: false } } : {})
+    })),
     series: series.map((one, index) => {
       const placed = { ...one, yAxisIndex: axisIndex(axes, one.y_axis), ...tooltipFor(one) }
       const markLine = {

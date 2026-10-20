@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2303Spex do
   spex "A Local box says how to start its harness", criterion: 2303 do
     scenario "Sam has just added a Local box" do
       given_ "Sam has just added a Local box", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "laptop", "local")
         {:ok, Map.merge(context, %{live: live, token: shown_token(live)})}
       end

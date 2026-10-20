@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2298Spex do
   spex "A member who is not an owner or admin cannot add", criterion: 2298 do
     scenario "the member opens Dev boxes" do
       given_ "Sam's account has a dev box and a member who is not an owner or admin", context do
-        {:ok, owner_live, _html} = open_dev_boxes(context.conn)
+        {:ok, owner_live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(owner_live, "sams-box", "local")
 
         member = Fixtures.user_fixture()
@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2298Spex do
       end
 
       when_ "the member opens DevOps > Dev boxes", context do
-        {:ok, live, _html} = open_dev_boxes(context.member_conn)
+        {:ok, live, _html} = open_dev_boxes(context.member_conn, context.project)
         {:ok, Map.put(context, :live, live)}
       end
 
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2298Spex do
 
         refute render(context.live) =~ "sneaky"
 
-        {:ok, fresh, _html} = open_dev_boxes(context.member_conn)
+        {:ok, fresh, _html} = open_dev_boxes(context.member_conn, context.project)
         refute has_element?(fresh, "[data-test='dev-box'][data-box-name='sneaky']")
         {:ok, context}
       end

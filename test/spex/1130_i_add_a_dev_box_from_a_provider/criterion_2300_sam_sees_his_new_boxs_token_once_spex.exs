@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2300Spex do
   spex "A box's token is shown once", criterion: 2300 do
     scenario "Sam adds a box, leaves, and comes back" do
       given_ "Sam adds a box named cloud-1", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "cloud-1", "claude_code_cloud")
         {:ok, Map.merge(context, %{live: live, token: shown_token(live)})}
       end
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2300Spex do
       end
 
       when_ "he leaves the page and comes back", context do
-        {:ok, again, html} = open_dev_boxes(context.conn)
+        {:ok, again, html} = open_dev_boxes(context.conn, context.project)
         {:ok, Map.merge(context, %{again: again, html: html})}
       end
 

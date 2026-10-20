@@ -728,8 +728,8 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert {:error, {:live_redirect, %{to: "/app/projects", flash: %{"error" => error}}}} =
                live(conn, "/app/projects/does-not-exist/agent-conversation")
 
-      # `PortableHost` refuses this for every `/app/projects/:project_id/...`
-      # route now, so the wording is the host's rather than this view's — see
+      # `UserAuth.on_mount(:assign_project, ...)` refuses this for every
+      # `/app/projects/:project_id/...` route, so the wording is the hook's — see
       # `d500df3b`. Named as an account problem because the id is usually real.
       assert error =~ "not in the account you are in"
     end
@@ -1096,6 +1096,17 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='issue-bar']")
       assert has_element?(view, "[data-test='architecture-mark'][data-cycles]")
 
+      view |> element("[data-test='architecture-mark']") |> render_click()
+      assert has_element?(view, "[data-test='architecture-modal'] [data-test='boundary-summary']")
+
+      assert has_element?(
+               view,
+               "[data-test='architecture-modal'] #architecture-modal-graph[data-graph]"
+             )
+
+      view |> element("[data-test='architecture-modal'] .modal-backdrop") |> render_click()
+      refute has_element?(view, "[data-test='architecture-modal']")
+
       assert has_element?(
                view,
                "[data-test='story-counts'][data-done][data-backlog][data-retired]"
@@ -1122,11 +1133,12 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              )
     end
 
-    test "a story's column opens its graph with a slider through the chart's stories", %{
-      conn: conn,
-      scope: scope,
-      project: project
-    } do
+    test "a story's column opens its graph, the stories count its text, and a switch flips them",
+         %{
+           conn: conn,
+           scope: scope,
+           project: project
+         } do
       project_scope = %{scope | active_project_id: project.id, active_project: project}
 
       [first, second] =
@@ -1145,12 +1157,43 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       view |> element("[data-test='story-column'][data-story-id='#{first.id}']") |> render_click()
 
+      # The column opens its graph; the switch flips to its text and back.
+      assert has_element?(view, "[data-test='story-graph-modal']", first.title)
+
+      view
+      |> element("[data-test='story-graph-modal'] [data-test='story-view-text']")
+      |> render_click()
+
+      refute has_element?(view, "[data-test='story-graph-modal']")
+      assert has_element?(view, "[data-test='assigned-modal-story']", first.title)
+      assert has_element?(view, "[data-test='chart-story-slider'] input[type='range'][max='1']")
+      view |> element("#chart-story-slider") |> render_change(%{"index" => "1"})
+      assert has_element?(view, "[data-test='assigned-modal-story']", second.title)
+
+      view
+      |> element("[data-test='assigned-modal-story'] [data-test='story-view-graph']")
+      |> render_click()
+
+      refute has_element?(view, "[data-test='assigned-modal-story']")
+      assert has_element?(view, "[data-test='story-graph-modal']", second.title)
+      render_click(view, "close_story_graph", %{})
+
+      # The stories count opens the text, from the chart's first story.
+      view |> element("[data-test='story-counts']") |> render_click()
+      assert has_element?(view, "[data-test='assigned-modal-story']", first.title)
+
+      render_click(view, "close_assigned", %{})
+      view |> element("[data-test='story-column'][data-story-id='#{first.id}']") |> render_click()
       assert has_element?(view, "[data-test='story-graph-modal']", first.title)
       assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
 
       # The graph arriving renders the stage drawn, not loading.
       render_async(view)
       refute has_element?(view, "[data-test='story-graph-loading-empty']")
+
+      # A phone's canvas with no size yet reports its viewport as nulls.
+      render_hook(view, "lf:viewport_change", %{"x" => nil, "y" => nil, "zoom" => nil})
+      assert has_element?(view, "[data-test='story-graph-modal']")
 
       # Equal progress orders the two by number, so the second is at 1.
       assert has_element?(view, "[data-test='story-graph-slider'] input[value='0']")
@@ -1159,6 +1202,142 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='story-graph-modal']", second.title)
       render_async(view)
       refute has_element?(view, "[data-test='story-graph-loading']")
+    end
+
+    test "the issue counts open the open issues, and one opens in place with the way back", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      issue =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Card form 500s",
+          severity: :high
+        })
+
+      _low =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Typo in footer",
+          severity: :low
+        })
+
+      critical =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Data loss on save",
+          severity: :critical,
+          scope: :qa
+        })
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      view |> element("[data-test='issue-bar']") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-test='issues-modal'] [data-test='issue-row']",
+               "Card form 500s"
+             )
+
+      # Worst first, whatever its scope.
+      html = view |> element("[data-test='issues-modal']") |> render()
+      [first_row | _] = Regex.scan(~r/data-issue-id="([^"]+)"/, html, capture: :all_but_first)
+      assert first_row == [critical.id]
+
+      refute has_element?(view, "[data-test='issues-modal']", "Typo in footer")
+
+      # The compact chart: no controls.
+      assert has_element?(view, "[data-test='issues-modal'] [data-test='issues-over-time']")
+      refute has_element?(view, "[data-test='issues-modal'] [data-test='issues-range']")
+
+      view |> element("[data-test='issue-row'][data-issue-id='#{issue.id}']") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-test='issues-modal'] [data-test='issue-detail']",
+               "Card form 500s"
+             )
+
+      view |> element("[data-test='issues-modal-back']") |> render_click()
+      assert has_element?(view, "[data-test='issues-modal'] [data-test='issue-row']")
+    end
+
+    test "the QA counts open each story's latest attempt worst first, and one in place", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      [passing, failing] =
+        for {title, status} <- [{"Pay by card", :pass}, {"Refund a payment", :fail}] do
+          story = CodeMySpec.StoriesFixtures.story_fixture(project_scope, %{title: title})
+
+          CodeMySpec.Repo.insert!(%CodeMySpec.Qa.QaAttempt{
+            story_id: story.id,
+            status: status,
+            scenarios: [
+              %CodeMySpec.Qa.Scenario{name: "#{title} works", status: status, observation: "seen"}
+            ],
+            issue_ids: [],
+            submitted_at: DateTime.utc_now()
+          })
+        end
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='qa-counts'][data-pass='1'][data-partial='0'][data-fail='1']"
+             )
+
+      view |> element("[data-test='qa-counts']") |> render_click()
+      html = view |> element("[data-test='qa-modal']") |> render()
+      [first | _] = Regex.scan(~r/data-attempt-id="([^"]+)"/, html, capture: :all_but_first)
+      assert first == [to_string(failing.id)]
+      assert has_element?(view, "[data-test='qa-modal'] [data-test='qa-over-time']")
+
+      view |> element("[data-test='qa-row'][data-attempt-id='#{passing.id}']") |> render_click()
+      assert has_element?(view, "[data-test='qa-detail']", "Pay by card works")
+
+      view |> element("[data-test='qa-modal-back']") |> render_click()
+      assert has_element?(view, "[data-test='qa-modal'] [data-test='qa-row']")
+    end
+
+    test "the week's numbers open the activity chart", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      project_scope = %{scope | active_project_id: project.id, active_project: project}
+
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} = CodeMySpec.Staffing.designate_main(project_scope, agent.working_copy_id)
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(
+               view,
+               "[data-test='activity-counts'][data-tokens][data-shipped][data-messages]"
+             )
+
+      view |> element("[data-test='activity-counts']") |> render_click()
+      assert has_element?(view, "[data-test='activity-modal']")
+      render_async(view)
+      assert has_element?(view, "[data-test='activity-modal'] [data-test='activity-chart']")
     end
 
     test "a main-role agent on another copy does not", %{

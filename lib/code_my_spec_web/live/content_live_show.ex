@@ -6,6 +6,8 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   """
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
@@ -21,10 +23,11 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{current_scope: %{} = scope}} = socket) do
     # row may be nil (unknown / non-integer id) — the view renders a
     # not-found state rather than crashing.
-    {:noreply, assign(socket, current_scope: scope, row: ContentPublishing.get_snapshot(scope, id))}
+    {:noreply,
+     assign(socket, current_scope: scope, row: ContentPublishing.get_snapshot(scope, id))}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -32,54 +35,79 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={!@row && @slug} class="p-6" data-test="content-not-found">
-        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
-          ← Back to Content
-        </.link>
-        <p class="mt-4 text-base-content/60">Content not found.</p>
-      </div>
-
-      <div :if={@row}>
-        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
-          ← Back to Content
-        </.link>
-
-        <div class="flex items-center gap-3 mt-4 mb-4">
-          <h1 class="text-3xl font-bold">{title(@row)}</h1>
-          <span class="badge badge-ghost">{content_type(@row)}</span>
-          <span class={["badge", status_class(@row.parse_status)]}>{to_string(@row.parse_status)}</span>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <Operations.frame
+        project_id={@project && @project.id}
+        active={:content}
+        current_scope={@current_scope}
+      >
+        <div :if={!@row && @project.id} class="p-6" data-test="content-not-found">
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/content"}
+            class="link link-primary text-sm"
+          >
+            ← Back to Content
+          </.link>
+          <p class="mt-4 text-base-content/60">Content not found.</p>
         </div>
 
-        <div class="grid grid-cols-2 gap-3 mb-6 p-4 bg-base-200 rounded-box text-sm">
-          <div><span class="font-semibold">Slug:</span> <span class="ml-2 font-mono">{slug(@row)}</span></div>
-          <div><span class="font-semibold">Type:</span> <span class="ml-2">{content_type(@row)}</span></div>
-          <div>
-            <span class="font-semibold">Published:</span>
-            <span class="ml-2 font-mono">{@row.metadata["publish_at"] || "—"}</span>
+        <div :if={@row}>
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/content"}
+            class="link link-primary text-sm"
+          >
+            ← Back to Content
+          </.link>
+
+          <div class="flex items-center gap-3 mt-4 mb-4">
+            <h1 class="text-3xl font-bold">{title(@row)}</h1>
+            <span class="badge badge-ghost">{content_type(@row)}</span>
+            <span class={["badge", status_class(@row.parse_status)]}>{to_string(@row.parse_status)}</span>
           </div>
-          <div>
-            <span class="font-semibold">Expires:</span>
-            <span class="ml-2 font-mono">{@row.metadata["expires_at"] || "never"}</span>
+
+          <div class="grid grid-cols-2 gap-3 mb-6 p-4 bg-base-200 rounded-box text-sm">
+            <div>
+              <span class="font-semibold">Slug:</span>
+              <span class="ml-2 font-mono">{slug(@row)}</span>
+            </div>
+            <div>
+              <span class="font-semibold">Type:</span> <span class="ml-2">{content_type(@row)}</span>
+            </div>
+            <div>
+              <span class="font-semibold">Published:</span>
+              <span class="ml-2 font-mono">{@row.metadata["publish_at"] || "—"}</span>
+            </div>
+            <div>
+              <span class="font-semibold">Expires:</span>
+              <span class="ml-2 font-mono">{@row.metadata["expires_at"] || "never"}</span>
+            </div>
+          </div>
+
+          <div
+            :if={@row.parse_status == :error}
+            role="alert"
+            class="alert alert-error alert-soft mb-6"
+            data-test={"content-parse-error-#{filename(@row)}"}
+          >
+            <pre class="text-xs whitespace-pre-wrap">{format_errors(@row.parse_errors)}</pre>
+          </div>
+
+          <div
+            :if={@row.processed_content}
+            class="prose prose-sm max-w-none border border-base-300 rounded-box p-6 bg-base-100"
+            data-test={"processed-content-#{slug(@row)}"}
+          >
+            {raw(@row.processed_content)}
           </div>
         </div>
-
-        <div
-          :if={@row.parse_status == :error}
-          role="alert"
-          class="alert alert-error alert-soft mb-6"
-          data-test={"content-parse-error-#{filename(@row)}"}
-        >
-          <pre class="text-xs whitespace-pre-wrap">{format_errors(@row.parse_errors)}</pre>
-        </div>
-
-        <div
-          :if={@row.processed_content}
-          class="prose prose-sm max-w-none border border-base-300 rounded-box p-6 bg-base-100"
-          data-test={"processed-content-#{slug(@row)}"}
-        >
-          {raw(@row.processed_content)}
-        </div>
-      </div>
+      </Operations.frame>
+    </Layouts.app>
     """
   end
 end

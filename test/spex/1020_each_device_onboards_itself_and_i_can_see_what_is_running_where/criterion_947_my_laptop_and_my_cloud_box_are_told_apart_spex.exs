@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2842Spex do
       end
 
       when_ "I look at my devices", context do
-        {:ok, live, html} = live(context.conn, "/app/devices")
+        {:ok, live, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end

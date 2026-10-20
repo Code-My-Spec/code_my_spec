@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3028Spex do
         Fixtures.connect_provider(context.scope, "zai")
         Fixtures.connect_provider(context.scope, "openai")
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         view
         |> form("[data-test='agent-models-form']", %{
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3028Spex do
       end
 
       then_ "and QA runs on what is left, without being set again", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         rendered = view |> element("[data-test='agent-type-qa']") |> render()
 

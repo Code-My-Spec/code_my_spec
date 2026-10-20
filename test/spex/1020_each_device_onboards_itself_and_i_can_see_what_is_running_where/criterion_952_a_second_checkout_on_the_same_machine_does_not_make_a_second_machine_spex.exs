@@ -43,7 +43,9 @@ defmodule CodeMySpecSpex.Story1020.Criterion2847Spex do
         first =
           join_working_copy(context, "/tmp/spex-1020-first", "first checkout", device_id: id)
 
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
+
         rows = live |> element("[data-test='devices']") |> render()
         before = rows |> String.split("data-test=\"device\"") |> length() |> Kernel.-(1)
 
@@ -60,7 +62,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2847Spex do
             device_id: context.device_id
           )
 
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         {:ok, context |> Map.put(:second, second) |> Map.put(:live, live)}
       end

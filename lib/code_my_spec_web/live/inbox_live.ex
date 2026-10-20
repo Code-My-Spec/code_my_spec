@@ -12,6 +12,8 @@ defmodule CodeMySpecWeb.InboxLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Conversations.Reads
@@ -202,117 +204,125 @@ defmodule CodeMySpecWeb.InboxLive do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div class="mx-auto w-full max-w-4xl">
-        <header class="flex items-center justify-between gap-3 pb-4">
-          <div class="flex items-center gap-2">
-            <h1 class="text-2xl font-semibold">Chats</h1>
-            <span
-              :if={@unread_count > 0}
-              data-test="unread-count"
-              class="badge badge-primary badge-sm"
-            >
-              {@unread_count} unread
-            </span>
-          </div>
-
-          <details class="relative z-50" data-test="new-chat-menu">
-            <summary class="btn btn-primary btn-sm list-none [&::-webkit-details-marker]:hidden">
-              <.icon name="hero-plus" class="size-4" /> New chat
-            </summary>
-            <div class="absolute right-0 top-full z-50 mt-1 w-80 rounded-box bg-base-200 p-3 shadow">
-              <form
-                phx-submit="start_conversation"
-                data-test="new-conversation-form"
-                class="flex flex-col gap-2"
+      <Operations.frame
+        project_id={assigns[:project] && @project.id}
+        active={:chats}
+        current_scope={@current_scope}
+      >
+        <div class="mx-auto w-full max-w-4xl">
+          <header class="flex items-center justify-between gap-3 pb-4">
+            <div class="flex items-center gap-2">
+              <h1 class="text-2xl font-semibold">Chats</h1>
+              <span
+                :if={@unread_count > 0}
+                data-test="unread-count"
+                class="badge badge-primary badge-sm"
               >
-                <input
-                  type="email"
-                  name="conversation[email]"
-                  placeholder="user@example.com"
-                  class="input input-bordered input-sm"
-                />
-                <input
-                  type="text"
-                  name="conversation[body]"
-                  placeholder="Message"
-                  class="input input-bordered input-sm"
-                />
-                <button type="submit" class="btn btn-primary btn-sm">Start chat</button>
-              </form>
+                {@unread_count} unread
+              </span>
             </div>
-          </details>
-        </header>
 
-        <div class="overflow-x-auto">
-          <table class="table" data-test="conversations">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Status</th>
-                <th class="hidden sm:table-cell">Last message</th>
-                <th class="hidden sm:table-cell">Last active</th>
-                <th><span class="sr-only">Read</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr :if={@conversations == []} data-test="conversations-empty">
-                <td colspan="5" class="text-center opacity-60">No conversations yet</td>
-              </tr>
-              <tr
-                :for={conversation <- @conversations}
-                data-test="conversation"
-                data-kind={conversation.type}
-                data-unread={to_string(Reads.unread?(@reads, conversation.id))}
-                phx-click="open_conversation"
-                phx-value-id={conversation.id}
-                class={["cursor-pointer hover", conversation.status == :closed && "opacity-50"]}
-              >
-                <td
-                  data-test="conversation-user"
-                  class={[
-                    "break-all",
-                    if(Reads.unread?(@reads, conversation.id), do: "font-bold", else: "font-medium")
-                  ]}
+            <details class="relative" data-test="new-chat-menu">
+              <summary class="btn btn-primary btn-sm list-none [&::-webkit-details-marker]:hidden">
+                <.icon name="hero-plus" class="size-4" /> New chat
+              </summary>
+              <div class="absolute right-0 top-full z-10 mt-1 w-80 rounded-box bg-base-200 p-3 shadow">
+                <form
+                  phx-submit="start_conversation"
+                  data-test="new-conversation-form"
+                  class="flex flex-col gap-2"
                 >
-                  <span
-                    :if={Reads.unread?(@reads, conversation.id)}
-                    data-test="unread-dot"
-                    class="mr-1.5 inline-block size-2 rounded-full bg-primary align-middle"
-                  >
-                  </span>
-                  {conversation_title(conversation)}
-                  <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">
-                    Closed
-                  </span>
-                </td>
-                <td>
-                  <span
-                    data-test={"presence-#{conversation.end_user_id}"}
+                  <input
+                    type="email"
+                    name="conversation[email]"
+                    placeholder="user@example.com"
+                    class="input input-bordered input-sm"
+                  />
+                  <input
+                    type="text"
+                    name="conversation[body]"
+                    placeholder="Message"
+                    class="input input-bordered input-sm"
+                  />
+                  <button type="submit" class="btn btn-primary btn-sm">Start chat</button>
+                </form>
+              </div>
+            </details>
+          </header>
+
+          <div class="overflow-x-auto">
+            <table class="table" data-test="conversations">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Status</th>
+                  <th class="hidden sm:table-cell">Last message</th>
+                  <th class="hidden sm:table-cell">Last active</th>
+                  <th><span class="sr-only">Read</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :if={@conversations == []} data-test="conversations-empty">
+                  <td colspan="5" class="text-center opacity-60">No conversations yet</td>
+                </tr>
+                <tr
+                  :for={conversation <- @conversations}
+                  data-test="conversation"
+                  data-kind={conversation.type}
+                  data-unread={to_string(Reads.unread?(@reads, conversation.id))}
+                  phx-click="open_conversation"
+                  phx-value-id={conversation.id}
+                  class={["cursor-pointer hover", conversation.status == :closed && "opacity-50"]}
+                >
+                  <td
+                    data-test="conversation-user"
                     class={[
-                      "badge badge-sm",
-                      if(online?(conversation, @online), do: "badge-success", else: "badge-ghost")
+                      "break-all",
+                      if(Reads.unread?(@reads, conversation.id), do: "font-bold", else: "font-medium")
                     ]}
                   >
-                    {presence_label(conversation, @online)}
-                  </span>
-                </td>
-                <td
-                  data-test="conversation-preview"
-                  class="hidden max-w-xs truncate opacity-70 sm:table-cell"
-                >
-                  {preview(conversation)}
-                </td>
-                <td class="hidden text-sm opacity-60 sm:table-cell">
-                  {Calendar.strftime(conversation.updated_at, "%Y-%m-%d %H:%M")}
-                </td>
-                <td class="w-px">
-                  <.read_toggle id={conversation.id} unread?={Reads.unread?(@reads, conversation.id)} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                    <span
+                      :if={Reads.unread?(@reads, conversation.id)}
+                      data-test="unread-dot"
+                      class="mr-1.5 inline-block size-2 rounded-full bg-primary align-middle"
+                    ></span>
+                    {conversation_title(conversation)}
+                    <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">
+                      Closed
+                    </span>
+                  </td>
+                  <td>
+                    <span
+                      data-test={"presence-#{conversation.end_user_id}"}
+                      class={[
+                        "badge badge-sm",
+                        if(online?(conversation, @online), do: "badge-success", else: "badge-ghost")
+                      ]}
+                    >
+                      {presence_label(conversation, @online)}
+                    </span>
+                  </td>
+                  <td
+                    data-test="conversation-preview"
+                    class="hidden max-w-xs truncate opacity-70 sm:table-cell"
+                  >
+                    {preview(conversation)}
+                  </td>
+                  <td class="hidden text-sm opacity-60 sm:table-cell">
+                    {Calendar.strftime(conversation.updated_at, "%Y-%m-%d %H:%M")}
+                  </td>
+                  <td class="w-px">
+                    <.read_toggle
+                      id={conversation.id}
+                      unread?={Reads.unread?(@reads, conversation.id)}
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </Operations.frame>
     </Layouts.app>
     """
   end
@@ -325,134 +335,140 @@ defmodule CodeMySpecWeb.InboxLive do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatScroll">
-        export default {
-          mounted() {
-            this.scroll();
-            this.observer = new MutationObserver(() => this.scroll());
-            this.observer.observe(this.el, { childList: true, subtree: true });
-          },
-          destroyed() { this.observer && this.observer.disconnect(); },
-          scroll() { this.el.scrollTop = this.el.scrollHeight; }
-        }
-      </script>
-
-      <div
-        data-test="chat"
-        data-chat-id={@conversation.id}
-        style="height: calc(100dvh - 7rem)"
-        class="mx-auto flex w-full max-w-3xl flex-col"
+      <Operations.frame
+        project_id={assigns[:project] && @project.id}
+        active={:chats}
+        current_scope={@current_scope}
       >
-        <header class="flex shrink-0 items-center justify-between gap-3 border-b border-base-300 pb-3">
-          <div class="flex min-w-0 items-center gap-2">
-            <.link
-              navigate={~p"/app/projects/#{@project.id}/inbox"}
-              data-test="back-to-chats"
-              class="btn btn-ghost btn-xs shrink-0"
-            >
-              <.icon name="hero-arrow-left" class="size-4" /> Chats
-            </.link>
-            <h1 class="truncate text-lg font-semibold">{conversation_title(@conversation)}</h1>
-          </div>
+        <script :type={Phoenix.LiveView.ColocatedHook} name=".ChatScroll">
+          export default {
+            mounted() {
+              this.scroll();
+              this.observer = new MutationObserver(() => this.scroll());
+              this.observer.observe(this.el, { childList: true, subtree: true });
+            },
+            destroyed() { this.observer && this.observer.disconnect(); },
+            scroll() { this.el.scrollTop = this.el.scrollHeight; }
+          }
+        </script>
 
-          <div class="flex shrink-0 items-center gap-2">
-            <span
-              data-test={"presence-#{@conversation.end_user_id}"}
-              class={[
-                "badge badge-sm",
-                if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")
-              ]}
-            >
-              {presence_label(@conversation, @online)}
-            </span>
-            <button
-              :if={@conversation.status == :open}
-              type="button"
-              phx-click="close_conversation"
-              data-test="close-conversation"
-              class="btn btn-ghost btn-xs gap-1"
-            >
-              <.icon name="hero-check" class="size-4" /> Close
-            </button>
-            <button
-              :if={@conversation.status == :closed}
-              type="button"
-              phx-click="reopen_conversation"
-              data-test="reopen-conversation"
-              class="btn btn-ghost btn-xs gap-1"
-            >
-              <.icon name="hero-arrow-path" class="size-4" /> Reopen
-            </button>
-          </div>
-        </header>
-
-        <div id="messages-scroll" phx-hook=".ChatScroll" class="min-h-0 flex-1 overflow-y-auto py-4">
-          <div data-test="thread" class="space-y-1">
-            <div class="flex justify-center">
-              <button
-                :if={@messages != []}
-                type="button"
-                phx-click="load_older"
-                data-test="chat-load-older"
-                class="btn btn-ghost btn-xs"
+        <div
+          data-test="chat"
+          data-chat-id={@conversation.id}
+          style="height: calc(100dvh - 7rem)"
+          class="mx-auto flex w-full max-w-3xl flex-col"
+        >
+          <header class="flex shrink-0 items-center justify-between gap-3 border-b border-base-300 pb-3">
+            <div class="flex min-w-0 items-center gap-2">
+              <.link
+                navigate={~p"/app/projects/#{@project.id}/inbox"}
+                data-test="back-to-chats"
+                class="btn btn-ghost btn-xs shrink-0"
               >
-                Load older messages
-              </button>
+                <.icon name="hero-arrow-left" class="size-4" /> Chats
+              </.link>
+              <h1 class="truncate text-lg font-semibold">{conversation_title(@conversation)}</h1>
             </div>
 
-            <ChatComponents.chat_message
-              :for={message <- @messages}
-              id={"message-#{message.id}"}
-              role={message.role}
-              own_role={:operator}
-              label={sender_label(message.role)}
-              sender_id={message.sender_id}
-              text={Message.text(message)}
-              inserted_at={message.inserted_at}
-            >
-              <:extra>
-                <div :for={{att, idx} <- Enum.with_index(Message.files(message))} class="mt-1">
-                  <a
-                    :if={image_attachment?(att)}
-                    href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
-                    target="_blank"
-                    rel="noopener"
-                  >
-                    <img
-                      src={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
-                      alt={att["filename"]}
-                      class="max-h-48 rounded"
-                    />
-                  </a>
-                  <a
-                    :if={not image_attachment?(att)}
-                    href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
-                    target="_blank"
-                    rel="noopener"
-                    class="inline-flex items-center gap-1 text-sm underline"
-                  >
-                    <.icon name="hero-paper-clip" class="size-4" /> {att["filename"]}
-                  </a>
-                </div>
-              </:extra>
-            </ChatComponents.chat_message>
+            <div class="flex shrink-0 items-center gap-2">
+              <span
+                data-test={"presence-#{@conversation.end_user_id}"}
+                class={[
+                  "badge badge-sm",
+                  if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")
+                ]}
+              >
+                {presence_label(@conversation, @online)}
+              </span>
+              <button
+                :if={@conversation.status == :open}
+                type="button"
+                phx-click="close_conversation"
+                data-test="close-conversation"
+                class="btn btn-ghost btn-xs gap-1"
+              >
+                <.icon name="hero-check" class="size-4" /> Close
+              </button>
+              <button
+                :if={@conversation.status == :closed}
+                type="button"
+                phx-click="reopen_conversation"
+                data-test="reopen-conversation"
+                class="btn btn-ghost btn-xs gap-1"
+              >
+                <.icon name="hero-arrow-path" class="size-4" /> Reopen
+              </button>
+            </div>
+          </header>
+
+          <div id="messages-scroll" phx-hook=".ChatScroll" class="min-h-0 flex-1 overflow-y-auto py-4">
+            <div data-test="thread" class="space-y-1">
+              <div class="flex justify-center">
+                <button
+                  :if={@messages != []}
+                  type="button"
+                  phx-click="load_older"
+                  data-test="chat-load-older"
+                  class="btn btn-ghost btn-xs"
+                >
+                  Load older messages
+                </button>
+              </div>
+
+              <ChatComponents.chat_message
+                :for={message <- @messages}
+                id={"message-#{message.id}"}
+                role={message.role}
+                own_role={:operator}
+                label={sender_label(message.role)}
+                sender_id={message.sender_id}
+                text={Message.text(message)}
+                inserted_at={message.inserted_at}
+              >
+                <:extra>
+                  <div :for={{att, idx} <- Enum.with_index(Message.files(message))} class="mt-1">
+                    <a
+                      :if={image_attachment?(att)}
+                      href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                      target="_blank"
+                      rel="noopener"
+                    >
+                      <img
+                        src={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                        alt={att["filename"]}
+                        class="max-h-48 rounded"
+                      />
+                    </a>
+                    <a
+                      :if={not image_attachment?(att)}
+                      href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
+                      target="_blank"
+                      rel="noopener"
+                      class="inline-flex items-center gap-1 text-sm underline"
+                    >
+                      <.icon name="hero-paper-clip" class="size-4" /> {att["filename"]}
+                    </a>
+                  </div>
+                </:extra>
+              </ChatComponents.chat_message>
+            </div>
+          </div>
+
+          <div class="shrink-0 border-t border-base-300 pt-3">
+            <form phx-submit="send_message" data-test="message-form" class="flex gap-2">
+              <input
+                type="text"
+                name="message[body]"
+                value=""
+                placeholder="Send a message"
+                autocomplete="off"
+                class="input input-bordered flex-1"
+              />
+              <button type="submit" class="btn btn-primary">Send</button>
+            </form>
           </div>
         </div>
-
-        <div class="shrink-0 border-t border-base-300 pt-3">
-          <form phx-submit="send_message" data-test="message-form" class="flex gap-2">
-            <input
-              type="text"
-              name="message[body]"
-              value=""
-              placeholder="Send a message"
-              autocomplete="off"
-              class="input input-bordered flex-1"
-            />
-            <button type="submit" class="btn btn-primary">Send</button>
-          </form>
-        </div>
-      </div>
+      </Operations.frame>
     </Layouts.app>
     """
   end

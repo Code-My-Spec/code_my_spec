@@ -41,8 +41,8 @@ defmodule CodeMySpecWeb.DeviceLive.PresenceIsTheConnectionTest do
     :ok
   end
 
-  defp row_for(conn, device_id) do
-    {:ok, live, _html} = live(conn, "/app/devices")
+  defp row_for(%{conn: conn, project: project}, device_id) do
+    {:ok, live, _html} = live(conn, "/app/projects/#{project.id}/console/dev-boxes")
 
     live
     |> element("[data-test='device'][data-device-id='#{device_id}']")
@@ -51,9 +51,7 @@ defmodule CodeMySpecWeb.DeviceLive.PresenceIsTheConnectionTest do
 
   defp backdate(device_id, seconds) do
     Repo.get!(Device, device_id)
-    |> Ecto.Changeset.change(
-      last_seen_at: DateTime.add(DateTime.utc_now(), -seconds, :second)
-    )
+    |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -seconds, :second))
     |> Repo.update!()
   end
 
@@ -63,7 +61,7 @@ defmodule CodeMySpecWeb.DeviceLive.PresenceIsTheConnectionTest do
 
     backdate(id, 3600)
 
-    row = row_for(context.conn, id)
+    row = row_for(context, id)
 
     assert row =~ ~r/present|online|connected/i,
            "a machine with a live connection read as stale because its timestamp was " <>
@@ -79,7 +77,7 @@ defmodule CodeMySpecWeb.DeviceLive.PresenceIsTheConnectionTest do
     # timestamp, no connection, and the honest answer is the fallback.
     backdate(id, 5)
 
-    row = row_for(context.conn, id)
+    row = row_for(context, id)
 
     refute row =~ ~r/\bpresent\b/i,
            "an unreachable machine read as present on the strength of a fresh " <>

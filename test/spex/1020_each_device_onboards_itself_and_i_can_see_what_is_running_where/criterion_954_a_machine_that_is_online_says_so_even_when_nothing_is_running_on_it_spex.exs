@@ -53,7 +53,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2849Spex do
       end
 
       when_ "I look at my devices", context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         row =
           live

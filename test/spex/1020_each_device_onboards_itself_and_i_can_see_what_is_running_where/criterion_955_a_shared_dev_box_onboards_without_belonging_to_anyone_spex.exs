@@ -46,7 +46,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2858Spex do
     scenario "A shared dev box onboards without belonging to anyone" do
       given_ "a shared development box running a harness, with no project checked out",
              context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         # By hostname, not by the list being empty. The account is not empty any
         # more — `working_copies.device_id` is required, so the fixture that
@@ -75,7 +76,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2858Spex do
       end
 
       then_ "and nothing forced it to claim a project to get one", context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         assert has_element?(
                  live,

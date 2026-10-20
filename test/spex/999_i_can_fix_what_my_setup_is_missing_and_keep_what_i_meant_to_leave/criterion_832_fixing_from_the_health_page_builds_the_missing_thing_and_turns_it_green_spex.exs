@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
   7965), which is what makes it safe to offer as a fix: it converges on what is
   missing rather than rebuilding what is not.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -28,7 +28,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
   setup :devops_on
   setup :connect_providers
 
-  spex "Fixing from the health page builds the missing thing and turns it green", criterion: 832 do
+  spex "Fixing from the health page builds the missing thing and turns it green",
+    criterion: 832 do
     scenario "the missing bucket is built without leaving the page" do
       given_ "a project whose setup stopped before storage, so it has no bucket", context do
         recorder = Fixtures.call_recorder()
@@ -68,7 +69,9 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
         context =
           stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
+
         html = render_async(view, 5_000)
 
         assert html

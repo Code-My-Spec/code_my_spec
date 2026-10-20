@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3005Spex do
       end
 
       given_ "QA is set to a cheap model and coding to an expensive one", context do
-        {:ok, view, _html} = live(context.conn, "/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, "/app/agent-models")
 
         view
         |> form("[data-test='agent-models-form']", %{
@@ -62,5 +62,4 @@ defmodule CodeMySpecSpex.Story1039.Criterion3005Spex do
       end
     end
   end
-
 end

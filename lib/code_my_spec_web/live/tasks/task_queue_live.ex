@@ -38,7 +38,11 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+  def handle_params(
+        _params,
+        _uri,
+        %{assigns: %{current_scope: %{} = scope, project: project}} = socket
+      ) do
     if connected?(socket), do: subscribe_to_state_changes(scope)
 
     {:noreply,
@@ -80,9 +84,9 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
 
   defp subscribe_to_state_changes(_scope), do: :ok
 
-  defp recompute(%{assigns: %{scope: nil}} = socket), do: socket
+  defp recompute(%{assigns: %{current_scope: nil}} = socket), do: socket
 
-  defp recompute(%{assigns: %{scope: scope}} = socket) do
+  defp recompute(%{assigns: %{current_scope: scope}} = socket) do
     # From the published snapshot when it still matches current inputs. This
     # re-renders on every state change, and recomputing the graph each time is
     # node and edge computation the project already paid for — 4.4 seconds of
@@ -106,86 +110,94 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={!@error}>
-      <div class="mb-6">
-        <h1 class="text-3xl font-bold">Task Queue</h1>
-        <p class="text-base-content/60 mt-1">
-          What the agent's working on now and what's next.
-          Updates live as the agent advances.
-        </p>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
       </div>
 
-      <%= if @active do %>
-        <section
-          data-test="active-task"
-          data-requirement={requirement_name(@active)}
-          data-entity-id={requirement_entity_id(@active, @story_numbers)}
-          class="mb-8 bg-base-200 border border-primary rounded-box p-6"
-        >
-          <div class="text-xs uppercase tracking-wider text-primary mb-2">
-            Active task
-          </div>
-          <div class="text-xl font-semibold">{requirement_label(@active)}</div>
-          <div :if={@active.description} class="text-base-content/70 mt-2">
-            {@active.description}
-          </div>
-          <div class="text-xs text-base-content/50 mt-3 font-mono">
-            {requirement_name(@active)} · {requirement_entity_kind(@active)} · {requirement_entity_id(
-              @active,
-              @story_numbers
-            )}
-          </div>
-        </section>
-
-        <section
-          data-test="upcoming-tasks"
-          class="bg-base-100 border border-base-300 rounded-box p-4"
-        >
-          <div class="text-xs uppercase tracking-wider text-base-content/60 mb-3">
-            Upcoming ({length(@upcoming)})
-          </div>
-
-          <%= if @upcoming == [] do %>
-            <div class="text-base-content/50 italic">
-              Nothing else queued.
-            </div>
-          <% else %>
-            <ul class="space-y-2">
-              <li
-                :for={req <- @upcoming}
-                data-test="upcoming-task-item"
-                data-requirement={requirement_name(req)}
-                data-entity-id={requirement_entity_id(req, @story_numbers)}
-                class="flex items-baseline gap-3 border-l-2 border-base-300 pl-3 py-1"
-              >
-                <span class="text-xs text-base-content/40 font-mono shrink-0">
-                  {requirement_entity_kind(req)}
-                </span>
-                <span class="flex-1">{requirement_label(req)}</span>
-                <span class="text-xs font-mono text-base-content/50">
-                  {requirement_name(req)}
-                </span>
-              </li>
-            </ul>
-          <% end %>
-        </section>
-      <% else %>
-        <section
-          data-test="empty-queue"
-          class="bg-base-200 border border-base-300 rounded-box p-12 text-center"
-        >
-          <div class="text-2xl font-semibold mb-2">Nothing to do</div>
-          <p class="text-base-content/60">
-            Every actionable requirement is satisfied.
-            The agent has no queued work.
+      <div :if={!@error}>
+        <div class="mb-6">
+          <h1 class="text-3xl font-bold">Task Queue</h1>
+          <p class="text-base-content/60 mt-1">
+            What the agent's working on now and what's next.
+            Updates live as the agent advances.
           </p>
-        </section>
-      <% end %>
-    </div>
+        </div>
+
+        <%= if @active do %>
+          <section
+            data-test="active-task"
+            data-requirement={requirement_name(@active)}
+            data-entity-id={requirement_entity_id(@active, @story_numbers)}
+            class="mb-8 bg-base-200 border border-primary rounded-box p-6"
+          >
+            <div class="text-xs uppercase tracking-wider text-primary mb-2">
+              Active task
+            </div>
+            <div class="text-xl font-semibold">{requirement_label(@active)}</div>
+            <div :if={@active.description} class="text-base-content/70 mt-2">
+              {@active.description}
+            </div>
+            <div class="text-xs text-base-content/50 mt-3 font-mono">
+              {requirement_name(@active)} · {requirement_entity_kind(@active)} · {requirement_entity_id(
+                @active,
+                @story_numbers
+              )}
+            </div>
+          </section>
+
+          <section
+            data-test="upcoming-tasks"
+            class="bg-base-100 border border-base-300 rounded-box p-4"
+          >
+            <div class="text-xs uppercase tracking-wider text-base-content/60 mb-3">
+              Upcoming ({length(@upcoming)})
+            </div>
+
+            <%= if @upcoming == [] do %>
+              <div class="text-base-content/50 italic">
+                Nothing else queued.
+              </div>
+            <% else %>
+              <ul class="space-y-2">
+                <li
+                  :for={req <- @upcoming}
+                  data-test="upcoming-task-item"
+                  data-requirement={requirement_name(req)}
+                  data-entity-id={requirement_entity_id(req, @story_numbers)}
+                  class="flex items-baseline gap-3 border-l-2 border-base-300 pl-3 py-1"
+                >
+                  <span class="text-xs text-base-content/40 font-mono shrink-0">
+                    {requirement_entity_kind(req)}
+                  </span>
+                  <span class="flex-1">{requirement_label(req)}</span>
+                  <span class="text-xs font-mono text-base-content/50">
+                    {requirement_name(req)}
+                  </span>
+                </li>
+              </ul>
+            <% end %>
+          </section>
+        <% else %>
+          <section
+            data-test="empty-queue"
+            class="bg-base-200 border border-base-300 rounded-box p-12 text-center"
+          >
+            <div class="text-2xl font-semibold mb-2">Nothing to do</div>
+            <p class="text-base-content/60">
+              Every actionable requirement is satisfied.
+              The agent has no queued work.
+            </p>
+          </section>
+        <% end %>
+      </div>
+    </Layouts.app>
     """
   end
 

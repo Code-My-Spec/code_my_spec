@@ -27,7 +27,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{}, project: project}} = socket) do
+  def handle_params(_params, _uri, %{assigns: %{current_scope: %{}, project: project}} = socket) do
     {:noreply,
      socket
      |> assign(page_title: "#{project.name} — Next Task", error: nil)
@@ -38,7 +38,7 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
 
   @impl true
   def handle_event("sync", _params, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     socket = assign(socket, sync_status: :running, sync_error: nil)
 
     with {:ok, _file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
@@ -54,9 +54,9 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
     end
   end
 
-  defp recompute(%{assigns: %{scope: nil}} = socket), do: socket
+  defp recompute(%{assigns: %{current_scope: nil}} = socket), do: socket
 
-  defp recompute(%{assigns: %{scope: scope}} = socket) do
+  defp recompute(%{assigns: %{current_scope: scope}} = socket) do
     markdown =
       case RequirementGraph.next_actionable(scope) do
         [] -> nothing_left(scope)
@@ -76,44 +76,52 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
 
-    <div :if={!@error}>
-      <div class="mb-6 flex justify-between items-start gap-4">
-        <div>
-          <h1 class="text-3xl font-bold">Next Task</h1>
-          <p class="text-base-content/60 mt-1">
-            Preview of what the agent sees from <code class="kbd kbd-sm">get_next_requirement</code>.
-          </p>
+      <div :if={!@error}>
+        <div class="mb-6 flex justify-between items-start gap-4">
+          <div>
+            <h1 class="text-3xl font-bold">Next Task</h1>
+            <p class="text-base-content/60 mt-1">
+              Preview of what the agent sees from <code class="kbd kbd-sm">get_next_requirement</code>.
+            </p>
+          </div>
+          <button
+            type="button"
+            phx-click="sync"
+            data-test="sync-button"
+            disabled={@sync_status == :running}
+            class="btn btn-secondary shrink-0"
+            title="Refresh files + components (skips embeddings)"
+          >
+            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+            {if @sync_status == :running, do: "Syncing…", else: "Sync"}
+          </button>
         </div>
-        <button
-          type="button"
-          phx-click="sync"
-          data-test="sync-button"
-          disabled={@sync_status == :running}
-          class="btn btn-secondary shrink-0"
-          title="Refresh files + components (skips embeddings)"
+
+        <div :if={@sync_status == :error} role="alert" class="alert alert-error alert-soft mb-4">
+          <span>Sync failed: <code class="font-mono text-xs">{@sync_error}</code></span>
+        </div>
+
+        <div
+          :if={@markdown}
+          class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
         >
-          <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-          {if @sync_status == :running, do: "Syncing…", else: "Sync"}
-        </button>
-      </div>
+          {md_html(@markdown)}
+        </div>
 
-      <div :if={@sync_status == :error} role="alert" class="alert alert-error alert-soft mb-4">
-        <span>Sync failed: <code class="font-mono text-xs">{@sync_error}</code></span>
+        <div :if={!@markdown} class="text-base-content/50">Loading…</div>
       </div>
-
-      <div
-        :if={@markdown}
-        class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto"
-      >
-        {md_html(@markdown)}
-      </div>
-
-      <div :if={!@markdown} class="text-base-content/50">Loading…</div>
-    </div>
+    </Layouts.app>
     """
   end
 end

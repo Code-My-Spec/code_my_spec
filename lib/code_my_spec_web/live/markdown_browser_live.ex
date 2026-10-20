@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @moduledoc """
-  Generic browser for directories of markdown files.
+  The project's docs: a browser for directories of markdown files, one tab
+  per library.
 
   Reusable across multiple libraries — each `live_action` maps to a
   filesystem root (priv content) or a project-relative path resolved
@@ -20,11 +21,18 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, section: :knowledge, page_title: "Knowledge", view: nil, error: nil)}
+    {:ok,
+     assign(socket,
+       section: :knowledge,
+       page_title: "Docs",
+       tabs: [:project_knowledge, :knowledge],
+       view: nil,
+       error: nil
+     )}
   end
 
   @impl true
-  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket),
+  def handle_params(params, _uri, %{assigns: %{current_scope: %{}}} = socket),
     do: load_view(socket, Map.get(params, "path", []))
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -33,11 +41,19 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
 
-    base_url = "/app/projects/#{socket.assigns.slug}/#{library_path(library)}"
+    base_url = library_url(socket.assigns.project.id, library)
 
-    case Knowledge.browse(socket.assigns.scope, library, path_segments) do
+    case Knowledge.browse(socket.assigns.current_scope, library, path_segments) do
       {:ok, result} ->
-        view = build_view(result, config, base_url, path_segments, socket.assigns.scope, library)
+        view =
+          build_view(
+            result,
+            config,
+            base_url,
+            path_segments,
+            socket.assigns.current_scope,
+            library
+          )
 
         {:noreply,
          assign(socket,
@@ -57,12 +73,32 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <div role="tablist" class="tabs tabs-border mb-4" data-test="docs-tabs">
+        <.link
+          :for={library <- @tabs}
+          navigate={library_url(@project.id, library)}
+          role="tab"
+          data-library={library}
+          class={["tab", library == @live_action && "tab-active"]}
+        >
+          {tab_label(library)}
+        </.link>
+      </div>
 
-    <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
-    <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
+
+      <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
+      <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
+    </Layouts.app>
     """
   end
 
@@ -72,7 +108,8 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     ~H"""
     <div>
       <.back_link :if={@dir.back_url} url={@dir.back_url} />
-      <h1 class="text-2xl font-bold mb-4">{@dir.title}</h1>
+      <%!-- At a library's root the tab already names it. --%>
+      <h1 :if={@dir.back_url} class="text-2xl font-bold mb-4">{@dir.title}</h1>
 
       <ul class="space-y-1.5">
         <li
@@ -199,7 +236,9 @@ defmodule CodeMySpecWeb.MarkdownBrowserLive do
     |> humanize()
   end
 
-  defp library_path(library) when is_atom(library) do
-    library |> Atom.to_string() |> String.replace("_", "-")
-  end
+  defp library_url(slug, :project_knowledge), do: "/app/projects/#{slug}/docs/project"
+  defp library_url(slug, :knowledge), do: "/app/projects/#{slug}/docs/codemyspec"
+
+  defp tab_label(:project_knowledge), do: "This project"
+  defp tab_label(:knowledge), do: "CodeMySpec"
 end

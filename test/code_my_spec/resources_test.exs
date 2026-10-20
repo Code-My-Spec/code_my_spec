@@ -129,7 +129,7 @@ defmodule CodeMySpec.ResourcesTest do
     end
   end
 
-  # Story a2ea10a8: `/app/resources`' "Run setup" button hands `project_scope/2`
+  # Story a2ea10a8: the console's Inventory's "Run setup" button hands `project_scope/2`
   # a plain web-session scope, which — unlike a harness-connected scope, and
   # unlike the fixtures elsewhere in this file — carries no `environment` at
   # all. Steps that shell out (`:repository` chief among them, since

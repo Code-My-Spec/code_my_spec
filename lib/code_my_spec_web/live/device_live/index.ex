@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.DeviceLive.Index do
   @moduledoc """
-  Every machine on this account, and what is on each.
+  Every dev box on this account — a machine running a harness — and what is on
+  each, in the console's Development section.
 
   One level above `WorkingCopyLive.Index`. That page lists checkouts and this
   one lists the machines they sit on, which is what turns 105 rows into a
@@ -47,10 +48,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Devices.Provider
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     scope = socket.assigns.current_scope
 
     if connected?(socket) and is_binary(scope.active_account_id),
@@ -59,6 +61,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     {:ok,
      assign(socket,
        page_title: "Dev boxes",
+       project_id: params["project_id"],
        adding?: false,
        new_box: nil,
        providers: Provider.all(),
@@ -224,150 +227,152 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div data-test="devices" class="mx-auto w-full max-w-3xl">
-        <.header>
-          Dev boxes
-          <:subtitle>
-            Every machine running a harness for this account. Add a dev box here, or a
-            machine onboards itself when its harness comes up.
-          </:subtitle>
-          <:actions>
-            <.button :if={@can_add?} phx-click="new_dev_box" data-test="add-dev-box">
-              Add
-            </.button>
-          </:actions>
-        </.header>
-
-        <form
-          :if={@adding?}
-          id="add-dev-box-form"
-          data-test="add-dev-box-form"
-          phx-submit="add_dev_box"
-          class="card card-compact mt-4 border border-base-300 bg-base-100"
-        >
-          <div class="card-body gap-3">
-            <label class="form-control">
-              <span class="label-text">Name</span>
-              <input type="text" name="dev_box[name]" class="input input-bordered" required />
-            </label>
-            <fieldset class="flex flex-col gap-2">
-              <legend class="label-text">Where it runs</legend>
-              <label :for={provider <- @providers} class="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="dev_box[provider]"
-                  value={provider.id()}
-                  data-test={"provider-#{provider.id()}"}
-                />
-                {provider.label()}
-              </label>
-            </fieldset>
-            <div class="flex gap-2">
-              <.button type="submit">Add dev box</.button>
-              <.button type="button" phx-click="cancel_dev_box" class="btn btn-ghost">
-                Cancel
+      <Shell.frame project_id={@project_id} active={:dev_boxes}>
+        <div data-test="devices" class="mx-auto w-full max-w-3xl">
+          <.header>
+            Dev boxes
+            <:subtitle>
+              Every machine running a harness for this account. Add a dev box here, or a
+              machine onboards itself when its harness comes up.
+            </:subtitle>
+            <:actions>
+              <.button :if={@can_add?} phx-click="new_dev_box" data-test="add-dev-box">
+                Add
               </.button>
-            </div>
-          </div>
-        </form>
+            </:actions>
+          </.header>
 
-        <div
-          :if={@new_box}
-          data-test="new-dev-box"
-          class="card card-compact mt-4 border border-success bg-base-100"
-        >
-          <div class="card-body gap-3">
-            <h2 class="card-title">{@new_box.name} added</h2>
-            <p class="text-sm">
-              This is its token. It is shown once: copy it now, because it cannot be shown again.
-            </p>
-            <code
-              data-test="new-dev-box-token"
-              data-token={@new_box.token}
-              class="break-all rounded bg-base-200 p-2 text-sm"
-            >
-              {@new_box.token}
-            </code>
-            <div :for={section <- @new_box.sections} data-test={section.key} class="space-y-1">
-              <div class="flex items-center justify-between gap-3">
-                <h3 class="font-medium">{section.title}</h3>
-                <button
-                  type="button"
-                  class="copy-btn btn btn-sm btn-primary"
-                  data-copy={section.body}
-                  data-test={section.copy}
-                >
-                  Copy
-                </button>
-              </div>
-              <pre class="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">{section.body}</pre>
-            </div>
-          </div>
-        </div>
-
-        <p :if={@devices == []} data-test="devices-empty" class="py-16 text-center opacity-60">
-          No dev boxes yet. Add one, or a machine appears when a harness starts on it.
-        </p>
-
-        <ul class="mt-6 space-y-3">
-          <li
-            :for={row <- @devices}
-            data-test="device"
-            data-device-id={row.device.id}
-            data-kind={row.device.kind}
-            class="card card-compact border border-base-300 bg-base-100"
+          <form
+            :if={@adding?}
+            id="add-dev-box-form"
+            data-test="add-dev-box-form"
+            phx-submit="add_dev_box"
+            class="card card-compact mt-4 border border-base-300 bg-base-100"
           >
-            <div class="card-body gap-2">
-              <div class="flex items-start gap-3">
-                <div class="min-w-0 flex-1">
-                  <div data-test="device-name" class="font-medium truncate">{row.name}</div>
-                  <div data-test="device-kind" class="text-xs opacity-60">
-                    {kind_name(row.device.kind)}
+            <div class="card-body gap-3">
+              <label class="form-control">
+                <span class="label-text">Name</span>
+                <input type="text" name="dev_box[name]" class="input input-bordered" required />
+              </label>
+              <fieldset class="flex flex-col gap-2">
+                <legend class="label-text">Where it runs</legend>
+                <label :for={provider <- @providers} class="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="dev_box[provider]"
+                    value={provider.id()}
+                    data-test={"provider-#{provider.id()}"}
+                  />
+                  {provider.label()}
+                </label>
+              </fieldset>
+              <div class="flex gap-2">
+                <.button type="submit">Add dev box</.button>
+                <.button type="button" phx-click="cancel_dev_box" class="btn btn-ghost">
+                  Cancel
+                </.button>
+              </div>
+            </div>
+          </form>
+
+          <div
+            :if={@new_box}
+            data-test="new-dev-box"
+            class="card card-compact mt-4 border border-success bg-base-100"
+          >
+            <div class="card-body gap-3">
+              <h2 class="card-title">{@new_box.name} added</h2>
+              <p class="text-sm">
+                This is its token. It is shown once: copy it now, because it cannot be shown again.
+              </p>
+              <code
+                data-test="new-dev-box-token"
+                data-token={@new_box.token}
+                class="break-all rounded bg-base-200 p-2 text-sm"
+              >
+                {@new_box.token}
+              </code>
+              <div :for={section <- @new_box.sections} data-test={section.key} class="space-y-1">
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="font-medium">{section.title}</h3>
+                  <button
+                    type="button"
+                    class="copy-btn btn btn-sm btn-primary"
+                    data-copy={section.body}
+                    data-test={section.copy}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <pre class="whitespace-pre-wrap rounded bg-base-200 p-2 text-xs">{section.body}</pre>
+              </div>
+            </div>
+          </div>
+
+          <p :if={@devices == []} data-test="devices-empty" class="py-16 text-center opacity-60">
+            No dev boxes yet. Add one, or a machine appears when a harness starts on it.
+          </p>
+
+          <ul class="mt-6 space-y-3">
+            <li
+              :for={row <- @devices}
+              data-test="device"
+              data-device-id={row.device.id}
+              data-kind={row.device.kind}
+              class="card card-compact border border-base-300 bg-base-100"
+            >
+              <div class="card-body gap-2">
+                <div class="flex items-start gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div data-test="device-name" class="font-medium truncate">{row.name}</div>
+                    <div data-test="device-kind" class="text-xs opacity-60">
+                      {kind_name(row.device.kind)}
+                    </div>
+                  </div>
+
+                  <div
+                    :if={Device.dev_box?(row.device)}
+                    data-test="dev-box"
+                    data-box-name={row.name}
+                    data-device-id={row.device.id}
+                    class="shrink-0 text-right text-sm"
+                  >
+                    <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
+                    <span data-test="dev-box-status">{row.status}</span>
+                  </div>
+
+                  <div data-test="device-presence" class="shrink-0 text-right text-sm">
+                    {row.presence.label}
+                    <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
                   </div>
                 </div>
 
-                <div
-                  :if={Device.dev_box?(row.device)}
-                  data-test="dev-box"
-                  data-box-name={row.name}
-                  data-device-id={row.device.id}
-                  class="shrink-0 text-right text-sm"
-                >
-                  <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
-                  <span data-test="dev-box-status">{row.status}</span>
-                </div>
-
-                <div data-test="device-presence" class="shrink-0 text-right text-sm">
-                  {row.presence.label}
-                  <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
+                <div class="flex items-center gap-2">
+                  <.button
+                    phx-click="revoke_authorization"
+                    phx-value-id={row.device.id}
+                    data-test="revoke-device-authorization"
+                    class="btn btn-sm btn-ghost"
+                  >
+                    Revoke my harness access
+                  </.button>
+                  <.button
+                    phx-click="destroy"
+                    phx-value-id={row.device.id}
+                    data-test="destroy-device"
+                    class="btn btn-sm btn-ghost"
+                  >
+                    Destroy
+                  </.button>
+                  <span class="text-xs opacity-60">
+                    its checkouts stay, with no machine
+                  </span>
                 </div>
               </div>
-
-              <div class="flex items-center gap-2">
-                <.button
-                  phx-click="revoke_authorization"
-                  phx-value-id={row.device.id}
-                  data-test="revoke-device-authorization"
-                  class="btn btn-sm btn-ghost"
-                >
-                  Revoke my harness access
-                </.button>
-                <.button
-                  phx-click="destroy"
-                  phx-value-id={row.device.id}
-                  data-test="destroy-device"
-                  class="btn btn-sm btn-ghost"
-                >
-                  Destroy
-                </.button>
-                <span class="text-xs opacity-60">
-                  its checkouts stay, with no machine
-                </span>
-              </div>
-            </div>
-          </li>
-        </ul>
-      </div>
+            </li>
+          </ul>
+        </div>
+      </Shell.frame>
     </Layouts.app>
     """
   end

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2301Spex do
   spex "Each box has its own token", criterion: 2301 do
     scenario "Sam adds cloud-1 and then laptop" do
       given_ "Sam adds cloud-1 and then laptop", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "cloud-1", "claude_code_cloud")
         cloud_token = shown_token(live)
         add_dev_box(live, "laptop", "local")

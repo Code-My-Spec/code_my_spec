@@ -38,8 +38,10 @@ defmodule CodeMySpec.UserPreferences do
     case get_user_preference(scope) do
       {:ok, preferences} ->
         # The active project is a *fallback*: LiveViews under
-        # /app/projects/:project_id take it from the URL (the PortableHosts
-        # overwrite this per request). It is still read by `/api` routes, which
+        # /app/projects/:project_id take it from the URL
+        # (`UserAuth.on_mount(:assign_project, ...)` overwrites it per
+        # request), and pages with no project in the URL show it in the
+        # sidebar. It is still read by `/api` routes, which
         # carry no project in the URL and fall back to it when a request sends
         # neither `X-Harness-Id` nor `X-Project-ID`
         # (`CodeMySpecWeb.Plugs.ProjectScopeOverride`).

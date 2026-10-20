@@ -11,6 +11,8 @@ defmodule CodeMySpecWeb.ContentLive do
   """
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
@@ -35,7 +37,7 @@ defmodule CodeMySpecWeb.ContentLive do
   end
 
   @impl true
-  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+  def handle_params(_params, _uri, %{assigns: %{current_scope: %{} = scope}} = socket) do
     {:noreply, socket |> assign(current_scope: scope) |> reload()}
   end
 
@@ -43,7 +45,7 @@ defmodule CodeMySpecWeb.ContentLive do
 
   @impl true
   def handle_event("save-settings", %{"settings" => attrs}, socket) do
-    case Projects.update_project(socket.assigns.scope, socket.assigns.project, attrs) do
+    case Projects.update_project(socket.assigns.current_scope, socket.assigns.project, attrs) do
       {:ok, project} ->
         {:noreply, socket |> put_flash(:info, "Settings saved") |> reassign(project)}
 
@@ -54,7 +56,7 @@ defmodule CodeMySpecWeb.ContentLive do
 
   def handle_event("save-source", %{"source" => %{"path" => path}}, socket) do
     {:ok, project} =
-      Projects.update_project(socket.assigns.scope, socket.assigns.project, %{
+      Projects.update_project(socket.assigns.current_scope, socket.assigns.project, %{
         "content_source_path" => path
       })
 
@@ -62,7 +64,7 @@ defmodule CodeMySpecWeb.ContentLive do
   end
 
   def handle_event("sync", _params, socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
     environment = content_environment(scope, socket.assigns.project)
 
     case ContentPublishing.sync(scope, environment) do
@@ -84,7 +86,7 @@ defmodule CodeMySpecWeb.ContentLive do
   end
 
   def handle_event("publish", _params, socket) do
-    case ContentPublishing.publish(socket.assigns.scope) do
+    case ContentPublishing.publish(socket.assigns.current_scope) do
       {:ok, result} ->
         {:noreply,
          socket
@@ -134,172 +136,255 @@ defmodule CodeMySpecWeb.ContentLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@project}>
-        <div class="mb-6 flex justify-between items-start gap-4">
-          <div>
-            <h1 class="text-3xl font-bold">Content</h1>
-            <p class="text-base-content/60 mt-1">
-              Parse content from disk, review parse status, then publish to your S3 buckets
-              and trigger the deployed client.
-            </p>
-            <div
-              :if={@last_synced_at}
-              data-test="last-sync-at"
-              class="text-xs text-base-content/50 mt-1 font-mono"
-            >
-              Last sync: {@last_synced_at}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      project={@project}
+      projects={@projects}
+    >
+      <Operations.frame
+        project_id={@project && @project.id}
+        active={:content}
+        current_scope={@current_scope}
+      >
+        <div :if={@project}>
+          <div class="mb-6 flex justify-between items-start gap-4">
+            <div>
+              <h1 class="text-3xl font-bold">Content</h1>
+              <p class="text-base-content/60 mt-1">
+                Parse content from disk, review parse status, then publish to your S3 buckets
+                and trigger the deployed client.
+              </p>
+              <div
+                :if={@last_synced_at}
+                data-test="last-sync-at"
+                class="text-xs text-base-content/50 mt-1 font-mono"
+              >
+                Last sync: {@last_synced_at}
+              </div>
+            </div>
+            <div class="flex flex-row gap-2 shrink-0">
+              <button type="button" phx-click="sync" data-test="sync-button" class="btn btn-primary">
+                Re-sync
+              </button>
+              <button
+                type="button"
+                phx-click="publish"
+                data-test="publish-button"
+                class="btn btn-secondary"
+              >
+                Publish
+              </button>
             </div>
           </div>
-          <div class="flex flex-row gap-2 shrink-0">
-            <button type="button" phx-click="sync" data-test="sync-button" class="btn btn-primary">
-              Re-sync
-            </button>
-            <button type="button" phx-click="publish" data-test="publish-button" class="btn btn-secondary">
-              Publish
-            </button>
+
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="badge badge-success badge-lg" data-test="content-summary">
+              {@counts.success} success, {@counts.error} error
+            </span>
+            <span class="badge badge-ghost badge-lg" data-test="image-summary">
+              {@image_synced} image synced, {@image_failed} failed
+            </span>
           </div>
-        </div>
 
-        <div class="flex flex-wrap gap-2 mb-4">
-          <span class="badge badge-success badge-lg" data-test="content-summary">
-            {@counts.success} success, {@counts.error} error
-          </span>
-          <span class="badge badge-ghost badge-lg" data-test="image-summary">
-            {@image_synced} image synced, {@image_failed} failed
-          </span>
-        </div>
+          <div
+            :if={@publish_error}
+            role="alert"
+            class="alert alert-error alert-soft mb-4"
+            data-test="publish-error"
+          >
+            <span>{@publish_error}</span>
+          </div>
+          <div
+            :if={@publish_sync_id}
+            role="alert"
+            class="alert alert-success alert-soft mb-4"
+            data-test="publish-sync-id"
+          >
+            <span>Published — sync {@publish_sync_id}</span>
+          </div>
 
-        <div :if={@publish_error} role="alert" class="alert alert-error alert-soft mb-4" data-test="publish-error">
-          <span>{@publish_error}</span>
-        </div>
-        <div :if={@publish_sync_id} role="alert" class="alert alert-success alert-soft mb-4" data-test="publish-sync-id">
-          <span>Published — sync {@publish_sync_id}</span>
-        </div>
+          <details class="collapse collapse-arrow bg-base-200 mb-6">
+            <summary class="collapse-title text-sm font-semibold">
+              Source &amp; publishing settings
+            </summary>
+            <div class="collapse-content space-y-4">
+              <form
+                data-test="content-source-form"
+                phx-submit="save-source"
+                class="flex gap-2 items-end"
+              >
+                <label class="form-control flex-1">
+                  <span class="label-text text-xs">Content source directory</span>
+                  <input
+                    type="text"
+                    name="source[path]"
+                    value={@project.content_source_path}
+                    class="input input-bordered input-sm w-full font-mono"
+                    placeholder=".code_my_spec/content"
+                  />
+                </label>
+                <button type="submit" class="btn btn-sm">Set source</button>
+              </form>
 
-        <details class="collapse collapse-arrow bg-base-200 mb-6">
-          <summary class="collapse-title text-sm font-semibold">Source &amp; publishing settings</summary>
-          <div class="collapse-content space-y-4">
-            <form data-test="content-source-form" phx-submit="save-source" class="flex gap-2 items-end">
-              <label class="form-control flex-1">
-                <span class="label-text text-xs">Content source directory</span>
-                <input
-                  type="text"
-                  name="source[path]"
-                  value={@project.content_source_path}
-                  class="input input-bordered input-sm w-full font-mono"
-                  placeholder=".code_my_spec/content"
-                />
-              </label>
-              <button type="submit" class="btn btn-sm">Set source</button>
-            </form>
-
-            <form data-test="content-settings-form" phx-submit="save-settings" class="grid sm:grid-cols-2 gap-3">
-              <label class="form-control">
-                <span class="label-text text-xs">Image bucket</span>
-                <input type="text" name="settings[image_bucket]" value={@project.image_bucket} class="input input-bordered input-sm" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">Images host</span>
-                <input type="text" name="settings[images_host]" value={@project.images_host} class="input input-bordered input-sm" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">Content bucket</span>
-                <input type="text" name="settings[content_bucket]" value={@project.content_bucket} class="input input-bordered input-sm" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">Client API URL</span>
-                <input type="text" name="settings[client_api_url]" value={@project.client_api_url} class="input input-bordered input-sm" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">AWS access key ID</span>
-                <input type="password" name="settings[aws_access_key_id]" value={@project.aws_access_key_id} class="input input-bordered input-sm" autocomplete="off" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">AWS secret access key</span>
-                <input type="password" name="settings[aws_secret_access_key]" value={@project.aws_secret_access_key} class="input input-bordered input-sm" autocomplete="off" />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">AWS region</span>
-                <input type="text" name="settings[aws_region]" value={@project.aws_region} class="input input-bordered input-sm" placeholder="us-east-1" />
-              </label>
-              <%!-- Which provider those credentials belong to. Blank means
+              <form
+                data-test="content-settings-form"
+                phx-submit="save-settings"
+                class="grid sm:grid-cols-2 gap-3"
+              >
+                <label class="form-control">
+                  <span class="label-text text-xs">Image bucket</span>
+                  <input
+                    type="text"
+                    name="settings[image_bucket]"
+                    value={@project.image_bucket}
+                    class="input input-bordered input-sm"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">Images host</span>
+                  <input
+                    type="text"
+                    name="settings[images_host]"
+                    value={@project.images_host}
+                    class="input input-bordered input-sm"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">Content bucket</span>
+                  <input
+                    type="text"
+                    name="settings[content_bucket]"
+                    value={@project.content_bucket}
+                    class="input input-bordered input-sm"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">Client API URL</span>
+                  <input
+                    type="text"
+                    name="settings[client_api_url]"
+                    value={@project.client_api_url}
+                    class="input input-bordered input-sm"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">AWS access key ID</span>
+                  <input
+                    type="password"
+                    name="settings[aws_access_key_id]"
+                    value={@project.aws_access_key_id}
+                    class="input input-bordered input-sm"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">AWS secret access key</span>
+                  <input
+                    type="password"
+                    name="settings[aws_secret_access_key]"
+                    value={@project.aws_secret_access_key}
+                    class="input input-bordered input-sm"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">AWS region</span>
+                  <input
+                    type="text"
+                    name="settings[aws_region]"
+                    value={@project.aws_region}
+                    class="input input-bordered input-sm"
+                    placeholder="us-east-1"
+                  />
+                </label>
+                <%!-- Which provider those credentials belong to. Blank means
                     Amazon, which is what every project did before this existed
                     — and why a Hetzner key pair used to fail with NoSuchBucket
                     on a bucket that was really there. --%>
-              <label class="form-control">
-                <span class="label-text text-xs">S3 endpoint</span>
-                <input
-                  type="text"
-                  name="settings[s3_endpoint]"
-                  value={@project.s3_endpoint}
-                  data-test="s3-endpoint"
-                  class="input input-bordered input-sm"
-                  placeholder="blank for AWS, e.g. fsn1.your-objectstorage.com"
-                />
-              </label>
-              <label class="form-control">
-                <span class="label-text text-xs">Deploy key</span>
-                <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" autocomplete="off" />
-              </label>
-              <div class="flex items-end">
-                <button type="submit" class="btn btn-sm">Save settings</button>
-              </div>
-            </form>
-          </div>
-        </details>
-
-        <table class="table table-zebra table-sm" data-test="content-table">
-          <thead>
-            <tr>
-              <th>Slug</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th>Published</th>
-              <th>Expires</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              :for={row <- @rows}
-              data-test={"content-row-#{filename(row)}"}
-              data-parse-status={to_string(row.parse_status)}
-            >
-              <td class="font-mono text-xs">{slug(row)}</td>
-              <td><span class="badge badge-ghost badge-sm">{content_type(row)}</span></td>
-              <td>
-                <span class={["badge badge-sm", status_class(row.parse_status)]}>
-                  {to_string(row.parse_status)}
-                </span>
-                <div
-                  :if={row.parse_status == :error}
-                  data-test={"content-parse-error-#{filename(row)}"}
-                  class="text-xs text-error mt-1 max-w-xs truncate"
-                  title={format_errors(row.parse_errors)}
-                >
-                  {format_errors(row.parse_errors)}
+                <label class="form-control">
+                  <span class="label-text text-xs">S3 endpoint</span>
+                  <input
+                    type="text"
+                    name="settings[s3_endpoint]"
+                    value={@project.s3_endpoint}
+                    data-test="s3-endpoint"
+                    class="input input-bordered input-sm"
+                    placeholder="blank for AWS, e.g. fsn1.your-objectstorage.com"
+                  />
+                </label>
+                <label class="form-control">
+                  <span class="label-text text-xs">Deploy key</span>
+                  <input
+                    type="password"
+                    name="settings[deploy_key]"
+                    value={@project.deploy_key}
+                    class="input input-bordered input-sm"
+                    autocomplete="off"
+                  />
+                </label>
+                <div class="flex items-end">
+                  <button type="submit" class="btn btn-sm">Save settings</button>
                 </div>
-              </td>
-              <td class="font-mono text-xs">{row.metadata["publish_at"] || "—"}</td>
-              <td class="font-mono text-xs">{row.metadata["expires_at"] || "never"}</td>
-              <td>
-                <.link
-                  navigate={path(@socket, ~p"/app/projects/#{@slug}/content/#{row.id}")}
-                  data-test={"content-row-link-#{filename(row)}"}
-                  class="link link-primary text-xs"
-                >
-                  View
-                </.link>
-              </td>
-            </tr>
-            <tr :if={@rows == []}>
-              <td colspan="6" class="text-center opacity-60 py-8">
-                No content yet. Set a source directory and click Re-sync.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              </form>
+            </div>
+          </details>
+
+          <table class="table table-zebra table-sm" data-test="content-table">
+            <thead>
+              <tr>
+                <th>Slug</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Published</th>
+                <th>Expires</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                :for={row <- @rows}
+                data-test={"content-row-#{filename(row)}"}
+                data-parse-status={to_string(row.parse_status)}
+              >
+                <td class="font-mono text-xs">{slug(row)}</td>
+                <td><span class="badge badge-ghost badge-sm">{content_type(row)}</span></td>
+                <td>
+                  <span class={["badge badge-sm", status_class(row.parse_status)]}>
+                    {to_string(row.parse_status)}
+                  </span>
+                  <div
+                    :if={row.parse_status == :error}
+                    data-test={"content-parse-error-#{filename(row)}"}
+                    class="text-xs text-error mt-1 max-w-xs truncate"
+                    title={format_errors(row.parse_errors)}
+                  >
+                    {format_errors(row.parse_errors)}
+                  </div>
+                </td>
+                <td class="font-mono text-xs">{row.metadata["publish_at"] || "—"}</td>
+                <td class="font-mono text-xs">{row.metadata["expires_at"] || "never"}</td>
+                <td>
+                  <.link
+                    navigate={~p"/app/projects/#{@project.id}/content/#{row.id}"}
+                    data-test={"content-row-link-#{filename(row)}"}
+                    class="link link-primary text-xs"
+                  >
+                    View
+                  </.link>
+                </td>
+              </tr>
+              <tr :if={@rows == []}>
+                <td colspan="6" class="text-center opacity-60 py-8">
+                  No content yet. Set a source directory and click Re-sync.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Operations.frame>
+    </Layouts.app>
     """
   end
 
@@ -309,15 +394,15 @@ defmodule CodeMySpecWeb.ContentLive do
   # struct in place. Rebuilding the scope here would mean knowing how this app
   # builds one, which is the host's job — and only one of the two hosts could.
   defp reassign(socket, project) do
-    scope = %{socket.assigns.scope | active_project: project}
+    scope = %{socket.assigns.current_scope | active_project: project}
 
     socket
-    |> assign(project: project, scope: scope, current_scope: scope)
+    |> assign(project: project, current_scope: scope)
     |> reload()
   end
 
   defp reload(socket) do
-    scope = socket.assigns.scope
+    scope = socket.assigns.current_scope
 
     assign(socket,
       rows: ContentPublishing.list_snapshot(scope),

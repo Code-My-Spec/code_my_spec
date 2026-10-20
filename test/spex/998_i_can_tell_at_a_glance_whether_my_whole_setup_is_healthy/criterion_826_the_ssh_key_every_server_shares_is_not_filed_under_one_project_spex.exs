@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8292Spex do
   in the account. Story 994 fixed the same shape for credentials — the record
   was right and simply not addressable at the grain being asked.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8292Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "The SSH key every server shares is not filed under one project", criterion: 826 do
     scenario "one provider-account object, listed once, owned by the account" do
@@ -43,7 +44,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8292Spex do
       end
 
       when_ "he opens the resources page", context do
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, Map.put(context, :html, render_async(view, 5_000))}
       end

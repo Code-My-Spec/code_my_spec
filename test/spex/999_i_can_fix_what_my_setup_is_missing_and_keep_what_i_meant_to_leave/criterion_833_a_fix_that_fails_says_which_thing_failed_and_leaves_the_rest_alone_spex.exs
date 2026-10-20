@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
   the sequence is the dependency model. What must not happen is one project's
   refusal reaching across to another.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -87,7 +87,9 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
         context =
           stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
+
         render_async(view, 5_000)
 
         view |> element("[data-test='fix-all']") |> render_click()

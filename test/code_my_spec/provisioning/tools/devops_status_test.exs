@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Provisioning.Tools.DevopsStatusTest do
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Provisioning.Tools.DevopsStatus
+  alias CodeMySpec.ToolLibrary
 
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Provisioning.Tools.DevopsStatusTest do
     # :off got back an unrelated project's checklist instead of an answer
     # about itself, because Resources.report/1 is deliberately account-wide
     # (the cross-project dangling checks need to see everything, which is
-    # right for a human on /app/resources) and nothing here checked which
+    # right for a human on the console's Inventory) and nothing here checked which
     # project was actually asking before handing that back to a harness
     # caller scoped to one project's work.
     test "refuses rather than reporting on a sibling project when this project's devops is off",

@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
   it — not because a `provisioning_steps` row happens to exist. A step that was
   never reached has no row at all, which is exactly the state being tested.
 
-  Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
+  Surface: `CodeMySpecWeb.ResourceLive.Index`, the console's Inventory.
   """
 
   use CodeMySpecSpex.Case
@@ -93,7 +93,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
       when_ "he opens the resources page", context do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: []})
 
-        {:ok, view, _html} = live(context.conn, "/app/resources")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
       end

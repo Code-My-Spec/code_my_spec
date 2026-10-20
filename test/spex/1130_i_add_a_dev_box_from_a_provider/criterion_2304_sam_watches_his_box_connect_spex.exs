@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2304Spex do
   spex "The page shows the box connect without a reload", criterion: 2304 do
     scenario "a harness signs in with the box's token" do
       given_ "Sam has just added a box and is still on its page", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "cloud-1", "claude_code_cloud")
         {:ok, Map.merge(context, %{live: live, token: shown_token(live)})}
       end

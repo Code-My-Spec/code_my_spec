@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2297Spex do
       end
 
       when_ "he opens DevOps > Dev boxes and chooses Add", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         live |> element("[data-test='add-dev-box']") |> render_click()
         {:ok, Map.put(context, :live, live)}
       end

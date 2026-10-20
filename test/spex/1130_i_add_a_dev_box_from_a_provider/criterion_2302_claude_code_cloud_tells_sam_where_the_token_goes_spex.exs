@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2302Spex do
   spex "A Claude Code cloud box says where its token goes", criterion: 2302 do
     scenario "Sam has just added a Claude Code cloud box" do
       given_ "Sam has just added a Claude Code cloud box", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "cloud-1", "claude_code_cloud")
         {:ok, Map.put(context, :live, live)}
       end

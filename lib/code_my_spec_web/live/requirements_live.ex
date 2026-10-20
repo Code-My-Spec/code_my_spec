@@ -47,7 +47,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
       base =
         assign(socket,
           project: project,
-          scope: scope,
           focus: focus_key(project, params["focus"]),
           selected: focus_key(project, params["focus"]),
           error: nil,
@@ -74,7 +73,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   def handle_event("select_node", %{"key" => key}, socket),
     do: {:noreply, socket |> assign(:selected, key) |> with_requirements() |> with_detail()}
 
-  defp with_requirements(%{assigns: %{requirements: nil, scope: scope}} = socket)
+  defp with_requirements(%{assigns: %{requirements: nil, current_scope: scope}} = socket)
        when not is_nil(scope) do
     {nodes, _computed_at} = Requirements.cached_all(scope)
     assign(socket, :requirements, Map.new(nodes, &{GraphProjector.key(&1), &1}))
@@ -88,7 +87,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
         assign(socket, :detail, %{})
 
       node ->
-        assign(socket, :detail, RequirementGraphComponents.detail(socket.assigns.scope, node))
+        assign(
+          socket,
+          :detail,
+          RequirementGraphComponents.detail(socket.assigns.current_scope, node)
+        )
     end
   end
 
@@ -142,7 +145,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # The event writer finished a pass. Only `IncrementalGraph` announces this,
   # and only when it is the graph's writer: a sync it consumed can rewire edges
   # without changing any node, and the page has to show that too.
-  def handle_info({:graph_updated, project_id}, %{assigns: %{scope: scope}} = socket)
+  def handle_info({:graph_updated, project_id}, %{assigns: %{current_scope: scope}} = socket)
       when not is_nil(scope) do
     if project_id == scope.active_project_id,
       do: handle_info({:watcher_synced, %{}}, socket),
@@ -151,7 +154,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   def handle_info(
         {event, %CodeMySpec.Issues.Issue{project_id: project_id}},
-        %{assigns: %{live_action: :graph, scope: scope}} = socket
+        %{assigns: %{live_action: :graph, current_scope: scope}} = socket
       )
       when event in [:created, :updated, :accepted, :resolved, :dismissed, :deleted] do
     if project_id == scope.active_project_id,
@@ -159,7 +162,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       else: {:noreply, socket}
   end
 
-  def handle_info(:graph_recompute, %{assigns: %{scope: scope}} = socket)
+  def handle_info(:graph_recompute, %{assigns: %{current_scope: scope}} = socket)
       when not is_nil(scope) do
     socket = assign(socket, graph_timer: nil)
 
@@ -212,7 +215,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
     socket
     |> assign(graph_data: graph_data)
     |> then(&if(&1.assigns.selected, do: &1 |> with_requirements() |> with_detail(), else: &1))
-    |> assign(graph_provenance: provenance(metrics, socket.assigns[:scope]))
+    |> assign(graph_provenance: provenance(metrics, socket.assigns.current_scope))
     |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
   end
 
@@ -243,26 +246,32 @@ defmodule CodeMySpecWeb.RequirementsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div :if={@error} role="alert" class="alert alert-error">
-      <span>{@error}</span>
-    </div>
-
-    <div :if={@setup_error} data-role="setup-error" role="alert" class="alert alert-error my-4">
-      <span>Setup error: {@setup_error}</span>
-    </div>
-
-    <.graph_view
-      :if={@graph_data}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
       project={@project}
-      graph_data={@graph_data}
-      provenance={@graph_provenance}
-      focus={assigns[:focus]}
-      selected={@selected}
-      requirements={@requirements}
-      detail={@detail}
-      slug={@slug}
-      socket={@socket}
-    />
+      projects={@projects}
+    >
+      <div :if={@error} role="alert" class="alert alert-error">
+        <span>{@error}</span>
+      </div>
+
+      <div :if={@setup_error} data-role="setup-error" role="alert" class="alert alert-error my-4">
+        <span>Setup error: {@setup_error}</span>
+      </div>
+
+      <.graph_view
+        :if={@graph_data}
+        project={@project}
+        graph_data={@graph_data}
+        provenance={@graph_provenance}
+        focus={assigns[:focus]}
+        selected={@selected}
+        requirements={@requirements}
+        detail={@detail}
+      />
+    </Layouts.app>
     """
   end
 
@@ -271,11 +280,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   attr :project, :map, required: true
   attr :graph_data, :any, required: true
 
-  # Host-provided assigns have to be declared: a component invoked as
-  # `<.graph_view ...>` receives only what it names, so @slug and @socket
-  # would raise KeyError the first time a graph renders.
-  attr :slug, :string, required: true
-  attr :socket, :map, required: true
   attr :provenance, :any, default: nil
   attr :focus, :string, default: nil
   attr :selected, :string, default: nil
@@ -377,9 +381,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp focus_key(_project, nil), do: nil
   defp focus_key(project, name), do: "project_#{String.replace(project.id, "-", "")}_#{name}"
 
-  defp with_project(%{assigns: %{scope: %{} = scope, project: project}} = _socket, fun),
+  defp with_project(%{assigns: %{current_scope: %{} = scope, project: project}} = _socket, fun),
     do: fun.(project, scope)
-
-  defp with_project(socket, _fun),
-    do: {:noreply, assign(socket, error: socket.assigns.scope_error, graph_data: nil)}
 end

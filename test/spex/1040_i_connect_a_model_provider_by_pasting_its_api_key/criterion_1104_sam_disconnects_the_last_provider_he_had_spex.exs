@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1040.Criterion3029Spex do
       end
 
       then_ "every agent type says it has nothing to run on", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/accounts/#{context.account.id}/agents")
+        {:ok, view, _html} = live(context.conn, ~p"/app/agent-models")
 
         for role <- ~w(main product coding qa) do
           rendered = view |> element("[data-test='agent-type-#{role}']") |> render()

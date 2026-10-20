@@ -20,13 +20,13 @@ defmodule CodeMySpecSpex.Story1130.Criterion2305Spex do
   spex "A box nothing has signed in as says so", criterion: 2305 do
     scenario "Sam opens Dev boxes later" do
       given_ "Sam added a box and no harness has signed in with its token", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         add_dev_box(live, "cloud-1", "claude_code_cloud")
         {:ok, context}
       end
 
       when_ "he opens Dev boxes", context do
-        {:ok, live, _html} = open_dev_boxes(context.conn)
+        {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         {:ok, Map.put(context, :live, live)}
       end
 
