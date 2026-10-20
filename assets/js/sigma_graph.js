@@ -135,7 +135,11 @@ export const SigmaGraph = {
     this.handleEvent("graph:error", ({ message }) => this.showError({ message }))
     this.loadAndRender()
   },
+  // Redraw only when the graph itself changed. The page re-renders for other
+  // reasons (a node picked, its detail shown), and a redraw then reset the
+  // zoom and position under the click.
   updated() {
+    if (this.el.dataset.graph === this.renderedGraph) return
     if (this.sigma) { this.sigma.kill(); this.sigma = null }
     this.loadAndRender()
   },
@@ -157,6 +161,7 @@ export const SigmaGraph = {
   },
   loadAndRender() {
     const raw = this.el.dataset.graph
+    this.renderedGraph = raw
     if (raw) {
       this.renderGraph(JSON.parse(raw))
       return
