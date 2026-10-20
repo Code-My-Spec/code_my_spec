@@ -334,7 +334,11 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
 
     Machine.send_message(agent, "ref-only", "just the one")
 
-    assert count_turn_ends() == 1,
+    # The turn ends when it ends; under load that is later than the quiet window
+    # `count_turn_ends/1` waits through, so wait for the first before counting.
+    assert_receive {:event, %{event: :turn_ended}}, 10_000
+
+    assert count_turn_ends(1) == 1,
            "an agent that finished with nothing queued is done, and nothing ran the analyzers"
   end
 end

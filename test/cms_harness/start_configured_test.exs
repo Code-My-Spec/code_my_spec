@@ -18,6 +18,7 @@ defmodule CmsHarness.StartConfiguredTest do
   the standalone harness has read it since extraction — so the sprite switches
   over without changing how it is launched.
   """
+
   # Sync: this mutates OS environment variables, which belong to the BEAM node
   # rather than to a test process. Saving and restoring them is careful and
   # still leaves a window every concurrent test can see.
@@ -52,11 +53,20 @@ defmodule CmsHarness.StartConfiguredTest do
   defp restore(var, nil), do: System.delete_env(var)
   defp restore(var, value), do: System.put_env(var, value)
 
+  # What `start_configured/0` itself logged. The log is the node's, so a projector
+  # an earlier async test left behind can warn into the window ("sandbox owner is
+  # gone"); that is not this call's, and asserting `== ""` failed on it.
+  defp logged_by_start_configured do
+    capture_log(fn -> assert :ok = Projects.start_configured() end)
+    |> String.split("\n", trim: true)
+    |> Enum.reject(&(&1 =~ "[IncrementalGraph]"))
+  end
+
   describe "when nothing is configured" do
     test "it does nothing, which is every laptop" do
       System.delete_env("CMS_PROJECT_DIR")
 
-      assert capture_log(fn -> assert :ok = Projects.start_configured() end) == ""
+      assert logged_by_start_configured() == []
     end
 
     test "an empty value counts as unset" do
@@ -64,7 +74,7 @@ defmodule CmsHarness.StartConfiguredTest do
       # that as a directory would resolve against the filesystem root.
       System.put_env("CMS_PROJECT_DIR", "")
 
-      assert capture_log(fn -> assert :ok = Projects.start_configured() end) == ""
+      assert logged_by_start_configured() == []
     end
   end
 
