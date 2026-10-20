@@ -78,7 +78,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   # layout collapses into a thin line at default zoom.
   @row_gap 2000
   @node_scale 0.6
-  @holding_gap 500
+  @holding_gap 1500
   @story_col_gap 500
   @story_row_gap 1400
   @ctx_req_gap 1000
