@@ -17,12 +17,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     previous_limit = Application.fetch_env(:code_my_spec, :analysis_slots)
     Application.put_env(:code_my_spec, :analysis_slots, 1)
 
-    on_exit(fn ->
-      case previous_limit do
-        {:ok, value} -> Application.put_env(:code_my_spec, :analysis_slots, value)
-        :error -> Application.delete_env(:code_my_spec, :analysis_slots)
-      end
-    end)
+    on_exit(fn -> restore_slot_limit(previous_limit) end)
 
     eventually(fn -> AnalysisSlots.in_use() == 0 end)
     root = "/tmp/timeout-slot-output-#{Ecto.UUID.generate()}"
@@ -470,7 +465,7 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     task =
       Task.Supervisor.async_nolink(supervisor, fn ->
-        if hold_slot, do: :ok = CmsHarness.AnalysisSlots.acquire()
+        :ok = acquire_fixture_slot(hold_slot)
         env = CodeMySpec.Environments.Environment.new(:local, File.cwd!())
 
         CodeMySpec.Environments.cmd(
@@ -527,6 +522,15 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
     {task, pids}
   end
+
+  defp restore_slot_limit({:ok, value}),
+    do: Application.put_env(:code_my_spec, :analysis_slots, value)
+
+  defp restore_slot_limit(:error),
+    do: Application.delete_env(:code_my_spec, :analysis_slots)
+
+  defp acquire_fixture_slot(true), do: CmsHarness.AnalysisSlots.acquire()
+  defp acquire_fixture_slot(false), do: :ok
 
   defp refute_alive(child_pids), do: Enum.each(child_pids, &assert_eventually_dead/1)
 
