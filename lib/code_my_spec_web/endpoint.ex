@@ -56,6 +56,10 @@ defmodule CodeMySpecWeb.Endpoint do
     # GenServer briefly unavailable mid-restart) was an unhandled 500,
     # and debug_errors: true's Plug.Debugger dumped the crashing
     # request's own headers -- including Authorization -- to render it.
+    # Before the reloader: a landing's merge is on disk before its migrations
+    # have run, and a request that reloads the new code in that gap is a 503
+    # (issue 725a1d32). This holds it until the migrations are in.
+    plug(CodeMySpecWeb.Plugs.HoldDuringLanding)
     plug(CodeMySpecWeb.Plugs.SafeCodeReloader)
     plug(Phoenix.Ecto.CheckRepoStatus, otp_app: :code_my_spec)
   end

@@ -338,10 +338,43 @@ defmodule CodeMySpec.Promotion.Steps do
   def merge(env, root, branch) do
     before = head(env, root)
 
-    env
-    |> unmerged(root)
-    |> resume(env, root, branch, before)
+    hold_requests(env, root)
+
+    result =
+      env
+      |> unmerged(root)
+      |> resume(env, root, branch, before)
+
+    release_unless_deploying(result, env, root)
+    result
   end
+
+  # The app serving `root` reloads the merged code on its next request, and until
+  # `mix ecto.migrate` has run (the `reload` recipe, a few seconds later) every
+  # request is a PendingMigrationError 503 (issue 725a1d32). So the merge says a
+  # landing is under way first: `CodeMySpecWeb.Plugs.HoldDuringLanding` makes
+  # requests wait for the `reload` recipe (or a restart) to take it down, instead
+  # of failing. The path and the format (a unix time) are that plug's; it ignores
+  # a marker older than two minutes, so a landing that dies cannot hold the app.
+  @landing_hold ".git/landing_hold"
+
+  # Best effort: a hold that could not be written only means the old 503 window.
+  defp hold_requests(env, root) do
+    Environments.write_file(
+      env,
+      Path.join(root, @landing_hold),
+      Integer.to_string(System.os_time(:second))
+    )
+  end
+
+  defp release_requests(env, root),
+    do: Environments.delete_file(env, Path.join(root, @landing_hold))
+
+  # Only a merge that moved something is followed by a reload or a restart,
+  # which is what takes the hold down. One that failed or moved nothing is
+  # followed by neither.
+  defp release_unless_deploying({:ok, %{changed: [_ | _]}}, _env, _root), do: :ok
+  defp release_unless_deploying(_other, env, root), do: release_requests(env, root)
 
   # A merge already in progress (`MERGE_HEAD`, which `--ff-only` never leaves)
   # blocks `git merge`. With no conflict markers left the resolution is made
