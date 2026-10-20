@@ -145,6 +145,77 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
     context
   end
 
+  @doc "Make the Postgres version check itself fail, leaving the pgvector check untouched."
+  def without_postgres(context) do
+    path = Path.join([context.machine_root, "bin", "psql"])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'psql' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    case "$*" in
+      *--version*) printf 'psql: error: could not connect to server\\n' >&2; exit 1 ;;
+      *vector*) printf 'vector|0.8.0\\n' ;;
+      *) exit 0 ;;
+    esac
+    """)
+
+    File.chmod!(path, 0o700)
+    context
+  end
+
+  @doc """
+  Tell desktop setup which machine it is running on, for a criterion about a
+  platform this test process is not actually running on (Windows, Apple
+  Silicon).
+
+  Story 1133's own decision (product, on the question this answers): the
+  edge detects os/arch once (`:os.type/0`, the system architecture) and
+  passes it into `CmsHarness.Setup` as a parameter -- the OS branching
+  itself is what that story adds, not something already readable today.
+  This is the test-only injection seam for that parameter, in the same
+  `Application.put_env/3` + `on_exit` shape every other override in this
+  file already uses (`device_config_path`, `harness_server_url_override`):
+  nothing in `CmsHarness.Setup` reads `:setup_platform_override` yet, so a
+  spec using this stays red until that story's edge detection is built to
+  consult it instead of (or before) the real `:os.type/0`.
+  """
+  def as_platform(context, os, arch) when is_atom(os) and is_atom(arch) do
+    previous = Application.fetch_env(:code_my_spec, :setup_platform_override)
+    Application.put_env(:code_my_spec, :setup_platform_override, %{os: os, arch: arch})
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, :setup_platform_override, value)
+        :error -> Application.delete_env(:code_my_spec, :setup_platform_override)
+      end
+    end)
+
+    context
+  end
+
+  @doc """
+  Add a fake `just` to the machine's PATH, logging its invocation like every
+  other fake prerequisite binary here. Always succeeds: what it would really
+  do (fetch deps, create and migrate the database) is not part of what a
+  spec can observe through the desktop UI, which only shows that the
+  command ran.
+  """
+  def with_just(context) do
+    path = Path.join([context.machine_root, "bin", "just"])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'just' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    """)
+
+    File.chmod!(path, 0o700)
+    context
+  end
+
   def without_pgvector(context) do
     path = Path.join([context.machine_root, "bin", "psql"])
 
