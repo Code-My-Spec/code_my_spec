@@ -10,8 +10,8 @@ defmodule CodeMySpecWeb.Plugs.HoldDuringLanding do
   everything that arrives for about five seconds is a 503 — returned to agents
   as tool results too.
 
-  `Steps.merge` writes `.git/landing_hold` (a unix time) in the checkout (inside `.git`, so it can never dirty the tree) before it
-  merges; the `reload` and `serve` recipes remove it once `mix ecto.migrate` has
+  `Steps.merge` writes `landing_hold` (a unix time) in the checkout's git directory (so it can never
+  dirty the tree; see `CodeMySpec.LandingHold`) before it merges; the `reload` and `serve` recipes remove it once `mix ecto.migrate` has
   run. Requests wait for it to go. The wait is bounded two ways, so a landing that
   dies halfway can never hold the app: a request waits at most 30 seconds, and a
   marker older than two minutes is ignored.
@@ -21,7 +21,6 @@ defmodule CodeMySpecWeb.Plugs.HoldDuringLanding do
 
   @behaviour Plug
 
-  @marker ".git/landing_hold"
   @max_wait_ms 30_000
   @stale_seconds 120
   @poll_ms 100
@@ -40,7 +39,7 @@ defmodule CodeMySpecWeb.Plugs.HoldDuringLanding do
     conn
   end
 
-  defp marker_path, do: Path.join(File.cwd!(), @marker)
+  defp marker_path, do: CodeMySpec.LandingHold.marker_path(File.cwd!())
 
   defp hold(_path, remaining, _opts) when remaining <= 0, do: :ok
 

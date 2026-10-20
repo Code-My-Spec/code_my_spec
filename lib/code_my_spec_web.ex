@@ -86,6 +86,7 @@ defmodule CodeMySpecWeb do
       # The harness channel runs promotions. The gate reads the database and
       # the harness has none, so `promotion_run` arrives here and the disk half
       # goes back out as `fs_request` — see `Promotion.Runner`.
+      CodeMySpec.LandingHold,
       CodeMySpec.Promotion,
       CodeMySpec.Provisioning,
       CodeMySpec.ProvisioningPlan,

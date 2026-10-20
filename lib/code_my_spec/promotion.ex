@@ -28,6 +28,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Files,
+      CodeMySpec.LandingHold,
       CodeMySpec.Problems,
       CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Qa,

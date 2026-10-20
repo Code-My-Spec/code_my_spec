@@ -356,19 +356,17 @@ defmodule CodeMySpec.Promotion.Steps do
   # requests wait for the `reload` recipe (or a restart) to take it down, instead
   # of failing. The path and the format (a unix time) are that plug's; it ignores
   # a marker older than two minutes, so a landing that dies cannot hold the app.
-  @landing_hold ".git/landing_hold"
-
   # Best effort: a hold that could not be written only means the old 503 window.
   defp hold_requests(env, root) do
     Environments.write_file(
       env,
-      Path.join(root, @landing_hold),
+      CodeMySpec.LandingHold.marker_path(root),
       Integer.to_string(System.os_time(:second))
     )
   end
 
   defp release_requests(env, root),
-    do: Environments.delete_file(env, Path.join(root, @landing_hold))
+    do: Environments.delete_file(env, CodeMySpec.LandingHold.marker_path(root))
 
   # Only a merge that moved something is followed by a reload or a restart,
   # which is what takes the hold down. One that failed or moved nothing is
