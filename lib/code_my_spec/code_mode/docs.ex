@@ -61,7 +61,7 @@ defmodule CodeMySpec.CodeMode.Docs do
 
     ## Arguments
 
-    #{arguments(tool.schema)}
+    #{arguments(tool.schema)}#{reserved_note(tool)}
 
     ## Example
 
@@ -72,6 +72,36 @@ defmodule CodeMySpec.CodeMode.Docs do
     ```
     """
   end
+
+  # Words Lua will not take as a table field: `{ until = "x" }` does not run, it
+  # fails to compile (issue 2a269214).
+  @lua_reserved ~w(and break do else elseif end false for function goto if in local nil not
+                   or repeat return then true until while)
+
+  defp reserved_note(%{schema: %{"properties" => properties}, name: name}) do
+    case properties |> Map.keys() |> Enum.filter(&(&1 in @lua_reserved)) |> Enum.sort() do
+      [] ->
+        ""
+
+      words ->
+        sets = Enum.map_join(words, "\n", fn word -> ~s(    args["#{word}"] = "…") end)
+
+        """
+
+
+        Lua reserved word#{if length(words) > 1, do: "s"}: #{Enum.map_join(words, ", ", &"`#{&1}`")}.
+        These cannot be written as a table field (`{ #{hd(words)} = … }` fails to
+        compile). Set them with a string key:
+
+            local args = { … }
+        #{sets}
+            #{name}(args)
+        """
+        |> String.trim_trailing()
+    end
+  end
+
+  defp reserved_note(_tool), do: ""
 
   defp arguments(%{"properties" => properties} = schema) when map_size(properties) > 0 do
     required = Map.get(schema, "required", [])
