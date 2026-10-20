@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
   def sidebar(assigns) do
     ~H"""
     <ul data-test="console-sidebar" class="menu bg-base-200 min-h-full w-56 p-4 gap-1">
+      <li class="menu-title text-base text-base-content">DevOps</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console"}

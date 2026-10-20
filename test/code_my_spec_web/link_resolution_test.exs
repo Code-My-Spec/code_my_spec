@@ -293,7 +293,13 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/console/deploys",
     "/app/projects/:project_id/console/secrets",
     "/app/projects/:project_id/console/credentials",
-    "/app/projects/:project_id/console/activity"
+    "/app/projects/:project_id/console/activity",
+    # The Operations console's sections, reached from its sidebar; the nav's
+    # Operations entry opens Chats (`/inbox`).
+    "/app/projects/:project_id/content",
+    "/app/projects/:project_id/users",
+    "/app/projects/:project_id/mailboxes",
+    "/app/projects/:project_id/mail"
   ]
 
   @doc false

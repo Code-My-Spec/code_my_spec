@@ -7,6 +7,8 @@ defmodule CodeMySpecWeb.ProjectUsersLive.Index do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   alias CodeMySpec.ProjectUsers
 
   @impl true
@@ -18,12 +20,18 @@ defmodule CodeMySpecWeb.ProjectUsersLive.Index do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <.header>
-        Registered users
-        <:subtitle>People who have registered for {@project.name}.</:subtitle>
-      </.header>
+      <Operations.frame
+        project_id={assigns[:project] && @project.id}
+        active={:users}
+        current_scope={@current_scope}
+      >
+        <.header>
+          Registered users
+          <:subtitle>People who have registered for {@project.name}.</:subtitle>
+        </.header>
 
-      {render_body(assigns)}
+        {render_body(assigns)}
+      </Operations.frame>
     </Layouts.app>
     """
   end

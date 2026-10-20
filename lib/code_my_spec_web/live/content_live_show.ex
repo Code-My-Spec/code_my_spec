@@ -6,6 +6,8 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   """
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
@@ -24,7 +26,8 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
     # row may be nil (unknown / non-integer id) — the view renders a
     # not-found state rather than crashing.
-    {:noreply, assign(socket, current_scope: scope, row: ContentPublishing.get_snapshot(scope, id))}
+    {:noreply,
+     assign(socket, current_scope: scope, row: ContentPublishing.get_snapshot(scope, id))}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -32,15 +35,26 @@ defmodule CodeMySpecWeb.ContentLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
+    <Operations.frame
+      project_id={@project && @project.id}
+      active={:content}
+      current_scope={@current_scope}
+    >
       <div :if={!@row && @slug} class="p-6" data-test="content-not-found">
-        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
+        <.link
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/content")}
+          class="link link-primary text-sm"
+        >
           ← Back to Content
         </.link>
         <p class="mt-4 text-base-content/60">Content not found.</p>
       </div>
 
       <div :if={@row}>
-        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
+        <.link
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/content")}
+          class="link link-primary text-sm"
+        >
           ← Back to Content
         </.link>
 
@@ -51,8 +65,12 @@ defmodule CodeMySpecWeb.ContentLive.Show do
         </div>
 
         <div class="grid grid-cols-2 gap-3 mb-6 p-4 bg-base-200 rounded-box text-sm">
-          <div><span class="font-semibold">Slug:</span> <span class="ml-2 font-mono">{slug(@row)}</span></div>
-          <div><span class="font-semibold">Type:</span> <span class="ml-2">{content_type(@row)}</span></div>
+          <div>
+            <span class="font-semibold">Slug:</span> <span class="ml-2 font-mono">{slug(@row)}</span>
+          </div>
+          <div>
+            <span class="font-semibold">Type:</span> <span class="ml-2">{content_type(@row)}</span>
+          </div>
           <div>
             <span class="font-semibold">Published:</span>
             <span class="ml-2 font-mono">{@row.metadata["publish_at"] || "—"}</span>
@@ -80,6 +98,7 @@ defmodule CodeMySpecWeb.ContentLive.Show do
           {raw(@row.processed_content)}
         </div>
       </div>
+    </Operations.frame>
     """
   end
 end

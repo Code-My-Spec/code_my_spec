@@ -209,23 +209,14 @@ defmodule CodeMySpecWeb.Layouts do
               <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
 
               <li class="menu-title">Build</li>
-              <%!-- The step 6 console replaced Provisioning (gate 2): same
-                    project, a PaaS-style sidebar+tabs layout instead of one
-                    long page. --%>
-              <li>
-                <a href={~p"/app/projects/#{project.id}/console"}>Console</a>
-              </li>
               <li><a href={~p"/app/projects/#{project.id}/agent-conversation"}>Agent chat</a></li>
+              <%!-- Two consoles, each a sidebar over its own pages: DevOps for
+                    the infrastructure, Operations for running the live app. --%>
+              <li><a href={~p"/app/projects/#{project.id}/console"}>DevOps</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/inbox"}>Operations</a></li>
 
               <li class="menu-title">Project</li>
-              <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
               <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
-              <li :if={can_manage_mailboxes?(@current_scope)}>
-                <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
-              </li>
 
               <li class="menu-title">Private</li>
               <li>
@@ -310,10 +301,6 @@ defmodule CodeMySpecWeb.Layouts do
   # Only owners/admins administer mailboxes, so the Mailboxes nav item is
   # theirs alone. Guarded on an active account so it never raises for a
   # half-onboarded scope.
-  defp can_manage_mailboxes?(%{active_account_id: account_id} = scope) when is_binary(account_id),
-    do: CodeMySpec.Mail.can_administer?(scope)
-
-  defp can_manage_mailboxes?(_), do: false
 
   @doc """
   Shows the flash group with standard titles and content.

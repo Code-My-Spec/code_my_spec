@@ -1,12 +1,13 @@
 defmodule CodeMySpecWeb.ConsoleLive.Components.Shell do
   @moduledoc """
-  The console's frame: its sidebar beside the section being shown. Shared so a
-  page outside `ConsoleLive` (the servers) sits in the console too. With no
-  project there is no console to frame it, and the content renders alone.
+  The DevOps console's frame. Shared so a page outside `ConsoleLive` (servers,
+  inventory, dev boxes) sits in it too. With no project there is no console to
+  frame it, and the content renders alone.
   """
 
   use CodeMySpecWeb, :html
 
+  alias CodeMySpecWeb.ConsoleFrame
   alias CodeMySpecWeb.ConsoleLive.Components.Sidebar
 
   attr :project_id, :any, required: true
@@ -22,25 +23,11 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Shell do
 
   def frame(assigns) do
     ~H"""
-    <div class="drawer lg:drawer-open drawer-end" data-test="console">
-      <input id="console-drawer" type="checkbox" class="drawer-toggle" />
-
-      <div class="drawer-content p-4 lg:p-8 flex flex-col gap-4">
-        <div class="flex items-center justify-between gap-4">
-          <label for="console-drawer" class="btn btn-ghost drawer-button lg:hidden">
-            Menu
-          </label>
-          {render_slot(@toolbar)}
-        </div>
-
-        {render_slot(@inner_block)}
-      </div>
-
-      <div class="drawer-side">
-        <label for="console-drawer" class="drawer-overlay"></label>
-        <Sidebar.sidebar live_action={@active} project_id={@project_id} />
-      </div>
-    </div>
+    <ConsoleFrame.frame>
+      <:sidebar><Sidebar.sidebar live_action={@active} project_id={@project_id} /></:sidebar>
+      <:toolbar>{render_slot(@toolbar)}</:toolbar>
+      {render_slot(@inner_block)}
+    </ConsoleFrame.frame>
     """
   end
 end

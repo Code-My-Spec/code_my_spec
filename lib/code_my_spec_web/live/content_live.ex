@@ -11,6 +11,8 @@ defmodule CodeMySpecWeb.ContentLive do
   """
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpecWeb.Operations
+
   import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
@@ -134,6 +136,11 @@ defmodule CodeMySpecWeb.ContentLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <Operations.frame
+      project_id={@project && @project.id}
+      active={:content}
+      current_scope={@current_scope}
+    >
       <div :if={@project}>
         <div class="mb-6 flex justify-between items-start gap-4">
           <div>
@@ -154,7 +161,12 @@ defmodule CodeMySpecWeb.ContentLive do
             <button type="button" phx-click="sync" data-test="sync-button" class="btn btn-primary">
               Re-sync
             </button>
-            <button type="button" phx-click="publish" data-test="publish-button" class="btn btn-secondary">
+            <button
+              type="button"
+              phx-click="publish"
+              data-test="publish-button"
+              class="btn btn-secondary"
+            >
               Publish
             </button>
           </div>
@@ -169,17 +181,33 @@ defmodule CodeMySpecWeb.ContentLive do
           </span>
         </div>
 
-        <div :if={@publish_error} role="alert" class="alert alert-error alert-soft mb-4" data-test="publish-error">
+        <div
+          :if={@publish_error}
+          role="alert"
+          class="alert alert-error alert-soft mb-4"
+          data-test="publish-error"
+        >
           <span>{@publish_error}</span>
         </div>
-        <div :if={@publish_sync_id} role="alert" class="alert alert-success alert-soft mb-4" data-test="publish-sync-id">
+        <div
+          :if={@publish_sync_id}
+          role="alert"
+          class="alert alert-success alert-soft mb-4"
+          data-test="publish-sync-id"
+        >
           <span>Published — sync {@publish_sync_id}</span>
         </div>
 
         <details class="collapse collapse-arrow bg-base-200 mb-6">
-          <summary class="collapse-title text-sm font-semibold">Source &amp; publishing settings</summary>
+          <summary class="collapse-title text-sm font-semibold">
+            Source &amp; publishing settings
+          </summary>
           <div class="collapse-content space-y-4">
-            <form data-test="content-source-form" phx-submit="save-source" class="flex gap-2 items-end">
+            <form
+              data-test="content-source-form"
+              phx-submit="save-source"
+              class="flex gap-2 items-end"
+            >
               <label class="form-control flex-1">
                 <span class="label-text text-xs">Content source directory</span>
                 <input
@@ -193,34 +221,76 @@ defmodule CodeMySpecWeb.ContentLive do
               <button type="submit" class="btn btn-sm">Set source</button>
             </form>
 
-            <form data-test="content-settings-form" phx-submit="save-settings" class="grid sm:grid-cols-2 gap-3">
+            <form
+              data-test="content-settings-form"
+              phx-submit="save-settings"
+              class="grid sm:grid-cols-2 gap-3"
+            >
               <label class="form-control">
                 <span class="label-text text-xs">Image bucket</span>
-                <input type="text" name="settings[image_bucket]" value={@project.image_bucket} class="input input-bordered input-sm" />
+                <input
+                  type="text"
+                  name="settings[image_bucket]"
+                  value={@project.image_bucket}
+                  class="input input-bordered input-sm"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">Images host</span>
-                <input type="text" name="settings[images_host]" value={@project.images_host} class="input input-bordered input-sm" />
+                <input
+                  type="text"
+                  name="settings[images_host]"
+                  value={@project.images_host}
+                  class="input input-bordered input-sm"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">Content bucket</span>
-                <input type="text" name="settings[content_bucket]" value={@project.content_bucket} class="input input-bordered input-sm" />
+                <input
+                  type="text"
+                  name="settings[content_bucket]"
+                  value={@project.content_bucket}
+                  class="input input-bordered input-sm"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">Client API URL</span>
-                <input type="text" name="settings[client_api_url]" value={@project.client_api_url} class="input input-bordered input-sm" />
+                <input
+                  type="text"
+                  name="settings[client_api_url]"
+                  value={@project.client_api_url}
+                  class="input input-bordered input-sm"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">AWS access key ID</span>
-                <input type="password" name="settings[aws_access_key_id]" value={@project.aws_access_key_id} class="input input-bordered input-sm" autocomplete="off" />
+                <input
+                  type="password"
+                  name="settings[aws_access_key_id]"
+                  value={@project.aws_access_key_id}
+                  class="input input-bordered input-sm"
+                  autocomplete="off"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">AWS secret access key</span>
-                <input type="password" name="settings[aws_secret_access_key]" value={@project.aws_secret_access_key} class="input input-bordered input-sm" autocomplete="off" />
+                <input
+                  type="password"
+                  name="settings[aws_secret_access_key]"
+                  value={@project.aws_secret_access_key}
+                  class="input input-bordered input-sm"
+                  autocomplete="off"
+                />
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">AWS region</span>
-                <input type="text" name="settings[aws_region]" value={@project.aws_region} class="input input-bordered input-sm" placeholder="us-east-1" />
+                <input
+                  type="text"
+                  name="settings[aws_region]"
+                  value={@project.aws_region}
+                  class="input input-bordered input-sm"
+                  placeholder="us-east-1"
+                />
               </label>
               <%!-- Which provider those credentials belong to. Blank means
                     Amazon, which is what every project did before this existed
@@ -239,7 +309,13 @@ defmodule CodeMySpecWeb.ContentLive do
               </label>
               <label class="form-control">
                 <span class="label-text text-xs">Deploy key</span>
-                <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" autocomplete="off" />
+                <input
+                  type="password"
+                  name="settings[deploy_key]"
+                  value={@project.deploy_key}
+                  class="input input-bordered input-sm"
+                  autocomplete="off"
+                />
               </label>
               <div class="flex items-end">
                 <button type="submit" class="btn btn-sm">Save settings</button>
@@ -300,6 +376,7 @@ defmodule CodeMySpecWeb.ContentLive do
           </tbody>
         </table>
       </div>
+    </Operations.frame>
     """
   end
 
