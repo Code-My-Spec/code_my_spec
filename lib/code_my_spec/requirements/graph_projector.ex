@@ -834,6 +834,9 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     ]
   end
 
+  @doc "The key a requirement's node carries in the projected graph."
+  def key(requirement), do: nkey(requirement)
+
   defp node_key(n), do: Topology.node_key(n)
   defp nkey(n), do: key_to_string(node_key(n))
   defp key_to_string({type, id, name}), do: "#{type}_#{sanitize_id(id)}_#{name}"

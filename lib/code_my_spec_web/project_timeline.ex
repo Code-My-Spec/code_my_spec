@@ -16,17 +16,19 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   (`send_update(ProjectTimeline, id: "project-timeline", refresh: true)`), never
   on every render.
 
-  Every mark opens the graph page — a gate on its own requirement — and the
-  button at the end opens the whole graph in a modal, computed off the
-  LiveView process only when asked for.
+  The graph opens in a modal (`RequirementGraphComponents.modal/1`) from the
+  button at the end, or from a gate with that gate selected; it is computed off
+  the LiveView process, only when asked for.
   """
 
   use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Bands
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.PlainLanguage
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpecWeb.RequirementGraphComponents
 
   @doc """
   The timeline for a project, or nothing at all when there is none in scope.
@@ -51,42 +53,56 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     {refresh?, assigns} = Map.pop(assigns, :refresh, false)
     socket = assign(socket, assigns)
 
-    socket = assign_new(socket, :graph_modal, fn -> nil end)
+    socket =
+      socket
+      |> assign_new(:graph_modal, fn -> nil end)
+      |> assign_new(:selected, fn -> nil end)
 
     if refresh? or not Map.has_key?(socket.assigns, :bands),
       do: {:ok, assign(socket, :bands, Bands.read(socket.assigns.scope))},
       else: {:ok, socket}
   end
 
+  # Off the LiveView process, and only when asked for: the projected graph and
+  # every requirement, keyed as the graph keys its nodes.
   @impl true
-  def handle_event("open_graph", _params, socket) do
+  def handle_event("open_graph", params, socket) do
     scope = socket.assigns.scope
+    project = socket.assigns.project
 
     {:noreply,
      socket
-     |> assign(:graph_modal, :loading)
-     |> start_async(:graph, fn -> GraphProjector.project_graph_with_metrics(scope) end)}
+     |> assign(graph_modal: :loading, selected: focus_key(project, params["focus"]))
+     |> start_async(:graph, fn -> load_graph(scope) end)}
   end
 
+  def handle_event("select_node", %{"key" => key}, socket),
+    do: {:noreply, assign(socket, :selected, key)}
+
   def handle_event("close_graph", _params, socket),
-    do: {:noreply, assign(socket, :graph_modal, nil)}
+    do: {:noreply, assign(socket, graph_modal: nil, selected: nil)}
 
   @impl true
-  def handle_async(
-        :graph,
-        {:ok, {data, _metrics}},
-        %{assigns: %{graph_modal: :loading}} = socket
-      ),
-      do: {:noreply, assign(socket, :graph_modal, data)}
+  def handle_async(:graph, {:ok, graph}, %{assigns: %{graph_modal: :loading}} = socket),
+    do: {:noreply, assign(socket, :graph_modal, graph)}
 
   def handle_async(:graph, {:exit, _reason}, %{assigns: %{graph_modal: :loading}} = socket),
     do: {:noreply, assign(socket, :graph_modal, :error)}
 
   def handle_async(:graph, _result, socket), do: {:noreply, socket}
 
+  defp load_graph(scope) do
+    {data, _metrics} = GraphProjector.project_graph_with_metrics(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
+    %{data: data, requirements: Map.new(nodes, &{GraphProjector.key(&1), &1})}
+  end
+
+  defp focus_key(_project, nil), do: nil
+  defp focus_key(project, name), do: "project_#{String.replace(project.id, "-", "")}_#{name}"
+
   @impl true
   def render(assigns) do
-    {early, late} = gates(assigns.bands, assigns.project)
+    {early, late} = gates(assigns.bands)
     graph = ~p"/app/projects/#{assigns.project.id}/requirements/graph"
     assigns = assign(assigns, early: early, late: late, graph: graph)
 
@@ -99,7 +115,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     >
       <ol class="flex items-center gap-3">
         <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
-          <.gate :for={step <- @early} step={step} />
+          <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="pre_stories" class="min-w-0 flex-1">
           <.story_bar tally={@bands.pre_stories} label="Stories, before build" href={@graph} />
@@ -111,7 +127,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           <.story_bar tally={@bands.post_stories} label="Stories, after build" href={@graph} />
         </li>
         <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
-          <.gate :for={step <- @late} step={step} />
+          <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
         </li>
         <li class="shrink-0">
           <button
@@ -127,73 +143,21 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           </button>
         </li>
       </ol>
-      <.graph_modal :if={@graph_modal} graph={@graph_modal} href={@graph} myself={@myself} />
+      <RequirementGraphComponents.modal
+        :if={@graph_modal}
+        graph={@graph_modal}
+        selected={@selected}
+        href={@graph}
+        target={@myself}
+        target_selector={"##{@id}"}
+      />
     </nav>
     """
   end
 
-  attr :graph, :any, required: true
-  attr :href, :string, required: true
-  attr :myself, :any, required: true
-
-  # The whole graph over the conversation. The sigma element is drawn only once
-  # the data is in, so its hook mounts with something to draw.
-  defp graph_modal(assigns) do
-    ~H"""
-    <div
-      class="modal modal-open"
-      role="dialog"
-      aria-modal="true"
-      data-test="graph-modal"
-      phx-window-keydown="close_graph"
-      phx-key="Escape"
-      phx-target={@myself}
-    >
-      <div class="modal-box w-11/12 max-w-6xl space-y-3">
-        <button
-          type="button"
-          phx-click="close_graph"
-          phx-target={@myself}
-          class="btn btn-ghost btn-sm btn-circle absolute right-2 top-2"
-          aria-label="Close"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-        <h2 class="pr-8 text-lg font-semibold">Requirements graph</h2>
-        <p :if={@graph == :loading} class="text-sm opacity-60">Computing the graph…</p>
-        <p :if={@graph == :error} role="alert" class="text-sm text-error">
-          The graph could not be computed. Try the full page.
-        </p>
-        <div :if={is_map(@graph)}>
-          <div
-            id="timeline-graph"
-            phx-hook="SigmaGraph"
-            phx-update="ignore"
-            data-graph={Jason.encode!(@graph)}
-            class="rounded-box border border-base-300 bg-base-200"
-            style="position: relative; overflow: hidden; width: 100%; height: 65vh;"
-          >
-          </div>
-          <div id="timeline-graph-debug"></div>
-        </div>
-        <div class="flex justify-end">
-          <.link navigate={@href} data-test="graph-modal-open" class="btn btn-sm btn-ghost">
-            Full page <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-          </.link>
-        </div>
-      </div>
-      <button
-        type="button"
-        class="modal-backdrop"
-        phx-click="close_graph"
-        phx-target={@myself}
-        aria-label="Close"
-      ></button>
-    </div>
-    """
-  end
-
   attr :step, :map, required: true
+  attr :tip, :string, required: true, doc: "which way the tooltip opens, away from the edge"
+  attr :target, :any, required: true
 
   # A project gate: a dot, or the pill naming it when it is the one the project
   # is on. Exactly one gate is current, always — an idle project is the
@@ -202,10 +166,11 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     ~H"""
     <span data-test="timeline-step" data-step={@step.name} data-state={@step.state}>
       <.link
-        navigate={@step.path}
-        title={@step.title}
-        data-tip={@step.detail}
-        class={["flex h-4 items-center", @step.detail && "tooltip tooltip-bottom"]}
+        phx-click="open_graph"
+        phx-value-focus={@step.name}
+        phx-target={@target}
+        data-tip={@step.title}
+        class={["tooltip flex h-4 items-center", @tip]}
       >
         <span
           :if={@step.state == "current"}
@@ -297,25 +262,23 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   # The gates in template order, split where stories join, each with its state.
-  defp gates(bands, project) do
+  defp gates(bands) do
     names = Enum.map(RequirementDefinitionData.project_graph(), & &1.name)
     current = Enum.find(names, List.last(names), &(not MapSet.member?(bands.satisfied, &1)))
 
     names
-    |> Enum.map(&step(&1, bands.satisfied, current, project))
+    |> Enum.map(&step(&1, bands.satisfied, current))
     |> Enum.split_with(&(not MapSet.member?(bands.late_names, &1.name)))
   end
 
-  defp step(name, satisfied, current, project) do
+  defp step(name, satisfied, current) do
     meaning = PlainLanguage.fetch(name) || %{}
 
     %{
       name: name,
       title: Map.get(meaning, :title, String.replace(name, "_", " ")),
       abbrev: Map.get(meaning, :abbrev, name |> String.split("_") |> hd()),
-      detail: Map.get(meaning, :detail),
-      state: state_of(name, satisfied, current),
-      path: ~p"/app/projects/#{project.id}/requirements/graph?#{[focus: name]}"
+      state: state_of(name, satisfied, current)
     }
   end
 

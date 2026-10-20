@@ -306,6 +306,9 @@ export const SigmaGraph = {
 
     // Click → show node edges
     this.sigma.on("clickNode", ({ node }) => {
+      // A page that shows a node's detail names where to say which was picked.
+      const target = this.el.dataset.selectTarget
+      if (target) this.pushEventTo(target, "select_node", { key: node })
       const attrs = graph.getNodeAttributes(node)
       const inEdges = []
       const outEdges = []

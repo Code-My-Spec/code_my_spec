@@ -1102,6 +1102,17 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       view |> element("[data-test='graph-modal'] .modal-backdrop") |> render_click()
       refute has_element?(view, "[data-test='graph-modal']")
+
+      view
+      |> element("[data-test='timeline-step'][data-step='work_dispatched'] a")
+      |> render_click()
+
+      render_async(view)
+
+      assert has_element?(
+               view,
+               "[data-test='graph-modal'] [data-test='node-detail'][data-node='work_dispatched']"
+             )
     end
 
     test "a main-role agent on another copy does not", %{
