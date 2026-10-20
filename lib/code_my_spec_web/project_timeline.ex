@@ -111,19 +111,19 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       id={@id}
       data-test="project-timeline"
       aria-label="Where this project stands"
-      class="border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
+      class="w-full border-b border-base-300 bg-base-200/50 px-4 py-2 lg:px-8"
     >
-      <ol class="flex items-center gap-3">
+      <ol class="flex w-full items-center gap-3">
         <li data-test="timeline-band" data-band="early" class="flex shrink-0 items-center gap-1">
           <.gate :for={step <- @early} step={step} tip="tooltip-right" target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
           <.story_chart steps={@bands.story_steps} target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="components" class="min-w-0 flex-1">
+        <li data-test="timeline-band" data-band="components" class="min-w-16 flex-1">
           <.component_bar counts={@bands.components} target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="issues" class="min-w-0 flex-1">
+        <li data-test="timeline-band" data-band="issues" class="min-w-16 flex-1">
           <.issue_bar counts={@bands.issues} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
