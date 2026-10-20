@@ -319,7 +319,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp labelled(assigns) do
     ~H"""
     <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
-      <span class="text-[9px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+      <span class="text-[8px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
         {@label}
       </span>
       {render_slot(@inner_block)}
