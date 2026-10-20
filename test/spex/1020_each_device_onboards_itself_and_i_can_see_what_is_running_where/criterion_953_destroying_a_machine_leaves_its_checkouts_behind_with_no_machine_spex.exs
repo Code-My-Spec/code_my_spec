@@ -56,7 +56,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2848Spex do
       end
 
       when_ "the machine is destroyed, or CMS is simply uninstalled from it", context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         html =
           live

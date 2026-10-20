@@ -289,6 +289,7 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/console/resources",
     "/app/projects/:project_id/console/servers",
     "/app/projects/:project_id/console/inventory",
+    "/app/projects/:project_id/console/dev-boxes",
     "/app/projects/:project_id/console/deploys",
     "/app/projects/:project_id/console/secrets",
     "/app/projects/:project_id/console/credentials",

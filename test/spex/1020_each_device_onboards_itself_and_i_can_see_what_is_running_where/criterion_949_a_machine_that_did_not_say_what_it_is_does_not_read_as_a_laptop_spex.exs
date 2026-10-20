@@ -70,7 +70,8 @@ defmodule CodeMySpecSpex.Story1020.Criterion2844Spex do
       end
 
       then_ "and it is not on my devices", context do
-        {:ok, live, _html} = live(context.conn, "/app/devices")
+        {:ok, live, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/console/dev-boxes")
 
         refute has_element?(live, "[data-test='device']", "a-quiet-machine"),
                "the machine was refused and is listed anyway"

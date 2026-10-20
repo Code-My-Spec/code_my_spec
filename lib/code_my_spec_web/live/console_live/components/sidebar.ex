@@ -1,7 +1,8 @@
 defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
   @moduledoc """
-  The console's section navigation — Overview, Resources, Servers, Inventory,
-  Deploys, Secrets, Credentials, Activity, Settings. A plain function component; `ConsoleLive`
+  The console's section navigation — Overview; production (Resources, Servers,
+  Inventory, Deploys); development (Dev boxes); then Secrets, Credentials,
+  Activity, Settings. A plain function component; `ConsoleLive`
   carries all the state.
   """
 
@@ -22,6 +23,7 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
           Overview
         </.link>
       </li>
+      <li class="menu-title">Production</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console/resources"}
@@ -58,6 +60,17 @@ defmodule CodeMySpecWeb.ConsoleLive.Components.Sidebar do
           Deploys
         </.link>
       </li>
+      <li class="menu-title">Development</li>
+      <li>
+        <.link
+          navigate={~p"/app/projects/#{@project_id}/console/dev-boxes"}
+          data-test="console-nav-dev-boxes"
+          class={nav_class(@live_action, :dev_boxes)}
+        >
+          Dev boxes
+        </.link>
+      </li>
+      <li class="menu-title">Project</li>
       <li>
         <.link
           navigate={~p"/app/projects/#{@project_id}/console/secrets"}

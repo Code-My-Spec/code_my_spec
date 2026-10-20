@@ -183,12 +183,8 @@ defmodule CodeMySpecWeb.Layouts do
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
             <li><a href={~p"/app/projects"}>Projects</a></li>
-            <%!--
-                Account-scoped, so it sits with Projects rather than inside the
-                per-project block: one machine serves checkouts of several
-                projects. Servers and resources are in each project's console.
-              --%>
-            <li><a href={~p"/app/devices"}>Devices</a></li>
+            <%!-- Servers, inventory and dev boxes are the account's, shown in
+                  each project's console. --%>
             <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
