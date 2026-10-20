@@ -20,6 +20,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Menu
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.TaskEvaluator
   alias CodeMySpec.Notifications.NotificationClient
@@ -120,6 +121,23 @@ defmodule CodeMySpec.Hooks.Stop do
           "systemMessage" =>
             "Waiting for analysis you requested or subscribed to. Your task remains open; " <>
               "each run will report when it finishes. You may stop without polling or closing the task."
+        }
+
+      # A promotion the queue holds: the landing or the ejection reaches the agent
+      # as a message, so this stop is neither evaluated nor counted. Evaluated, the
+      # same "not landed yet" feedback advanced the stuck counter and R8 turned
+      # continuous off in the middle of a wait the agent cannot speed up (issue
+      # 963996d9: three occurrences on 2026-10-20).
+      match?({:promotion, _}, Waiting.reason(scope, agent, :turn_end)) ->
+        Logger.info("[StopHook] [#{req_id}] Waiting for the promotion queue, allowing stop",
+          cms_decision: "allow",
+          cms_why: "promotion queued"
+        )
+
+        %{
+          "systemMessage" =>
+            "Your promotion is queued. Your task remains open; you are told when it lands " <>
+              "or why it was taken out. You may stop without polling or closing the task."
         }
 
       continuous_mode?(agent) && stuck_threshold_hit?(agent) ->
