@@ -11,7 +11,6 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
            Projects.create_project(scope, %{
              name: "QA Setup #{Ecto.UUID.generate()}",
              module_name: "QaSetup",
-             description: "QA provisioning simulator; requires an active development fixture.",
              domain: "setup-qa.invalid",
              setup_options: ~w(server domain email storage)
            }),

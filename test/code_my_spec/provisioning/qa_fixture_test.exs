@@ -72,10 +72,7 @@ defmodule CodeMySpec.Provisioning.QaFixtureTest do
   end
 
   test "an expired fixture cannot invoke real providers", %{scope: scope} do
-    project = %{
-      scope.active_project
-      | description: "QA provisioning simulator; requires an active development fixture."
-    }
+    project = %{scope.active_project | name: "QA Setup #{Ecto.UUID.generate()}"}
 
     expired = %{scope | active_project: project, active_project_id: Ecto.UUID.generate()}
     opts = QaFixture.options(expired, [])

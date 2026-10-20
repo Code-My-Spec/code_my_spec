@@ -58,9 +58,7 @@ defmodule CodeMySpec.Provisioning.QaFixture do
 
   defp unavailable_fixture_options(
          %{
-           active_project: %{
-             description: "QA provisioning simulator; requires an active development fixture."
-           }
+           active_project: %{name: "QA Setup " <> _}
          },
          opts
        ) do
