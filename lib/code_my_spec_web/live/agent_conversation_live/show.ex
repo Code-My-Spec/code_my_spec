@@ -46,9 +46,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.ChatComponents
+  alias CodeMySpecWeb.IssueComponents
   alias CodeMySpecWeb.MainAgentConversation
   alias CodeMySpecWeb.PermissionComponents
-  alias CodeMySpecWeb.IssueComponents
   alias CodeMySpecWeb.ProblemCharts
   alias CodeMySpecWeb.ProjectTimeline
   alias CodeMySpecWeb.StoryProgress
