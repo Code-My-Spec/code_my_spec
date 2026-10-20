@@ -202,8 +202,6 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   # right like a stacked line, and the shape says how far along the stories
   # are as a body of work.
   defp story_chart(assigns) do
-    assigns = assign(assigns, :tip, stories_tip(assigns.stories))
-
     ~H"""
     <button
       type="button"
@@ -211,10 +209,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       phx-target={@target}
       data-test="story-chart"
       data-stories={length(@stories)}
-      data-tip={@tip}
-      aria-label={@tip}
+      aria-label={"#{length(@stories)} stories, by how far each has got"}
       class="tooltip tooltip-bottom block w-full"
     >
+      <span data-test="story-legend" class="tooltip-content text-left text-xs">
+        <span :for={{label, class} <- legend()} class="flex items-center gap-1.5">
+          <span class={["size-2 rounded-sm", class]}></span>{label}
+        </span>
+      </span>
       <span class="flex h-5 w-full items-stretch overflow-hidden rounded-sm bg-base-content/10">
         <span
           :for={story <- @stories}
@@ -234,6 +236,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
+  defp legend,
+    do: [
+      {"Steps done", "bg-success"},
+      {"Working on", "bg-warning"},
+      {"Held by open issues", "bg-error"},
+      {"Not reached yet", "bg-base-content/25"}
+    ]
+
   # Not-started steps on top in grey, so every column is the story's full height.
   defp step_segments,
     do: [
@@ -247,12 +257,6 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   defp story_title(story),
     do: "##{story.number} #{story.title} — #{story.done} of #{step_total(story)} steps"
-
-  defp stories_tip(stories) do
-    finished = Enum.count(stories, &(&1.done == step_total(&1)))
-    held = Enum.count(stories, &(&1.issues > 0))
-    "#{length(stories)} stories: #{finished} through every step, #{held} held by open issues"
-  end
 
   attr :counts, :map, required: true
   attr :target, :any, required: true
