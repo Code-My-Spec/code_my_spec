@@ -162,11 +162,74 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  # The recipe may kill this BEAM (it restarts the harness) and then has to start
+  # the new one, so it cannot be a child of this process. As one, it lived in the
+  # harness's process tree with its output piped back here: once the old harness
+  # began shutting down the pipe closed, and the recipe's next `echo` died of
+  # SIGPIPE before it reached the `nohup just harness` line — after a 60s slow
+  # shutdown on 2026-10-20 nothing listened on :4004 for fifteen minutes (issue
+  # 0597863f). Detached, with its output in a file and its exit status in
+  # another, it outlives this process; while this one is still alive it waits for
+  # that status, so a recipe that does not restart anything still reports.
+  @after_promote_wait_ms 900_000
+
   @impl true
   def run_after_promote(root) do
-    case Environments.cmd(local(root), "just", ["after-promote"], stderr_to_stdout: true) do
-      {_out, 0} -> :ok
-      {out, status} -> {:error, "`just after-promote` failed (#{status}): #{out}"}
+    log = after_promote_log()
+    status_file = log <> ".status"
+    File.mkdir_p!(Path.dirname(log))
+    File.rm(status_file)
+
+    shell = detached_after_promote(log, status_file, System.find_executable("setsid") != nil)
+
+    case Environments.cmd(local(root), "bash", ["-c", shell], []) do
+      {_out, 0} ->
+        await_status(status_file, log, @after_promote_wait_ms)
+
+      {out, status} ->
+        {:error, "could not launch `just after-promote` (#{status}): #{String.trim(out)}"}
+    end
+  end
+
+  @doc """
+  The shell line that runs `just after-promote` apart from this process: its own
+  session where `setsid` exists, no stdin, output appended to `log`, and the
+  recipe's exit status written to `status_file` when it ends. Public so the shape
+  that matters is asserted without running it.
+  """
+  @spec detached_after_promote(String.t(), String.t(), boolean()) :: String.t()
+  def detached_after_promote(log, status_file, setsid?) do
+    inner =
+      "just after-promote >> #{quote_arg(log)} 2>&1 < /dev/null; echo $? > #{quote_arg(status_file)}"
+
+    prefix = if setsid?, do: "setsid ", else: ""
+
+    "#{prefix}nohup bash -c #{quote_arg(inner)} > /dev/null 2>&1 < /dev/null & disown; echo $!"
+  end
+
+  defp quote_arg(text), do: "'" <> String.replace(text, "'", "'\\''") <> "'"
+
+  defp after_promote_log, do: Path.join(System.user_home!(), ".codemyspec/after_promote.log")
+
+  @doc false
+  @spec await_status(String.t(), String.t(), non_neg_integer(), non_neg_integer()) ::
+          :ok | {:error, String.t()}
+  def await_status(status_file, log, remaining_ms, interval_ms \\ 500)
+
+  def await_status(_status_file, log, remaining_ms, _interval_ms) when remaining_ms <= 0,
+    do: {:error, "`just after-promote` did not finish in time; see #{log}"}
+
+  def await_status(status_file, log, remaining_ms, interval_ms) do
+    case File.read(status_file) do
+      {:ok, text} ->
+        case String.trim(text) do
+          "0" -> :ok
+          status -> {:error, "`just after-promote` failed (#{status}); see #{log}"}
+        end
+
+      {:error, _not_yet} ->
+        Process.sleep(interval_ms)
+        await_status(status_file, log, remaining_ms - interval_ms, interval_ms)
     end
   end
 

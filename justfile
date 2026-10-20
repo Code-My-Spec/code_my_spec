@@ -522,7 +522,14 @@ after-promote:
     else
         echo "→ restarting the harness: could not read the build it is running"
     fi
-    just refresh-harness 4004 false
+    # Run detached by the harness (issue 0597863f), so it outlives the harness it
+    # replaces. A harness that does not come back is every agent down with nobody
+    # looking, so one attempt that fails is followed by a second, and the failure
+    # of both is the recipe's exit status, in the log the harness left behind.
+    if ! just refresh-harness 4004 false; then
+        echo "✗ the harness did not come up; trying once more" >&2
+        just refresh-harness 4004 false
+    fi
 
 # Pull main into the running checkout without restarting — the code reloader takes it.
 pull:
@@ -622,6 +629,12 @@ refresh port="4000":
 refresh-harness port="4004" pull="true":
     #!/usr/bin/env bash
     set -euo pipefail
+
+    # Never die of a closed pipe. Run from a harness's own `after-promote`, the
+    # reader of this recipe's output can be the very process the recipe stops; a
+    # later `echo` would then kill the recipe with SIGPIPE before it starts the
+    # replacement (issue 0597863f).
+    trap '' PIPE
 
     # The other half of `just refresh`. A server and a harness on different
     # commits speak different channel contracts, and the symptom is
