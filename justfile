@@ -455,6 +455,9 @@ serve:
     mix ecto.create
     mix ecto.migrate
 
+    # A restart landing: requests held since the merge may be served now.
+    rm -f .git/landing_hold
+
     exec mix phx.server
 
 # A promote's default deployment (John, 2026-10-02): bring the app `serve`
@@ -479,6 +482,12 @@ reload:
     : "${DATABASE_NAME:?DATABASE_NAME must be set}"
 
     mix ecto.migrate
+
+    # The migrations are in: requests held since the merge (`Steps.merge`,
+    # `CodeMySpecWeb.Plugs.HoldDuringLanding`) may now reload the new code.
+    # Also when the migrate above failed (`set -e` stops before here), where the
+    # hold lapses on its own after two minutes.
+    rm -f .git/landing_hold
     curl -sf -o /dev/null --max-time 600 "http://127.0.0.1:$PORT/"
     curl -sf --max-time 30 "http://127.0.0.1:$PORT/health"
 
