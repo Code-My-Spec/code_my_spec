@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   @graph_debounce_ms 750
 
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
+  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.GraphReport
@@ -28,6 +29,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
        graph_provenance: nil,
        watching?: false,
        graph_timer: nil,
+       selected: nil,
+       requirements: nil,
        error: nil,
        setup_error: nil
      )}
@@ -45,6 +48,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
           project: project,
           scope: scope,
           focus: focus_key(project, params["focus"]),
+          selected: focus_key(project, params["focus"]),
           error: nil,
           setup_error: nil
         )
@@ -62,6 +66,20 @@ defmodule CodeMySpecWeb.RequirementsLive do
       {:noreply, socket}
     end)
   end
+
+  # A node clicked in the graph (`SigmaGraph` pushes its key here). The
+  # requirements behind the nodes are read on the first pick and kept.
+  @impl true
+  def handle_event("select_node", %{"key" => key}, socket),
+    do: {:noreply, socket |> assign(:selected, key) |> with_requirements()}
+
+  defp with_requirements(%{assigns: %{requirements: nil, scope: scope}} = socket)
+       when not is_nil(scope) do
+    {nodes, _computed_at} = Requirements.cached_all(scope)
+    assign(socket, :requirements, Map.new(nodes, &{GraphProjector.key(&1), &1}))
+  end
+
+  defp with_requirements(socket), do: socket
 
   # --- Async work ---
 
@@ -180,6 +198,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
     socket
     |> assign(graph_data: graph_data)
+    |> then(&if(&1.assigns.selected, do: with_requirements(&1), else: &1))
     |> assign(graph_provenance: provenance(metrics, socket.assigns[:scope]))
     |> push_event("graph:ready", %{data: graph_data, metrics: metrics})
   end
@@ -225,6 +244,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
       graph_data={@graph_data}
       provenance={@graph_provenance}
       focus={assigns[:focus]}
+      selected={@selected}
+      requirements={@requirements}
       slug={@slug}
       socket={@socket}
     />
@@ -243,6 +264,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
   attr :socket, :map, required: true
   attr :provenance, :any, default: nil
   attr :focus, :string, default: nil
+  attr :selected, :string, default: nil
+  attr :requirements, :map, default: nil
 
   defp graph_view(assigns) do
     ~H"""
@@ -250,16 +273,29 @@ defmodule CodeMySpecWeb.RequirementsLive do
       <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
       <.graph_provenance :if={@provenance} provenance={@provenance} />
       <RequirementGraphComponents.legend />
-      <div
-        id="sigma-graph"
-        phx-hook="SigmaGraph"
-        data-graph={if is_map(@graph_data), do: Jason.encode!(@graph_data)}
-        data-focus={@focus}
-        phx-update="ignore"
-        class="rounded-box border border-base-300 bg-base-200"
-        style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
-      >
+      <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div
+          id="sigma-graph"
+          phx-hook="SigmaGraph"
+          data-graph={if is_map(@graph_data), do: Jason.encode!(@graph_data)}
+          data-focus={@focus}
+          data-select-target="#graph-page"
+          phx-update="ignore"
+          class="rounded-box border border-base-300 bg-base-200"
+          style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
+        >
+        </div>
+        <div class="rounded-box border border-base-300 p-3 lg:max-h-[80vh] lg:overflow-y-auto">
+          <RequirementGraphComponents.node_detail
+            node={@selected && @requirements && @requirements[@selected]}
+            edges={if is_map(@graph_data), do: @graph_data.edges, else: []}
+            requirements={@requirements || %{}}
+            target={nil}
+          />
+        </div>
       </div>
+      <%!-- The hook's debug text lands here, in the page, for copying. --%>
+      <div id="sigma-graph-debug"></div>
     </div>
     """
   end

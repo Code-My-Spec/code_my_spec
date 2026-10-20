@@ -33,4 +33,19 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphOpensOnAFocusedRequirementTest 
 
     refute html =~ "data-focus="
   end
+
+  test "a node picked in the graph shows its detail beside it", ctx do
+    project_id = ctx.scope.active_project_id
+    key = "project_#{String.replace(project_id, "-", "")}_work_dispatched"
+
+    {:ok, view, html} =
+      live(ctx.conn, "/app/projects/#{project_id}/requirements/graph?preload=true")
+
+    assert html =~ ~s(data-select-target="#graph-page")
+    refute has_element?(view, "[data-test='node-detail'][data-node]")
+
+    render_hook(view, "select_node", %{"key" => key})
+
+    assert has_element?(view, "[data-test='node-detail'][data-node='work_dispatched']")
+  end
 end
