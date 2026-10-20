@@ -118,11 +118,11 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       socket = build_socket(project, scope)
       {:noreply, socket} = Index.handle_params(%{"scope" => "qa"}, "/", socket)
 
-      assert socket.assigns.filter_scope == "qa"
+      assert socket.assigns.filter_scope == ["qa"]
       assert Enum.map(socket.assigns.issues, & &1.title) == ["qa issue"]
     end
 
-    test "empty params default to open issues, high and medium, any scope" do
+    test "empty params default to open issues, high and medium, the app's" do
       {project, scope} = setup_local_project()
 
       socket = build_socket(project, scope)
@@ -130,7 +130,7 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
 
       assert socket.assigns.filter_status == ~w(incoming accepted)
       assert socket.assigns.filter_severity == ~w(high medium)
-      assert socket.assigns.filter_scope == "all"
+      assert socket.assigns.filter_scope == ["app"]
     end
 
     test "does nothing until the host has resolved a scope" do
@@ -252,10 +252,10 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
         filter_severity: ~w(high medium),
         range: "30d",
         chart: "status",
-        filter_scope: "all",
+        filter_scope: ~w(app qa docs framework),
         status_options: ~w(open all incoming accepted dismissed resolved),
         severity_options: ~w(all critical high medium low info),
-        scope_options: ~w(all app qa docs framework),
+        scope_options: ~w(app qa docs framework),
         error: nil,
         flash: %{}
       },

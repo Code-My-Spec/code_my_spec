@@ -16,7 +16,8 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   # The local index this view replaced could filter by scope; the cloud one
   # could not, so the merge quietly dropped it. Restored here rather than
   # left as a capability the move cost us.
-  @scopes ~w(all app qa docs framework)
+  @scopes ~w(app qa docs framework)
+  @default_scopes ~w(app)
 
   @impl true
   def render(assigns) do
@@ -37,11 +38,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
             options={@severity_options}
             chosen={@filter_severity}
           />
-          <select class="select select-sm select-bordered" name="scope">
-            <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
-              {String.capitalize(s)}
-            </option>
-          </select>
+          <.multi_select name="scope" label="Scopes" options={@scope_options} chosen={@filter_scope} />
         </form>
       </:actions>
     </.header>
@@ -172,7 +169,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      |> assign(:page_title, "Issues")
      |> assign(:filter_status, @default_statuses)
      |> assign(:filter_severity, @default_severities)
-     |> assign(:filter_scope, "all")
+     |> assign(:filter_scope, @default_scopes)
      |> assign(:range, "30d")
      |> assign(:chart, "status")
      |> assign(:status_options, @statuses)
@@ -190,7 +187,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      socket
      |> assign(:filter_status, set_param(params["status"], @statuses, @default_statuses))
      |> assign(:filter_severity, set_param(params["severity"], @severities, @default_severities))
-     |> assign(:filter_scope, param(params["scope"], @scopes, "all"))
+     |> assign(:filter_scope, set_param(params["scope"], @scopes, @default_scopes))
      |> assign(:range, param(params["range"], IssueCharts.ranges(), "30d"))
      |> assign(:chart, param(params["chart"], IssueCharts.views(), "status"))
      |> load_issues()}
@@ -228,7 +225,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      patch(socket,
        status: chosen(params["status"], @statuses) || a.filter_status,
        severity: chosen(params["severity"], @severities) || a.filter_severity,
-       scope: params["scope"] || a.filter_scope,
+       scope: chosen(params["scope"], @scopes) || a.filter_scope,
        range: a.range,
        chart: a.chart
      )}
@@ -280,15 +277,14 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     statuses = Enum.map(socket.assigns.filter_status, &String.to_existing_atom/1)
     severities = Enum.map(socket.assigns.filter_severity, &String.to_existing_atom/1)
 
-    filters =
-      if socket.assigns.filter_scope == "all",
-        do: %{},
-        else: %{scope: String.to_existing_atom(socket.assigns.filter_scope)}
+    scopes = Enum.map(socket.assigns.filter_scope, &String.to_existing_atom/1)
 
     issues =
       scope
-      |> Issues.list_filtered(filters)
-      |> Enum.filter(&(&1.status in statuses and &1.severity in severities))
+      |> Issues.list_filtered(%{})
+      |> Enum.filter(
+        &(&1.status in statuses and &1.severity in severities and &1.scope in scopes)
+      )
       |> Enum.sort_by(&{status_rank(&1.status), -DateTime.to_unix(&1.inserted_at, :microsecond)})
 
     socket

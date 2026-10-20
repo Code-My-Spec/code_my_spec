@@ -167,7 +167,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
 
       assert_patch(
         view,
-        ~p"/app/projects/#{ctx.project.id}/issues?#{[status: ~w(incoming accepted resolved dismissed), severity: ~w(high medium)]}"
+        ~p"/app/projects/#{ctx.project.id}/issues?#{[status: ~w(incoming accepted resolved dismissed), severity: ~w(high medium), scope: ~w(app)]}"
       )
 
       ids = listed_ids(html)
