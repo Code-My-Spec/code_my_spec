@@ -2225,135 +2225,133 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test={@main_agent? && "main-agent"}
         data-agent-id={@main_agent? && @conversation.agent_id}
         data-working-copy-id={@main_agent? && main_copy_id(@main)}
-        class="flex shrink-0 items-center gap-3 border-b border-base-300 pb-3"
+        class="flex shrink-0 flex-col gap-1.5 border-b border-base-300 pb-3"
       >
-        <.icon name="hero-cpu-chip" class="size-10 shrink-0" />
-        <div class="flex min-w-0 flex-1 flex-col gap-1">
-          <div class="flex min-w-0 items-center gap-2">
-            <div class="flex min-w-0 flex-col">
-              <div class="flex min-w-0 items-baseline gap-2">
-                <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
-                  {@conversation && Conversations.display_name(@conversation)}
-                </h1>
-                <button
-                  :for={item <- @assigned}
-                  type="button"
-                  phx-click="show_assigned"
-                  phx-value-kind={item.kind}
-                  phx-value-key={item.key}
-                  data-test={"assigned-#{item.kind}"}
-                  title={item.title}
-                  class="link link-hover min-w-0 truncate text-left text-xs opacity-70"
-                >
-                  {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
-                </button>
-                <.live_component
-                  :for={item <- @assigned}
-                  :if={item.kind == :story}
-                  module={StoryProgress}
-                  id="story-progress-header"
-                  scope={@current_scope}
-                  story_id={item.story_id}
-                  working_copy_id={item.working_copy_id}
-                />
-              </div>
+        <div class="flex min-w-0 items-center gap-2">
+          <.icon name="hero-cpu-chip" class="size-6 shrink-0" />
+          <div class="flex min-w-0 flex-col">
+            <div class="flex min-w-0 items-baseline gap-2">
+              <h1 class="min-w-0 shrink-0 truncate text-lg font-semibold">
+                {@conversation && Conversations.display_name(@conversation)}
+              </h1>
+              <button
+                :for={item <- @assigned}
+                type="button"
+                phx-click="show_assigned"
+                phx-value-kind={item.kind}
+                phx-value-key={item.key}
+                data-test={"assigned-#{item.kind}"}
+                title={item.title}
+                class="link link-hover min-w-0 truncate text-left text-xs opacity-70"
+              >
+                {if item.kind == :issue, do: "Issue", else: "Story"} {item.ref} · {item.title}
+              </button>
+              <.live_component
+                :for={item <- @assigned}
+                :if={item.kind == :story}
+                module={StoryProgress}
+                id="story-progress-header"
+                scope={@current_scope}
+                story_id={item.story_id}
+                working_copy_id={item.working_copy_id}
+              />
             </div>
-            <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
-              {short_session(@conversation)}
-            </span>
+          </div>
+          <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
+            {short_session(@conversation)}
+          </span>
 
-            <%!-- Story 538's R13, at the grain somebody is actually looking at.
+          <%!-- Story 538's R13, at the grain somebody is actually looking at.
         The working copy page moves all three roles together, which is right
         for staffing an epic and wrong when you have one agent's conversation
         open and want that one to carry on. --%>
-            <button
-              :if={@conversation && @conversation.agent_id}
-              type="button"
-              phx-click="toggle_agent_working"
-              data-test="toggle-agent-working"
-              data-working={to_string(@working?)}
-              class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
-              title={
-                if @working?,
-                  do: "Let this agent stop after its current turn",
-                  else: "Put this agent to work — it picks its own next task"
-              }
-            >
-              <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
-            </button>
+          <button
+            :if={@conversation && @conversation.agent_id}
+            type="button"
+            phx-click="toggle_agent_working"
+            data-test="toggle-agent-working"
+            data-working={to_string(@working?)}
+            class="btn btn-ghost btn-sm btn-square ml-auto shrink-0"
+            title={
+              if @working?,
+                do: "Let this agent stop after its current turn",
+                else: "Put this agent to work — it picks its own next task"
+            }
+          >
+            <.icon name={if @working?, do: "hero-pause", else: "hero-play"} class="size-4" />
+          </button>
 
-            <%!-- The power button (39af5611): green while on, red while off, and
+          <%!-- The power button (39af5611): green while on, red while off, and
         the label says what a click does, so colour is never the only signal.
         Off is a real shutdown; only this or `turn_on_agent` brings it back. --%>
-            <span
-              :if={@conversation && @conversation.agent_id && @retired?}
-              data-test="agent-retired"
-              class="badge badge-ghost badge-sm shrink-0"
-            >
-              Retired
+          <span
+            :if={@conversation && @conversation.agent_id && @retired?}
+            data-test="agent-retired"
+            class="badge badge-ghost badge-sm shrink-0"
+          >
+            Retired
+          </span>
+          <button
+            :if={@conversation && @conversation.agent_id && not @retired?}
+            type="button"
+            phx-click="toggle_agent_power"
+            data-test="agent-power"
+            data-on={to_string(@on?)}
+            class={[
+              "btn btn-ghost btn-sm btn-square shrink-0",
+              if(@on?, do: "text-success", else: "text-error")
+            ]}
+            aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
+            aria-pressed={to_string(@on?)}
+            title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
+          >
+            <.icon name="hero-power" class="size-4" />
+          </button>
+
+          <button
+            :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
+            type="button"
+            phx-click="fire_agent"
+            data-test="fire-agent"
+            class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
+            title="Fire this agent: retires it for good"
+          >
+            <.icon name="hero-fire" class="size-4" />
+          </button>
+
+          <div
+            :if={@conversation && @conversation.agent_id && @firing?}
+            class="flex shrink-0 items-center gap-2 text-xs"
+          >
+            <span class="opacity-70" data-test="fire-agent-confirm-text">
+              Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
             </span>
             <button
-              :if={@conversation && @conversation.agent_id && not @retired?}
               type="button"
-              phx-click="toggle_agent_power"
-              data-test="agent-power"
-              data-on={to_string(@on?)}
-              class={[
-                "btn btn-ghost btn-sm btn-square shrink-0",
-                if(@on?, do: "text-success", else: "text-error")
-              ]}
-              aria-label={if @on?, do: "Turn agent off", else: "Turn agent on"}
-              aria-pressed={to_string(@on?)}
-              title={if @on?, do: "On — turn this agent off", else: "Off — turn this agent on"}
+              phx-click="confirm_fire_agent"
+              data-test="confirm-fire-agent"
+              class="btn btn-error btn-xs"
             >
-              <.icon name="hero-power" class="size-4" />
+              Fire
             </button>
-
             <button
-              :if={@conversation && @conversation.agent_id && not @retired? && not @firing?}
               type="button"
-              phx-click="fire_agent"
-              data-test="fire-agent"
-              class="btn btn-ghost btn-sm btn-square shrink-0 text-error"
-              title="Fire this agent: retires it for good"
+              phx-click="cancel_fire_agent"
+              data-test="cancel-fire-agent"
+              class="btn btn-ghost btn-xs"
             >
-              <.icon name="hero-fire" class="size-4" />
+              Cancel
             </button>
-
-            <div
-              :if={@conversation && @conversation.agent_id && @firing?}
-              class="flex shrink-0 items-center gap-2 text-xs"
-            >
-              <span class="opacity-70" data-test="fire-agent-confirm-text">
-                Fire {@conversation && Conversations.display_name(@conversation)}? This cannot be undone.
-              </span>
-              <button
-                type="button"
-                phx-click="confirm_fire_agent"
-                data-test="confirm-fire-agent"
-                class="btn btn-error btn-xs"
-              >
-                Fire
-              </button>
-              <button
-                type="button"
-                phx-click="cancel_fire_agent"
-                data-test="cancel-fire-agent"
-                class="btn btn-ghost btn-xs"
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-          <%!-- Where the project stands, on the one conversation about the
-          whole project: the project's own agent on the main copy. --%>
-          <ProjectTimeline.project_timeline
-            :if={@main_agent?}
-            scope={@current_scope}
-            project={@project}
-            variant={:header}
-          />
         </div>
+        <%!-- Where the project stands, on the one conversation about the
+        whole project: the project's own agent on the main copy. --%>
+        <ProjectTimeline.project_timeline
+          :if={@main_agent?}
+          scope={@current_scope}
+          project={@project}
+          variant={:header}
+        />
       </header>
 
       <%!-- `overflow-anchor` is what keeps your place when older turns are

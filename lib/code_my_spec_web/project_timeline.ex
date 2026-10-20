@@ -153,7 +153,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <div
           data-test="timeline-band"
           data-band="stories"
-          class="order-3 min-w-0 basis-full sm:order-none sm:basis-auto"
+          class="timeline-more order-3 min-w-0 basis-full max-sm:hidden sm:order-none sm:basis-auto"
         >
           <.story_chart stories={@bands.stories} />
         </div>
@@ -164,8 +164,22 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         >
           <.gate :for={step <- @late} step={step} tip="tooltip-left" target={@myself} />
         </div>
+        <%!-- On a phone only the gates show; this opens the rest. JS, so the
+        open state survives the page's own updates. --%>
+        <button
+          type="button"
+          data-test="timeline-expand"
+          aria-label="Show stories and counts"
+          phx-click={
+            JS.toggle_class("max-sm:hidden", to: "##{@id} .timeline-more")
+            |> JS.toggle_class("rotate-180", to: "##{@id} .timeline-expand-icon")
+          }
+          class="order-2 btn btn-ghost btn-xs btn-square sm:hidden"
+        >
+          <.icon name="hero-chevron-down" class="timeline-expand-icon size-4 transition-transform" />
+        </button>
         <%!-- Where it stands, counted. --%>
-        <ul class="order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 sm:order-none sm:basis-auto sm:flex-nowrap">
+        <ul class="timeline-more order-4 flex basis-full flex-wrap items-center gap-x-4 gap-y-1 max-sm:hidden sm:order-none sm:basis-auto sm:flex-nowrap">
           <li data-test="timeline-band" data-band="story-counts">
             <.labelled label="Stories"><.story_counts counts={@bands.story_counts} /></.labelled>
           </li>
