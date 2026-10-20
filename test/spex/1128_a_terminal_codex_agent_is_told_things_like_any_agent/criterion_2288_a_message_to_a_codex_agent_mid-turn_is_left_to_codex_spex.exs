@@ -50,7 +50,8 @@ defmodule CodeMySpecSpex.Story1128.Criterion2288Spex do
       end
 
       when_ "main messages it", context do
-        {:ok, Map.put(context, :sent, message(context, "Stop and rebase."))}
+        {:ok,
+         Map.put(context, :sent, message(context, "Stop and rebase.", %{"send_now" => true}))}
       end
 
       then_ "the message is queued without stopping the turn", context do

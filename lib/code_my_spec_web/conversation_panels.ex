@@ -687,12 +687,12 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   # Internal agents run on Alloy, sometimes over Claude Code, so the provider
   # alone cannot say whether the harness runs the agent or a person does.
-  defp agent_kind(%{agent: %{engine: :claude_code}} = assigns) do
+  defp agent_kind(%{agent: %{engine: engine}} = assigns) when engine in [:claude_code, :codex] do
     ~H"""
     <span
       data-test="team-agent-kind"
       data-external="true"
-      title="External: a Claude Code session a person runs in a terminal"
+      title="External: a session a person runs in a terminal"
       class="flex shrink-0 items-center opacity-60"
     >
       <.icon name="hero-command-line" class="size-3.5" />

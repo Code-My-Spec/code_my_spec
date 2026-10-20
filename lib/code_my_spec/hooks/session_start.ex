@@ -22,13 +22,14 @@ defmodule CodeMySpec.Hooks.SessionStart do
   @spec handle(CodeMySpec.Users.Scope.t(), map()) :: {pos_integer(), map()}
   def handle(scope, params) do
     case Map.get(params, "session_id") do
-      id when is_binary(id) and id != "" -> create(scope, id, params["messaging"])
+      id when is_binary(id) and id != "" -> create(scope, id, params)
       _ -> {400, %{error: "session_id is required"}}
     end
   end
 
-  defp create(scope, session_id, messaging) do
-    registered = Agents.register_terminal(scope, session_id)
+  defp create(scope, session_id, params) do
+    messaging = params["messaging"]
+    registered = Agents.register_terminal(scope, session_id, :main, engine(params))
 
     {200,
      %{}
@@ -63,6 +64,9 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
     body
   end
+
+  defp engine(%{"engine" => "codex"}), do: :codex
+  defp engine(_params), do: :claude_code
 
   defp reached(%{"delivery" => "stop_hook", "why" => why}),
     do:

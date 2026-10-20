@@ -47,6 +47,7 @@ defmodule CodeMySpecSpex.Story1128.Criterion2289Spex do
 
         codex_submit_prompt(context, session)
         eventually(fn -> assert digest(context) =~ "has not finished" end)
+        forget_queued(fake)
         {:ok, Map.merge(context, %{fake: fake, session: session, agent_id: agent_id})}
       end
 

@@ -39,7 +39,9 @@ defmodule CodeMySpec.Agents.Agent do
   # `:reaped`: nothing confirmed the process ended on purpose (no report, or a
   # machine that could not be asked). `:stopped`: somebody asked. Nil: unknown.
   @stopped_reasons [:reaped, :stopped]
-  @engines [:alloy, :claude_code]
+  @engines [:alloy, :claude_code, :codex]
+  # Sessions a person runs in a terminal: agents on the harness, not ones we start.
+  @terminal_engines [:claude_code, :codex]
 
   # An enum: a misspelt role was a row nothing launches. There is no
   # `spec_writer`; the coding agent writes specs.
@@ -206,6 +208,15 @@ defmodule CodeMySpec.Agents.Agent do
 
   @spec engines() :: [atom()]
   def engines, do: @engines
+
+  @doc "The engines that are a person's terminal session."
+  @spec terminal_engines() :: [atom()]
+  def terminal_engines, do: @terminal_engines
+
+  @doc "Whether this agent is a session a person runs in a terminal."
+  @spec terminal?(t() | atom() | nil) :: boolean()
+  def terminal?(%__MODULE__{engine: engine}), do: terminal?(engine)
+  def terminal?(engine), do: engine in @terminal_engines
 
   @doc """
   Whether somebody turned this agent off and it still holds its seat. Off is

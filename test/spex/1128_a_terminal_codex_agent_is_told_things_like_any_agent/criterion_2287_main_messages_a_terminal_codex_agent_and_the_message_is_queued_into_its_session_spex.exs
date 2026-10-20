@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1128.Criterion2287Spex do
 
       then_ "main is told it was delivered", context do
         assert {:ok, said} = context.sent
-        assert said =~ "delivered"
+        assert said =~ "Delivered"
         {:ok, context}
       end
     end

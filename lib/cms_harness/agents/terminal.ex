@@ -23,6 +23,13 @@ defmodule CmsHarness.Agents.Terminal do
   Frames are newline-delimited JSON: an optional auth line carrying the
   session's peer token, then a user message (knowledge/harness, "Terminal
   agents").
+
+  A Codex session (story 1128) has no inbox socket. It is told things the way
+  Codex takes them: `codex queue --thread <session> --message <text>` puts the
+  message in the session, which Codex reads when it chooses, so this too is
+  never busy and nothing it is sent can be interrupted. Its turns come from its
+  hooks as a Claude Code session's do. Codex has no agent list, so the session
+  is present until its session-end hook, or this harness stops.
   """
 
   use GenServer, restart: :temporary
@@ -44,7 +51,7 @@ defmodule CmsHarness.Agents.Terminal do
   session binds a new socket.
   """
   @spec attach(String.t(), map()) :: {:ok, pid()} | {:error, term()}
-  def attach(agent_id, %{socket: socket, working_copy: working_copy} = session) do
+  def attach(agent_id, %{working_copy: working_copy} = session) do
     case CmsHarness.Agents.whereis(agent_id) do
       {:ok, pid} ->
         GenServer.call(pid, {:session, session})
@@ -56,7 +63,8 @@ defmodule CmsHarness.Agents.Terminal do
             Copy.agents(working_copy),
             {__MODULE__,
              agent_id: agent_id,
-             socket: socket,
+             socket: session[:socket],
+             engine: session[:engine] || :claude_code,
              working_copy: working_copy,
              session_id: session[:session_id],
              transcript: session[:transcript]}
@@ -77,7 +85,8 @@ defmodule CmsHarness.Agents.Terminal do
   def init(opts) do
     state = %{
       agent_id: Keyword.fetch!(opts, :agent_id),
-      socket: Keyword.fetch!(opts, :socket),
+      socket: Keyword.get(opts, :socket),
+      engine: Keyword.get(opts, :engine, :claude_code),
       working_copy: Path.expand(Keyword.fetch!(opts, :working_copy)),
       session_id: Keyword.get(opts, :session_id),
       busy?: false,
@@ -112,7 +121,7 @@ defmodule CmsHarness.Agents.Terminal do
   @impl true
   def handle_call({:send, ref, text, _timeout, _await?}, _from, state) do
     with :ok <- consume(state, ref),
-         :ok <- deliver(state.socket, text) do
+         :ok <- deliver_to(state, text) do
       report(state, %{event: :delivered, ref: ref, generation: state.generation})
       {:reply, {:ok, :started}, state}
     else
@@ -121,7 +130,7 @@ defmodule CmsHarness.Agents.Terminal do
   end
 
   def handle_call({:work_available, _ref, text, _timeout}, _from, state) do
-    case deliver(state.socket, text) do
+    case deliver_to(state, text) do
       :ok -> {:reply, {:ok, :started}, state}
       error -> {:reply, error, state}
     end
@@ -135,7 +144,7 @@ defmodule CmsHarness.Agents.Terminal do
 
     state = %{
       state
-      | socket: session.socket,
+      | socket: session[:socket] || state.socket,
         session_id: session[:session_id] || state.session_id,
         transcript: transcript,
         offset:
@@ -216,6 +225,8 @@ defmodule CmsHarness.Agents.Terminal do
 
   # `:alive` or `:gone` — from Claude Code's agent list when it can be read,
   # else from whether the socket answers. Never busy or idle: that is the hooks'.
+  defp observe(%{engine: :codex}), do: :alive
+
   defp observe(%{session_id: session_id} = state) when is_binary(session_id) do
     case lookup(state, session_id) do
       {:ok, _status} -> :alive
@@ -441,6 +452,48 @@ defmodule CmsHarness.Agents.Terminal do
       {:error, _} = error -> error
     end
   end
+
+  # Codex queues what it is told into the session itself. The command is the
+  # machine's `codex`, unless the application names another.
+  defp deliver_to(%{engine: :codex, session_id: thread}, text), do: queue_into(thread, text)
+  defp deliver_to(%{socket: socket}, text), do: deliver(socket, text)
+
+  @doc """
+  Queue `text` into the Codex session `thread` with `codex queue`. Whether this
+  Codex has the command is `queue_supported?/0`.
+  """
+  @spec queue_into(String.t(), String.t()) :: :ok | {:error, term()}
+  def queue_into(thread, text) do
+    with {:ok, codex} <- codex_executable(),
+         {_out, 0} <- run(codex, ["queue", "--thread", thread, "--message", text]) do
+      :ok
+    else
+      {:error, _} = error -> error
+      {out, status} -> {:error, {:codex_queue, status, String.trim(out)}}
+    end
+  end
+
+  @doc "Whether the machine's Codex takes `codex queue` (Codex CLI 0.163 and later)."
+  @spec queue_supported?() :: boolean()
+  def queue_supported? do
+    with {:ok, codex} <- codex_executable(),
+         {_out, 0} <- run(codex, ["queue", "--help"]) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  defp run(codex, args), do: System.cmd(codex, args, stderr_to_stdout: true)
+
+  defp codex_executable do
+    case System.find_executable(codex_command()) do
+      nil -> {:error, :codex_not_found}
+      path -> {:ok, path}
+    end
+  end
+
+  defp codex_command, do: Application.get_env(:cms_harness, :codex_command, "codex")
 
   @doc "Write `text` to the session at `socket` as one user message."
   @spec deliver(String.t(), String.t()) :: :ok | {:error, term()}

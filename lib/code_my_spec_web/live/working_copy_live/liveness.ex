@@ -73,14 +73,19 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
 
   # A terminal Claude Code session (story 1124): present while its session is
   # live on its machine, as its harness reads Claude Code's own agent list.
-  def agent(%{engine: :claude_code, engine_session_id: id, lifecycle: :running}, _now)
-      when is_binary(id),
-      do: %{label: "Running", basis: "its Claude Code session is live on its machine", since: nil}
+  def agent(%{engine: engine, engine_session_id: id, lifecycle: :running}, _now)
+      when engine in [:claude_code, :codex] and is_binary(id),
+      do: %{
+        label: "Running",
+        basis: "its #{session_name(engine)} session is live on its machine",
+        since: nil
+      }
 
-  def agent(%{engine: :claude_code, engine_session_id: id} = agent, now) when is_binary(id) do
+  def agent(%{engine: engine, engine_session_id: id} = agent, now)
+      when engine in [:claude_code, :codex] and is_binary(id) do
     %{
       label: "Away",
-      basis: "no live Claude Code session; what it is sent waits for its next one",
+      basis: "no live #{session_name(engine)} session; what it is sent waits for its next one",
       since: since(agent.updated_at, now)
     }
   end
@@ -150,7 +155,13 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
     }
   end
 
-  defp terminal?(%{engine: :claude_code, engine_session_id: id}) when is_binary(id), do: true
+  defp session_name(:codex), do: "Codex"
+  defp session_name(_engine), do: "Claude Code"
+
+  defp terminal?(%{engine: engine, engine_session_id: id})
+       when engine in [:claude_code, :codex] and is_binary(id),
+       do: true
+
   defp terminal?(_agent), do: false
 
   defp reason(nil), do: ""
@@ -160,8 +171,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Liveness do
   # its harness no longer reports.
   defp stopped?(%{lifecycle: lifecycle}) when lifecycle in [:off, :retired], do: true
 
-  defp stopped?(%{engine: :claude_code, engine_session_id: id, lifecycle: lifecycle})
-       when is_binary(id),
+  defp stopped?(%{engine: engine, engine_session_id: id, lifecycle: lifecycle})
+       when engine in [:claude_code, :codex] and is_binary(id),
        do: lifecycle != :running
 
   defp stopped?(%{engine: engine, status: :stopped}) when engine != :alloy, do: true

@@ -170,7 +170,8 @@ defmodule CodeMySpec.Agents.Mailbox do
   # cut by a server restart, until its next cadence (2026-10-13).
   # A terminal session's turn is its own and goes on whatever the harness did:
   # nothing was cut, so it is never told to carry on (story 1124).
-  defp recover_unreported_turn(%{engine: :claude_code}, _active, _ref), do: :ok
+  defp recover_unreported_turn(%{engine: engine}, _active, _ref)
+       when engine in [:claude_code, :codex], do: :ok
 
   defp recover_unreported_turn(%{turn_started_at: %DateTime{}} = agent, nil, nil) do
     :ok = Offers.supersede_queued(agent.id)

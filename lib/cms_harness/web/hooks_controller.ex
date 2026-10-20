@@ -28,7 +28,7 @@ defmodule CmsHarness.Web.HooksController do
 
     case conn.assigns.working_copy do
       {:ok, working_dir} ->
-        params = with_messaging(hook, conn, working_dir, params)
+        params = conn |> with_engine(params) |> then(&with_messaging(hook, conn, working_dir, &1))
         decision = decide(hook, working_dir, params)
         attach_terminal(hook, conn, working_dir, params, decision)
         CmsHarness.Agents.Terminal.hook(params["session_id"], hook, params, decision)
@@ -212,6 +212,20 @@ defmodule CmsHarness.Web.HooksController do
   # (story 1123). Whether a message written there will be taken is read here,
   # where the session's settings are; the server is told how this agent is
   # reached and why, never the socket.
+  defp with_messaging("session-start", _conn, _working_dir, %{"engine" => "codex"} = params) do
+    messaging =
+      if CmsHarness.Agents.Terminal.queue_supported?() do
+        %{"delivery" => "queue"}
+      else
+        %{
+          "delivery" => "stop_hook",
+          "why" => "this Codex has no `codex queue` command (it needs Codex CLI 0.163 or later)"
+        }
+      end
+
+    Map.put(params, "messaging", messaging)
+  end
+
   defp with_messaging("session-start", conn, working_dir, params) do
     messaging =
       case socket(conn, params) do
@@ -232,6 +246,15 @@ defmodule CmsHarness.Web.HooksController do
   end
 
   defp with_messaging(_hook, _conn, _working_dir, params), do: params
+
+  # The Codex plugin's hook names its engine; Claude Code's names nothing.
+  # Both speak the same hook dialect, so this is the one thing telling them apart.
+  defp with_engine(conn, params) do
+    case get_req_header(conn, "x-agent-engine") do
+      ["codex" | _] -> Map.put(params, "engine", "codex")
+      _ -> params
+    end
+  end
 
   # The socket stays here: this harness is on the session's machine and the
   # server is not.
@@ -257,6 +280,32 @@ defmodule CmsHarness.Web.HooksController do
       {:error, reason} ->
         Logger.warning(
           "[CmsHarness] terminal agent #{agent_id} could not attach: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp attach_terminal(
+         "session-start",
+         _conn,
+         working_dir,
+         %{"engine" => "codex", "messaging" => %{"delivery" => "queue"}} = params,
+         %{"agent_id" => agent_id}
+       )
+       when is_binary(agent_id) do
+    session = %{
+      engine: :codex,
+      working_copy: working_dir,
+      session_id: params["session_id"],
+      transcript: params["transcript_path"]
+    }
+
+    case CmsHarness.Agents.attach_terminal(agent_id, session) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] codex agent #{agent_id} could not attach: #{inspect(reason)}"
         )
     end
   end

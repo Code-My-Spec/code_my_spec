@@ -273,7 +273,10 @@ defmodule CodeMySpec.Notifications do
   # Agents whose tap-outs are the person's: main's own, and a terminal
   # session's, which has nobody above it to route to.
   defp main_role_agent_ids do
-    from(a in Agent, where: a.role == :main or a.engine == :claude_code, select: a.id)
+    from(a in Agent,
+      where: a.role == :main or a.engine in ^Agent.terminal_engines(),
+      select: a.id
+    )
   end
 
   # Off or retired: nobody means it to run. An agent on duty whose process is
@@ -424,7 +427,7 @@ defmodule CodeMySpec.Notifications do
   # A teammate's tap-out is the main agent's to decide, so the person is
   # pushed only for one that is theirs: main's own, or a terminal session's
   # (a person's process, with nobody above it to route to).
-  defp user_decides?(%Agent{engine: :claude_code}), do: true
+  defp user_decides?(%Agent{engine: engine}) when engine in [:claude_code, :codex], do: true
   defp user_decides?(%Agent{role: role}), do: role == :main
 
   defp tap_out_owner_key(Agent), do: :agent_id

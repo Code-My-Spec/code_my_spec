@@ -102,7 +102,9 @@ defmodule CodeMySpecSpex.TerminalCodexHelpers do
           *) shift ;;
         esac
       done
-      printf '%s\\t%s\\n' "$thread" "$message" >> '#{log}'
+      if [ -n "$message" ]; then
+        printf '%s\\t%s\\0' "$thread" "$message" >> '#{log}'
+      fi
       exit 0
     fi
     exit 0
@@ -120,13 +122,20 @@ defmodule CodeMySpecSpex.TerminalCodexHelpers do
     """
   end
 
+  @doc "Forget what the stand-in `codex` was asked to queue so far: what came before the scenario."
+  @spec forget_queued(%{log: String.t()}) :: :ok
+  def forget_queued(%{log: log}) do
+    File.rm(log)
+    :ok
+  end
+
   @doc "What the stand-in `codex` was asked to queue, oldest first."
   @spec codex_queued(%{log: String.t()}) :: [%{thread: String.t(), message: String.t()}]
   def codex_queued(%{log: log}) do
     case File.read(log) do
       {:ok, body} ->
         body
-        |> String.split("\n", trim: true)
+        |> String.split("\0", trim: true)
         |> Enum.map(fn line ->
           [thread, message] = String.split(line, "\t", parts: 2)
           %{thread: thread, message: message}

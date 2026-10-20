@@ -71,7 +71,7 @@ defmodule CodeMySpec.TaskOwner do
       when is_binary(project_id) do
     from(a in Agent,
       where:
-        a.project_id == ^project_id and a.engine == :claude_code and is_nil(a.off_at) and
+        a.project_id == ^project_id and a.engine in ^Agent.terminal_engines() and is_nil(a.off_at) and
           is_nil(a.retired_at)
     )
     |> Repo.all()
