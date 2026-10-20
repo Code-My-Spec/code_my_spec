@@ -42,7 +42,12 @@ defmodule CodeMySpecWeb.CheckoutLive do
       <.signed_out :if={!@current_scope || !@current_scope.user} />
 
       <%= if @current_scope && @current_scope.user do %>
-        <.paying :if={@client_secret} client_secret={@client_secret} tier={@tier} pk={@publishable_key} />
+        <.paying
+          :if={@client_secret}
+          client_secret={@client_secret}
+          tier={@tier}
+          pk={@publishable_key}
+        />
         <.tier_choice :if={!@client_secret} tiers={@tiers} current_plan={@current_plan} />
         <p :if={@error} class="text-error text-sm mt-3">{@error}</p>
       <% end %>
@@ -65,7 +70,9 @@ defmodule CodeMySpecWeb.CheckoutLive do
       <div :for={tier <- @tiers} class="card bg-base-200">
         <div class="card-body">
           <h3 class="card-title">{tier.name}</h3>
-          <p class="text-2xl font-bold">{tier.price}<span class="text-sm font-normal">/month</span></p>
+          <p class="text-2xl font-bold">
+            {tier.price}<span class="text-sm font-normal">/month</span>
+          </p>
           <p class="text-base-content/70">{tier.blurb}</p>
 
           <div class="card-actions justify-end mt-2">

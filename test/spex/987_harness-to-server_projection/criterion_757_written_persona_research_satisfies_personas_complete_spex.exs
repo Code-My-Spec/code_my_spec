@@ -21,7 +21,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8187Spex do
   setup :setup_active_project
   setup :devops_on
 
-  spex "An agent's persona research satisfies the requirement that asked for it", criterion: 757 do
+  spex "An agent's persona research satisfies the requirement that asked for it",
+    criterion: 757 do
     scenario "writing summary.md and sources.md satisfies personas_complete" do
       given_ "a project has a persona with no research on disk", context do
         {:ok, persona} =

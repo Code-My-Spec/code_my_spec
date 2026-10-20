@@ -56,7 +56,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion4676Spex do
         text = CriterionScript.specs_requirement(context.scope, context.story)
 
         assert text =~ "**Status:** Not satisfied", "one criterion has no spec. Got:\n#{text}"
-        assert text =~ "criterion #{third}", "the uncovered criterion should be named. Got:\n#{text}"
+
+        assert text =~ "criterion #{third}",
+               "the uncovered criterion should be named. Got:\n#{text}"
 
         {:ok, context}
       end

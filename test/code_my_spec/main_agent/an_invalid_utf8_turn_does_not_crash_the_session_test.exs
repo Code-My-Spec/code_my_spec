@@ -17,7 +17,9 @@ defmodule CodeMySpec.Agents.Main.AnInvalidUtf8TurnDoesNotCrashTheSessionTest do
 
   test "a turn with invalid UTF-8 renders as valid, JSON-encodable text" do
     bad = <<"the crash was: ", 0xFF, 0xFE, " (unexpected_utf8)">>
-    refute String.valid?(bad), "the fixture itself has to be invalid UTF-8 for this to mean anything"
+
+    refute String.valid?(bad),
+           "the fixture itself has to be invalid UTF-8 for this to mean anything"
 
     turn = %{agent_id: "a1", role: :assistant, text: bad, tool_calls: nil}
 

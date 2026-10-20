@@ -17,17 +17,18 @@ defmodule CodeMySpec.AgentTasks.Init.CliConfig do
   end
 
   def command(_scope, _task) do
-    {:ok, """
-    # Link Project
+    {:ok,
+     """
+     # Link Project
 
-    1. Use the `list_projects` tool to see available projects
-    2. Use `init_project` with the project_id to link this directory
+     1. Use the `list_projects` tool to see available projects
+     2. Use `init_project` with the project_id to link this directory
 
-    Then add to `.gitignore`:
-    ```
-    .code_my_spec/internal/
-    /diagnostics.jsonl
-    ```
-    """}
+     Then add to `.gitignore`:
+     ```
+     .code_my_spec/internal/
+     /diagnostics.jsonl
+     ```
+     """}
   end
 end

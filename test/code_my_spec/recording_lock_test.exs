@@ -25,7 +25,8 @@ defmodule CodeMySpec.RecordingLockTest do
     %{root: root}
   end
 
-  defp write_lock(root, pid), do: File.write!(RecordingLock.path(root), "#{pid}\n2026-08-15T00:00:00Z\n")
+  defp write_lock(root, pid),
+    do: File.write!(RecordingLock.path(root), "#{pid}\n2026-08-15T00:00:00Z\n")
 
   test "no lock file means nothing is holding the working copy", %{root: root} do
     assert RecordingLock.holder(root) == :free

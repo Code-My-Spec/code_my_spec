@@ -6,13 +6,17 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.CheckIndexingIssues do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :urls, :string, required: true, description: "URLs to check, one per line (max 10)"
   end
 
   @impl true
   def execute(params, frame) do
-    urls = params.urls |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+    urls =
+      params.urls |> String.split("\n") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
 
     with {:ok, {_scope, token}} <- GoogleTools.resolve(frame, params),
          {:ok, data} <- Gsc.check_indexing_issues(token, params.site_url, urls) do

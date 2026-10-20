@@ -32,7 +32,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2942Spex do
     :ok
   end
 
-  spex "Approving an epic happens on the epics screen, which the main agent changes as it works", criterion: 1028 do
+  spex "Approving an epic happens on the epics screen, which the main agent changes as it works",
+    criterion: 1028 do
     scenario "I watch the epic take shape and approve it where it is" do
       given_ :synced_context_component
 

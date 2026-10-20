@@ -11,7 +11,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ManageSitemaps do
   @valid_actions ~w(list details submit delete)
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :action, :string, required: true, description: "list, details, submit, or delete"
     field :sitemap_url, :string, description: "Required for details, submit, delete"
     field :sitemap_index, :string, description: "Optional sitemap index URL (list action only)"
@@ -23,10 +26,14 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ManageSitemaps do
 
     cond do
       action not in @valid_actions ->
-        {:reply, GoogleTools.text("Invalid action: #{action}. Use one of: #{Enum.join(@valid_actions, ", ")}"), frame}
+        {:reply,
+         GoogleTools.text(
+           "Invalid action: #{action}. Use one of: #{Enum.join(@valid_actions, ", ")}"
+         ), frame}
 
       action in ~w(details submit delete) and is_nil(params[:sitemap_url]) ->
-        {:reply, GoogleTools.text("The #{action} action requires a sitemap_url parameter."), frame}
+        {:reply, GoogleTools.text("The #{action} action requires a sitemap_url parameter."),
+         frame}
 
       true ->
         dispatch(action, params, frame)

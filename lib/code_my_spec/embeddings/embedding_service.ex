@@ -86,7 +86,16 @@ defmodule CodeMySpec.Embeddings.EmbeddingService do
     {:ok, %{embedded: embedded, skipped: skipped}}
   end
 
-  defp embed_chunk(project_id, source, path, index, chunk, file_hash, existing_hashes, {emb, skip}) do
+  defp embed_chunk(
+         project_id,
+         source,
+         path,
+         index,
+         chunk,
+         file_hash,
+         existing_hashes,
+         {emb, skip}
+       ) do
     hash = content_hash(chunk)
 
     if MapSet.member?(existing_hashes, hash) do

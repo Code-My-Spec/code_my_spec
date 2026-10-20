@@ -6,7 +6,9 @@ defmodule CodeMySpecWeb.InvitationsLive.Accept do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >

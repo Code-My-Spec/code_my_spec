@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story965.Criterion2929Spex do
     :ok
   end
 
-  spex "The timeline sits on the main agent's conversation, not on every page of the project", criterion: 1016 do
+  spex "The timeline sits on the main agent's conversation, not on every page of the project",
+    criterion: 1016 do
     scenario "Where the project stands is on the conversation about the project" do
       given_ :synced_context_component
 

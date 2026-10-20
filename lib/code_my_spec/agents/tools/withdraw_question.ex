@@ -20,8 +20,7 @@ defmodule CodeMySpec.Agents.Tools.WithdrawQuestion do
   def params do
     %{
       reason: {:required, {:meta, :string, [description: "Why it no longer needs an answer."]}},
-      question_id:
-        {:required, {:meta, :string, [description: "The id `ask_question` returned."]}}
+      question_id: {:required, {:meta, :string, [description: "The id `ask_question` returned."]}}
     }
   end
 

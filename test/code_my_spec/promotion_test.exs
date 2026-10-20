@@ -167,7 +167,10 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = git.(["init", "--initial-branch=main"])
       {_, 0} = git.(["config", "user.email", "t@example.com"])
       {_, 0} = git.(["config", "user.name", "T"])
-      {_, 0} = git.(["-c", "protocol.file.allow=always", "submodule", "add", sub, ".code_my_spec"])
+
+      {_, 0} =
+        git.(["-c", "protocol.file.allow=always", "submodule", "add", sub, ".code_my_spec"])
+
       {_, 0} = git.(["commit", "-m", "add submodule"])
 
       # The break itself: core.worktree rewritten to a path valid only from

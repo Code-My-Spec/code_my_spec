@@ -77,6 +77,7 @@ defmodule CodeMySpec.WorkingCopies.ALostIdentityMintsFreshTest do
 
     assert reloaded.id == first.id
     assert reloaded.root == @root
+
     assert reloaded.label == "first join",
            "a second checkout minting at this path must not rewrite what the first one " <>
              "already recorded about itself"
@@ -103,12 +104,18 @@ defmodule CodeMySpec.WorkingCopies.ALostIdentityMintsFreshTest do
     scope = full_scope_fixture()
 
     {:ok, first} =
-      WorkingCopies.issue(scope, nil, root: @root, device: CodeMySpec.DevicesFixtures.device_fixture(scope))
+      WorkingCopies.issue(scope, nil,
+        root: @root,
+        device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+      )
 
     {:ok, _} = WorkingCopies.report_root(first, @root)
 
     {:ok, second} =
-      WorkingCopies.issue(scope, nil, root: @root, device: CodeMySpec.DevicesFixtures.device_fixture(scope))
+      WorkingCopies.issue(scope, nil,
+        root: @root,
+        device: CodeMySpec.DevicesFixtures.device_fixture(scope)
+      )
 
     refute second.id == first.id
   end

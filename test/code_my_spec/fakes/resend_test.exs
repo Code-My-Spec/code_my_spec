@@ -72,7 +72,9 @@ defmodule CodeMySpecSpex.Fakes.ResendTest do
   describe "PATCH answers with almost nothing" do
     # This shape cost a night: the code read the PATCH response to confirm
     # receiving was on, and concluded failure on every success.
-    test "the patch response carries no capabilities, so a read has to confirm it", %{agent: agent} do
+    test "the patch response carries no capabilities, so a read has to confirm it", %{
+      agent: agent
+    } do
       %{"id" => id} = register(agent, "mail.example.com")
 
       assert %{body: patched} =

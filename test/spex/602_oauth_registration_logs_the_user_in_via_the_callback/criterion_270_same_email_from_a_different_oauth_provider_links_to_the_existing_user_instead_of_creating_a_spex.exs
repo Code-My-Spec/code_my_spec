@@ -17,7 +17,8 @@ defmodule CodeMySpecSpex.Story602.Criterion5496Spex do
 
   alias CodeMySpecSpex.OAuthHelpers
 
-  spex "Same email from a different OAuth provider links to the existing user instead of creating a new one", criterion: 270 do
+  spex "Same email from a different OAuth provider links to the existing user instead of creating a new one",
+    criterion: 270 do
     scenario "Google signup then GitHub signup with the same email returns the same user" do
       given_ "a user has signed up via Google with a specific email", context do
         unique = System.unique_integer([:positive])

@@ -28,7 +28,10 @@ defmodule CodeMySpecWeb.IssueScreenshotController do
   end
 
   defp screenshot(%{attachments: attachments}) when is_list(attachments) do
-    Enum.find(attachments, &(is_map(&1) and &1["type"] == "screenshot" and is_binary(&1["s3_key"])))
+    Enum.find(
+      attachments,
+      &(is_map(&1) and &1["type"] == "screenshot" and is_binary(&1["s3_key"]))
+    )
   end
 
   defp screenshot(_), do: nil

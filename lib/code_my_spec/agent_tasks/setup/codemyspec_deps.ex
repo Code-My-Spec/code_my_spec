@@ -20,21 +20,22 @@ defmodule CodeMySpec.AgentTasks.Setup.CodemyspecDeps do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
-    {:ok, """
-    # Add CodeMySpec Dependencies
+    {:ok,
+     """
+     # Add CodeMySpec Dependencies
 
-    Add to `deps/0` in `mix.exs`:
+     Add to `deps/0` in `mix.exs`:
 
-    - `:boundary` — module dependency enforcement; supplies the `:boundary`
-      compiler, so it must NOT be `only: :dev`
-    - `:client_utils` — CodeMySpec client utilities; supplies the
-      `:diagnostics` compiler, so it must NOT be `only: :dev`
-    - `:credo` — static code analysis (`only: [:dev, :test], runtime: false`)
-    - `:sobelow` — security-focused static analysis (same)
-    - `:sexy_spex` — BDD specification testing (`only: [:dev, :test]`)
-    - `:code_my_spec_generators` — `mix cms_gen.*` scaffolding (`only: :dev`)
+     - `:boundary` — module dependency enforcement; supplies the `:boundary`
+       compiler, so it must NOT be `only: :dev`
+     - `:client_utils` — CodeMySpec client utilities; supplies the
+       `:diagnostics` compiler, so it must NOT be `only: :dev`
+     - `:credo` — static code analysis (`only: [:dev, :test], runtime: false`)
+     - `:sobelow` — security-focused static analysis (same)
+     - `:sexy_spex` — BDD specification testing (`only: [:dev, :test]`)
+     - `:code_my_spec_generators` — `mix cms_gen.*` scaffolding (`only: :dev`)
 
-    Then: `mix deps.get`
-    """}
+     Then: `mix deps.get`
+     """}
   end
 end

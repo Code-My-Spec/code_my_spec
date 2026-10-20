@@ -22,7 +22,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3398Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  spex "The card that asks for an identity is the same conversation, not a new page", criterion: 1346 do
+  spex "The card that asks for an identity is the same conversation, not a new page",
+    criterion: 1346 do
     scenario "The sign-up card appears with names already filled in and three ways to continue" do
       given_ "a visitor who has confirmed their plan", context do
         conn = get(context.conn, "/build")
@@ -56,11 +57,17 @@ defmodule CodeMySpecSpex.Story990.Criterion3398Spex do
 
       then_ "the account name and project name are already filled in from what was confirmed",
             context do
-        assert has_element?(context.view, "[data-test='signup-card'] input[value='Acme Widgets']"),
+        assert has_element?(
+                 context.view,
+                 "[data-test='signup-card'] input[value='Acme Widgets']"
+               ),
                "expected the confirmed account name to already be in the sign-up card, " <>
                  "got: #{context.html}"
 
-        assert has_element?(context.view, "[data-test='signup-card'] input[value='Widget Tracker']"),
+        assert has_element?(
+                 context.view,
+                 "[data-test='signup-card'] input[value='Widget Tracker']"
+               ),
                "expected the confirmed project name to already be in the sign-up card, " <>
                  "got: #{context.html}"
 

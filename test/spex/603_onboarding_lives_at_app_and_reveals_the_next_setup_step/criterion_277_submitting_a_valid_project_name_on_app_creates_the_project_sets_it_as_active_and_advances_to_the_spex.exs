@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story603.Criterion5503Spex do
 
   setup :register_log_in_setup_account
 
-  spex "Valid submission creates the project, sets it active, and advances to the primary app view", criterion: 277 do
+  spex "Valid submission creates the project, sets it active, and advances to the primary app view",
+    criterion: 277 do
     scenario "Valid submission creates the project, sets it active, and advances to the primary app view" do
       given_ "the user is on /app with the project-name form", context do
         {:ok, view, _html} = live(context.conn, "/app")

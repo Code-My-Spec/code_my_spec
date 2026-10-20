@@ -93,7 +93,10 @@ defmodule CodeMySpec.Accounts.AccountsRepository do
   end
 
   defp user_provided_slug?(%{slug: slug}) when is_binary(slug) and byte_size(slug) > 0, do: true
-  defp user_provided_slug?(%{"slug" => slug}) when is_binary(slug) and byte_size(slug) > 0, do: true
+
+  defp user_provided_slug?(%{"slug" => slug}) when is_binary(slug) and byte_size(slug) > 0,
+    do: true
+
   defp user_provided_slug?(_), do: false
 
   defp derive_base_slug(attrs) do

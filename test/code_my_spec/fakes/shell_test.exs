@@ -81,7 +81,12 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     :ok = Environments.write_file(env, "envs/prod.enc.env", "SOPS_INITIALIZED=true\n")
 
     {_out, 0} =
-      Environments.cmd(env, "sops", ["set", "envs/prod.enc.env", ~s(["SECRET_KEY_BASE"]), ~s("abc")])
+      Environments.cmd(env, "sops", [
+        "set",
+        "envs/prod.enc.env",
+        ~s(["SECRET_KEY_BASE"]),
+        ~s("abc")
+      ])
 
     assert {output, 0} = Environments.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
     assert output =~ "SECRET_KEY_BASE=abc"
@@ -221,7 +226,8 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # 973's premise: the widget step skips the generator when the file is already
   # there, so writing it is both the effect and what makes a re-run a no-op.
   test "the widget generator leaves the file installed?/2 looks for", %{env: env} do
-    :ok = Environments.write_file(env, "lib/app_web/router.ex", "defmodule AppWeb.Router do\nend\n")
+    :ok =
+      Environments.write_file(env, "lib/app_web/router.ex", "defmodule AppWeb.Router do\nend\n")
 
     assert {output, 0} = Environments.cmd(env, "mix", ["cms_gen.support_widget"])
     assert output =~ "support_widget_live"

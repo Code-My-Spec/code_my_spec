@@ -31,7 +31,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
     assigns = assign(assigns, :phase_colors, @phase_colors)
 
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       <div id="methodology-page" phx-hook=".DeepContentRead">
         {hero_section(assigns)}
         {diagram_section(assigns)}
@@ -171,8 +175,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
           AI can write code. Shipping working software takes stories, architecture, BDD specs, verified implementations, and QA. Six phases, every artifact verified by the next, problems routed back to the right level. Here's the full loop.
         </p>
         <p class="text-sm text-base-content/60 mt-6">
-          By
-          <a href={~p"/author/john-davenport"} class="link link-primary">John Davenport</a>
+          By <a href={~p"/author/john-davenport"} class="link link-primary">John Davenport</a>
           · the engineer who built CodeMySpec with CodeMySpec
         </p>
 
@@ -336,8 +339,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
             <span>Forward · artifact passed</span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="w-6 h-[2px] bg-[image:repeating-linear-gradient(90deg,var(--color-secondary)_0,var(--color-secondary)_4px,transparent_4px,transparent_7px)]">
-            </span>
+            <span class="w-6 h-[2px] bg-[image:repeating-linear-gradient(90deg,var(--color-secondary)_0,var(--color-secondary)_4px,transparent_4px,transparent_7px)]"></span>
             <span>Feedback · routed by root cause</span>
           </div>
         </div>
@@ -379,7 +381,14 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
       >
         {@title}
       </text>
-      <text x="50" y="66" text-anchor="middle" font-size="9" fill="var(--color-base-content)" opacity="0.55">
+      <text
+        x="50"
+        y="66"
+        text-anchor="middle"
+        font-size="9"
+        fill="var(--color-base-content)"
+        opacity="0.55"
+      >
         {@verb}
       </text>
     </g>

@@ -43,7 +43,8 @@ defmodule CodeMySpec.DeploysTest do
 
   describe "environments are separate" do
     test "uat does not imply prod", ctx do
-      {:ok, _} = Deploys.record(ctx.scope, ctx.story.id, "uat", health_verified_at: DateTime.utc_now())
+      {:ok, _} =
+        Deploys.record(ctx.scope, ctx.story.id, "uat", health_verified_at: DateTime.utc_now())
 
       assert Deploys.deployed?(ctx.scope, ctx.story.id, "uat")
 
@@ -72,7 +73,8 @@ defmodule CodeMySpec.DeploysTest do
     end
 
     test "true once it is deployed and verified", ctx do
-      {:ok, _} = Deploys.record(ctx.scope, ctx.story.id, "uat", health_verified_at: DateTime.utc_now())
+      {:ok, _} =
+        Deploys.record(ctx.scope, ctx.story.id, "uat", health_verified_at: DateTime.utc_now())
 
       assert {true, %{status: status}} = Deploys.uat_check(ctx.scope, ctx.story)
       assert status =~ "health-verified"

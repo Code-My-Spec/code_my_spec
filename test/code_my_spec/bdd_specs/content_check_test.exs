@@ -47,7 +47,12 @@ defmodule CodeMySpec.BddSpecs.ContentCheckTest do
 
   describe "check/2" do
     test "a spec whose spex call names no criterion is refused" do
-      unnamed = String.replace(@scenario, ~s(spex "publishing", criterion: 7 do), ~s(spex "publishing" do))
+      unnamed =
+        String.replace(
+          @scenario,
+          ~s(spex "publishing", criterion: 7 do),
+          ~s(spex "publishing" do)
+        )
 
       assert {:error, :no_criterion} = ContentCheck.check(spec(unnamed), "a_spex.exs")
       assert ContentCheck.describe(:no_criterion, "a_spex.exs") =~ "criterion:"

@@ -32,7 +32,8 @@ defmodule CodeMySpec.Workspaces.Tracking do
   disconnect never reports — so treat a rise as real and a zero as unproven.
   """
   @spec abandoned(Workspace.t()) :: :ok
-  def abandoned(%Workspace{status: :booting} = workspace), do: record(:workspace_abandoned, workspace)
+  def abandoned(%Workspace{status: :booting} = workspace),
+    do: record(:workspace_abandoned, workspace)
 
   def abandoned(%Workspace{}), do: :ok
 

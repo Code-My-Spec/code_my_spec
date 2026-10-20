@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4654Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
 
-  spex "Cloning happens once, straight through — nothing waits for main to be idle", criterion: 1530 do
+  spex "Cloning happens once, straight through — nothing waits for main to be idle",
+    criterion: 1530 do
     scenario "a working copy cloning main's data on first start" do
       given_ "a working copy with no database of its own yet", context do
         rig = app_instance_rig(database_exists?: false, main_database_name: "myapp_dev")
@@ -40,7 +41,8 @@ defmodule CodeMySpecSpex.Story1108.Criterion4654Spex do
       then_ "clone_database was called exactly once, with no retry or wait around it", context do
         assert %{"status" => "ok", "app_status" => "serving"} = context.result
 
-        clone_calls = Enum.filter(FakeAppInstanceRunner.calls(), &match?({:clone_database, _}, &1))
+        clone_calls =
+          Enum.filter(FakeAppInstanceRunner.calls(), &match?({:clone_database, _}, &1))
 
         assert length(clone_calls) == 1,
                "a retry loop here would be the orchestration polling for main to go " <>

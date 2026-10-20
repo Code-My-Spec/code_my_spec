@@ -43,9 +43,7 @@ defmodule Mix.Tasks.SetStoryComponent do
          component when not is_nil(component) <-
            Components.get_component_by_module_name(scope, module_name),
          {:ok, updated} <- Stories.set_story_component(scope, story, component.id) do
-      Mix.shell().info(
-        "Linked story \"#{updated.title}\" to #{module_name} (#{component.id})"
-      )
+      Mix.shell().info("Linked story \"#{updated.title}\" to #{module_name} (#{component.id})")
     else
       nil ->
         Mix.shell().error(

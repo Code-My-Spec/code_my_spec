@@ -33,7 +33,8 @@ defmodule CodeMySpecSpex.Story1070.Criterion3538Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "A behaviour is asserted as a rate over repeated runs, not a single pass", criterion: 1436 do
+  spex "A behaviour is asserted as a rate over repeated runs, not a single pass",
+    criterion: 1436 do
     scenario "An agent that only sometimes does the right thing is a finding about the prompt" do
       given_ "a criterion whose measured rate is neither near zero nor near one", context do
         ambiguous =

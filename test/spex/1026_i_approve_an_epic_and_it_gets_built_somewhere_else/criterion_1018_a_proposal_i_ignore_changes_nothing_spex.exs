@@ -32,7 +32,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2931Spex do
     :ok
   end
 
-  spex "Starting development on an epic happens only after the user agrees to it", criterion: 1018 do
+  spex "Starting development on an epic happens only after the user agrees to it",
+    criterion: 1018 do
     scenario "A proposal I ignore changes nothing" do
       given_ :synced_context_component
 

@@ -198,8 +198,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Index do
                   :if={Reads.unread?(@reads, row.conversation.id)}
                   data-test="unread-dot"
                   class="mt-2 size-2 shrink-0 rounded-full bg-primary"
-                >
-                </span>
+                ></span>
 
                 <div class="min-w-0 flex-1">
                   <.link

@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6253Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init.Auth gates init on OAuthClient.authenticated?; failure emits manual sign-in guidance", criterion: 467 do
+  spex "Init.Auth gates init on OAuthClient.authenticated?; failure emits manual sign-in guidance",
+    criterion: 467 do
     scenario "Unauthenticated init surfaces manual sign-in directive on the per-step page" do
       given_ "the local OAuth client reports authenticated? = false (no client_user seeded)",
              context do

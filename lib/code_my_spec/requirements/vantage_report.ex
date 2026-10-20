@@ -51,7 +51,10 @@ defmodule CodeMySpec.Requirements.VantageReport do
     labels = labels_for(project_id)
 
     Node
-    |> where([n], n.project_id == ^project_id or not is_nil(n.component_id) or not is_nil(n.story_id))
+    |> where(
+      [n],
+      n.project_id == ^project_id or not is_nil(n.component_id) or not is_nil(n.story_id)
+    )
     |> group_by([n], n.working_copy_id)
     |> select([n], %{
       working_copy_id: n.working_copy_id,

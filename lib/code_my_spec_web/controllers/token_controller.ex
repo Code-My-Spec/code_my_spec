@@ -13,7 +13,11 @@ defmodule CodeMySpecWeb.TokenController do
   def create(conn, %{"refresh_secret" => refresh_secret}) do
     case AppTokens.exchange(refresh_secret) do
       {:ok, token, expires_in} ->
-        json(conn, %{"access_token" => token, "expires_in" => expires_in, "token_type" => "Bearer"})
+        json(conn, %{
+          "access_token" => token,
+          "expires_in" => expires_in,
+          "token_type" => "Bearer"
+        })
 
       {:error, :invalid} ->
         # Deliberately one refusal. Telling an unauthenticated caller *why*

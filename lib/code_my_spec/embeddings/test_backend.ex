@@ -91,7 +91,9 @@ defmodule CodeMySpec.Embeddings.TestBackend do
 
   defp source_match?(_src, nil, nil), do: true
   defp source_match?(src, source, nil) when is_binary(source), do: src == source
-  defp source_match?(src, nil, prefix) when is_binary(prefix), do: String.starts_with?(src, prefix)
+
+  defp source_match?(src, nil, prefix) when is_binary(prefix),
+    do: String.starts_with?(src, prefix)
 
   defp source_match?(src, source, prefix) when is_binary(source) and is_binary(prefix),
     do: src == source or String.starts_with?(src, prefix)
@@ -139,7 +141,10 @@ defmodule CodeMySpec.Embeddings.TestBackend do
     lines
     |> Enum.reduce_while({[], 0}, fn line, {acc, size} ->
       new_size = size + String.length(line) + 1
-      if new_size > max_chars, do: {:halt, {acc, new_size}}, else: {:cont, {[line | acc], new_size}}
+
+      if new_size > max_chars,
+        do: {:halt, {acc, new_size}},
+        else: {:cont, {[line | acc], new_size}}
     end)
     |> elem(0)
     |> Enum.reverse()

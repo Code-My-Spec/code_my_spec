@@ -36,51 +36,52 @@ defmodule CodeMySpec.AgentTasks.Setup.SpexCase do
     app_name = Helpers.app_name(scope)
     mod = Macro.camelize(app_name)
 
-    {:ok, """
-    # Create Spex Case Module
+    {:ok,
+     """
+     # Create Spex Case Module
 
-    Create `test/support/#{app_name}_spex_case.ex`:
+     Create `test/support/#{app_name}_spex_case.ex`:
 
-    ```elixir
-    defmodule #{mod}Spex.Case do
-      @moduledoc \"\"\"
-      Base case for spex (BDD spec) tests.
+     ```elixir
+     defmodule #{mod}Spex.Case do
+       @moduledoc \"\"\"
+       Base case for spex (BDD spec) tests.
 
-      Wires up Phoenix.ConnTest for HTTP assertions, Phoenix.LiveViewTest
-      for driving LiveViews, the SexySpex DSL (spex/scenario/given_/when_/then_),
-      and the DB sandbox.
-      \"\"\"
-      use ExUnit.CaseTemplate
+       Wires up Phoenix.ConnTest for HTTP assertions, Phoenix.LiveViewTest
+       for driving LiveViews, the SexySpex DSL (spex/scenario/given_/when_/then_),
+       and the DB sandbox.
+       \"\"\"
+       use ExUnit.CaseTemplate
 
-      alias Ecto.Adapters.SQL.Sandbox
+       alias Ecto.Adapters.SQL.Sandbox
 
-      using do
-        quote do
-          @endpoint #{mod}Web.Endpoint
+       using do
+         quote do
+           @endpoint #{mod}Web.Endpoint
 
-          use #{mod}Web, :verified_routes
-          use SexySpex
+           use #{mod}Web, :verified_routes
+           use SexySpex
 
-          import Plug.Conn
-          import Phoenix.ConnTest
-          import Phoenix.LiveViewTest
-          import #{mod}Spex.Case
-        end
-      end
+           import Plug.Conn
+           import Phoenix.ConnTest
+           import Phoenix.LiveViewTest
+           import #{mod}Spex.Case
+         end
+       end
 
-      # Owns the sandbox directly rather than calling
-      # #{mod}Test.DataCase.setup_sandbox/1: spex are a separate boundary
-      # from test support, and borrowing that one function would force
-      # #{mod}Spex to depend on #{mod}Test.
-      setup tags do
-        pid = Sandbox.start_owner!(#{mod}.Repo, shared: not tags[:async])
-        on_exit(fn -> Sandbox.stop_owner(pid) end)
-        {:ok, conn: Phoenix.ConnTest.build_conn()}
-      end
-    end
-    ```
+       # Owns the sandbox directly rather than calling
+       # #{mod}Test.DataCase.setup_sandbox/1: spex are a separate boundary
+       # from test support, and borrowing that one function would force
+       # #{mod}Spex to depend on #{mod}Test.
+       setup tags do
+         pid = Sandbox.start_owner!(#{mod}.Repo, shared: not tags[:async])
+         on_exit(fn -> Sandbox.stop_owner(pid) end)
+         {:ok, conn: Phoenix.ConnTest.build_conn()}
+       end
+     end
+     ```
 
-    Spec files then start with `use #{mod}Spex.Case`.
-    """}
+     Spec files then start with `use #{mod}Spex.Case`.
+     """}
   end
 end

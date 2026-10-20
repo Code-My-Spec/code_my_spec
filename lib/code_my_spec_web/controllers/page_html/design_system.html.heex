@@ -1,4 +1,9 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+  page_title={@page_title}
+>
   <%!-- ───────────── HERO ─────────────
         Traffic arrives on "vibe coded website" having just read that their site
         looks like everyone else's, so the problem opens in that vocabulary. --%>
@@ -41,8 +46,10 @@
             poster="https://images.codemyspec.com/ds-hero-poster.jpg"
           >
             <source src="https://images.codemyspec.com/ds-hero.mp4" type="video/mp4" />
-            Your browser cannot play this video.
-            <.link href="https://youtu.be/baTqgRbRprM" class="link">Watch it on YouTube</.link>.
+            Your browser cannot play this video. <.link
+              href="https://youtu.be/baTqgRbRprM"
+              class="link"
+            >Watch it on YouTube</.link>.
           </video>
         </div>
         <figcaption class="text-sm text-base-content/60 mt-3">
@@ -94,7 +101,10 @@
            Re-add /blog/vibe-coded-websites-look-the-same once it publishes. --%>
       <p class="mt-8 max-w-2xl text-sm text-base-content/60 leading-relaxed">
         The same thing happens
-        <.link navigate={~p"/blog/prevent-slop-elixir-codebases"} class="link link-hover text-base-content/80">
+        <.link
+          navigate={~p"/blog/prevent-slop-elixir-codebases"}
+          class="link link-hover text-base-content/80"
+        >
           inside the code itself
         </.link>
         , not just on the surface. And if yours is already built and you would rather not redo it
@@ -116,7 +126,8 @@
       </h2>
       <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
         <strong class="text-base-content">
-          Run <code class="text-base-content">/codemyspec:design ui</code> and answer the questions.
+          Run <code class="text-base-content">/codemyspec:design ui</code>
+          and answer the questions.
         </strong>
         There is nothing to configure first.
       </p>
@@ -249,14 +260,17 @@
       </p>
 
       <ul class="mt-10 max-w-3xl space-y-5">
-        <li :for={
-          claim <- [
-            "Your design system reaches the agent as something it must read, and as a required section on every page before code exists. What does not happen is a machine rendering your finished page and checking it against your design system pixel by pixel. No tool does that today.",
-            "The check confirms your design decisions exist and are complete. It does not confirm the built page obeyed them. Reviewing pages is still yours, with much less to review.",
-            "The instruction points the agent at your design system file, so the file has to exist. Skip the interview and it points at nothing.",
-            "This step is optional. Nothing stops you building pages without it, you just inherit the average again."
-          ]
-        } class="flex gap-4">
+        <li
+          :for={
+            claim <- [
+              "Your design system reaches the agent as something it must read, and as a required section on every page before code exists. What does not happen is a machine rendering your finished page and checking it against your design system pixel by pixel. No tool does that today.",
+              "The check confirms your design decisions exist and are complete. It does not confirm the built page obeyed them. Reviewing pages is still yours, with much less to review.",
+              "The instruction points the agent at your design system file, so the file has to exist. Skip the interview and it points at nothing.",
+              "This step is optional. Nothing stops you building pages without it, you just inherit the average again."
+            ]
+          }
+          class="flex gap-4"
+        >
           <span class="hero-minus-small-mini size-5 text-base-content/40 shrink-0 mt-0.5"></span>
           <span class="text-base-content/70 leading-relaxed">{claim}</span>
         </li>

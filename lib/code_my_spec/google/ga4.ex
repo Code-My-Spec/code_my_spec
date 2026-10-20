@@ -79,7 +79,9 @@ defmodule CodeMySpec.Google.Ga4 do
     with {:ok, rn} <- property_rn(property_id),
          {:ok, metadata} <- request(:get, @data <> "/v1beta/#{rn}/metadata", token) do
       custom_dimensions =
-        metadata |> Map.get("dimensions", []) |> Enum.filter(&Map.get(&1, "customDefinition", false))
+        metadata
+        |> Map.get("dimensions", [])
+        |> Enum.filter(&Map.get(&1, "customDefinition", false))
 
       custom_metrics =
         metadata |> Map.get("metrics", []) |> Enum.filter(&Map.get(&1, "customDefinition", false))
@@ -276,7 +278,8 @@ defmodule CodeMySpec.Google.Ga4 do
   string.
   """
   @spec property_rn(property) :: {:ok, String.t()} | {:error, {:invalid_property_id, term()}}
-  def property_rn(property_id) when is_integer(property_id), do: {:ok, "properties/#{property_id}"}
+  def property_rn(property_id) when is_integer(property_id),
+    do: {:ok, "properties/#{property_id}"}
 
   def property_rn(property_id) when is_binary(property_id) do
     trimmed = String.trim(property_id)
@@ -287,7 +290,10 @@ defmodule CodeMySpec.Google.Ga4 do
 
       String.starts_with?(trimmed, "properties/") ->
         numeric_part = trimmed |> String.split("/") |> List.last()
-        if numeric?(numeric_part), do: {:ok, "properties/#{numeric_part}"}, else: invalid(property_id)
+
+        if numeric?(numeric_part),
+          do: {:ok, "properties/#{numeric_part}"},
+          else: invalid(property_id)
 
       true ->
         invalid(property_id)

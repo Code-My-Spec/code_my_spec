@@ -37,7 +37,8 @@ defmodule CodeMySpecSpex.Story1043.Criterion3055Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "An agent that ends a turn with a task still open is told so, whether or not anything else blocked", criterion: 1129 do
+  spex "An agent that ends a turn with a task still open is told so, whether or not anything else blocked",
+    criterion: 1129 do
     scenario "A clean tree does not excuse an abandoned task" do
       given_ "an agent running under Alloy holding an open task, on a clean tree", context do
         # The manifest is delivered and no finding is: a clean tree is the

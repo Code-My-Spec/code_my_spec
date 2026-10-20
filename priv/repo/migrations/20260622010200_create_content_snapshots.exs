@@ -9,7 +9,8 @@ defmodule CodeMySpec.Repo.Migrations.CreateContentSnapshots do
       add :parse_errors, :map
       add :metadata, :map
 
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
 
       timestamps(type: :utc_datetime)
     end

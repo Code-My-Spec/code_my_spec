@@ -1,4 +1,9 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+  page_title={@page_title}
+>
   <%!-- ───────────── HERO ───────────── --%>
   <section class="bg-base-200 border-b border-base-300">
     <div class="max-w-3xl mx-auto px-6 py-14 lg:py-20 text-center">
@@ -86,7 +91,9 @@
           </p>
         </div>
         <div>
-          <h3 class="text-lg font-semibold">What does the $500 minimum on Built with you cover?</h3>
+          <h3 class="text-lg font-semibold">
+            What does the $500 minimum on Built with you cover?
+          </h3>
           <p class="text-base-content/70 mt-2 leading-relaxed">
             It's a floor, not a package. You bring what you're trying to run, John scopes it in
             a real conversation and quotes a real number. The work is done the same way as
@@ -102,7 +109,9 @@
           </p>
         </div>
         <div>
-          <h3 class="text-lg font-semibold">Can I use it for internal tools instead of software I sell?</h3>
+          <h3 class="text-lg font-semibold">
+            Can I use it for internal tools instead of software I sell?
+          </h3>
           <p class="text-base-content/70 mt-2 leading-relaxed">
             Yes. Build and Operate work the same whether the software faces customers or your
             own crew. Plenty of operators need a tool that fits their workflow, not a product
@@ -126,8 +135,16 @@
         is still being built. By the time the app is ready, you have an audience waiting for it.
       </p>
       <div class="mt-8 flex flex-wrap gap-4">
-        <.link href={~p"/install"} class="btn btn-primary btn-lg" data-event-label="cta-start-free-pricing-page">Start free</.link>
-        <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-lg" data-event-label="cta-service-inquiry-pricing-page">Talk to John</a>
+        <.link
+          href={~p"/install"}
+          class="btn btn-primary btn-lg"
+          data-event-label="cta-start-free-pricing-page"
+        >Start free</.link>
+        <a
+          href={ExternalLinks.cal_john()}
+          class="btn btn-outline btn-lg"
+          data-event-label="cta-service-inquiry-pricing-page"
+        >Talk to John</a>
       </div>
     </div>
   </section>
@@ -138,5 +155,4 @@
   <section class="max-w-4xl mx-auto px-6 pb-16">
     {live_render(@conn, CodeMySpecWeb.CheckoutLive, id: "checkout-live")}
   </section>
-
 </Layouts.marketing>

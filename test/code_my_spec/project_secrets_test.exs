@@ -33,7 +33,9 @@ defmodule CodeMySpec.ProjectSecretsTest do
     end
 
     test "environments hold independent values for the same key", %{scope: scope} do
-      {:ok, _} = ProjectSecrets.put_value(scope, "AGE_PRIVATE_KEY", "prod-key", environment: "prod")
+      {:ok, _} =
+        ProjectSecrets.put_value(scope, "AGE_PRIVATE_KEY", "prod-key", environment: "prod")
+
       {:ok, _} = ProjectSecrets.put_value(scope, "AGE_PRIVATE_KEY", "uat-key", environment: "uat")
 
       assert {:ok, "prod-key"} =

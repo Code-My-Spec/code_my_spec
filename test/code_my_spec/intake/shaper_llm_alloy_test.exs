@@ -84,6 +84,7 @@ defmodule CodeMySpec.Intake.ShaperLlmAlloyTest do
           plan = plan_fixture(@vague_description)
 
           assert {:ask, question} = Llm.shape(plan, [])
+
           assert is_binary(question) and question != "",
                  "expected a real question back, got: #{inspect(question)}"
         end)
@@ -100,7 +101,8 @@ defmodule CodeMySpec.Intake.ShaperLlmAlloyTest do
           turns = [
             %{question: "Do your clients log in to book?", answer: "yes, they create an account"},
             %{
-              question: "Is this for one salon, or many separate salons each with their own data?",
+              question:
+                "Is this for one salon, or many separate salons each with their own data?",
               answer: "just my one salon"
             }
           ]
@@ -108,6 +110,7 @@ defmodule CodeMySpec.Intake.ShaperLlmAlloyTest do
           assert {:ok, attrs} = Llm.conclude(plan, turns)
 
           assert attrs.needs_sign_in == true
+
           assert attrs.separate_copies == false,
                  "false came back as #{inspect(attrs.separate_copies)} — the exact " <>
                    "shape ShaperFalseAnswerTest guards, now against a real response."
@@ -143,8 +146,7 @@ defmodule CodeMySpec.Intake.ShaperLlmAlloyTest do
         turns = [
           %{question: "Do your clients log in to book?", answer: "yes, they create an account"},
           %{
-            question:
-              "Is this for one salon, or many separate salons each with their own data?",
+            question: "Is this for one salon, or many separate salons each with their own data?",
             answer: "just my one salon"
           }
         ]

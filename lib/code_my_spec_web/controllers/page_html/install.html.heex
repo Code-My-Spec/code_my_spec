@@ -1,4 +1,9 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+  page_title={@page_title}
+>
   <%!-- ───────────── HERO (compact) ───────────── --%>
   <section class="bg-base-200 border-b border-base-300">
     <div class="max-w-3xl mx-auto px-6 py-14 lg:py-20 text-center">
@@ -28,8 +33,10 @@
         <div class="flex-1 min-w-0 pb-2">
           <h2 class="text-xl font-semibold">Install the server</h2>
           <p class="text-sm text-base-content/60 mt-1">
-            A local <code class="text-primary">cms</code> process that hosts the tools. Runs in the
-            background on <code>localhost:4003</code> and restarts on boot.
+            A local <code class="text-primary">cms</code>
+            process that hosts the tools. Runs in the
+            background on <code>localhost:4003</code>
+            and restarts on boot.
           </p>
           <div role="tablist" class="tabs tabs-lift mt-3">
             <%!-- macOS tab --%>
@@ -47,7 +54,7 @@
                   <span class="badge badge-ghost badge-sm">macOS · Apple Silicon</span>
                   <button
                     class="copy-btn btn btn-xs btn-outline btn-primary"
-                    data-copy={"brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"}
+                    data-copy="brew install Code-My-Spec/tap/codemyspec\nbrew services start codemyspec"
                     data-event-name="install_command_copy"
                     data-event-harness="codemyspec-server"
                     data-event-location="install_page_macos"
@@ -71,17 +78,23 @@
                     <span class="badge badge-ghost badge-sm">Windows · x64</span>
                   </div>
                   <p class="text-xs text-base-content/60 mt-2">
-                    Download <code>cms-setup-x64.msi</code> from the
-                    <a href="https://github.com/Code-My-Spec/plugins/releases" class="link link-primary">latest release</a>
+                    Download <code>cms-setup-x64.msi</code>
+                    from the
+                    <a
+                      href="https://github.com/Code-My-Spec/plugins/releases"
+                      class="link link-primary"
+                    >latest release</a>
                     and run it —
                   </p>
                 </div>
-                <div class="divider text-xs text-base-content/40 my-0">or, from an elevated PowerShell</div>
+                <div class="divider text-xs text-base-content/40 my-0">
+                  or, from an elevated PowerShell
+                </div>
                 <div class="flex flex-col gap-2">
                   <div class="flex justify-end">
                     <button
                       class="copy-btn btn btn-xs btn-outline btn-primary"
-                      data-copy={"iwr -useb https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install.ps1 -OutFile install.ps1; .\\install.ps1"}
+                      data-copy="iwr -useb https://raw.githubusercontent.com/Code-My-Spec/plugins/main/install.ps1 -OutFile install.ps1; .\\install.ps1"
                       data-event-name="install_command_copy"
                       data-event-harness="codemyspec-server"
                       data-event-location="install_page_windows"
@@ -149,15 +162,24 @@
                   <pre data-prefix="$" class="whitespace-pre-wrap break-all"><code>codex plugin marketplace add Code-My-Spec/plugins</code></pre>
                 </div>
                 <p class="text-xs text-base-content/60">
-                  Then install <code>codemyspec</code> from <code>/plugins</code> and enable hooks via
-                  <code>/hooks</code>. Latest steps in the
-                  <a href="https://github.com/Code-My-Spec/plugins" class="link link-primary">plugin repo</a>.
+                  Then install <code>codemyspec</code>
+                  from <code>/plugins</code>
+                  and enable hooks via <code>/hooks</code>. Latest steps in the <a
+                    href="https://github.com/Code-My-Spec/plugins"
+                    class="link link-primary"
+                  >plugin repo</a>.
                 </p>
               </div>
             </div>
 
             <%!-- Google Antigravity tab --%>
-            <input type="radio" name="install_agent" role="tab" class="tab" aria-label="Antigravity" />
+            <input
+              type="radio"
+              name="install_agent"
+              role="tab"
+              class="tab"
+              aria-label="Antigravity"
+            />
             <div role="tabpanel" class="tab-content border-base-300 bg-base-200 rounded-box p-4">
               <div class="flex flex-col gap-2">
                 <div class="flex items-center justify-between">
@@ -177,8 +199,10 @@
                 </div>
                 <p class="text-xs text-base-content/60">
                   Or copy the plugin into <code>~/.gemini/config/plugins/codemyspec/</code>. Latest steps
-                  in the
-                  <a href="https://github.com/Code-My-Spec/plugins" class="link link-primary">plugin repo</a>.
+                  in the <a
+                    href="https://github.com/Code-My-Spec/plugins"
+                    class="link link-primary"
+                  >plugin repo</a>.
                 </p>
               </div>
             </div>
@@ -216,8 +240,8 @@
                 you need to remember — whenever it doesn't know what's next, that's the answer.
               </p>
               <p class="text-xs text-base-content/50">
-                Shown for Claude Code. On Codex, run the <code>init</code> skill from
-                <code>/skills</code>; on Antigravity, run <code>/init auth</code>.
+                Shown for Claude Code. On Codex, run the <code>init</code>
+                skill from <code>/skills</code>; on Antigravity, run <code>/init auth</code>.
               </p>
             </div>
           </div>
@@ -242,7 +266,9 @@
   <section class="border-b border-base-300 bg-base-200">
     <div class="max-w-3xl mx-auto px-6 py-12 lg:py-16">
       <.eyebrow name="no catch" />
-      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mt-3">Free forever. Here's why we can mean it.</h2>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mt-3">
+        Free forever. Here's why we can mean it.
+      </h2>
       <p class="text-base-content/70 mt-4 leading-relaxed">
         We make money when your app is <span class="italic">running</span> — the hosted layer for
         email, chat, and growth that keeps it alive in the world. Not when you build it. Bring your
@@ -260,9 +286,15 @@
       <p class="text-lg text-base-content/70">
         Want the result without learning the tooling?
       </p>
-      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mt-2">Build it with me instead.</h2>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mt-2">
+        Build it with me instead.
+      </h2>
       <div class="mt-6">
-        <a href={ExternalLinks.cal_john()} class="btn btn-outline btn-lg" data-event-label="cta-service-inquiry-install">Talk to John</a>
+        <a
+          href={ExternalLinks.cal_john()}
+          class="btn btn-outline btn-lg"
+          data-event-label="cta-service-inquiry-install"
+        >Talk to John</a>
       </div>
     </div>
   </section>

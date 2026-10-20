@@ -4,6 +4,7 @@ defmodule CodeMySpec.Repo.Migrations.CreateProjectConfigurations do
   def change do
     create table(:project_configurations, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
         null: false
 

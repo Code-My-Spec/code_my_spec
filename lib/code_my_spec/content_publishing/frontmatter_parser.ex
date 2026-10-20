@@ -51,7 +51,10 @@ defmodule CodeMySpec.ContentPublishing.FrontmatterParser do
 
       {:error, error} ->
         {:error,
-         %{type: :yaml_parse_error, message: "Invalid YAML frontmatter: #{Exception.message(error)}"}}
+         %{
+           type: :yaml_parse_error,
+           message: "Invalid YAML frontmatter: #{Exception.message(error)}"
+         }}
     end
   end
 end

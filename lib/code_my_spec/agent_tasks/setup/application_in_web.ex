@@ -52,15 +52,16 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
     app_name = Helpers.app_name(scope)
     module_name = Macro.camelize(app_name)
 
-    {:ok, """
-    # Move Application Module to Web Namespace
+    {:ok,
+     """
+     # Move Application Module to Web Namespace
 
-    The `#{module_name}.Application` module supervises both `#{module_name}.Repo` and
-    `#{module_name}Web.Endpoint`, creating a boundary violation. Move it:
+     The `#{module_name}.Application` module supervises both `#{module_name}.Repo` and
+     `#{module_name}Web.Endpoint`, creating a boundary violation. Move it:
 
-    1. `mv lib/#{app_name}/application.ex lib/#{app_name}_web/application.ex`
-    2. Rename module to `#{module_name}Web.Application`
-    3. Update `mix.exs` — `mod: {#{module_name}Web.Application, []}`
-    """}
+     1. `mv lib/#{app_name}/application.ex lib/#{app_name}_web/application.ex`
+     2. Rename module to `#{module_name}Web.Application`
+     3. Update `mix.exs` — `mod: {#{module_name}Web.Application, []}`
+     """}
   end
 end

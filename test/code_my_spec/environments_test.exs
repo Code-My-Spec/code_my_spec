@@ -74,7 +74,11 @@ defmodule CodeMySpec.EnvironmentsTest do
 
     test "drops PATH entries inside the release root, keeps the rest" do
       System.put_env("RELEASE_ROOT", "/opt/cms/libexec")
-      System.put_env("PATH", "/opt/cms/libexec/erts-15.2/bin:/usr/bin:/opt/cms/libexec/bin:/usr/local/bin")
+
+      System.put_env(
+        "PATH",
+        "/opt/cms/libexec/erts-15.2/bin:/usr/bin:/opt/cms/libexec/bin:/usr/local/bin"
+      )
 
       assert path_entry(CodeMySpec.Environments.clean_otp_env()) == "/usr/bin:/usr/local/bin"
     end

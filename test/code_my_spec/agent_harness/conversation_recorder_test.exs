@@ -74,9 +74,15 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderTest do
         "content" => [call_block("toolu_1", "Read", %{"file_path" => "mix.exs"})]
       })
 
-      record(ctx, %{"messages" => [%{"role" => "user", "content" => [result_block("toolu_1", "defmodule")]}]}, %{
-        "content" => [%{"type" => "text", "text" => "done"}]
-      })
+      record(
+        ctx,
+        %{
+          "messages" => [%{"role" => "user", "content" => [result_block("toolu_1", "defmodule")]}]
+        },
+        %{
+          "content" => [%{"type" => "text", "text" => "done"}]
+        }
+      )
 
       result = Enum.find(messages(ctx), &(&1.role == :tool))
 
@@ -86,9 +92,17 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderTest do
     end
 
     test "a failure is a field, not a prefix on the text", ctx do
-      record(ctx, %{"messages" => [%{"role" => "user", "content" => [result_block("toolu_9", "boom", true)]}]}, %{
-        "content" => [%{"type" => "text", "text" => "that failed"}]
-      })
+      record(
+        ctx,
+        %{
+          "messages" => [
+            %{"role" => "user", "content" => [result_block("toolu_9", "boom", true)]}
+          ]
+        },
+        %{
+          "content" => [%{"type" => "text", "text" => "that failed"}]
+        }
+      )
 
       result = Enum.find(messages(ctx), &(&1.role == :tool))
 
@@ -133,7 +147,10 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderTest do
       reminder = "The task tools haven't been used recently."
 
       record(ctx, user_request(reminder), %{"content" => [%{"type" => "text", "text" => "ok"}]})
-      record(ctx, user_request(reminder), %{"content" => [%{"type" => "text", "text" => "still ok"}]})
+
+      record(ctx, user_request(reminder), %{
+        "content" => [%{"type" => "text", "text" => "still ok"}]
+      })
 
       users = Enum.filter(messages(ctx), &(&1.role == :user))
 
@@ -162,7 +179,11 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorderTest do
 
     test "the same text after the agent has spoken is a real repeat", ctx do
       record(ctx, user_request("run it"), %{"content" => [%{"type" => "text", "text" => "ok"}]})
-      record(ctx, user_request("something else"), %{"content" => [%{"type" => "text", "text" => "ok"}]})
+
+      record(ctx, user_request("something else"), %{
+        "content" => [%{"type" => "text", "text" => "ok"}]
+      })
+
       record(ctx, user_request("run it"), %{"content" => [%{"type" => "text", "text" => "ok"}]})
 
       texts = messages(ctx) |> Enum.filter(&(&1.role == :user)) |> Enum.map(&Message.text/1)

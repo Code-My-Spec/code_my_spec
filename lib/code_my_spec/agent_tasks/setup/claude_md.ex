@@ -20,10 +20,11 @@ defmodule CodeMySpec.AgentTasks.Setup.ClaudeMd do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
-    {:ok, """
-    # Install CLAUDE.md
+    {:ok,
+     """
+     # Install CLAUDE.md
 
-    Use the `install_claude_md` tool to create or update the managed section in CLAUDE.md.
-    """}
+     Use the `install_claude_md` tool to create or update the managed section in CLAUDE.md.
+     """}
   end
 end

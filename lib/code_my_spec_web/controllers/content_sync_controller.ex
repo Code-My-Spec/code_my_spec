@@ -122,10 +122,14 @@ defmodule CodeMySpecWeb.ContentSyncController do
         |> json(%{status: "error", error: "Access token expired", reason: "expired"})
 
       {:error, :unauthorized} ->
-        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Invalid deployment key", reason: "invalid"})
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Invalid deployment key", reason: "invalid"})
 
       {:error, :missing_deploy_key} ->
-        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Missing deployment key"})
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Missing deployment key"})
 
       {:error, :deploy_key_not_configured} ->
         conn

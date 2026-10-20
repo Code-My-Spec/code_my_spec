@@ -35,7 +35,12 @@ defmodule CodeMySpec.Analysis.AnalyzerOutputIsNotRewrittenTest do
       raw = %{
         "exit_status" => 1,
         "diagnostics" => [
-          %{"file" => "lib/example.ex", "line" => 12, "severity" => "warning", "message" => "variable \"unused\" is unused"}
+          %{
+            "file" => "lib/example.ex",
+            "line" => 12,
+            "severity" => "warning",
+            "message" => "variable \"unused\" is unused"
+          }
         ],
         "diagnostics_available" => true,
         "output" => raw_output

@@ -25,7 +25,8 @@ defmodule CodeMySpec.McpServers.Agents.Tools.StartAgent do
   alias CodeMySpec.Utils.MapAccess
 
   schema do
-    field :role, :string, description: "Agent type: main, product, coding or qa. Defaults to main."
+    field :role, :string,
+      description: "Agent type: main, product, coding or qa. Defaults to main."
 
     field :provider, :string,
       description:

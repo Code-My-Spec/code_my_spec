@@ -21,10 +21,11 @@ defmodule CodeMySpec.AgentTasks.Setup.AgentsMd do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
-    {:ok, """
-    # Generate AGENTS.md
+    {:ok,
+     """
+     # Generate AGENTS.md
 
-    Use the `install_agents_md` tool to generate the project agent guide.
-    """}
+     Use the `install_agents_md` tool to generate the project agent guide.
+     """}
   end
 end

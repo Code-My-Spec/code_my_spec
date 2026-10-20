@@ -102,14 +102,18 @@ defmodule CodeMySpec.Embeddings.OrtexServing do
 
   # -- Queue + dispatch --
 
-  defp enqueue(state, :search, from, job), do: %{state | search: :queue.in({from, job}, state.search)}
+  defp enqueue(state, :search, from, job),
+    do: %{state | search: :queue.in({from, job}, state.search)}
+
   defp enqueue(state, :bulk, from, job), do: %{state | bulk: :queue.in({from, job}, state.bulk)}
 
   # Search first, always — a job already handed to the worker runs to
   # completion either way, so this only decides what goes *next*.
   defp pop_next(%{search: search, bulk: bulk} = state) do
     case :queue.out(search) do
-      {{:value, item}, rest} -> {item, %{state | search: rest}}
+      {{:value, item}, rest} ->
+        {item, %{state | search: rest}}
+
       {:empty, _} ->
         case :queue.out(bulk) do
           {{:value, item}, rest} -> {item, %{state | bulk: rest}}

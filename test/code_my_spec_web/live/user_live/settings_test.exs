@@ -361,5 +361,4 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
       assert message == "You must log in to access this page."
     end
   end
-
 end

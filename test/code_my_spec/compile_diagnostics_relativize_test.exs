@@ -73,7 +73,8 @@ defmodule CodeMySpec.CompileDiagnosticsRelativizeTest do
     # the right answer here: guessing a suffix would attribute a finding to a
     # file that merely shares a name. The reconciler's warning still catches it.
     test "a path under some other root stays absolute" do
-      [result] = Compile.relativize_diagnostics([diagnostic("/elsewhere/lib/example.ex")], "/workspace")
+      [result] =
+        Compile.relativize_diagnostics([diagnostic("/elsewhere/lib/example.ex")], "/workspace")
 
       assert result["file"] == "/elsewhere/lib/example.ex"
     end

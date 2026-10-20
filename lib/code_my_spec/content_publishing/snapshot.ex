@@ -27,7 +27,14 @@ defmodule CodeMySpec.ContentPublishing.Snapshot do
   @doc false
   def changeset(snapshot, attrs) do
     snapshot
-    |> cast(attrs, [:raw_content, :processed_content, :parse_status, :parse_errors, :metadata, :project_id])
+    |> cast(attrs, [
+      :raw_content,
+      :processed_content,
+      :parse_status,
+      :parse_errors,
+      :metadata,
+      :project_id
+    ])
     |> validate_required([:raw_content, :parse_status, :project_id])
   end
 end

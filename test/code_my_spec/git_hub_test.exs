@@ -26,14 +26,14 @@ defmodule CodeMySpec.GitHubTest do
       github_integration_fixture(user)
       scope = %Scope{user: user}
 
-      with_cassette "create_repo_success", cassette_opts(), fn plug ->
+      with_cassette("create_repo_success", cassette_opts(), fn plug ->
         with_plug(plug, fn ->
           attrs = %{name: "req-client-test", description: "A test project", private: true}
 
           assert {:ok, %{"html_url" => url}} = GitHub.create_repository(scope, attrs)
           assert url == "https://github.com/testuser/req-client-test"
         end)
-      end
+      end)
     end
 
     test "returns :github_not_connected when no GitHub integration exists" do

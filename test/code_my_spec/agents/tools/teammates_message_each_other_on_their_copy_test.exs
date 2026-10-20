@@ -90,7 +90,8 @@ defmodule CodeMySpec.Agents.Tools.TeammatesMessageEachOtherOnTheirCopyTest do
     coding = agent(ctx.scope, :coding, ctx.here)
     main = agent(ctx.scope, :main, ctx.here)
 
-    assert match?({:ok, _}, send_as(ctx.scope, coding, main)), "main is reachable, same copy or not"
+    assert match?({:ok, _}, send_as(ctx.scope, coding, main)),
+           "main is reachable, same copy or not"
   end
 
   test "a coder on a different copy can still message main", ctx do

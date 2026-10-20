@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2010Spex do
   end
 
   spex "A turn that failed on a timeout is shown against its agent, with that cause",
-       criterion: 2010 do
+    criterion: 2010 do
     scenario "an agent's turn failed during a period" do
       given_ "a running agent", context do
         reply = join_working_copy(context, "/tmp/spex-2010", "the checkout")

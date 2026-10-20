@@ -59,7 +59,9 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     assert issue.attachments == []
   end
 
-  test "request_screenshot_upload returns a presigned URL and a project-scoped key", %{scope: scope} do
+  test "request_screenshot_upload returns a presigned URL and a project-scoped key", %{
+    scope: scope
+  } do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-up", "up@example.com")
 
     ref = push(channel, "request_screenshot_upload", %{"content_type" => "image/png"})
@@ -109,7 +111,13 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "user:#{scope.active_account_id}:issues")
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-2", "user2@example.com")
 
-    ref = push(channel, "submit_feedback", %{"title" => "Typo on pricing", "description" => "montly", "severity" => "low"})
+    ref =
+      push(channel, "submit_feedback", %{
+        "title" => "Typo on pricing",
+        "description" => "montly",
+        "severity" => "low"
+      })
+
     assert_reply ref, :ok, %{id: _}
 
     assert_receive {:created, %CodeMySpec.Issues.Issue{title: "Typo on pricing"}}
@@ -118,7 +126,12 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
   test "request_chat_upload returns a presigned URL and a chat-scoped key", %{scope: scope} do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-cu", "cu@example.com")
 
-    ref = push(channel, "request_chat_upload", %{"content_type" => "image/png", "filename" => "pic.png"})
+    ref =
+      push(channel, "request_chat_upload", %{
+        "content_type" => "image/png",
+        "filename" => "pic.png"
+      })
+
     assert_reply ref, :ok, %{upload_url: url, s3_key: key}
 
     assert url =~ "http"
@@ -126,13 +139,17 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     assert String.ends_with?(key, "pic.png")
   end
 
-  test "send_message with an attachment persists it and is pushed back with a URL", %{scope: scope} do
+  test "send_message with an attachment persists it and is pushed back with a URL", %{
+    scope: scope
+  } do
     key = "chat/#{scope.active_project.id}/abc-123/pic.png"
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-att", "att@example.com")
 
     push(channel, "send_message", %{
       "body" => "here you go",
-      "attachments" => [%{"s3_key" => key, "filename" => "pic.png", "content_type" => "image/png", "size" => 10}]
+      "attachments" => [
+        %{"s3_key" => key, "filename" => "pic.png", "content_type" => "image/png", "size" => 10}
+      ]
     })
 
     assert_push "new_message", %{body: "here you go", attachments: [att]}
@@ -146,7 +163,9 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-only", "only@example.com")
 
     push(channel, "send_message", %{
-      "attachments" => [%{"s3_key" => key, "filename" => "doc.pdf", "content_type" => "application/pdf"}]
+      "attachments" => [
+        %{"s3_key" => key, "filename" => "doc.pdf", "content_type" => "application/pdf"}
+      ]
     })
 
     assert_push "new_message", %{attachments: [%{filename: "doc.pdf"}]}
@@ -157,7 +176,12 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
 
     push(channel, "send_message", %{
       "body" => "hi",
-      "attachments" => [%{"s3_key" => "chat/00000000-0000-0000-0000-000000000000/x/pic.png", "filename" => "pic.png"}]
+      "attachments" => [
+        %{
+          "s3_key" => "chat/00000000-0000-0000-0000-000000000000/x/pic.png",
+          "filename" => "pic.png"
+        }
+      ]
     })
 
     assert_push "new_message", %{body: "hi", attachments: []}
@@ -166,7 +190,9 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
   test "feedback missing a title is rejected and files nothing", %{scope: scope} do
     {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-3", "user3@example.com")
 
-    ref = push(channel, "submit_feedback", %{"title" => "", "description" => "x", "severity" => "low"})
+    ref =
+      push(channel, "submit_feedback", %{"title" => "", "description" => "x", "severity" => "low"})
+
     assert_reply ref, :error, %{reason: _}
 
     assert Issues.list_issues(scope) == []

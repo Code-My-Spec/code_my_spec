@@ -25,7 +25,9 @@ defmodule CodeMySpecSpex.Story1108.Criterion4660Spex do
       end
 
       then_ "QA is told exactly which commit is serving", context do
-        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "feedface"} = context.result
+        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "feedface"} =
+                 context.result
+
         {:ok, context}
       end
     end

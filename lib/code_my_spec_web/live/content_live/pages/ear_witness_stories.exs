@@ -10,7 +10,10 @@ Seed context: EarWitness's founding customer wants to transcribe tenant-board di
     tags: [%{name: "documenter"}],
     criteria: [
       %{description: "Import a WAV file into the library", verified: true},
-      %{description: "Reject a corrupt or unsupported file without touching the library", verified: true},
+      %{
+        description: "Reject a corrupt or unsupported file without touching the library",
+        verified: true
+      },
       %{description: "Record live audio and land it in the library", verified: true},
       %{description: "No input device available", verified: true},
       %{description: "Transcribe successfully with networking disabled", verified: true},
@@ -26,7 +29,8 @@ Seed context: EarWitness's founding customer wants to transcribe tenant-board di
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
         %{
-          statement: "A user can import audio files in common formats (WAV/MP3/M4A/OGG/FLAC) into the library",
+          statement:
+            "A user can import audio files in common formats (WAV/MP3/M4A/OGG/FLAC) into the library",
           scenarios: [
             %{
               kind: "happy path",
@@ -76,7 +80,8 @@ Then a complete transcript is produced without any network request"
           ]
         },
         %{
-          statement: "Multi-hour recordings transcribe to completion without arbitrary length caps",
+          statement:
+            "Multi-hour recordings transcribe to completion without arbitrary length caps",
           scenarios: [
             %{
               kind: "happy path",
@@ -88,7 +93,8 @@ Then the transcript covers the full recording from start to end"
           ]
         },
         %{
-          statement: "Transcripts are timestamped so every passage traces to a point in the audio",
+          statement:
+            "Transcripts are timestamped so every passage traces to a point in the audio",
           scenarios: [
             %{
               kind: "happy path",
@@ -100,7 +106,8 @@ Then the passage shows the start time where it occurs in the audio"
           ]
         },
         %{
-          statement: "Transcription runs in the background with visible progress without blocking the app",
+          statement:
+            "Transcription runs in the background with visible progress without blocking the app",
           scenarios: [
             %{
               kind: "happy path",
@@ -131,7 +138,8 @@ Then the transcript is still in the library with all its content"
           ]
         },
         %{
-          statement: "Transcription starts only when the user explicitly requests it for a recording",
+          statement:
+            "Transcription starts only when the user explicitly requests it for a recording",
           scenarios: [
             %{
               kind: "happy path",
@@ -144,8 +152,18 @@ Then no transcription starts until the user explicitly requests it"
         }
       ],
       questions: [
-        %{body: "Should transcription auto-start on import/record, or be a manual action per recording?", status: :resolved, resolution: nil},
-        %{body: "Exact import format list for v1 — WAV/MP3/M4A only, or also OGG/FLAC and audio tracks from video containers?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Should transcription auto-start on import/record, or be a manual action per recording?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Exact import format list for v1 — WAV/MP3/M4A only, or also OGG/FLAC and audio tracks from video containers?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -172,7 +190,8 @@ Context: capture is platform-native behind a common capture-source seam (see the
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
         %{
-          statement: "The user can choose the system audio tap as a capture source alongside the microphone",
+          statement:
+            "The user can choose the system audio tap as a capture source alongside the microphone",
           scenarios: [
             %{
               kind: "happy path",
@@ -227,7 +246,8 @@ Then the capture is refused with an explanation of what the policy requires"
           ]
         },
         %{
-          statement: "When the tap device is not set up, the app guides the user through enabling it",
+          statement:
+            "When the tap device is not set up, the app guides the user through enabling it",
           scenarios: [
             %{
               kind: "happy path",
@@ -239,8 +259,7 @@ Then the app walks them through enabling it instead of failing silently"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -258,7 +277,10 @@ Covers on-device diarization (segmenting who spoke when) plus speaker identifica
       %{description: "Naming a speaker relabels all their segments", verified: true},
       %{description: "A known voice is recognized in a new recording", verified: true},
       %{description: "Diarize with networking disabled", verified: true},
-      %{description: "Overlapping or unclear speech is marked unknown, not misattributed", verified: true},
+      %{
+        description: "Overlapping or unclear speech is marked unknown, not misattributed",
+        verified: true
+      },
       %{description: "Deleting a voice signature stops future recognition", verified: true}
     ],
     qa: %{final: :pass, attempts: 3, history: [:fail, :partial, :pass]},
@@ -278,7 +300,8 @@ Then its segments are attributed to two distinct speakers"
           ]
         },
         %{
-          statement: "The user can name a detected speaker and the name applies across the whole transcript",
+          statement:
+            "The user can name a detected speaker and the name applies across the whole transcript",
           scenarios: [
             %{
               kind: "happy path",
@@ -331,15 +354,15 @@ Then those segments are marked as an unknown speaker instead of being guessed"
             %{
               kind: "happy path",
               title: "Deleting a voice signature stops future recognition",
-              body: "Given \"Adjudicator\" has a stored voice signature
+              body:
+                "Given \"Adjudicator\" has a stored voice signature
 When the user deletes that speaker's signature
 Then future recordings no longer auto-attribute that voice, and past transcripts keep their labels"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -450,8 +473,7 @@ Then the highlight moves to the segment currently being spoken"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -547,8 +569,7 @@ Then the recording itself appears in the results alongside any transcript matche
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -571,7 +592,8 @@ Then the recording itself appears in the results alongside any transcript matche
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
         %{
-          statement: "Recordings can be grouped into collections (cases, matters, meetings, projects)",
+          statement:
+            "Recordings can be grouped into collections (cases, matters, meetings, projects)",
           scenarios: [
             %{
               kind: "happy path",
@@ -584,8 +606,7 @@ Then the collection shows both hearings together"
         },
         %{
           statement: "A recording has a title, date, and participants the user can edit",
-          scenarios: [
-          ]
+          scenarios: []
         },
         %{
           statement: "A recording can belong to any number of collections",
@@ -624,7 +645,8 @@ Then both recordings remain in the library, no longer grouped"
           ]
         },
         %{
-          statement: "Deleted recordings go to a trash and can be restored for 30 days before permanent removal",
+          statement:
+            "Deleted recordings go to a trash and can be restored for 30 days before permanent removal",
           scenarios: [
             %{
               kind: "happy path",
@@ -636,8 +658,7 @@ Then the recording is back in the library with its transcript intact"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -662,7 +683,8 @@ Then the recording is back in the library with its transcript intact"
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
         %{
-          statement: "On first launch without a model, the app offers a guided model choice with size and quality guidance",
+          statement:
+            "On first launch without a model, the app offers a guided model choice with size and quality guidance",
           scenarios: [
             %{
               kind: "happy path",
@@ -674,7 +696,8 @@ Then a guided model picker appears explaining size and quality tradeoffs"
           ]
         },
         %{
-          statement: "The recommended default model is large-v3-turbo with lighter options offered",
+          statement:
+            "The recommended default model is large-v3-turbo with lighter options offered",
           scenarios: [
             %{
               kind: "happy path",
@@ -698,7 +721,8 @@ Then progress is visible and the file is checksum-verified before activation"
           ]
         },
         %{
-          statement: "Once a model is installed transcription works immediately without a restart",
+          statement:
+            "Once a model is installed transcription works immediately without a restart",
           scenarios: [
             %{
               kind: "happy path",
@@ -746,8 +770,7 @@ Then subsequent transcriptions use the newly selected model"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -773,7 +796,8 @@ Context: recording without notifying participants is legal in some places (one-p
       persona: %{name: "Dana the Hearing Documenter", slug: "hearing-documenter", type: "proto"},
       rules: [
         %{
-          statement: "The user chooses a recording consent policy (silent, notify, or announce) in settings",
+          statement:
+            "The user chooses a recording consent policy (silent, notify, or announce) in settings",
           scenarios: [
             %{
               kind: "happy path",
@@ -804,19 +828,22 @@ Then the capture is refused with an explanation instead of recording silently"
           ]
         },
         %{
-          statement: "Each policy choice is explained in plain language with a not-legal-advice disclaimer",
+          statement:
+            "Each policy choice is explained in plain language with a not-legal-advice disclaimer",
           scenarios: [
             %{
               kind: "happy path",
               title: "Policies are explained where they are chosen",
-              body: "Given the settings screen shows the three policies
+              body:
+                "Given the settings screen shows the three policies
 When the user reads each option
 Then each has a plain-language explanation of what it does, plus a disclaimer that this is not legal advice"
             }
           ]
         },
         %{
-          statement: "The announce policy delivers an audible recording notice before capture begins",
+          statement:
+            "The announce policy delivers an audible recording notice before capture begins",
           scenarios: [
             %{
               kind: "happy path",
@@ -840,8 +867,7 @@ Then the notify policy governs it"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -864,10 +890,15 @@ EarWitness exposes MCP tools over the local library; what leaves the machine is 
     ],
     qa: %{final: :partial, attempts: 1, history: [:partial]},
     three_amigos: %{
-      persona: %{name: "Marcus the Meeting-Heavy Builder", slug: "meeting-heavy-builder", type: "proto"},
+      persona: %{
+        name: "Marcus the Meeting-Heavy Builder",
+        slug: "meeting-heavy-builder",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "An MCP client on the same machine can connect to EarWitness's tools over stdio",
+          statement:
+            "An MCP client on the same machine can connect to EarWitness's tools over stdio",
           scenarios: [
             %{
               kind: "happy path",
@@ -879,7 +910,8 @@ Then the client lists EarWitness's search, read, and summary tools"
           ]
         },
         %{
-          statement: "The assistant can search the library and read transcripts with speakers and timestamps",
+          statement:
+            "The assistant can search the library and read transcripts with speakers and timestamps",
           scenarios: [
             %{
               kind: "happy path",
@@ -891,7 +923,8 @@ Then it receives the passages with speaker names and timestamps"
           ]
         },
         %{
-          statement: "The assistant can attach a summary or note to a recording while all other writes stay in the UI",
+          statement:
+            "The assistant can attach a summary or note to a recording while all other writes stay in the UI",
           scenarios: [
             %{
               kind: "happy path",
@@ -922,7 +955,8 @@ Then subsequent MCP connections and tool calls are refused"
           ]
         },
         %{
-          statement: "The MCP surface opens no network port; conversation data leaves the machine only through the user's own assistant",
+          statement:
+            "The MCP surface opens no network port; conversation data leaves the machine only through the user's own assistant",
           scenarios: [
             %{
               kind: "happy path",
@@ -934,8 +968,7 @@ Then no additional network port is opened by EarWitness for assistant access"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -957,14 +990,11 @@ A prototype that plays a bundled 16kHz-mono-PCM16 clip via a miniaudio `play_not
 
 Run start_three_amigos_session to derive acceptance criteria.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
-      questions: [
-      ],
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -985,7 +1015,10 @@ Non-goals: perfect real-time speaker labels during the live pass (clustering is 
     tags: [%{name: "builder"}],
     criteria: [
       %{description: "Segments show up while still recording", verified: false},
-      %{description: "Stopping diarizes the live transcript instead of re-transcribing", verified: false},
+      %{
+        description: "Stopping diarizes the live transcript instead of re-transcribing",
+        verified: false
+      },
       %{description: "No speakers during recording, speakers after stop", verified: false},
       %{description: "Slow machine falls behind but loses no audio", verified: false},
       %{description: "Live pass uses the model chosen in Settings", verified: false},
@@ -993,10 +1026,15 @@ Non-goals: perfect real-time speaker labels during the live pass (clustering is 
       %{description: "Stop is instant; last segments and speakers fill in after", verified: false}
     ],
     three_amigos: %{
-      persona: %{name: "Marcus the Meeting-Heavy Builder", slug: "meeting-heavy-builder", type: "proto"},
+      persona: %{
+        name: "Marcus the Meeting-Heavy Builder",
+        slug: "meeting-heavy-builder",
+        type: "proto"
+      },
       rules: [
         %{
-          statement: "While a recording is in progress, newly recognized transcript segments appear in the live view as they are transcribed, without waiting for the recording to stop.",
+          statement:
+            "While a recording is in progress, newly recognized transcript segments appear in the live view as they are transcribed, without waiting for the recording to stop.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1009,7 +1047,8 @@ And the recording is still in progress (he has not stopped it)"
           ]
         },
         %{
-          statement: "The transcript built live during recording is the canonical transcript; stopping the recording adds speaker labels via diarization rather than re-transcribing the audio.",
+          statement:
+            "The transcript built live during recording is the canonical transcript; stopping the recording adds speaker labels via diarization rather than re-transcribing the audio.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1023,7 +1062,8 @@ And the audio is not transcribed a second time"
           ]
         },
         %{
-          statement: "During recording, transcript segments are shown without speaker labels; speaker attribution appears only after the recording stops.",
+          statement:
+            "During recording, transcript segments are shown without speaker labels; speaker attribution appears only after the recording stops.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1037,12 +1077,14 @@ Then each segment shows the speaker it was attributed to"
           ]
         },
         %{
-          statement: "Live transcription never interferes with the recording itself; if transcription cannot keep pace with the audio, capture continues and the live transcript falls behind but still completes.",
+          statement:
+            "Live transcription never interferes with the recording itself; if transcription cannot keep pace with the audio, capture continues and the live transcript falls behind but still completes.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Slow machine falls behind but loses no audio",
-              body: "Given Dana is recording a long hearing on a machine that transcribes slower than real time
+              body:
+                "Given Dana is recording a long hearing on a machine that transcribes slower than real time
 When transcription falls behind the incoming audio
 Then the recording keeps capturing every part of the hearing to its file
 And the live transcript keeps catching up on the backlog rather than dropping audio
@@ -1051,7 +1093,8 @@ And once transcription finishes the backlog the transcript covers the whole reco
           ]
         },
         %{
-          statement: "Live transcription uses the transcription model selected in Settings — the same model used for the final transcript.",
+          statement:
+            "Live transcription uses the transcription model selected in Settings — the same model used for the final transcript.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1064,7 +1107,8 @@ And not by a different or fallback model"
           ]
         },
         %{
-          statement: "Live transcription works for whichever capture source is active — the microphone or the system-audio tap.",
+          statement:
+            "Live transcription works for whichever capture source is active — the microphone or the system-audio tap.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1077,12 +1121,14 @@ And it behaves the same as a microphone recording would"
           ]
         },
         %{
-          statement: "Stopping a recording returns immediately; any remaining backlog transcription and the diarization pass complete in the background, filling in the final segments and speaker labels shortly after.",
+          statement:
+            "Stopping a recording returns immediately; any remaining backlog transcription and the diarization pass complete in the background, filling in the final segments and speaker labels shortly after.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Stop is instant; last segments and speakers fill in after",
-              body: "Given Dana stops a long hearing recording while transcription is still catching up on backlog audio
+              body:
+                "Given Dana stops a long hearing recording while transcription is still catching up on backlog audio
 When she stops the recording
 Then the app returns to a stopped state immediately without waiting
 And the remaining segments finish transcribing in the background
@@ -1092,7 +1138,12 @@ And once that finishes, diarization runs and speaker labels appear on all segmen
         }
       ],
       questions: [
-        %{body: "If the user stops a recording while live transcription is still catching up on backlog audio, should \"stop\" block until the backlog finishes transcribing before running diarization (final transcript + speakers ready immediately, but stop may take a moment on slow machines), or return instantly and finish transcribing + diarizing in the background (UI is snappy, but the transcript/speakers fill in shortly after stop)?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "If the user stops a recording while live transcription is still catching up on backlog audio, should \"stop\" block until the backlog finishes transcribing before running diarization (final transcript + speakers ready immediately, but stop may take a moment on slow machines), or return instantly and finish transcribing + diarizing in the background (UI is snappy, but the transcript/speakers fill in shortly after stop)?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }

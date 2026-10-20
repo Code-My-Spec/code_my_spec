@@ -25,7 +25,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6420Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Schema changes that add or remove cross-entity edges between bands do not collapse the layout", criterion: 499 do
+  spex "Schema changes that add or remove cross-entity edges between bands do not collapse the layout",
+    criterion: 499 do
     scenario "Removing the only story-to-project edge keeps the project chain at the top" do
       given_ "no project gate consumes story output in the current schema (qa_preflight was removed in commit a774e35b)",
              context do

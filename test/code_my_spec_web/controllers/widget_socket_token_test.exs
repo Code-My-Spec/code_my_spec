@@ -10,7 +10,11 @@ defmodule CodeMySpecWeb.WidgetSocketTokenTest do
     {:ok, project} = AppTokens.put_refresh_secret(scope.active_project, "the-refresh-secret")
     {:ok, access, _} = AppTokens.exchange("the-refresh-secret")
 
-    %{conn: put_req_header(conn, "content-type", "application/json"), project: project, access: access}
+    %{
+      conn: put_req_header(conn, "content-type", "application/json"),
+      project: project,
+      access: access
+    }
   end
 
   test "mints a socket token for a holder of an app token", %{conn: conn, access: access} do

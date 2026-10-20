@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4670Spex do
             "The second thing happens"
           ])
 
-        [first, second] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
+        [first, second] =
+          context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         {:ok, Map.merge(context, %{story: story, first: first, second: second})}
       end
