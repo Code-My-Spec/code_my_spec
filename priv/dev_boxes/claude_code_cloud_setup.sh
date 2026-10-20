@@ -101,7 +101,7 @@ setsid bash -c '
       || { echo "ERROR: onboard failed"; exit 0; }
   fi
   # Backgrounded and detached: the first boot compiles, which takes minutes.
-  CMS_HARNESS=1 CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" CMS_ANALYSIS_SLOTS=1 \
+  CMS_HARNESS=1 CMS_DEV_BOX=1 CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" CMS_ANALYSIS_SLOTS=1 \
     MIX_ENV=harness nohup elixir -S mix run --no-halt >>"$HOME/.codemyspec/harness.out" 2>&1 &
   echo "harness starting (pid $!); boot output in ~/.codemyspec/harness.out"
   # Once the harness has joined it installs the project age keys, and then the

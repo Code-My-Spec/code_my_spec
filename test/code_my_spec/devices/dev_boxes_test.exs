@@ -10,8 +10,8 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Workspaces.Runner
   alias CodeMySpec.Repo
+  alias CodeMySpec.Workspaces.Runner
 
   setup do
     owner = user_fixture()
