@@ -1096,6 +1096,17 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='issue-bar']")
       assert has_element?(view, "[data-test='architecture-mark'][data-cycles]")
 
+      view |> element("[data-test='architecture-mark']") |> render_click()
+      assert has_element?(view, "[data-test='architecture-modal'] [data-test='boundary-summary']")
+
+      assert has_element?(
+               view,
+               "[data-test='architecture-modal'] #architecture-modal-graph[data-graph]"
+             )
+
+      view |> element("[data-test='architecture-modal'] .modal-backdrop") |> render_click()
+      refute has_element?(view, "[data-test='architecture-modal']")
+
       assert has_element?(
                view,
                "[data-test='story-counts'][data-done][data-backlog][data-retired]"

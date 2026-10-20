@@ -32,6 +32,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   alias CodeMySpec.Requirements.PlainLanguage
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpecWeb.ActivityComponents
+  alias CodeMySpecWeb.ArchitectureComponents
   alias CodeMySpecWeb.QaComponents
   alias CodeMySpecWeb.RequirementGraphComponents
 
@@ -63,6 +64,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     socket =
       socket
       |> assign_new(:graph_modal, fn -> nil end)
+      |> assign_new(:architecture_open, fn -> false end)
       |> assign_new(:selected, fn -> nil end)
       |> assign_new(:detail, fn -> %{} end)
 
@@ -71,7 +73,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         {:ok,
          assign(socket,
            bands: Bands.read(socket.assigns.scope),
-           architecture: BoundaryGraph.build(socket.assigns.scope).summary,
+           architecture: BoundaryGraph.build(socket.assigns.scope),
            qa:
              socket.assigns.scope
              |> Qa.list_project_attempts(include_older: true)
@@ -99,6 +101,12 @@ defmodule CodeMySpecWeb.ProjectTimeline do
 
   def handle_event("close_graph", _params, socket),
     do: {:noreply, assign(socket, graph_modal: nil, selected: nil)}
+
+  def handle_event("open_architecture", _params, socket),
+    do: {:noreply, assign(socket, :architecture_open, true)}
+
+  def handle_event("close_architecture", _params, socket),
+    do: {:noreply, assign(socket, :architecture_open, false)}
 
   @impl true
   def handle_async(:graph, {:ok, graph}, %{assigns: %{graph_modal: :loading}} = socket),
@@ -201,7 +209,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           </li>
           <li data-test="timeline-band" data-band="architecture">
             <.labelled label="Arch">
-              <.architecture_mark summary={@architecture} project={@project} />
+              <.architecture_mark summary={@architecture.summary} target={@myself} />
             </.labelled>
           </li>
           <li data-test="timeline-band" data-band="activity">
@@ -242,6 +250,13 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         href={@graph}
         target={@myself}
         target_selector={"##{@id}"}
+      />
+      <ArchitectureComponents.modal
+        :if={@architecture_open}
+        graph={@architecture}
+        href={~p"/app/projects/#{@project.id}/architecture"}
+        on_close="close_architecture"
+        target={@myself}
       />
     </nav>
     """
@@ -406,7 +421,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   end
 
   attr(:summary, :map, required: true)
-  attr(:project, :map, required: true)
+  attr(:target, :any, required: true)
 
   # The architecture's health from `BoundaryGraph`: how many boundary cycles
   # (red when any) and how deep the longest chain of boundaries runs.
@@ -423,8 +438,10 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       )
 
     ~H"""
-    <.link
-      navigate={~p"/app/projects/#{@project.id}/architecture"}
+    <button
+      type="button"
+      phx-click="open_architecture"
+      phx-target={@target}
       data-test="architecture-mark"
       data-cycles={@cycles}
       data-depth={@summary.depth}
@@ -441,7 +458,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       <span data-test="architecture-depth" class="flex items-center gap-0.5 opacity-60">
         <.icon name="hero-list-bullet" class="size-3" />{@summary.depth}
       </span>
-    </.link>
+    </button>
     """
   end
 

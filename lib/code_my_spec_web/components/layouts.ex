@@ -213,7 +213,6 @@ defmodule CodeMySpecWeb.Layouts do
               <li class="menu-title">Specification</li>
               <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
               <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
-              <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
 
               <li class="menu-title">Build</li>
               <%!-- The step 6 console replaced Provisioning (gate 2): same
@@ -252,6 +251,7 @@ defmodule CodeMySpecWeb.Layouts do
               </li>
               <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
               <li><a href={~p"/app/projects/#{project.id}/requirements/graph"}>Graph</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
               <li><a href={~p"/app/projects/#{project.id}/docs"}>Docs</a></li>
             <% else %>
               <li class="menu-title">Open a project</li>
