@@ -882,7 +882,6 @@ defmodule CmsHarness.Agents.Engine.Impl do
          :system_prompt,
          SystemPrompt.compose(
            universal: Keyword.get(opts, :universal),
-           project_brief: Keyword.get(opts, :project_brief),
            provider_brief: Keyword.get(opts, :provider_brief),
            app_url: Keyword.get(opts, :app_url),
            scratch_dir: scratch_dir(Keyword.fetch!(opts, :agent_id)),

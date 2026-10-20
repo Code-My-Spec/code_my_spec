@@ -121,7 +121,6 @@ defmodule CodeMySpec.Projects.ProjectsSocket do
     attrs = %{
       id: payload["id"],
       name: payload["name"],
-      description: payload["description"],
       module_name: payload["module_name"],
       status: safe_atom(payload["status"]),
       account_id: scope.active_account_id

@@ -6,17 +6,15 @@ defmodule CodeMySpecWeb.ProjectLiveTest do
 
   @create_attrs %{
     name: "some name",
-    description: "some description",
     code_repo: "some code_repo",
     docs_repo: "some docs_repo"
   }
   @update_attrs %{
     name: "some updated name",
-    description: "some updated description",
     code_repo: "some updated code_repo",
     docs_repo: "some updated docs_repo"
   }
-  @invalid_attrs %{name: nil, description: nil, code_repo: nil, docs_repo: nil}
+  @invalid_attrs %{name: nil, code_repo: nil, docs_repo: nil}
 
   setup [:register_and_log_in_user, :setup_active_account]
 

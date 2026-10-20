@@ -12,7 +12,6 @@ defmodule CodeMySpec.ProjectsTest do
 
     @invalid_attrs %{
       name: nil,
-      description: nil,
       status: nil,
       code_repo: nil,
       docs_repo: nil,
@@ -94,6 +93,7 @@ defmodule CodeMySpec.ProjectsTest do
       assert local_scope.active_project_id == project.id
 
       assert {:ok, updated} = Projects.get_project(scope, project.id)
+
       assert updated.local_path == "/somewhere/else",
              "a read-only resolve wrote local_path despite sync_local_path: false"
 
@@ -274,7 +274,6 @@ defmodule CodeMySpec.ProjectsTest do
     test "create_project/2 with valid data creates a project" do
       valid_attrs = %{
         name: "some name",
-        description: "some description",
         status: :created,
         code_repo: "some code_repo",
         docs_repo: "some docs_repo",
@@ -287,7 +286,6 @@ defmodule CodeMySpec.ProjectsTest do
 
       assert {:ok, %Project{} = project} = Projects.create_project(scope, valid_attrs)
       assert project.name == "some name"
-      assert project.description == "some description"
       assert project.status == :created
       assert project.code_repo == "some code_repo"
       assert project.docs_repo == "some docs_repo"
@@ -345,7 +343,6 @@ defmodule CodeMySpec.ProjectsTest do
 
       update_attrs = %{
         name: "some updated name",
-        description: "some updated description",
         status: :created,
         code_repo: "some updated code_repo",
         docs_repo: "some updated docs_repo",
@@ -354,7 +351,6 @@ defmodule CodeMySpec.ProjectsTest do
 
       assert {:ok, %Project{} = project} = Projects.update_project(scope, project, update_attrs)
       assert project.name == "some updated name"
-      assert project.description == "some updated description"
       assert project.status == :created
       assert project.code_repo == "some updated code_repo"
       assert project.docs_repo == "some updated docs_repo"

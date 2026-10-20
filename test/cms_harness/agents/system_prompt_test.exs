@@ -99,7 +99,6 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       prompt =
         SystemPrompt.compose(
           universal: "UNIVERSAL-SECTION",
-          project_brief: "PROJECT-SECTION",
           app_url: "https://example.test",
           tool_index: "TOOL-SECTION",
           role_brief: RoleBrief.for(:coding)
@@ -107,7 +106,6 @@ defmodule CmsHarness.Agents.SystemPromptTest do
 
       positions = [
         {"universal", :binary.match(prompt, "UNIVERSAL-SECTION") |> elem(0)},
-        {"project", :binary.match(prompt, "PROJECT-SECTION") |> elem(0)},
         {"app url", :binary.match(prompt, "https://example.test") |> elem(0)},
         {"tool index", :binary.match(prompt, "TOOL-SECTION") |> elem(0)},
         {"role", :binary.match(prompt, "You are the CODING agent") |> elem(0)}
@@ -139,7 +137,6 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       prompt =
         SystemPrompt.compose(
           universal: "RULES",
-          project_brief: nil,
           app_url: nil,
           tool_index: "",
           role_brief: RoleBrief.for(:qa)
@@ -178,19 +175,6 @@ defmodule CmsHarness.Agents.SystemPromptTest do
       assert SystemPrompt.compose([]) == nil
       assert SystemPrompt.compose(universal: nil, role_brief: nil) == nil
       assert SystemPrompt.compose(universal: "", tool_index: "   ") == nil
-    end
-
-    test "the project's own description is marked as prose, not as truth" do
-      prompt = SystemPrompt.compose(project_brief: "A ledger for small clinics.")
-
-      assert prompt =~ "A ledger for small clinics."
-
-      assert prompt =~ "prefer what you can see in the repository", """
-      A project description is prose nobody verifies. Measured 2026-09-20, the
-      only substantial one on this account named a port, an MCP library and a
-      tool count that had all moved — and it would have shipped directly above a
-      tool index contradicting it. An agent needs to know which of the two wins.
-      """
     end
 
     test "a provider brief reads after the index it is about" do

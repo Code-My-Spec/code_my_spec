@@ -290,7 +290,6 @@ defmodule CodeMySpec.Projects do
       %{}
       |> maybe_put(:name, config["name"])
       |> maybe_put(:module_name, config["module_name"])
-      |> maybe_put(:description, config["description"])
       |> maybe_put(:account_id, config["account_id"])
       |> maybe_put_local_path(working_dir, Keyword.get(opts, :sync_local_path, true))
 
@@ -311,7 +310,6 @@ defmodule CodeMySpec.Projects do
       id: config["project_id"],
       name: config["name"] || "Unnamed Project",
       module_name: config["module_name"] || "App",
-      description: config["description"],
       account_id: config["account_id"],
       local_path: working_dir
     }

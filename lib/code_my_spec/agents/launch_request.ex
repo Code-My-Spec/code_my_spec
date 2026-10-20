@@ -26,7 +26,6 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   }
 
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -74,9 +73,6 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # Section one: the loop every agent runs and how the machinery behaves;
       # the same for every role and project. See `OperatingRules`.
       "universal" => OperatingRules.text(),
-      # Section two, first part: what this project is. Nil when unwritten,
-      # never a placeholder.
-      "project_brief" => project_brief(agent),
       # Every tool it can reach, by name only. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.
@@ -104,26 +100,6 @@ defmodule CodeMySpec.Agents.LaunchRequest do
   end
 
   defp app_url(_agent), do: nil
-
-  # What the project is, in its own words; sent when written, omitted when not.
-  # Keeping it true is the project's job.
-  defp project_brief(%Agent{project_id: project_id}) when is_binary(project_id) do
-    case Projects.get_project_by_id(project_id) do
-      %{description: description} -> presence(description)
-      nil -> nil
-    end
-  end
-
-  defp project_brief(_agent), do: nil
-
-  defp presence(text) when is_binary(text) do
-    case String.trim(text) do
-      "" -> nil
-      trimmed -> trimmed
-    end
-  end
-
-  defp presence(_), do: nil
 
   # The browser tools this machine offers, from the agent's copy. `[]` renders
   # as no section; a browser that will not answer is `browser_status`'s fault.

@@ -166,7 +166,6 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
         {:replace,
          [
            :name,
-           :description,
            :module_name,
            :code_repo,
            :docs_repo,

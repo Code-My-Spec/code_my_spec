@@ -40,7 +40,6 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
       >
         <.input field={@form[:name]} type="text" label="Name" />
         <.input field={@form[:module_name]} type="text" label="Module Name" />
-        <.input field={@form[:description]} type="textarea" label="Description" />
         <.input
           field={@form[:code_repo]}
           type="text"

@@ -12,7 +12,7 @@ defmodule CmsHarness.Agents.SystemPrompt do
       §1  Universal    the loop, and how the machinery behaves
                        — the same for every agent on every project
 
-      §2  Situational  what this project is, where its application runs,
+      §2  Situational  where this project's application runs,
                        which tools this machine offers, and how a tool call
                        happens on the engine running this agent
                        — the same for every agent on this checkout
@@ -69,7 +69,6 @@ defmodule CmsHarness.Agents.SystemPrompt do
       # §1 — universal
       parts[:universal],
       # §2 — situational
-      project_brief(parts[:project_brief]),
       running_app(parts[:app_url]),
       scratch_dir(parts[:scratch_dir]),
       parts[:tool_index],
@@ -85,28 +84,6 @@ defmodule CmsHarness.Agents.SystemPrompt do
       sections -> Enum.join(sections, "\n\n")
     end
   end
-
-  # Headed, because it arrives between the framework's rules and the agent's own
-  # brief and without a heading it reads as a continuation of whichever it is
-  # nearer. The wording says "may be out of date" on purpose: it is prose nobody
-  # verifies, and an agent that treats it as authoritative over what it can see
-  # in the code will act on a stale claim. Measured 2026-09-20 — 7 of 76
-  # projects had written one at all, and the longest contradicted the tool index
-  # printed directly beneath it.
-  defp project_brief(text) when is_binary(text) and text != "" do
-    """
-    ## The project
-
-    #{String.trim(text)}
-
-    That is the project's own description of itself. It is prose, not something
-    derived from the code, so prefer what you can see in the repository where
-    the two disagree.
-    """
-    |> String.trim()
-  end
-
-  defp project_brief(_), do: nil
 
   # Where the application is, so an agent testing it can open it.
   #

@@ -25,7 +25,6 @@ defmodule CodeMySpecWeb.ProjectController do
       id: project.id,
       account_id: project.account_id,
       name: project.name,
-      description: project.description,
       module_name: project.module_name,
       code_repo: project.code_repo,
       docs_repo: project.docs_repo,

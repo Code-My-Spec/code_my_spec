@@ -98,15 +98,10 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   end
 
   defp build_project_context(project) do
-    description =
-      if project.description,
-        do: "\nDescription: #{project.description}",
-        else: ""
-
     """
     # Design System Setup
 
-    Project: #{project.name}#{description}
+    Project: #{project.name}
 
     You are helping the user establish a design system for their project. The output is a
     self-contained HTML file at `.code_my_spec/design/design_system.html` that uses the DaisyUI CDN

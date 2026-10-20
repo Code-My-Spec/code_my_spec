@@ -350,7 +350,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
 
     **Name:** #{project.name}
     **App Module:** #{app_name}
-    **Description:** #{project.description || "No description provided"}
 
     #{architecture_section}## User Stories
 

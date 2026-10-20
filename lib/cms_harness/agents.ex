@@ -57,7 +57,6 @@ defmodule CmsHarness.Agents do
       # System prompt pieces, all resolved server-side;
       # `SystemPrompt.compose/1` orders them general to specific.
       universal: request["universal"],
-      project_brief: request["project_brief"],
       provider_brief: request["provider_brief"],
       role_brief: request["role_brief"],
       tool_index: request["tool_index"],

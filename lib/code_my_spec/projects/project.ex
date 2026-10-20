@@ -9,7 +9,6 @@ defmodule CodeMySpec.Projects.Project do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           name: String.t(),
-          description: String.t() | nil,
           module_name: String.t() | nil,
           health_route_status: String.t() | nil,
           head_commit: String.t() | nil,
@@ -40,7 +39,6 @@ defmodule CodeMySpec.Projects.Project do
 
   schema "projects" do
     field :name, :string
-    field :description, :string
     field :module_name, :string
     # Harness-reported, like `module_name`: a content check the server cannot
     # read for a harness-only project. `nil` is "not reported yet", distinct
@@ -156,7 +154,6 @@ defmodule CodeMySpec.Projects.Project do
     project
     |> cast(attrs, [
       :name,
-      :description,
       :module_name,
       :health_route_status,
       :head_commit,
@@ -253,7 +250,6 @@ defmodule CodeMySpec.Projects.Project do
     |> cast(attrs, [
       :id,
       :name,
-      :description,
       :module_name,
       :code_repo,
       :docs_repo,
