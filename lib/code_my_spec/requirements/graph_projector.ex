@@ -402,24 +402,23 @@ defmodule CodeMySpec.Requirements.GraphProjector do
       |> Enum.filter(fn n -> n.attributes[:entity_type] == "project" end)
       |> MapSet.new(& &1.key)
 
-    # A component nothing in the plan reaches has no place in it — a file the
-    # scan found, not a step in the project — so it waits in a holding area
-    # off to the side, drawn faint and unlinked, rather than floating among
-    # the steps.
+    # A component with no edge at all has nothing to place it by — a file the
+    # scan found, connected to nothing — so it waits in a holding area below the
+    # graph, drawn faint, rather than floating among the steps. One with edges
+    # keeps its place even if no story reaches it yet.
     reachable_keys = bfs_reachable(project_keys, sigma_edges)
-    nodes = mark_orphan_references(all_sigma, reachable_keys)
-    {placed, held} = Enum.split_with(nodes, &(not &1.attributes.orphan_reference))
-    in_plan = MapSet.new(placed, & &1.key)
 
-    %{
-      nodes: placed ++ holding_area(held, placed),
-      edges:
-        Enum.filter(
-          sigma_edges,
-          &(MapSet.member?(in_plan, &1.source) and MapSet.member?(in_plan, &1.target))
-        ),
-      edge_alpha: 0.12
-    }
+    linked =
+      MapSet.new(sigma_edges, & &1.source) |> MapSet.union(MapSet.new(sigma_edges, & &1.target))
+
+    {placed, held} =
+      all_sigma
+      |> mark_orphan_references(reachable_keys)
+      |> Enum.split_with(
+        &(&1.attributes.entity_type != "component" or MapSet.member?(linked, &1.key))
+      )
+
+    %{nodes: placed ++ holding_area(held, placed), edges: sigma_edges, edge_alpha: 0.12}
   end
 
   # The unplanned components as a square-ish grid below everything in the
