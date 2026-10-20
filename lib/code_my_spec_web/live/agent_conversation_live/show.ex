@@ -1882,7 +1882,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             min="0"
             max={length(@modal.slider) - 1}
             value={@modal.index}
-            phx-debounce="250"
+            phx-debounce="500"
             class="range range-xs flex-1"
             aria-label="Step through the stories"
           />
