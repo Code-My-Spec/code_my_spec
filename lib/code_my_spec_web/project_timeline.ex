@@ -130,12 +130,14 @@ defmodule CodeMySpecWeb.ProjectTimeline do
           </span>
         </li>
         <li data-test="timeline-band" data-band="components" class="shrink-0">
-          <.labelled label="Arch">
-            <span class="flex items-center gap-3">
+          <span class="flex items-center gap-3">
+            <.labelled label="Impl">
               <.component_bar counts={@bands.components} target={@myself} />
+            </.labelled>
+            <.labelled label="Arch">
               <.architecture_mark summary={@architecture} project={@project} />
-            </span>
-          </.labelled>
+            </.labelled>
+          </span>
         </li>
         <li data-test="timeline-band" data-band="issues" class="shrink-0">
           <.labelled label="Issues">
@@ -317,7 +319,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   defp labelled(assigns) do
     ~H"""
     <span class="flex shrink-0 flex-col items-center gap-0.5 leading-none">
-      <span class="text-[8px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
+      <span class="text-[9px] font-normal uppercase leading-none tracking-[0.2em] opacity-40">
         {@label}
       </span>
       {render_slot(@inner_block)}
