@@ -153,7 +153,7 @@ defmodule CodeMySpecWeb.IssueComponents do
         <div :if={is_nil(@picked)} class="space-y-2">
           <div class="flex items-baseline gap-2 pr-8">
             <h2 class="text-lg font-semibold">Issues</h2>
-            <span class="text-xs opacity-60">open · high and medium · app · newest first</span>
+            <span class="text-xs opacity-60">open · medium and up · worst first</span>
           </div>
           <IssueCharts.open_over_time
             :if={@on_chart}

@@ -33,6 +33,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   alias CodeMySpec.Conversations.Reads
   alias CodeMySpec.Epics
   alias CodeMySpec.Issues
+  alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
@@ -828,18 +829,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_event("close_problems", _params, socket),
     do: {:noreply, assign(socket, :problems_modal, nil)}
 
-  # The status bar's issue counts: the issues page's default view, compact —
-  # open, high and medium, the app's, newest first — and one picked from it.
+  # The status bar's issue counts: the open issues of medium severity and up,
+  # worst first (newest first within a severity), and one picked from it.
   def handle_event("show_issues", _params, socket) do
     all = Issues.list_filtered(socket.assigns.current_scope, %{})
 
     issues =
       all
       |> Enum.filter(
-        &(&1.status in [:incoming, :accepted] and &1.severity in [:high, :medium] and
-            &1.scope == :app)
+        &(&1.status in [:incoming, :accepted] and &1.severity in [:critical, :high, :medium])
       )
       |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
+      |> Enum.sort_by(&Issue.severity_index(&1.severity))
 
     {:noreply,
      assign(socket, :issues_modal, %{

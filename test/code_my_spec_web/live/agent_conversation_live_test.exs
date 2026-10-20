@@ -1217,6 +1217,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           severity: :low
         })
 
+      critical =
+        CodeMySpec.IssuesFixtures.issue_fixture(project_scope, %{
+          title: "Data loss on save",
+          severity: :critical,
+          scope: :qa
+        })
+
       {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       view |> element("[data-test='issue-bar']") |> render_click()
@@ -1226,6 +1233,11 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
                "[data-test='issues-modal'] [data-test='issue-row']",
                "Card form 500s"
              )
+
+      # Worst first, whatever its scope.
+      html = view |> element("[data-test='issues-modal']") |> render()
+      [first_row | _] = Regex.scan(~r/data-issue-id="([^"]+)"/, html, capture: :all_but_first)
+      assert first_row == [critical.id]
 
       refute has_element?(view, "[data-test='issues-modal']", "Typo in footer")
 
