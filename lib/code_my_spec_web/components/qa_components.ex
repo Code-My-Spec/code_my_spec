@@ -309,18 +309,13 @@ defmodule CodeMySpecWeb.QaComponents do
   # Each day's counts by outcome: every attempt submitted that day, or every
   # story by its latest attempt up to the end of that day.
   defp day_counts("stories", attempts, days) do
-    by_story = Enum.group_by(attempts, & &1.story_id)
+    by_story = attempts |> Enum.group_by(& &1.story_id) |> Map.values()
 
     Enum.map(days, fn day ->
       ends = DateTime.new!(Date.add(day, 1), ~T[00:00:00], "Etc/UTC")
 
       by_story
-      |> Enum.flat_map(fn {_story, tries} ->
-        tries
-        |> Enum.filter(&(DateTime.compare(at(&1), ends) == :lt))
-        |> Enum.max_by(&at/1, DateTime, fn -> nil end)
-        |> List.wrap()
-      end)
+      |> Enum.flat_map(&latest_before(&1, ends))
       |> Enum.frequencies_by(& &1.status)
     end)
   end
@@ -328,6 +323,14 @@ defmodule CodeMySpecWeb.QaComponents do
   defp day_counts(_attempts, attempts, days) do
     by_day = Enum.group_by(attempts, &DateTime.to_date(at(&1)))
     Enum.map(days, &(by_day |> Map.get(&1, []) |> Enum.frequencies_by(fn a -> a.status end)))
+  end
+
+  # A story's latest attempt before `ends`, as a list of zero or one.
+  defp latest_before(tries, ends) do
+    tries
+    |> Enum.filter(&(DateTime.compare(at(&1), ends) == :lt))
+    |> Enum.max_by(&at/1, DateTime, fn -> nil end)
+    |> List.wrap()
   end
 
   defp days(attempts, range, today) do
