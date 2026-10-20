@@ -38,7 +38,11 @@ defmodule CodeMySpec.Requirements.Bands do
           late_names: MapSet.t(String.t()),
           stories: [story()],
           components: {non_neg_integer(), non_neg_integer()},
-          issues: %{open: non_neg_integer(), resolved: non_neg_integer()}
+          issues: %{
+            resolved: non_neg_integer(),
+            dismissed: non_neg_integer(),
+            open: non_neg_integer()
+          }
         }
 
   @doc "Project gates from where stories join onward."
@@ -182,8 +186,9 @@ defmodule CodeMySpec.Requirements.Bands do
       |> Map.new()
 
     %{
-      open: Map.get(counts, :incoming, 0) + Map.get(counts, :accepted, 0),
-      resolved: Map.get(counts, :resolved, 0)
+      resolved: Map.get(counts, :resolved, 0),
+      dismissed: Map.get(counts, :dismissed, 0),
+      open: Map.get(counts, :incoming, 0) + Map.get(counts, :accepted, 0)
     }
   end
 

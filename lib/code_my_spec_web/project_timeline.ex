@@ -123,7 +123,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <li data-test="timeline-band" data-band="components" class="min-w-16 flex-1">
           <.component_bar counts={@bands.components} target={@myself} />
         </li>
-        <li data-test="timeline-band" data-band="issues" class="min-w-16 flex-1">
+        <li data-test="timeline-band" data-band="issues" class="shrink-0">
           <.issue_bar counts={@bands.issues} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="late" class="flex shrink-0 items-center gap-1">
@@ -265,18 +265,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
   attr :counts, :map, required: true
   attr :target, :any, required: true
 
-  # Issues: resolved against still open, with the open count beside it.
+  # Issues as three counts, closed to open: resolved (green), dismissed
+  # (grey), open (red).
   defp issue_bar(assigns) do
-    %{open: open, resolved: resolved} = assigns.counts
-    total = open + resolved
-    pct = if total == 0, do: 0, else: resolved / total * 100
+    %{resolved: resolved, dismissed: dismissed, open: open} = assigns.counts
 
     assigns =
       assign(assigns,
-        open: open,
         resolved: resolved,
-        pct: pct,
-        tip: "Issues: #{open} open, #{resolved} resolved"
+        dismissed: dismissed,
+        open: open,
+        tip: "Issues: #{resolved} resolved · #{dismissed} dismissed · #{open} open"
       )
 
     ~H"""
@@ -285,21 +284,18 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       phx-click="open_graph"
       phx-target={@target}
       data-test="issue-bar"
-      data-open={@open}
       data-resolved={@resolved}
+      data-dismissed={@dismissed}
+      data-open={@open}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex w-full items-center gap-1.5"
+      class="tooltip tooltip-left flex items-center justify-center gap-1 font-mono text-[11px] tabular-nums"
     >
-      <span class="flex h-2 w-full overflow-hidden rounded-full bg-error/60">
-        <span class="h-full bg-success" style={"width: #{@pct}%"}></span>
-      </span>
-      <span class={[
-        "shrink-0 font-mono text-[10px] tabular-nums",
-        if(@open > 0, do: "text-error", else: "opacity-60")
-      ]}>
-        {@open}
-      </span>
+      <span class="text-success">{@resolved}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@dismissed}</span>
+      <span class="opacity-30">/</span>
+      <span class={if @open > 0, do: "text-error", else: "opacity-50"}>{@open}</span>
     </button>
     """
   end
