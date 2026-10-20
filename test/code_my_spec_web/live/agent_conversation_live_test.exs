@@ -1142,11 +1142,17 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='story-graph-modal']", first.title)
       assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
 
+      # The graph arriving renders the stage drawn, not loading.
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading-empty']")
+
       # Equal progress orders the two by number, so the second is at 1.
       assert has_element?(view, "[data-test='story-graph-slider'] input[value='0']")
       view |> element("#story-graph-slider") |> render_change(%{"index" => "1"})
 
       assert has_element?(view, "[data-test='story-graph-modal']", second.title)
+      render_async(view)
+      refute has_element?(view, "[data-test='story-graph-loading']")
     end
 
     test "a main-role agent on another copy does not", %{

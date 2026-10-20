@@ -1882,7 +1882,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
             min="0"
             max={length(@modal.slider) - 1}
             value={@modal.index}
-            phx-throttle="150"
+            phx-debounce="250"
             class="range range-xs flex-1"
             aria-label="Step through the stories"
           />
@@ -1894,7 +1894,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         drawn are the same size and the modal holds still while sliding. --%>
         <div class="relative flex flex-col" style="height: 65vh; min-height: 420px">
           <div
-            :if={is_nil(@modal.flow) or @modal.error or map_size(@modal.flow.nodes) == 0}
+            :if={is_nil(@modal.flow) || @modal.error || map_size(@modal.flow.nodes) == 0}
             class="flex flex-1 items-center justify-center"
           >
             <p :if={@modal.error} role="alert" class="text-error">{@modal.error}</p>
