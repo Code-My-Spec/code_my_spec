@@ -11,6 +11,7 @@ defmodule CodeMySpecWeb.QaLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Qa
+  alias CodeMySpecWeb.QaComponents
 
   @per_page 25
 
@@ -27,6 +28,9 @@ defmodule CodeMySpecWeb.QaLive do
        per_page: @per_page,
        total: 0,
        total_pages: 1,
+       chart_attempts: [],
+       range: "30d",
+       chart_view: "stories",
        error: nil
      )}
   end
@@ -54,6 +58,14 @@ defmodule CodeMySpecWeb.QaLive do
     |> assign(:page, 1)
     |> load_attempts()
     |> then(&{:noreply, &1})
+  end
+
+  def handle_event("qa_chart", params, socket) do
+    {:noreply,
+     assign(socket,
+       range: params["range"] || socket.assigns.range,
+       chart_view: params["view"] || socket.assigns.chart_view
+     )}
   end
 
   def handle_event("toggle_invalidated", _params, socket) do
@@ -86,6 +98,8 @@ defmodule CodeMySpecWeb.QaLive do
 
     socket
     |> assign(attempts: attempts, total: length(attempts))
+    # Every valid attempt, whatever the table shows: the chart is QA over time.
+    |> assign(:chart_attempts, Qa.list_project_attempts(scope, include_older: true))
     |> paginate()
   end
 
@@ -127,6 +141,15 @@ defmodule CodeMySpecWeb.QaLive do
         <h1 class="text-3xl font-bold">
           QA <span class="text-base-content/50 font-normal text-xl">({@total})</span>
         </h1>
+      </div>
+
+      <div class="mb-6">
+        <QaComponents.attempts_chart
+          attempts={@chart_attempts}
+          range={@range}
+          view={@chart_view}
+          event="qa_chart"
+        />
       </div>
 
       <div class="flex flex-wrap gap-3 mb-6">

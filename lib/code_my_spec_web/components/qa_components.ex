@@ -59,37 +59,46 @@ defmodule CodeMySpecWeb.QaComponents do
     """
   end
 
+  @doc "The ranges the full chart offers."
+  def ranges, do: ~w(7d 30d 90d all)
+
+  @doc "What the full chart counts: stories by where each stood, or every attempt."
+  def views, do: ~w(stories attempts)
+
   @doc """
-  Attempts submitted each day over the last `days`, stacked by how they came
-  out. Compact: no legend, labels or controls.
+  QA over time, stacked by outcome: every attempt submitted each day, or every
+  story by where its latest attempt left it. Compact: attempts over the last
+  30 days, no legend, labels or controls. Full: view and range pickers that
+  push `event` with `view` or `range`.
   """
   attr :attempts, :list, required: true
-  attr :days, :integer, default: 30
-  attr :height, :integer, default: 120
+  attr :range, :string, default: "30d"
+  attr :view, :string, default: "attempts"
+  attr :compact, :boolean, default: false
+  attr :event, :string, default: nil
+  attr :height, :integer, default: 220
 
   def attempts_chart(assigns) do
     today = Date.utc_today()
-    days = Enum.map((assigns.days - 1)..0//-1, &Date.add(today, -&1))
-    by_day = Enum.group_by(assigns.attempts, &DateTime.to_date(at(&1)))
+    days = days(assigns.attempts, if(assigns.compact, do: "30d", else: assigns.range), today)
+    view = if assigns.compact, do: "attempts", else: assigns.view
+    counts = day_counts(view, assigns.attempts, days)
 
     option = %{
-      compact: true,
+      compact: assigns.compact,
       categories: Enum.map(days, &Date.to_iso8601/1),
       series:
         for status <- @statuses do
           %{
             name: Atom.to_string(status),
             type: "line",
-            stack: "attempts",
+            stack: "qa",
             symbol: "none",
             areaStyle: %{},
             y_axis: "count",
             itemStyle: %{color: @colors[status]},
             lineStyle: %{width: 1},
-            data:
-              Enum.map(days, fn day ->
-                by_day |> Map.get(day, []) |> Enum.count(&(&1.status == status))
-              end)
+            data: Enum.map(counts, &Map.get(&1, status, 0))
           }
         end
     }
@@ -97,7 +106,36 @@ defmodule CodeMySpecWeb.QaComponents do
     assigns = assign(assigns, :option, option)
 
     ~H"""
-    <section data-test="qa-over-time" class="rounded-box border border-base-300 p-2">
+    <section
+      data-test="qa-over-time"
+      class={["rounded-box border border-base-300", if(@compact, do: "p-2", else: "p-4")]}
+    >
+      <div :if={!@compact} class="flex items-center justify-between gap-3">
+        <div class="join" data-test="qa-view">
+          <button
+            :for={view <- views()}
+            type="button"
+            phx-click={@event}
+            phx-value-view={view}
+            data-view={view}
+            class={["btn btn-xs join-item", view == @view && "btn-active"]}
+          >
+            {if view == "stories", do: "By story", else: "All attempts"}
+          </button>
+        </div>
+        <div class="join" data-test="qa-range">
+          <button
+            :for={range <- ranges()}
+            type="button"
+            phx-click={@event}
+            phx-value-range={range}
+            data-range={range}
+            class={["btn btn-xs join-item", range == @range && "btn-active"]}
+          >
+            {range}
+          </button>
+        </div>
+      </div>
       <div
         id={"qa-over-time-#{:erlang.phash2(@option)}"}
         phx-hook="EChart"
@@ -233,7 +271,7 @@ defmodule CodeMySpecWeb.QaComponents do
             <h2 class="text-lg font-semibold">QA</h2>
             <span class="text-xs opacity-60">each story's latest attempt · worst first</span>
           </div>
-          <.attempts_chart :if={@attempts != []} attempts={@attempts} />
+          <.attempts_chart :if={@attempts != []} attempts={@attempts} compact height={120} />
           <p :if={@latest == []} class="py-6 text-center text-sm opacity-60">No QA attempts yet.</p>
           <div class="max-h-[55dvh] divide-y divide-base-200 overflow-y-auto">
             <.attempt_row :for={attempt <- @latest} attempt={attempt} on_pick={@on_pick} />
@@ -266,6 +304,42 @@ defmodule CodeMySpecWeb.QaComponents do
       <button type="button" class="modal-backdrop" phx-click={@on_close} aria-label="Close"></button>
     </div>
     """
+  end
+
+  # Each day's counts by outcome: every attempt submitted that day, or every
+  # story by its latest attempt up to the end of that day.
+  defp day_counts("stories", attempts, days) do
+    by_story = Enum.group_by(attempts, & &1.story_id)
+
+    Enum.map(days, fn day ->
+      ends = DateTime.new!(Date.add(day, 1), ~T[00:00:00], "Etc/UTC")
+
+      by_story
+      |> Enum.flat_map(fn {_story, tries} ->
+        tries
+        |> Enum.filter(&(DateTime.compare(at(&1), ends) == :lt))
+        |> Enum.max_by(&at/1, DateTime, fn -> nil end)
+        |> List.wrap()
+      end)
+      |> Enum.frequencies_by(& &1.status)
+    end)
+  end
+
+  defp day_counts(_attempts, attempts, days) do
+    by_day = Enum.group_by(attempts, &DateTime.to_date(at(&1)))
+    Enum.map(days, &(by_day |> Map.get(&1, []) |> Enum.frequencies_by(fn a -> a.status end)))
+  end
+
+  defp days(attempts, range, today) do
+    first =
+      case range do
+        "7d" -> Date.add(today, -6)
+        "30d" -> Date.add(today, -29)
+        "90d" -> Date.add(today, -89)
+        _all -> attempts |> Enum.map(&DateTime.to_date(at(&1))) |> Enum.min(Date, fn -> today end)
+      end
+
+    Enum.to_list(Date.range(first, today))
   end
 
   defp at(attempt), do: attempt.submitted_at || attempt.inserted_at
