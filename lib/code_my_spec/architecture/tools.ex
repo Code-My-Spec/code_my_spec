@@ -23,6 +23,7 @@ defmodule CodeMySpec.Architecture.Tools do
     [
       CodeMySpec.Architecture.Tools.AnalyzeStories,
       CodeMySpec.Architecture.Tools.CheckArchitecture,
+      CodeMySpec.Architecture.Tools.CheckDecisions,
       CodeMySpec.Architecture.Tools.ExecuteProposal,
       CodeMySpec.Architecture.Tools.RegenerateProposal,
       CodeMySpec.Architecture.Tools.ShowArchitectureOverview,
