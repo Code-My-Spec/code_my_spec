@@ -120,7 +120,7 @@ defmodule CodeMySpecWeb.ProjectTimeline do
         <li data-test="timeline-band" data-band="stories" class="min-w-16 flex-1">
           <.story_chart stories={@bands.stories} />
         </li>
-        <li data-test="timeline-band" data-band="components" class="min-w-16 flex-1">
+        <li data-test="timeline-band" data-band="components" class="shrink-0">
           <.component_bar counts={@bands.components} target={@myself} />
         </li>
         <li data-test="timeline-band" data-band="issues" class="shrink-0">
@@ -300,15 +300,22 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     """
   end
 
-  attr :counts, :any, required: true
+  attr :counts, :map, required: true
   attr :target, :any, required: true
 
-  # The components as one continuous bar: how much of their work is satisfied.
+  # Components as three counts: planned and done (green), planned and not done
+  # (grey), and found on disk without being planned (amber).
   defp component_bar(assigns) do
-    {done, total} = assigns.counts || {0, 0}
-    pct = if total == 0, do: 0, else: floor(done / total * 100)
-    tip = "Components: #{done} of #{total} requirements satisfied"
-    assigns = assign(assigns, done: done, total: total, pct: pct, tip: tip)
+    %{done: done, not_done: not_done, unspecified: unspecified} = assigns.counts
+
+    assigns =
+      assign(assigns,
+        done: done,
+        not_done: not_done,
+        unspecified: unspecified,
+        tip:
+          "Components: #{done} done · #{not_done} not done · #{unspecified} built without being specified"
+      )
 
     ~H"""
     <button
@@ -317,15 +324,17 @@ defmodule CodeMySpecWeb.ProjectTimeline do
       phx-target={@target}
       data-test="component-bar"
       data-done={@done}
-      data-total={@total}
+      data-not-done={@not_done}
+      data-unspecified={@unspecified}
       data-tip={@tip}
       aria-label={@tip}
-      class="tooltip tooltip-bottom flex w-full items-center gap-1.5"
+      class="tooltip tooltip-bottom flex items-center justify-center gap-1 font-mono text-[11px] tabular-nums"
     >
-      <span class="flex h-2 w-full overflow-hidden rounded-full bg-base-content/15">
-        <span class="h-full bg-primary" style={"width: #{@pct}%"}></span>
-      </span>
-      <span class="shrink-0 font-mono text-[10px] tabular-nums opacity-60">{@pct}%</span>
+      <span class="text-success">{@done}</span>
+      <span class="opacity-30">/</span>
+      <span class="opacity-50">{@not_done}</span>
+      <span class="opacity-30">/</span>
+      <span class="text-warning">{@unspecified}</span>
     </button>
     """
   end

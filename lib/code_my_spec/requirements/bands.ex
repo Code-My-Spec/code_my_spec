@@ -37,7 +37,11 @@ defmodule CodeMySpec.Requirements.Bands do
           satisfied: MapSet.t(String.t()),
           late_names: MapSet.t(String.t()),
           stories: [story()],
-          components: {non_neg_integer(), non_neg_integer()},
+          components: %{
+            done: non_neg_integer(),
+            not_done: non_neg_integer(),
+            unspecified: non_neg_integer()
+          },
           issues: %{
             resolved: non_neg_integer(),
             dismissed: non_neg_integer(),
@@ -167,12 +171,24 @@ defmodule CodeMySpec.Requirements.Bands do
     |> MapSet.new()
   end
 
+  # Planned components (`:authored`) done or not — every requirement satisfied
+  # — and the ones found on disk that nobody planned (`:discovered`).
   defp component_counts(project_id, vantage) do
-    Node
-    |> join(:inner, [r], c in Component, on: c.id == r.component_id)
-    |> where([_r, c], c.project_id == ^project_id)
-    |> at_vantage(vantage)
-    |> select([r], {count(r.id) |> filter(r.satisfied), count(r.id)})
+    per_component =
+      Node
+      |> join(:inner, [r], c in Component, on: c.id == r.component_id)
+      |> where([_r, c], c.project_id == ^project_id)
+      |> at_vantage(vantage)
+      |> group_by([_r, c], [c.id, c.provenance])
+      |> select([r, c], %{provenance: c.provenance, open: count(r.id) |> filter(not r.satisfied)})
+
+    from(x in subquery(per_component),
+      select: %{
+        done: count() |> filter(x.provenance == :authored and x.open == 0),
+        not_done: count() |> filter(x.provenance == :authored and x.open > 0),
+        unspecified: count() |> filter(x.provenance == :discovered)
+      }
+    )
     |> Repo.one()
   end
 
