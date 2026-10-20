@@ -21,6 +21,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   import Ecto.Query, only: [from: 2]
 
+  # Where the entities meet: a component's terminal work feeds its story at
+  # `@component_join`, and a story's QA feeds the project at `@story_join`.
+  @component_join "ready_for_qa"
+  @story_join "qa_journey_plan"
+
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Repo
@@ -1010,6 +1015,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.group_by(& &1.parent_component_id)
   end
 
+  @doc "The story requirement a component's finished work feeds."
+  def component_join, do: @component_join
+
+  @doc "The project requirement a story's finished QA feeds."
+  def story_join, do: @story_join
+
   @doc """
   A story's subgraph: its surface, the surface's descendants, and everything
   those depend on, transitively. The one set of a story's components — kickoff
@@ -1204,7 +1215,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         [
           %{
             from: {"component", surface.id, terminal.name},
-            to: {"story", story.id, "ready_for_qa"}
+            to: {"story", story.id, @component_join}
           }
         ]
     end
@@ -1222,7 +1233,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           [
             %{
               from: {"component", child.id, name},
-              to: {"story", story.id, "ready_for_qa"}
+              to: {"story", story.id, @component_join}
             }
           ]
       end
@@ -1322,7 +1333,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Enum.map(ctx.stories, fn story ->
         %{
           from: {"story", story.id, "qa_complete"},
-          to: {"project", project_id, "qa_journey_plan"}
+          to: {"project", project_id, @story_join}
         }
       end)
     else

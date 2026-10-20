@@ -549,11 +549,17 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   defp talkable?(_scope, _conversation), do: false
 
-  # Whether this thread is the project's own agent, by identity
-  # (`Agents.main_agent/1`), not role: `agents.role` defaults to "main".
+  # Whether this thread is the project's own agent: the main role on the main
+  # copy, on duty, whatever its engine. Not `Agents.main_agent/1`, which also
+  # asks whether a terminal agent's process is connected — the right question
+  # for who to dispatch to, and the wrong one for what this page shows: a Claude
+  # Code main with its terminal closed is still the project's agent.
   defp main_agent?(scope, %{agent_id: agent_id}) when is_binary(agent_id) do
-    case Agents.main_agent(scope) do
-      %{id: ^agent_id} -> true
+    with %{id: copy_id} <- WorkingCopies.main(scope),
+         {:ok, %Agent{role: :main, working_copy_id: ^copy_id, off_at: nil, retired_at: nil}} <-
+           Agents.fetch_agent(scope, agent_id) do
+      true
+    else
       _ -> false
     end
   end
@@ -1699,6 +1705,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   def handle_info({:graph_updated, _project_id}, socket) do
     for id <- story_progress_ids(socket.assigns),
         do: send_update(StoryProgress, id: id, refresh: true)
+
+    if socket.assigns.main_agent?,
+      do: send_update(ProjectTimeline, id: "project-timeline", refresh: true)
 
     {:noreply, socket}
   end

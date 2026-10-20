@@ -1073,6 +1073,51 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  describe "the project's own agent" do
+    test "a Claude Code main on the main copy gets the timeline with no terminal connected", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, _copy} =
+        CodeMySpec.Staffing.designate_main(
+          %{scope | active_project_id: project.id},
+          agent.working_copy_id
+        )
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='project-timeline']")
+      assert has_element?(view, "[data-test='story-bar']")
+      assert has_element?(view, "[data-test='component-bar']")
+
+      view |> element("[data-test='open-graph']") |> render_click()
+      render_async(view)
+
+      assert has_element?(view, "[data-test='graph-modal'] #timeline-graph[data-graph]")
+      assert has_element?(view, "[data-test='graph-modal'] a[data-test='graph-modal-open']")
+
+      view |> element("[data-test='graph-modal'] .modal-backdrop") |> render_click()
+      refute has_element?(view, "[data-test='graph-modal']")
+    end
+
+    test "a main-role agent on another copy does not", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      {_agent, conversation} =
+        agent_with_conversation(scope, project, %{role: "main", engine: :claude_code})
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='project-timeline']")
+    end
+  end
+
   describe "a copy at a glance" do
     test "a copy's row counts its problems; clicking shows where they are", %{
       conn: conn,
