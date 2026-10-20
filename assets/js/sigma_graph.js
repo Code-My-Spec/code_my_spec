@@ -128,6 +128,16 @@ export const SigmaGraph = {
     const panel = document.getElementById("graph-debug")
     if (panel) panel.remove()
   },
+  // `data-focus` names a node to open on: it is drawn larger and the camera
+  // moves to it, so a link from the timeline lands on its own requirement.
+  focusNode(graph, camera) {
+    const key = this.el.dataset.focus
+    if (!key || !graph.hasNode(key)) return
+    graph.setNodeAttribute(key, "highlighted", true)
+    graph.setNodeAttribute(key, "size", (graph.getNodeAttribute(key, "size") || 12) * 1.8)
+    const at = this.sigma.getNodeDisplayData(key)
+    if (at) camera.animate({ x: at.x, y: at.y, ratio: 0.5 }, { duration: 400 })
+  },
   loadAndRender() {
     const raw = this.el.dataset.graph
     if (raw) {
@@ -251,6 +261,7 @@ export const SigmaGraph = {
 
     const camera = this.sigma.getCamera()
     camera.setState({ ratio: 1.3 })
+    this.focusNode(graph, camera)
 
     // The page scrolls past the graph. A plain wheel and a one-finger touch
     // never reach sigma (it listens on its canvas inside this element); zoom

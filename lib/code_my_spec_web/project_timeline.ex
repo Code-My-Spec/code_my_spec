@@ -297,17 +297,8 @@ defmodule CodeMySpecWeb.ProjectTimeline do
     _ -> []
   end
 
-  # The page that already answers for this step, rather than a health page built
-  # for it. Every one of these exists.
-  defp path_for("personas_complete", project), do: ~p"/app/projects/#{project.id}/personas"
-  defp path_for("stories_exist", project), do: ~p"/app/projects/#{project.id}/stories"
-  defp path_for("work_dispatched", project), do: ~p"/app/projects/#{project.id}/stories"
-
-  defp path_for("architecture_designed", project),
-    do: ~p"/app/projects/#{project.id}/architecture"
-
-  defp path_for("issues_triaged", project), do: ~p"/app/projects/#{project.id}/issues"
-  defp path_for("issues_resolved", project), do: ~p"/app/projects/#{project.id}/issues"
-  defp path_for("qa_" <> _, project), do: ~p"/app/projects/#{project.id}/qa"
-  defp path_for(_name, project), do: ~p"/app/projects/#{project.id}/requirements/graph"
+  # The graph, opened on this step's own requirement: what it waits on and what
+  # it unblocks are the answer to "why is it here", which no list page gave.
+  defp path_for(name, project),
+    do: ~p"/app/projects/#{project.id}/requirements/graph?#{[focus: name]}"
 end

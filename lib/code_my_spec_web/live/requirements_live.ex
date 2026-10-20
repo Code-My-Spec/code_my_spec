@@ -39,7 +39,14 @@ defmodule CodeMySpecWeb.RequirementsLive do
     with_project(socket, fn project, scope ->
       socket = maybe_watch(socket, scope)
 
-      base = assign(socket, project: project, scope: scope, error: nil, setup_error: nil)
+      base =
+        assign(socket,
+          project: project,
+          scope: scope,
+          focus: focus_key(project, params["focus"]),
+          error: nil,
+          setup_error: nil
+        )
 
       socket =
         if params["preload"] == "true" do
@@ -216,6 +223,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
       project={@project}
       graph_data={@graph_data}
       provenance={@graph_provenance}
+      focus={assigns[:focus]}
       slug={@slug}
       socket={@socket}
     />
@@ -233,6 +241,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   attr :slug, :string, required: true
   attr :socket, :map, required: true
   attr :provenance, :any, default: nil
+  attr :focus, :string, default: nil
 
   defp graph_view(assigns) do
     ~H"""
@@ -254,6 +263,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
         id="sigma-graph"
         phx-hook="SigmaGraph"
         data-graph={if is_map(@graph_data), do: Jason.encode!(@graph_data)}
+        data-focus={@focus}
         phx-update="ignore"
         class="rounded-box border border-base-300 bg-base-200"
         style="position: relative; overflow: hidden; width: 100%; height: 80vh;"
@@ -317,6 +327,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
     </div>
     """
   end
+
+  # A project gate's node key, as `GraphProjector` writes it, for `?focus=`.
+  defp focus_key(_project, nil), do: nil
+  defp focus_key(project, name), do: "project_#{String.replace(project.id, "-", "")}_#{name}"
 
   defp with_project(%{assigns: %{scope: %{} = scope, project: project}} = _socket, fun),
     do: fun.(project, scope)
