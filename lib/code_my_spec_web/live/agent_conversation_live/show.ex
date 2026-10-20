@@ -2341,7 +2341,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         :if={@activity_modal}
         option={@activity_modal.option}
         summary={@activity_modal.summary}
-        project_id={@project.id}
         on_close="close_activity"
       />
       <QaComponents.modal

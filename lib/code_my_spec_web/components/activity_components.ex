@@ -1,8 +1,8 @@
 defmodule CodeMySpecWeb.ActivityComponents do
   @moduledoc """
   The project's last 7 days at a glance: tokens spent, stories shipped and
-  messages sent to agents as three numbers, and the performance page's
-  activity-over-time chart in a modal.
+  messages sent to agents as three numbers, and the activity-over-time chart in
+  a modal.
   """
   use CodeMySpecWeb, :html
 
@@ -43,7 +43,6 @@ defmodule CodeMySpecWeb.ActivityComponents do
   """
   attr :option, :any, required: true
   attr :summary, :map, required: true
-  attr :project_id, :string, required: true
   attr :on_close, :string, required: true
 
   def modal(assigns) do
@@ -87,15 +86,6 @@ defmodule CodeMySpecWeb.ActivityComponents do
             style="height: 100%"
           >
           </div>
-        </div>
-        <div class="flex justify-end">
-          <.link
-            navigate={~p"/app/projects/#{@project_id}/agent-performance"}
-            data-test="activity-modal-open"
-            class="btn btn-sm btn-ghost"
-          >
-            Agent performance <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-          </.link>
         </div>
       </div>
       <button type="button" class="modal-backdrop" phx-click={@on_close} aria-label="Close"></button>
