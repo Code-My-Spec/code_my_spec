@@ -163,8 +163,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
         assert body =~ story_c,
                "expected rejection feedback to name story #{story_c}, got: #{inspect(body)}"
 
-        refute body =~ to_string(context.story_c.id),
-               "the rejection should not carry the story's id: #{inspect(body)}"
+        refute_id_leak(body, context.story_c.id, context.story_c.number)
 
         {:ok, context}
       end
@@ -186,5 +185,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
         {:ok, context}
       end
     end
+  end
+
+  # An id that equals the story's number is the number, not a leak.
+  defp refute_id_leak(_body, same, same), do: :ok
+
+  defp refute_id_leak(body, id, _number) do
+    refute body =~ to_string(id),
+           "the rejection should not carry the story's id: #{inspect(body)}"
   end
 end
