@@ -5011,6 +5011,98 @@ defmodule CodeMySpecSpex.Fixtures do
     project
   end
 
+  @doc """
+  A project, with its own account and owning user, committed for real —
+  outside the Ecto Sandbox — so a spex's own subprocess (a separate OS
+  process with its own fresh Postgres connection) can see it exactly as
+  production would (story 1013, criterion 916; product's decision on the
+  question it raised, after the sandbox user-agent seam was found not to
+  reach this read: `ensure_local_credential/1`'s own database lookup is a
+  plain query from that subprocess's own connection, not an HTTP request,
+  so no header can carry sandbox metadata into it).
+
+  `deploy_key` goes through the real `Projects.update_project/3` changeset,
+  so it is encrypted and `deploy_key_hash` is set exactly as in production
+  -- never written by hand.
+
+  Deleted in `on_exit`, also outside the sandbox — a spex that leaves a
+  committed row behind is a defect.
+  """
+  @spec committed_project_with_deploy_key!(String.t()) :: CodeMySpec.Projects.Project.t()
+  def committed_project_with_deploy_key!(deploy_key) do
+    {user, account, project} =
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(CodeMySpec.Repo, fn ->
+        user = user_fixture()
+        account = account_with_owner_fixture(user)
+        scope = user_scope_fixture(user, account)
+        project = project_fixture(scope, %{})
+
+        {:ok, project} =
+          CodeMySpec.Projects.update_project(scope, project, %{deploy_key: deploy_key})
+
+        {user, account, project}
+      end)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(CodeMySpec.Repo, fn ->
+        CodeMySpec.Repo.delete!(project)
+        CodeMySpec.Repo.delete!(account)
+        CodeMySpec.Repo.delete!(user)
+      end)
+    end)
+
+    project
+  end
+
+  @doc """
+  The partition suffix naming the live process's own `CodeMySpec.Repo`
+  database right now -- e.g. `"hb057ea73"` for `code_my_spec_testhb057ea73`.
+
+  A `scratch_worktree!/0` subprocess does not inherit this: `mix cms.spex`
+  assigns each shard its own database by overriding `Application.get_env`
+  at runtime, never by changing the OS-level `MIX_TEST_PARTITION` variable,
+  so a spawned subprocess -- which only ever sees the real OS environment --
+  resolves to whatever ambient partition this whole session started with,
+  not this test's own shard (story 1013, criterion 916; found by comparing
+  `Application.get_env(:code_my_spec, CodeMySpec.Repo)[:database]` read
+  from this process against the same expression run inside a subprocess
+  with no override: the two did not match). A spex that needs its own
+  committed row visible to a real subprocess must pass this back in
+  explicitly as `MIX_TEST_PARTITION`, via `scratch_worktree_env/1`.
+  """
+  @spec live_test_partition!() :: String.t()
+  def live_test_partition! do
+    Application.get_env(:code_my_spec, CodeMySpec.Repo)[:database]
+    |> String.replace_prefix("code_my_spec_test", "")
+  end
+
+  @doc """
+  A real Bandit listener for `CodeMySpecWeb.Endpoint`, on a free loopback
+  port — the public twin of `HarnessHooksSpexHelpers`' private `listen/0`,
+  for a spex that needs a reachable server URL without the rest of that
+  helper's working-copy/channel machinery (story 1013, criterion 916).
+
+  Not linked, and not stopped in `on_exit`, for the reason `listen/0`
+  already documents: a listener linked to the test process closes
+  mid-flight if something still serving through it outlives the test.
+  Loopback-only, ephemeral, and reclaimed by the OS once this VM exits.
+  """
+  @spec start_live_listener!() :: {pid(), String.t()}
+  def start_live_listener! do
+    {:ok, listener} =
+      Bandit.start_link(
+        plug: CodeMySpecWeb.Endpoint,
+        scheme: :http,
+        ip: {127, 0, 0, 1},
+        port: 0,
+        startup_log: false
+      )
+
+    Process.unlink(listener)
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
+    {listener, "http://127.0.0.1:#{port}"}
+  end
+
   @doc "A project's deploy key, minting one if it has none yet."
   def ensure_project_deploy_key(scope, project) do
     {:ok, project} = CodeMySpec.Projects.ensure_deploy_key(scope, project)

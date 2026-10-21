@@ -308,7 +308,18 @@ config :code_my_spec, :claude_config_dir, Path.expand("../tmp/test-claude-config
 # unpinned, the boot-announce spec POSTed to https://dev.codemyspec.com with a
 # valid bearer token attached. That is not something each new test should have
 # to remember.
-config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
+# CMS_TEST_REAL_DEVICE_CLIENT (story 1013, criterion 916): a real subprocess
+# driven as its own OS process has no started endpoint for the in-process
+# stub to dispatch against at all -- it needs the real HTTP client, safely,
+# because its own Config.server_url() points at a spec's own local listener,
+# not the production server the comment above guards against. Does nothing
+# unless set.
+config :code_my_spec,
+       :device_client,
+       if(System.get_env("CMS_TEST_REAL_DEVICE_CLIENT"),
+         do: CmsHarness.Device.Client.Http,
+         else: CodeMySpecTest.InProcessDeviceClient
+       )
 
 # The run-wide harness tree's reporter does not tick by itself (e258f257). Its
 # announce drives the endpoint in its own process, and a tick landing while a
