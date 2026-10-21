@@ -114,7 +114,9 @@ defmodule CodeMySpec.RunGuardTest do
 
     assert log =~ "os_pid=#{pid} exceeded"
     eventually(fn -> refute group_alive?(pid) end, 200)
-    assert RunGuard.tracked(guard) == []
+    # The group dying and RunGuard's own tracking map clearing are two
+    # separate events; the group check above does not order this one.
+    eventually(fn -> assert RunGuard.tracked(guard) == [] end)
   end
 
   test "what a dead BEAM left is swept at boot, and a live BEAM's is not", %{dir: dir} do
