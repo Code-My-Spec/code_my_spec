@@ -24,6 +24,7 @@ Reference docs for infrastructure, deployment, and environment management.
 | Migrate URLs without losing SEO link equity | `url-migration-redirects.md` |
 | Transactional email (Resend + Cloudflare DNS) | `cloudflare-resend-email-setup.md` |
 | Onboard an existing app with its own Kamal history onto CodeMySpec | `onboarding-existing-kamal-app.md` |
+| Read a project's own deployed logs/traces (`query_logs`, `slow_spans`, `get_trace`, `error_summary`) | `observability.md` |
 
 ## Typical infrastructure layout
 
