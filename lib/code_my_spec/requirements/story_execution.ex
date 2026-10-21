@@ -11,6 +11,9 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   alias CodeMySpec.Requirements.{GraphWatcher, Preloader, Projection, Registry, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
+  @slow_read_ms 1_000
+  @laps :story_execution_laps
+
   @completion_names ~w(component_linked three_amigos_complete questions_answered bdd_specs_exist ready_for_qa story_promoted qa_complete story_issues_triaged)
 
   # `withheld?` drops nodes the caller cannot claim — its own blocked task, or
@@ -79,9 +82,6 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # the logs to say where. The steps that can wait on something else -- the
   # projector draining, the preload, the graph, the placed stories -- are timed
   # as they run, and a read slower than a second says which one it spent it on.
-  @slow_read_ms 1_000
-  @laps :story_execution_laps
-
   defp lap(step, fun) do
     {us, result} = :timer.tc(fun)
     Process.put(@laps, [{step, div(us, 1000)} | Process.get(@laps, [])])
