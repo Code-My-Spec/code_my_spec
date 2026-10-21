@@ -29,20 +29,7 @@ defmodule CodeMySpecSpex.Story1136.Criterion2331Spex do
   spex "Start fires the routine and the box connects", criterion: 2331 do
     scenario "Sam presses Start on a down box" do
       given_ "Sam's cloud box 'cloud-1' has a fire token and is down", context do
-        test_pid = self()
-
-        Req.Test.stub(CodeMySpec.Devices.RoutineFire, fn conn ->
-          send(
-            test_pid,
-            {:fired, conn.request_path, Plug.Conn.get_req_header(conn, "authorization")}
-          )
-
-          Req.Test.json(conn, %{
-            "type" => "routine_fire",
-            "claude_code_session_id" => "session_01XYZ",
-            "claude_code_session_url" => "https://claude.ai/code/session_01XYZ"
-          })
-        end)
+        stub_routine_fire(:ok)
 
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         box = add_box(live, "cloud-1", "claude_code_cloud")
@@ -55,8 +42,9 @@ defmodule CodeMySpecSpex.Story1136.Criterion2331Spex do
       end
 
       then_ "the routine is fired with its own token", context do
-        assert_receive {:fired, "/v1/claude_code/routines/trig_01ABCDEF/fire",
-                        ["Bearer " <> @fire_token]}
+        {path, authorization} = assert_fired()
+        assert path == "/v1/claude_code/routines/trig_01ABCDEF/fire"
+        assert authorization == ["Bearer " <> @fire_token]
 
         {:ok, context}
       end

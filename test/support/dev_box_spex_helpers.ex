@@ -183,4 +183,54 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
 
     render_async(live)
   end
+
+  @doc """
+  Answer the Claude Code routine fire as Claude does (story 1136): `:ok` is the
+  200 with a session, `{:rate_limited, retry_after}` the 429. Every request is
+  reported back to this test (`assert_fired/0`, `refute_fired_again/0`).
+  """
+  def stub_routine_fire(:ok), do: stub_routine_fire(&fired_ok/1)
+
+  def stub_routine_fire({:rate_limited, retry_after}),
+    do: stub_routine_fire(&rate_limited(&1, retry_after))
+
+  def stub_routine_fire(answer) when is_function(answer, 1) do
+    test_pid = self()
+
+    Req.Test.stub(CodeMySpec.Devices.RoutineFire, fn conn ->
+      send(
+        test_pid,
+        {:routine_fired, conn.request_path, Plug.Conn.get_req_header(conn, "authorization")}
+      )
+
+      answer.(conn)
+    end)
+  end
+
+  defp fired_ok(conn) do
+    Req.Test.json(conn, %{
+      "type" => "routine_fire",
+      "claude_code_session_id" => "session_01XYZ",
+      "claude_code_session_url" => "https://claude.ai/code/session_01XYZ"
+    })
+  end
+
+  defp rate_limited(conn, retry_after) do
+    conn
+    |> Plug.Conn.put_resp_header("retry-after", retry_after)
+    |> Plug.Conn.put_status(429)
+    |> Req.Test.json(%{
+      "type" => "error",
+      "error" => %{"type" => "rate_limit_error", "message" => "Rate limit exceeded"}
+    })
+  end
+
+  @doc "The routine was fired: `{path, authorization header}`."
+  def assert_fired do
+    assert_receive {:routine_fired, path, authorization}
+    {path, authorization}
+  end
+
+  @doc "Nothing fires the routine again."
+  def refute_fired_again, do: refute_receive({:routine_fired, _path, _authorization}, 300)
 end

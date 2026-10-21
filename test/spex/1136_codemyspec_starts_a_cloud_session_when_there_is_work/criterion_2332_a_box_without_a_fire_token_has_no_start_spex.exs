@@ -9,9 +9,6 @@ defmodule CodeMySpecSpex.Story1136.Criterion2332Spex do
 
   alias Ecto.Adapters.SQL.Sandbox
 
-  @routine "trig_01ABCDEF"
-  @fire_token "sk-ant-oat01-fire-token-1"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

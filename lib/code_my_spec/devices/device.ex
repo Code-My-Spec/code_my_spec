@@ -49,6 +49,7 @@ defmodule CodeMySpec.Devices.Device do
           preview_tunnel_secret: String.t() | nil,
           provider: atom() | nil,
           token_revoked_at: DateTime.t() | nil,
+          fire_routine_id: String.t() | nil,
           token_hash: String.t() | nil,
           token_last_used_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -106,6 +107,10 @@ defmodule CodeMySpec.Devices.Device do
     field :token_last_used_at, :utc_datetime_usec
     # Story 1131: set when Sam revokes the box; the token no longer signs in.
     field :token_revoked_at, :utc_datetime_usec
+    # Story 1136: the Claude Code routine that starts this cloud box, and its
+    # per-routine fire token (encrypted).
+    field :fire_routine_id, :string
+    field :fire_token, CodeMySpec.Encrypted.Binary
 
     timestamps(type: :utc_datetime)
   end
@@ -145,8 +150,17 @@ defmodule CodeMySpec.Devices.Device do
     cast(device, %{token_last_used_at: at}, [:token_last_used_at])
   end
 
+  @doc "The routine that starts this box, with its fire token."
+  def fire_changeset(device, attrs) do
+    device
+    |> cast(attrs, [:fire_routine_id, :fire_token])
+    |> validate_required([:fire_routine_id, :fire_token])
+    |> validate_format(:fire_routine_id, ~r/^trig_/)
+  end
+
   @doc "The box's token was revoked."
-  def revoked_changeset(device, at), do: cast(device, %{token_revoked_at: at}, [:token_revoked_at])
+  def revoked_changeset(device, at),
+    do: cast(device, %{token_revoked_at: at}, [:token_revoked_at])
 
   @doc "Whether this device is a dev box added from a provider."
   @spec dev_box?(t()) :: boolean()

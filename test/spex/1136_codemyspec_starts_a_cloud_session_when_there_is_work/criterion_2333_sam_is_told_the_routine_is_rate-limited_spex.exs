@@ -27,19 +27,7 @@ defmodule CodeMySpecSpex.Story1136.Criterion2333Spex do
   spex "A rate-limited start says so and is not retried", criterion: 2333 do
     scenario "Claude refuses the start" do
       given_ "Claude refuses the start because the routine's hourly limit is reached", context do
-        test_pid = self()
-
-        Req.Test.stub(CodeMySpec.Devices.RoutineFire, fn conn ->
-          send(test_pid, :fire_attempt)
-
-          conn
-          |> Plug.Conn.put_resp_header("retry-after", "1800")
-          |> Plug.Conn.put_status(429)
-          |> Req.Test.json(%{
-            "type" => "error",
-            "error" => %{"type" => "rate_limit_error", "message" => "Rate limit exceeded"}
-          })
-        end)
+        stub_routine_fire({:rate_limited, "1800"})
 
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         box = add_box(live, "cloud-1", "claude_code_cloud")
@@ -58,8 +46,8 @@ defmodule CodeMySpecSpex.Story1136.Criterion2333Spex do
       end
 
       then_ "and CodeMySpec does not retry by itself", context do
-        assert_receive :fire_attempt
-        refute_receive :fire_attempt, 300
+        assert_fired()
+        refute_fired_again()
         {:ok, context}
       end
     end
