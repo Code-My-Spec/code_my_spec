@@ -5,9 +5,10 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
 
   Covers Rule "A retired criterion can be restored under its number".
 
-  Restoring under the old number is what makes a mistaken retire cheap: the
-  spec already on disk names that number, so it covers the criterion again
-  with nothing rewritten.
+  Restoring under the old number keeps a mistaken retire cheap for everything
+  but the spec: retiring deletes the spex naming the number (issue 73e302aa,
+  decided with John 2026-10-21), so the restored criterion is active again and
+  needs a spec written for it again.
   """
 
   use CodeMySpecSpex.Case
@@ -20,7 +21,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
   setup :setup_active_project
 
   spex "Restoring brings the same criterion back", criterion: 1573 do
-    scenario "a restored criterion is active under its number and its spec covers it" do
+    scenario "a restored criterion is active under its number and needs its spec again" do
       given_ "a criterion on story A with a spec naming it was retired", context do
         story =
           CriterionScript.create_story(context.scope, "Story A", ["A thing retired by mistake"])
@@ -66,9 +67,10 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
         {:ok, context}
       end
 
-      and_ "the spec naming it covers it again", context do
-        assert CriterionScript.specs_exist?(context.scope, context.story),
-               "the spec on disk names criterion #{context.number}; restoring it should make it count again"
+      and_ "its spec was deleted when it was retired, so it is uncovered until rewritten",
+           context do
+        refute CriterionScript.specs_exist?(context.scope, context.story),
+               "the spec naming criterion #{context.number} should have gone when it was retired"
 
         {:ok, context}
       end

@@ -4,6 +4,8 @@ defmodule CodeMySpec.Stories.Tools.Responses do
   human-readable summary + JSON data for programmatic access.
   """
 
+  alias CodeMySpec.Files.SpecCleanup
+
   # ---------------------------------------------------------------------------
   # Tool Responses (hybrid format: summary + JSON)
   # ---------------------------------------------------------------------------
@@ -290,9 +292,16 @@ defmodule CodeMySpec.Stories.Tools.Responses do
     hybrid_response(summary, data)
   end
 
-  def criterion_retired_response(criterion) do
-    {:ok, "Criterion retired (criterion #{criterion.number}): #{criterion.description}"}
+  def criterion_retired_response(criterion, removed \\ [], orphans \\ []) do
+    {:ok,
+     "Criterion retired (criterion #{criterion.number}): #{criterion.description}" <>
+       spex_section("Its spex", removed) <> spex_section("Orphaned spex swept", orphans)}
   end
+
+  defp spex_section(_title, []), do: ""
+
+  defp spex_section(title, results),
+    do: "\n\n#{title}:\n" <> SpecCleanup.report(results)
 
   def criterion_restored_response(criterion) do
     {:ok, "Criterion restored (criterion #{criterion.number}): #{criterion.description}"}

@@ -13,6 +13,7 @@ defmodule CodeMySpec.Stories.Tools do
       CodeMySpec.Components,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Epics,
+      CodeMySpec.Files,
       CodeMySpec.Issues,
       CodeMySpec.Stories,
       CodeMySpec.Tags,
