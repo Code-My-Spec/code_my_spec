@@ -39,8 +39,16 @@ defmodule CodeMySpec.RunGuard do
   @max_run_ms :timer.minutes(90)
   @watch ~r/(?:^|[\s\/])(?:mix\s+(?:test|cms\.spex|spex|credo|compile)|just\s+(?:spex|test|exunit|credo|compile|check))\b/
 
-  def start_link(opts \\ []),
-    do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  def start_link(opts \\ []) do
+    # Process groups, `/bin/ps` and `/bin/kill` are Unix; on Windows the first
+    # sweep raised and took the harness supervisor down with it.
+    if match?({:win32, _}, :os.type()) do
+      Logger.warning("[RunGuard] not running on Windows: test runs are not reaped here")
+      :ignore
+    else
+      GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+    end
+  end
 
   @doc "Look at the machine's ports now, instead of waiting for the next poll."
   def tick(server \\ __MODULE__), do: GenServer.call(server, :tick, 15_000)
