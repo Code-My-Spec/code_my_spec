@@ -33,8 +33,9 @@ defmodule CodeMySpec.RunGuardTest do
   end
 
   # A process group of its own, as OTP gives every port spawn.
-  defp run(seconds) do
+  defp run(seconds, command \\ nil) do
     parent = self()
+    command = command || "sleep #{seconds}"
 
     owner =
       spawn(fn ->
@@ -42,7 +43,7 @@ defmodule CodeMySpec.RunGuardTest do
           Port.open({:spawn_executable, "/bin/sh"}, [
             :binary,
             :exit_status,
-            args: ["-c", "sleep #{seconds}"]
+            args: ["-c", command]
           ])
 
         {:os_pid, pid} = Port.info(port, :os_pid)
@@ -101,7 +102,11 @@ defmodule CodeMySpec.RunGuardTest do
     end)
 
     eventually(fn -> refute group_alive?(pid) end, 200)
-    refute File.exists?(Path.join([dir, System.pid(), Integer.to_string(pid)]))
+    # The record goes once the guard has seen the group gone.
+    eventually(fn ->
+      RunGuard.tick(guard)
+      refute File.exists?(Path.join([dir, System.pid(), Integer.to_string(pid)]))
+    end)
   end
 
   test "a run over the ceiling is reaped whoever owns it", %{dir: dir} do
@@ -113,8 +118,15 @@ defmodule CodeMySpec.RunGuardTest do
     log = capture_log(fn -> RunGuard.tick(guard) end)
 
     assert log =~ "os_pid=#{pid} exceeded"
-    eventually(fn -> refute group_alive?(pid) end, 200)
-    assert RunGuard.tracked(guard) == []
+
+    eventually(
+      fn ->
+        RunGuard.tick(guard)
+        refute group_alive?(pid)
+        assert RunGuard.tracked(guard) == []
+      end,
+      200
+    )
   end
 
   test "what a dead BEAM left is swept at boot, and a live BEAM's is not", %{dir: dir} do
@@ -133,6 +145,51 @@ defmodule CodeMySpec.RunGuardTest do
 
     eventually(fn -> refute group_alive?(pid) end, 200)
     refute File.exists?(dead)
+  end
+
+  test "a run is tracked, with its record, until its group is confirmed gone", %{dir: dir} do
+    guard = start_guard(dir, kill_grace_ms: 60_000)
+    {owner, pid} = run(31_006, "trap '' TERM; exec sleep 31006")
+    on_exit(fn -> stop_group(pid) end)
+    RunGuard.tick(guard)
+    Process.exit(owner, :kill)
+
+    capture_log(fn ->
+      eventually(fn ->
+        RunGuard.tick(guard)
+        assert group_alive?(pid)
+        assert pid in RunGuard.tracked(guard)
+      end)
+    end)
+
+    # TERM was ignored and the pause before KILL has not passed.
+    assert File.exists?(Path.join([dir, System.pid(), Integer.to_string(pid)]))
+  end
+
+  test "a kill a restart interrupted is finished by the next guard", %{dir: dir} do
+    guard = start_guard(dir, kill_grace_ms: 60_000)
+    {owner, pid} = run(31_007, "trap '' TERM; exec sleep 31007")
+    on_exit(fn -> stop_group(pid) end)
+    RunGuard.tick(guard)
+    Process.exit(owner, :kill)
+
+    capture_log(fn ->
+      eventually(fn ->
+        RunGuard.tick(guard)
+        assert File.exists?(Path.join([dir, System.pid(), Integer.to_string(pid)]))
+        assert group_alive?(pid)
+      end)
+    end)
+
+    # The harness dies after TERM and before KILL: no terminate, no cleanup.
+    Process.exit(Process.whereis(guard), :kill)
+    File.rename!(Path.join(dir, System.pid()), Path.join(dir, "999999"))
+    assert group_alive?(pid)
+
+    capture_log(fn -> start_guard(dir, kill_grace_ms: 100) end)
+
+    eventually(fn -> refute group_alive?(pid) end, 200)
+    refute File.exists?(Path.join(dir, "999999"))
   end
 
   test "an unrelated command is never tracked", %{dir: dir} do
