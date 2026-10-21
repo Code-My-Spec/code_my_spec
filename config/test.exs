@@ -370,9 +370,13 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —
 # and an unset plug plus a real credential is a live request that logs nothing
-# when it works.
-config :code_my_spec, CmsHarness.Device.Client.Http,
-  plug: {Req.Test, CmsHarness.Device.Client.Http}
+# when it works. CMS_TEST_REAL_DEVICE_CLIENT (story 1013, criterion 916) is the
+# one case that wants exactly that: a real subprocess's own real request to a
+# spec's own local listener, not the production server this pin guards against.
+unless System.get_env("CMS_TEST_REAL_DEVICE_CLIENT") do
+  config :code_my_spec, CmsHarness.Device.Client.Http,
+    plug: {Req.Test, CmsHarness.Device.Client.Http}
+end
 
 config :code_my_spec, CmsHarness.Mcp.Http, plug: {Req.Test, CmsHarness.Mcp.Http}
 
