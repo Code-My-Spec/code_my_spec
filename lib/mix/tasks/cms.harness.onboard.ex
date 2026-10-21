@@ -777,11 +777,27 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         label: Config.label(root),
         device_id: device_id(token)
       },
-      headers: [{"authorization", "Bearer " <> token}],
+      headers: [{"authorization", "Bearer " <> token}] ++ test_sandbox_header(),
       retry: false,
       receive_timeout: to_timeout(second: 15),
       plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
     )
+  end
+
+  # Test-only seam (story 1013, criterion 916, product's decision on the
+  # question it raised): exists only so a spex's own subprocess mint request
+  # joins that test's Ecto Sandbox transaction, the same way the websocket
+  # channel's :harness_connect_headers already does. `Mix.env() == :test`
+  # gates it at compile time, so prod never reads this env var at all.
+  defp test_sandbox_header do
+    if Mix.env() == :test do
+      case System.get_env("CMS_TEST_SANDBOX_UA") do
+        ua when is_binary(ua) and ua != "" -> [{"user-agent", ua}]
+        _ -> []
+      end
+    else
+      []
+    end
   end
 
   # Which machine this checkout is on. `--device` when given (a shared dev box,
