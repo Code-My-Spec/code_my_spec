@@ -646,6 +646,88 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   @doc """
+  Format the gate checkout at `root` with `mix format` and commit what changed
+  as its own commit, so the gate sees (and main receives) a formatted tree and
+  the commit is named in the promotion's result.
+
+  `{:ok, %{head:, formatted: [path], commit: sha | nil}}`; `commit` is nil, and
+  nothing is committed, when the tree was already formatted. With `check: true`
+  nothing is changed: `{:ok, %{unformatted: [path]}}`, for a checkout that is
+  not ours to commit in (a requester's copy).
+
+  Skipped, not failed, when `root` has no `.formatter.exs` or loadable
+  `mix.exs` (a queue fixture with no Phoenix project). `MIX_ENV=test`, the
+  build the gate's analyzers reuse.
+  """
+  @spec format(Environments.Environment.t(), String.t(), keyword()) :: result()
+  def format(env, root, opts \\ []) do
+    if formattable?(env, root) do
+      run_format(env, root, Keyword.get(opts, :check, false))
+    else
+      {:ok, %{head: head(env, root), formatted: [], unformatted: [], commit: nil, skipped: true}}
+    end
+  end
+
+  defp formattable?(env, root) do
+    loadable_mix_exs?(env, root) and
+      match?({:ok, _}, Environments.read_file(env, Path.join(root, ".formatter.exs")))
+  end
+
+  defp run_format(env, root, true) do
+    case mix_format(env, root, ["--check-formatted"]) do
+      {_, 0} ->
+        {:ok, %{unformatted: []}}
+
+      {out, _} ->
+        case Regex.scan(~r/^\s+\*\s+(\S+)\s*$/m, out) do
+          [] ->
+            {:error,
+             %{reason: "mix format --check-formatted failed in #{root}:\n#{String.trim(out)}"}}
+
+          found ->
+            {:ok, %{unformatted: Enum.map(found, &List.last/1)}}
+        end
+    end
+  end
+
+  defp run_format(env, root, false) do
+    with {_, 0} <- mix_format(env, root, []),
+         {out, 0} <- git(env, root, ["diff", "--name-only", "--ignore-submodules=all"]) do
+      commit_formatted(env, root, String.split(out, "\n", trim: true))
+    else
+      {out, _} ->
+        {:error, %{reason: "mix format failed in #{root}:\n#{String.trim(out)}"}}
+    end
+  end
+
+  defp commit_formatted(env, root, []),
+    do: {:ok, %{head: head(env, root), formatted: [], commit: nil}}
+
+  defp commit_formatted(env, root, files) do
+    message = "Promotion format: mix format on #{length(files)} file(s)"
+
+    with {_, 0} <- git(env, root, ["add", "--"] ++ files),
+         {_, 0} <- git(env, root, identity(env, root) ++ ["commit", "--quiet", "-m", message]) do
+      sha = head(env, root)
+      {:ok, %{head: sha, formatted: files, commit: sha}}
+    else
+      {out, _} ->
+        {:error,
+         %{reason: "could not commit the formatted files in #{root}: #{String.trim(out)}"}}
+    end
+  end
+
+  defp mix_format(env, root, args) do
+    env
+    |> Environments.cmd("mix", ["format" | args],
+      cd: root,
+      stderr_to_stdout: true,
+      env: [{"MIX_ENV", "test"}]
+    )
+    |> normalize()
+  end
+
+  @doc """
   Drop the gate checkout's test databases, one per `partitions`, before its
   analyzers run a new candidate. The runs' own `ecto.create` and `ecto.migrate`
   rebuild them from the candidate's migrations.
