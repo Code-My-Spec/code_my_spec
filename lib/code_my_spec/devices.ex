@@ -293,6 +293,36 @@ defmodule CodeMySpec.Devices do
 
   def box_joined(_device_id), do: :ok
 
+  @doc """
+  Give a cloud box the routine that starts it (story 1136). Owners and admins
+  only. The token is stored encrypted and never shown again.
+  """
+  @spec set_fire_token(Scope.t(), String.t(), map()) ::
+          {:ok, Device.t()} | {:error, :forbidden | :not_found | Ecto.Changeset.t()}
+  def set_fire_token(%Scope{active_account_id: account_id} = scope, id, params)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = box <- get_device(scope, id),
+         true <- Device.dev_box?(box) do
+      box
+      |> Device.fire_changeset(%{
+        fire_routine_id: String.trim(to_string(params["routine_id"] || "")),
+        fire_token: String.trim(to_string(params["token"] || ""))
+      })
+      |> Repo.update()
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def set_fire_token(%Scope{}, _id, _params), do: {:error, :forbidden}
+
+  @doc "Whether this box can be started by firing its routine."
+  @spec startable?(Device.t()) :: boolean()
+  def startable?(%Device{fire_routine_id: routine, fire_token: token}),
+    do: is_binary(routine) and routine != "" and is_binary(token) and token != ""
+
   @doc "Subscribe to changes to this account's dev boxes."
   @spec subscribe(String.t()) :: :ok | {:error, term()}
   def subscribe(account_id) when is_binary(account_id),
