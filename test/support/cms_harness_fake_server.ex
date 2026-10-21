@@ -49,6 +49,7 @@ defmodule CmsHarnessTest.FakeServer do
     :persistent_term.put({__MODULE__, :reject_analysis}, nil)
     :persistent_term.put({__MODULE__, :channel}, nil)
     :persistent_term.put({__MODULE__, :expected_harness}, nil)
+    put_sops_age_keys(Keyword.get(opts, :sops_age_keys, []))
     refuse_joins(Keyword.get(opts, :refuse, nil))
     hold_joins(Keyword.get(opts, :hold_joins, false))
 
@@ -187,6 +188,10 @@ defmodule CmsHarnessTest.FakeServer do
   def refuse_joins(holder), do: :persistent_term.put({__MODULE__, :refuse}, holder)
   def refusal, do: :persistent_term.get({__MODULE__, :refuse}, nil)
 
+  @doc "The `sops_age_keys` the next join reply carries, for story 1132's criteria."
+  def put_sops_age_keys(keys), do: :persistent_term.put({__MODULE__, :sops_age_keys}, keys)
+  def sops_age_keys, do: :persistent_term.get({__MODULE__, :sops_age_keys}, [])
+
   # Lets a test make the server take a join and never answer it, the way an
   # overloaded one did (57aa576c). The socket stays up; only the reply is held.
   def hold_joins(hold?), do: :persistent_term.put({__MODULE__, :hold_joins}, hold?)
@@ -311,7 +316,9 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
         # was the one that was about to register it.
         FakeServer.channel_joined(self(), payload["harness_id"])
         FakeServer.notify({:joined, project_id, payload})
-        {:ok, assign(socket, :project_id, project_id)}
+
+        {:ok, %{"sops_age_keys" => FakeServer.sops_age_keys()},
+         assign(socket, :project_id, project_id)}
 
       holder ->
         FakeServer.notify({:join_refused, project_id})

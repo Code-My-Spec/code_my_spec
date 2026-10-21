@@ -30,6 +30,8 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   "never comes up", and so on.
   """
   def app_instance_rig(runner_opts \\ []) do
+    {sops_age_keys, runner_opts} = Keyword.pop(runner_opts, :sops_age_keys, [])
+
     # `FakeServer.start/1` first, not after: `ensure_harness_supervisor_started/0`
     # boots the global, one-time `CmsHarness.Supervisor` — idempotent for
     # every call after the first, in the whole suite — and that first boot
@@ -38,7 +40,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     # anything. Started after `FakeServer.start/1` instead, that first boot
     # sees this rig's own `:harness_server_url_override` already in place,
     # the same as every later call does.
-    FakeServer.start()
+    FakeServer.start(sops_age_keys: sops_age_keys)
     ensure_harness_supervisor_started()
     install_app_instance_runner(runner_opts)
     use_fast_health_wait()

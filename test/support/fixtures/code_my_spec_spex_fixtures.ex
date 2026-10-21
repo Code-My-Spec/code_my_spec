@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CmsHarness.Agents,
       CmsHarness.Project,
+      # criterion 2351 (story 1132) reads the harness's own HTTP route list.
+      CmsHarness.Web,
       # The connected desktop assistance fixture uses the real harness websocket rig.
       CmsHarnessTest,
       CodeMySpec,
@@ -5095,6 +5097,242 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} = ProjectSecrets.put_value(scope, key, value)
 
     :ok
+  end
+
+  @doc "Whether the harness's in-memory keyring (story 1132) holds this specific key."
+  @spec harness_holding_key?(String.t()) :: boolean()
+  def harness_holding_key?(key), do: key in CmsHarness.SopsKeyring.keys()
+
+  @doc "The path the sops key socket (story 1132) listens on."
+  @spec sops_key_socket_path() :: Path.t()
+  def sops_key_socket_path, do: CmsHarness.SopsKeySocket.path()
+
+  @doc """
+  A shell command that runs this checkout's own `cms sops-key` through
+  `mix run --no-start`, standing in for the packaged `cms` binary a real
+  dev box runs: the `cms` already installed on this dev machine's own
+  PATH is an unrelated release of this project and never reflects an
+  uncommitted source change. `mix run`'s own final step execs into the
+  BEOM VM without forking (confirmed empirically), so this process's
+  reported parent is whatever actually launched the shim — `sops` itself,
+  when `SOPS_AGE_KEY_CMD` points here.
+  """
+  @spec sops_key_shim_path!() :: Path.t()
+  def sops_key_shim_path! do
+    dir = spex_tmp_dir!("sops-key-shim")
+    path = Path.join(dir, "cms-sops-key-shim")
+    root = File.cwd!()
+
+    spex_write_file!(path, """
+    #!/bin/sh
+    cd #{root} || exit 1
+    exec env MIX_ENV=test mix run --no-start --no-compile -e 'CmsHarness.Cli.SopsKey.start([])'
+    """)
+
+    File.chmod!(path, 0o700)
+    path
+  end
+
+  @doc "Every path the harness's own local HTTP router answers, for a criterion about what it does not."
+  @spec harness_web_route_paths() :: [String.t()]
+  def harness_web_route_paths do
+    CmsHarness.Web.Router.__routes__() |> Enum.map(& &1.path)
+  end
+
+  @doc """
+  The one escape hatch for `System.cmd/3` in a spec, for a criterion whose
+  subject is inherently an OS-level program (`sops`, `age-keygen`) rather
+  than anything the app's own LiveView/hook/MCP surface could run or
+  observe. See `.code_my_spec/knowledge/bdd/spex/boundaries.md`.
+  """
+  @spec run_cmd(String.t(), [String.t()], keyword()) :: {String.t(), non_neg_integer()}
+  def run_cmd(cmd, args, opts \\ []) do
+    opts = Keyword.put_new(opts, :stderr_to_stdout, true)
+    System.cmd(cmd, args, opts)
+  end
+
+  @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."
+  @spec spex_tmp_dir!(String.t()) :: Path.t()
+  def spex_tmp_dir!(prefix) do
+    dir = Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
+    dir
+  end
+
+  @doc "Writes a file for a spec's own setup (e.g. feeding `sops` a plaintext input)."
+  @spec spex_write_file!(Path.t(), String.t()) :: :ok
+  def spex_write_file!(path, contents) do
+    path |> Path.dirname() |> File.mkdir_p!()
+    File.write!(path, contents)
+  end
+
+  @doc "Reads a file a spec's own setup or an external command wrote, or \"\" if absent."
+  @spec spex_read_file_or_blank(Path.t()) :: String.t()
+  def spex_read_file_or_blank(path) do
+    case File.read(path) do
+      {:ok, contents} -> contents
+      {:error, _reason} -> ""
+    end
+  end
+
+  @doc "Whether a file exists, for a spec checking something an external command or the harness wrote outside any app surface."
+  @spec spex_file_exists?(Path.t()) :: boolean()
+  def spex_file_exists?(path), do: File.exists?(path)
+
+  @doc "A file's stat, for a spec checking permission bits an app surface cannot report."
+  @spec spex_file_stat(Path.t()) :: {:ok, File.Stat.t()} | {:error, term()}
+  def spex_file_stat(path), do: File.stat(path)
+
+  @doc "Whether `path` exists and its mode denies every bit to group and other (0700/0600-style)."
+  @spec spex_user_only?(Path.t()) :: boolean()
+  def spex_user_only?(path) do
+    case File.stat(path) do
+      {:ok, %{mode: mode}} -> Bitwise.band(mode, 0o077) == 0
+      {:error, _reason} -> false
+    end
+  end
+
+  @doc "Generates an age keypair under `dir`, returning `{public_recipient, private_key}`."
+  @spec age_keypair!(Path.t()) :: {String.t(), String.t()}
+  def age_keypair!(dir) do
+    keyfile = Path.join(dir, "age-#{System.unique_integer([:positive])}.txt")
+    {_out, 0} = run_cmd("age-keygen", ["-o", keyfile])
+    {pub, 0} = run_cmd("age-keygen", ["-y", keyfile])
+
+    priv =
+      keyfile
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.find(&String.starts_with?(&1, "AGE-SECRET-KEY-"))
+
+    {String.trim(pub), priv}
+  end
+
+  @doc """
+  A real, well-formed age private key nobody's data is actually encrypted
+  to -- for a scenario that only needs *a* key `CmsHarness.SopsKeyring`
+  will hold, not one that has to decrypt anything.
+
+  `SopsKeyring` is one process shared by the whole spex run; whatever any
+  scenario installs into it stays there for every scenario that runs
+  after it in the same `mix spex` invocation. A string like
+  `"AGE-SECRET-KEY-1DEV"` reads as a plausible key but is not one --
+  `age` fails to parse it as an identity at all, and a *malformed*
+  identity poisons the whole blob `cms sops-key` hands back to `sops`,
+  not just the one entry (confirmed: age refuses the lot rather than
+  skipping it), breaking a *different*, real-key-dependent scenario
+  elsewhere in the same run. A real key age can always parse is safe to
+  mix in: unrelated to any given file's recipient, it is simply tried and
+  passed over.
+  """
+  @spec unique_age_private_key!() :: String.t()
+  def unique_age_private_key! do
+    dir = spex_tmp_dir!("unique-age-key")
+    {_pub, priv} = age_keypair!(dir)
+    priv
+  end
+
+  @doc """
+  Encrypts `plaintext` (dotenv format) to `recipient` under `dir`, writing
+  it to `name`, and returns the path to the encrypted file.
+
+  `--config /dev/null` keeps this project's own `.sops.yaml` (its real
+  recipients) from being consulted for a spec's own throwaway keypair.
+  """
+  @spec sops_encrypt_dotenv!(Path.t(), String.t(), String.t(), String.t()) :: Path.t()
+  def sops_encrypt_dotenv!(dir, name, plaintext, recipient) do
+    plain_path = Path.join(dir, "plain-#{name}")
+    enc_path = Path.join(dir, name)
+    spex_write_file!(plain_path, plaintext)
+
+    {out, 0} =
+      run_cmd("sops", [
+        "--config",
+        "/dev/null",
+        "--age",
+        recipient,
+        "-e",
+        "--input-type",
+        "dotenv",
+        "--output-type",
+        "dotenv",
+        plain_path
+      ])
+
+    spex_write_file!(enc_path, out)
+    enc_path
+  end
+
+  @doc "Decrypts a dotenv-format sops file, with optional `:env` (e.g. `SOPS_AGE_KEY`, `SOPS_AGE_KEY_CMD`)."
+  @spec sops_decrypt_dotenv(Path.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def sops_decrypt_dotenv(enc_path, opts \\ []) do
+    env = Keyword.get(opts, :env, [])
+
+    case run_cmd(
+           "sops",
+           [
+             "--config",
+             "/dev/null",
+             "-d",
+             "--input-type",
+             "dotenv",
+             "--output-type",
+             "dotenv",
+             enc_path
+           ],
+           env: env
+         ) do
+      {out, 0} -> {:ok, out}
+      {out, _status} -> {:error, out}
+    end
+  end
+
+  @doc """
+  This project's own `justfile`'s `recipe`'s body, as text, for criterion
+  2348 (story 1132) -- there being no project a spec generates here, the
+  real justfile on disk is the only one to check.
+  """
+  @spec justfile_recipe_body(String.t()) :: String.t()
+  def justfile_recipe_body(recipe) do
+    justfile = spex_read_file_or_blank(Path.join(File.cwd!(), "justfile"))
+
+    case String.split(justfile, ~r/\n#{recipe} \*args:\n/, parts: 2) do
+      [_before, after_recipe] ->
+        [body | _rest] = String.split(after_recipe, ~r/\n\S/, parts: 2)
+        body
+
+      [_only] ->
+        ""
+    end
+  end
+
+  @doc """
+  Point `CmsHarness.SopsKeyring.path/0` at a fresh, empty tmp path for the
+  rest of this test, restored on exit.
+
+  A "no keyring file was written" assertion against the real default path
+  (the dev machine's own `~/.config/sops/age/keys.txt` or OS equivalent)
+  would pass or fail on whatever that engineer's own machine happens to
+  hold, never on what this test did. Isolating `SOPS_AGE_KEY_FILE` is what
+  makes the assertion about this test's own run.
+  """
+  @spec isolated_sops_keyring_path!() :: Path.t()
+  def isolated_sops_keyring_path! do
+    previous = System.get_env("SOPS_AGE_KEY_FILE")
+    path = Path.join(System.tmp_dir!(), "sops-keyring-spex-#{System.unique_integer([:positive])}")
+    System.put_env("SOPS_AGE_KEY_FILE", path)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      File.rm(path)
+
+      case previous do
+        nil -> System.delete_env("SOPS_AGE_KEY_FILE")
+        value -> System.put_env("SOPS_AGE_KEY_FILE", value)
+      end
+    end)
+
+    path
   end
 
   @doc """
