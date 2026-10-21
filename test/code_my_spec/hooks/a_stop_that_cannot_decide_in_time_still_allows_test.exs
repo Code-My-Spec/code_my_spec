@@ -26,8 +26,19 @@ defmodule CodeMySpec.Hooks.AStopThatCannotDecideInTimeStillAllowsTest do
   end
 
   setup do
-    previous = Application.get_env(:code_my_spec, :stop_decide_timeout_ms)
+    # `put_env(key, nil)` is not the same as never having set `key` --
+    # `get_env(key, default)` only falls back to `default` when the key is
+    # genuinely absent, so restoring a never-set key with `nil` broke the
+    # very next test in this module, which relies on the default.
+    restore_timeout_env(Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms))
+  end
+
+  defp restore_timeout_env({:ok, previous}) do
     on_exit(fn -> Application.put_env(:code_my_spec, :stop_decide_timeout_ms, previous) end)
+  end
+
+  defp restore_timeout_env(:error) do
+    on_exit(fn -> Application.delete_env(:code_my_spec, :stop_decide_timeout_ms) end)
   end
 
   test "a decision bound at 0ms still answers, allowed, not a hang" do
