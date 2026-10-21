@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story1132.Criterion2347Spex do
   spex "A bare command sees none of the project's decrypted secrets", criterion: 2347 do
     scenario "an agent in 'cloud-1' runs `mix test` directly" do
       given_ "the test env holds a secret the agent's shell never set", context do
+        # given: already true — nothing in this process's own environment sets
+        # @secret_name; the refute below documents that rather than establishing it.
         refute System.get_env(@secret_name),
                "this test's own environment already carries the secret it is about to " <>
                  "check for, so a pass below would prove nothing"

@@ -12,11 +12,16 @@ defmodule CodeMySpecSpex.Story1132.Criterion2351Spex do
 
   use CodeMySpecSpex.Case
 
+  import CmsHarnessTest.AppInstanceHelpers
+
   alias CodeMySpecSpex.Fixtures
 
   spex "The key is reachable through nothing the harness serves over HTTP", criterion: 2351 do
     scenario "anything asks for the key over HTTP, on localhost or otherwise" do
       given_ "'cloud-1''s harness holds the dev key", context do
+        dev_key = Fixtures.unique_age_private_key!()
+        _rig = app_instance_rig(sops_age_keys: [dev_key])
+        eventually(fn -> assert Fixtures.harness_holding_key?(dev_key) end)
         {:ok, context}
       end
 
