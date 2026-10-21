@@ -135,7 +135,11 @@ defmodule CodeMySpec.Issues.Tools.LifecycleTest do
         )
 
       assert match?({:error, _}, response)
-      assert response_text(response) =~ "promote_issue"
+      # e516e0f0: promote_issue is a requirement, not a tool; the message
+      # names the tools that claim it.
+      assert response_text(response) =~ "get_next_requirement"
+      assert response_text(response) =~ "start_task"
+      refute response_text(response) =~ "Promote it with"
 
       assert Issues.get_issue(scope, assigned.id).status == :accepted,
              "the issue must stay accepted -- resolving it here would be exactly the bug " <>
