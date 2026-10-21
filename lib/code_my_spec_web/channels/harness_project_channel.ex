@@ -554,6 +554,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
     port = msg["port"]
+    payload = with_budget(payload, msg["deadline_ms"])
 
     {:noreply,
      reply_async(socket, ref, {"decision", hook}, fn ->
@@ -1208,6 +1209,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp describe({handler, detail}), do: "#{handler} (#{detail})"
   defp describe(handler), do: handler
+
+  # How long the harness will wait for this answer (c93e5fdc): `Hooks.Stop`
+  # bounds its own work against it so the harness is answered, not timed out.
+  defp with_budget(payload, ms) when is_integer(ms) and ms > 0,
+    do: Map.put(payload, "harness_budget_ms", ms)
+
+  defp with_budget(payload, _unnamed), do: payload
 
   defp decision_reply(hook, scope, payload, port) do
     case decide_hook(hook, scope, payload, port) do

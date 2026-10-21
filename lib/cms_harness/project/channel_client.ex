@@ -2010,7 +2010,13 @@ defmodule CmsHarness.Project.ChannelClient do
            socket,
            socket.assigns.topic,
            "hook_decision",
-           %{"hook" => hook, "payload" => payload, "port" => Config.local_port()},
+           %{
+             "hook" => hook,
+             "payload" => payload,
+             "port" => Config.local_port(),
+             # What this harness will wait, so the server can answer inside it.
+             "deadline_ms" => Channel.decision_timeout()
+           },
            Channel.decision_timeout()
          ) do
       {:ok, ref} ->

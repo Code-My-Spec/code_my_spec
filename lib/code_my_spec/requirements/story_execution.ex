@@ -5,6 +5,8 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   Membership narrows the answer, never the graph used to check prerequisites.
   The project graph remains available for status and dependency diagnostics.
   """
+  require Logger
+
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Requirements.{GraphWatcher, Preloader, Projection, Registry, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
@@ -34,14 +36,20 @@ defmodule CodeMySpec.Requirements.StoryExecution do
         withheld? \\ fn _ -> false end,
         assignment \\ :copy
       ) do
+    Process.delete(@laps)
+    started = System.monotonic_time(:millisecond)
+
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
-         :ok <- GraphWatcher.settle(scope),
-         {:ok, ctx} <- Preloader.load(scope),
+         :ok <- lap(:settle, fn -> GraphWatcher.settle(scope) end),
+         {:ok, ctx} <- lap(:preload, fn -> Preloader.load(scope) end),
          ctx = Map.put(ctx, :withheld?, withheld?),
          {{nodes, edges}, _actionable, _at} <-
-           RequirementGraph.cached_graph_with_actionable(scope) do
-      {nodes, edges, ctx} = across_project(scope, role, nodes, edges, ctx)
+           lap(:graph, fn -> RequirementGraph.cached_graph_with_actionable(scope) end) do
+      {nodes, edges, ctx} =
+        lap(:placed, fn -> across_project(scope, role, nodes, edges, ctx) end)
+
+      report_laps(role, System.monotonic_time(:millisecond) - started)
 
       case selected(scope, copy, requested_number, assignment) do
         {:ok, story} ->
@@ -64,6 +72,31 @@ defmodule CodeMySpec.Requirements.StoryExecution do
       end
     else
       _ -> result(:unavailable, nil, "This session has no working copy on this project.")
+    end
+  end
+
+  # c93e5fdc: a project-wide read (main's stop) once took 13.5s with nothing in
+  # the logs to say where. The steps that can wait on something else -- the
+  # projector draining, the preload, the graph, the placed stories -- are timed
+  # as they run, and a read slower than a second says which one it spent it on.
+  @slow_read_ms 1_000
+  @laps :story_execution_laps
+
+  defp lap(step, fun) do
+    {us, result} = :timer.tc(fun)
+    Process.put(@laps, [{step, div(us, 1000)} | Process.get(@laps, [])])
+    result
+  end
+
+  defp report_laps(role, total_ms) do
+    laps = @laps |> Process.delete() |> List.wrap() |> Enum.reverse()
+
+    if total_ms >= @slow_read_ms do
+      steps = Enum.map_join(laps, " ", fn {step, ms} -> "#{step}=#{ms}ms" end)
+
+      Logger.warning(
+        "[StoryExecution] slow read for #{inspect(role)} took #{total_ms}ms: #{steps}"
+      )
     end
   end
 
