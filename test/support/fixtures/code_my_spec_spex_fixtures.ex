@@ -5144,11 +5144,78 @@ defmodule CodeMySpecSpex.Fixtures do
   subject is inherently an OS-level program (`sops`, `age-keygen`) rather
   than anything the app's own LiveView/hook/MCP surface could run or
   observe. See `.code_my_spec/knowledge/bdd/spex/boundaries.md`.
+
+  Also the one way a spec drives a `mix` task as product directed for
+  story 1013's criteria 916-918: as a separate OS process, not `apply/3`
+  and not a direct call into the module under test, asserting only what
+  can be seen from outside (exit status, output, files, database rows).
   """
   @spec run_cmd(String.t(), [String.t()], keyword()) :: {String.t(), non_neg_integer()}
   def run_cmd(cmd, args, opts \\ []) do
     opts = Keyword.put_new(opts, :stderr_to_stdout, true)
     System.cmd(cmd, args, opts)
+  end
+
+  @doc """
+  A throwaway git worktree of this same checkout, detached at `HEAD`, for a
+  spec that must run a `mix` task of this repo's own as a real, separate OS
+  process (story 1013, criteria 916-918) rather than reach into the module
+  directly. Shares this checkout's already-fetched `deps` and compiled
+  `_build` via `scratch_worktree_env/0`, so a subprocess run in it costs a
+  fork and (at most) an incremental recompile, not `mix deps.get`.
+
+  `.git` in a linked worktree is a regular file, not a directory, pointing
+  at the real one -- which is exactly the state `config/test.exs`'s own
+  partition fallback (`File.regular?(Path.join(File.cwd!(), ".git"))`)
+  reads to name a deterministic, collision-free scratch database after the
+  worktree's own directory name when nothing else names one.
+
+  Removed, and its worktree entry pruned, on exit.
+  """
+  @spec scratch_worktree!() :: Path.t()
+  def scratch_worktree! do
+    main_root = File.cwd!()
+    root = spex_tmp_dir!("scratch-worktree")
+    File.rmdir!(root)
+
+    {_out, 0} = run_cmd("git", ["worktree", "add", "--detach", root, "HEAD"], cd: main_root)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      run_cmd("git", ["worktree", "remove", "--force", root], cd: main_root)
+    end)
+
+    # `config/runtime.exs` sources `envs/<env>.env` (Dotenvy) relative to cwd
+    # for every env but :test -- a worktree without it crashes at boot on a
+    # missing OAuth var before ever reaching anything this spec is about.
+    # `git worktree add` already checked out `envs/*.enc.env` (tracked), but
+    # not the decrypted `*.env` beside them (gitignored, generated locally) --
+    # those are what's actually missing. Linked per file, the way
+    # `cms.harness.onboard`'s own bootstrap links `envs` as a whole for a
+    # fresh worktree it mints; this one is not minted through that command,
+    # and the destination directory already exists here.
+    for name <- ~w(dev.env test.env) do
+      source = Path.join([main_root, "envs", name])
+      dest = Path.join([root, "envs", name])
+
+      if File.exists?(source) and not match?({:ok, _}, File.lstat(dest)) do
+        File.ln_s!(source, dest)
+      end
+    end
+
+    root
+  end
+
+  @doc """
+  Env vars that point a `scratch_worktree!/0`'s `mix` invocation at this
+  checkout's own fetched `deps` and compiled `_build`, merged over the base
+  env a `run_cmd/3` call passes for a given scenario.
+  """
+  @spec scratch_worktree_env(keyword()) :: [{String.t(), String.t()}]
+  def scratch_worktree_env(overrides \\ []) do
+    [
+      {"MIX_BUILD_PATH", Path.join(File.cwd!(), "_build")},
+      {"MIX_DEPS_PATH", Path.join(File.cwd!(), "deps")}
+    ] ++ Enum.map(overrides, fn {k, v} -> {to_string(k), to_string(v)} end)
   end
 
   @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."
