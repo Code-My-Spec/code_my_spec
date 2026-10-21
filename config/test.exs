@@ -803,3 +803,7 @@ config :code_my_spec, CodeMySpec.Auth.HarnessOAuth, plug: {Req.Test, CodeMySpec.
 config :code_my_spec, CodeMySpec.RunGuard,
   poll_ms: :infinity,
   dir: Path.join([System.tmp_dir!(), "codemyspec-test", "runs"])
+
+# Claude Code routines (story 1136): the fire call is answered by a stub.
+config :code_my_spec, CodeMySpec.Devices.RoutineFire,
+  plug: {Req.Test, CodeMySpec.Devices.RoutineFire}

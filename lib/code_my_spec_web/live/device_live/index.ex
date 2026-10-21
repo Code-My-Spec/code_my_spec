@@ -46,6 +46,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Devices.RoutineFire
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -65,6 +66,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
        page_title: "Dev boxes",
        project_id: params["project_id"],
        adding?: false,
+       fire_form_for: nil,
+       sessions: %{},
        new_box: nil,
        providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
@@ -147,6 +150,34 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     end
   end
 
+  def handle_event("new_fire_token", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, fire_form_for: id)}
+
+  def handle_event("save_fire_token", %{"device_id" => id, "fire_token" => params}, socket) do
+    case Devices.set_fire_token(socket.assigns.current_scope, id, params) do
+      {:ok, _box} ->
+        {:noreply, socket |> assign(fire_form_for: nil) |> load()}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can set a fire token.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Give the routine id (trig_…) and its fire token.")}
+    end
+  end
+
+  # Fires the box's routine. One attempt: a refusal is shown, never retried.
+  def handle_event("start_box", %{"id" => id}, socket) do
+    case Devices.get_device(socket.assigns.current_scope, id) do
+      %Device{} = box ->
+        {:noreply, start_async(socket, {:fire, box.id}, fn -> RoutineFire.fire(box) end)}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
   def handle_event("cancel_dev_box", _params, socket),
     do: {:noreply, assign(socket, adding?: false)}
 
@@ -182,6 +213,19 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   end
 
   @impl true
+  def handle_async({:fire, id}, {:ok, {:ok, %{session_url: url}}}, socket),
+    do: {:noreply, assign(socket, sessions: Map.put(socket.assigns.sessions, id, url))}
+
+  def handle_async({:fire, _id}, {:ok, {:error, {:rate_limited, seconds}}}, socket),
+    do: {:noreply, put_flash(socket, :error, rate_limited_message(seconds))}
+
+  def handle_async({:fire, _id}, {:ok, {:error, _reason}}, socket),
+    do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
+
+  def handle_async({:fire, _id}, {:exit, _reason}, socket),
+    do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
+
+  @impl true
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 
@@ -191,6 +235,17 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: Workspaces.start_dev_box(box, token, server_url)
 
   defp launch(_box, _token, _server_url), do: :ok
+
+  defp rate_limited_message(seconds) when is_integer(seconds) do
+    minutes = max(div(seconds + 59, 60), 1)
+
+    "Claude refused the start: the routine is rate-limited. Try again in about " <>
+      "#{minutes} #{if minutes == 1, do: "minute", else: "minutes"}. Nothing will retry by itself."
+  end
+
+  defp rate_limited_message(_unknown),
+    do:
+      "Claude refused the start: the routine is rate-limited. Try again later. Nothing will retry by itself."
 
   defp launch_error(:docker_unreachable),
     do: "Docker is not reachable. Start Docker and add the box again."
@@ -230,6 +285,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     %{
       device: device,
       previews: previews,
+      startable?: Devices.startable?(device),
       status: box_status(device),
       provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
@@ -431,6 +487,62 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                       environment's allowlist includes {@server_host} (and the other hosts shown
                       when it was added), and that the network secret is set for {@server_host}.
                     </p>
+                    <a
+                      :if={@sessions[row.device.id]}
+                      data-test="session-url"
+                      href={@sessions[row.device.id]}
+                      target="_blank"
+                      class="link"
+                    >
+                      Open the session
+                    </a>
+                    <.button
+                      :if={
+                        @can_add? and row.device.provider == :claude_code_cloud and row.startable? and
+                          row.presence.label != "Present"
+                      }
+                      phx-click="start_box"
+                      phx-value-id={row.device.id}
+                      data-test="start-box"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-primary"
+                    >
+                      Start
+                    </.button>
+                    <.button
+                      :if={
+                        @can_add? and row.device.provider == :claude_code_cloud and not row.startable?
+                      }
+                      phx-click="new_fire_token"
+                      phx-value-id={row.device.id}
+                      data-test="add-fire-token"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-ghost"
+                    >
+                      Add a fire token
+                    </.button>
+                    <form
+                      :if={@fire_form_for == row.device.id}
+                      data-test="fire-token-form"
+                      data-device-id={row.device.id}
+                      phx-submit="save_fire_token"
+                      class="mt-2 flex flex-col gap-1 text-left"
+                    >
+                      <input type="hidden" name="device_id" value={row.device.id} />
+                      <input
+                        type="text"
+                        name="fire_token[routine_id]"
+                        placeholder="trig_…"
+                        class="input input-bordered input-sm"
+                      />
+                      <input
+                        type="password"
+                        name="fire_token[token]"
+                        placeholder="fire token"
+                        class="input input-bordered input-sm"
+                      />
+                      <.button type="submit" class="btn btn-xs">Save</.button>
+                    </form>
                     <.button
                       :if={@can_add? and is_nil(row.device.token_revoked_at)}
                       phx-click="revoke_dev_box"
