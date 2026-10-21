@@ -112,7 +112,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.IndexTest do
 
       # Stamped rather than slept: `updated_at` is truncated to the second, so
       # two rows made in the same second tie and the order comes out arbitrary.
-      quiet_at = DateTime.utc_now() |> DateTime.add(-3600, :second) |> DateTime.truncate(:second)
+      quiet_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
       stamp(quiet, quiet_at)
 
       {:ok, _} = Conversations.add_agent_message(active, nil, "assistant", "took a turn")

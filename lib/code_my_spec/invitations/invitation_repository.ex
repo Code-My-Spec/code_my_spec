@@ -44,7 +44,7 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
   # Cancelling it first clears the index before the new row is inserted.
   @spec cancel_expired(account_id :: binary(), email :: String.t()) :: {integer(), nil}
   defp cancel_expired(account_id, email) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     from(i in Invitation)
     |> by_account(account_id)
@@ -146,7 +146,7 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
   end
 
   defp update_invitation_status(invitation, status_field) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     attrs = %{status_field => now}
 
     invitation

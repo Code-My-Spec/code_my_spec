@@ -18,7 +18,8 @@ unless Regex.match?(~r/\Aqa_?1112_[a-zA-Z0-9_]+\z/, expected_database) do
   Mix.raise("The disposable database name must begin with qa1112_ or qa_1112_.")
 end
 
-%{rows: [[actual_database]]} = Repo.query!("SELECT current_database()")
+# The database name on Postgres, the file's name on SQLite (the desktop).
+actual_database = Repo.config()[:database] |> Path.basename() |> Path.rootname()
 
 unless actual_database == expected_database do
   Mix.raise("Connected database does not match the explicitly supplied QA database.")

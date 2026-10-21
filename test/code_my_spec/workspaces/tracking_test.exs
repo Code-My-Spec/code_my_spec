@@ -9,7 +9,7 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
       %Workspace{
         project_id: Ecto.UUID.generate(),
         status: :booting,
-        booted_at: DateTime.add(DateTime.utc_now(:second), -45, :second)
+        booted_at: DateTime.add(DateTime.utc_now(), -45, :second)
       },
       attrs
     )
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
     test "a retry's wait is its own, not the sum of every attempt" do
       # booting_changeset stamps booted_at fresh, so a retry that has only
       # just started reports a short wait even on an old workspace row.
-      Tracking.abandoned(workspace(booted_at: DateTime.utc_now(:second)))
+      Tracking.abandoned(workspace(booted_at: DateTime.utc_now()))
 
       event = only_event("workspace_abandoned")
       assert event.data["waited_seconds"] < 5

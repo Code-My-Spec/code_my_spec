@@ -49,7 +49,7 @@ defmodule CodeMySpec.Problems.Problem do
     # harnesses existed"; the first harness to join adopts them.
     belongs_to :working_copy, WorkingCopy, type: :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc """

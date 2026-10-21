@@ -374,7 +374,7 @@ defmodule CodeMySpec.Oauth do
     query = from(g in DeviceGrant, where: g.id == ^grant.id and is_nil(g.consumed_at))
 
     case Repo.update_all(query,
-           set: [consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+           set: [consumed_at: DateTime.utc_now()]
          ) do
       {1, _} -> fetch_claimed_token(grant)
       {0, _} -> {:error, :invalid_grant}

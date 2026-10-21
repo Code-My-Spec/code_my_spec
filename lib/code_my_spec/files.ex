@@ -646,25 +646,9 @@ defmodule CodeMySpec.Files do
   @spec replaceable_fields() :: [atom()]
   def replaceable_fields, do: @replaceable_fields
 
-  # The module a scanned file declares, kept beside the scanner's data so a
-  # component can be claimed by it in a query.
-  defp put_module_name(attrs) do
-    data =
-      case Map.get(attrs, :validation_errors) do
-        %{data: data} -> data
-        %{"data" => data} -> data
-        _ -> nil
-      end
-
-    name =
-      case data do
-        %{module_name: name} -> name
-        %{"module_name" => name} -> name
-        _ -> nil
-      end
-
-    Map.put(attrs, :module_name, name)
-  end
+  # Kept beside the scanner's data so a component can be claimed by it in a query.
+  defp put_module_name(attrs),
+    do: Map.put(attrs, :module_name, File.module_name(Map.get(attrs, :validation_errors)))
 
   @doc """
   Upsert a single file record without updating mtime.

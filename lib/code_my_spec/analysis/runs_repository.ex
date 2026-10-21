@@ -310,7 +310,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def copy_waiters(from_id, to_id), do: add_waiters([to_id], waiter_ids(from_id))
 
   defp add_waiters(run_ids, agent_ids) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     rows =
       for run_id <- run_ids,

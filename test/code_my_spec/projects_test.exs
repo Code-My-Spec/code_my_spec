@@ -189,10 +189,15 @@ defmodule CodeMySpec.ProjectsTest do
       plaintext = "plaintext-deploy-key-secret"
       project = project_fixture(scope, %{deploy_key: plaintext})
 
-      %{rows: [[stored]]} =
-        CodeMySpec.Repo.query!("SELECT deploy_key FROM projects WHERE id = $1", [
-          Ecto.UUID.dump!(project.id)
-        ])
+      import Ecto.Query, only: [from: 2]
+
+      stored =
+        CodeMySpec.Repo.one!(
+          from(p in "projects",
+            where: p.id == type(^project.id, :binary_id),
+            select: p.deploy_key
+          )
+        )
 
       assert is_binary(stored)
 

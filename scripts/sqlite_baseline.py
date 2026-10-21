@@ -52,7 +52,10 @@ def main():
     # schema_migrations is Ecto's own; the migrator creates it.
     tables = [r[0] for r in q("select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'schema_migrations' order by 1")]
     cols = {}
-    for t, c, dt, nullable, dflt in q("select table_name, column_name, data_type, is_nullable, coalesce(column_default,'') from information_schema.columns where table_schema='public' order by table_name, ordinal_position"):
+    for t, c, dt, udt, nullable, dflt in q("select table_name, column_name, data_type, udt_name, is_nullable, coalesce(column_default,'') from information_schema.columns where table_schema='public' order by table_name, ordinal_position"):
+        # citext and vector are both USER-DEFINED; the udt name tells them apart.
+        if dt == "USER-DEFINED":
+            dt = "citext" if udt == "citext" else "USER-DEFINED"
         cols.setdefault(t, []).append((c, dt, nullable == "YES", dflt))
     pks = {}
     for t, c in q("select tc.table_name, kcu.column_name from information_schema.table_constraints tc join information_schema.key_column_usage kcu on tc.constraint_name=kcu.constraint_name and tc.table_schema=kcu.table_schema where tc.table_schema='public' and tc.constraint_type='PRIMARY KEY' order by tc.table_name, kcu.ordinal_position"):

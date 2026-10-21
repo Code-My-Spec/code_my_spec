@@ -148,7 +148,14 @@ defmodule CodeMySpec.Files.File do
     |> cast(attrs, @cast_fields)
     |> validate_required([:path, :role, :project_id])
     |> unique_constraint([:project_id, :working_copy_id, :path])
+    |> then(&put_change(&1, :module_name, module_name(get_field(&1, :validation_errors))))
   end
+
+  @doc "The module a scanned file declares, from the scanner's `validation_errors`."
+  @spec module_name(map() | nil) :: String.t() | nil
+  def module_name(%{data: %{module_name: name}}), do: name
+  def module_name(%{"data" => %{"module_name" => name}}), do: name
+  def module_name(_validation_errors), do: nil
 
   @doc "All valid file roles."
   def roles, do: @roles

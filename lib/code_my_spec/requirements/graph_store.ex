@@ -60,7 +60,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
           {:ok, %{inserted: non_neg_integer(), reaped: non_neg_integer()}}
   def write(%Scope{active_project_id: project_id} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
     target = event_target()
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
@@ -247,8 +247,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
         set: [
           satisfied: change.satisfied,
           details: change.details,
-          checked_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
-          updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+          checked_at: NaiveDateTime.utc_now(),
+          updated_at: NaiveDateTime.utc_now()
         ]
       )
 
@@ -271,7 +271,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   """
   @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
     ids = Enum.map(spec.except, & &1.entity_id)
 
     {:ok, written} =
@@ -365,7 +365,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def put_verdicts(%Scope{}, _entity_type, _name, [], _now), do: {:ok, 0}
 
   def put_verdicts(%Scope{} = scope, entity_type, name, changes, now) do
-    now = now || NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = now || NaiveDateTime.utc_now()
     vantage = Projection.vantage(scope)
 
     rows =
@@ -404,7 +404,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
           {:ok, non_neg_integer()}
   def write_edges(%Scope{active_project_id: project_id} = scope, edges, ids \\ nil) do
     working_copy_id = Projection.vantage(scope)
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     # Resolved after this drain's node writes, so the ids are current.
     ids = ids || ids_by_owner_key(project_id, working_copy_id)

@@ -37,7 +37,7 @@ defmodule CodeMySpec.Notifications.PermissionRequest do
     belongs_to :user, CodeMySpec.Users.User, type: :id
     belongs_to :answered_by_user, CodeMySpec.Users.User, type: :id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   def changeset(request, attrs) do

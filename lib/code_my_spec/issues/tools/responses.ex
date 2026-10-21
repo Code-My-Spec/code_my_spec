@@ -195,8 +195,15 @@ defmodule CodeMySpec.Issues.Tools.Responses do
   # Both branches say it, because the hazard is symmetric and only one side used
   # to. An agent reading the server's store saw nothing suggesting a second
   # existed, which is the silent case this whole note is for.
-  case Application.compile_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres) do
-    Ecto.Adapters.SQLite3 ->
+  # The local store is the CLI's SQLite database. The desktop is SQLite too, but
+  # it is a server with its own migration set (`priv`).
+  local_store? =
+    Application.compile_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres) ==
+      Ecto.Adapters.SQLite3 and
+      is_nil(Application.compile_env(:code_my_spec, CodeMySpec.Repo, [])[:priv])
+
+  case local_store? do
+    true ->
       defp store, do: :local
 
       defp store_note do

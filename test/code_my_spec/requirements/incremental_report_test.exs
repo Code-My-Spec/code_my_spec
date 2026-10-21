@@ -32,7 +32,6 @@ defmodule CodeMySpec.Requirements.IncrementalReportTest do
       DateTime.utc_now()
       |> DateTime.add(-seconds_ago, :second)
       |> DateTime.to_naive()
-      |> NaiveDateTime.truncate(:second)
 
     ids =
       from(n in Node,

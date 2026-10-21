@@ -26,8 +26,16 @@ defmodule CodeMySpec.Hooks.AStopThatCannotDecideInTimeStillAllowsTest do
   end
 
   setup do
-    previous = Application.get_env(:code_my_spec, :stop_decide_timeout_ms)
-    on_exit(fn -> Application.put_env(:code_my_spec, :stop_decide_timeout_ms, previous) end)
+    previous = Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms)
+
+    # Put back exactly: an unset key restored as `nil` is a `receive ... after
+    # nil` for the next test.
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, :stop_decide_timeout_ms, value)
+        :error -> Application.delete_env(:code_my_spec, :stop_decide_timeout_ms)
+      end
+    end)
   end
 
   test "a decision bound at 0ms still answers, allowed, not a hang" do

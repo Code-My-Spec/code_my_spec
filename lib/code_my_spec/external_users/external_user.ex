@@ -24,7 +24,7 @@ defmodule CodeMySpec.ExternalUsers.ExternalUser do
     field :name, :string
     field :metadata, :map, default: %{}
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

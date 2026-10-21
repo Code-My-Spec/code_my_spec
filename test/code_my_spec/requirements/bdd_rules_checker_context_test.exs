@@ -213,7 +213,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
 
     test "with a health-verified UAT deploy", %{scope: scope} do
       story = scope |> story!() |> then(&ready!(scope, &1))
-      deploy!(scope, story, "uat", DateTime.utc_now() |> DateTime.truncate(:second))
+      deploy!(scope, story, "uat", DateTime.utc_now())
 
       {queried, preloaded} = both_deploy(scope, story)
 
@@ -235,7 +235,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
     # node that asks about UAT.
     test "with a prod deploy only", %{scope: scope} do
       story = scope |> story!() |> then(&ready!(scope, &1))
-      deploy!(scope, story, "prod", DateTime.utc_now() |> DateTime.truncate(:second))
+      deploy!(scope, story, "prod", DateTime.utc_now())
 
       {queried, preloaded} = both_deploy(scope, story)
 

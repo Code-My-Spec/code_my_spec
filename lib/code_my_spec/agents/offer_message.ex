@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.OfferMessage do
     |> validate_required([:offer_id, :message_id])
     |> foreign_key_constraint(:offer_id)
     |> foreign_key_constraint(:message_id)
+    |> CodeMySpec.Repo.References.check()
     |> unique_constraint([:offer_id, :message_id])
   end
 end

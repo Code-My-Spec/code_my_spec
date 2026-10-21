@@ -115,7 +115,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
 
     belongs_to :project, Project, type: :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Every step key, in the order the sequence runs them."
@@ -151,10 +151,13 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
     |> unique_constraint([:project_id, :key],
       name: :provisioning_steps_project_id_key_no_environment_index
     )
+    # SQLite names a unique violation after its columns.
+    |> unique_constraint([:project_id, :key], name: :provisioning_steps_project_id_key_index)
     |> unique_constraint([:project_id, :key, :environment],
       name: :provisioning_steps_project_id_key_environment_index
     )
     |> foreign_key_constraint(:project_id)
+    |> CodeMySpec.Repo.References.check()
   end
 
   # A row's environment presence has to agree with what the sequence says

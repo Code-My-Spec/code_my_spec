@@ -55,9 +55,9 @@ defmodule CodeMySpec.Components.Component do
     # never prunes an authored component (3aeb66cf).
     field :provenance, Ecto.Enum, values: [:authored, :discovered]
 
-    field :synced_at, :utc_datetime
-    field :files_changed_at, :utc_datetime
-    field :last_analyzed_at, :utc_datetime
+    field :synced_at, :utc_datetime_usec
+    field :files_changed_at, :utc_datetime_usec
+    field :last_analyzed_at, :utc_datetime_usec
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :project, Project, type: :binary_id

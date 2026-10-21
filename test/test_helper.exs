@@ -13,9 +13,13 @@
 # answering false for a reason nobody intended.
 sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:sops]
 
-# SQLite has one writer, and every sandbox owner holds a write transaction for
-# its whole test, so a test that runs two owners at once cannot run on it.
-sqlite_exclusions = if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers], else: []
+# On SQLite (the desktop's database), two kinds of test are off:
+#   * :concurrent_writers — two sandbox owners writing at once; SQLite has one
+#     writer and each owner holds a write transaction for its whole test.
+#   * :postgres — a Postgres-only feature the desktop does not have: pgvector
+#     search, and the server's project import (catalog and sequences).
+sqlite_exclusions =
+  if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers, :postgres], else: []
 
 ExUnit.start(
   # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a

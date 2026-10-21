@@ -10,6 +10,6 @@ defmodule CodeMySpec.Analysis.RunWaiter do
   schema "analysis_run_waiters" do
     belongs_to :run, CodeMySpec.Analysis.Run
     field :agent_id, :string
-    timestamps(type: :utc_datetime, updated_at: false)
+    timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 end

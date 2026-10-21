@@ -121,7 +121,7 @@ defmodule CodeMySpec.Analysis.Run do
     # closed without reaching into another checkout's work.
     field :working_copy_id, :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Requested but not yet begun: waiting for a machine slot."

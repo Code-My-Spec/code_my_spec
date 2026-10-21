@@ -14,6 +14,9 @@ defmodule CodeMySpec.Issues.AStorylessDuplicateTitleDoesNotCrashTheMigrationTest
   """
   use CodeMySpecTest.DataCase, async: false
 
+  # Replays a Postgres migration (priv/repo/migrations): Postgres only.
+  @moduletag :postgres
+
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Issues.Issue

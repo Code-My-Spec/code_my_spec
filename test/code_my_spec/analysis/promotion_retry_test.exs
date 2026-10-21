@@ -8,7 +8,7 @@ defmodule CodeMySpec.Analysis.PromotionRetryTest do
 
   @commit String.duplicate("a", 40)
   @other_commit String.duplicate("b", 40)
-  @since ~U[2026-10-10 12:00:00Z]
+  @since ~U[2026-10-10 12:00:00.000000Z]
 
   setup do
     %{scope: full_scope_fixture()}

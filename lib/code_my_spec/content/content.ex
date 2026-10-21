@@ -28,8 +28,8 @@ defmodule CodeMySpec.Content.Content do
     field :content_type, Ecto.Enum, values: [:blog, :page, :landing, :documentation]
     field :processed_content, :string
     field :protected, :boolean, default: false
-    field :publish_at, :utc_datetime
-    field :expires_at, :utc_datetime
+    field :publish_at, :utc_datetime_usec
+    field :expires_at, :utc_datetime_usec
 
     field :meta_title, :string
     field :meta_description, :string
@@ -42,7 +42,7 @@ defmodule CodeMySpec.Content.Content do
       join_through: "content_tags",
       on_replace: :delete
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

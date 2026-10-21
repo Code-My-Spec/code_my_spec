@@ -154,8 +154,8 @@ defmodule CodeMySpec.Stories.Story do
     # copy of it goes stale. Only latches that must not follow the computation
     # back down are stored.
     field :priority, :integer
-    field :locked_at, :utc_datetime
-    field :lock_expires_at, :utc_datetime
+    field :locked_at, :utc_datetime_usec
+    field :lock_expires_at, :utc_datetime_usec
     field :locked_by, :id
     field :project_id, :binary_id
     field :account_id, :binary_id

@@ -41,7 +41,7 @@ defmodule CodeMySpec.Agents.ModelSetting do
     field :model, :string
     field :user_id, :integer
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

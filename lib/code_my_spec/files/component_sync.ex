@@ -128,7 +128,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   end
 
   defp do_sync(scope, code, live_files, incremental?, start, removed_module_names, env) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     existing_components = Components.list_components(scope)
     existing_map = Map.new(existing_components, &{&1.module_name, &1})

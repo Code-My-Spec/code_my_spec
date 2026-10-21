@@ -23,8 +23,8 @@ defmodule CodeMySpec.SqliteMigrationsTest do
   end
 
   defp versions(dir) do
-    dir
-    |> File.ls!()
-    |> Enum.map(&(&1 |> String.split("_", parts: 2) |> hd() |> String.to_integer()))
+    for file <- File.ls!(dir),
+        [_, version] <- [Regex.run(~r/^(\d+)_.*\.exs$/, file)],
+        do: String.to_integer(version)
   end
 end

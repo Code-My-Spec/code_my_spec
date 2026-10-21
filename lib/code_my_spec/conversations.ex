@@ -1151,9 +1151,7 @@ defmodule CodeMySpec.Conversations do
 
   defp touch(%Conversation{} = conversation, read) do
     from(c in Conversation, where: c.id == ^conversation.id)
-    |> Repo.update_all(
-      set: [read: read, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)]
-    )
+    |> Repo.update_all(set: [read: read, updated_at: DateTime.utc_now()])
   end
 
   @doc "Publish a newly committed message when its caller deferred broadcasting inside a transaction."

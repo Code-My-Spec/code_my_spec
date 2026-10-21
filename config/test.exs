@@ -818,7 +818,9 @@ if System.get_env("CMS_TEST_SQLITE") do
     priv: "priv/sqlite",
     database: System.get_env("CMS_TEST_SQLITE"),
     pool: Ecto.Adapters.SQL.Sandbox,
-    pool_size: 10,
+    # One connection: SQLite has one writer, and two pooled connections each
+    # holding a sandbox transaction fail each other's writes outright.
+    pool_size: 1,
     journal_mode: :wal,
     busy_timeout: 10_000,
     default_transaction_mode: :immediate

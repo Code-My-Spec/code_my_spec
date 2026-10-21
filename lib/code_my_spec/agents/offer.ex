@@ -116,5 +116,6 @@ defmodule CodeMySpec.Agents.Offer do
     |> validate_required(@required)
     |> foreign_key_constraint(:agent_id)
     |> foreign_key_constraint(:project_id)
+    |> CodeMySpec.Repo.References.check()
   end
 end

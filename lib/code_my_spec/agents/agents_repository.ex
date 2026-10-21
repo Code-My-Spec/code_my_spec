@@ -113,7 +113,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
           {:ok, non_neg_integer()} | {:error, :no_project}
   def set_copy_continuous(%Scope{active_project_id: project_id}, copy_id, continuous?)
       when is_binary(project_id) and is_binary(copy_id) and is_boolean(continuous?) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     {count, _} =
       Agent
@@ -142,7 +142,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
           {:ok, non_neg_integer()} | {:error, :no_project}
   def sync_working_copy_root(%Scope{active_project_id: project_id}, copy_id, root)
       when is_binary(project_id) and is_binary(copy_id) and is_binary(root) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     {count, _} =
       Agent

@@ -1431,7 +1431,7 @@ CREATE TABLE "user_preferences" (
 
 CREATE TABLE "users" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-  "email" BLOB NOT NULL,
+  "email" TEXT COLLATE NOCASE NOT NULL,
   "hashed_password" TEXT,
   "confirmed_at" TEXT,
   "inserted_at" TEXT NOT NULL,

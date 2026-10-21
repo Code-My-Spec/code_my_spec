@@ -19,11 +19,11 @@ defmodule CodeMySpec.Users.User do
     field :email, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
-    field :confirmed_at, :utc_datetime
-    field :authenticated_at, :utc_datetime, virtual: true
-    field :cli_first_connected_at, :utc_datetime
+    field :confirmed_at, :utc_datetime_usec
+    field :authenticated_at, :utc_datetime_usec, virtual: true
+    field :cli_first_connected_at, :utc_datetime_usec
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc """
@@ -124,7 +124,7 @@ defmodule CodeMySpec.Users.User do
   Confirms the account by setting `confirmed_at`.
   """
   def confirm_changeset(user) do
-    now = DateTime.utc_now(:second)
+    now = DateTime.utc_now()
     change(user, confirmed_at: now)
   end
 

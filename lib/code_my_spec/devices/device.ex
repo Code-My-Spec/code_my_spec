@@ -119,7 +119,7 @@ defmodule CodeMySpec.Devices.Device do
     field :fire_routine_id, :string
     field :fire_token, CodeMySpec.Encrypted.Binary
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec kinds() :: [atom()]
@@ -211,6 +211,8 @@ defmodule CodeMySpec.Devices.Device do
     |> put_change(:id, id)
     |> validate_required([:kind, :id])
     |> unique_constraint(:id, name: :devices_pkey)
+    # SQLite names a unique violation after its columns.
+    |> unique_constraint(:id, name: :devices_id_index)
   end
 
   @doc """

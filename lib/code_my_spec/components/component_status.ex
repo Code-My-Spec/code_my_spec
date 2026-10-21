@@ -27,7 +27,7 @@ defmodule CodeMySpec.Components.ComponentStatus do
     field :expected_files, :map, default: %{}
     field :actual_files, {:array, :string}, default: []
     field :failing_tests, {:array, :string}, default: []
-    field :computed_at, :utc_datetime
+    field :computed_at, :utc_datetime_usec
   end
 
   def changeset(component_status, attrs) do

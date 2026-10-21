@@ -22,7 +22,7 @@ defmodule CodeMySpec.Deploys.Deploy do
     field :environment, :string
     field :commit_sha, :string
     field :version, :string
-    field :health_verified_at, :utc_datetime
+    field :health_verified_at, :utc_datetime_usec
 
     belongs_to :project, CodeMySpec.Projects.Project, type: :binary_id
     belongs_to :story, CodeMySpec.Stories.Story

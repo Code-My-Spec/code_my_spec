@@ -9,6 +9,9 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
 
   use CodeMySpecTest.DataCase, async: false
 
+  # Pgvector: Postgres only.
+  @moduletag :postgres
+
   @moduletag :capture_log
 
   import Ecto.Query

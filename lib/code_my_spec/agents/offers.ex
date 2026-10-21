@@ -331,14 +331,21 @@ defmodule CodeMySpec.Agents.Offers do
     insert_offer(agent, kind, type, key, attempt, turn_requested_at)
   end
 
+  # A failed write rolls the whole step back and answers its error, so the caller
+  # still gets the changeset.
   defp serialized(agent_id, fun) do
-    {:ok, result} =
-      Repo.transaction(fn ->
-        Repo.lock!("offers:" <> agent_id)
-        fun.()
-      end)
+    Repo.transaction(fn ->
+      Repo.lock!("offers:" <> agent_id)
 
-    result
+      case fun.() do
+        {:error, _} = error -> Repo.rollback(error)
+        result -> result
+      end
+    end)
+    |> case do
+      {:ok, result} -> result
+      {:error, error} -> error
+    end
   end
 
   # A turn handed to a harness reports started within seconds. It has to lapse
