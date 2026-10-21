@@ -33,12 +33,6 @@ defmodule CodeMySpecWeb.AccountLive.Components.Navigation do
           >
             Invitations
           </.link>
-          <.link
-            patch={~p"/app/accounts/#{@account.id}/agents"}
-            class={["tab", if(@active_tab == :agents, do: "tab-active")]}
-          >
-            Agents
-          </.link>
         </div>
       </div>
     </div>
