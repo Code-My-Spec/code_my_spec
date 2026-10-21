@@ -363,6 +363,30 @@ defmodule CodeMySpec.Devices do
   end
 
   @doc """
+  Record that this device's harness just disconnected for the last of its
+  working copies -- the moment it went down, not merely a recent activity
+  timestamp (story 1138).
+
+  Best-effort, like `mark_alive/1`: a device that cannot be marked down is
+  not a reason to fail a channel's own shutdown.
+  """
+  @spec mark_down(Device.t() | Ecto.UUID.t()) :: :ok
+  def mark_down(%Device{} = device) do
+    device
+    |> Device.went_down_changeset(DateTime.utc_now())
+    |> Repo.update()
+
+    :ok
+  end
+
+  def mark_down(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      nil -> :ok
+      device -> mark_down(device)
+    end
+  end
+
+  @doc """
   Record what a machine is carrying, from the working copy that reported it.
 
   The figure belongs to the box rather than the checkout — two copies on one

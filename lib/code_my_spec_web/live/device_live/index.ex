@@ -168,14 +168,27 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   end
 
   defp row(device, copy_ids, now) do
+    up? = reachable?(copy_ids)
+
     %{
       device: device,
       status: box_status(device),
       provider: Provider.get(device.provider),
       name: Device.display_name(device),
-      presence: presence(reachable?(copy_ids), device, now)
+      presence: presence(up?, device, now),
+      up?: up?,
+      last_up: last_up_display(device)
     }
   end
+
+  # "Up" is this story's own claim, distinct from `presence/3`'s existing
+  # Present/Last seen wording (never conflate one liveness signal with
+  # another -- this page's own moduledoc rule) and from `box_status/1`
+  # (whether the box's token has ever signed in at all). It reuses the same
+  # connection signal `reachable?/1` already reads, per this story's own
+  # notes against building a second liveness system.
+  defp last_up_display(%Device{last_up_at: nil}), do: nil
+  defp last_up_display(%Device{last_up_at: at}), do: Calendar.strftime(at, "%H:%M")
 
   # Is any of this machine's working copies holding a channel right now?
   #
@@ -344,6 +357,17 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   <div data-test="device-presence" class="shrink-0 text-right text-sm">
                     {row.presence.label}
                     <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
+                  </div>
+
+                  <div data-test="dev-box-up" class="shrink-0 text-right text-sm">
+                    <%= if row.up? do %>
+                      Up
+                    <% else %>
+                      Down
+                      <span :if={row.last_up} data-test="last-up" class="opacity-70">
+                        Last up {row.last_up}
+                      </span>
+                    <% end %>
                   </div>
                 </div>
 

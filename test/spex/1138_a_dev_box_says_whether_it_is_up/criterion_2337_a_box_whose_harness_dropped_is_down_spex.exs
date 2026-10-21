@@ -71,7 +71,10 @@ defmodule CodeMySpecSpex.Story1138.Criterion2337Spex do
                "'cloud-1''s harness disconnected but the Dev boxes page does not show it as " <>
                  "down:\n\n#{text}"
 
-        refute text =~ ~r/\bup\b/i,
+        # Not a bare `~r/\bup\b/i` refutation: the down state's own "Last up
+        # HH:MM" text legitimately contains the word "up", so only the
+        # leading status word is checked here.
+        refute String.trim(text) =~ ~r/^up\b/i,
                "'cloud-1''s harness disconnected but the Dev boxes page still shows it as " <>
                  "up:\n\n#{text}"
 

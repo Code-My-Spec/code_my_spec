@@ -77,6 +77,13 @@ defmodule CodeMySpec.Devices.Device do
     field :account_id, Ecto.UUID
     field :last_seen_at, :utc_datetime_usec
 
+    # The last moment this device's harness was known to be connected (story
+    # 1138). Set when its last connected working copy's channel actually
+    # closes, not on activity like `last_seen_at` -- so a quiet-but-connected
+    # box never ages this, and a box that just went down shows the moment it
+    # did rather than whenever it last happened to do something.
+    field :last_up_at, :utc_datetime_usec
+
     # What this machine is carrying, as it last reported it.
     #
     # Story 1057, criterion 3324. A harness reports facts it observes about
@@ -140,6 +147,11 @@ defmodule CodeMySpec.Devices.Device do
   @doc "The box signed in with its token."
   def token_used_changeset(device, at) do
     cast(device, %{token_last_used_at: at}, [:token_last_used_at])
+  end
+
+  @doc "The device's harness just disconnected for the last of its working copies."
+  def went_down_changeset(device, at) do
+    cast(device, %{last_up_at: at}, [:last_up_at])
   end
 
   @doc "Whether this device is a dev box added from a provider."

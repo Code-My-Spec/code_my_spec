@@ -1666,12 +1666,40 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
         Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+        mark_device_down_if_last_copy(socket)
 
       _ ->
         :ok
     end
 
     :ok
+  end
+
+  # A device is up while any of its working copies holds a channel
+  # (`CodeMySpecWeb.DeviceLive.Index.reachable?/1` reads the same registry for
+  # the same claim). This copy's own channel is the one actually closing, so
+  # it is excluded from "any other copy still connected" rather than trusted
+  # to have already left the registry -- `terminate/2` runs before this
+  # process's own registry entry is torn down by its exit.
+  defp mark_device_down_if_last_copy(socket) do
+    with %Scope{active_working_copy_id: working_copy_id} when is_binary(working_copy_id) <-
+           socket.assigns.scope,
+         {:ok, %{device_id: device_id}} when is_binary(device_id) <-
+           WorkingCopies.fetch(working_copy_id) do
+      unless other_copy_connected?(device_id, working_copy_id) do
+        Devices.mark_down(device_id)
+      end
+    end
+
+    :ok
+  end
+
+  defp other_copy_connected?(device_id, excluded_copy_id) do
+    [device_id]
+    |> WorkingCopies.ids_by_device()
+    |> Map.get(device_id, [])
+    |> Enum.reject(&(&1 == excluded_copy_id))
+    |> Enum.any?(&match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(&1)))
   end
 
   # The reconcile dies with the channel that started it. `async_nolink` does not
