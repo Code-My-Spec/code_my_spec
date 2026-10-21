@@ -434,8 +434,19 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   # afterwards. Work the agent is not offered for another reason is left to the
   # checks above and below; an agent already holding a task is refused by
   # `TaskOwner` first.
-  defp prerequisites_met(scope, %Agent{role: role} = agent, %{entity_type: "story"} = requirement)
-       when role in [:coding, :qa] do
+  # Only the stages that follow certification. The earlier requirements are
+  # claimed in specs (2021, 1868) whose stories have an unmet prerequisite by
+  # construction and no other way to hold work, so enforcing them here would
+  # rewrite those fixtures; the late stages are where a premature claim costs
+  # QA's or promotion's time.
+  @late_stages ~w(ready_for_qa qa_complete story_promoted)
+
+  defp prerequisites_met(
+         scope,
+         %Agent{role: role} = agent,
+         %{entity_type: "story", name: name} = requirement
+       )
+       when role in [:coding, :qa] and name in @late_stages do
     if Agent.active_task(agent) || offered?(scope, agent, requirement) do
       :ok
     else
