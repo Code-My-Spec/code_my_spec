@@ -16,6 +16,7 @@ defmodule CodeMySpec.Agents.IssueAssignment do
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Assignment
+  alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
@@ -98,8 +99,13 @@ defmodule CodeMySpec.Agents.IssueAssignment do
       {:ok, _} = Issues.set_assigned_working_copy(scope, issue, nil)
     end)
 
-    from(a in Agent, where: a.id in ^Enum.map(team, & &1.id))
+    ids = Enum.map(team, & &1.id)
+
+    from(a in Agent, where: a.id in ^ids)
     |> Repo.update_all(set: [issue_id: nil])
+
+    # And the issue work it was offered is no longer its to take.
+    Offers.supersede_work(ids)
   end
 
   @doc "Prioritize an issue already in the team's bag; never changes bag ownership."
@@ -304,8 +310,13 @@ defmodule CodeMySpec.Agents.IssueAssignment do
   end
 
   defp bind(new_team, issue) do
-    from(a in Agent, where: a.id in ^Enum.map(new_team, & &1.id))
+    ids = Enum.map(new_team, & &1.id)
+
+    from(a in Agent, where: a.id in ^ids)
     |> Repo.update_all(set: [issue_id: issue.id, story_id: nil, team_free_at: nil])
+
+    # Work offered under the old assignment is not this team's to take any more.
+    Offers.supersede_work(ids)
   end
 
   @doc """
