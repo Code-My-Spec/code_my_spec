@@ -261,6 +261,34 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   @doc """
+  Lift a standing decline on `key` for `agent_id`: supersede any `:declined`
+  `:work` offer there, so `standing/1` no longer holds it back.
+
+  A decline is about the state at decline time (90beae27, criterion 2055) --
+  not a permanent veto on the subject. `standing/1`'s own status filter does
+  not include `:superseded`, so this is the same lever `supersede_work/1`
+  already pulls for an `:open` offer, reached for a `:declined` one instead:
+  nothing else closes that row once written, so without this an agent that
+  declined while the requirement's prerequisites were unsatisfied stays held
+  back from it even after they are satisfied, until main claims the work for
+  it directly. Always `:ok`.
+  """
+  @spec lift_decline(Ecto.UUID.t(), String.t()) :: :ok
+  def lift_decline(agent_id, key) when is_binary(agent_id) and is_binary(key) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.kind == :work and o.subject_type == "requirement" and
+        o.subject_key == ^key and o.status == :declined
+    )
+    |> Repo.update_all(set: [status: :superseded, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
   The same offer said again: link `recorded` to the open offer of this kind and
   subject if there is one, and record a new offer only if there is not.
 
