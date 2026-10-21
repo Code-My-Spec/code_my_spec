@@ -149,6 +149,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # a 500 on the public onboarding endpoint instead of a recoverable 4xx
     # (71d28513).
     |> foreign_key_constraint(:device_id, message: "does not name a known device")
+    |> CodeMySpec.Repo.References.check()
     |> unique_constraint(:main,
       name: :working_copies_one_main_per_project_index,
       message: "this project already has a main working copy"

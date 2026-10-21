@@ -193,8 +193,7 @@ defmodule CodeMySpec.ScenarioFixtures do
       email: "scenario-test@example.com",
       oauth_token: "test-token-#{System.unique_integer([:positive])}",
       oauth_refresh_token: "test-refresh-token",
-      oauth_expires_at:
-        DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.truncate(:second)
+      oauth_expires_at: DateTime.utc_now() |> DateTime.add(3600, :second)
     })
   end
 

@@ -331,16 +331,21 @@ defmodule CodeMySpec.Agents.Offers do
     insert_offer(agent, kind, type, key, attempt, turn_requested_at)
   end
 
+  # A failed write rolls the whole step back and answers its error, so the caller
+  # still gets the changeset.
   defp serialized(agent_id, fun) do
-    Repo.checkout(fn ->
-      Repo.query!("SELECT pg_advisory_lock(hashtext($1))", ["offers:" <> agent_id])
+    Repo.transaction(fn ->
+      Repo.lock!("offers:" <> agent_id)
 
-      try do
-        fun.()
-      after
-        Repo.query!("SELECT pg_advisory_unlock(hashtext($1))", ["offers:" <> agent_id])
+      case fun.() do
+        {:error, _} = error -> Repo.rollback(error)
+        result -> result
       end
     end)
+    |> case do
+      {:ok, result} -> result
+      {:error, error} -> error
+    end
   end
 
   # A turn handed to a harness reports started within seconds. It has to lapse
@@ -528,11 +533,10 @@ defmodule CodeMySpec.Agents.Offers do
   defp undelivered_by_message(message_id) do
     now = DateTime.utc_now()
 
-    from(o in Offer,
-      join: link in OfferMessage,
-      on: link.offer_id == o.id,
-      where: link.message_id == ^message_id and o.status == :open
-    )
+    linked =
+      from(link in OfferMessage, where: link.message_id == ^message_id, select: link.offer_id)
+
+    from(o in Offer, where: o.id in subquery(linked) and o.status == :open)
     |> Repo.update_all(set: [status: :undelivered, outcome_at: now, updated_at: now])
 
     :ok

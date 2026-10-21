@@ -34,12 +34,12 @@ defmodule CodeMySpec.InvitationsFixtures do
   end
 
   def accepted_invitation_fixture(account \\ nil, inviter \\ nil, attrs \\ %{}) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     invitation_fixture(account, inviter, Map.put(attrs, :accepted_at, now))
   end
 
   def expired_invitation_fixture(account \\ nil, inviter \\ nil, attrs \\ %{}) do
-    past_date = DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)
+    past_date = DateTime.utc_now() |> DateTime.add(-1, :day)
 
     invitation_fixture(
       account,
@@ -51,7 +51,7 @@ defmodule CodeMySpec.InvitationsFixtures do
   end
 
   def cancelled_invitation_fixture(account \\ nil, inviter \\ nil, attrs \\ %{}) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     invitation_fixture(account, inviter, Map.put(attrs, :cancelled_at, now))
   end
 end

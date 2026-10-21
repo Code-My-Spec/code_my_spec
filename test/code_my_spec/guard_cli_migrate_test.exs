@@ -20,22 +20,26 @@ defmodule CodeMySpec.GuardCliMigrateTest do
 
   alias Mix.Tasks.Cms.GuardCliMigrate
 
-  describe "refuse_on_sqlite!/1" do
+  describe "refuse_on_sqlite!/2" do
     test "passes on Postgres" do
-      assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.Postgres)
+      assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.Postgres, nil)
     end
 
-    # Desktop imports the harness fragment and sets the adapter back to
-    # Postgres. Keying on MIX_ENV would get one of them wrong, so the adapter is
-    # the key.
+    # Keying on MIX_ENV would get one environment or another wrong, so the
+    # adapter is the key.
     test "passes on any non-SQLite adapter, whatever the environment is called" do
-      assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.MyXQL)
+      assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.MyXQL, nil)
+    end
+
+    # The desktop: SQLite with its own migration set.
+    test "passes on SQLite pointed at its own priv" do
+      assert :ok = GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.SQLite3, "priv/sqlite")
     end
 
     test "refuses on SQLite, naming the set that would run and the one that should" do
       %{message: message} =
         assert_raise(RuntimeError, fn ->
-          GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.SQLite3)
+          GuardCliMigrate.refuse_on_sqlite!(Ecto.Adapters.SQLite3, nil)
         end)
 
       assert message =~ "priv/repo/migrations"

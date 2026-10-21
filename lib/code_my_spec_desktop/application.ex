@@ -2,8 +2,8 @@ defmodule CodeMySpecDesktop.Application do
   @moduledoc """
   Starts the desktop setup window before database-dependent services.
 
-  The shell serves prerequisite results and installation guidance without
-  Postgres. Once checks pass, the user can start the web application and
+  The shell serves prerequisite results and installation guidance before the
+  database exists. Once checks pass, the user can start the web application and
   harness; startup failures leave the setup window available for recovery.
   """
 

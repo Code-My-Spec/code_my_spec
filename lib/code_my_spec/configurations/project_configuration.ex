@@ -94,7 +94,7 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     # ships".
     field :devops, Ecto.Enum, values: [:off, :uat, :prod], default: :off
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

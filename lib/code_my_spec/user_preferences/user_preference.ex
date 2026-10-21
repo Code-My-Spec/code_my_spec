@@ -9,7 +9,7 @@ defmodule CodeMySpec.UserPreferences.UserPreference do
     field :token, :string
     field :user_id, :id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

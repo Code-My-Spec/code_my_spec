@@ -69,7 +69,7 @@ defmodule CodeMySpec.Files.ReconcileTimingTest do
   test "a reconcile that raises is named before it crashes, and still crashes", %{scope: scope} do
     log =
       capture_log(fn ->
-        assert_raise Postgrex.Error, fn ->
+        assert_raise database_error(), fn ->
           FileSync.reconcile_and_project(scope, [%{}])
         end
       end)
@@ -82,4 +82,7 @@ defmodule CodeMySpec.Files.ReconcileTimingTest do
            "the timeout has to appear beside the elapsed time — a duration alone " <>
              "does not tell a reader whether it hit the limit or died some other way"
   end
+
+  defp database_error,
+    do: if(CodeMySpec.Repo.sqlite?(), do: Exqlite.Error, else: Postgrex.Error)
 end

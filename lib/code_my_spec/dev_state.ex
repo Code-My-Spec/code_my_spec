@@ -119,46 +119,40 @@ defmodule CodeMySpec.DevState do
     }
   end
 
+  @error_text ~r/(arguments|exec failed|usage limit|token .*expired|could not be refreshed)/i
+
   # One pass over the rows, cheap enough to call every few minutes.
   defp message_counts(agent_id, since) do
-    query =
+    rows =
       from(m in "conversation_messages",
         join: c in "conversations",
         on: c.id == m.conversation_id,
         where: c.agent_id == type(^agent_id, Ecto.UUID) and m.inserted_at > ^since,
         select: %{
-          # The `tool_calls` column, not `role == "tool"`: a call is stored as
-          # `role: :assistant, content: [], tool_calls: [...]`, and
-          # `role == "tool"` is a result row, written only for failures.
-          tools:
-            filter(
-              count(m.id),
-              not is_nil(m.tool_calls) and fragment("? <> '[]'::jsonb", m.tool_calls)
-            ),
-          tool_results: filter(count(m.id), m.role == "tool"),
-          spoke:
-            filter(count(m.id), m.role == "assistant" and fragment("?::text <> '[]'", m.content)),
-          # Prose-less and call-less: a turn that genuinely produced nothing.
-          empty:
-            filter(
-              count(m.id),
-              m.role == "assistant" and fragment("?::text = '[]'", m.content) and
-                (is_nil(m.tool_calls) or fragment("? = '[]'::jsonb", m.tool_calls))
-            ),
-          errors:
-            filter(
-              count(m.id),
-              fragment(
-                "?::text ~* '(arguments|exec failed|usage limit|token .*expired|could not be refreshed)'",
-                m.content
-              )
-            ),
-          last: max(m.inserted_at)
+          role: m.role,
+          content: type(m.content, {:array, :map}),
+          tool_calls: type(m.tool_calls, {:array, :map}),
+          inserted_at: type(m.inserted_at, :utc_datetime_usec)
         }
       )
+      |> Repo.all()
 
-    Repo.one(query) ||
-      %{tools: 0, tool_results: 0, spoke: 0, empty: 0, errors: 0, last: nil}
+    # The `tool_calls` column, not `role == "tool"`: a call is stored as
+    # `role: :assistant, content: [], tool_calls: [...]`, and `role == "tool"`
+    # is a result row, written only for failures.
+    %{
+      tools: Enum.count(rows, &(&1.tool_calls not in [nil, []])),
+      tool_results: Enum.count(rows, &(&1.role == "tool")),
+      spoke: Enum.count(rows, &(&1.role == "assistant" and &1.content != [])),
+      # Prose-less and call-less: a turn that genuinely produced nothing.
+      empty:
+        Enum.count(
+          rows,
+          &(&1.role == "assistant" and &1.content == [] and &1.tool_calls in [nil, []])
+        ),
+      errors: Enum.count(rows, &Regex.match?(@error_text, Jason.encode!(&1.content || []))),
+      last: rows |> Enum.map(& &1.inserted_at) |> Enum.max(fn -> nil end)
+    }
   end
 
   defp active_task_name(agent) do

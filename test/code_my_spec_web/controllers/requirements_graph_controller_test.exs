@@ -117,7 +117,7 @@ defmodule CodeMySpecWeb.RequirementsGraphControllerTest do
 
   defp access_token(user) do
     value = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     {1, [app]} =
       CodeMySpec.Repo.insert_all(

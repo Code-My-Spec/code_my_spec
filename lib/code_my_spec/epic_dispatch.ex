@@ -100,7 +100,7 @@ defmodule CodeMySpec.EpicDispatch do
     result =
       save(scope, epic, %{
         status: :dispatched,
-        dispatched_at: DateTime.utc_now() |> DateTime.truncate(:second)
+        dispatched_at: DateTime.utc_now()
       })
 
     # Placed (on the stories: `place/3`), staffed and assigned, all after the
@@ -191,7 +191,7 @@ defmodule CodeMySpec.EpicDispatch do
   @spec place(Scope.t(), Ecto.UUID.t(), Ecto.UUID.t() | nil) :: {:ok, non_neg_integer()}
   def place(%Scope{active_project_id: project_id}, epic_id, working_copy_id)
       when is_binary(project_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     held = held_story_ids(%Scope{active_project_id: project_id})
 
@@ -230,7 +230,7 @@ defmodule CodeMySpec.EpicDispatch do
       if action == :remove, do: where(query, [s], s.working_copy_id == ^copy_id), else: query
 
     destination = if action == :add, do: copy_id, else: nil
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     {count, _} = Repo.update_all(query, set: [working_copy_id: destination, updated_at: now])
     count
   end

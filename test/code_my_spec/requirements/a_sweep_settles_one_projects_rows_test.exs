@@ -149,7 +149,7 @@ defmodule CodeMySpec.Requirements.ASweepSettlesOneProjectsRowsTest do
       on: s.id == n.story_id,
       where: n.name == ^name and s.project_id == type(^project_id, :binary_id),
       where: is_nil(n.working_copy_id),
-      select: {n.satisfied, n.details}
+      select: {type(n.satisfied, :boolean), type(n.details, :map)}
     )
     |> Repo.all()
     |> Enum.sort()

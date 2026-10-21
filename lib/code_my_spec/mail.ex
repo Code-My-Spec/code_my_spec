@@ -105,7 +105,7 @@ defmodule CodeMySpec.Mail do
   defp domain_attrs(name, body) do
     verified_at =
       if body["status"] == "verified",
-        do: DateTime.utc_now() |> DateTime.truncate(:second),
+        do: DateTime.utc_now(),
         else: nil
 
     %{domain: name, resend_domain_id: body["id"], domain_verified_at: verified_at}
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Mail do
          {:ok, body} <- ResendClient.get_domain(id) do
       case body["status"] do
         "verified" ->
-          now = DateTime.utc_now() |> DateTime.truncate(:second)
+          now = DateTime.utc_now()
           {:ok, project} = Projects.update_project(scope, project, %{domain_verified_at: now})
           {:ok, project, :verified}
 

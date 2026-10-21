@@ -177,22 +177,15 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
         []
 
       words ->
-        any_word =
-          Enum.reduce(words, dynamic(false), fn word, acc ->
-            dynamic(
-              [q],
-              ^acc or fragment("?::text ILIKE ?", q.questions, ^"%#{word}%") or
-                fragment("?::text ILIKE ?", q.answers, ^"%#{word}%")
-            )
-          end)
+        words = Enum.map(words, &String.downcase/1)
 
         from(q in QuestionRequest,
           where: q.user_id == ^user_id and q.status == "answered",
-          where: ^any_word,
-          order_by: [desc: q.updated_at],
-          limit: 200
+          order_by: [desc: q.updated_at]
         )
         |> Repo.all()
+        |> Enum.filter(&mentions_any?(&1, words))
+        |> Enum.take(200)
         |> Enum.map(&{&1, matched_words(&1, words)})
         |> Enum.sort_by(fn {_q, score} -> score end, :desc)
         |> Enum.take(20)
@@ -216,6 +209,12 @@ defmodule CodeMySpec.Agents.Main.QuestionsRepository do
       String.downcase(Jason.encode!(question.questions) <> " " <> Jason.encode!(question.answers))
 
     Enum.count(words, &String.contains?(text, String.replace(&1, "\\", "")))
+  end
+
+  # Either side's JSON, case-insensitively: what `ILIKE` on its text did.
+  defp mentions_any?(question, words) do
+    text = String.downcase(Jason.encode!([question.questions, question.answers]))
+    Enum.any?(words, &String.contains?(text, &1))
   end
 
   @doc "One answered question by id, or nil."

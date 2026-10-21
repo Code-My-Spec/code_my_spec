@@ -56,7 +56,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert response.status == 200
     assert response.body =~ "Set up this machine"
     assert response.body =~ "setup-agent-unavailable"
-    assert response.body =~ "Check prerequisites"
+    assert response.body =~ ~s(data-test="check-prerequisites")
     refute File.exists?(Path.join(ctx.root, "setup"))
     assert DynamicSupervisor.which_children(CodeMySpecDesktop.RuntimeSupervisor) == []
     assert Process.alive?(ctx.shell)
@@ -69,13 +69,15 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert postgres["state"] == "errored"
     assert [%{"exit_status" => nil}] = postgres["commands"]
     assert File.regular?(status.snapshot["results_path"])
-    assert Req.post!(ctx.url <> "/continue", redirect: false).status == 409
+    # Start is offered whatever the checklist says: the app needs none of it.
+    assert Req.post!(ctx.url <> "/continue", redirect: false).status == 303
+    await_settled()
 
     response = Req.get!(ctx.url)
     assert response.status == 200
     assert response.body =~ "Install PostgreSQL"
     assert response.body =~ "Install pgvector"
-    assert response.body =~ "Manual setup is available"
+    assert response.body =~ ~s(data-test="setup-agent-unavailable")
     assert Process.alive?(ctx.shell)
     assert DynamicSupervisor.which_children(CodeMySpecDesktop.RuntimeSupervisor) == []
   end
@@ -142,7 +144,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     response = Req.get!(ctx.url)
     assert response.status == 200
     assert response.body =~ "database_unavailable"
-    assert response.body =~ "Check prerequisites"
+    assert response.body =~ ~s(data-test="check-prerequisites")
     assert Process.alive?(ctx.shell)
     assert DynamicSupervisor.which_children(CodeMySpecDesktop.RuntimeSupervisor) == []
     assert File.read!(checked.snapshot["results_path"]) == recorded
@@ -160,7 +162,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert File.regular?(status.snapshot["results_path"])
 
     assert Req.post!(ctx.url <> "/continue", headers: [{"origin", origin}], redirect: false).status ==
-             409
+             303
   end
 
   test "opaque origins cannot run setup checks", ctx do

@@ -19,7 +19,7 @@ defmodule CodeMySpec.Personas.PersonaStory do
     belongs_to :persona, Persona, type: :binary_id
     belongs_to :story, Story
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

@@ -21,7 +21,7 @@ defmodule CodeMySpec.ContentPublishing.Snapshot do
 
     belongs_to :project, Project, type: :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

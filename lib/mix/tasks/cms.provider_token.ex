@@ -81,8 +81,8 @@ defmodule Mix.Tasks.Cms.ProviderToken do
         from i in Integration,
           where: i.provider == ^provider,
           where:
-            is_nil(fragment("?->>'provider_user_id'", i.provider_metadata)) or
-              fragment("?->>'provider_user_id'", i.provider_metadata) != "spex",
+            is_nil(json_extract_path(i.provider_metadata, ["provider_user_id"])) or
+              json_extract_path(i.provider_metadata, ["provider_user_id"]) != "spex",
           order_by: [desc: i.updated_at],
           limit: 1
       )

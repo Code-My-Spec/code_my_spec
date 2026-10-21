@@ -46,6 +46,9 @@ defmodule CodeMySpec.Analysis.Run do
           args: map() | nil,
           stats: map() | nil,
           requested_by: map() | nil,
+          requester_agent_id: String.t() | nil,
+          orphaned: boolean(),
+          settled: String.t() | nil,
           output: String.t() | nil,
           exit_status: integer() | nil,
           started_at: DateTime.t(),
@@ -82,6 +85,16 @@ defmodule CodeMySpec.Analysis.Run do
     # eventually writes this row.
     field :requested_by, :map
 
+    # The agent owed this run's answer: `requested_by`'s `agent_id`, an agent
+    # UUID or a Claude Code subagent id. Others waiting on it are `waiters`.
+    field :requester_agent_id, :string
+    has_many :waiters, CodeMySpec.Analysis.RunWaiter
+
+    # Its harness went away while it ran, and how that was settled since:
+    # reopened, run again, or given up on (`Analysis.resume_orphaned/2`).
+    field :orphaned, :boolean, default: false
+    field :settled, :string
+
     field :output, :string
     field :exit_status, :integer
     field :started_at, :utc_datetime_usec
@@ -108,7 +121,7 @@ defmodule CodeMySpec.Analysis.Run do
     # closed without reaching into another checkout's work.
     field :working_copy_id, :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Requested but not yet begun: waiting for a machine slot."
@@ -162,6 +175,7 @@ defmodule CodeMySpec.Analysis.Run do
       :args,
       :stats,
       :requested_by,
+      :orphaned,
       :exit_status,
       :started_at,
       :finished_at,
@@ -170,8 +184,16 @@ defmodule CodeMySpec.Analysis.Run do
     ])
     # Empty stdout is a recorded result; nil means no output was retained.
     |> cast(attrs, [:output], empty_values: [])
+    |> put_requester()
     |> validate_required([:source, :kind, :status, :started_at, :project_id])
     |> validate_inclusion(:source, @sources)
     |> foreign_key_constraint(:project_id)
+  end
+
+  defp put_requester(changeset) do
+    case get_field(changeset, :requested_by) do
+      %{} = by -> put_change(changeset, :requester_agent_id, by["agent_id"] || by[:agent_id])
+      _ -> changeset
+    end
   end
 end

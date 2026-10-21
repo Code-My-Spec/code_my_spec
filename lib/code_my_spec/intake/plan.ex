@@ -82,7 +82,7 @@ defmodule CodeMySpec.Intake.Plan do
     belongs_to :account, Account
     belongs_to :project, Project
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "A brand new plan for an anonymous visitor who has typed nothing yet."

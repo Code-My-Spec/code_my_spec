@@ -9,9 +9,9 @@ defmodule CodeMySpec.ClientUsers.ClientUser do
     field :email, :string
     field :oauth_token, CodeMySpec.Encrypted.Binary
     field :oauth_refresh_token, CodeMySpec.Encrypted.Binary
-    field :oauth_expires_at, :utc_datetime
+    field :oauth_expires_at, :utc_datetime_usec
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

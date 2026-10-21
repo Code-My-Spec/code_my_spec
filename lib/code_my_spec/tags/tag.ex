@@ -29,7 +29,7 @@ defmodule CodeMySpec.Tags.Tag do
     belongs_to :project, Project, type: :binary_id
     has_many :story_tags, StoryTag
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec changeset(t(), map()) :: Ecto.Changeset.t()

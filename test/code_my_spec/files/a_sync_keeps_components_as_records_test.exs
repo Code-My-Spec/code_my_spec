@@ -24,7 +24,8 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
       fingerprint: "sha-#{System.unique_integer([:positive])}",
       size: 100,
       valid: true,
-      validation_errors: %{"data" => data}
+      validation_errors: %{"data" => data},
+      module_name: data["module_name"]
     })
   end
 

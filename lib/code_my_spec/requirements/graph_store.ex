@@ -60,7 +60,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
           {:ok, %{inserted: non_neg_integer(), reaped: non_neg_integer()}}
   def write(%Scope{active_project_id: project_id} = scope, covered, nodes) do
     working_copy_id = Projection.vantage(scope)
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
     target = event_target()
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
@@ -69,24 +69,23 @@ defmodule CodeMySpec.Requirements.GraphStore do
     Repo.transaction(fn ->
       existing = existing_rows(target, covered, working_copy_id)
       before = existing |> Enum.map(& &1.id) |> MapSet.new()
-      before_ids_by_key = Map.new(existing, &{{&1.entity_type, &1.owner_id, &1.name}, &1.id})
+      before_by_key = Map.new(existing, &{{&1.entity_type, &1.owner_id, &1.name}, &1})
 
       written =
         nodes
         |> Enum.group_by(& &1.entity_type)
         |> Enum.flat_map(fn {entity_type, group} ->
-          upsert_group(target, entity_type, group, working_copy_id, now)
+          upsert_group(target, entity_type, group, before_by_key, working_copy_id, now)
         end)
         |> MapSet.new()
 
-      # `written` only names rows the upsert actually touched -- a row
-      # `on_conflict/1`'s guard skipped is covered just the same, so it comes
-      # from the input rather than from RETURNING.
+      # `written` only names rows that changed -- an unchanged row is covered
+      # just the same, so it comes from the input.
       covered_ids =
         for node <- nodes,
-            id = Map.get(before_ids_by_key, {node.entity_type, node.entity_id, node.name}),
-            not is_nil(id),
-            do: id
+            row = Map.get(before_by_key, {node.entity_type, node.entity_id, node.name}),
+            not is_nil(row),
+            do: row.id
 
       kept = MapSet.union(written, MapSet.new(covered_ids))
 
@@ -97,62 +96,67 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  # One upsert per entity type, because each has its own conflict target.
-  # Returns the ids the write landed on, so departed rows are a subtraction.
-  defp upsert_group(target, entity_type, nodes, working_copy_id, now) do
-    rows = Enum.map(nodes, &row(&1, entity_type, &1.entity_id, working_copy_id, now))
+  # A row is rewritten only when one of these moved; `checked_at` moves only
+  # when the answer did, as in `sweep/2` (graph reads report it as `computed_at`).
+  @compared [
+    :satisfied,
+    :details,
+    :description,
+    :inputs_fingerprint,
+    :owner_component_type,
+    :node_scope
+  ]
+  @verdict [:satisfied, :details]
 
+  # Rows this vantage already holds are compared here and rewritten by id; new
+  # ones are inserted. Returns the ids written, so departed rows are a subtraction.
+  defp upsert_group(target, entity_type, nodes, before_by_key, working_copy_id, now) do
+    {fresh, changed} =
+      Enum.reduce(nodes, {[], []}, fn node, {fresh, changed} ->
+        row = row(node, entity_type, node.entity_id, working_copy_id, now)
+
+        case Map.get(before_by_key, {entity_type, node.entity_id, node.name}) do
+          nil -> {[row | fresh], changed}
+          old -> {fresh, rewrite(old, row, now) ++ changed}
+        end
+      end)
+
+    # `:nothing` absorbs a concurrent drain that inserted the same row first.
+    inserted = insert_rows(target, fresh, on_conflict: :nothing, returning: [:id])
+
+    rewritten =
+      insert_rows(target, changed,
+        on_conflict: {:replace, @compared ++ [:checked_at, :updated_at]},
+        conflict_target: [:id],
+        returning: [:id]
+      )
+
+    inserted ++ rewritten
+  end
+
+  defp rewrite(old, row, now) do
+    if Enum.any?(@compared, &(Map.get(old, &1) != comparable(&1, row))) do
+      moved? = Enum.any?(@verdict, &(Map.get(old, &1) != comparable(&1, row)))
+      [Map.merge(row, %{id: old.id, checked_at: if(moved?, do: now, else: old.checked_at)})]
+    else
+      []
+    end
+  end
+
+  # `details` comes back from the database with string keys.
+  defp comparable(:details, row), do: row.details |> Jason.encode!() |> Jason.decode!()
+  defp comparable(field, row), do: Map.get(row, field)
+
+  defp insert_rows(_target, [], _opts), do: []
+
+  # Chunked by the bind budget divided by the row's own width.
+  defp insert_rows(target, rows, opts) do
     rows
     |> Enum.chunk_every(div(@bind_budget, map_size(hd(rows))))
     |> Enum.flat_map(fn chunk ->
-      {_n, returned} =
-        Repo.insert_all(target, chunk,
-          on_conflict: on_conflict(target),
-          conflict_target: conflict_target(entity_type),
-          returning: [:id]
-        )
-
+      {_n, returned} = Repo.insert_all(target, chunk, opts)
       Enum.map(returned, & &1.id)
     end)
-  end
-
-  # What an upsert overwrites on conflict. `checked_at` moves only when the
-  # answer did, as in `sweep/2`: graph reads report it as `computed_at`.
-  # Named columns rather than `:replace_all`, which would overwrite `id` and
-  # `inserted_at` — keeping the id is the point of upserting.
-  defp on_conflict({_table, _schema} = target) do
-    from(n in target,
-      update: [
-        set: [
-          satisfied: fragment("EXCLUDED.satisfied"),
-          details: fragment("EXCLUDED.details"),
-          description: fragment("EXCLUDED.description"),
-          inputs_fingerprint: fragment("EXCLUDED.inputs_fingerprint"),
-          owner_component_type: fragment("EXCLUDED.owner_component_type"),
-          node_scope: fragment("EXCLUDED.node_scope"),
-          updated_at: fragment("EXCLUDED.updated_at"),
-          checked_at:
-            fragment(
-              "CASE WHEN ? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details THEN EXCLUDED.checked_at ELSE ? END",
-              n.satisfied,
-              n.details,
-              n.checked_at
-            )
-        ]
-      ],
-      # An unchanged row is not rewritten. RETURNING omits it, so `write/3`
-      # takes what it kept from its input, not from this result.
-      where:
-        fragment(
-          "? IS DISTINCT FROM EXCLUDED.satisfied OR ? IS DISTINCT FROM EXCLUDED.details OR ? IS DISTINCT FROM EXCLUDED.description OR ? IS DISTINCT FROM EXCLUDED.inputs_fingerprint OR ? IS DISTINCT FROM EXCLUDED.owner_component_type OR ? IS DISTINCT FROM EXCLUDED.node_scope",
-          n.satisfied,
-          n.details,
-          n.description,
-          n.inputs_fingerprint,
-          n.owner_component_type,
-          n.node_scope
-        )
-    )
   end
 
   # Every row the covered owners hold at this vantage, with its (owner, name)
@@ -168,7 +172,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
         [n],
         n.issue_id in subquery(
           from(i in CodeMySpec.Issues.Issue, where: i.story_id in ^story_ids, select: i.id)
-        ) or fragment("(?->>'story_id')::bigint", n.details) in ^story_ids
+        ) or type(json_extract_path(n.details, ["story_id"]), :integer) in ^story_ids
       )
       |> where(^copy_filter(working_copy_id))
       |> select([n], n.issue_id)
@@ -190,41 +194,24 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  defp select_existing(query, "component" = entity_type),
-    do:
-      select(query, [n], %{
-        id: n.id,
-        name: n.name,
-        owner_id: n.component_id,
-        entity_type: ^entity_type
-      })
+  # What `upsert_group/6` compares against, keyed by owner.
+  defp select_existing(query, entity_type) do
+    owner = owner_field(entity_type)
 
-  defp select_existing(query, "story" = entity_type),
-    do:
-      select(query, [n], %{
-        id: n.id,
-        name: n.name,
-        owner_id: n.story_id,
-        entity_type: ^entity_type
-      })
-
-  defp select_existing(query, "issue" = entity_type),
-    do:
-      select(query, [n], %{
-        id: n.id,
-        name: n.name,
-        owner_id: n.issue_id,
-        entity_type: ^entity_type
-      })
-
-  defp select_existing(query, "project" = entity_type),
-    do:
-      select(query, [n], %{
-        id: n.id,
-        name: n.name,
-        owner_id: n.project_id,
-        entity_type: ^entity_type
-      })
+    select(query, [n], %{
+      id: n.id,
+      name: n.name,
+      owner_id: field(n, ^owner),
+      entity_type: ^entity_type,
+      satisfied: n.satisfied,
+      details: n.details,
+      description: n.description,
+      inputs_fingerprint: n.inputs_fingerprint,
+      owner_component_type: n.owner_component_type,
+      node_scope: n.node_scope,
+      checked_at: n.checked_at
+    })
+  end
 
   defp delete_ids([], _target), do: :ok
 
@@ -238,20 +225,6 @@ defmodule CodeMySpec.Requirements.GraphStore do
   defp owners_filter("issue", ids), do: dynamic([n], n.issue_id in ^ids)
   defp owners_filter("story", ids), do: dynamic([n], n.story_id in ^ids)
   defp owners_filter("project", ids), do: dynamic([n], n.project_id in ^ids)
-
-  # The partial unique indexes, one per owner column. `unsafe_fragment` because
-  # Ecto cannot name a partial index otherwise; the predicates are literals.
-  defp conflict_target("component"),
-    do: {:unsafe_fragment, "(component_id, name, working_copy_id) WHERE component_id IS NOT NULL"}
-
-  defp conflict_target("issue"),
-    do: {:unsafe_fragment, "(issue_id, name, working_copy_id) WHERE issue_id IS NOT NULL"}
-
-  defp conflict_target("story"),
-    do: {:unsafe_fragment, "(story_id, name, working_copy_id) WHERE story_id IS NOT NULL"}
-
-  defp conflict_target("project"),
-    do: {:unsafe_fragment, "(project_id, name, working_copy_id) WHERE project_id IS NOT NULL"}
 
   @doc """
   Set one requirement's verdict, without recomputing anything around it.
@@ -274,8 +247,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
         set: [
           satisfied: change.satisfied,
           details: change.details,
-          checked_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second),
-          updated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+          checked_at: NaiveDateTime.utc_now(),
+          updated_at: NaiveDateTime.utc_now()
         ]
       )
 
@@ -298,8 +271,8 @@ defmodule CodeMySpec.Requirements.GraphStore do
   """
   @spec sweep(Scope.t(), map()) :: {:ok, non_neg_integer()}
   def sweep(%Scope{} = scope, %{entity_type: entity_type, name: name} = spec) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-    ids = Enum.map(spec.except, &cast_id(entity_type, &1.entity_id))
+    now = NaiveDateTime.utc_now()
+    ids = Enum.map(spec.except, & &1.entity_id)
 
     {:ok, written} =
       Repo.transaction(fn ->
@@ -313,64 +286,74 @@ defmodule CodeMySpec.Requirements.GraphStore do
   end
 
   # Every row of this requirement the exceptions did not name, where the answer
-  # differs from the default. `NOT (owner = ANY($ids))` so the ids travel as one
-  # array parameter; an empty array excludes nothing.
+  # differs from the default.
   #
   # Must carry the project predicate: a default names no entity, and the nil
   # vantage is shared by every project, so without it a drain writes other
   # projects' rows. See knowledge/requirements_graph, "Lessons".
   defp settle_default(scope, entity_type, name, spec, ids, now) do
-    {table, _schema} = event_target()
-    owner = owner_column(entity_type)
+    owner = owner_field(entity_type)
 
-    # `$2::text::jsonb`, never `$2::jsonb`: with `::jsonb` Postgrex re-encodes the
-    # already-encoded JSON and the column stores a jsonb string, not an object.
-    sql = """
-    UPDATE #{table} AS n
-       SET satisfied = $1,
-           details = $2::text::jsonb,
-           checked_at = $3,
-           updated_at = $3
-     WHERE n.name = $4
-       AND n.working_copy_id IS NOT DISTINCT FROM $5
-       AND n.#{owner} IS NOT NULL
-       AND #{project_predicate(entity_type)}
-       AND NOT (n.#{owner} = ANY($6::#{id_type(entity_type)}[]))
-       AND (n.satisfied IS DISTINCT FROM $1 OR n.details IS DISTINCT FROM $2::text::jsonb)
-    """
-
-    %{num_rows: rows} =
-      Repo.query!(sql, [
-        spec.default,
-        Jason.encode!(spec.default_details),
-        now,
-        name,
-        cast_vantage(Projection.vantage(scope)),
-        ids,
-        Ecto.UUID.dump!(scope.active_project_id)
-      ])
+    {rows, _} =
+      event_target()
+      |> where([n], n.name == ^name and not is_nil(field(n, ^owner)))
+      |> where(^copy_filter(Projection.vantage(scope)))
+      |> where(^project_filter(entity_type, scope.active_project_id))
+      |> where([n], field(n, ^owner) not in ^ids)
+      |> where(^verdict_differs(spec.default, spec.default_details))
+      |> Repo.update_all(verdict_set(spec.default, spec.default_details, now))
 
     {:ok, rows}
   end
 
   # Which of these rows are this project's. Only project rows carry
   # `project_id`; other rows are asked of their owner's table.
-  defp project_predicate("project"), do: "n.project_id = $7"
+  defp project_filter("project", project_id), do: dynamic([n], n.project_id == ^project_id)
 
-  defp project_predicate("component"),
-    do: "EXISTS (SELECT 1 FROM components c WHERE c.id = n.component_id AND c.project_id = $7)"
+  defp project_filter("component", project_id),
+    do:
+      dynamic(
+        [n],
+        n.component_id in subquery(
+          from(c in CodeMySpec.Components.Component,
+            where: c.project_id == ^project_id,
+            select: c.id
+          )
+        )
+      )
 
-  defp project_predicate("issue"),
-    do: "EXISTS (SELECT 1 FROM issues i WHERE i.id = n.issue_id AND i.project_id = $7)"
+  defp project_filter("issue", project_id),
+    do:
+      dynamic(
+        [n],
+        n.issue_id in subquery(
+          from(i in CodeMySpec.Issues.Issue, where: i.project_id == ^project_id, select: i.id)
+        )
+      )
 
-  defp project_predicate("story"),
-    do: "EXISTS (SELECT 1 FROM stories s WHERE s.id = n.story_id AND s.project_id = $7)"
+  defp project_filter("story", project_id),
+    do:
+      dynamic(
+        [n],
+        n.story_id in subquery(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+      )
+
+  # A row whose answer would not move is not written, which keeps `checked_at`
+  # — and so `computed_at` on reads — still when nothing changed.
+  defp verdict_differs(nil, details),
+    do: dynamic([n], not is_nil(n.satisfied) or n.details != ^details)
+
+  defp verdict_differs(satisfied, details),
+    do: dynamic([n], is_nil(n.satisfied) or n.satisfied != ^satisfied or n.details != ^details)
+
+  defp verdict_set(satisfied, details, now),
+    do: [set: [satisfied: satisfied, details: details, checked_at: now, updated_at: now]]
 
   @doc """
-  Correct many entities' verdicts for one requirement, in one statement.
+  Correct many entities' verdicts for one requirement.
 
-  The batch form of `put_verdict/2`: ids, verdicts and details travel as three
-  arrays joined against the table (`unnest`), not one `UPDATE` per entity.
+  The batch form of `put_verdict/2`: one `UPDATE` per distinct verdict, not one
+  per entity.
 
   Answers how many rows changed. Settling never creates rows, so an entity this
   vantage has never projected is a miss the caller counts.
@@ -382,52 +365,29 @@ defmodule CodeMySpec.Requirements.GraphStore do
   def put_verdicts(%Scope{}, _entity_type, _name, [], _now), do: {:ok, 0}
 
   def put_verdicts(%Scope{} = scope, entity_type, name, changes, now) do
-    now = now || NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
-    {table, _schema} = event_target()
+    now = now || NaiveDateTime.utc_now()
+    vantage = Projection.vantage(scope)
 
-    # `IS NOT DISTINCT FROM`, not `=`: a nil vantage is the project-wide row, and
-    # `=` against null matches nothing.
-    sql = """
-    UPDATE #{table} AS n
-       SET satisfied = v.satisfied,
-           details = v.details::jsonb,
-           checked_at = $1,
-           updated_at = $1
-      FROM unnest($2::#{id_type(entity_type)}[], $3::boolean[], $4::text[])
-        AS v(entity_id, satisfied, details)
-     WHERE n.#{owner_column(entity_type)} = v.entity_id
-       AND n.name = $5
-       AND n.working_copy_id IS NOT DISTINCT FROM $6
-       AND (n.satisfied IS DISTINCT FROM v.satisfied
-         OR n.details IS DISTINCT FROM v.details::jsonb)
-    """
+    rows =
+      changes
+      |> Enum.group_by(&{&1.satisfied, &1.details}, & &1.entity_id)
+      |> Enum.flat_map(fn {verdict, ids} ->
+        Enum.map(Enum.chunk_every(ids, @bind_budget), &{verdict, &1})
+      end)
+      |> Enum.reduce(0, fn {{satisfied, details}, ids}, written ->
+        {count, _} =
+          event_target()
+          |> where(^owners_filter(entity_type, ids))
+          |> where([n], n.name == ^name)
+          |> where(^copy_filter(vantage))
+          |> where(^verdict_differs(satisfied, details))
+          |> Repo.update_all(verdict_set(satisfied, details, now))
 
-    %{num_rows: rows} =
-      Repo.query!(sql, [
-        now,
-        Enum.map(changes, &cast_id(entity_type, &1.entity_id)),
-        Enum.map(changes, & &1.satisfied),
-        Enum.map(changes, &Jason.encode!(&1.details)),
-        name,
-        cast_vantage(Projection.vantage(scope))
-      ])
+        written + count
+      end)
 
     {:ok, rows}
   end
-
-  defp owner_column("component"), do: "component_id"
-  defp owner_column("issue"), do: "issue_id"
-  defp owner_column("story"), do: "story_id"
-  defp owner_column("project"), do: "project_id"
-
-  defp id_type("story"), do: "bigint"
-  defp id_type(_uuid_owner), do: "uuid"
-
-  defp cast_id("story", id), do: id
-  defp cast_id(_uuid_owner, id), do: Ecto.UUID.dump!(id)
-
-  defp cast_vantage(nil), do: nil
-  defp cast_vantage(vantage), do: Ecto.UUID.dump!(vantage)
 
   @doc """
   Replace this vantage's whole topology with `edges`.
@@ -444,7 +404,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
           {:ok, non_neg_integer()}
   def write_edges(%Scope{active_project_id: project_id} = scope, edges, ids \\ nil) do
     working_copy_id = Projection.vantage(scope)
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     # Resolved after this drain's node writes, so the ids are current.
     ids = ids || ids_by_owner_key(project_id, working_copy_id)

@@ -1038,6 +1038,12 @@ test *args:
 spex *args:
     mix cms.spex "$@"
 
+# The suite on SQLite, the desktop's database. One case at a time: SQLite has
+# one writer, and each test's sandbox holds a write transaction.
+[positional-arguments]
+test-sqlite *args:
+    CMS_TEST_SQLITE="${TMPDIR:-/tmp}/code_my_spec_test.db" MIX_BUILD_PATH=_build/test_sqlite MIX_ENV=test mix test --max-cases 1 "$@"
+
 # Run a specific test file/line
 test-file file:
     mix test {{file}} --trace

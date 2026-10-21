@@ -28,8 +28,8 @@ defmodule CodeMySpecWeb.DeviceControllerTest do
             application_id: oauth_app.id,
             scopes: "read write",
             expires_in: 7200,
-            inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
-            updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+            inserted_at: DateTime.utc_now(),
+            updated_at: DateTime.utc_now()
           }
         ],
         returning: [:id, :token, :resource_owner_id]
@@ -157,8 +157,8 @@ defmodule CodeMySpecWeb.DeviceControllerTest do
               application_id: oauth_app.id,
               scopes: "read write",
               expires_in: 7200,
-              inserted_at: DateTime.utc_now() |> DateTime.truncate(:second),
-              updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+              inserted_at: DateTime.utc_now(),
+              updated_at: DateTime.utc_now()
             }
           ],
           returning: [:id, :token, :resource_owner_id]

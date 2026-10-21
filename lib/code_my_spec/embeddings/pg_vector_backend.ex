@@ -223,7 +223,7 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
         embedding,
         opts \\ []
       ) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     hash = EmbeddingService.content_hash(chunk)
 
     # Never nil for a shared row: two different versions of one hex

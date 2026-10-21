@@ -55,9 +55,9 @@ defmodule CodeMySpec.Components.Component do
     # never prunes an authored component (3aeb66cf).
     field :provenance, Ecto.Enum, values: [:authored, :discovered]
 
-    field :synced_at, :utc_datetime
-    field :files_changed_at, :utc_datetime
-    field :last_analyzed_at, :utc_datetime
+    field :synced_at, :utc_datetime_usec
+    field :files_changed_at, :utc_datetime_usec
+    field :last_analyzed_at, :utc_datetime_usec
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :project, Project, type: :binary_id
@@ -101,7 +101,12 @@ defmodule CodeMySpec.Components.Component do
     |> put_scope_associations(scope)
     |> generate_deterministic_id()
     |> unique_constraint(:id, name: :components_pkey, message: "component already exists")
-    |> unique_constraint([:module_name, :project_id])
+    # The id is derived from project and module name, so this clash is the one
+    # above; SQLite reports this index first, Postgres the primary key.
+    |> unique_constraint([:module_name, :project_id],
+      error_key: :id,
+      message: "component already exists"
+    )
     |> foreign_key_constraint(:parent_component_id)
   end
 

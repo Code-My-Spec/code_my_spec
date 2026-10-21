@@ -1,6 +1,9 @@
 defmodule CodeMySpec.Embeddings.PgVectorBackendTest do
   use CodeMySpecTest.DataCase, async: false
 
+  # Pgvector: Postgres only.
+  @moduletag :postgres
+
   import Ecto.Query
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures

@@ -26,8 +26,8 @@ defmodule CodeMySpec.Tests.TestStats do
     field :invalid, :integer, default: 0
     field :tests, :integer, default: 0
     field :suites, :integer, default: 0
-    field :started_at, :naive_datetime
-    field :finished_at, :naive_datetime
+    field :started_at, :naive_datetime_usec
+    field :finished_at, :naive_datetime_usec
   end
 
   def changeset(test_stats \\ %__MODULE__{}, attrs) do

@@ -239,11 +239,14 @@ defmodule CodeMySpec.Files do
   """
   @spec list_paths_under(Scope.t(), [String.t()]) :: MapSet.t(String.t())
   def list_paths_under(%Scope{active_project_id: project_id} = scope, prefixes) do
-    patterns = Enum.map(prefixes, &(&1 <> "%"))
+    under_any =
+      Enum.reduce(prefixes, dynamic(false), fn prefix, acc ->
+        dynamic([f], ^acc or like(f.path, ^(prefix <> "%")))
+      end)
 
     File
     |> where([f], f.project_id == ^project_id)
-    |> where([f], fragment("? LIKE ANY(?)", f.path, ^patterns))
+    |> where(^under_any)
     |> scope_to_harness(scope)
     |> select([f], f.path)
     |> Repo.all()
@@ -539,7 +542,8 @@ defmodule CodeMySpec.Files do
     :story_id,
     :criterion_number,
     :valid,
-    :validation_errors
+    :validation_errors,
+    :module_name
   ]
 
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
@@ -556,6 +560,7 @@ defmodule CodeMySpec.Files do
       Enum.map(file_attrs_list, fn attrs ->
         attrs
         |> Map.drop(@scanner_scratch)
+        |> put_module_name()
         |> Map.put_new(:criterion_number, nil)
         |> Map.put(:project_id, project_id)
         |> Map.put(:working_copy_id, working_copy_id)
@@ -600,6 +605,7 @@ defmodule CodeMySpec.Files do
           fingerprint: fragment("EXCLUDED.fingerprint"),
           valid: fragment("EXCLUDED.valid"),
           validation_errors: fragment("EXCLUDED.validation_errors"),
+          module_name: fragment("EXCLUDED.module_name"),
           component_id: fragment("COALESCE(EXCLUDED.component_id, ?)", f.component_id),
           story_id: fragment("EXCLUDED.story_id"),
           criterion_number: fragment("EXCLUDED.criterion_number"),
@@ -640,6 +646,10 @@ defmodule CodeMySpec.Files do
   @spec replaceable_fields() :: [atom()]
   def replaceable_fields, do: @replaceable_fields
 
+  # Kept beside the scanner's data so a component can be claimed by it in a query.
+  defp put_module_name(attrs),
+    do: Map.put(attrs, :module_name, File.module_name(Map.get(attrs, :validation_errors)))
+
   @doc """
   Upsert a single file record without updating mtime.
 
@@ -654,6 +664,7 @@ defmodule CodeMySpec.Files do
     entry =
       attrs
       |> Map.drop(@scanner_scratch)
+      |> put_module_name()
       |> Map.put_new(:criterion_number, nil)
       |> Map.put(:project_id, project_id)
       |> Map.put(
@@ -676,6 +687,7 @@ defmodule CodeMySpec.Files do
              :criterion_number,
              :valid,
              :validation_errors,
+             :module_name,
              :updated_at
            ]},
         conflict_target: [:project_id, :working_copy_id, :path],

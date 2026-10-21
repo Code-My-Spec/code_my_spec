@@ -34,7 +34,7 @@ defmodule CodeMySpec.Components.Dependency do
     # `provenance: :authored, in_code: true` rather than two rows.
     field :in_code, :boolean, default: false
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc """
@@ -48,6 +48,7 @@ defmodule CodeMySpec.Components.Dependency do
     |> unique_constraint([:source_component_id, :target_component_id])
     |> foreign_key_constraint(:source_component_id)
     |> foreign_key_constraint(:target_component_id)
+    |> CodeMySpec.Repo.References.check()
   end
 
   @spec validate_no_self_dependency(Ecto.Changeset.t()) :: Ecto.Changeset.t()

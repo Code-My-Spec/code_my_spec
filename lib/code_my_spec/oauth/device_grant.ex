@@ -41,13 +41,13 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
     field :device_id, :binary_id
     field :resource_owner_id, :integer
     field :scopes, :string
-    field :expires_at, :utc_datetime
+    field :expires_at, :utc_datetime_usec
     field :interval, :integer, default: 5
-    field :denied_at, :utc_datetime
+    field :denied_at, :utc_datetime_usec
     field :access_token_id, :integer
-    field :consumed_at, :utc_datetime
+    field :consumed_at, :utc_datetime_usec
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   @code_alphabet ~c"ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -71,8 +71,7 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
         user_code: generate_user_code(),
         device_id: device_id,
         scopes: Keyword.get(opts, :scopes),
-        expires_at:
-          DateTime.utc_now() |> DateTime.add(ttl_seconds, :second) |> DateTime.truncate(:second),
+        expires_at: DateTime.utc_now() |> DateTime.add(ttl_seconds, :second),
         interval: interval
       },
       [:device_code, :user_code, :device_id, :scopes, :expires_at, :interval]
@@ -110,7 +109,7 @@ defmodule CodeMySpec.Oauth.DeviceGrant do
   @doc "Mark a pending grant denied."
   @spec deny_changeset(t()) :: Ecto.Changeset.t()
   def deny_changeset(%__MODULE__{} = grant) do
-    cast(grant, %{denied_at: DateTime.utc_now() |> DateTime.truncate(:second)}, [:denied_at])
+    cast(grant, %{denied_at: DateTime.utc_now()}, [:denied_at])
   end
 
   @doc """

@@ -29,13 +29,13 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
         now = DateTime.utc_now()
 
         yesterday =
-          DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, -1, :day) |> DateTime.to_iso8601()
 
         tomorrow =
-          DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, 1, :day) |> DateTime.to_iso8601()
 
         two_days_ago =
-          DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, -2, :day) |> DateTime.to_iso8601()
 
         rows = [
           row("p1", publish_at: yesterday, expires_at: nil),

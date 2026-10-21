@@ -236,10 +236,17 @@ defmodule CodeMySpec.Components.ComponentRepository do
   @spec show_architecture(Scope.t()) :: [%{component: Component.t(), depth: integer()}]
   def show_architecture(%Scope{active_project_id: project_id}) do
     root_components =
-      Component
-      |> where([c], c.project_id == ^project_id)
-      |> join(:inner, [c], s in assoc(c, :stories))
-      |> distinct([c], c.id)
+      from(c in Component,
+        as: :component,
+        where: c.project_id == ^project_id,
+        where:
+          exists(
+            from(s in stories_schema(),
+              where: s.component_id == parent_as(:component).id,
+              select: 1
+            )
+          )
+      )
       |> preload([
         :stories,
         outgoing_dependencies: [
@@ -272,6 +279,8 @@ defmodule CodeMySpec.Components.ComponentRepository do
 
     Enum.map(root_components, &%{component: &1, depth: 0})
   end
+
+  defp stories_schema, do: Component.__schema__(:association, :stories).related
 
   @spec list_orphaned_contexts(Scope.t()) :: [Component.t()]
   def list_orphaned_contexts(%Scope{} = scope) do

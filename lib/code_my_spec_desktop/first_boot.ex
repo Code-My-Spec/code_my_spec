@@ -16,7 +16,6 @@ defmodule CodeMySpecDesktop.FirstBoot do
   def child_spec(_), do: %{id: __MODULE__, start: {__MODULE__, :run, []}, restart: :temporary}
 
   def run do
-    require_pgvector!()
     CodeMySpec.Release.migrate()
     user = ensure_user()
     ensure_account(user)
@@ -33,13 +32,6 @@ defmodule CodeMySpecDesktop.FirstBoot do
       :ok -> :ok
       {:error, :already_up} -> :ok
       {:error, reason} -> raise "could not create the CodeMySpec database: #{inspect(reason)}"
-    end
-  end
-
-  defp require_pgvector! do
-    if Repo.query!("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'").num_rows == 0 do
-      raise "CodeMySpec needs the pgvector extension in this Postgres. " <>
-              "Install it (macOS: `brew install pgvector`; Debian: `apt install postgresql-<ver>-pgvector`) and restart."
     end
   end
 

@@ -26,14 +26,14 @@ defmodule CodeMySpec.Invitations.Invitation do
     field :token, :string
     field :email, :string
     field :role, Ecto.Enum, values: [:owner, :admin, :member]
-    field :expires_at, :utc_datetime
-    field :accepted_at, :utc_datetime
-    field :cancelled_at, :utc_datetime
+    field :expires_at, :utc_datetime_usec
+    field :accepted_at, :utc_datetime_usec
+    field :cancelled_at, :utc_datetime_usec
 
     belongs_to :account, Account, type: :binary_id
     belongs_to :invited_by, User
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   def changeset(invitation, attrs) do
@@ -50,11 +50,16 @@ defmodule CodeMySpec.Invitations.Invitation do
     |> unique_constraint([:email, :account_id, :accepted_at, :cancelled_at],
       name: :unique_account_email_when_nulls
     )
+    # SQLite names a unique violation after its columns.
+    |> unique_constraint([:email, :account_id, :accepted_at, :cancelled_at],
+      name: :invitations_email_account_id_index
+    )
     |> validate_required([:email, :role, :account_id, :invited_by_id])
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+\.[^\s]+$/)
     |> validate_inclusion(:role, [:owner, :admin, :member])
     |> assoc_constraint(:account)
     |> assoc_constraint(:invited_by)
+    |> CodeMySpec.Repo.References.check()
     |> put_token()
     |> put_expires_at()
   end
@@ -74,7 +79,7 @@ defmodule CodeMySpec.Invitations.Invitation do
       %Ecto.Changeset{valid?: true, data: %{id: nil}} ->
         case get_change(changeset, :expires_at) do
           nil ->
-            expires_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+            expires_at = DateTime.utc_now() |> DateTime.add(7, :day)
             put_change(changeset, :expires_at, expires_at)
 
           _ ->
