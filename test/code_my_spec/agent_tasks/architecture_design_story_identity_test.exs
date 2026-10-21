@@ -20,6 +20,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignStoryIdentityTest do
     scope = put_fixture_environment(working_copy_scope_fixture(), Environment.new(:local, root))
     component = component_fixture(scope)
     other = story_fixture(scope, %{title: "Other collision story"})
+    # Ids and numbers both start at 1 on a fresh database; move `other`'s number
+    # clear of the id `target` is about to take as its number.
+    other = other |> Ecto.Changeset.change(number: other.number + 1_000) |> Repo.update!()
     target = story_fixture(scope, %{title: "Requested architecture story"})
     target = target |> Ecto.Changeset.change(number: other.id) |> Repo.update!()
     Requirements.recompute(scope)

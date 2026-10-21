@@ -37,7 +37,7 @@ defmodule CodeMySpec.Accounts.Account do
     has_many :members, CodeMySpec.Accounts.Member, on_delete: :delete_all
     has_many :users, through: [:members, :user]
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   def changeset(account, attrs) do

@@ -56,7 +56,7 @@ defmodule CodeMySpec.Requirements.Invalidation do
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
 
-    timestamps(updated_at: false)
+    timestamps(type: :naive_datetime_usec, updated_at: false)
   end
 
   @doc """

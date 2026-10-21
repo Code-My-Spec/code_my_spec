@@ -324,7 +324,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # holding a different application would otherwise rename the project.
   def handle_in("module_name", %{"module_name" => name}, socket)
       when is_binary(name) and name != "" do
-    project = socket.assigns.scope.active_project
+    project = current_project(socket)
 
     if project && project.module_name != name && main_copy?(socket) do
       case Projects.update_project(socket.assigns.scope, project, %{module_name: name}) do
@@ -352,7 +352,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # answer (it records existence, never a body).
   def handle_in("health_route_status", %{"status" => status}, socket)
       when status in ~w(ok no_health_route health_route_piped) do
-    project = socket.assigns.scope.active_project
+    project = current_project(socket)
 
     if project && project.health_route_status != status do
       # `Repo.update/1` raises Ecto.StaleEntryError rather than returning
@@ -554,6 +554,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
     port = msg["port"]
+    payload = with_budget(payload, msg["deadline_ms"])
 
     {:noreply,
      reply_async(socket, ref, {"decision", hook}, fn ->
@@ -827,6 +828,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The DB write behind every app verb's reply, never gating the reply: the
   # far side did act either way.
+
+  # The row as it stands, not the copy the join took: a correction made since
+  # would otherwise read as stale and be written again.
+  defp current_project(socket) do
+    case socket.assigns.scope.active_project do
+      %{id: id} -> Projects.get_project_by_id(id)
+      nil -> nil
+    end
+  end
+
   defp record_app_result(socket, {:ok, %{status: _status} = info}) do
     case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
       {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
@@ -1208,6 +1219,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp describe({handler, detail}), do: "#{handler} (#{detail})"
   defp describe(handler), do: handler
+
+  # How long the harness will wait for this answer (c93e5fdc): `Hooks.Stop`
+  # bounds its own work against it so the harness is answered, not timed out.
+  defp with_budget(payload, ms) when is_integer(ms) and ms > 0,
+    do: Map.put(payload, "harness_budget_ms", ms)
+
+  defp with_budget(payload, _unnamed), do: payload
 
   defp decision_reply(hook, scope, payload, port) do
     case decide_hook(hook, scope, payload, port) do

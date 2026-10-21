@@ -48,7 +48,7 @@ defmodule CodeMySpec.Servers.Server do
 
     belongs_to :account, CodeMySpec.Accounts.Account
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

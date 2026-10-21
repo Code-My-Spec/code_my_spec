@@ -16,6 +16,8 @@ defmodule CodeMySpec.Accounts.Member do
 
   use Ecto.Schema
   import Ecto.Changeset
+
+  alias CodeMySpec.Repo.References
   import Ecto.Query
 
   @type t :: %__MODULE__{
@@ -35,7 +37,7 @@ defmodule CodeMySpec.Accounts.Member do
     belongs_to :user, CodeMySpec.Users.User
     belongs_to :account, CodeMySpec.Accounts.Account, type: :binary_id
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   @doc """
@@ -48,6 +50,7 @@ defmodule CodeMySpec.Accounts.Member do
     |> validate_inclusion(:role, [:owner, :admin, :member])
     |> assoc_constraint(:user)
     |> assoc_constraint(:account)
+    |> References.check()
     |> unique_constraint([:user_id, :account_id], name: :members_user_id_account_id_index)
   end
 

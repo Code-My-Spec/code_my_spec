@@ -313,7 +313,7 @@ defmodule CodeMySpec.Agents.Assignment do
         a.working_copy_id == type(^copy_id, Ecto.UUID) and a.role == ^to_string(role) and
           not is_nil(a.retired_at),
       order_by: [desc: a.retired_at],
-      select: a.continuous,
+      select: type(a.continuous, :boolean),
       limit: 1
     )
     |> Repo.one()

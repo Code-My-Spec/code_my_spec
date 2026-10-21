@@ -424,6 +424,47 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
+  # 0dc0f327: promotion formats the candidate and commits the result as its own
+  # commit before gating, and what the agent is told names that commit.
+  test "a candidate that is not formatted is formatted in its own commit before gating", ctx do
+    mix_exs = """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :app, version: "0.1.0"]
+    end
+    """
+
+    a = candidate(ctx, "a", "main", "mix.exs", mix_exs)
+    {:ok, %{root: root}} = WorkingCopies.fetch(a.copy.id)
+    File.write!(Path.join(root, ".formatter.exs"), "[inputs: [\"*.ex\"]]\n")
+    File.write!(Path.join(root, "loose.ex"), "defmodule   Loose  do\nend\n")
+    git!(root, ["add", "-A"])
+    git!(root, ["commit", "-q", "--amend", "--no-edit"])
+    a = %{a | commit: git!(root, ["rev-parse", "HEAD"])}
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    # No runs exist at the batch commit, so the gate ejects it; what matters is
+    # the commit it was gated at and what the ejection says about it. The gate
+    # is asked again without waiting out the recheck interval.
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.get_state(worker)
+    send(worker, :gate)
+
+    assert {:ok, %{status: :ejected, result: %{"reason" => reason}}} = settle(entry)
+    assert reason =~ "ran mix format before gating"
+    assert reason =~ "loose.ex"
+
+    format_commit = git!(ctx.gate_root, ["log", "-1", "--format=%H", "--grep=Promotion format"])
+    assert reason =~ format_commit
+    assert git!(ctx.gate_root, ["show", "--stat", "--format=", format_commit]) =~ "loose.ex"
+    assert git!(ctx.main_root, ["rev-parse", "main"]) != format_commit
+  end
+
   # 2026-10-12: a batch ejected on its first finding left its other analyzers
   # running in the gate copy, and the next batch reset the tree under them.
   test "an ejected batch's runs in the gate copy are stopped", ctx do

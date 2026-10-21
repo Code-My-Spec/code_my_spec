@@ -31,6 +31,10 @@ defmodule CodeMySpecDesktop.Application.Runtime do
            Keyword.put(opts, :transport, {:streamable_http, start: true})}
         ]
 
+      # CmsHarness.Supervisor starts its own, and the name is global.
+      CodeMySpec.RunGuard ->
+        []
+
       child ->
         [child]
     end) ++ [CmsHarness.Supervisor]

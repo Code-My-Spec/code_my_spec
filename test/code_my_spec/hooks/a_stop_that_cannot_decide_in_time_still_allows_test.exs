@@ -70,4 +70,36 @@ defmodule CodeMySpec.Hooks.AStopThatCannotDecideInTimeStillAllowsTest do
     refute (response["systemMessage"] || "") =~ "could not finish checking for more work",
            "the bound fired on an ordinary, unthrottled decision: #{inspect(response)}"
   end
+
+  # c93e5fdc: a fixed 25s bound never fired, because the harness stops waiting
+  # for a hook decision after 10s and the answer arrived after that. The bound
+  # is the harness's own wait, sent with the request, less transit.
+  describe "the bound is sized against the harness's wait" do
+    test "the wait the harness names, less what the channel spends" do
+      assert Stop.bound_for(10_000) == 7_500
+      assert Stop.bound_for(30_000) == 27_500
+    end
+
+    test "never so small that an ordinary decision cannot finish" do
+      assert Stop.bound_for(2_000) == 1_000
+      assert Stop.bound_for(1) == 1_000
+    end
+
+    test "a request that names no wait gets the wait the harness has always had" do
+      assert Stop.bound_for(nil) == 7_500
+      assert Stop.bound_for("soon") == 7_500
+    end
+
+    test "the wait a request names is the bound its decision runs against" do
+      %{scope: scope, agent: agent, external_session_id: session_id} = setup_workflow_scenario()
+
+      {:ok, _} = TaskOwner.set_continuous(agent, true)
+      Requirements.recompute(scope)
+
+      # Named and ordinary: decided normally, not bounded out.
+      response = Stop.decide(scope, %{"session_id" => session_id, "harness_budget_ms" => 10_000})
+
+      refute (response["systemMessage"] || "") =~ "could not finish checking for more work"
+    end
+  end
 end

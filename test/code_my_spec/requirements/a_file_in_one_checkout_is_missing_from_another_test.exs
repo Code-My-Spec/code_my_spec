@@ -71,7 +71,7 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
         where:
           n.component_id == type(^component_id, :binary_id) and
             n.name == "implementation_file",
-        select: n.satisfied
+        select: type(n.satisfied, :boolean)
       )
 
     scope

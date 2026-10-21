@@ -48,10 +48,11 @@ defmodule CmsHarness.Copy.ACopyHoldsItsAgentsTest do
     assert_receive {:agent_liveness, :down, ^id, ^root, reason}, 30_000
 
     # `:shutdown` when the agent stops in time; `:killed` when a loaded box makes
-    # it outlast its supervisor's shutdown window. Either way it went down with
-    # its copy, which is the claim. Matching `:shutdown` alone turned a slow
-    # teardown into a 30s wait for a message that had already arrived.
-    assert reason in [:shutdown, :killed]
+    # it outlast its supervisor's shutdown window; `:noproc` when it was already
+    # gone by the time the liveness monitor attached. Every one is the agent going
+    # down with its copy, which is the claim. Matching `:shutdown` alone turned a
+    # slow teardown into a 30s wait for a message that had already arrived.
+    assert reason in [:shutdown, :killed, :noproc]
     refute Machine.running?(ctx.id)
   end
 

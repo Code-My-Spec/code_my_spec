@@ -103,6 +103,25 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.build_assets(env, root) end
       )
 
+  @doc """
+  Format the checkout at `root` and commit the result, or with `check: true`
+  only name the unformatted files (`Steps.format/3`).
+  """
+  @spec format(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil, keyword()) ::
+          Steps.result()
+  def format(environment, root, copy_id, opts \\ []) do
+    check = Keyword.get(opts, :check, false)
+
+    run(
+      environment,
+      copy_id,
+      "promotion_format",
+      %{"root" => root, "check" => check},
+      @reset_timeout,
+      fn env -> Steps.format(env, root, check: check) end
+    )
+  end
+
   @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
   @spec contained(
           Environment.t() | nil,

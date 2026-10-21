@@ -194,14 +194,10 @@ defmodule CodeMySpec.AgentPerformance.Scorecard do
       failed: m.tool_failed,
       tool_call_id: m.tool_call_id,
       at: m.inserted_at,
-      text:
-        fragment(
-          "CASE WHEN ? = 'operator' THEN left(ltrim(?->0->>'text'), 120) END",
-          m.role,
-          m.content
-        )
+      id: m.id
     })
     |> Repo.all()
+    |> with_operator_text()
     |> Enum.map(&Map.put(&1, :kind, message_kind(&1)))
   end
 
@@ -210,6 +206,24 @@ defmodule CodeMySpec.AgentPerformance.Scorecard do
        do: MessageKind.of(sender, text || "")
 
   defp message_kind(_message), do: nil
+
+  # Only an operator message's opening text is read, so only those rows'
+  # content is loaded.
+  defp with_operator_text(rows) do
+    ids = for %{role: :operator, id: id} <- rows, do: id
+
+    texts =
+      from(m in Message, where: m.id in ^ids, select: {m.id, m.content})
+      |> Repo.all()
+      |> Map.new(fn {id, content} -> {id, opening_text(content)} end)
+
+    Enum.map(rows, &(&1 |> Map.put(:text, Map.get(texts, &1.id)) |> Map.delete(:id)))
+  end
+
+  defp opening_text([%{"text" => text} | _]) when is_binary(text),
+    do: text |> String.trim_leading() |> String.slice(0, 120)
+
+  defp opening_text(_content), do: nil
 
   # Every attempt the agents left submitted, for each story's first.
   defp attempts(scope, by_id) do

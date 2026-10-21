@@ -11,6 +11,9 @@ defmodule CodeMySpec.Analysis.Tools.AwaitAnalysis do
   def name, do: "await_analysis"
 
   @impl true
+  def tombstone?, do: true
+
+  @impl true
   def description do
     """
     A tombstone for a tool that was removed, because the name outlives the tool.

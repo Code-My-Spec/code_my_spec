@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentPerformance.ReportTest do
 
   setup context do
     coder = Fixtures.running_agent(context.scope, role: "coding")
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     for status <- ["expired", "expired", "approved"] do
       Repo.insert!(%PermissionRequest{

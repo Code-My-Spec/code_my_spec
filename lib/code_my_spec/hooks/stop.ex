@@ -29,6 +29,11 @@ defmodule CodeMySpec.Hooks.Stop do
 
   @total_response_cap 4096
 
+  # The harness's own wait for this answer, sent with the request (c93e5fdc):
+  # the bound below is sized against it, not against a number that happens to
+  # be shorter than the wait today.
+  @budget_key "harness_budget_ms"
+
   @doc """
   The stop hook's verdict for a scope and a hook payload.
 
@@ -43,7 +48,11 @@ defmodule CodeMySpec.Hooks.Stop do
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
 
     # Stamped for the whole request so every line can be grouped by session.
-    Logger.metadata(cms_session: session_id, cms_hook: "stop")
+    Logger.metadata(
+      cms_session: session_id,
+      cms_hook: "stop",
+      cms_budget_ms: Map.get(params, @budget_key)
+    )
 
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
@@ -388,11 +397,30 @@ defmodule CodeMySpec.Hooks.Stop do
   # the caller, then a final non-blocking drain after the kill, because the
   # task may answer in the gap between the timeout firing and the kill
   # landing, and reporting a timeout for work that finished would be wrong.
-  @default_decide_timeout_ms 25_000
+  #
+  # c93e5fdc: a fixed 25s never fired, because the harness stops waiting for a
+  # hook decision after 10s (`CmsHarness.Channel.decision_timeout/0`) and a
+  # stop answered at 13.5s reached nobody. The harness now sends its wait with
+  # the request; the bound is that wait less what the request and the reply
+  # spend crossing the channel. A request that names none (an older harness)
+  # gets the wait the harness has always had.
+  @unnamed_budget_ms 10_000
+  @transit_margin_ms 2_500
+  @min_bound_ms 1_000
 
   defp decide_timeout_ms do
-    Application.get_env(:code_my_spec, :stop_decide_timeout_ms, @default_decide_timeout_ms)
+    case Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms) do
+      {:ok, override} -> override
+      :error -> bound_for(Logger.metadata()[:cms_budget_ms])
+    end
   end
+
+  @doc false
+  @spec bound_for(term()) :: pos_integer()
+  def bound_for(budget) when is_integer(budget) and budget > 0,
+    do: max(budget - @transit_margin_ms, @min_bound_ms)
+
+  def bound_for(_unnamed), do: bound_for(@unnamed_budget_ms)
 
   defp continue_with_actionable_work(scope, %Agent{role: :main} = agent, req_id) do
     timeout = decide_timeout_ms()
@@ -432,7 +460,10 @@ defmodule CodeMySpec.Hooks.Stop do
   defp actionable_decision(scope, agent, req_id) do
     # The same count the menu renders, so the decision and the menu in one
     # response cannot disagree.
-    case length(Work.actionable(scope, role_of(agent), agent)) do
+    {read_us, actionable} = :timer.tc(fn -> Work.actionable(scope, role_of(agent), agent) end)
+    Logger.info("[StopHook] [#{req_id}] actionable-work read took #{div(read_us, 1000)}ms")
+
+    case length(actionable) do
       n when n > 0 ->
         Logger.info("[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop")
 

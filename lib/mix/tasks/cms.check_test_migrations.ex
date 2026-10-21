@@ -218,7 +218,8 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   """
   @spec pending() :: {:ok, [{integer(), String.t()}]} | {:error, term()}
   def pending do
-    with {:ok, files} <- File.ls(Path.join(["priv", "repo", "migrations"])),
+    # The repo's own set: `priv/sqlite` when it is SQLite.
+    with {:ok, files} <- File.ls(Ecto.Migrator.migrations_path(CodeMySpec.Repo)),
          {:ok, %{rows: rows}} <- applied_versions() do
       applied = MapSet.new(rows, fn [version] -> version end)
 

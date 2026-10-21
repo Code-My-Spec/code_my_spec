@@ -30,7 +30,8 @@ defmodule CodeMySpec.Files.ComponentSyncWithoutADiskTest do
       path: path,
       role: :implementation,
       valid: true,
-      validation_errors: %{"errors" => %{}, "data" => %{"module_name" => module_name}}
+      validation_errors: %{"errors" => %{}, "data" => %{"module_name" => module_name}},
+      module_name: module_name
     })
   end
 

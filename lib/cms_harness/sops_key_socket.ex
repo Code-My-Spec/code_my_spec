@@ -56,6 +56,20 @@ defmodule CmsHarness.SopsKeySocket do
   @doc "Starts the listener and chmods the socket file to 0600 once it exists."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
+    # Erlang has no Unix domain sockets on Windows (`:eafnosupport`); without
+    # this the whole harness failed to start there.
+    if match?({:win32, _}, :os.type()) do
+      Logger.warning(
+        "[CmsHarness] no sops key socket on Windows: dev secrets are not served here"
+      )
+
+      :ignore
+    else
+      listen(opts)
+    end
+  end
+
+  defp listen(opts) do
     socket_path = Keyword.get(opts, :path, path())
     prepare_path!(socket_path)
 

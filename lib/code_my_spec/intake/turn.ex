@@ -26,7 +26,7 @@ defmodule CodeMySpec.Intake.Turn do
 
     belongs_to :plan, Plan
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   def ask_changeset(%Plan{} = plan, position, question) do

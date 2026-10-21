@@ -301,6 +301,7 @@ defmodule CodeMySpec.Analysis do
 
       %Run{} = run ->
         run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
+        run = RunsRepository.record_executed(run, payload)
         result = apply_remote_result(scope, run, payload)
         announce(scope, run, result)
         result
@@ -396,7 +397,7 @@ defmodule CodeMySpec.Analysis do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
         result = note_analyzer_staleness(result, payload)
-        reconcile_or_finish_tied(scope, as_executed(run, payload), result, payload["tied_to"])
+        reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
         Reconciler.fail(run, reason, %{output: raw["output"], exit_status: raw["exit_status"]})
@@ -437,9 +438,8 @@ defmodule CodeMySpec.Analysis do
   # closes its row (reconciling both doubled every problem).
   #
   # A partial run that a full request tied onto ran the whole suite (the
-  # harness merges a tie's args), so it is reconciled as full.
-  defp as_executed(%Run{kind: :partial} = run, %{"args" => []}), do: %{run | kind: :full}
-  defp as_executed(run, _payload), do: run
+  # harness merges a tie's args), so `RunsRepository.record_executed/2` has
+  # already made its row `:full` by the time it is reconciled here.
 
   defp reconcile_or_finish_tied(scope, run, result, nil),
     do: Reconciler.reconcile(scope, run, result, notify: true)
@@ -812,6 +812,8 @@ defmodule CodeMySpec.Analysis do
 
       case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
         {:ok, outcome, id} ->
+          RunsRepository.copy_waiters(run.id, id)
+
           Logger.info(
             "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
               "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
@@ -839,10 +841,10 @@ defmodule CodeMySpec.Analysis do
   # Owed when `start_analysis` recorded an `agent_id` (it answers later) or an
   # agent waits on the run (`wait_on_running_at_commit/4`). A blocking
   # `await_run/4` already answered its caller with an error, which asks again.
-  defp answer_owed?(%Run{requested_by: %{} = by}),
-    do: Map.has_key?(by, "agent_id") or match?([_ | _], by["waiters"])
+  defp answer_owed?(%Run{requested_by: %{} = by} = run),
+    do: Map.has_key?(by, "agent_id") or RunsRepository.waiter_ids(run) != []
 
-  defp answer_owed?(_run), do: false
+  defp answer_owed?(run), do: RunsRepository.waiter_ids(run) != []
 
   defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
   defp redispatches(_run), do: 0

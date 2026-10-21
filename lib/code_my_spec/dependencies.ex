@@ -59,7 +59,7 @@ defmodule CodeMySpec.Dependencies do
   # -- Internals --
 
   defp record_entries(project_id, entries) do
-    now = DateTime.utc_now(:second)
+    now = DateTime.utc_now()
 
     rows =
       Enum.map(entries, fn entry ->

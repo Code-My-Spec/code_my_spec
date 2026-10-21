@@ -82,8 +82,8 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
         description: "some description",
         title: title = random_word(),
         criteria: [%{description: "option1"}, %{description: "option2"}],
-        locked_at: ~U[2025-07-17 12:48:00Z],
-        lock_expires_at: ~U[2025-07-17 12:48:00Z]
+        locked_at: ~U[2025-07-17 12:48:00.000000Z],
+        lock_expires_at: ~U[2025-07-17 12:48:00.000000Z]
       }
 
       scope = full_scope_fixture()
@@ -92,8 +92,8 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert story.description == "some description"
       assert story.title == title
       assert [%{description: "option1"}, %{description: "option2"}] = story.criteria
-      assert story.locked_at == ~U[2025-07-17 12:48:00Z]
-      assert story.lock_expires_at == ~U[2025-07-17 12:48:00Z]
+      assert story.locked_at == ~U[2025-07-17 12:48:00.000000Z]
+      assert story.lock_expires_at == ~U[2025-07-17 12:48:00.000000Z]
       assert story.account_id == scope.active_account.id
     end
 
@@ -111,16 +111,16 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
         description: "some updated description",
         title: title,
         criteria: [%{description: "option1"}],
-        locked_at: ~U[2025-07-18 12:48:00Z],
-        lock_expires_at: ~U[2025-07-18 12:48:00Z]
+        locked_at: ~U[2025-07-18 12:48:00.000000Z],
+        lock_expires_at: ~U[2025-07-18 12:48:00.000000Z]
       }
 
       assert {:ok, %Story{} = story} = StoriesRepository.update_story(scope, story, update_attrs)
       assert story.description == "some updated description"
       assert story.title == title
       assert [%{description: "option1"}] = story.criteria
-      assert story.locked_at == ~U[2025-07-18 12:48:00Z]
-      assert story.lock_expires_at == ~U[2025-07-18 12:48:00Z]
+      assert story.locked_at == ~U[2025-07-18 12:48:00.000000Z]
+      assert story.lock_expires_at == ~U[2025-07-18 12:48:00.000000Z]
     end
 
     test "update_story/3 with invalid data returns error changeset" do
@@ -289,6 +289,8 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert page1 != page2
     end
 
+    # PaperTrail strict mode sets first_version; it needs Postgres sequences.
+    @tag :postgres
     test "with_preloads/2 preloads associations" do
       scope = full_scope_fixture()
       project = project_fixture(scope)

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Analysis.PromotionRetryTest do
 
   @commit String.duplicate("a", 40)
   @other_commit String.duplicate("b", 40)
-  @since ~U[2026-10-10 12:00:00Z]
+  @since ~U[2026-10-10 12:00:00.000000Z]
 
   setup do
     %{scope: full_scope_fixture()}
@@ -43,8 +43,8 @@ defmodule CodeMySpec.Analysis.PromotionRetryTest do
 
   test "other commits, orphaned failures and unrelated runs do not consume retries", ctx do
     failed_run(ctx.scope, @since, %{start_commit: @other_commit})
-    failed_run(ctx.scope, @since, %{stats: %{"orphaned" => true}})
-    failed_run(ctx.scope, @since, %{start_commit: nil, stats: %{"orphaned" => true}})
+    failed_run(ctx.scope, @since, %{orphaned: true})
+    failed_run(ctx.scope, @since, %{start_commit: nil, orphaned: true})
     failed_run(ctx.scope, @since, %{kind: :partial})
     failed_run(ctx.scope, @since, %{source: "exunit"})
     failed_run(ctx.scope, @since, %{status: :completed})

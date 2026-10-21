@@ -152,7 +152,8 @@ defmodule CodeMySpec.Environments.Cli do
     with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
       case File.stat(resolved_path, time: :posix) do
         {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
-          mtime = mtime_posix |> DateTime.from_unix!() |> DateTime.truncate(:second)
+          # Whole seconds, at the microsecond precision the column stores.
+          mtime = DateTime.from_unix!(mtime_posix * 1_000_000, :microsecond)
           {:ok, %{mtime: mtime, size: size}}
 
         {:ok, _} ->

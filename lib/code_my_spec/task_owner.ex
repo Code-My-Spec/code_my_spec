@@ -36,7 +36,6 @@ defmodule CodeMySpec.TaskOwner do
   alias CodeMySpec.Repo
   alias CodeMySpec.Agents.Agent.Task
   alias CodeMySpec.Users.Scope
-  alias Ecto.Adapters.SQL
 
   import Ecto.Query, only: [from: 2]
 
@@ -263,9 +262,8 @@ defmodule CodeMySpec.TaskOwner do
   def blocker_resolved(type, blocker_id, outcome, opts \\ [])
       when type in @resolvable and is_binary(blocker_id) and outcome in @outcomes do
     released =
-      Agent
-      |> waiting_on(type, blocker_id)
-      |> Repo.all()
+      type
+      |> waiting_on(blocker_id)
       |> Enum.map(&release_waiters(&1, {type, blocker_id, outcome}, opts))
       |> Enum.sum()
 
@@ -332,31 +330,26 @@ defmodule CodeMySpec.TaskOwner do
   end
 
   defp waited_issue_ids(%Scope{active_project_id: project_id}) do
-    Repo.all(
-      from(row in Agent,
-        where: row.project_id == ^project_id,
-        select:
-          fragment(
-            "(select array_agg(t->>'blocker_id') from unnest(?) t where t->>'blocker_type' = 'issue' and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
-            row.tasks
-          )
-      )
-    )
-    |> Enum.flat_map(&(&1 || []))
+    from(row in Agent, where: row.project_id == ^project_id)
+    |> Repo.all()
+    |> Enum.flat_map(&(&1.tasks || []))
+    |> Enum.filter(&(&1.blocker_type == :issue and blocked_unresolved?(&1)))
+    |> Enum.map(& &1.blocker_id)
     |> Enum.uniq()
   end
 
-  defp waiting_on(module, type, blocker_id) do
-    from(row in module,
-      where:
-        fragment(
-          "exists (select 1 from unnest(?) t where t->>'blocker_id' = ? and t->>'blocker_type' = ? and t->>'status' = 'blocked' and t->>'blocker_resolved_at' is null)",
-          row.tasks,
-          ^blocker_id,
-          ^Atom.to_string(type)
-        )
-    )
+  # Tasks are embedded, so which agent waits is decided here rather than in SQL.
+  defp waiting_on(type, blocker_id) do
+    Agent
+    |> Repo.all()
+    |> Enum.filter(fn agent ->
+      Enum.any?(agent.tasks || [], fn task ->
+        task.blocker_type == type and task.blocker_id == blocker_id and blocked_unresolved?(task)
+      end)
+    end)
   end
+
+  defp blocked_unresolved?(task), do: task.status == :blocked and is_nil(task.blocker_resolved_at)
 
   defp release_waiters(owner, {type, id, _outcome} = blocker, opts) do
     scope = owner_scope(owner)
@@ -618,9 +611,7 @@ defmodule CodeMySpec.TaskOwner do
   defp allow_requirement_claim(_owner, _attrs), do: :ok
 
   defp check_requirement_claim(owner, attrs) do
-    SQL.query!(Repo, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
-      "agent-task-claims:#{owner.project_id}:#{owner.working_copy_id}"
-    ])
+    Repo.lock!("agent-task-claims:#{owner.project_id}:#{owner.working_copy_id}")
 
     others = Repo.all(agents_sharing_this_copy(owner))
 

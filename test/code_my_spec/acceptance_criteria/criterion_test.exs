@@ -25,7 +25,7 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.CriterionTest do
     end
 
     test "accepts criterion with verified_at timestamp" do
-      verified_at = ~U[2026-01-20 10:00:00Z]
+      verified_at = ~U[2026-01-20 10:00:00.000000Z]
       attrs = valid_attrs(%{verified_at: verified_at})
 
       changeset = Criterion.changeset(%Criterion{}, attrs)
@@ -35,7 +35,7 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.CriterionTest do
     end
 
     test "accepts criterion with all fields populated" do
-      verified_at = ~U[2026-01-20 10:00:00Z]
+      verified_at = ~U[2026-01-20 10:00:00.000000Z]
 
       attrs =
         valid_attrs(%{

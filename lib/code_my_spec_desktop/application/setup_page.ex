@@ -1,8 +1,6 @@
 defmodule CodeMySpecDesktop.Application.SetupPage do
   @moduledoc "Renders desktop prerequisite setup without sessions or database access."
 
-  alias CmsHarness.Setup
-
   def render(status, action_path, app_url) do
     body = content(status, action_path, app_url)
 
@@ -18,7 +16,7 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
     IO.iodata_to_binary([
       "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CodeMySpec setup</title>",
       refresh,
-      "<style>body{font:16px system-ui;max-width:900px;margin:40px auto;padding:0 24px;background:#f8fafc;color:#172033}section{background:white;border:1px solid #ccd5df;border-radius:10px;padding:20px;margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}button,a{font:inherit}button{padding:10px 18px;margin:8px 8px 0 0}small{color:#526071}.error{color:#982626}</style></head><body>",
+      "<style>body{font:15px system-ui;max-width:560px;margin:48px auto;padding:0 20px;background:#f8fafc;color:#172033}h1{font-size:22px;margin:0 0 6px}p{margin:6px 0}section{background:white;border:1px solid #d8dee6;border-radius:10px;padding:16px 20px;margin:16px 0}ul.checklist{list-style:none;padding:0;margin:16px 0;background:white;border:1px solid #d8dee6;border-radius:10px}ul.checklist>li{padding:10px 16px;border-top:1px solid #edf0f4}ul.checklist>li:first-child{border-top:0}.mark{display:inline-block;width:1.4em;font-weight:600}[data-state=done] .mark{color:#1f7a3d}[data-state=errored] .mark{color:#b42318}.fix{margin:6px 0 0 1.4em;color:#334155}details{margin:6px 0 0 1.4em;color:#526071;font-size:13px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4f8;padding:8px;border-radius:6px}button,a{font:inherit}button{padding:9px 18px;margin:8px 8px 0 0;border-radius:8px;border:1px solid #c3ccd7;background:white;cursor:pointer}button.primary{background:#172033;color:white;border-color:#172033}small,.muted{color:#64748b;font-size:13px}.error{color:#b42318}form{display:inline}</style></head><body>",
       "<main data-test=\"desktop-setup\" data-stage=\"prerequisites\"><h1>Set up this machine</h1>",
       body,
       "</main></body></html>"
@@ -36,11 +34,11 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
 
   defp content(status, path, _app_url) do
     [
-      "<p>Check the prerequisites, follow any installation guidance, then continue.</p>",
-      "<section data-test=\"setup-agent-unavailable\"><h2>Manual setup is available</h2><p>The main agent needs the local database. Until it starts, use the guidance below and run the checks again after installing missing prerequisites.</p></section>",
+      "<p class=\"muted\">CodeMySpec needs these on this machine.</p>",
       error(status.error),
       snapshot(status.snapshot),
-      controls(status, path)
+      controls(status, path),
+      "<p class=\"muted\" data-test=\"setup-agent-unavailable\">The setup agent starts once the database is ready; until then, follow the steps above.</p>"
     ]
   end
 
@@ -68,33 +66,36 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
   defp authorization(_status, _path),
     do: "<p role=\"status\">Preparing harness authorization…</p>"
 
-  defp snapshot(nil), do: "<p>No prerequisite checks have run yet.</p>"
+  defp snapshot(nil), do: []
 
   defp snapshot(snapshot) do
     [
+      "<ul class=\"checklist\">",
       Enum.map(snapshot["steps"], &step/1),
-      "<p data-test=\"setup-results-file\" data-path=\"",
+      "</ul><p class=\"muted\" data-test=\"setup-results-file\" data-path=\"",
       escape(snapshot["results_path"]),
-      "\">Results saved to <code>",
+      "\">Full results: <code>",
       escape(snapshot["results_path"]),
       "</code></p>"
     ]
   end
 
+  # One line per prerequisite; what was run and what it printed stay folded.
   defp step(step) do
     [
-      "<section data-test=\"prerequisite\" data-name=\"",
+      "<li data-test=\"prerequisite\" data-name=\"",
       escape(step["key"]),
       "\" data-state=\"",
       escape(step["state"]),
-      "\"><h2>",
-      escape(step["key"]),
-      " — ",
-      escape(step["state"]),
-      "</h2>",
+      "\"><span class=\"mark\">",
+      mark(step["state"]),
+      "</span>",
+      escape(label(step["key"])),
+      guidance(step),
+      "<details><summary>Details</summary>",
       Enum.map(step["commands"], fn command ->
         [
-          "<pre>",
+          "<pre>$ ",
           escape(Enum.join([command["command"] | command["args"]], " ")),
           "\n",
           escape(command["output"]),
@@ -102,15 +103,27 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
         ]
       end),
       error(step["error"]),
-      guidance(step),
-      "<small>Last attempt: ",
-      escape(step["finished_at"] || step["started_at"] || "Not run"),
-      "</small></section>"
+      "<small>Last checked: ",
+      escape(step["finished_at"] || step["started_at"] || "not yet"),
+      "</small></details></li>"
     ]
   end
 
+  defp mark("done"), do: "✓"
+  defp mark("errored"), do: "✗"
+  defp mark(_running_or_pending), do: "…"
+
+  defp label("postgres"), do: "PostgreSQL"
+  defp label("pgvector"), do: "pgvector"
+  defp label("version_manager"), do: "mise or asdf"
+  defp label("erlang"), do: "Erlang"
+  defp label("elixir"), do: "Elixir"
+  defp label("cms"), do: "CodeMySpec CLI"
+  defp label("vibium"), do: "Vibium"
+  defp label(key), do: key
+
   defp guidance(%{"state" => "errored", "key" => key}) do
-    ["<p data-test=\"install-instructions\">", escape(instructions(key)), "</p>"]
+    ["<p class=\"fix\" data-test=\"install-instructions\">", escape(instructions(key)), "</p>"]
   end
 
   defp guidance(_step), do: []
@@ -140,21 +153,21 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
 
   defp controls(status, path) do
     [
-      form(path <> "/check", "check-prerequisites", "Check prerequisites"),
-      continue_control(Setup.prerequisites_passed?(status.snapshot), path)
+      form(path <> "/continue", "start-application", "Start CodeMySpec", "primary"),
+      form(path <> "/check", "check-prerequisites", check_label(status.snapshot))
     ]
   end
 
-  defp continue_control(true, path),
-    do: form(path <> "/continue", "start-application", "Start CodeMySpec")
+  defp check_label(nil), do: "Check this machine"
+  defp check_label(_snapshot), do: "Check again"
 
-  defp continue_control(false, _path), do: []
-
-  defp form(path, test, label) do
+  defp form(path, test, label, class \\ "") do
     [
       "<form method=\"post\" action=\"",
       escape(path),
-      "\"><button data-test=\"",
+      "\"><button class=\"",
+      class,
+      "\" data-test=\"",
       test,
       "\" type=\"submit\">",
       label,

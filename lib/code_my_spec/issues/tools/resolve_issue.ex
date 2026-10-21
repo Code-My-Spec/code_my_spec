@@ -54,6 +54,8 @@ defmodule CodeMySpec.Issues.Tools.ResolveIssue do
          {:error,
           "Story issues must be submitted for shared story QA and completed through promotion."}
 
+  # Issue e516e0f0: promote_issue is a requirement, not a tool, so the message
+  # names the tools that claim it.
   # Issue 9988f567: a coder finished d12aa283, called this directly, and the
   # issue went to resolved with its fix still unlanded on its copy -- nobody
   # could reopen it (resolved is terminal), so main had to file a second
@@ -68,8 +70,9 @@ defmodule CodeMySpec.Issues.Tools.ResolveIssue do
     do:
       {:error,
        "This issue is assigned to a working copy and its fix has not landed on main yet. " <>
-         "Promote it with promote_issue -- the landing resolves the issue. Resolving it " <>
-         "here would mark it done with the fix still unlanded."}
+         "The coder who holds it lands it: get_next_requirement offers its promote_issue " <>
+         "requirement and start_task claims it. The landing resolves the issue. Resolving " <>
+         "it here would mark it done with the fix still unlanded."}
 
   defp may_resolve(_issue), do: :ok
 end

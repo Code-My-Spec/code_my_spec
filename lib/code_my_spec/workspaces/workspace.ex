@@ -41,11 +41,11 @@ defmodule CodeMySpec.Workspaces.Workspace do
     field :container_name, :string
     field :port, :integer
     field :error, :string
-    field :booted_at, :utc_datetime
+    field :booted_at, :utc_datetime_usec
 
     belongs_to :project, Project
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "A workspace the runner has accepted and which is now coming up."
@@ -56,7 +56,7 @@ defmodule CodeMySpec.Workspaces.Workspace do
     |> put_change(:status, :booting)
     |> put_change(:error, nil)
     |> put_change(:step, nil)
-    |> put_change(:booted_at, DateTime.utc_now(:second))
+    |> put_change(:booted_at, DateTime.utc_now())
     |> unique_constraint(:project_id)
   end
 

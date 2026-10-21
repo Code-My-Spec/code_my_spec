@@ -16,7 +16,7 @@ defmodule CodeMySpec.Notifications.PushSubscription do
 
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   def changeset(subscription, attrs) do
