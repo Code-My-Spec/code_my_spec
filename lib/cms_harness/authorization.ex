@@ -89,10 +89,7 @@ defmodule CmsHarness.Authorization do
   defp begin_authorization(state) do
     case HarnessOAuth.begin_authorization(state.server, Device.ensure_id(), state.opts) do
       {:ok, grant} ->
-        Logger.notice(
-          "[CmsHarness] Connect this harness: visit #{grant.verification_uri} and enter #{grant.user_code}"
-        )
-
+        approve_locally(grant)
         schedule(%{state | grant: grant}, :poll, grant.interval)
 
       {:error, :unreachable} ->
@@ -100,6 +97,22 @@ defmodule CmsHarness.Authorization do
 
       {:error, reason} ->
         refused(state, reason)
+    end
+  end
+
+  # A harness in the same BEAM as its server (desktop) names an approver, and
+  # nobody has to type the code. Anywhere else a person approves it.
+  defp approve_locally(grant) do
+    case Application.get_env(:code_my_spec, :harness_device_approver) do
+      {module, fun} ->
+        with {:error, reason} <- apply(module, fun, [grant.user_code]) do
+          Logger.warning("[CmsHarness] Local device approval failed: #{inspect(reason)}")
+        end
+
+      nil ->
+        Logger.notice(
+          "[CmsHarness] Connect this harness: visit #{grant.verification_uri} and enter #{grant.user_code}"
+        )
     end
   end
 

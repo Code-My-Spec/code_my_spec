@@ -25,6 +25,10 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 47400],
   check_origin: false
 
+# The harness's server is this BEAM, so its device grant is approved for the
+# desktop user without anyone typing a code.
+config :code_my_spec, harness_device_approver: {CodeMySpecDesktop.HarnessApproval, :approve}
+
 # config.exs leaves it `server: false`; desktop's harness serves hooks.
 config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
