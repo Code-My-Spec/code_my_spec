@@ -24,17 +24,25 @@ defmodule CodeMySpec.Knowledge.TheListedNameIsReadableTest do
   end
 
   test "every name the listing prints for a directory reads" do
-    {:ok, listing} = Knowledge.resolve(@scope, :knowledge, ["process"])
+    assert_every_listed_name_reads(["process"])
+  end
+
+  test "every name the devops listing prints reads (02141954)" do
+    assert_every_listed_name_reads(["devops"])
+  end
+
+  defp assert_every_listed_name_reads(dir) do
+    {:ok, listing} = Knowledge.resolve(@scope, :knowledge, dir)
 
     names =
       Regex.scan(~r/^- (\S+)$/m, listing)
       |> Enum.map(fn [_, name] -> name end)
       |> Enum.reject(&String.ends_with?(&1, "/"))
 
-    assert names != [], "the process listing printed no files, so this proves nothing"
+    assert names != [], "the #{inspect(dir)} listing printed no files, so this proves nothing"
 
     for name <- names do
-      assert {:ok, _} = Knowledge.resolve(@scope, :knowledge, ["process", name]),
+      assert {:ok, _} = Knowledge.resolve(@scope, :knowledge, dir ++ [name]),
              "listing printed #{inspect(name)} but reading it failed"
     end
   end
