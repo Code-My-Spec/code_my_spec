@@ -274,8 +274,6 @@ defmodule CodeMySpec.SpexGivensTest do
   # drives the app -- creates a copy and its team, files and accepts a real
   # issue, assigns it, wakes the team, and declines the resulting offer
   # through the real reject_offer tool.
-  # `Deps.` (`StoryDependencyScript`) drives story 1125's tools by name, as
-  # `CriterionScript.` does.
   @establishes ~w(
     Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
@@ -295,7 +293,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
     assign put_session seed_cookies
-    StoryHelpers. CriterionScript. Deps. Artifacts. story_for register_and_log_in_user
+    StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
