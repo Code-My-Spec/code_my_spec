@@ -233,7 +233,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp build(state, entries, base, {:ok, copy}),
-    do: gating(state, entries, copy, base, hd(entries).commit)
+    do: gating(state, entries, copy, base, hd(entries).commit, nil)
 
   defp build(state, entries, base, :no), do: build_in_gate_copy(state, entries, base)
 
@@ -251,7 +251,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
          {:ok, %{head: head}} <-
            Runner.precheck(WorkingCopies.environment(own), root, copy.id, base),
          true <- head == entry.commit,
-         true <- Promotion.certified_at?(own, entry.commit) do
+         true <- Promotion.certified_at?(own, entry.commit),
+         # Read-only: a requester's copy is not ours to commit in. Unformatted,
+         # it goes through the gate copy, which formats it.
+         {:ok, %{unformatted: []}} <-
+           Runner.format(WorkingCopies.environment(own), root, copy.id, check: true) do
       {:ok, copy}
     else
       _ -> :no
@@ -288,12 +292,35 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           next_or_unaccounted(state, unaccounted, conflicted, built)
 
         {in_batch, _out} ->
-          gating(state, in_batch, gate, base, built.head)
+          format_then_gate(state, in_batch, {gate, environment}, base, built.head)
       end
     else
       {:error, :gate_busy} -> wait_for_gate(state)
       {:error, %{unreachable: true} = reason} -> wait_for_gate_harness(state, entries, reason)
       {:error, reason} -> could_not_gate(state, entries, reason)
+    end
+  end
+
+  # The batch is formatted in the gate copy and the result committed on top of
+  # it as its own commit, so the gate certifies, and main receives, a formatted
+  # tree. The format commit is named in what the agent is told. A batch already
+  # on main (`head == base`) has nothing to format.
+  defp format_then_gate(state, entries, _gate, base, base),
+    do: already_on_main(state, entries, base)
+
+  defp format_then_gate(state, entries, {gate, environment}, base, head) do
+    case Runner.format(environment, gate.root, gate.id) do
+      {:ok, %{commit: nil}} ->
+        gating(state, entries, gate, base, head, nil)
+
+      {:ok, %{commit: commit, formatted: files, head: formatted_head}} ->
+        gating(state, entries, gate, base, formatted_head, %{commit: commit, files: files})
+
+      {:error, %{unreachable: true} = reason} ->
+        wait_for_gate_harness(state, entries, reason)
+
+      {:error, reason} ->
+        could_not_gate(state, entries, reason)
     end
   end
 
@@ -375,9 +402,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # the gate copy, or a lone level candidate's own copy.
   # A batch whose commit is main's HEAD adds nothing and is not gated: main's
   # own findings there are no finding against any candidate. Each lands as it is.
-  defp gating(state, entries, _gate, base, base), do: already_on_main(state, entries, base)
+  defp gating(state, entries, _gate, base, base, _format),
+    do: already_on_main(state, entries, base)
 
-  defp gating(state, entries, gate, base, head) do
+  defp gating(state, entries, gate, base, head, format) do
     batch_id = Ecto.UUID.generate()
     in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
 
@@ -388,6 +416,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       scope: scope_for(state.scope, gate),
       base: base,
       head: head,
+      # The commit the promotion's own `mix format` added, or nil.
+      format: format,
       # When gating began: a run that failed before it could say which commit
       # it started on counts against this batch only if it is this batch's.
       since: DateTime.add(DateTime.utc_now(), -1, :second)
@@ -537,9 +567,17 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # A red batch is its one candidate's.
   defp eject_batch(%{batch: batch} = state, reason) do
     release_gate(state)
-    Enum.each(batch.entries, &eject(state.scope, &1, reason))
+    Enum.each(batch.entries, &eject(state.scope, &1, reason <> format_note(batch)))
     next(idle(state))
   end
+
+  defp format_note(%{format: %{commit: commit, files: files}}),
+    do:
+      "\n\nThe promotion ran mix format before gating and committed it as #{commit} " <>
+        "(#{length(files)} file(s): #{Enum.join(files, ", ")}). Look there first and carry on " <>
+        "from it."
+
+  defp format_note(_batch), do: ""
 
   defp already_on_main(state, entries, head) do
     Logger.info(
@@ -632,7 +670,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
          ) do
       {:ok, report} = result ->
         for entry <- batch.entries do
-          moved(entry, :landed, %{result: %{"version" => report[:version], "head" => batch.head}})
+          moved(entry, :landed, %{result: landed_result(batch, report)})
           issue_landed(state.scope, entry, batch.head)
 
           # The landing report itself, in memory, for a caller waiting on this
@@ -704,13 +742,32 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     next(%{state | phase: :idle, batch: nil})
   end
 
-  defp landed_text(entry, %{entries: entries}, result) do
+  defp landed_result(batch, report) do
+    base = %{"version" => report[:version], "head" => batch.head}
+
+    case batch.format do
+      %{commit: commit, files: files} ->
+        Map.merge(base, %{"format_commit" => commit, "formatted" => files})
+
+      _ ->
+        base
+    end
+  end
+
+  defp landed_text(entry, %{entries: entries} = batch, result) do
     others = length(entries) - 1
 
     "Your promotion of #{subject(entry)} landed on main" <>
       if(others > 0, do: " in a batch with #{others} other candidate(s)", else: "") <>
-      ". " <> Promotion.outcome_text(result)
+      ". " <> Promotion.outcome_text(result) <> landed_format_note(batch)
   end
+
+  defp landed_format_note(%{format: %{commit: commit, files: files}}),
+    do:
+      " The promotion also ran mix format and committed #{length(files)} file(s) as " <>
+        "#{commit}: #{Enum.join(files, ", ")}. Your copy is behind main by that commit."
+
+  defp landed_format_note(_batch), do: ""
 
   # -- Helpers ----------------------------------------------------------------
 

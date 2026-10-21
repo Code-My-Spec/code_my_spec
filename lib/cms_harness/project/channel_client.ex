@@ -1094,6 +1094,11 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
     do: with_served_root(root, &reset_test_databases/1)
 
+  # Formatting needs the project's deps for `import_deps`, so it is healed the
+  # same way.
+  defp apply_promotion("promotion_format", %{"root" => root} = payload),
+    do: with_served_root(root, &format(&1, payload["check"] == true))
+
   # The gate's asset build, healed for stale deps the same way.
   defp apply_promotion("promotion_build_assets", %{"root" => root}),
     do: with_served_root(root, &build_assets/1)
@@ -1136,6 +1141,14 @@ defmodule CmsHarness.Project.ChannelClient do
 
     env
     |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.build_assets(env, root)) end)
+    |> reset_as_map()
+  end
+
+  defp format(root, check) do
+    env = Environment.new(:local, root)
+
+    env
+    |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.format(env, root, check: check)) end)
     |> reset_as_map()
   end
 
