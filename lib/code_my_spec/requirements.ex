@@ -486,6 +486,33 @@ defmodule CodeMySpec.Requirements do
   def satisfied_now?(_scope, _node), do: false
 
   @doc """
+  The names of a story requirement's declared prerequisites that are not
+  satisfied right now, read from the requirement definitions.
+
+  A prerequisite that is not one of the story graph's own (a project-level one)
+  is not judged here: this answers for the story's requirements, in the order
+  they are declared. `[]` when every one is satisfied, or for a node that is
+  not a story requirement.
+  """
+  @spec unmet_prerequisites(Scope.t(), Requirement.t() | map()) :: [String.t()]
+  def unmet_prerequisites(%Scope{} = scope, %{entity_type: "story", name: name} = node) do
+    definitions = RequirementDefinitionData.story_graph()
+
+    case Enum.find(definitions, &(&1.name == name)) do
+      nil ->
+        []
+
+      definition ->
+        definitions
+        |> Enum.filter(&(&1.id in definition.prerequisites))
+        |> Enum.reject(&satisfied_now?(scope, %{node | name: &1.name}))
+        |> Enum.map(& &1.name)
+    end
+  end
+
+  def unmet_prerequisites(_scope, _node), do: []
+
+  @doc """
   Tell the graph an entity moved: a requirement found satisfied on a fresh
   check, so the stale offer clears on the next pass.
   """
