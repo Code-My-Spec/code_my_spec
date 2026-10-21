@@ -103,11 +103,11 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
     |> run_requested_by(ctx.agent.id, :running)
     |> Reconciler.fail(:analyzer_crashed)
 
-    _told_it_failed = dispatched()
-
     StopDecision.deliver(ctx.scope, ctx.agent, [])
 
-    assert continuations() == 1
+    # Not held back as awaiting: it is told the run failed — the answer to the
+    # run it started — and the continuation waits behind that turn.
+    assert Enum.any?(dispatched(), &(&1 =~ "failed without a result"))
   end
 
   test "with nothing of its own in flight it is prompted as before", ctx do

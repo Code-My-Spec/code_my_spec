@@ -348,15 +348,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `mix.exs`), so it is accepted and ignored.
   def handle_in("module_name", _payload, socket), do: {:reply, :ok, socket}
 
-  # The row as it stands, not the copy the join took: a correction made since
-  # would otherwise read as stale and be written again.
-  defp current_project(socket) do
-    case socket.assigns.scope.active_project do
-      %{id: id} -> Projects.get_project_by_id(id)
-      nil -> nil
-    end
-  end
-
   # Same self-healing shape as `module_name`, for a check `Files` sync cannot
   # answer (it records existence, never a body).
   def handle_in("health_route_status", %{"status" => status}, socket)
@@ -836,6 +827,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The DB write behind every app verb's reply, never gating the reply: the
   # far side did act either way.
+
+  # The row as it stands, not the copy the join took: a correction made since
+  # would otherwise read as stale and be written again.
+  defp current_project(socket) do
+    case socket.assigns.scope.active_project do
+      %{id: id} -> Projects.get_project_by_id(id)
+      nil -> nil
+    end
+  end
+
   defp record_app_result(socket, {:ok, %{status: _status} = info}) do
     case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
       {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
