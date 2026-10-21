@@ -29,9 +29,9 @@ defmodule CodeMySpecSpex.Story726.Criterion2205Spex do
     criterion: 2205 do
     scenario "A focused exunit run is admitted, scoped, and its output is recorded against it" do
       given_ "a started qa_complete task", context do
-        # Already true -- `setup :setup_qa_story_task` carries a QA-role agent
-        # with an active qa_complete task. Every criterion in this story needs
-        # that, so it is scaffolding rather than subject.
+        # given: already true — `setup :setup_qa_story_task` carries a QA-role
+        # agent with an active qa_complete task. Every criterion in this story
+        # needs that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 
