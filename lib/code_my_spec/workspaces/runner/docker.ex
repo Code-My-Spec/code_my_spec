@@ -47,6 +47,23 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
     # The name is derived from the project, so a second boot for the same
     # project collides with whatever the first one left behind — `docker run`
     # exits 125 and the visitor never gets a workspace. Booting replaces.
+    with :ok <- reachable() do
+      run(container_name, app_name, port, env, opts)
+    end
+  end
+
+  # Whether a daemon answers is asked of the daemon, not read off an error's
+  # wording: Docker 29 says "failed to connect to the docker API" where 28 said
+  # "Cannot connect to the Docker daemon", and the next release will word it
+  # differently again. Any failure of `docker version` is "not reachable".
+  defp reachable do
+    case docker(["version", "--format", "{{.Server.Version}}"]) do
+      {_out, 0} -> :ok
+      {_out, _code} -> {:error, :docker_unreachable}
+    end
+  end
+
+  defp run(container_name, app_name, port, env, opts) do
     stop(container_name)
 
     args =
