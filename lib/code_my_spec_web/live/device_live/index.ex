@@ -47,6 +47,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -91,21 +92,31 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
            Runner.dev_box(params["provider"])
          ) do
       {:ok, box, token} ->
-        provider = Runner.dev_box(box.provider)
-        context = %{token: token, server_url: CodeMySpecWeb.Endpoint.url()}
+        server_url = CodeMySpecWeb.Endpoint.url()
 
-        {:noreply,
-         socket
-         |> assign(
-           adding?: false,
-           new_box: %{
-             device: box,
-             name: Device.display_name(box),
-             token: token,
-             sections: provider.instructions(context)
-           }
-         )
-         |> load()}
+        case launch(box, token, server_url) do
+          :ok ->
+            provider = Runner.dev_box(box.provider)
+
+            {:noreply,
+             socket
+             |> assign(
+               adding?: false,
+               new_box: %{
+                 device: box,
+                 name: Device.display_name(box),
+                 token: token,
+                 sections: provider.instructions(%{token: token, server_url: server_url})
+               }
+             )
+             |> load()}
+
+          {:error, reason} ->
+            # No half-made box: a container that did not start leaves no device
+            # and no token behind.
+            Devices.destroy(socket.assigns.current_scope, box)
+            {:noreply, socket |> put_flash(:error, launch_error(reason)) |> load()}
+        end
 
       {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "Only an account owner or admin can add a dev box.")}
@@ -172,6 +183,18 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   @impl true
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
+
+  # A Docker box runs on a machine that has a daemon, so adding it starts its
+  # container; the others are brought up by the person from the instructions.
+  defp launch(%Device{provider: :docker} = box, token, server_url),
+    do: Workspaces.start_dev_box(box, token, server_url)
+
+  defp launch(_box, _token, _server_url), do: :ok
+
+  defp launch_error(:docker_unreachable),
+    do: "Docker is not reachable. Start Docker and add the box again."
+
+  defp launch_error(_reason), do: "The dev box could not be started."
 
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)

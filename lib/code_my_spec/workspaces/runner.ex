@@ -87,9 +87,22 @@ defmodule CodeMySpec.Workspaces.Runner do
   """
   @callback instructions(context :: %{token: String.t(), server_url: String.t()}) :: [section()]
 
-  @optional_callbacks id: 0, label: 0, kind: 0, instructions: 1
+  @doc """
+  `start/4` with options. `files: [{path_in_instance, contents}]` puts a secret
+  into the instance as a read-only mounted file instead of the environment,
+  which `docker inspect` shows to anyone who can run it (story 1140).
+  """
+  @callback start(
+              container_name :: String.t(),
+              app_name :: String.t(),
+              port :: pos_integer(),
+              env :: [{String.t(), String.t()}],
+              opts :: [files: [{String.t(), String.t()}]]
+            ) :: :ok | {:error, term()}
 
-  @dev_boxes [__MODULE__.Local, __MODULE__.ClaudeCodeCloud]
+  @optional_callbacks id: 0, label: 0, kind: 0, instructions: 1, start: 5
+
+  @dev_boxes [__MODULE__.Local, __MODULE__.ClaudeCodeCloud, __MODULE__.Docker]
 
   @doc "The runners a dev box can be added from."
   @spec dev_boxes() :: [module()]
@@ -100,8 +113,16 @@ defmodule CodeMySpec.Workspaces.Runner do
   def dev_box(id), do: Enum.find(@dev_boxes, &(to_string(&1.id()) == to_string(id)))
 
   @spec start(String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
-  def start(container_name, app_name, port, env \\ []),
-    do: impl().start(container_name, app_name, port, env)
+  def start(container_name, app_name, port, env \\ [], opts \\ []) do
+    runner = impl()
+    Code.ensure_loaded(runner)
+
+    case {opts, function_exported?(runner, :start, 5)} do
+      {[], false} -> runner.start(container_name, app_name, port, env)
+      {_, true} -> runner.start(container_name, app_name, port, env, opts)
+      {_, false} -> {:error, :files_not_supported}
+    end
+  end
 
   @spec url(String.t(), pos_integer()) :: String.t()
   def url(container_name, port), do: impl().url(container_name, port)

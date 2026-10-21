@@ -120,7 +120,7 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
 
   describe "providers" do
     test "each is listed, found by id, and tells how to bring its box up with the token" do
-      assert Enum.map(Runner.dev_boxes(), & &1.id()) == [:local, :claude_code_cloud]
+      assert Enum.map(Runner.dev_boxes(), & &1.id()) == [:local, :claude_code_cloud, :docker]
       assert Runner.dev_box("local").label() == "Local"
       assert Runner.dev_box(:claude_code_cloud).label() == "Claude Code cloud"
       assert Runner.dev_box("mainframe") == nil

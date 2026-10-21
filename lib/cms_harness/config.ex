@@ -122,7 +122,7 @@ defmodule CmsHarness.Config do
 
   @doc """
   Whether this harness runs as a dev box (story 1131): `:harness_dev_box`, or
-  `CMS_DEV_BOX` set, or a device token configured. Such a harness signs in as its
+  `CMS_DEV_BOX` set, or a device token configured (including `CMS_DEVICE_TOKEN_FILE`). Such a harness signs in as its
   box, by trading the box token for an access token at `POST /api/devices/token`.
   """
   @spec dev_box?() :: boolean()
@@ -133,18 +133,30 @@ defmodule CmsHarness.Config do
 
   @doc """
   The box token this harness was given, if it holds one: `:harness_device_token`,
-  else `CMS_DEVICE_TOKEN`.
+  else the file `CMS_DEVICE_TOKEN_FILE` names, else `CMS_DEVICE_TOKEN`.
 
   A Claude Code cloud box holds none: Anthropic's proxy adds the token to requests
   for this server in transit, so the exchange goes out without it.
   """
   @spec device_token() :: {:ok, String.t()} | {:error, :no_credential}
   def device_token do
-    case present(Application.get_env(:code_my_spec, :harness_device_token)) do
-      {:ok, _token} = found -> found
-      {:error, :no_credential} -> present(System.get_env("CMS_DEVICE_TOKEN"))
+    with {:error, :no_credential} <-
+           present(Application.get_env(:code_my_spec, :harness_device_token)),
+         {:error, :no_credential} <- from_token_file(System.get_env("CMS_DEVICE_TOKEN_FILE")) do
+      present(System.get_env("CMS_DEVICE_TOKEN"))
     end
   end
+
+  # A token mounted as a file (a Docker box): not in the environment, so not in
+  # `docker inspect`.
+  defp from_token_file(path) when is_binary(path) and path != "" do
+    case File.read(path) do
+      {:ok, contents} -> present(String.trim(contents))
+      {:error, _reason} -> {:error, :no_credential}
+    end
+  end
+
+  defp from_token_file(_path), do: {:error, :no_credential}
 
   defp present(value) when is_binary(value) and value != "", do: {:ok, value}
   defp present(_), do: {:error, :no_credential}

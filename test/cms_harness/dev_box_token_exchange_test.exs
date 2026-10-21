@@ -17,7 +17,13 @@ defmodule CmsHarness.DevBoxTokenExchangeTest do
     plug = Application.get_env(:code_my_spec, Token)
 
     env =
-      for name <- ["CMS_DEV_BOX", "CMS_DEVICE_TOKEN", "CMS_DEPLOY_KEY", "CMS_TOKEN"],
+      for name <- [
+            "CMS_DEV_BOX",
+            "CMS_DEVICE_TOKEN",
+            "CMS_DEPLOY_KEY",
+            "CMS_TOKEN",
+            "CMS_DEVICE_TOKEN_FILE"
+          ],
           do: {name, System.get_env(name)}
 
     Enum.each(@keys, &Application.delete_env(:code_my_spec, &1))
@@ -79,5 +85,19 @@ defmodule CmsHarness.DevBoxTokenExchangeTest do
     assert {:ok, "access-1"} = Token.access_token()
 
     assert_receive {:exchange, "/api/devices/token", []}
+  end
+
+  test "a token mounted as a file is read from it, never from the environment" do
+    path = Path.join(System.tmp_dir!(), "cms_token_#{System.unique_integer([:positive])}")
+    File.write!(path, "cbt_from_file\n")
+    System.put_env("CMS_DEVICE_TOKEN_FILE", path)
+
+    on_exit(fn ->
+      System.delete_env("CMS_DEVICE_TOKEN_FILE")
+      File.rm(path)
+    end)
+
+    assert {:ok, "cbt_from_file"} = Config.device_token()
+    assert Config.dev_box?()
   end
 end
