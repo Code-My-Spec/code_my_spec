@@ -289,6 +289,8 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert page1 != page2
     end
 
+    # PaperTrail strict mode sets first_version; it needs Postgres sequences.
+    @tag :postgres
     test "with_preloads/2 preloads associations" do
       scope = full_scope_fixture()
       project = project_fixture(scope)

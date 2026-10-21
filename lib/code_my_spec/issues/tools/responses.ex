@@ -200,7 +200,7 @@ defmodule CodeMySpec.Issues.Tools.Responses do
   local_store? =
     Application.compile_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres) ==
       Ecto.Adapters.SQLite3 and
-      is_nil(Application.compile_env(:code_my_spec, CodeMySpec.Repo, [])[:priv])
+      is_nil(Application.compile_env(:code_my_spec, [CodeMySpec.Repo, :priv]))
 
   case local_store? do
     true ->

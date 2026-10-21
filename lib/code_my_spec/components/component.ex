@@ -101,7 +101,12 @@ defmodule CodeMySpec.Components.Component do
     |> put_scope_associations(scope)
     |> generate_deterministic_id()
     |> unique_constraint(:id, name: :components_pkey, message: "component already exists")
-    |> unique_constraint([:module_name, :project_id])
+    # The id is derived from project and module name, so this clash is the one
+    # above; SQLite reports this index first, Postgres the primary key.
+    |> unique_constraint([:module_name, :project_id],
+      error_key: :id,
+      message: "component already exists"
+    )
     |> foreign_key_constraint(:parent_component_id)
   end
 

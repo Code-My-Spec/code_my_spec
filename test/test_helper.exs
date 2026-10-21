@@ -218,6 +218,33 @@ ExUnit.after_suite(fn _stats -> report_dirty_tables.("after this run") end)
 # visible to something out of process, which a sandboxed connection never is —
 # and `Sandbox.mode/2` raises against one rather than no-opping. It read as a
 # broken suite instead of a deliberate configuration.
+# A fresh SQLite database numbers every table from 1, so a story's id and its
+# number coincide — a coincidence a used database never has, and tests that
+# tell the two apart depend on. Start each table's ids at its own high offset.
+if CodeMySpec.Repo.sqlite?() do
+  import Ecto.Query, only: [from: 2]
+
+  :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo, sandbox: false)
+
+  CodeMySpec.Repo.all(from(s in "sqlite_sequence", select: s.name))
+  |> Enum.concat(
+    CodeMySpec.Repo.all(
+      from(m in "sqlite_master",
+        where: m.type == "table" and like(m.sql, "%AUTOINCREMENT%"),
+        select: m.name
+      )
+    )
+  )
+  |> Enum.uniq()
+  |> Enum.with_index(1)
+  |> Enum.each(fn {table, i} ->
+    CodeMySpec.Repo.delete_all(from(s in "sqlite_sequence", where: s.name == ^table))
+    CodeMySpec.Repo.insert_all("sqlite_sequence", [%{name: table, seq: i * 100_000}])
+  end)
+
+  Ecto.Adapters.SQL.Sandbox.checkin(CodeMySpec.Repo)
+end
+
 if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] ==
      Ecto.Adapters.SQL.Sandbox do
   Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
