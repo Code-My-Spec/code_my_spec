@@ -44,10 +44,10 @@ defmodule CodeMySpecSpex.StoryDependencyScript do
     """)
   end
 
-  @doc "Retire criterion `criterion` of story `number`."
-  def retire_criterion(scope, number, criterion) do
+  @doc "Retire criterion `criterion` (its number is the project's, from get_story)."
+  def retire_criterion(scope, criterion) do
     CriterionScript.run(scope, """
-    return retire_criterion({ story_number = #{number}, criterion_number = #{criterion} })
+    return retire_criterion({ criterion_number = #{criterion} })
     """)
   end
 

@@ -26,8 +26,7 @@ defmodule CodeMySpecSpex.Story1125.Criterion2266Spex do
       when_ "an agent edits a criterion on story 11", context do
         [first | _] = CriterionScript.numbers(Deps.text(context.scope, context.eleven))
 
-        {:ok,
-         Map.put(context, :result, Deps.retire_criterion(context.scope, context.eleven, first))}
+        {:ok, Map.put(context, :result, Deps.retire_criterion(context.scope, first))}
       end
 
       then_ "the warning names story 12 and shows it as promoted", context do
