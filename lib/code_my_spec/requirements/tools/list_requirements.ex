@@ -2,10 +2,10 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Stories
-
-  alias CodeMySpec.Requirements.Tools.Responses, as: RequirementsMapper
+  alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Tools.Responses, as: RequirementsMapper
+  alias CodeMySpec.Stories
 
   @impl true
   def name, do: "list_requirements"
@@ -101,8 +101,8 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
   @impl true
   def call(params, context) do
     case filtered_nodes(params, context) do
-      {:ok, filtered, opts} ->
-        response =
+      {:ok, filtered, opts, story, story_scope} ->
+        {:ok, body} =
           if opts.summary do
             RequirementsMapper.requirements_summary_response(filtered, opts)
           else
@@ -114,7 +114,7 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
             )
           end
 
-        response
+        {:ok, body <> diagnostic_note(story, story_scope)}
 
       {:error, reason} ->
         RequirementsMapper.error(reason)
@@ -124,14 +124,44 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
   @impl true
   def script_result(params, context) do
     case filtered_nodes(params, context) do
-      {:ok, filtered, %{summary: true}} ->
+      {:ok, filtered, %{summary: true}, _story, _story_scope} ->
         {:ok, filtered |> summary_groups() |> Enum.map(&summary_row/1)}
 
-      {:ok, filtered, opts} ->
+      {:ok, filtered, opts, _story, _story_scope} ->
         {:ok, filtered |> Enum.take(opts.limit) |> Enum.map(&row/1)}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # Why a released story filtered through this tool can read with no rows
+  # and no explanation (51c8e8a7). `ShowStoryRequirements` already carries
+  # the two legitimate reasons for that: `unreleased_note/1` (never released
+  # for development) and `reconciling_note/1` (a manifest is still landing --
+  # see `knowledge/requirements_graph`, "Writers and readers", and the
+  # incident that motivated it, 7b8a61d2). This tool filters by the same
+  # `story_number` but carried neither, so the identical empty read here had
+  # nothing to say about why.
+  defp diagnostic_note(%{ready_for_dev: false}, _story_scope) do
+    "\n\n> **This story has not been released for development.** Only a " <>
+      "released story projects into the requirements graph, so an empty " <>
+      "list below means none was computed -- not that the work is done or " <>
+      "missing. Set `ready_for_dev` (mark the story ready) to compute it."
+  end
+
+  defp diagnostic_note(%{}, story_scope), do: reconciling_note(story_scope)
+  defp diagnostic_note(nil, _story_scope), do: ""
+
+  defp reconciling_note(scope) do
+    case ReconcileRegistry.in_flight(scope.active_working_copy_id) do
+      nil ->
+        ""
+
+      %{count: count, started_at: started_at} ->
+        "\n\n> **Reconciling #{count} observations** since #{DateTime.to_iso8601(started_at)}. " <>
+          "Requirements below are computed against a projection that is still landing, so an " <>
+          "unsatisfied one may simply not have arrived yet. Ask again when this clears."
     end
   end
 
@@ -146,10 +176,11 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
   defp filtered_nodes(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context) do
       opts = parse_opts(params)
-      {nodes, _computed_at} = Requirements.cached_all(at_story_copy(scope, opts))
+      {story, story_scope} = resolve_story_copy(scope, opts)
+      {nodes, _computed_at} = Requirements.cached_all(story_scope)
 
       {:ok, apply_filters(CodeMySpec.Requirements.Directives.number_nodes(scope, nodes), opts),
-       opts}
+       opts, story, story_scope}
     end
   end
 
@@ -161,17 +192,24 @@ defmodule CodeMySpec.Requirements.Tools.ListRequirements do
   # `StoryRefs.normalize_args/2` already collapses a caller's `story_number`
   # into `entity_type: "story"` + `entity_id` before this ever runs, so that
   # pair is the one signal to gate on.
-  defp at_story_copy(scope, %{entity_type: "story", entity_id: id}) when not is_nil(id) do
+  #
+  # Also returns the story itself (or `nil`, when none was named), the one
+  # piece `diagnostic_note/2` needs that redirecting the scope alone throws
+  # away.
+  defp resolve_story_copy(scope, %{entity_type: "story", entity_id: id}) when not is_nil(id) do
     case Stories.fetch_story_by_number(scope, id) do
-      {:ok, %{working_copy_id: copy_id}} when is_binary(copy_id) ->
-        %{scope | active_working_copy_id: copy_id}
+      {:ok, %{working_copy_id: copy_id} = story} when is_binary(copy_id) ->
+        {story, %{scope | active_working_copy_id: copy_id}}
+
+      {:ok, story} ->
+        {story, scope}
 
       _ ->
-        scope
+        {nil, scope}
     end
   end
 
-  defp at_story_copy(scope, _opts), do: scope
+  defp resolve_story_copy(scope, _opts), do: {nil, scope}
 
   defp summary_groups(nodes), do: Enum.group_by(nodes, & &1.name)
 
