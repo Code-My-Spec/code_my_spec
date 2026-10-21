@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2358Spex do
   spex "A restarted container is the same box and does not set up again", criterion: 2358 do
     scenario "Sam stops and starts the container" do
       given_ "Sam's Docker box 'docker-1' is connected", context do
-        Fixtures.install_workspace_runner(healthy?: true, serving: :serving)
+        Fixtures.install_docker_dev_box_runner(healthy?: true, serving: :serving)
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         box = add_box(live, "docker-1", "docker")
         _ = exchanged(box.token)

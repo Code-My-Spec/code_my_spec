@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2355Spex do
   spex "Adding a Docker box starts its container", criterion: 2355 do
     scenario "Sam picks Docker" do
       given_ "Sam's machine runs Docker", context do
-        Fixtures.install_workspace_runner(healthy?: true, serving: :serving)
+        Fixtures.install_docker_dev_box_runner(healthy?: true, serving: :serving)
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         {:ok, Map.put(context, :live, live)}
       end

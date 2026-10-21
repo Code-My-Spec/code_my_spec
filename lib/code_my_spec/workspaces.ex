@@ -147,16 +147,27 @@ defmodule CodeMySpec.Workspaces do
   `{:error, :docker_unreachable}` when no daemon answers.
   """
   @spec start_dev_box(Device.t(), String.t(), String.t()) :: :ok | {:error, term()}
-  def start_dev_box(%Device{id: id}, token, server_url) do
+  def start_dev_box(%Device{id: id, provider: provider}, token, server_url) do
     env = [
       {"CMS_SERVER_URL", server_url},
       {"CMS_DEV_BOX", "1"},
       {"CMS_DEVICE_TOKEN_FILE", @token_path}
     ]
 
-    Runner.start("devbox-" <> String.slice(id, 0, 8), "devbox", free_port(), env,
-      files: [{@token_path, token}]
-    )
+    # The box's own provider starts it, not the instance runner the app is
+    # configured with (that one runs copy apps).
+    runner = Runner.for_dev_box(provider)
+    Code.ensure_loaded(runner)
+
+    case function_exported?(runner, :start, 5) do
+      true ->
+        runner.start("devbox-" <> String.slice(id, 0, 8), "devbox", free_port(), env,
+          files: [{@token_path, token}]
+        )
+
+      false ->
+        {:error, :not_a_container_provider}
+    end
   end
 
   defp start_instance(existing, %Scope{active_project: %Project{} = project} = scope) do

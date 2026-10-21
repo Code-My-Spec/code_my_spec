@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2359Spex do
   spex "The token is mounted, not exported", criterion: 2359 do
     scenario "Sam inspects his Docker box" do
       given_ "Sam's Docker box is running", context do
-        Fixtures.install_workspace_runner(healthy?: true, serving: :serving)
+        Fixtures.install_docker_dev_box_runner(healthy?: true, serving: :serving)
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         {:ok, Map.put(context, :box, add_box(live, "docker-1", "docker"))}
       end

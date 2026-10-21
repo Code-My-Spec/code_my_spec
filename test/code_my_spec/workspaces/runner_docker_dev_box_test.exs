@@ -79,5 +79,24 @@ defmodule CodeMySpec.Workspaces.Runner.DockerDevBoxTest do
       assert {:error, "docker run exited 125: no such image"} =
                Docker.start("devbox-test", "devbox", 4999, [])
     end
+
+    test "a Docker box is started by Docker even when the app's instance runner is Local",
+         %{dir: dir} do
+      install_docker(dir, "echo '#{@docker_29}' >&2\nexit 1\n")
+      previous = Application.get_env(:code_my_spec, CodeMySpec.Workspaces)
+      Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: Runner.Local)
+
+      on_exit(fn ->
+        case previous do
+          nil -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+          value -> Application.put_env(:code_my_spec, CodeMySpec.Workspaces, value)
+        end
+      end)
+
+      box = %CodeMySpec.Devices.Device{id: Ecto.UUID.generate(), provider: :docker}
+
+      assert {:error, :docker_unreachable} =
+               CodeMySpec.Workspaces.start_dev_box(box, "cbt_x", "http://x")
+    end
   end
 end

@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2356Spex do
   spex "A missing Docker daemon is said plainly and leaves nothing half-made", criterion: 2356 do
     scenario "Sam picks Docker with no daemon" do
       given_ "Sam picks Docker but no Docker daemon answers", context do
-        Fixtures.install_workspace_runner(start_result: {:error, :docker_unreachable})
+        Fixtures.install_docker_dev_box_runner(start_result: {:error, :docker_unreachable})
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         {:ok, Map.put(context, :live, live)}
       end

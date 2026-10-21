@@ -108,6 +108,25 @@ defmodule CodeMySpec.Workspaces.Runner do
   @spec dev_boxes() :: [module()]
   def dev_boxes, do: @dev_boxes
 
+  @doc """
+  The runner that starts the box with this provider (story 1140): the provider
+  the person picked, never the app's instance runner, which has its own job
+  running copy apps. `dev_box_runners` in the Workspaces config substitutes one
+  (a test's stand-in for Docker); anything else is the provider's own module.
+  """
+  @spec for_dev_box(atom() | String.t() | nil) :: module() | nil
+  def for_dev_box(provider) do
+    overrides =
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.Workspaces, [])
+      |> Keyword.get(:dev_box_runners, %{})
+
+    Map.get(overrides, to_atom(provider)) || dev_box(provider)
+  end
+
+  defp to_atom(provider) when is_atom(provider), do: provider
+  defp to_atom(provider) when is_binary(provider), do: String.to_existing_atom(provider)
+
   @doc "The dev box runner for an id (atom or string), or nil."
   @spec dev_box(atom() | String.t() | nil) :: module() | nil
   def dev_box(id), do: Enum.find(@dev_boxes, &(to_string(&1.id()) == to_string(id)))
