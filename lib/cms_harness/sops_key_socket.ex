@@ -30,9 +30,22 @@ defmodule CmsHarness.SopsKeySocket do
   @spec dir() :: Path.t()
   def dir, do: Path.join(CmsHarness.Config.local_state_dir(), "run")
 
-  @doc "The socket path itself."
+  @doc """
+  The socket path itself.
+
+  `CMS_SOPS_KEY_SOCKET_PATH`, if set, wins over the real default. Nothing
+  in production ever sets it (there is exactly one harness per machine,
+  so the well-known default is the only path any client needs); a test
+  suite running several independent harnesses at once in the same OS
+  environment (`mix cms.spex`'s own shards, each a separate process on
+  this machine) is the only caller that does, and only on itself, so its
+  own later-spawned `sops`/`cms sops-key` subprocesses inherit the one
+  this process's own harness actually bound -- never a sibling shard's.
+  """
   @spec path() :: Path.t()
-  def path, do: Path.join(dir(), "key.sock")
+  def path do
+    System.get_env("CMS_SOPS_KEY_SOCKET_PATH") || Path.join(dir(), "key.sock")
+  end
 
   @doc "This module's own child spec — `start_link/1` does the real work, including the post-bind chmod."
   @spec child_spec(keyword()) :: Supervisor.child_spec()

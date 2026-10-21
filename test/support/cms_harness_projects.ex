@@ -36,6 +36,8 @@ defmodule CmsHarnessTest.Projects do
   """
   @spec ensure_harness_supervisor_started() :: :ok
   def ensure_harness_supervisor_started do
+    scope_sops_key_socket_path()
+
     case CmsHarness.Supervisor.start_link([]) do
       {:ok, pid} ->
         Process.unlink(pid)
@@ -43,6 +45,25 @@ defmodule CmsHarnessTest.Projects do
 
       {:error, {:already_started, _pid}} ->
         :ok
+    end
+  end
+
+  # `mix cms.spex` shards into several OS processes on this one machine, each
+  # booting its own `CmsHarness.Supervisor` -- including its own
+  # `CmsHarness.SopsKeySocket`, which otherwise binds the one real,
+  # machine-global path every production harness correctly shares. Scoping it
+  # here, once per BEAM (this function's own idempotency), to this process's
+  # own pid is what keeps four concurrent shards' harnesses from fighting over
+  # the same socket file and crashing each other's unrelated scenarios
+  # (confirmed: that is exactly what an unscoped path did). `System.put_env/2`
+  # on this process is what a later `System.cmd` from it inherits down through
+  # `sops` to `cms sops-key` -- the one piece of state this whole flow has
+  # that crosses process boundaries without any file on disk.
+  defp scope_sops_key_socket_path do
+    if System.get_env("CMS_SOPS_KEY_SOCKET_PATH") == nil do
+      dir = Path.join(System.tmp_dir!(), "cms-sops-key-sockets")
+      File.mkdir_p!(dir)
+      System.put_env("CMS_SOPS_KEY_SOCKET_PATH", Path.join(dir, "key-#{System.pid()}.sock"))
     end
   end
 
