@@ -87,11 +87,42 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   up on connecting — so both shapes are matched, and by the code rather than by
   the sentence, which is localised.
 
+  ## A missing database never actually reaches the message-text clause
+
+  When the database genuinely does not exist, every connection in the pool
+  fails to connect (the same `invalid_catalog_name`, repeatedly, on each
+  backoff retry) and none ever reaches `:connected` -- so the query this
+  module issues to check for pending migrations is never handed a
+  connection at all. What `DBConnection` reports to the caller in that case
+  is not the underlying Postgrex error; it is always a generic
+  `:queue_timeout`, whose message talks about the pool being unable to
+  keep up, naming neither "3D000" nor "does not exist". Confirmed directly
+  by running this task against a database that does not exist: the logs
+  show repeated `FATAL 3D000 (invalid_catalog_name)` connection failures,
+  and the error this function actually receives is `:queue_timeout`. The
+  message-text clause below was therefore dead for the one case its own
+  moduledoc says this file exists for -- "a database that is missing is
+  made, not reported" -- which instead silently fell through to
+  `report/1` and left the suite to fail in bulk downstream, the exact
+  failure mode this file exists to prevent (story 1013, criterion 917).
+
+  Treating every `:queue_timeout` as "missing" is safe even when the real
+  cause is something else (contention from other suites sharing this
+  machine, say): `create/1` already treats `{:error, :already_up}` as
+  `:ok`, and `Ecto.Adapters.Postgres.storage_up/1` opens its own
+  connection to the `postgres` maintenance database rather than going
+  through this pool, so it is unaffected by whatever stalled the original
+  query and answers "already up" immediately for a database that exists.
+  Attempting it when it was not actually needed costs one extra,
+  idempotent round trip; not attempting it when it was needed costs the
+  whole suite.
+
   Public because it is the discrimination that decides whether anything is
   created at all: an ownership error must never lead to creating a database.
   """
   @spec missing_database?(term()) :: boolean()
   def missing_database?(%Postgrex.Error{postgres: %{code: :invalid_catalog_name}}), do: true
+  def missing_database?(%DBConnection.ConnectionError{reason: :queue_timeout}), do: true
   def missing_database?(%DBConnection.ConnectionError{message: message}), do: missing?(message)
   def missing_database?(reason) when is_binary(reason), do: missing?(reason)
   def missing_database?(_), do: false
