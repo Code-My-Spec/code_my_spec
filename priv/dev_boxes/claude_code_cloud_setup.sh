@@ -128,6 +128,9 @@ setsid bash -c '
   fi
   (sudo -n service postgresql start || service postgresql start) >/dev/null 2>&1 || true
   cd "$root" || exit 0
+  # Run as a dev box: onboarding and the harness trade the box token (which the
+  # environment's proxy supplies) for an access token. No deploy key.
+  export CMS_DEV_BOX=1
   # This sandbox exempts index.crates.io from the proxy and then 403s it
   # directly; routing it back through the proxy like everything else fixes
   # cargo (pip stays broken regardless, so pypi.org/files.pythonhosted.org

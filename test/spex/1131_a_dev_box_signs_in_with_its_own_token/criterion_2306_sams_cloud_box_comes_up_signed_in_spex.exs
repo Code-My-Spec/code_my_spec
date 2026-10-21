@@ -34,6 +34,19 @@ defmodule CodeMySpecSpex.Story1131.Criterion2306Spex do
 
         {:ok, context}
       end
+
+      then_ "and it joins its project's channel with that sign-in, no deploy key", context do
+        assert {:ok, %{working_copy_id: id, device_id: device_id}, _socket} =
+                 join_project_as_box(
+                   context.reply["access_token"],
+                   context.project.id,
+                   context.box.id
+                 )
+
+        assert is_binary(id)
+        assert device_id == context.box.id
+        {:ok, context}
+      end
     end
   end
 end

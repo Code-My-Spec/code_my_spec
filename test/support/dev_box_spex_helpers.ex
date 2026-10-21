@@ -140,4 +140,19 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
     |> Floki.parse_fragment!()
     |> Floki.text()
   end
+
+  @doc """
+  The box's harness joins its project's channel on the socket its access token
+  opened: `{:ok, reply, socket}` or the refusal.
+  """
+  def join_project_as_box(access_token, project_id, device_id) do
+    {:ok, socket} = connect_socket(access_token)
+
+    Phoenix.ChannelTest.subscribe_and_join(
+      socket,
+      CodeMySpecWeb.HarnessProjectChannel,
+      "harness_project:#{project_id}",
+      %{"root" => "/workspace/app", "label" => "cloud box", "device" => %{"id" => device_id}}
+    )
+  end
 end

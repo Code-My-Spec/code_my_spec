@@ -1901,9 +1901,29 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # names exactly one project, and a user reaches the projects in accounts they
   # belong to. Never the user's UI-selected project.
   defp authorize(socket, project_id) do
-    case socket.assigns[:deploy_key_project_id] do
-      nil -> authorize_member(socket.assigns[:scope], project_id)
-      key_project_id -> authorize_deploy_key(socket.assigns[:scope], key_project_id, project_id)
+    case {socket.assigns[:deploy_key_project_id], socket.assigns[:device_id]} do
+      {nil, nil} ->
+        authorize_member(socket.assigns[:scope], project_id)
+
+      {nil, device_id} ->
+        authorize_dev_box(device_id, project_id)
+
+      {key_project_id, _} ->
+        authorize_deploy_key(socket.assigns[:scope], key_project_id, project_id)
+    end
+  end
+
+  # A dev box (story 1131) reaches the projects of the account it belongs to and
+  # no others. The socket itself carries no user; the project's account owner
+  # acts for it here, as for a deploy key, and only on this channel. A box
+  # revoked since the socket connected is refused.
+  defp authorize_dev_box(device_id, project_id) do
+    with %{account_id: account_id} <- Devices.active_dev_box(device_id),
+         %Project{account_id: ^account_id} <- Projects.get_project_by_id(project_id),
+         %{} = owner <- Accounts.get_account_owner(account_id) do
+      pin_to_project(CodeMySpec.UserPreferences.scope_for(owner), project_id)
+    else
+      _ -> {:error, :unauthorized}
     end
   end
 
