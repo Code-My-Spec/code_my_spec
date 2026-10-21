@@ -1,84 +1,70 @@
 defmodule CmsHarness.SopsKeyring do
   @moduledoc """
-  The machine's sops age keyring, kept holding the keys for the projects this
-  harness serves.
+  The harness's own in-memory sops age keyring.
 
-  A working copy's dev and test secrets are committed as `envs/*.enc.env`, and
-  `just init-worktree` decrypts them into the new copy. That only works on a
-  machine whose keyring holds the project's key, so the server hands the keys
-  over on join (`age_private_key_dev`, `age_private_key_test` — never a deploy
-  environment's) and they are appended here.
+  Holds the dev-scoped age keys the server hands over on channel join
+  (`age_private_key_dev`/`age_private_key_test` — never a deploy
+  environment's) only in this process's memory: never written to a file,
+  an environment variable, or anywhere else on disk (story 1132). A
+  restart holds nothing until the next join hands the keys over again —
+  there is no file to read them back from, on purpose.
 
-  The keyring is the file sops itself reads — see `path/0`.
+  `CmsHarness.SopsKeySocket` is the only reader: it answers the key
+  command (`cms sops-key`, run by `sops` itself via `SOPS_AGE_KEY_CMD`)
+  on this keyring's behalf, over a socket only the box's own user can
+  reach.
   """
 
+  use GenServer
   require Logger
 
-  @doc """
-  Append each key the keyring does not already hold. Answers how many were added.
-  """
-  @spec install([String.t()], Path.t()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def install(keys, path \\ path())
+  @name __MODULE__
 
-  def install([], _path), do: {:ok, 0}
+  def child_spec(opts) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
+  end
 
-  def install(keys, path) when is_list(keys) do
-    held = held(path)
-    new = keys |> Enum.filter(&valid?/1) |> Enum.uniq() |> Enum.reject(&MapSet.member?(held, &1))
-
-    with :ok <- append(path, new) do
-      if new != [], do: Logger.info("[CmsHarness] added #{length(new)} age key(s) to #{path}")
-      {:ok, length(new)}
-    end
+  def start_link(opts \\ []) do
+    {name, opts} = Keyword.pop(opts, :name, @name)
+    GenServer.start_link(__MODULE__, :ok, Keyword.put(opts, :name, name))
   end
 
   @doc """
-  The keyring sops reads, in sops' own order. `~/.config` is only the default
-  off macOS: there sops uses the OS config directory, so a key written to
-  `~/.config` was never found.
+  Add each key this keyring does not already hold. Never writes anywhere;
+  answers how many were newly added.
   """
-  @spec path() :: Path.t()
-  def path do
-    System.get_env("SOPS_AGE_KEY_FILE") ||
-      Path.join([config_dir(), "sops", "age", "keys.txt"])
+  @spec install([String.t()], GenServer.server()) :: {:ok, non_neg_integer()}
+  def install(keys, server \\ @name)
+  def install([], _server), do: {:ok, 0}
+  def install(keys, server) when is_list(keys), do: GenServer.call(server, {:install, keys})
+
+  @doc "The keys currently held, in no particular order, or `[]` if none."
+  @spec keys(GenServer.server()) :: [String.t()]
+  def keys(server \\ @name), do: GenServer.call(server, :keys)
+
+  @doc "Whether this keyring currently holds any key at all."
+  @spec holding_key?(GenServer.server()) :: boolean()
+  def holding_key?(server \\ @name), do: keys(server) != []
+
+  @impl true
+  def init(:ok), do: {:ok, MapSet.new()}
+
+  @impl true
+  def handle_call({:install, keys}, _from, held) do
+    valid = keys |> Enum.filter(&valid?/1) |> Enum.uniq()
+    new = Enum.reject(valid, &MapSet.member?(held, &1))
+
+    if new != [] do
+      Logger.info(
+        "[CmsHarness] holding #{MapSet.size(held) + length(new)} age key(s) in memory " <>
+          "(#{length(new)} new)"
+      )
+    end
+
+    {:reply, {:ok, length(new)}, Enum.into(new, held)}
   end
 
-  defp config_dir do
-    case {System.get_env("XDG_CONFIG_HOME"), :os.type()} do
-      {xdg, _} when is_binary(xdg) and xdg != "" -> xdg
-      {_, {:unix, :darwin}} -> Path.join([System.user_home!(), "Library", "Application Support"])
-      _ -> Path.join(System.user_home!(), ".config")
-    end
-  end
+  def handle_call(:keys, _from, held), do: {:reply, MapSet.to_list(held), held}
 
   defp valid?(key), do: is_binary(key) and String.starts_with?(key, "AGE-SECRET-KEY-")
-
-  defp held(path) do
-    case File.read(path) do
-      {:ok, body} ->
-        body |> String.split("\n", trim: true) |> Enum.map(&String.trim/1) |> MapSet.new()
-
-      {:error, _} ->
-        MapSet.new()
-    end
-  end
-
-  defp append(_path, []), do: :ok
-
-  defp append(path, keys) do
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, separator(path) <> Enum.join(keys, "\n") <> "\n", [:append]) do
-      File.chmod(path, 0o600)
-    end
-  end
-
-  # A keyring edited by hand may not end in a newline, and a key glued onto the
-  # previous line is one sops cannot parse.
-  defp separator(path) do
-    case File.read(path) do
-      {:ok, ""} -> ""
-      {:ok, body} -> if String.ends_with?(body, "\n"), do: "", else: "\n"
-      {:error, _} -> ""
-    end
-  end
 end

@@ -3,20 +3,22 @@ defmodule CodeMySpecSpex.Story1132.Criterion2346Spex do
   Story 1132 -- A dev box gets its dev secrets from the server.
   Criterion 2346 -- An agent runs the tests with secrets through sops.
 
-  Drives the real `sops exec-env`, the actual binary `just test` (once
-  criterion 2348 wraps it) would shell out to, with `SOPS_AGE_KEY_CMD` set
-  to `cms sops-key` -- the key command the story's notes describe and
-  which does not exist anywhere in this codebase yet. There being nothing
-  to drive on the harness side of that command either (no socket, no
-  listener), this is expected to fail at the one place the story has not
-  built anything: `sops` running the key command and getting nothing back.
-
-  All OS-level setup and the `sops exec-env` call itself go through
-  `CodeMySpecSpex.Fixtures`, the spex boundary's own escape hatch for
-  programs with no app surface.
+  Drives the real, installed `sops` binary (confirmed to support
+  `SOPS_AGE_KEY_CMD`) against a real harness (`app_instance_rig/1`)
+  holding the matching dev key. `SOPS_AGE_KEY_CMD` points at
+  `Fixtures.sops_key_shim_path!/0`, which runs this checkout's own `cms
+  sops-key` through `mix run --no-start` -- the `cms` already installed
+  on this dev machine's own PATH is an unrelated release of this project
+  and never reflects an uncommitted source change (see the fixture's own
+  doc). `sops` forks and execs that single path directly as its own
+  child with no intervening shell fork (confirmed empirically), so the
+  harness-side "is my caller's parent sops" check sees the real sops
+  process.
   """
 
   use CodeMySpecSpex.Case
+
+  import CmsHarnessTest.AppInstanceHelpers
 
   alias CodeMySpecSpex.Fixtures
 
@@ -28,7 +30,7 @@ defmodule CodeMySpecSpex.Story1132.Criterion2346Spex do
       given_ "'cloud-1' holds an encrypted test env and a key command that asks its harness",
              context do
         dir = Fixtures.spex_tmp_dir!("sops-exec-env-spex")
-        {pub, _priv} = Fixtures.age_keypair!(dir)
+        {pub, priv} = Fixtures.age_keypair!(dir)
 
         enc_path =
           Fixtures.sops_encrypt_dotenv!(
@@ -38,7 +40,12 @@ defmodule CodeMySpecSpex.Story1132.Criterion2346Spex do
             pub
           )
 
-        {:ok, Map.merge(context, %{dir: dir, enc_path: enc_path})}
+        _rig = app_instance_rig(sops_age_keys: [priv])
+
+        eventually(fn -> assert Fixtures.harness_holding_key?(priv) end)
+
+        {:ok,
+         Map.merge(context, %{dir: dir, enc_path: enc_path, shim: Fixtures.sops_key_shim_path!()})}
       end
 
       when_ "it runs `sops exec-env` against the encrypted test env", context do
@@ -46,7 +53,7 @@ defmodule CodeMySpecSpex.Story1132.Criterion2346Spex do
           Fixtures.run_cmd(
             "sops",
             ["--config", "/dev/null", "exec-env", context.enc_path, "env"],
-            env: [{"SOPS_AGE_KEY_CMD", "cms sops-key"}]
+            env: [{"SOPS_AGE_KEY_CMD", context.shim}]
           )
 
         {:ok, Map.put(context, :result, result)}

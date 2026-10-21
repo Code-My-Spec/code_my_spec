@@ -5075,9 +5075,39 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
-  @doc "The path `sops` itself would read for this machine's age keyring."
-  @spec sops_keyring_path() :: Path.t()
-  def sops_keyring_path, do: CmsHarness.SopsKeyring.path()
+  @doc "Whether the harness's in-memory keyring (story 1132) holds this specific key."
+  @spec harness_holding_key?(String.t()) :: boolean()
+  def harness_holding_key?(key), do: key in CmsHarness.SopsKeyring.keys()
+
+  @doc "The path the sops key socket (story 1132) listens on."
+  @spec sops_key_socket_path() :: Path.t()
+  def sops_key_socket_path, do: CmsHarness.SopsKeySocket.path()
+
+  @doc """
+  A shell command that runs this checkout's own `cms sops-key` through
+  `mix run --no-start`, standing in for the packaged `cms` binary a real
+  dev box runs: the `cms` already installed on this dev machine's own
+  PATH is an unrelated release of this project and never reflects an
+  uncommitted source change. `mix run`'s own final step execs into the
+  BEOM VM without forking (confirmed empirically), so this process's
+  reported parent is whatever actually launched the shim — `sops` itself,
+  when `SOPS_AGE_KEY_CMD` points here.
+  """
+  @spec sops_key_shim_path!() :: Path.t()
+  def sops_key_shim_path! do
+    dir = spex_tmp_dir!("sops-key-shim")
+    path = Path.join(dir, "cms-sops-key-shim")
+    root = File.cwd!()
+
+    spex_write_file!(path, """
+    #!/bin/sh
+    cd #{root} || exit 1
+    exec env MIX_ENV=test mix run --no-start --no-compile -e 'CmsHarness.Cli.SopsKey.start([])'
+    """)
+
+    File.chmod!(path, 0o700)
+    path
+  end
 
   @doc "Every path the harness's own local HTTP router answers, for a criterion about what it does not."
   @spec harness_web_route_paths() :: [String.t()]
@@ -5153,6 +5183,30 @@ defmodule CodeMySpecSpex.Fixtures do
       |> Enum.find(&String.starts_with?(&1, "AGE-SECRET-KEY-"))
 
     {String.trim(pub), priv}
+  end
+
+  @doc """
+  A real, well-formed age private key nobody's data is actually encrypted
+  to -- for a scenario that only needs *a* key `CmsHarness.SopsKeyring`
+  will hold, not one that has to decrypt anything.
+
+  `SopsKeyring` is one process shared by the whole spex run; whatever any
+  scenario installs into it stays there for every scenario that runs
+  after it in the same `mix spex` invocation. A string like
+  `"AGE-SECRET-KEY-1DEV"` reads as a plausible key but is not one --
+  `age` fails to parse it as an identity at all, and a *malformed*
+  identity poisons the whole blob `cms sops-key` hands back to `sops`,
+  not just the one entry (confirmed: age refuses the lot rather than
+  skipping it), breaking a *different*, real-key-dependent scenario
+  elsewhere in the same run. A real key age can always parse is safe to
+  mix in: unrelated to any given file's recipient, it is simply tried and
+  passed over.
+  """
+  @spec unique_age_private_key!() :: String.t()
+  def unique_age_private_key! do
+    dir = spex_tmp_dir!("unique-age-key")
+    {_pub, priv} = age_keypair!(dir)
+    priv
   end
 
   @doc """

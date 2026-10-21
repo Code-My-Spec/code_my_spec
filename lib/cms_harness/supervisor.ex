@@ -109,6 +109,19 @@ defmodule CmsHarness.Supervisor do
       # simultaneous exchanges for one key is N-1 tokens nobody uses.
       CmsHarness.Token,
 
+      # The dev-only age key(s) a project's channel join hands over (story
+      # 1132), held only in this process's memory — never a file. Above the
+      # socket that serves it, which reads it on every request.
+      CmsHarness.SopsKeyring,
+
+      # Hands the key above to `cms sops-key` (run by `sops` itself via
+      # `SOPS_AGE_KEY_CMD`) over a Unix domain socket only this box's own
+      # user can reach — never HTTP, never a file. `:temporary`-restarted
+      # children above it mean a project disconnecting never takes this
+      # down; this is the one machine-wide thing in this tree below
+      # `AnalysisSlots`.
+      CmsHarness.SopsKeySocket,
+
       # Device approval and token renewal run independently of project hooks.
       {CmsHarness.Authorization,
        Application.get_env(:code_my_spec, CmsHarness.Authorization, [])},
