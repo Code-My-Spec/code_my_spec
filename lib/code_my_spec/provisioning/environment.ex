@@ -40,6 +40,8 @@ defmodule CodeMySpec.Provisioning.Environment do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -80,6 +82,6 @@ defmodule CodeMySpec.Provisioning.Environment do
     |> unique_constraint([:project_id, :name])
     |> foreign_key_constraint(:project_id)
     |> foreign_key_constraint(:server_id)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
   end
 end

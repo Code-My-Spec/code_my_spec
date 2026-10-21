@@ -23,8 +23,8 @@ config :code_my_spec,
 # harness_base.exs turns the main endpoint off; here it is the product.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: true,
-  url: [host: "127.0.0.1", port: 47400, scheme: "http"],
-  http: [ip: {127, 0, 0, 1}, port: 47400],
+  url: [host: "127.0.0.1", port: 47_400, scheme: "http"],
+  http: [ip: {127, 0, 0, 1}, port: 47_400],
   check_origin: false
 
 # The harness's server is this BEAM, so its device grant is approved for the
@@ -34,7 +34,7 @@ config :code_my_spec, harness_device_approver: {CodeMySpecDesktop.HarnessApprova
 # config.exs leaves it `server: false`; desktop's harness serves hooks.
 config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
-  http: [ip: {127, 0, 0, 1}, port: 47403]
+  http: [ip: {127, 0, 0, 1}, port: 47_403]
 
 # SQLite: nothing to install before the app runs. Its own migrations, from a
 # baseline of the Postgres schema (priv/sqlite).

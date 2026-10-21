@@ -3,6 +3,8 @@ defmodule CodeMySpec.Invitations.Invitation do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Accounts.Account
   alias CodeMySpec.Users.User
 
@@ -59,7 +61,7 @@ defmodule CodeMySpec.Invitations.Invitation do
     |> validate_inclusion(:role, [:owner, :admin, :member])
     |> assoc_constraint(:account)
     |> assoc_constraint(:invited_by)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
     |> put_token()
     |> put_expires_at()
   end

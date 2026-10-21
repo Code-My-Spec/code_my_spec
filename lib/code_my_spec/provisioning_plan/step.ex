@@ -43,6 +43,8 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProvisioningPlan.Resource
   alias CodeMySpec.ProvisioningPlan.Sequence
@@ -157,7 +159,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
       name: :provisioning_steps_project_id_key_environment_index
     )
     |> foreign_key_constraint(:project_id)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
   end
 
   # A row's environment presence has to agree with what the sequence says

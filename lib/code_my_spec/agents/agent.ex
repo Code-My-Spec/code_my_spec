@@ -31,6 +31,8 @@ defmodule CodeMySpec.Agents.Agent do
 
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Projects.Project
 
@@ -368,7 +370,7 @@ defmodule CodeMySpec.Agents.Agent do
     ])
     |> maybe_require_working_copy_id(agent)
     |> foreign_key_constraint(:working_copy_id)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
     |> foreign_key_constraint(:story_id)
     |> validate_story_holder()
     |> foreign_key_constraint(:epic_id)

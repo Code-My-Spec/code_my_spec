@@ -190,10 +190,13 @@ defmodule CodeMySpec.Analysis.Run do
     |> foreign_key_constraint(:project_id)
   end
 
+  # Callers pass atom keys; a row read back has string keys.
   defp put_requester(changeset) do
     case get_field(changeset, :requested_by) do
-      %{} = by -> put_change(changeset, :requester_agent_id, by["agent_id"] || by[:agent_id])
+      %{} = by -> put_change(changeset, :requester_agent_id, agent_id(by))
       _ -> changeset
     end
   end
+
+  defp agent_id(by), do: Map.new(by, fn {key, value} -> {to_string(key), value} end)["agent_id"]
 end

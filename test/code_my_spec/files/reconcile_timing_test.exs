@@ -83,6 +83,7 @@ defmodule CodeMySpec.Files.ReconcileTimingTest do
              "does not tell a reader whether it hit the limit or died some other way"
   end
 
-  defp database_error,
-    do: if(CodeMySpec.Repo.sqlite?(), do: Exqlite.Error, else: Postgrex.Error)
+  defp database_error, do: database_error(CodeMySpec.Repo.__adapter__())
+  defp database_error(Ecto.Adapters.SQLite3), do: Exqlite.Error
+  defp database_error(_postgres), do: Postgrex.Error
 end

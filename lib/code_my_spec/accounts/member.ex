@@ -16,6 +16,8 @@ defmodule CodeMySpec.Accounts.Member do
 
   use Ecto.Schema
   import Ecto.Changeset
+
+  alias CodeMySpec.Repo.References
   import Ecto.Query
 
   @type t :: %__MODULE__{
@@ -48,7 +50,7 @@ defmodule CodeMySpec.Accounts.Member do
     |> validate_inclusion(:role, [:owner, :admin, :member])
     |> assoc_constraint(:user)
     |> assoc_constraint(:account)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
     |> unique_constraint([:user_id, :account_id], name: :members_user_id_account_id_index)
   end
 

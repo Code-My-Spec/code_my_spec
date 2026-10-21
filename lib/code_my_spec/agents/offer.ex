@@ -12,6 +12,8 @@ defmodule CodeMySpec.Agents.Offer do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Agents.OfferMessage
 
   @kinds [
@@ -116,6 +118,6 @@ defmodule CodeMySpec.Agents.Offer do
     |> validate_required(@required)
     |> foreign_key_constraint(:agent_id)
     |> foreign_key_constraint(:project_id)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
   end
 end

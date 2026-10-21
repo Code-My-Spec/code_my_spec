@@ -7,6 +7,8 @@ defmodule CodeMySpec.Components.Dependency do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Components.Component
 
   @type t :: %__MODULE__{
@@ -48,7 +50,7 @@ defmodule CodeMySpec.Components.Dependency do
     |> unique_constraint([:source_component_id, :target_component_id])
     |> foreign_key_constraint(:source_component_id)
     |> foreign_key_constraint(:target_component_id)
-    |> CodeMySpec.Repo.References.check()
+    |> References.check()
   end
 
   @spec validate_no_self_dependency(Ecto.Changeset.t()) :: Ecto.Changeset.t()
