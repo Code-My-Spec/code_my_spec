@@ -131,4 +131,13 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
 
   defp bearer(conn, token),
     do: Plug.Conn.put_req_header(conn, "authorization", "Bearer " <> token)
+
+  @doc "The setup script the page showed for the box just added, as text."
+  def shown_setup_script(live) do
+    live
+    |> element("[data-test='setup-script']")
+    |> render()
+    |> Floki.parse_fragment!()
+    |> Floki.text()
+  end
 end
