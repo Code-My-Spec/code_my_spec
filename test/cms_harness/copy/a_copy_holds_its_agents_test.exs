@@ -45,7 +45,13 @@ defmodule CmsHarness.Copy.ACopyHoldsItsAgentsTest do
     # A call from this test cannot order the agent's :DOWN signal, so wait
     # for the actual relayed event. Allow for the shared server's gate-load
     # backlog; a missing event still fails within this bounded wait.
-    assert_receive {:agent_liveness, :down, ^id, ^root, :shutdown}, 30_000
+    assert_receive {:agent_liveness, :down, ^id, ^root, reason}, 30_000
+
+    # `:shutdown` when the agent stops in time; `:killed` when a loaded box makes
+    # it outlast its supervisor's shutdown window. Either way it went down with
+    # its copy, which is the claim. Matching `:shutdown` alone turned a slow
+    # teardown into a 30s wait for a message that had already arrived.
+    assert reason in [:shutdown, :killed]
     refute Machine.running?(ctx.id)
   end
 

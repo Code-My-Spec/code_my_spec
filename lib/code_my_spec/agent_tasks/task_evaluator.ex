@@ -67,7 +67,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   defp handle_result({:ok, :valid}, scope, agent, task, _type_name, _opts) do
     TaskOwner.complete_task(scope, agent, task.id, :completed)
     TaskOwner.clear_task_feedback(scope, agent, task.id)
-    reconsider_other_agents(scope, task)
+    reconsider_other_agents(scope, agent)
     {:ok, :valid}
   end
 
@@ -77,7 +77,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
     Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
     TaskOwner.complete_task(scope, agent, task.id, :completed)
     TaskOwner.clear_task_feedback(scope, agent, task.id)
-    reconsider_other_agents(scope, task)
+    reconsider_other_agents(scope, agent)
     {:ok, :valid}
   end
 
@@ -190,13 +190,22 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   # The handler (`Agents.Events`) runs the wake off this process; an in-BEAM
   # agent completes inside the harness channel, and a synchronous call back
   # into that channel would kill it.
-  defp reconsider_other_agents(scope, task) do
+  @doc """
+  Wake the other agents on `agent`'s working copy after it completed a task.
+
+  The agent that finished is the one excluded: it is told directly and must not
+  be offered a turn by its own completion. (This used to pass `task.agent_id`,
+  the sub-agent label of an old session-owned task, which is never an
+  `Agents.Agent` id, so nobody was ever excluded: issue 4427e406.)
+  """
+  @spec reconsider_other_agents(Scope.t(), Agent.t()) :: :ok
+  def reconsider_other_agents(scope, %Agent{id: agent_id}) do
     case scope.active_working_copy_id do
       nil ->
         :ok
 
       copy_id ->
-        nudge(scope, copy_id, Map.get(task, :agent_id))
+        nudge(scope, copy_id, agent_id)
     end
   rescue
     error ->

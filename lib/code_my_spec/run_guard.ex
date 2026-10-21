@@ -62,10 +62,11 @@ defmodule CodeMySpec.RunGuard do
       watch: Keyword.get(opts, :watch, @watch),
       poll_ms: Keyword.get(opts, :poll_ms, @poll_ms),
       max_run_ms: Keyword.get(opts, :max_run_ms, @max_run_ms),
+      kill_grace_ms: Keyword.get(opts, :kill_grace_ms, @kill_grace_ms),
       dir: Keyword.get(opts, :dir, runs_dir())
     }
 
-    sweep(state.dir, state.watch)
+    sweep(state.dir, state.watch, state.kill_grace_ms)
     File.mkdir_p(own_dir(state))
     schedule(state)
     {:ok, state}
@@ -89,10 +90,11 @@ defmodule CodeMySpec.RunGuard do
     Enum.each(state.runs, fn {pid, run} ->
       Logger.warning("[RunGuard] shutting down: killing os_pid=#{pid} (#{run.command})")
       kill_group(pid, 0)
-      File.rm(record_path(state, pid))
+      # Kept if the group is somehow still there: the next instance sweeps it.
+      if not group_alive?(pid), do: File.rm(record_path(state, pid))
     end)
 
-    File.rm_rf(own_dir(state))
+    File.rmdir(own_dir(state))
     :ok
   end
 
@@ -101,7 +103,7 @@ defmodule CodeMySpec.RunGuard do
 
   defp poll(state) do
     present = port_pids()
-    state |> reap_gone(present) |> reap_overdue() |> adopt(present)
+    state |> advance_kills() |> start_kills(present) |> adopt(present)
   end
 
   defp port_pids do
@@ -131,78 +133,125 @@ defmodule CodeMySpec.RunGuard do
   defp track(state, pid, command) do
     Logger.info("[RunGuard] os_pid=#{pid} running: #{command}")
     File.write(record_path(state, pid), command)
-    put_in(state.runs[pid], %{command: command, started: System.monotonic_time(:millisecond)})
+
+    put_in(state.runs[pid], %{
+      command: command,
+      started: System.monotonic_time(:millisecond),
+      kill: nil
+    })
   end
 
-  # The port is gone. A run that ended is done; one whose group still runs lost
-  # its owner and is reaped.
-  defp reap_gone(state, present) do
-    gone = state.runs |> Map.keys() |> Enum.reject(&MapSet.member?(present, &1))
-
-    Enum.reduce(gone, state, fn pid, acc ->
-      {run, runs} = Map.pop(acc.runs, pid)
-      File.rm(record_path(acc, pid))
-
-      if group_alive?(pid) do
-        Logger.error(
-          "[RunGuard] os_pid=#{pid} lost its owner and is still running — killing it (#{run.command})"
-        )
-
-        spawn_kill(pid)
-      else
-        Logger.info("[RunGuard] os_pid=#{pid} finished (#{run.command})")
-      end
-
-      %{acc | runs: runs}
-    end)
-  end
-
-  defp reap_overdue(state) do
+  # A run leaves tracking, and its record is removed, only once its group is
+  # confirmed gone (issue 4e1918aa). A kill is two steps with a pause between,
+  # and a harness that restarts in the pause must leave the record behind for
+  # the next instance's boot sweep to finish; dropping it first lost the run.
+  #
+  # Deciding to kill: the port is gone while the group still runs (it lost its
+  # owner), or the run is over the ceiling. A run that ended is simply done.
+  defp start_kills(state, present) do
     now = System.monotonic_time(:millisecond)
 
-    Enum.reduce(state.runs, state, fn {pid, run}, acc ->
-      if now - run.started >= acc.max_run_ms do
-        Logger.error(
-          "[RunGuard] os_pid=#{pid} exceeded #{acc.max_run_ms}ms — killing it (#{run.command})"
-        )
-
-        spawn_kill(pid)
-        File.rm(record_path(acc, pid))
-        %{acc | runs: Map.delete(acc.runs, pid)}
-      else
+    Enum.reduce(state.runs, state, fn
+      {_pid, %{kill: kill}}, acc when not is_nil(kill) ->
         acc
-      end
+
+      {pid, run}, acc ->
+        cond do
+          not MapSet.member?(present, pid) and group_alive?(pid) ->
+            Logger.error(
+              "[RunGuard] os_pid=#{pid} lost its owner and is still running — killing it (#{run.command})"
+            )
+
+            begin_kill(acc, pid, now)
+
+          not MapSet.member?(present, pid) ->
+            Logger.info("[RunGuard] os_pid=#{pid} finished (#{run.command})")
+            drop(acc, pid)
+
+          now - run.started >= acc.max_run_ms ->
+            Logger.error(
+              "[RunGuard] os_pid=#{pid} exceeded #{acc.max_run_ms}ms — killing it (#{run.command})"
+            )
+
+            begin_kill(acc, pid, now)
+
+          true ->
+            acc
+        end
     end)
+  end
+
+  # TERM now; KILL once the pause has passed, on a later poll; the run stays
+  # tracked, with its record, until the group is gone.
+  defp begin_kill(state, pid, now) do
+    signal_group("-TERM", pid)
+    put_in(state.runs[pid].kill, %{kill_at: now + state.kill_grace_ms, killed?: false})
+  end
+
+  defp advance_kills(state) do
+    now = System.monotonic_time(:millisecond)
+
+    Enum.reduce(state.runs, state, fn
+      {pid, %{kill: %{} = kill} = run}, acc ->
+        cond do
+          not group_alive?(pid) ->
+            Logger.info("[RunGuard] os_pid=#{pid} is gone (#{run.command})")
+            drop(acc, pid)
+
+          now >= kill.kill_at ->
+            signal_group("-KILL", pid)
+            put_in(acc.runs[pid].kill, %{kill | killed?: true})
+
+          true ->
+            acc
+        end
+
+      _tracked, acc ->
+        acc
+    end)
+  end
+
+  defp drop(state, pid) do
+    File.rm(record_path(state, pid))
+    %{state | runs: Map.delete(state.runs, pid)}
   end
 
   # --- earlier BEAMs ---
 
-  defp sweep(dir, watch) do
+  defp sweep(dir, watch, grace) do
     case File.ls(dir) do
       {:ok, beams} ->
-        beams |> Enum.reject(&(&1 == System.pid())) |> Enum.each(&sweep_beam(dir, &1, watch))
+        beams
+        |> Enum.reject(&(&1 == System.pid()))
+        |> Enum.each(&sweep_beam(dir, &1, watch, grace))
 
       {:error, _} ->
         :ok
     end
   end
 
-  defp sweep_beam(dir, beam, watch) do
+  defp sweep_beam(dir, beam, watch, grace) do
     path = Path.join(dir, beam)
 
     if beam_alive?(beam) do
       :ok
     else
-      for {pid, recorded} <- recorded_runs(path), still_watched?(pid, watch) do
-        Logger.error(
-          "[RunGuard] os_pid=#{pid} was left by BEAM #{beam}, which is gone — killing it (#{recorded})"
-        )
-
-        kill_group(pid, @kill_grace_ms)
-      end
-
-      File.rm_rf(path)
+      Enum.each(recorded_runs(path), &sweep_run(&1, path, beam, watch, grace))
+      File.rmdir(path)
     end
+  end
+
+  defp sweep_run({pid, recorded}, path, beam, watch, grace) do
+    if still_watched?(pid, watch) do
+      Logger.error(
+        "[RunGuard] os_pid=#{pid} was left by BEAM #{beam}, which is gone — killing it (#{recorded})"
+      )
+
+      kill_group(pid, grace)
+    end
+
+    # Kept if the group survived: the next instance tries again.
+    if not group_alive?(pid), do: File.rm(Path.join(path, Integer.to_string(pid)))
   end
 
   # The pid may have been reused since: only a process that still looks like a
@@ -241,12 +290,14 @@ defmodule CodeMySpec.RunGuard do
   defp group_alive?(pid),
     do: match?({_, 0}, System.cmd("/bin/kill", ["-0", "--", "-#{pid}"], stderr_to_stdout: true))
 
-  defp spawn_kill(pid), do: Task.start(fn -> kill_group(pid, @kill_grace_ms) end)
+  defp signal_group(signal, pid),
+    do: System.cmd("/bin/kill", [signal, "--", "-#{pid}"], stderr_to_stdout: true)
 
+  # Both steps in order, for callers that are about to go away themselves.
   defp kill_group(pid, grace) do
-    System.cmd("/bin/kill", ["-TERM", "--", "-#{pid}"], stderr_to_stdout: true)
+    signal_group("-TERM", pid)
     Process.sleep(grace)
-    System.cmd("/bin/kill", ["-KILL", "--", "-#{pid}"], stderr_to_stdout: true)
+    signal_group("-KILL", pid)
     :ok
   end
 end
