@@ -369,26 +369,108 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       true ->
-        # The same count the menu renders, so the decision and the menu in one
-        # response cannot disagree.
-        case length(Work.actionable(scope, role_of(agent), agent)) do
-          n when n > 0 ->
-            Logger.info(
-              "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
-            )
+        continue_with_actionable_work(scope, agent, req_id)
+    end
+  end
 
-            %{
-              "decision" => "block",
-              "reason" =>
-                "Task completed successfully, and the loop is still running." <>
-                  Menu.render(scope, true, role_of(agent), agent)
-            }
+  # `role: :main` is the only role `Work.actionable/3` computes `:project`-wide
+  # rather than against one story (`Work.assignment/2`), and that read can
+  # queue behind `IncrementalGraph`'s post-reload reseed (e3c09c4d) or
+  # ordinary load -- the harness's own curl against this hook has a fixed
+  # wait, and "coding agents' stops don't show this" (ed5baac4) because every
+  # other role's story-scoped read stays cheap. Bounded here, narrowly, rather
+  # than threaded into the rest of `decide/2` -- an earlier cut wrapped the
+  # whole decision and broke a channel-process caller, confirmed by three
+  # `harness_project_channel_test.exs` failures on a path that never reaches
+  # this function. The mechanics mirror `CodeMySpec.CodeMode.Sandbox.with_timeout/2`,
+  # which already bounds a script evaluation that reaches the database the
+  # same way: `Task.Supervisor.async_nolink` so a kill on timeout cannot crash
+  # the caller, then a final non-blocking drain after the kill, because the
+  # task may answer in the gap between the timeout firing and the kill
+  # landing, and reporting a timeout for work that finished would be wrong.
+  @default_decide_timeout_ms 25_000
 
-          0 ->
-            Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
-            notify_complete()
-            terminus_retrospective()
-        end
+  defp decide_timeout_ms do
+    Application.get_env(:code_my_spec, :stop_decide_timeout_ms, @default_decide_timeout_ms)
+  end
+
+  defp continue_with_actionable_work(scope, %Agent{role: :main} = agent, req_id) do
+    timeout = decide_timeout_ms()
+    started = System.monotonic_time(:millisecond)
+
+    task =
+      Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+        actionable_decision(scope, agent, req_id)
+      end)
+
+    case await_bounded(task, timeout) do
+      {:ok, result} ->
+        result
+
+      {:error, reason} ->
+        elapsed = System.monotonic_time(:millisecond) - started
+
+        Logger.warning(
+          "[StopHook] [#{req_id}] main's actionable-work read did not finish within " <>
+            "#{timeout}ms (#{elapsed}ms elapsed, #{inspect(reason)}) -- allowing rather than " <>
+            "leaving the harness to time out silently"
+        )
+
+        %{
+          "systemMessage" =>
+            "The CodeMySpec harness could not finish checking for more work within its own " <>
+              "#{timeout}ms budget, so it is allowing the stop rather than risking the " <>
+              "harness's own wait timing out with no answer at all. Nothing was skipped: " <>
+              "the next stop checks again."
+        }
+    end
+  end
+
+  defp continue_with_actionable_work(scope, agent, req_id),
+    do: actionable_decision(scope, agent, req_id)
+
+  defp actionable_decision(scope, agent, req_id) do
+    # The same count the menu renders, so the decision and the menu in one
+    # response cannot disagree.
+    case length(Work.actionable(scope, role_of(agent), agent)) do
+      n when n > 0 ->
+        Logger.info("[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop")
+
+        %{
+          "decision" => "block",
+          "reason" =>
+            "Task completed successfully, and the loop is still running." <>
+              Menu.render(scope, true, role_of(agent), agent)
+        }
+
+      0 ->
+        Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
+        notify_complete()
+        terminus_retrospective()
+    end
+  end
+
+  defp await_bounded(task, timeout) do
+    receive do
+      {ref, result} when ref == task.ref ->
+        Process.demonitor(task.ref, [:flush])
+        {:ok, result}
+
+      {:DOWN, ref, :process, _pid, reason} when ref == task.ref ->
+        {:error, {:crashed, reason}}
+    after
+      timeout ->
+        Task.shutdown(task, :brutal_kill)
+        drain_bounded(task)
+    end
+  end
+
+  defp drain_bounded(task) do
+    receive do
+      {ref, result} when ref == task.ref -> {:ok, result}
+      {:DOWN, ref, :process, _pid, _reason} when ref == task.ref -> {:error, :timeout}
+    after
+      0 -> {:error, :timeout}
     end
   end
 
