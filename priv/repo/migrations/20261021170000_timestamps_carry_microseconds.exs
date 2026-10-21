@@ -5,6 +5,9 @@ defmodule CodeMySpec.Repo.Migrations.TimestampsCarryMicroseconds do
   # columns of different precision do not order against each other, and SQLite
   # (the desktop) compares them as text. Raising a timestamp's precision does
   # not rewrite the table. One statement, in the migration's own transaction.
+  #
+  # Not `schema_migrations`: Ecto holds a lock on it from another connection
+  # while migrating, so altering it waits on the migrator itself.
   def up do
     execute("""
     DO $$
@@ -14,6 +17,7 @@ defmodule CodeMySpec.Repo.Migrations.TimestampsCarryMicroseconds do
         SELECT table_name, column_name, data_type
           FROM information_schema.columns
          WHERE table_schema = 'public'
+           AND table_name <> 'schema_migrations'
            AND data_type LIKE 'timestamp%'
            AND datetime_precision = 0
       LOOP
