@@ -56,6 +56,17 @@ defmodule CodeMySpec.Auth.HarnessOAuth do
     end
   end
 
+  @doc "Drop everything held for `server` — client and tokens — so the next authorization starts clean."
+  def forget(server, opts \\ []) do
+    locked(server, opts, fn path ->
+      case File.rm(path) do
+        :ok -> :ok
+        {:error, :enoent} -> :ok
+        error -> error
+      end
+    end)
+  end
+
   def access_token(server, opts \\ []) do
     locked(server, opts, fn path ->
       with {:ok, stored} <- read(path) do

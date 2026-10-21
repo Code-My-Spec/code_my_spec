@@ -86,13 +86,16 @@ defmodule CmsHarness.Authorization do
     end
   end
 
-  # A server that approves locally (desktop) is asked again: its database may
-  # be new, and the refused credential one an earlier server issued. Anywhere
-  # else a refusal waits for a person to retry.
+  # A server that approves locally (desktop) is asked again from scratch: its
+  # database may be new, and the refused client and token ones an earlier server
+  # issued. Anywhere else a refusal waits for a person to retry.
   defp credential_refused(state, reason) do
-    if Application.get_env(:code_my_spec, :harness_device_approver),
-      do: begin_authorization(state),
-      else: refused(state, reason)
+    if Application.get_env(:code_my_spec, :harness_device_approver) do
+      :ok = HarnessOAuth.forget(state.server, state.opts)
+      begin_authorization(state)
+    else
+      refused(state, reason)
+    end
   end
 
   defp begin_authorization(state) do
