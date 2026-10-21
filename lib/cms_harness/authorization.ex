@@ -82,8 +82,17 @@ defmodule CmsHarness.Authorization do
       {:ok, token} -> authorized(state, token)
       {:error, :no_credential} -> begin_authorization(state)
       {:error, :unreachable} -> schedule(state, :check, 30)
-      {:error, reason} -> refused(state, reason)
+      {:error, reason} -> credential_refused(state, reason)
     end
+  end
+
+  # A server that approves locally (desktop) is asked again: its database may
+  # be new, and the refused credential one an earlier server issued. Anywhere
+  # else a refusal waits for a person to retry.
+  defp credential_refused(state, reason) do
+    if Application.get_env(:code_my_spec, :harness_device_approver),
+      do: begin_authorization(state),
+      else: refused(state, reason)
   end
 
   defp begin_authorization(state) do
