@@ -19,6 +19,7 @@ defmodule CodeMySpec.Workspaces do
       CodeMySpec.Devices,
       CodeMySpec.Environments,
       CodeMySpec.Events,
+      CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.PublicUrl,
       CodeMySpec.Repo,
@@ -28,6 +29,7 @@ defmodule CodeMySpec.Workspaces do
     exports: :all
 
   alias CodeMySpec.Devices
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   require Logger
@@ -134,6 +136,37 @@ defmodule CodeMySpec.Workspaces do
   end
 
   defp still_serving?(%Workspace{}), do: false
+
+  @token_path "/run/secrets/cms_device_token"
+
+  @doc """
+  Start the container of a Docker dev box (story 1140). Its token is mounted as
+  a file at #{@token_path}, never put in the environment; the harness inside
+  reads the path from `CMS_DEVICE_TOKEN_FILE`.
+
+  `{:error, :docker_unreachable}` when no daemon answers.
+  """
+  @spec start_dev_box(Device.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  def start_dev_box(%Device{id: id, provider: provider}, token, server_url) do
+    env = [
+      {"CMS_SERVER_URL", server_url},
+      {"CMS_DEV_BOX", "1"},
+      {"CMS_DEVICE_TOKEN_FILE", @token_path}
+    ]
+
+    # The box's own provider starts it, not the instance runner the app is
+    # configured with (that one runs copy apps).
+    runner = Runner.for_dev_box(provider)
+    Code.ensure_loaded(runner)
+
+    if function_exported?(runner, :start, 5) do
+      runner.start("devbox-" <> String.slice(id, 0, 8), "devbox", free_port(), env,
+        files: [{@token_path, token}]
+      )
+    else
+      {:error, :not_a_container_provider}
+    end
+  end
 
   defp start_instance(existing, %Scope{active_project: %Project{} = project} = scope) do
     container_name = container_name(project)

@@ -16,11 +16,54 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
   @image "codemyspec/devbox:latest"
   @app_port 4000
 
+  # A dev box (story 1140): Docker is a provider like the others. The box runs
+  # on the machine that has the daemon, so it is a `:local` kind.
   @impl true
-  def start(container_name, app_name, port, env \\ []) do
+  def id, do: :docker
+
+  @impl true
+  def label, do: "Docker"
+
+  @impl true
+  def kind, do: :local
+
+  @impl true
+  def instructions(_context) do
+    [
+      %{
+        key: "docker-container",
+        copy: "copy-docker-container",
+        title: "Your container",
+        body:
+          "A container was started for this box. Its token is mounted into it as a read-only " <>
+            "file, not set in its environment, so `docker inspect` does not show it. Stopping " <>
+            "and starting the container brings the same box back."
+      }
+    ]
+  end
+
+  @impl true
+  def start(container_name, app_name, port, env \\ [], opts \\ []) do
     # The name is derived from the project, so a second boot for the same
     # project collides with whatever the first one left behind — `docker run`
     # exits 125 and the visitor never gets a workspace. Booting replaces.
+    with :ok <- reachable() do
+      run(container_name, app_name, port, env, opts)
+    end
+  end
+
+  # Whether a daemon answers is asked of the daemon, not read off an error's
+  # wording: Docker 29 says "failed to connect to the docker API" where 28 said
+  # "Cannot connect to the Docker daemon", and the next release will word it
+  # differently again. Any failure of `docker version` is "not reachable".
+  defp reachable do
+    case docker(["version", "--format", "{{.Server.Version}}"]) do
+      {_out, 0} -> :ok
+      {_out, _code} -> {:error, :docker_unreachable}
+    end
+  end
+
+  defp run(container_name, app_name, port, env, opts) do
     stop(container_name)
 
     args =
@@ -33,6 +76,7 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
         "APP_NAME=#{app_name}"
       ] ++
         env_args(env) ++
+        file_args(container_name, Keyword.get(opts, :files, [])) ++
         [
           "--publish",
           "#{port}:#{@app_port}",
@@ -41,8 +85,18 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
 
     case docker(args) do
       {_out, 0} -> :ok
-      {out, code} -> {:error, "docker run exited #{code}: #{String.trim(out)}"}
+      {_out, 127} -> {:error, :docker_unreachable}
+      {out, code} -> run_failed(out, code)
     end
+  end
+
+  # No daemon answering is a state a person can fix, so it gets a name of its own
+  # instead of `docker run`'s text.
+  defp run_failed(out, code) do
+    if String.contains?(out, "Cannot connect to the Docker daemon") or
+         String.contains?(out, "Is the docker daemon running"),
+       do: {:error, :docker_unreachable},
+       else: {:error, "docker run exited #{code}: #{String.trim(out)}"}
   end
 
   # An HTTP round-trip, not a TCP connect. Docker publishes the host port the
@@ -99,6 +153,29 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
   def stop(container_name) do
     docker(["rm", "--force", container_name])
     :ok
+  end
+
+  # A secret goes in as a read-only bind-mounted file. The host copy lives under
+  # this machine's state dir (0600, in a 0700 directory) and is kept, so the
+  # same container, stopped and started, still finds it.
+  defp file_args(container_name, files) do
+    Enum.flat_map(files, fn {container_path, contents} ->
+      host_path = secret_path(container_name, container_path)
+      File.mkdir_p!(Path.dirname(host_path))
+      File.chmod!(Path.dirname(host_path), 0o700)
+      File.write!(host_path, contents)
+      File.chmod!(host_path, 0o444)
+      ["--volume", "#{host_path}:#{container_path}:ro"]
+    end)
+  end
+
+  defp secret_path(container_name, container_path) do
+    Path.join([
+      Path.expand(CodeMySpec.Paths.local_state_dir()),
+      "devbox-secrets",
+      container_name,
+      Path.basename(container_path)
+    ])
   end
 
   defp image do

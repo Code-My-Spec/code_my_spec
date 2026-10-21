@@ -67,7 +67,9 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   """
   def start_link(opts) do
     ensure_registry()
-    {:ok, agent} = Agent.start_link(fn -> Map.put(outcomes(opts), :calls, []) end)
+
+    {:ok, agent} =
+      Agent.start_link(fn -> outcomes(opts) |> Map.put(:calls, []) |> Map.put(:files, %{}) end)
 
     # The *last* entry in `self()`'s own `$callers` chain, not `self()` on its
     # own: called through `start_supervised!`, `start_link/1` runs inside
@@ -145,12 +147,25 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   # onboards itself and one that comes up belonging to nobody — and that is a
   # claim a test should be able to make.
   @impl true
-  def start(container_name, app_name, port, env \\ []) do
+  def start(container_name, app_name, port, env \\ [], opts \\ []) do
     Agent.get_and_update(owner(), fn state ->
       {state.start_result,
-       %{state | calls: [{container_name, app_name, port, env} | state.calls]}}
+       %{
+         state
+         | calls: [{container_name, app_name, port, env} | state.calls],
+           files: Map.merge(state.files, Map.new(Keyword.get(opts, :files, [])))
+       }}
     end)
   end
+
+  @doc """
+  The files the instance was started with, `%{path_in_container => contents}`.
+
+  A secret that must not appear in `docker inspect` reaches a container as a
+  mounted file (story 1140), so a test that asks "is the token in the
+  environment" also has to be able to ask "and where is it instead".
+  """
+  def mounted_files, do: Agent.get(owner(), & &1.files)
 
   @impl true
   def healthy?(_port), do: Agent.get(owner(), & &1.healthy?)

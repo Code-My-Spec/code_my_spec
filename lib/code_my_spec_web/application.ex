@@ -55,6 +55,8 @@ defmodule CodeMySpecWeb.Application do
            name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync`. Not gated on
         # embeddings: `project_dependencies` is bookkeeping on its own.
+        # Test and spex runs launched here never outlive what started them.
+        when_serving(serving?, CodeMySpec.RunGuard),
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
         # One reconcile per boot; a `:temporary`, non-raising Task, so it never

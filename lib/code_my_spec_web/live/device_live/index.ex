@@ -46,8 +46,10 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
 
@@ -64,7 +66,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
        project_id: params["project_id"],
        adding?: false,
        new_box: nil,
-       providers: Provider.all(),
+       providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
      )}
   end
@@ -85,23 +87,37 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   # An add sent by someone who cannot add is refused, whether or not the page
   # offered it: the check is the context's, not the button's.
   def handle_event("add_dev_box", %{"dev_box" => params}, socket) do
-    case Devices.add_dev_box(socket.assigns.current_scope, params) do
+    case Devices.add_dev_box(
+           socket.assigns.current_scope,
+           params,
+           Runner.dev_box(params["provider"])
+         ) do
       {:ok, box, token} ->
-        provider = Provider.get(box.provider)
-        context = %{token: token, server_url: CodeMySpecWeb.Endpoint.url()}
+        server_url = CodeMySpecWeb.Endpoint.url()
 
-        {:noreply,
-         socket
-         |> assign(
-           adding?: false,
-           new_box: %{
-             device: box,
-             name: Device.display_name(box),
-             token: token,
-             sections: provider.instructions(context)
-           }
-         )
-         |> load()}
+        case launch(box, token, server_url) do
+          :ok ->
+            provider = Runner.dev_box(box.provider)
+
+            {:noreply,
+             socket
+             |> assign(
+               adding?: false,
+               new_box: %{
+                 device: box,
+                 name: Device.display_name(box),
+                 token: token,
+                 sections: provider.instructions(%{token: token, server_url: server_url})
+               }
+             )
+             |> load()}
+
+          {:error, reason} ->
+            # No half-made box: a container that did not start leaves no device
+            # and no token behind.
+            Devices.destroy(socket.assigns.current_scope, box)
+            {:noreply, socket |> put_flash(:error, launch_error(reason)) |> load()}
+        end
 
       {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "Only an account owner or admin can add a dev box.")}
@@ -111,6 +127,23 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
       {:error, %Ecto.Changeset{}} ->
         {:noreply, put_flash(socket, :error, "Name the dev box.")}
+    end
+  end
+
+  # Revoking cuts off exactly one box: its token stops signing in, the access
+  # tokens already issued to it die, and its open connections are closed.
+  def handle_event("revoke_dev_box", %{"id" => id}, socket) do
+    case Devices.revoke_dev_box(socket.assigns.current_scope, id) do
+      {:ok, box} ->
+        CodeMySpec.Oauth.revoke_box_tokens(box.id)
+        CodeMySpecWeb.Endpoint.broadcast("dev_box:#{box.id}", "disconnect", %{})
+
+        {:noreply,
+         socket |> put_flash(:info, "#{Device.display_name(box)} was revoked.") |> load()}
+
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can revoke a dev box.")}
     end
   end
 
@@ -150,6 +183,19 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   @impl true
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
+  def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
+
+  # A Docker box runs on a machine that has a daemon, so adding it starts its
+  # container; the others are brought up by the person from the instructions.
+  defp launch(%Device{provider: :docker} = box, token, server_url),
+    do: Workspaces.start_dev_box(box, token, server_url)
+
+  defp launch(_box, _token, _server_url), do: :ok
+
+  defp launch_error(:docker_unreachable),
+    do: "Docker is not reachable. Start Docker and add the box again."
+
+  defp launch_error(_reason), do: "The dev box could not be started."
 
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
@@ -159,21 +205,33 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     scope = socket.assigns.current_scope
 
     devices = Devices.list_devices(scope)
-    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
+    device_ids = Enum.map(devices, & &1.id)
+    copies = WorkingCopies.ids_by_device(device_ids)
+    serving = WorkingCopies.serving_projects_by_device(device_ids)
+
+    rows =
+      for device <- devices do
+        previews =
+          for project_id <- Map.get(serving, device.id, []), do: PreviewAddress.url(project_id)
+
+        row(device, Map.get(copies, device.id, []), previews, now)
+      end
 
     assign(socket,
-      devices: Enum.map(devices, &row(&1, Map.get(copies, &1.id, []), now)),
+      devices: rows,
+      server_host: URI.parse(CodeMySpecWeb.Endpoint.url()).host,
       now: now
     )
   end
 
-  defp row(device, copy_ids, now) do
+  defp row(device, copy_ids, previews, now) do
     up? = reachable?(copy_ids)
 
     %{
       device: device,
+      previews: previews,
       status: box_status(device),
-      provider: Provider.get(device.provider),
+      provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
       presence: presence(up?, device, now),
       up?: up?,
@@ -222,6 +280,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: %{label: "Last seen", since: Liveness.since(at, now)}
 
   # A dev box says whether anything has ever signed in with its token.
+  defp box_status(%Device{token_revoked_at: %DateTime{}}), do: "Revoked"
   defp box_status(%Device{token_last_used_at: nil}), do: "Never connected"
   defp box_status(%Device{}), do: "Connected"
 
@@ -311,7 +370,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   <button
                     type="button"
                     class="copy-btn btn btn-sm btn-primary"
-                    data-copy={section.body}
+                    data-copy={Map.get(section, :value, section.body)}
                     data-test={section.copy}
                   >
                     Copy
@@ -352,6 +411,36 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   >
                     <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
                     <span data-test="dev-box-status">{row.status}</span>
+                    <a
+                      :for={url <- row.previews}
+                      data-test="dev-box-preview"
+                      href={url}
+                      target="_blank"
+                      class="link"
+                    >
+                      {url}
+                    </a>
+                    <p
+                      :if={
+                        is_nil(row.device.token_last_used_at) and is_nil(row.device.token_revoked_at)
+                      }
+                      data-test="never-connected-help"
+                      class="text-xs opacity-70"
+                    >
+                      This box has never connected. If its session started, check the
+                      environment's allowlist includes {@server_host} (and the other hosts shown
+                      when it was added), and that the network secret is set for {@server_host}.
+                    </p>
+                    <.button
+                      :if={@can_add? and is_nil(row.device.token_revoked_at)}
+                      phx-click="revoke_dev_box"
+                      phx-value-id={row.device.id}
+                      data-test="revoke-dev-box"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-ghost"
+                    >
+                      Revoke
+                    </.button>
                   </div>
 
                   <div data-test="device-presence" class="shrink-0 text-right text-sm">

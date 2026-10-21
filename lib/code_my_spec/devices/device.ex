@@ -48,6 +48,7 @@ defmodule CodeMySpec.Devices.Device do
           preview_tunnel_id: String.t() | nil,
           preview_tunnel_secret: String.t() | nil,
           provider: atom() | nil,
+          token_revoked_at: DateTime.t() | nil,
           token_hash: String.t() | nil,
           token_last_used_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -107,9 +108,11 @@ defmodule CodeMySpec.Devices.Device do
     # the token the box signs in with: the token itself is shown once, when the box
     # is added, and kept nowhere. `token_last_used_at` is the first and latest
     # sign-in with it; nil is "never connected".
-    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud]
+    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud, :docker]
     field :token_hash, :string
     field :token_last_used_at, :utc_datetime_usec
+    # Story 1131: set when Sam revokes the box; the token no longer signs in.
+    field :token_revoked_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime)
   end
@@ -153,6 +156,10 @@ defmodule CodeMySpec.Devices.Device do
   def went_down_changeset(device, at) do
     cast(device, %{last_up_at: at}, [:last_up_at])
   end
+
+  @doc "The box's token was revoked."
+  def revoked_changeset(device, at),
+    do: cast(device, %{token_revoked_at: at}, [:token_revoked_at])
 
   @doc "Whether this device is a dev box added from a provider."
   @spec dev_box?(t()) :: boolean()

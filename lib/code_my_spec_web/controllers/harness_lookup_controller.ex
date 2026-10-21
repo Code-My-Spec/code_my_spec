@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.HarnessLookupController do
     with {:ok, project_id} <- require_param(params, "project_id"),
          {:ok, root} <- require_param(params, "root"),
          {:ok, project} <- fetch_project(project_id),
+         :ok <- reachable(conn, project),
          {:ok, harness} <- issue(project, params),
          {:ok, harness} <- WorkingCopies.report_root(harness, root) do
       json(conn, %{
@@ -56,6 +57,11 @@ defmodule CodeMySpecWeb.HarnessLookupController do
 
       {:error, :no_project} ->
         conn |> put_status(404) |> json(%{error: "No project #{params["project_id"]}"})
+
+      {:error, :forbidden} ->
+        conn
+        |> put_status(403)
+        |> json(%{error: "That project is outside this dev box's account"})
 
       {:error, reason} ->
         conn |> put_status(422) |> json(%{error: "Could not issue: #{inspect(reason)}"})
@@ -81,6 +87,16 @@ defmodule CodeMySpecWeb.HarnessLookupController do
     )
   end
 
+  # A dev box (story 1131) reaches the projects of its own account.
+  defp reachable(%Plug.Conn{assigns: %{box_device: %{account_id: account_id}}}, %{
+         account_id: account_id
+       }),
+       do: :ok
+
+  defp reachable(%Plug.Conn{assigns: %{box_device: _box}}, _project), do: {:error, :forbidden}
+
+  defp reachable(_conn, _project), do: :ok
+
   defp fetch_project(project_id) do
     case Projects.get_project_by_id(project_id) do
       nil -> {:error, :no_project}
@@ -96,16 +112,16 @@ defmodule CodeMySpecWeb.HarnessLookupController do
   end
 
   def show(conn, %{"id" => id}) do
-    case WorkingCopies.fetch(id) do
-      {:ok, harness} ->
-        json(conn, %{
-          working_copy_id: harness.id,
-          harness_id: harness.id,
-          project_id: harness.project_id,
-          root: harness.root,
-          label: harness.label
-        })
-
+    with {:ok, harness} <- WorkingCopies.fetch(id),
+         :ok <- reachable(conn, Projects.get_project_by_id(harness.project_id)) do
+      json(conn, %{
+        working_copy_id: harness.id,
+        harness_id: harness.id,
+        project_id: harness.project_id,
+        root: harness.root,
+        label: harness.label
+      })
+    else
       {:error, :not_found} ->
         conn
         |> put_status(404)
@@ -115,6 +131,11 @@ defmodule CodeMySpecWeb.HarnessLookupController do
         conn
         |> put_status(400)
         |> json(%{error: "Not a valid harness id: #{inspect(id)}"})
+
+      {:error, :forbidden} ->
+        conn
+        |> put_status(403)
+        |> json(%{error: "That harness is outside this dev box's account"})
     end
   end
 
@@ -147,6 +168,7 @@ defmodule CodeMySpecWeb.HarnessLookupController do
   """
   def preview(conn, %{"id" => id}) do
     with {:ok, copy} <- WorkingCopies.fetch(id),
+         :ok <- reachable(conn, Projects.get_project_by_id(copy.project_id)),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
       json(conn, %{
         # Derived the same way `ensure/1` records it rather than read back off
@@ -169,6 +191,11 @@ defmodule CodeMySpecWeb.HarnessLookupController do
 
       {:error, :invalid_id} ->
         conn |> put_status(400) |> json(%{error: "Not a valid harness id: #{inspect(id)}"})
+
+      {:error, :forbidden} ->
+        conn
+        |> put_status(403)
+        |> json(%{error: "That harness is outside this dev box's account"})
 
       # 409 rather than 403: nothing is wrong with the caller's credential, and
       # nothing about this copy is broken. It is simply not the one the project's

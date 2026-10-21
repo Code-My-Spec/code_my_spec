@@ -3878,6 +3878,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Stand the fake in for Docker as a dev box provider, with the app's own
+  instance runner left as `Runner.Local` (what every dev app has) so a Docker box
+  that wrongly went through the instance runner cannot pass.
+  """
+  @spec install_docker_dev_box_runner(keyword()) :: :ok
+  def install_docker_dev_box_runner(opts \\ [healthy?: true, serving: :serving]) do
+    install_workspace_runner(opts,
+      runner: CodeMySpec.Workspaces.Runner.Local,
+      dev_box_runners: %{docker: FakeWorkspaceRunner}
+    )
+  end
+
+  @doc """
   What the instance was told about itself when it was started.
 
   The environment the runner was handed, which is everything a container knows
@@ -3896,6 +3909,17 @@ defmodule CodeMySpecSpex.Fixtures do
       [] -> %{}
     end
   end
+
+  @doc "Every `start` the context made on the fake workspace, oldest first."
+  @spec workspace_start_calls() :: [tuple()]
+  defdelegate workspace_start_calls(), to: FakeWorkspaceRunner, as: :calls
+
+  @doc """
+  The files the fake workspace was started with, `%{path_in_container => contents}`:
+  where a secret that must stay out of the container's environment is put instead.
+  """
+  @spec workspace_mounted_files() :: %{String.t() => String.t()}
+  defdelegate workspace_mounted_files(), to: FakeWorkspaceRunner, as: :mounted_files
 
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()

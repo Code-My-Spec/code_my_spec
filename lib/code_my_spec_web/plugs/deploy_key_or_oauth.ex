@@ -58,11 +58,11 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
     end
   end
 
-  # A dev box's own token (story 1130), accepted on the one route a machine
-  # announces itself on and nowhere else: it resolves to exactly that box. Story
-  # 1131 replaces this with an exchange for a short-lived token; this is the
-  # minimal path that ties a connecting harness to its box.
-  defp box_sign_in(%Plug.Conn{request_path: "/api/devices"} = conn) do
+  # A dev box's own token (story 1130), accepted on the routes a machine
+  # announces itself and trades it for an access token on (story 1131), and
+  # nowhere else: it resolves to exactly that box.
+  defp box_sign_in(%Plug.Conn{request_path: path} = conn)
+       when path in ["/api/devices", "/api/devices/token"] do
     with ["Bearer cbt_" <> rest] <- get_req_header(conn, "authorization"),
          %CodeMySpec.Devices.Device{} = box <-
            CodeMySpec.Devices.sign_in_with_token("cbt_" <> rest) do

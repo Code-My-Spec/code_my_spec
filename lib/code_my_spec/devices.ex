@@ -51,7 +51,6 @@ defmodule CodeMySpec.Devices do
 
   alias CodeMySpec.Accounts.Authorization
   alias CodeMySpec.Accounts.Member
-  alias CodeMySpec.Devices.Provider
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -178,20 +177,20 @@ defmodule CodeMySpec.Devices do
   Owners and admins only: `{:error, :forbidden}` for anyone else, checked here and
   not left to the page that offers the button. The token is minted here, shown
   once by the caller, and only its hash is kept. A box is announced `kind` by its
-  provider, since the provider is what knows what it runs on.
+  provider (a `Workspaces.Runner`, resolved by the caller: Workspaces sits above
+  Devices), since the provider is what knows what it runs on.
   """
-  @spec add_dev_box(Scope.t(), map()) ::
+  @spec add_dev_box(Scope.t(), map(), module() | nil) ::
           {:ok, Device.t(), String.t()}
           | {:error, :forbidden | :unknown_provider | Ecto.Changeset.t()}
-  def add_dev_box(%Scope{active_account_id: account_id} = scope, params)
+  def add_dev_box(%Scope{active_account_id: account_id} = scope, params, provider)
       when is_binary(account_id) do
     with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
-         provider when not is_nil(provider) <-
-           Provider.get(params["provider"] || params[:provider]) do
+         {:ok, provider} <- known_provider(provider) do
       token = mint_token()
 
       attrs = %{
-        label: String.trim(to_string(params["name"] || params[:name] || "")),
+        label: String.trim(to_string(params["name"] || "")),
         provider: provider.id(),
         kind: provider.kind(),
         account_id: account_id,
@@ -204,11 +203,14 @@ defmodule CodeMySpec.Devices do
       end
     else
       false -> {:error, :forbidden}
-      nil -> {:error, :unknown_provider}
+      :unknown -> {:error, :unknown_provider}
     end
   end
 
-  def add_dev_box(%Scope{}, _params), do: {:error, :forbidden}
+  def add_dev_box(%Scope{}, _params, _provider), do: {:error, :forbidden}
+
+  defp known_provider(nil), do: :unknown
+  defp known_provider(provider), do: {:ok, provider}
 
   defp mint_token, do: "cbt_" <> Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
 
@@ -221,7 +223,9 @@ defmodule CodeMySpec.Devices do
   """
   @spec sign_in_with_token(String.t() | nil) :: Device.t() | nil
   def sign_in_with_token(token) when is_binary(token) and token != "" do
-    case Repo.get_by(Device, token_hash: hash_token(token)) do
+    hash = hash_token(token)
+
+    case Repo.one(from(d in Device, where: d.token_hash == ^hash and is_nil(d.token_revoked_at))) do
       nil ->
         nil
 
@@ -233,6 +237,61 @@ defmodule CodeMySpec.Devices do
   end
 
   def sign_in_with_token(_token), do: nil
+
+  @doc """
+  Revoke a dev box's token (story 1131). Owners and admins only; the box's token
+  stops signing in, and nothing else on the account is touched.
+  """
+  @spec revoke_dev_box(Scope.t(), String.t()) ::
+          {:ok, Device.t()} | {:error, :forbidden | :not_found | Ecto.Changeset.t()}
+  def revoke_dev_box(%Scope{active_account_id: account_id} = scope, id)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = box <- get_device(scope, id),
+         true <- Device.dev_box?(box) do
+      case box |> Device.revoked_changeset(DateTime.utc_now()) |> Repo.update() do
+        {:ok, box} ->
+          broadcast(box, {:dev_box_revoked, box.id})
+          {:ok, box}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def revoke_dev_box(%Scope{}, _id), do: {:error, :forbidden}
+
+  @doc """
+  The dev box with this id whose token has not been revoked, or nil. For an
+  access token issued to a box: it holds for as long as its box does.
+  """
+  @spec active_dev_box(String.t() | nil) :: Device.t() | nil
+  def active_dev_box(id) when is_binary(id) do
+    case Repo.get(Device, id) do
+      %Device{token_revoked_at: nil} = box -> if Device.dev_box?(box), do: box
+      _ -> nil
+    end
+  end
+
+  def active_dev_box(_id), do: nil
+
+  @doc """
+  A box's harness joined a project channel: tell the account's page, so what it
+  reported (a preview address) shows without a reload.
+  """
+  @spec box_joined(String.t() | nil) :: :ok
+  def box_joined(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{} = box -> broadcast(box, {:dev_box_connected, box.id})
+      nil -> :ok
+    end
+  end
+
+  def box_joined(_device_id), do: :ok
 
   @doc "Subscribe to changes to this account's dev boxes."
   @spec subscribe(String.t()) :: :ok | {:error, term()}

@@ -79,19 +79,21 @@ defmodule CmsHarness.Config do
 
   # A rootless caller (`Device.announce/1`: a machine is not a checkout) takes
   # any credential the served copies hold.
-  def credential(nil) do
-    case Credentials.any() do
-      {:ok, token, _source} -> {:ok, token}
-      {:error, reason} -> {:error, reason}
+  def credential(nil), do: Credentials.any() |> usable(nil)
+
+  def credential(root), do: root |> Credentials.for_working_copy() |> usable(root)
+
+  # A dev box's credential is its box token, which the socket never presents: it
+  # connects with the access token that token was traded for (story 1131).
+  defp usable({:ok, _token, :dev_box}, root) do
+    case CmsHarness.Token.access_token(root) do
+      {:ok, access} -> {:ok, access}
+      {:error, _reason} = error -> error
     end
   end
 
-  def credential(root) do
-    case Credentials.for_working_copy(root) do
-      {:ok, token, _source} -> {:ok, token}
-      {:error, reason} -> {:error, reason}
-    end
-  end
+  defp usable({:ok, token, _source}, _root), do: {:ok, token}
+  defp usable({:error, reason}, _root), do: {:error, reason}
 
   @doc """
   A signed-in user's own access token, if this machine has one.
@@ -117,6 +119,44 @@ defmodule CmsHarness.Config do
   def deploy_key do
     present(Application.get_env(:code_my_spec, :harness_deploy_key))
   end
+
+  @doc """
+  Whether this harness runs as a dev box (story 1131): `:harness_dev_box`, or
+  `CMS_DEV_BOX` set, or a device token configured (including `CMS_DEVICE_TOKEN_FILE`). Such a harness signs in as its
+  box, by trading the box token for an access token at `POST /api/devices/token`.
+  """
+  @spec dev_box?() :: boolean()
+  def dev_box? do
+    Application.get_env(:code_my_spec, :harness_dev_box, false) == true or
+      System.get_env("CMS_DEV_BOX") not in [nil, ""] or match?({:ok, _}, device_token())
+  end
+
+  @doc """
+  The box token this harness was given, if it holds one: `:harness_device_token`,
+  else the file `CMS_DEVICE_TOKEN_FILE` names, else `CMS_DEVICE_TOKEN`.
+
+  A Claude Code cloud box holds none: Anthropic's proxy adds the token to requests
+  for this server in transit, so the exchange goes out without it.
+  """
+  @spec device_token() :: {:ok, String.t()} | {:error, :no_credential}
+  def device_token do
+    with {:error, :no_credential} <-
+           present(Application.get_env(:code_my_spec, :harness_device_token)),
+         {:error, :no_credential} <- from_token_file(System.get_env("CMS_DEVICE_TOKEN_FILE")) do
+      present(System.get_env("CMS_DEVICE_TOKEN"))
+    end
+  end
+
+  # A token mounted as a file (a Docker box): not in the environment, so not in
+  # `docker inspect`.
+  defp from_token_file(path) when is_binary(path) and path != "" do
+    case File.read(path) do
+      {:ok, contents} -> present(String.trim(contents))
+      {:error, _reason} -> {:error, :no_credential}
+    end
+  end
+
+  defp from_token_file(_path), do: {:error, :no_credential}
 
   defp present(value) when is_binary(value) and value != "", do: {:ok, value}
   defp present(_), do: {:error, :no_credential}

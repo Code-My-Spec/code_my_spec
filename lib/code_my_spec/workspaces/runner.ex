@@ -2,6 +2,10 @@ defmodule CodeMySpec.Workspaces.Runner do
   @moduledoc """
   Whatever actually runs an instance.
 
+  It is also what a dev box is added from (story 1130): `dev_boxes/0` lists the
+  runners that say who they are (`id/0`, `label/0`, `kind/0`) and what to show
+  for the token of a box added from them (`instructions/1`).
+
   Today that is a devbox container on the local Docker daemon. The shared
   multi-tenant host is a second implementation of this same behaviour, which is
   the point of it being a behaviour. Configure with:
@@ -60,9 +64,85 @@ defmodule CodeMySpec.Workspaces.Runner do
 
   @callback stop(container_name :: String.t()) :: :ok
 
+  @type section :: %{
+          required(:key) => String.t(),
+          required(:copy) => String.t(),
+          required(:title) => String.t(),
+          required(:body) => String.t(),
+          optional(:value) => String.t()
+        }
+
+  @doc "As a dev box provider (story 1130): its id, as stored on the device and posted by the add form."
+  @callback id() :: atom()
+
+  @doc "As a dev box provider: what the person picks it by."
+  @callback label() :: String.t()
+
+  @doc "As a dev box provider: `:local` or `:cloud`, the kind of machine a box from it is."
+  @callback kind() :: :local | :cloud
+
+  @doc """
+  As a dev box provider: what to show with the token of a box just added,
+  sections each with a copy button. `context` carries the `:token` and this
+  server's `:server_url`.
+  """
+  @callback instructions(context :: %{token: String.t(), server_url: String.t()}) :: [section()]
+
+  @doc """
+  `start/4` with options. `files: [{path_in_instance, contents}]` puts a secret
+  into the instance as a read-only mounted file instead of the environment,
+  which `docker inspect` shows to anyone who can run it (story 1140).
+  """
+  @callback start(
+              container_name :: String.t(),
+              app_name :: String.t(),
+              port :: pos_integer(),
+              env :: [{String.t(), String.t()}],
+              opts :: [files: [{String.t(), String.t()}]]
+            ) :: :ok | {:error, term()}
+
+  @optional_callbacks id: 0, label: 0, kind: 0, instructions: 1, start: 5
+
+  @dev_boxes [__MODULE__.Local, __MODULE__.ClaudeCodeCloud, __MODULE__.Docker]
+
+  @doc "The runners a dev box can be added from."
+  @spec dev_boxes() :: [module()]
+  def dev_boxes, do: @dev_boxes
+
+  @doc """
+  The runner that starts the box with this provider (story 1140): the provider
+  the person picked, never the app's instance runner, which has its own job
+  running copy apps. `dev_box_runners` in the Workspaces config substitutes one
+  (a test's stand-in for Docker); anything else is the provider's own module.
+  """
+  @spec for_dev_box(atom() | String.t() | nil) :: module() | nil
+  def for_dev_box(provider) do
+    overrides =
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.Workspaces, [])
+      |> Keyword.get(:dev_box_runners, %{})
+
+    Map.get(overrides, to_atom(provider)) || dev_box(provider)
+  end
+
+  defp to_atom(provider) when is_atom(provider), do: provider
+  defp to_atom(provider) when is_binary(provider), do: String.to_existing_atom(provider)
+
+  @doc "The dev box runner for an id (atom or string), or nil."
+  @spec dev_box(atom() | String.t() | nil) :: module() | nil
+  def dev_box(id), do: Enum.find(@dev_boxes, &(to_string(&1.id()) == to_string(id)))
+
   @spec start(String.t(), String.t(), pos_integer()) :: :ok | {:error, term()}
-  def start(container_name, app_name, port, env \\ []),
-    do: impl().start(container_name, app_name, port, env)
+  def start(container_name, app_name, port, env \\ [], opts \\ []) do
+    runner = impl()
+    Code.ensure_loaded(runner)
+
+    case {opts, function_exported?(runner, :start, 5)} do
+      {[], false} -> runner.start(container_name, app_name, port, env)
+      {_, true} -> runner.start(container_name, app_name, port, env, opts)
+      {_, false} -> {:error, :files_not_supported}
+    end
+  end
 
   @spec url(String.t(), pos_integer()) :: String.t()
   def url(container_name, port), do: impl().url(container_name, port)

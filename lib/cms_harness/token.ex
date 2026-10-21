@@ -48,6 +48,9 @@ defmodule CmsHarness.Token do
       {:ok, key, source} when source in [:working_copy_key, :configured_deploy_key] ->
         call_for_token(root, key)
 
+      {:ok, box_token, :dev_box} ->
+        call_for_token(root, {:dev_box, box_token})
+
       {:error, _reason} = error ->
         error
     end
@@ -126,38 +129,55 @@ defmodule CmsHarness.Token do
   defp usable(key) when is_binary(key) and key != "", do: {:ok, key}
   defp usable(_key), do: {:error, :no_credential}
 
+  # A dev box trades its box token at its own route (story 1131). With no token
+  # configured it sends none: in Claude Code cloud the proxy adds the header.
+  defp exchange({:dev_box, box_token}) do
+    request_exchange("/api/devices/token", box_headers(box_token), "the dev box token")
+  end
+
   defp exchange(key) do
     with {:ok, key} <- usable(key) do
-      url = Config.server_url() |> String.trim_trailing("/") |> Kernel.<>("/api/sprite/token")
+      request_exchange(
+        "/api/sprite/token",
+        [{"authorization", "Bearer " <> key}],
+        "the deploy key"
+      )
+    end
+  end
 
-      request =
-        Req.new(
-          method: :post,
-          url: url,
-          headers: [{"authorization", "Bearer " <> key}],
-          # No retry: a bad key stays bad; an unreachable server is reported.
-          retry: false,
-          receive_timeout: @exchange_timeout,
-          plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
-        )
+  defp box_headers(""), do: []
+  defp box_headers(box_token), do: [{"authorization", "Bearer " <> box_token}]
 
-      case Req.request(request) do
-        {:ok, %{status: 200, body: %{"access_token" => token, "expires_in" => expires_in}}} ->
-          Logger.info("[CmsHarness] exchanged the deploy key for a #{expires_in}s token")
-          {:ok, token, System.system_time(:second) + expires_in}
+  defp request_exchange(path, headers, what) do
+    url = Config.server_url() |> String.trim_trailing("/") |> Kernel.<>(path)
 
-        {:ok, %{status: 200}} ->
-          Logger.error("[CmsHarness] token exchange returned 200 with no access_token")
-          {:error, {:refused, 200}}
+    request =
+      Req.new(
+        method: :post,
+        url: url,
+        headers: headers,
+        # No retry: a bad key stays bad; an unreachable server is reported.
+        retry: false,
+        receive_timeout: @exchange_timeout,
+        plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
+      )
 
-        {:ok, %{status: status}} ->
-          Logger.error("[CmsHarness] token exchange refused: #{status}")
-          {:error, {:refused, status}}
+    case Req.request(request) do
+      {:ok, %{status: 200, body: %{"access_token" => token, "expires_in" => expires_in}}} ->
+        Logger.info("[CmsHarness] exchanged #{what} for a #{expires_in}s token")
+        {:ok, token, System.system_time(:second) + expires_in}
 
-        {:error, reason} ->
-          Logger.error("[CmsHarness] token exchange unreachable: #{inspect(reason)}")
-          {:error, {:unreachable, reason}}
-      end
+      {:ok, %{status: 200}} ->
+        Logger.error("[CmsHarness] token exchange returned 200 with no access_token")
+        {:error, {:refused, 200}}
+
+      {:ok, %{status: status}} ->
+        Logger.error("[CmsHarness] token exchange refused: #{status}")
+        {:error, {:refused, status}}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] token exchange unreachable: #{inspect(reason)}")
+        {:error, {:unreachable, reason}}
     end
   end
 

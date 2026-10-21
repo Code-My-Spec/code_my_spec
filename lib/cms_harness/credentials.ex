@@ -13,6 +13,9 @@ defmodule CmsHarness.Credentials do
     2. `deploy_key` in this working copy's own `.cms_harness.json`, written by
        `mix cms.harness.onboard` (gitignored, `0600`).
     3. `:harness_deploy_key` — machine-wide configuration.
+    4. The box token, for a harness running as a dev box (story 1131); empty in
+       Claude Code cloud, where the proxy adds it in transit. Traded for an
+       access token by `CmsHarness.Token`, never presented as it is.
 
   See knowledge/harness, "Credentials".
   """
@@ -22,7 +25,7 @@ defmodule CmsHarness.Credentials do
   alias CmsHarness.Projects
   alias CmsHarness.ServedRoots
 
-  @type source :: :harness_oauth | :working_copy_key | :configured_deploy_key
+  @type source :: :harness_oauth | :working_copy_key | :configured_deploy_key | :dev_box
   @type result :: {:ok, String.t(), source()} | {:error, term()}
 
   @doc """
@@ -35,8 +38,9 @@ defmodule CmsHarness.Credentials do
   @spec for_working_copy(String.t() | nil) :: result()
   def for_working_copy(root) do
     with {:error, :no_credential} <- from_harness_oauth(Config.server_url_for(root)),
-         {:error, :no_credential} <- from_working_copy(root) do
-      from_configured_deploy_key()
+         {:error, :no_credential} <- from_working_copy(root),
+         {:error, :no_credential} <- from_configured_deploy_key() do
+      from_dev_box()
     end
   end
 
@@ -49,8 +53,9 @@ defmodule CmsHarness.Credentials do
   @spec any() :: result()
   def any do
     with {:error, :no_credential} <- from_harness_oauth(Config.server_url()),
-         {:error, :no_credential} <- from_any_working_copy() do
-      from_configured_deploy_key()
+         {:error, :no_credential} <- from_any_working_copy(),
+         {:error, :no_credential} <- from_configured_deploy_key() do
+      from_dev_box()
     end
   end
 
@@ -91,6 +96,18 @@ defmodule CmsHarness.Credentials do
   end
 
   defp from_working_copy(_root), do: {:error, :no_credential}
+
+  # The box token, or none: a cloud box has nothing to send, the proxy does.
+  defp from_dev_box do
+    if Config.dev_box?(), do: {:ok, device_token(), :dev_box}, else: {:error, :no_credential}
+  end
+
+  defp device_token do
+    case Config.device_token() do
+      {:ok, token} -> token
+      {:error, :no_credential} -> ""
+    end
+  end
 
   # Configuration, not the environment. A sprite's key reaches its copy's
   # `.cms_harness.json` through onboarding instead.
