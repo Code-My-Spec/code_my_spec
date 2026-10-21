@@ -12,16 +12,18 @@ config :code_my_spec, env: :desktop
 # Ports of its own, so the desktop app runs beside a Phoenix app on 4000, a
 # dev harness on 4004 and a brew `cms` on 4003 — a developer's machine has all
 # three. 47400 is the app, 47403 its harness.
+# 127.0.0.1, not localhost: Windows resolves localhost to ::1 first, and the
+# endpoints listen on IPv4 only, so the harness never reached its server.
 config :code_my_spec,
-  api_base_url: "http://localhost:47400",
-  oauth_base_url: "http://localhost:47400",
-  base_url: "http://localhost:47400",
-  harness_default_server_url: "http://localhost:47400"
+  api_base_url: "http://127.0.0.1:47400",
+  oauth_base_url: "http://127.0.0.1:47400",
+  base_url: "http://127.0.0.1:47400",
+  harness_default_server_url: "http://127.0.0.1:47400"
 
 # harness_base.exs turns the main endpoint off; here it is the product.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: true,
-  url: [host: "localhost", port: 47400, scheme: "http"],
+  url: [host: "127.0.0.1", port: 47400, scheme: "http"],
   http: [ip: {127, 0, 0, 1}, port: 47400],
   check_origin: false
 

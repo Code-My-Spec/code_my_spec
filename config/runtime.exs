@@ -223,7 +223,7 @@ if config_env() != :harness do
         "BASE_URL",
         :string,
         if(config_env() == :desktop,
-          do: "http://localhost:47400",
+          do: "http://127.0.0.1:47400",
           else: "https://dev.codemyspec.com"
         )
       ),
@@ -290,7 +290,7 @@ if config_env() == :desktop do
   # For a machine where 47400 or 47403 is taken. The harness follows the app's
   # port, since base_url is the server it talks to.
   if port = System.get_env("PORT") do
-    url = "http://localhost:#{port}"
+    url = "http://127.0.0.1:#{port}"
 
     config :code_my_spec,
       base_url: url,
