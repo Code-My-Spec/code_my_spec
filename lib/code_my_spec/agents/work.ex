@@ -678,10 +678,37 @@ defmodule CodeMySpec.Agents.Work do
     questions = held_questions(scope, agent)
     nodes = graph_work(scope, agent)
 
-    if questions != [] or nodes != [] do
-      {:work, fingerprint(questions, nodes), offer_subject(agent, nodes)}
-    else
-      :none
+    cond do
+      questions != [] or nodes != [] ->
+        {:work, fingerprint(questions, nodes), offer_subject(agent, nodes)}
+
+      task = stranded_released_task(agent) ->
+        {:work, fingerprint([], [{"task", task.id, task.requirement_name}]),
+         released_subject(task)}
+
+      true ->
+        :none
+    end
+  end
+
+  # b9f21a0e: a task whose blocker was released is work for its holder even when
+  # the graph no longer offers its node (the component was made stale, say).
+  # `start_task` will not resume it then, but the holder is the one who can
+  # cancel it, and with nothing else to do it is otherwise never given a turn to
+  # read the decision. Only when the agent holds nothing active and the task has
+  # not been declined or ignored to the end of its ladder.
+  #
+  # Not a story's task: one of those whose node left the story's actionable set
+  # is waiting on something upstream, is told so, and is offered when it opens
+  # (`still_waiting?/2`, criterion 1868).
+  defp stranded_released_task(%Agent{tasks: tasks} = agent) do
+    standing = Offers.standing(agent.id)
+
+    if is_nil(Agent.active_task(agent)) do
+      Enum.find(tasks || [], fn task ->
+        task.status == :blocked and not is_nil(task.blocker_resolved_at) and
+          is_nil(task.story_id) and not match?(%{held?: true}, standing[task.id])
+      end)
     end
   end
 
@@ -766,7 +793,9 @@ defmodule CodeMySpec.Agents.Work do
   # builder, not two copies that happened to say similar things.
   defp offer_prompt_body(scope, agent, {"tap_out", id}) do
     tasks = Enum.filter(agent.tasks, &(&1.blocker_id == id))
-    "Your blocker tap_out #{id} was denied; #{resume_instruction(scope, tasks)}"
+
+    "Your blocker tap_out #{id} was denied; #{resume_instruction(scope, tasks)}" <>
+      gone_note(scope, agent, tasks)
   end
 
   # The extra text is chosen by the offer's rung on its kind's ladder: `:remind`
@@ -780,6 +809,25 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   defp offer_prompt_body(_scope, agent, _subject), do: prompt(agent)
+
+  # b9f21a0e: a released task whose node the graph no longer offers is refused by
+  # `start_task`; say so, and say how to dispose of it, rather than leave the
+  # holder to find out from the refusal.
+  defp gone_note(scope, agent, tasks) do
+    nodes =
+      scope
+      |> offerable(agent)
+      |> Enum.filter(fn node -> Enum.any?(tasks, &task_on_node?(&1, node)) end)
+
+    case {tasks, nodes} do
+      {[_ | _], []} ->
+        " The graph no longer offers this work, so `start_task` may refuse it: if so, " <>
+          Enum.map_join(tasks, " and ", &"`cancel_task(\"#{&1.id}\")`") <> " it."
+
+      _ ->
+        ""
+    end
+  end
 
   # An answer offer's second rung is the answer with the task it unblocks
   # (criterion 2175): the first said the answer, this repeats it beside the task.
