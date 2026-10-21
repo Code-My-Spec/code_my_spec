@@ -129,7 +129,7 @@ defmodule CmsHarness.Agents.Shell do
 
       case Task.yield(task, timeout) do
         nil ->
-          cleanup = Execution.stop(task.pid)
+          cleanup = Execution.stop_and_release(task.pid)
           Task.shutdown(task, :brutal_kill)
           {_, output} = StringIO.contents(capture)
           {:timeout, output, cleanup}
