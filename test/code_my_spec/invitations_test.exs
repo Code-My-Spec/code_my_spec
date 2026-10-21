@@ -93,6 +93,36 @@ defmodule CodeMySpec.InvitationsTest do
       assert {:ok, %Invitation{}} =
                Invitations.invite_user(admin_scope, account.id, "test@example.com", :member)
     end
+
+    test "returns error when a still-open invitation already exists for the email", %{
+      scope: scope,
+      account: account,
+      owner: owner
+    } do
+      email = "pending@example.com"
+      invitation_fixture(account, owner, %{email: email})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Invitations.invite_user(scope, scope.active_account_id, email, :member)
+    end
+
+    test "an expired, unused invitation does not block re-inviting the same email", %{
+      scope: scope,
+      account: account,
+      owner: owner
+    } do
+      email = "joel@example.com"
+      stale = expired_invitation_fixture(account, owner, %{email: email})
+
+      assert {:ok, %Invitation{} = invitation} =
+               Invitations.invite_user(scope, scope.active_account_id, email, :member)
+
+      assert invitation.email == email
+      assert is_nil(invitation.cancelled_at)
+
+      assert %{cancelled_at: cancelled_at} = Repo.get!(Invitation, stale.id)
+      refute is_nil(cancelled_at)
+    end
   end
 
   describe "accept_invitation/2" do

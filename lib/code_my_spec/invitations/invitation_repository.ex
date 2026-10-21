@@ -22,15 +22,35 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
 
   @spec create_invitation(scope :: Scope.t(), attrs :: invitation_attrs()) ::
           {:ok, Invitation.t()} | {:error, Ecto.Changeset.t()}
-  def create_invitation(_scope, %{account_id: account_id} = attrs)
+  def create_invitation(_scope, %{account_id: account_id, email: email} = attrs)
       when not is_nil(account_id) do
-    %Invitation{}
-    |> Invitation.changeset(attrs)
-    |> Repo.insert()
-    |> case do
-      {:ok, invitation} -> {:ok, Repo.preload(invitation, :account)}
-      {:error, changeset} -> {:error, changeset}
-    end
+    Repo.transaction(fn ->
+      cancel_expired(account_id, email)
+
+      %Invitation{}
+      |> Invitation.changeset(attrs)
+      |> Repo.insert()
+      |> case do
+        {:ok, invitation} -> Repo.preload(invitation, :account)
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  # The unique index `unique_account_email_when_nulls` counts an invitation as
+  # open while accepted_at and cancelled_at are both nil -- expiry is not part
+  # of its predicate. Left alone, an expired invitation nobody touched blocks
+  # every future invite to that email and account forever (issue ded73250).
+  # Cancelling it first clears the index before the new row is inserted.
+  @spec cancel_expired(account_id :: binary(), email :: String.t()) :: {integer(), nil}
+  defp cancel_expired(account_id, email) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(i in Invitation)
+    |> by_account(account_id)
+    |> by_email(email)
+    |> expired()
+    |> Repo.update_all(set: [cancelled_at: now, updated_at: now])
   end
 
   @doc """
