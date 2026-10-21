@@ -1,6 +1,9 @@
 defmodule CodeMySpec.Requirements.SpexTeardownPreservesOtherWatchersTest do
   use ExUnit.Case, async: false
 
+  # Two spex sandboxes writing at once.
+  @moduletag :concurrent_writers
+
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.UsersFixtures
   alias CodeMySpecSpex.Fixtures

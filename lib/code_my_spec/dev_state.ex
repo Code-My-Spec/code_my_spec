@@ -132,7 +132,7 @@ defmodule CodeMySpec.DevState do
           role: m.role,
           content: type(m.content, {:array, :map}),
           tool_calls: type(m.tool_calls, {:array, :map}),
-          inserted_at: m.inserted_at
+          inserted_at: type(m.inserted_at, :utc_datetime_usec)
         }
       )
       |> Repo.all()

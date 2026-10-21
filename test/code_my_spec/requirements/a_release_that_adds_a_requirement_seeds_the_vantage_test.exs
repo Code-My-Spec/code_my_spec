@@ -183,10 +183,11 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
   defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
+    stories =
+      from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
+
     from(n in "requirements",
-      join: s in "stories",
-      on: s.id == n.story_id,
-      where: s.project_id == type(^project_id, :binary_id) and n.name == ^name,
+      where: n.story_id in subquery(stories) and n.name == ^name,
       where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
     )
   end

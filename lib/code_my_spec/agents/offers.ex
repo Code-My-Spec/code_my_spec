@@ -526,11 +526,10 @@ defmodule CodeMySpec.Agents.Offers do
   defp undelivered_by_message(message_id) do
     now = DateTime.utc_now()
 
-    from(o in Offer,
-      join: link in OfferMessage,
-      on: link.offer_id == o.id,
-      where: link.message_id == ^message_id and o.status == :open
-    )
+    linked =
+      from(link in OfferMessage, where: link.message_id == ^message_id, select: link.offer_id)
+
+    from(o in Offer, where: o.id in subquery(linked) and o.status == :open)
     |> Repo.update_all(set: [status: :undelivered, outcome_at: now, updated_at: now])
 
     :ok

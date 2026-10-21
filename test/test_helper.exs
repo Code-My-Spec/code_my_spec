@@ -13,6 +13,10 @@
 # answering false for a reason nobody intended.
 sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:sops]
 
+# SQLite has one writer, and every sandbox owner holds a write transaction for
+# its whole test, so a test that runs two owners at once cannot run on it.
+sqlite_exclusions = if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers], else: []
+
 ExUnit.start(
   # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a
   # loaded gate (conversation_channel_test, 2026-10-06). A passing assert returns
@@ -55,7 +59,7 @@ ExUnit.start(
       # Spends real money and reaches a real provider. The cassettes it writes
       # are replayed by the rest of the suite, which runs by default.
       :record_alloy_turn
-    ] ++ sops_exclusions
+    ] ++ sops_exclusions ++ sqlite_exclusions
 )
 
 # Refuse to run against a schema this working copy has outgrown.
