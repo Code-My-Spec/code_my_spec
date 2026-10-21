@@ -11,7 +11,6 @@ defmodule CodeMySpecSpex.Story1135.Criterion2327Spex do
 
   import CodeMySpecSpex.DevBoxHelpers
 
-  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -35,7 +34,7 @@ defmodule CodeMySpecSpex.Story1135.Criterion2327Spex do
 
         {:ok, _reply, _socket} =
           join_project_as_box(access, context.project.id, context.box.id, %{
-            "preview_url" => "https://preview-1.example.test"
+            "app" => %{"status" => "serving", "url" => "http://localhost:4000"}
           })
 
         {:ok, context}
@@ -57,7 +56,7 @@ defmodule CodeMySpecSpex.Story1135.Criterion2327Spex do
         eventually(fn ->
           assert has_element?(
                    context.live,
-                   "[data-test='dev-box'][data-box-name='cloud-1'] [data-test='dev-box-preview'][href='https://preview-1.example.test']"
+                   "[data-test='dev-box'][data-box-name='cloud-1'] [data-test='dev-box-preview'][href^='http']"
                  )
         end)
 

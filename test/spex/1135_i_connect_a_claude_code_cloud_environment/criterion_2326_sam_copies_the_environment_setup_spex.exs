@@ -13,7 +13,6 @@ defmodule CodeMySpecSpex.Story1135.Criterion2326Spex do
 
   import CodeMySpecSpex.DevBoxHelpers
 
-  alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
