@@ -935,6 +935,22 @@ defmodule CodeMySpec.WorkingCopies do
   def list_on_device(_device_id), do: %{}
 
   @doc """
+  The projects whose app is serving from a copy on these devices, as
+  `device_id => [project_id]`. A device with none is absent. A preview address
+  belongs to the project, so that is what a caller builds one from.
+  """
+  @spec serving_projects_by_device([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Ecto.UUID.t()]}
+  def serving_projects_by_device(device_ids) when is_list(device_ids) do
+    from(w in WorkingCopy,
+      where: w.device_id in ^device_ids and w.app_status == "serving",
+      distinct: true,
+      select: {w.device_id, w.project_id}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  @doc """
   The ids of every copy on each of these devices, as `device_id => [id]`. A
   device with no copies is absent.
 

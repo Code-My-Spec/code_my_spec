@@ -82,7 +82,9 @@ defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
         title: "Network secret",
         body:
           "Add a network secret for #{host} whose value is exactly this token, with no " <>
-            "\"Bearer \" in front (the proxy adds it):\n\n#{token}"
+            "\"Bearer \" in front (the proxy adds it):\n\n#{token}",
+        # What the copy button holds: the bare token and nothing else.
+        value: token
       }
     ]
   end

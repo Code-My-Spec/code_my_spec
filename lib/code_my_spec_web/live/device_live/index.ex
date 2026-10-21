@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -204,17 +205,29 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     scope = socket.assigns.current_scope
 
     devices = Devices.list_devices(scope)
-    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
+    device_ids = Enum.map(devices, & &1.id)
+    copies = WorkingCopies.ids_by_device(device_ids)
+    serving = WorkingCopies.serving_projects_by_device(device_ids)
+
+    rows =
+      for device <- devices do
+        previews =
+          for project_id <- Map.get(serving, device.id, []), do: PreviewAddress.url(project_id)
+
+        row(device, Map.get(copies, device.id, []), previews, now)
+      end
 
     assign(socket,
-      devices: Enum.map(devices, &row(&1, Map.get(copies, &1.id, []), now)),
+      devices: rows,
+      server_host: URI.parse(CodeMySpecWeb.Endpoint.url()).host,
       now: now
     )
   end
 
-  defp row(device, copy_ids, now) do
+  defp row(device, copy_ids, previews, now) do
     %{
       device: device,
+      previews: previews,
       status: box_status(device),
       provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
@@ -344,7 +357,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   <button
                     type="button"
                     class="copy-btn btn btn-sm btn-primary"
-                    data-copy={section.body}
+                    data-copy={Map.get(section, :value, section.body)}
                     data-test={section.copy}
                   >
                     Copy
@@ -385,6 +398,26 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   >
                     <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
                     <span data-test="dev-box-status">{row.status}</span>
+                    <a
+                      :for={url <- row.previews}
+                      data-test="dev-box-preview"
+                      href={url}
+                      target="_blank"
+                      class="link"
+                    >
+                      {url}
+                    </a>
+                    <p
+                      :if={
+                        is_nil(row.device.token_last_used_at) and is_nil(row.device.token_revoked_at)
+                      }
+                      data-test="never-connected-help"
+                      class="text-xs opacity-70"
+                    >
+                      This box has never connected. If its session started, check the
+                      environment's allowlist includes {@server_host} (and the other hosts shown
+                      when it was added), and that the network secret is set for {@server_host}.
+                    </p>
                     <.button
                       :if={@can_add? and is_nil(row.device.token_revoked_at)}
                       phx-click="revoke_dev_box"

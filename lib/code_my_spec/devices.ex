@@ -279,6 +279,20 @@ defmodule CodeMySpec.Devices do
 
   def active_dev_box(_id), do: nil
 
+  @doc """
+  A box's harness joined a project channel: tell the account's page, so what it
+  reported (a preview address) shows without a reload.
+  """
+  @spec box_joined(String.t() | nil) :: :ok
+  def box_joined(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{} = box -> broadcast(box, {:dev_box_connected, box.id})
+      nil -> :ok
+    end
+  end
+
+  def box_joined(_device_id), do: :ok
+
   @doc "Subscribe to changes to this account's dev boxes."
   @spec subscribe(String.t()) :: :ok | {:error, term()}
   def subscribe(account_id) when is_binary(account_id),

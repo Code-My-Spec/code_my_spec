@@ -68,7 +68,8 @@ defmodule CodeMySpec.Workspaces.Runner do
           required(:key) => String.t(),
           required(:copy) => String.t(),
           required(:title) => String.t(),
-          required(:body) => String.t()
+          required(:body) => String.t(),
+          optional(:value) => String.t()
         }
 
   @doc "As a dev box provider (story 1130): its id, as stored on the device and posted by the add form."

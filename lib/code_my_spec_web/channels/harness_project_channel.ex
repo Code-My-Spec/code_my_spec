@@ -82,6 +82,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            ),
          {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
+         :ok <- Devices.box_joined(socket.assigns[:device_id]),
          {:ok, harness} <- WorkingCopies.attach_device(harness, device),
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
