@@ -817,7 +817,7 @@ if System.get_env("CMS_TEST_SQLITE") do
   config :code_my_spec, CodeMySpec.Repo,
     database: System.get_env("CMS_TEST_SQLITE"),
     pool: Ecto.Adapters.SQL.Sandbox,
-    pool_size: 1,
+    pool_size: 10,
     journal_mode: :wal,
     busy_timeout: 10_000,
     default_transaction_mode: :immediate
