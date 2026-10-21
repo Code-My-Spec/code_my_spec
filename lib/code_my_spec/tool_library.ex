@@ -64,6 +64,18 @@ defmodule CodeMySpec.ToolLibrary do
         CodeMySpec.Qa.Tools.all() ++
         CodeMySpec.BddRules.Tools.all()
 
+  @doc """
+  The names of tools that were removed and stay only to answer a stale caller
+  (`CodeMySpec.Tools.Tool.tombstone?/0`). Callable, never advertised.
+  """
+  @spec tombstoned() :: [String.t()]
+  def tombstoned do
+    for tool <- tools(),
+        Code.ensure_loaded?(tool) and function_exported?(tool, :tombstone?, 0) and
+          tool.tombstone?(),
+        do: tool.name()
+  end
+
   @doc "Every tool, described for a surface."
   @spec registrations() :: [map()]
   def registrations, do: Enum.map(tools(), &registration/1)

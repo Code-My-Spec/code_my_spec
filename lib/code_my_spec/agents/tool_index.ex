@@ -28,7 +28,11 @@ defmodule CodeMySpec.Agents.ToolIndex do
   `Agents`, so reading the servers from here points the arrow up.
   `McpServers.ToolRegistry.registry/0` builds it.
   """
-  @type registry :: %{direct: [map()], scriptable: [map()]}
+  @type registry :: %{
+          required(:direct) => [map()],
+          required(:scriptable) => [map()],
+          optional(:tombstoned) => [String.t()]
+        }
 
   @doc """
   The index for this agent, or `nil` when there is nothing to say.
@@ -92,10 +96,10 @@ defmodule CodeMySpec.Agents.ToolIndex do
   index cannot name a tool the engine answers `Unknown tool` for.
   """
   @spec carried(registry()) :: [String.t()]
-  def carried(%{direct: direct}) do
+  def carried(%{direct: direct} = registry) do
     direct
     |> Enum.map(& &1.name)
-    |> Enum.reject(&(&1 in @not_carried))
+    |> Enum.reject(&(&1 in @not_carried or &1 in tombstoned(registry)))
     |> Enum.sort()
   end
 
@@ -125,7 +129,9 @@ defmodule CodeMySpec.Agents.ToolIndex do
   each ungranted tool; `main` carries every one.
   """
   @spec reach(Agent.t(), registry()) :: %{String.t() => term()}
-  def reach(%Agent{tools: allowed}, %{scriptable: registered}) do
+  def reach(%Agent{tools: allowed}, %{scriptable: all} = registry) do
+    # A removed tool stays callable for a stale session but is never advertised.
+    registered = Enum.reject(all, &(&1.name in tombstoned(registry)))
     not_granted = Catalog.out_of_scope(registered, allowed)
 
     %{
@@ -134,6 +140,8 @@ defmodule CodeMySpec.Agents.ToolIndex do
       "holders" => Map.new(not_granted, &{&1, holders(&1)})
     }
   end
+
+  defp tombstoned(registry), do: Map.get(registry, :tombstoned, [])
 
   # Scoped roles first, then the roles that carry every tool.
   defp holders(name) do
