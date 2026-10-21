@@ -158,4 +158,29 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
       )
     )
   end
+
+  @doc """
+  Give a cloud box its Claude Code routine: the form on its row takes the routine
+  id (`trig_…`) and the per-routine fire token (story 1136).
+  """
+  def add_fire_token(live, device_id, routine_id, token) do
+    live
+    |> element("[data-test='add-fire-token'][data-device-id='#{device_id}']")
+    |> render_click()
+
+    live
+    |> form("[data-test='fire-token-form'][data-device-id='#{device_id}']",
+      fire_token: %{routine_id: routine_id, token: token}
+    )
+    |> render_submit()
+  end
+
+  @doc "Sam presses Start on the box's row; the page once the start has been answered."
+  def press_start(live, device_id) do
+    live
+    |> element("[data-test='start-box'][data-device-id='#{device_id}']")
+    |> render_click()
+
+    render_async(live)
+  end
 end
