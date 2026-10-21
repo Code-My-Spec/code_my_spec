@@ -19,9 +19,9 @@ defmodule CodeMySpec.Agents.AnOfferRespectsTheTeamsIssueAssignmentTest do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
+  alias CodeMySpecSpex.StorySliceHelpers, as: Slice
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
-  alias CodeMySpecSpex.StorySliceHelpers, as: Slice
 
   setup :register_log_in_setup_account
   setup :setup_active_project
