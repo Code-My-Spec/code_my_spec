@@ -34,9 +34,10 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
   http: [ip: {127, 0, 0, 1}, port: 47403]
 
-# Postgres, not harness_base.exs's SQLite.
-# SPIKE: desktop on SQLite.
+# SQLite: nothing to install before the app runs. Its own migrations, from a
+# baseline of the Postgres schema (priv/sqlite).
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
+config :code_my_spec, CodeMySpec.Repo, priv: "priv/sqlite"
 config :paper_trail, strict_mode: false
 
 # Served over http://localhost. WebKit (the desktop window) drops a `secure`

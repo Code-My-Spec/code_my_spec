@@ -473,12 +473,7 @@ defmodule CodeMySpec.MixProject do
       #
       # `cms.new` ships it (templates/phx_single/mix.exs.eex); only this repo
       # dropped it while the aliases were reworked around `agent_test`.
-      # SPIKE: a SQLite test database is loaded from the baseline instead.
-      test:
-        if(System.get_env("CMS_TEST_SQLITE"),
-          do: ["test"],
-          else: ["ecto.create --quiet", "ecto.migrate --quiet", "test"]
-        ),
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

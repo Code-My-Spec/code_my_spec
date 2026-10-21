@@ -1,4 +1,12 @@
-"""Emit SQLite DDL for the current state of a Postgres database (public schema)."""
+"""Emit SQLite DDL for the current state of a Postgres database (public schema).
+
+The desktop runs on SQLite. Its schema starts from this baseline, taken from a
+Postgres database migrated to the version the baseline migration is named for
+(priv/sqlite/migrations); every Postgres migration after that has a SQLite
+counterpart beside it.
+
+    python3 scripts/sqlite_baseline.py <postgres-db> > priv/sqlite/baseline.sql
+"""
 import json, re, subprocess, sys
 
 DB = sys.argv[1]
@@ -41,7 +49,8 @@ def default(expr, sqltype, dt=None):
 
 
 def main():
-    tables = [r[0] for r in q("select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' order by 1")]
+    # schema_migrations is Ecto's own; the migrator creates it.
+    tables = [r[0] for r in q("select table_name from information_schema.tables where table_schema='public' and table_type='BASE TABLE' and table_name <> 'schema_migrations' order by 1")]
     cols = {}
     for t, c, dt, nullable, dflt in q("select table_name, column_name, data_type, is_nullable, coalesce(column_default,'') from information_schema.columns where table_schema='public' order by table_name, ordinal_position"):
         cols.setdefault(t, []).append((c, dt, nullable == "YES", dflt))
@@ -88,7 +97,7 @@ def main():
         lines += fks.get(t, [])
         out.append(f'CREATE TABLE "{t}" (\n  ' + ",\n  ".join(lines) + "\n);")
 
-    for name, idef in q("select indexname, indexdef from pg_indexes where schemaname='public' and indexname not in (select constraint_name from information_schema.table_constraints where constraint_type in ('PRIMARY KEY')) order by tablename, indexname"):
+    for name, idef in q("select indexname, indexdef from pg_indexes where schemaname='public' and tablename <> 'schema_migrations' and indexname not in (select constraint_name from information_schema.table_constraints where constraint_type in ('PRIMARY KEY')) order by tablename, indexname"):
         s = idef.replace("public.", "")
         if " USING hnsw" in s or " USING ivfflat" in s or " USING gin" in s or " USING gist" in s:
             notes.append(f"index {name}: skipped ({s.split('USING')[1].split()[0]})")
@@ -107,8 +116,9 @@ def main():
         s = s.replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS").replace("CREATE UNIQUE INDEX", "CREATE UNIQUE INDEX IF NOT EXISTS")
         out.append(s + ";")
 
-    versions = [r[0] for r in q("select version from schema_migrations order by 1")]
-    json.dump({"ddl": out, "notes": notes, "versions": versions}, sys.stdout)
+    for note in notes:
+        print(note, file=sys.stderr)
+    sys.stdout.write("\n\n".join(out) + "\n")
 
 
 main()

@@ -16,7 +16,6 @@ defmodule CodeMySpecDesktop.FirstBoot do
   def child_spec(_), do: %{id: __MODULE__, start: {__MODULE__, :run, []}, restart: :temporary}
 
   def run do
-    require_pgvector!()
     CodeMySpec.Release.migrate()
     user = ensure_user()
     ensure_account(user)
@@ -35,9 +34,6 @@ defmodule CodeMySpecDesktop.FirstBoot do
       {:error, reason} -> raise "could not create the CodeMySpec database: #{inspect(reason)}"
     end
   end
-
-  # SPIKE: SQLite has no pg_available_extensions.
-  defp require_pgvector!, do: :ok
 
   defp ensure_user do
     with nil <- Users.get_user_by_email(DesktopUser.email()) do

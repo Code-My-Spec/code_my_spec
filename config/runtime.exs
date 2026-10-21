@@ -274,8 +274,7 @@ if config_env() in [:dev, :prod] do
 end
 
 if config_env() == :desktop do
-  # No user or password: Postgrex's default, $PGUSER or the OS user, which is
-  # the superuser a fresh Homebrew Postgres has.
+  # One SQLite file beside the rest of the machine's CodeMySpec state.
   config :code_my_spec, CodeMySpec.Repo,
     database: System.get_env("CMS_DESKTOP_DB") || Path.expand("~/.codemyspec/desktop.db"),
     journal_mode: :wal,
