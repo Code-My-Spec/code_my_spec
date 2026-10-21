@@ -223,7 +223,7 @@ if config_env() != :harness do
         "BASE_URL",
         :string,
         if(config_env() == :desktop,
-          do: "http://localhost:4000",
+          do: "http://localhost:47400",
           else: "https://dev.codemyspec.com"
         )
       ),
@@ -285,7 +285,7 @@ if config_env() == :desktop do
     secret_key_base:
       System.get_env("SECRET_KEY_BASE") || CodeMySpecDesktop.Secret.read_or_create!()
 
-  # For a machine where 4000 or 4004 is taken. The harness follows the app's
+  # For a machine where 47400 or 47403 is taken. The harness follows the app's
   # port, since base_url is the server it talks to.
   if port = System.get_env("PORT") do
     url = "http://localhost:#{port}"

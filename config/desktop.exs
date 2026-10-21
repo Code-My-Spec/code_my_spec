@@ -9,23 +9,26 @@ import_config "harness_base.exs"
 
 config :code_my_spec, env: :desktop
 
+# Ports of its own, so the desktop app runs beside a Phoenix app on 4000, a
+# dev harness on 4004 and a brew `cms` on 4003 — a developer's machine has all
+# three. 47400 is the app, 47403 its harness.
 config :code_my_spec,
-  api_base_url: "http://localhost:4000",
-  oauth_base_url: "http://localhost:4000",
-  base_url: "http://localhost:4000",
-  harness_default_server_url: "http://localhost:4000"
+  api_base_url: "http://localhost:47400",
+  oauth_base_url: "http://localhost:47400",
+  base_url: "http://localhost:47400",
+  harness_default_server_url: "http://localhost:47400"
 
 # harness_base.exs turns the main endpoint off; here it is the product.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: true,
-  url: [host: "localhost", port: 4000, scheme: "http"],
-  http: [ip: {127, 0, 0, 1}, port: 4000],
+  url: [host: "localhost", port: 47400, scheme: "http"],
+  http: [ip: {127, 0, 0, 1}, port: 47400],
   check_origin: false
 
 # config.exs leaves it `server: false`; desktop's harness serves hooks.
 config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
-  http: [ip: {127, 0, 0, 1}, port: 4004]
+  http: [ip: {127, 0, 0, 1}, port: 47403]
 
 # Postgres, not harness_base.exs's SQLite.
 # SPIKE: desktop on SQLite.
