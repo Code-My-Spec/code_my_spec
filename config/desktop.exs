@@ -28,8 +28,9 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4004]
 
 # Postgres, not harness_base.exs's SQLite.
-config :code_my_spec, adapter: Ecto.Adapters.Postgres
-config :paper_trail, strict_mode: true
+# SPIKE: desktop on SQLite.
+config :code_my_spec, adapter: Ecto.Adapters.SQLite3
+config :paper_trail, strict_mode: false
 
 # Served over http://localhost. WebKit (the desktop window) drops a `secure`
 # cookie there, so LiveView never saw a session and reloaded ~50 times a second.

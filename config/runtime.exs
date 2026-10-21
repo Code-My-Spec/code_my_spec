@@ -267,7 +267,7 @@ end
 # model), and loading the real 90MB ONNX file on every test boot for a
 # backend nothing in that env calls would just be a slow no-op.
 # Desktop's FirstBoot refuses a Postgres without pgvector, so it is always here.
-if config_env() in [:dev, :prod, :desktop] do
+if config_env() in [:dev, :prod] do
   config :code_my_spec,
     embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
     embedding_serving: CodeMySpec.Embeddings.OrtexServing
@@ -277,7 +277,7 @@ if config_env() == :desktop do
   # No user or password: Postgrex's default, $PGUSER or the OS user, which is
   # the superuser a fresh Homebrew Postgres has.
   config :code_my_spec, CodeMySpec.Repo,
-    url: System.get_env("DATABASE_URL") || "ecto://localhost/code_my_spec_desktop",
+    database: System.get_env("CMS_DESKTOP_DB") || Path.expand("~/.codemyspec/desktop.db"),
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
   # Per install, created on first boot.

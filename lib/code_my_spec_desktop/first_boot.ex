@@ -36,12 +36,8 @@ defmodule CodeMySpecDesktop.FirstBoot do
     end
   end
 
-  defp require_pgvector! do
-    if Repo.query!("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'").num_rows == 0 do
-      raise "CodeMySpec needs the pgvector extension in this Postgres. " <>
-              "Install it (macOS: `brew install pgvector`; Debian: `apt install postgresql-<ver>-pgvector`) and restart."
-    end
-  end
+  # SPIKE: SQLite has no pg_available_extensions.
+  defp require_pgvector!, do: :ok
 
   defp ensure_user do
     with nil <- Users.get_user_by_email(DesktopUser.email()) do
