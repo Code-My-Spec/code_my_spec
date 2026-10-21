@@ -3895,6 +3895,17 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc """
+  The files the fake workspace was started with, `%{path_in_container => contents}`:
+  where a secret that must stay out of the container's environment is put instead.
+  """
+  @doc "Every `start` the context made on the fake workspace, oldest first."
+  @spec workspace_start_calls() :: [tuple()]
+  defdelegate workspace_start_calls(), to: FakeWorkspaceRunner, as: :calls
+
+  @spec workspace_mounted_files() :: %{String.t() => String.t()}
+  defdelegate workspace_mounted_files(), to: FakeWorkspaceRunner, as: :mounted_files
+
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
 
