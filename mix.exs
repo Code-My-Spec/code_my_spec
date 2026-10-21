@@ -144,7 +144,11 @@ defmodule CodeMySpec.MixProject do
       # process: an agent is a supervised GenServer, so sending it a message is
       # a call rather than a held stdin pipe, and stopping it is termination
       # rather than signalling a process group across a reboot.
-      {:alloy, "~> 0.13.0"},
+      # Our fork of 0.13.0: Codex tool arguments that do not decode go back to
+      # the model to resend instead of failing the turn. Overrides the Hex
+      # requirement alloy_claude_code declares.
+      {:alloy,
+       git: "https://github.com/Code-My-Spec/alloy.git", branch: "cms-0.13", override: true},
       # The "claude-code" provider (`CmsHarness.Agents.Provider`). Upstream
       # deferred it, so it is its own package.
       {:alloy_claude_code,
