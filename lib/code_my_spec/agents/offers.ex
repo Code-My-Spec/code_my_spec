@@ -224,6 +224,26 @@ defmodule CodeMySpec.Agents.Offers do
   def record_declined(_agent, _kind, _subject, _reason), do: nil
 
   @doc """
+  The open work offers of these agents are superseded (issue 2c435ea1).
+
+  For when their assignment changes under them: an offer made against the old
+  one (a story's `qa_complete`, for a team that has just been given an issue to
+  fix) is work their discovery and claim now refuse. Left open it is still shown
+  as backing a pull and can be handed on again, so it is closed here and the
+  next wake offers what the new assignment allows. Always `:ok`.
+  """
+  @spec supersede_work([String.t()]) :: :ok
+  def supersede_work(agent_ids) when is_list(agent_ids) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where([o], o.agent_id in ^agent_ids and o.kind == :work and o.status == :open)
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
   Every open offer on this agent is superseded, not just one of a given kind
   and subject -- a restart discards the in-flight turn those offers were
   queued for (`turn_started_at: nil`), so none of them can still be claimed
