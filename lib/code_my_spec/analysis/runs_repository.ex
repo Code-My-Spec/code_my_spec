@@ -96,6 +96,44 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  Record on `run` what the harness actually ran, from the result's `"args"`
+  (issue cae115ed).
+
+  The harness ties a request for a source onto the entry already queued and
+  merges their arguments, so a scoped request can execute the whole suite, or
+  another request's files too, while its row still says what it asked for.
+  The row keeps the request in `args["args"]` and gains `args["executed"]` when
+  the two differ; its kind follows what ran, `:full` when the whole suite did.
+  A result that names no arguments, or ran what was asked, leaves the row alone.
+  """
+  @spec record_executed(Run.t(), map()) :: Run.t()
+  def record_executed(%Run{} = run, %{"args" => executed}) when is_list(executed) do
+    requested = get_in(run.args || %{}, ["args"]) || []
+    kind = if executed == [], do: :full, else: run.kind
+
+    if executed == requested and kind == run.kind do
+      run
+    else
+      attrs = %{kind: kind, args: Map.put(run.args || %{}, "executed", executed)}
+
+      case run |> Run.changeset(attrs) |> Repo.update() do
+        {:ok, updated} ->
+          updated
+
+        {:error, changeset} ->
+          Logger.warning(
+            "[Analysis] run #{run.id} (#{run.source}) executed args not recorded: " <>
+              inspect(changeset.errors)
+          )
+
+          run
+      end
+    end
+  end
+
+  def record_executed(%Run{} = run, _payload), do: run
+
+  @doc """
   Latest finished `:full` run per source for the project.
 
   Returns a `%{source => Run.t()}` map — the freshness baseline for the
