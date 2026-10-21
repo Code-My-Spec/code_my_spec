@@ -159,14 +159,12 @@ defmodule CodeMySpec.Workspaces do
     runner = Runner.for_dev_box(provider)
     Code.ensure_loaded(runner)
 
-    case function_exported?(runner, :start, 5) do
-      true ->
-        runner.start("devbox-" <> String.slice(id, 0, 8), "devbox", free_port(), env,
-          files: [{@token_path, token}]
-        )
-
-      false ->
-        {:error, :not_a_container_provider}
+    if function_exported?(runner, :start, 5) do
+      runner.start("devbox-" <> String.slice(id, 0, 8), "devbox", free_port(), env,
+        files: [{@token_path, token}]
+      )
+    else
+      {:error, :not_a_container_provider}
     end
   end
 

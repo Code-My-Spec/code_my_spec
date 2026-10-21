@@ -49,6 +49,12 @@ defmodule CodeMySpec.Workspaces.Runner.DockerDevBoxTest do
                  "check if the path is correct and if the daemon is running: " <>
                  "dial unix /var/run/docker.sock: connect: no such file or directory"
 
+    defp restore_workspaces_config(nil),
+      do: Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+
+    defp restore_workspaces_config(value),
+      do: Application.put_env(:code_my_spec, CodeMySpec.Workspaces, value)
+
     defp install_docker(dir, script) do
       path = Path.join(dir, "docker")
       File.write!(path, "#!/bin/sh\n" <> script)
@@ -86,12 +92,7 @@ defmodule CodeMySpec.Workspaces.Runner.DockerDevBoxTest do
       previous = Application.get_env(:code_my_spec, CodeMySpec.Workspaces)
       Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: Runner.Local)
 
-      on_exit(fn ->
-        case previous do
-          nil -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-          value -> Application.put_env(:code_my_spec, CodeMySpec.Workspaces, value)
-        end
-      end)
+      on_exit(fn -> restore_workspaces_config(previous) end)
 
       box = %CodeMySpec.Devices.Device{id: Ecto.UUID.generate(), provider: :docker}
 
