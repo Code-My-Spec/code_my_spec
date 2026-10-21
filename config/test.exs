@@ -807,3 +807,18 @@ config :code_my_spec, CodeMySpec.RunGuard,
 # Claude Code routines (story 1136): the fire call is answered by a stub.
 config :code_my_spec, CodeMySpec.Devices.RoutineFire,
   plug: {Req.Test, CodeMySpec.Devices.RoutineFire}
+
+# SPIKE: the suite on SQLite. A separate build (MIX_BUILD_PATH), since the
+# adapter is compile-time.
+if System.get_env("CMS_TEST_SQLITE") do
+  config :code_my_spec, adapter: Ecto.Adapters.SQLite3
+  config :paper_trail, strict_mode: false
+
+  config :code_my_spec, CodeMySpec.Repo,
+    database: System.get_env("CMS_TEST_SQLITE"),
+    pool: Ecto.Adapters.SQL.Sandbox,
+    pool_size: 1,
+    journal_mode: :wal,
+    busy_timeout: 10_000,
+    default_transaction_mode: :immediate
+end

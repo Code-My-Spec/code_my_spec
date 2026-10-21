@@ -168,7 +168,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def continuous_project_scopes do
     from(a in Agent,
       where: a.continuous == true and not is_nil(a.project_id),
-      distinct: a.project_id,
+      distinct: true,
       select: a.project_id
     )
     |> project_scopes()
@@ -186,7 +186,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
   def main_agent_project_scopes do
     from(a in running_main(),
       where: not is_nil(a.project_id),
-      distinct: a.project_id,
+      distinct: true,
       select: a.project_id
     )
     |> project_scopes()
@@ -320,10 +320,10 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     latest_stopped_per_empty_slot =
       from(a in Agent,
         where: a.project_id == ^project_id and not is_nil(a.off_at) and is_nil(a.retired_at),
-        distinct: [a.working_copy_id, a.role],
-        order_by: [asc: a.working_copy_id, asc: a.role, desc: a.updated_at]
+        order_by: [desc: a.updated_at]
       )
       |> Repo.all()
+      |> Enum.uniq_by(&{&1.working_copy_id, &1.role})
       |> Enum.reject(&MapSet.member?(filled_slots, {&1.working_copy_id, &1.role}))
 
     (running ++ latest_stopped_per_empty_slot)
@@ -384,7 +384,7 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     if Regex.match?(@short_id, id) do
       Agent
       |> where([a], a.project_id == ^project_id)
-      |> where([a], fragment("?::text LIKE ?", a.id, ^(id <> "%")))
+      |> where([a], like(type(a.id, :string), ^(id <> "%")))
       |> Repo.all()
       |> case do
         [agent] -> agent

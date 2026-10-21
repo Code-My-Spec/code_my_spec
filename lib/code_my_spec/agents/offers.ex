@@ -332,15 +332,13 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   defp serialized(agent_id, fun) do
-    Repo.checkout(fn ->
-      Repo.query!("SELECT pg_advisory_lock(hashtext($1))", ["offers:" <> agent_id])
-
-      try do
+    {:ok, result} =
+      Repo.transaction(fn ->
+        Repo.lock!("offers:" <> agent_id)
         fun.()
-      after
-        Repo.query!("SELECT pg_advisory_unlock(hashtext($1))", ["offers:" <> agent_id])
-      end
-    end)
+      end)
+
+    result
   end
 
   # A turn handed to a harness reports started within seconds. It has to lapse

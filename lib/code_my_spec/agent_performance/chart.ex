@@ -248,11 +248,17 @@ defmodule CodeMySpec.AgentPerformance.Chart do
         not is_nil(c.agent_id)
     )
     |> where([m], m.role == :operator and m.inserted_at >= ^since and m.inserted_at <= ^until)
-    |> where([m], fragment("ltrim(?->0->>'text') LIKE 'Your last turn failed%'", m.content))
     |> narrow_to_agents(agent_ids_for(scope, filter))
-    |> select([m], %{at: m.inserted_at})
+    |> select([m], %{at: m.inserted_at, content: m.content})
     |> Repo.all()
+    |> Enum.filter(&turn_failed?(&1.content))
+    |> Enum.map(&Map.delete(&1, :content))
   end
+
+  defp turn_failed?([%{"text" => text} | _]) when is_binary(text),
+    do: text |> String.trim_leading() |> String.starts_with?("Your last turn failed")
+
+  defp turn_failed?(_content), do: false
 
   defp filter_agents(agents, filter) do
     agents

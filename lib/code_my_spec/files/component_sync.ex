@@ -647,7 +647,7 @@ defmodule CodeMySpec.Files.ComponentSync do
       where:
         f.project_id == ^project_id and f.role == :implementation and
           f.working_copy_id in ^live_ids,
-      select: fragment("?->'data'->>'module_name'", f.validation_errors)
+      select: f.module_name
     )
     |> Repo.all()
     |> MapSet.new()
@@ -705,7 +705,7 @@ defmodule CodeMySpec.Files.ComponentSync do
         [f],
         f.project_id == ^project_id and f.role == :implementation and
           is_nil(f.component_id) and
-          fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
+          f.module_name == ^module_name
       )
       |> Repo.update_all(set: [component_id: component.id])
     end)

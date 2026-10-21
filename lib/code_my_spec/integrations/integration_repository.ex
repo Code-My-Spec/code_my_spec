@@ -251,7 +251,7 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
     |> where([i], i.provider == ^provider)
     |> where(
       [i],
-      fragment("?->>'provider_user_id' = ?", i.provider_metadata, ^provider_user_id)
+      json_extract_path(i.provider_metadata, ["provider_user_id"]) == ^provider_user_id
     )
     |> select([i], i.user_id)
     |> Repo.one()

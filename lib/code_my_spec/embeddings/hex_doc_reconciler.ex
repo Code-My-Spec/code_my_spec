@@ -90,10 +90,10 @@ defmodule CodeMySpec.Embeddings.HexDocReconciler do
       left_join: p in DocPackage,
       on: p.package == d.name and p.version == d.version and p.model == ^model,
       where: is_nil(p.id) or (p.status == "pending" and p.attempts < @max_attempts),
-      distinct: [d.name, d.version],
       select: %{name: d.name, version: d.version, checksum: d.checksum}
     )
     |> Repo.all()
+    |> Enum.uniq_by(&{&1.name, &1.version})
   end
 
   @doc """

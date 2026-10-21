@@ -128,11 +128,18 @@ CREATE TABLE "agents" (
   "waiting_since" TEXT,
   "transcript_path" TEXT,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("issue_id") REFERENCES "issues" ("id") ON DELETE SET NULL,
+  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("epic_id") REFERENCES "epics" ("id") ON DELETE SET NULL,
-  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("issue_id") REFERENCES "issues" ("id") ON DELETE SET NULL
+);
+
+CREATE TABLE "analysis_run_waiters" (
+  "run_id" INTEGER NOT NULL,
+  "agent_id" TEXT NOT NULL,
+  "inserted_at" TEXT NOT NULL,
+  FOREIGN KEY ("run_id") REFERENCES "analysis_runs" ("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "analysis_runs" (
@@ -155,6 +162,9 @@ CREATE TABLE "analysis_runs" (
   "start_tree_dirty" INTEGER,
   "completed_commit" TEXT,
   "began_at" TEXT,
+  "requester_agent_id" TEXT,
+  "orphaned" INTEGER NOT NULL,
+  "settled" TEXT,
   FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE CASCADE
 );
@@ -267,8 +277,8 @@ CREATE TABLE "components" (
   "last_analyzed_at" TEXT,
   "provenance" TEXT,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("parent_component_id") REFERENCES "components" ("id") ON DELETE SET NULL,
+  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("account_id") REFERENCES "accounts" ("id") ON DELETE CASCADE
 );
 
@@ -333,7 +343,7 @@ CREATE TABLE "contents" (
   "og_image" TEXT,
   "og_title" TEXT,
   "og_description" TEXT,
-  "metadata" TEXT NOT NULL DEFAULT '[]',
+  "metadata" TEXT NOT NULL DEFAULT '{}',
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
   "title" TEXT
@@ -418,9 +428,9 @@ CREATE TABLE "criteria" (
   "spec_path" TEXT,
   "number" INTEGER,
   "retired_at" TEXT,
-  FOREIGN KEY ("rule_id") REFERENCES "bdd_rules" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("rule_id") REFERENCES "bdd_rules" ("id") ON DELETE SET NULL
 );
 
 CREATE TABLE "dependencies" (
@@ -560,7 +570,7 @@ CREATE TABLE "epics" (
 CREATE TABLE "events" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "event_type" TEXT NOT NULL,
-  "data" TEXT NOT NULL DEFAULT '[]',
+  "data" TEXT NOT NULL DEFAULT '{}',
   "inserted_at" TEXT NOT NULL
 );
 
@@ -604,6 +614,7 @@ CREATE TABLE "files" (
   "story_id" INTEGER,
   "working_copy_id" TEXT NOT NULL,
   "criterion_number" INTEGER,
+  "module_name" TEXT,
   PRIMARY KEY ("id"),
   FOREIGN KEY ("component_id") REFERENCES "components" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
@@ -687,7 +698,7 @@ CREATE TABLE "integrations" (
   "refresh_token" BLOB,
   "expires_at" TEXT NOT NULL,
   "granted_scopes" TEXT DEFAULT '[]',
-  "provider_metadata" TEXT DEFAULT '[]',
+  "provider_metadata" TEXT DEFAULT '{}',
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
   FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE
@@ -780,10 +791,10 @@ CREATE TABLE "issues" (
   "accepted_at" TEXT,
   "closed_at" TEXT,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("assigned_working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("account_id") REFERENCES "accounts" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL
+  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL,
+  FOREIGN KEY ("assigned_working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL
 );
 
 CREATE TABLE "linked_servers" (
@@ -796,6 +807,11 @@ CREATE TABLE "linked_servers" (
   "environment" TEXT,
   PRIMARY KEY ("id"),
   FOREIGN KEY ("account_id") REFERENCES "accounts" ("id") ON DELETE CASCADE
+);
+
+CREATE TABLE "locks" (
+  "key" TEXT NOT NULL,
+  PRIMARY KEY ("key")
 );
 
 CREATE TABLE "mailboxes" (
@@ -925,7 +941,7 @@ CREATE TABLE "permission_requests" (
   "id" TEXT NOT NULL,
   "user_id" INTEGER NOT NULL,
   "tool_name" TEXT NOT NULL,
-  "tool_input" TEXT NOT NULL DEFAULT '[]',
+  "tool_input" TEXT NOT NULL DEFAULT '{}',
   "status" TEXT NOT NULL DEFAULT 'pending',
   "decision" TEXT,
   "inserted_at" TEXT NOT NULL,
@@ -936,8 +952,8 @@ CREATE TABLE "permission_requests" (
   "escalated_as" TEXT,
   "answered_by_user_id" INTEGER,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("answered_by_user_id") REFERENCES "users" ("id") ON DELETE SET NULL,
+  FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("agent_id") REFERENCES "agents" ("id") ON DELETE SET NULL
 );
 
@@ -982,8 +998,8 @@ CREATE TABLE "problems" (
   "component_id" TEXT,
   "working_copy_id" TEXT,
   FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL,
-  FOREIGN KEY ("component_id") REFERENCES "components" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("component_id") REFERENCES "components" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL
 );
 
 CREATE TABLE "project_configurations" (
@@ -1073,8 +1089,8 @@ CREATE TABLE "projects" (
   "components_authored_at" TEXT,
   PRIMARY KEY ("id"),
   FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("oauth_application_id") REFERENCES "oauth_applications" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("account_id") REFERENCES "accounts" ("id"),
+  FOREIGN KEY ("oauth_application_id") REFERENCES "oauth_applications" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("default_working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL
 );
 
@@ -1190,7 +1206,7 @@ CREATE TABLE "question_requests" (
   "title" TEXT,
   "questions" TEXT NOT NULL DEFAULT '[]',
   "status" TEXT NOT NULL DEFAULT 'pending',
-  "answers" TEXT NOT NULL DEFAULT '[]',
+  "answers" TEXT NOT NULL DEFAULT '{}',
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
   "session_external_id" TEXT,
@@ -1207,9 +1223,9 @@ CREATE TABLE "question_requests" (
   "escalated_by" TEXT,
   "answered_by_user_id" INTEGER,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("agent_id") REFERENCES "agents" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("answered_by_user_id") REFERENCES "users" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("user_id") REFERENCES "users" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("agent_id") REFERENCES "agents" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("conversation_message_id") REFERENCES "conversation_messages" ("id") ON DELETE SET NULL
 );
 
@@ -1246,7 +1262,7 @@ CREATE TABLE "requirements" (
   "satisfied_by" TEXT,
   "satisfied" INTEGER NOT NULL DEFAULT 0,
   "checked_at" TEXT,
-  "details" TEXT NOT NULL DEFAULT '[]',
+  "details" TEXT NOT NULL DEFAULT '{}',
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
   "component_id" TEXT,
@@ -1263,10 +1279,10 @@ CREATE TABLE "requirements" (
   "owner_component_type" TEXT,
   "node_scope" TEXT,
   "issue_id" TEXT,
-  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("issue_id") REFERENCES "issues" ("id") ON DELETE CASCADE,
   FOREIGN KEY ("component_id") REFERENCES "components" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("issue_id") REFERENCES "issues" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "resource_acknowledgements" (
@@ -1335,8 +1351,8 @@ CREATE TABLE "stories" (
   "locked_at" TEXT,
   "lock_expires_at" TEXT,
   "locked_by" INTEGER,
-  "first_version_id" INTEGER NOT NULL,
-  "current_version_id" INTEGER NOT NULL,
+  "first_version_id" INTEGER,
+  "current_version_id" INTEGER,
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
   "component_id" TEXT,
@@ -1366,8 +1382,8 @@ CREATE TABLE "stories" (
   FOREIGN KEY ("first_version_id") REFERENCES "versions" ("id"),
   FOREIGN KEY ("current_version_id") REFERENCES "versions" ("id"),
   FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("epic_id") REFERENCES "epics" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("account_id") REFERENCES "accounts" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("epic_id") REFERENCES "epics" ("id") ON DELETE SET NULL,
   FOREIGN KEY ("working_copy_id") REFERENCES "working_copies" ("id") ON DELETE SET NULL
 );
 
@@ -1377,8 +1393,8 @@ CREATE TABLE "story_tags" (
   "story_id" INTEGER NOT NULL,
   "inserted_at" TEXT NOT NULL,
   "updated_at" TEXT NOT NULL,
-  FOREIGN KEY ("tag_id") REFERENCES "component_tags" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("story_id") REFERENCES "stories" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("tag_id") REFERENCES "component_tags" ("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "stripe_events" (
@@ -1500,8 +1516,8 @@ CREATE TABLE "working_copies" (
   "app_commit" TEXT,
   "app_serving_commit" TEXT,
   PRIMARY KEY ("id"),
-  FOREIGN KEY ("device_id") REFERENCES "devices" ("id") ON DELETE CASCADE,
-  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE
+  FOREIGN KEY ("project_id") REFERENCES "projects" ("id") ON DELETE CASCADE,
+  FOREIGN KEY ("device_id") REFERENCES "devices" ("id") ON DELETE CASCADE
 );
 
 CREATE TABLE "workspaces" (
@@ -1567,9 +1583,15 @@ CREATE INDEX IF NOT EXISTS agents_working_copy_id_continuous_index ON agents (wo
 
 CREATE INDEX IF NOT EXISTS agents_working_copy_index ON agents (working_copy);
 
+CREATE INDEX IF NOT EXISTS analysis_run_waiters_agent_id_index ON analysis_run_waiters (agent_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS analysis_run_waiters_run_id_agent_id_index ON analysis_run_waiters (run_id, agent_id);
+
 CREATE INDEX IF NOT EXISTS analysis_runs_project_id_harness_id_status_index ON analysis_runs (project_id, working_copy_id, status);
 
 CREATE INDEX IF NOT EXISTS analysis_runs_project_id_source_status_index ON analysis_runs (project_id, source, status);
+
+CREATE INDEX IF NOT EXISTS analysis_runs_requester_agent_id_index ON analysis_runs (requester_agent_id);
 
 CREATE INDEX IF NOT EXISTS app_restarts_working_copy_id_index ON app_restarts (working_copy_id);
 
@@ -1728,6 +1750,8 @@ CREATE INDEX IF NOT EXISTS files_project_id_criterion_number_index ON files (pro
 CREATE INDEX IF NOT EXISTS files_project_id_harness_id_index ON files (project_id, working_copy_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS files_project_id_harness_id_path_index ON files (project_id, working_copy_id, path);
+
+CREATE INDEX IF NOT EXISTS files_project_id_module_name_index ON files (project_id, module_name);
 
 CREATE INDEX IF NOT EXISTS files_role_index ON files (role);
 
@@ -1945,21 +1969,21 @@ CREATE INDEX IF NOT EXISTS requirements_artifact_type_index ON requirements (art
 
 CREATE INDEX IF NOT EXISTS requirements_component_id_index ON requirements (component_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS requirements_component_id_name_index ON requirements (component_id, name, working_copy_id) WHERE (component_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS requirements_component_id_name_index ON requirements (coalesce(component_id, ''), coalesce(name, ''), coalesce(working_copy_id, '')) WHERE (component_id IS NOT NULL);
 
-CREATE UNIQUE INDEX IF NOT EXISTS requirements_issue_id_name_working_copy_id_index ON requirements (issue_id, name, working_copy_id) WHERE (issue_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS requirements_issue_id_name_working_copy_id_index ON requirements (coalesce(issue_id, ''), coalesce(name, ''), coalesce(working_copy_id, '')) WHERE (issue_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS requirements_name_index ON requirements (name);
 
 CREATE INDEX IF NOT EXISTS requirements_project_id_index ON requirements (project_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS requirements_project_id_name_index ON requirements (project_id, name, working_copy_id) WHERE (project_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS requirements_project_id_name_index ON requirements (coalesce(project_id, ''), coalesce(name, ''), coalesce(working_copy_id, '')) WHERE (project_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS requirements_satisfied_index ON requirements (satisfied);
 
 CREATE INDEX IF NOT EXISTS requirements_story_id_index ON requirements (story_id);
 
-CREATE UNIQUE INDEX IF NOT EXISTS requirements_story_id_name_index ON requirements (story_id, name, working_copy_id) WHERE (story_id IS NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS requirements_story_id_name_index ON requirements (coalesce(story_id, ''), coalesce(name, ''), coalesce(working_copy_id, '')) WHERE (story_id IS NOT NULL);
 
 CREATE INDEX IF NOT EXISTS requirements_working_copy_id_index ON requirements (working_copy_id);
 
@@ -2423,3 +2447,6 @@ INSERT INTO schema_migrations (version, inserted_at) VALUES (20261020040000, CUR
 INSERT INTO schema_migrations (version, inserted_at) VALUES (20261020120000, CURRENT_TIMESTAMP);
 INSERT INTO schema_migrations (version, inserted_at) VALUES (20261020130000, CURRENT_TIMESTAMP);
 INSERT INTO schema_migrations (version, inserted_at) VALUES (20261021030000, CURRENT_TIMESTAMP);
+INSERT INTO schema_migrations (version, inserted_at) VALUES (20261021140000, CURRENT_TIMESTAMP);
+INSERT INTO schema_migrations (version, inserted_at) VALUES (20261021150000, CURRENT_TIMESTAMP);
+INSERT INTO schema_migrations (version, inserted_at) VALUES (20261021160000, CURRENT_TIMESTAMP);

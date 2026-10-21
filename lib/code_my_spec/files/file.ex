@@ -105,6 +105,10 @@ defmodule CodeMySpec.Files.File do
     field :valid, :boolean
     field :validation_errors, :map
 
+    # The module this file declares (`validation_errors.data.module_name`),
+    # what claims a component by name.
+    field :module_name, :string
+
     # The criterion number a spex file's `spex` call names — what the file
     # says, nothing derived. Which criterion it covers is a join on this and
     # `criteria.number`, so a criterion retired or created later never leaves

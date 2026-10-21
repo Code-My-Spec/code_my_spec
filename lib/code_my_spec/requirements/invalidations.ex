@@ -160,11 +160,13 @@ defmodule CodeMySpec.Requirements.Invalidations do
             working_copy_id: copy,
             source: source,
             kind: "invalidate",
+            payload: nil,
             observation_id: observation_id,
             inserted_at: now
           })
         end)
 
+      # Every row names the same columns: SQLite has no per-row DEFAULT.
       Repo.insert_all(Invalidation, [event | marks])
     end
 

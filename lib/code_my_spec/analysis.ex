@@ -812,6 +812,8 @@ defmodule CodeMySpec.Analysis do
 
       case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
         {:ok, outcome, id} ->
+          RunsRepository.copy_waiters(run.id, id)
+
           Logger.info(
             "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
               "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
@@ -839,10 +841,10 @@ defmodule CodeMySpec.Analysis do
   # Owed when `start_analysis` recorded an `agent_id` (it answers later) or an
   # agent waits on the run (`wait_on_running_at_commit/4`). A blocking
   # `await_run/4` already answered its caller with an error, which asks again.
-  defp answer_owed?(%Run{requested_by: %{} = by}),
-    do: Map.has_key?(by, "agent_id") or match?([_ | _], by["waiters"])
+  defp answer_owed?(%Run{requested_by: %{} = by} = run),
+    do: Map.has_key?(by, "agent_id") or RunsRepository.waiter_ids(run) != []
 
-  defp answer_owed?(_run), do: false
+  defp answer_owed?(run), do: RunsRepository.waiter_ids(run) != []
 
   defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
   defp redispatches(_run), do: 0

@@ -21,7 +21,7 @@ TYPES = {
 }
 
 
-def default(expr, sqltype):
+def default(expr, sqltype, dt=None):
     if expr is None or expr == "":
         return None
     if "nextval(" in expr:
@@ -29,7 +29,7 @@ def default(expr, sqltype):
     e = re.sub(r"::[a-z_ \[\]]+(\(\d+\))?", "", expr)
     if e in ("true", "false"):
         return "1" if e == "true" else "0"
-    if e.startswith("ARRAY[]") or e == "'{}'":
+    if e.startswith("ARRAY[]") or (e == "'{}'" and dt == "ARRAY"):
         return "'[]'"
     if e in ("now()", "CURRENT_TIMESTAMP", "timezone('UTC', now())", "(now() AT TIME ZONE 'utc')"):
         return "CURRENT_TIMESTAMP"
@@ -69,13 +69,14 @@ def main():
             if sqltype is None:
                 notes.append(f"{t}.{c}: unmapped type {dt}")
                 sqltype = "TEXT"
-            d = default(dflt, sqltype)
+            d = default(dflt, sqltype, dt)
             if d == "AUTOINCREMENT" and pk == [c]:
                 lines.append(f'"{c}" INTEGER PRIMARY KEY AUTOINCREMENT')
                 pk = []
                 continue
             col = f'"{c}" {sqltype}'
-            if not nullable:
+            # PaperTrail's strict mode (Postgres) fills these; off on SQLite.
+            if not nullable and c not in ("first_version_id", "current_version_id"):
                 col += " NOT NULL"
             if d and d != "AUTOINCREMENT":
                 col += f" DEFAULT {d}" if not d.startswith("CURRENT") else f" DEFAULT {d}"
@@ -97,8 +98,12 @@ def main():
         s = re.sub(r"= ANY \(ARRAY\[([^\]]*)\]\)", r"IN (\1)", s)
         s = re.sub(r"<> ALL \(ARRAY\[([^\]]*)\]\)", r"NOT IN (\1)", s)
         if "NULLS NOT DISTINCT" in s:
+            # SQLite's NULLs are always distinct in a unique index; coalescing
+            # makes them collide, which is what NULLS NOT DISTINCT asked for.
             s = s.replace(" NULLS NOT DISTINCT", "")
-            notes.append(f"index {name}: NULLS NOT DISTINCT dropped")
+            m = re.search(r"\(([^()]*)\)", s)
+            cols = ", ".join(f"coalesce({c.strip()}, '')" for c in m.group(1).split(","))
+            s = s[: m.start()] + "(" + cols + ")" + s[m.end():]
         s = s.replace("CREATE INDEX", "CREATE INDEX IF NOT EXISTS").replace("CREATE UNIQUE INDEX", "CREATE UNIQUE INDEX IF NOT EXISTS")
         out.append(s + ";")
 

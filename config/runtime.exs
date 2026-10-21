@@ -278,6 +278,9 @@ if config_env() == :desktop do
   # the superuser a fresh Homebrew Postgres has.
   config :code_my_spec, CodeMySpec.Repo,
     database: System.get_env("CMS_DESKTOP_DB") || Path.expand("~/.codemyspec/desktop.db"),
+    journal_mode: :wal,
+    busy_timeout: 10_000,
+    default_transaction_mode: :immediate,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
   # Per install, created on first boot.

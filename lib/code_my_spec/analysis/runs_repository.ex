@@ -12,6 +12,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   require Logger
 
   alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.RunWaiter
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -216,7 +217,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     )
     |> where(
       [r],
-      is_nil(r.stats) or fragment("(?->>'orphaned') IS DISTINCT FROM 'true'", r.stats)
+      not r.orphaned
     )
     |> scope_to_harness(scope)
     |> Repo.aggregate(:count)
@@ -271,10 +272,9 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   @doc """
-  Whether `agent_id` has a run it requested still `:running` (queued runs
-  included) on `working_copy_id`, or one its harness's departure killed that
-  the rejoin has not settled yet. Keyed on `requested_by->>'agent_id'`, the
-  field `start_analysis` writes and `Agents.AnalysisReport` answers.
+  Whether `agent_id` has a run it requested or waits on still `:running`
+  (queued runs included) on `working_copy_id`, or one its harness's departure
+  killed that the rejoin has not settled yet.
 
   The killed one counts for 15 minutes. A harness rejoins in seconds and
   settles it (`Analysis.resume_orphaned/2`); one that never returns must not
@@ -285,25 +285,40 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   def awaiting_runs?(%Scope{active_project_id: project_id}, working_copy_id, agent_id) do
     since = DateTime.add(DateTime.utc_now(), -@orphan_awaited_s, :second)
+    waiting = from(w in RunWaiter, where: w.agent_id == ^agent_id, select: w.run_id)
 
     Run
     |> where([r], r.project_id == ^project_id and r.working_copy_id == ^working_copy_id)
-    |> where(
-      [r],
-      fragment("?->>'agent_id'", r.requested_by) == ^agent_id or
-        fragment(
-          "coalesce(?->'waiters', '[]'::jsonb) @> to_jsonb(?::text)",
-          r.requested_by,
-          ^agent_id
-        )
-    )
+    |> where([r], r.requester_agent_id == ^agent_id or r.id in subquery(waiting))
     |> where(
       [r],
       r.status == :running or
-        (r.status == :failed and r.finished_at > ^since and
-           fragment("(?->>'orphaned') = 'true' AND (?->>'settled') IS NULL", r.stats, r.stats))
+        (r.status == :failed and r.finished_at > ^since and r.orphaned and is_nil(r.settled))
     )
     |> Repo.exists?()
+  end
+
+  @doc "The agents waiting on this run besides its requester."
+  @spec waiter_ids(Run.t() | integer()) :: [String.t()]
+  def waiter_ids(%Run{id: id}), do: waiter_ids(id)
+
+  def waiter_ids(run_id),
+    do: Repo.all(from(w in RunWaiter, where: w.run_id == ^run_id, select: w.agent_id))
+
+  @doc "Carry `from_id`'s waiters onto the run that answers in its place."
+  @spec copy_waiters(integer(), integer()) :: :ok
+  def copy_waiters(from_id, to_id), do: add_waiters([to_id], waiter_ids(from_id))
+
+  defp add_waiters(run_ids, agent_ids) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    rows =
+      for run_id <- run_ids,
+          agent_id <- agent_ids,
+          do: %{run_id: run_id, agent_id: agent_id, inserted_at: now}
+
+    Repo.insert_all(RunWaiter, rows, on_conflict: :nothing)
+    :ok
   end
 
   @doc """
@@ -316,10 +331,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def unsettled_orphans(%Scope{active_project_id: project_id} = scope) do
     Run
     |> where([r], r.project_id == ^project_id and r.status == :failed)
-    |> where(
-      [r],
-      fragment("(?->>'orphaned') = 'true' AND (?->>'settled') IS NULL", r.stats, r.stats)
-    )
+    |> where([r], r.orphaned and is_nil(r.settled))
     |> scope_to_harness(scope)
     |> order_by(asc: :id)
     |> Repo.all()
@@ -330,12 +342,11 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   there first, so a run is never re-dispatched twice.
   """
   @spec settle_orphan(Run.t(), String.t()) :: :ok | :already
-  def settle_orphan(%Run{id: id, stats: stats}, how) do
+  def settle_orphan(%Run{id: id}, how) do
     {count, _} =
       Run
-      |> where([r], r.id == ^id and r.status == :failed)
-      |> where([r], fragment("(?->>'settled') IS NULL", r.stats))
-      |> Repo.update_all(set: [stats: Map.put(stats || %{}, "settled", how)])
+      |> where([r], r.id == ^id and r.status == :failed and is_nil(r.settled))
+      |> Repo.update_all(set: [settled: how])
 
     if count == 1, do: :ok, else: :already
   end
@@ -349,10 +360,15 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def reopen_orphan(%Run{id: id}) do
     {count, _} =
       Run
-      |> where([r], r.id == ^id and r.status == :failed)
-      |> where([r], fragment("(?->>'settled') IS NULL", r.stats))
+      |> where([r], r.id == ^id and r.status == :failed and is_nil(r.settled))
       |> Repo.update_all(
-        set: [status: :running, finished_at: nil, stats: nil, updated_at: DateTime.utc_now()]
+        set: [
+          status: :running,
+          finished_at: nil,
+          stats: nil,
+          orphaned: false,
+          updated_at: DateTime.utc_now()
+        ]
       )
 
     if count == 1, do: :ok, else: :already
@@ -388,12 +404,12 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
-  Add `agent_id` to the waiters (`requested_by["waiters"]`) of this copy's
-  full runs of `source` still running that will answer for `commit`: started
-  there on a clean tree, or queued and not started yet. Answers whether any
-  such run exists, so a run somebody else started counts as the agent's own:
-  it is told when it lands, and `awaiting_runs?/3` holds its
-  nudges meanwhile. A run already requested by the agent is left as it is.
+  Add `agent_id` to the waiters of this copy's full runs of `source` still
+  running that will answer for `commit`: started there on a clean tree, or
+  queued and not started yet. Answers whether any such run exists, so a run
+  somebody else started counts as the agent's own: it is told when it lands,
+  and `awaiting_runs?/3` holds its nudges meanwhile. A run already requested
+  by the agent is left as it is.
   """
   @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
   def wait_on_running_at_commit(%Scope{active_working_copy_id: nil}, _source, _commit, _agent),
@@ -408,27 +424,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     Run
     |> where([r], r.id in ^ids and r.status == :running)
-    |> where([r], fragment("coalesce(?->>'agent_id', '') <> ?", r.requested_by, ^agent_id))
-    |> where(
-      [r],
-      not fragment(
-        "coalesce(?->'waiters', '[]'::jsonb) @> to_jsonb(?::text)",
-        r.requested_by,
-        ^agent_id
-      )
-    )
-    |> update([r],
-      set: [
-        requested_by:
-          fragment(
-            "jsonb_set(coalesce(?, '{}'::jsonb), '{waiters}', coalesce(?->'waiters', '[]'::jsonb) || to_jsonb(?::text))",
-            r.requested_by,
-            r.requested_by,
-            ^agent_id
-          )
-      ]
-    )
-    |> Repo.update_all([])
+    |> where([r], is_nil(r.requester_agent_id) or r.requester_agent_id != ^agent_id)
+    |> select([r], r.id)
+    |> Repo.all()
+    |> add_waiters([agent_id])
 
     ids != []
   end
@@ -537,7 +536,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
           status: :failed,
           finished_at: now,
           updated_at: now,
-          stats: orphaned(reason)
+          stats: orphan_stats(reason),
+          orphaned: true
         ]
       )
 
@@ -546,10 +546,10 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   # `orphaned` is what tells "its harness went away" from "the analyzer failed":
-  # only these two sweeps write it, and only its runs are run again on rejoin
+  # only these two sweeps set it, and only its runs are run again on rejoin
   # (`Analysis.resume_orphaned/2`). The reason string cannot carry that.
-  defp orphaned(reason) do
-    %{"error" => String.slice(inspect(reason), 0, 500), "orphaned" => true}
+  defp orphan_stats(reason) do
+    %{"error" => String.slice(inspect(reason), 0, 500)}
   end
 
   # An empty claim sweeps everything (an older harness, or nothing running).
@@ -578,7 +578,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
           status: :failed,
           finished_at: now,
           updated_at: now,
-          stats: orphaned(:server_restarted)
+          stats: orphan_stats(:server_restarted),
+          orphaned: true
         ]
       )
 

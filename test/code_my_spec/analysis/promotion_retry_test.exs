@@ -43,8 +43,8 @@ defmodule CodeMySpec.Analysis.PromotionRetryTest do
 
   test "other commits, orphaned failures and unrelated runs do not consume retries", ctx do
     failed_run(ctx.scope, @since, %{start_commit: @other_commit})
-    failed_run(ctx.scope, @since, %{stats: %{"orphaned" => true}})
-    failed_run(ctx.scope, @since, %{start_commit: nil, stats: %{"orphaned" => true}})
+    failed_run(ctx.scope, @since, %{orphaned: true})
+    failed_run(ctx.scope, @since, %{start_commit: nil, orphaned: true})
     failed_run(ctx.scope, @since, %{kind: :partial})
     failed_run(ctx.scope, @since, %{source: "exunit"})
     failed_run(ctx.scope, @since, %{status: :completed})
