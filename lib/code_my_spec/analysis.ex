@@ -301,6 +301,7 @@ defmodule CodeMySpec.Analysis do
 
       %Run{} = run ->
         run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
+        run = RunsRepository.record_executed(run, payload)
         result = apply_remote_result(scope, run, payload)
         announce(scope, run, result)
         result
@@ -396,7 +397,7 @@ defmodule CodeMySpec.Analysis do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
         result = note_analyzer_staleness(result, payload)
-        reconcile_or_finish_tied(scope, as_executed(run, payload), result, payload["tied_to"])
+        reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
         Reconciler.fail(run, reason, %{output: raw["output"], exit_status: raw["exit_status"]})
@@ -437,9 +438,8 @@ defmodule CodeMySpec.Analysis do
   # closes its row (reconciling both doubled every problem).
   #
   # A partial run that a full request tied onto ran the whole suite (the
-  # harness merges a tie's args), so it is reconciled as full.
-  defp as_executed(%Run{kind: :partial} = run, %{"args" => []}), do: %{run | kind: :full}
-  defp as_executed(run, _payload), do: run
+  # harness merges a tie's args), so `RunsRepository.record_executed/2` has
+  # already made its row `:full` by the time it is reconciled here.
 
   defp reconcile_or_finish_tied(scope, run, result, nil),
     do: Reconciler.reconcile(scope, run, result, notify: true)
