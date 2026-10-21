@@ -69,7 +69,9 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert postgres["state"] == "errored"
     assert [%{"exit_status" => nil}] = postgres["commands"]
     assert File.regular?(status.snapshot["results_path"])
-    assert Req.post!(ctx.url <> "/continue", redirect: false).status == 409
+    # Start is offered whatever the checklist says: the app needs none of it.
+    assert Req.post!(ctx.url <> "/continue", redirect: false).status == 303
+    await_settled()
 
     response = Req.get!(ctx.url)
     assert response.status == 200
@@ -160,7 +162,7 @@ defmodule CodeMySpecDesktop.BootstrapTest do
     assert File.regular?(status.snapshot["results_path"])
 
     assert Req.post!(ctx.url <> "/continue", headers: [{"origin", origin}], redirect: false).status ==
-             409
+             303
   end
 
   test "opaque origins cannot run setup checks", ctx do

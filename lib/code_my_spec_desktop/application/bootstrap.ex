@@ -56,13 +56,11 @@ defmodule CodeMySpecDesktop.Application.Bootstrap do
     {:reply, :ok, %{state | task: task, phase: :checking, error: nil}}
   end
 
+  # The app runs on its own SQLite file, so nothing on the checklist is needed
+  # to start it: the checklist is what developing a project needs, and the
+  # agent can help with it once the app is up. Creating a project still waits
+  # on it (`Setup.generate_project/3`).
   def handle_call(:continue, _from, state) do
-    continue_with(Setup.prerequisites_passed?(state.snapshot), state)
-  end
-
-  defp continue_with(false, state), do: {:reply, {:error, :prerequisites_failed}, state}
-
-  defp continue_with(true, state) do
     task =
       Task.Supervisor.async_nolink(state.tasks, fn ->
         DynamicSupervisor.start_child(state.runtime_supervisor, {state.runtime, []})

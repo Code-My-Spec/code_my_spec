@@ -1,8 +1,6 @@
 defmodule CodeMySpecDesktop.Application.SetupPage do
   @moduledoc "Renders desktop prerequisite setup without sessions or database access."
 
-  alias CmsHarness.Setup
-
   def render(status, action_path, app_url) do
     body = content(status, action_path, app_url)
 
@@ -154,14 +152,10 @@ defmodule CodeMySpecDesktop.Application.SetupPage do
     do: "<p role=\"status\">Working… This page will update automatically.</p>"
 
   defp controls(status, path) do
-    if Setup.prerequisites_passed?(status.snapshot) do
-      [
-        form(path <> "/continue", "start-application", "Start CodeMySpec", "primary"),
-        form(path <> "/check", "check-prerequisites", "Check again")
-      ]
-    else
-      [form(path <> "/check", "check-prerequisites", check_label(status.snapshot), "primary")]
-    end
+    [
+      form(path <> "/continue", "start-application", "Start CodeMySpec", "primary"),
+      form(path <> "/check", "check-prerequisites", check_label(status.snapshot))
+    ]
   end
 
   defp check_label(nil), do: "Check this machine"
