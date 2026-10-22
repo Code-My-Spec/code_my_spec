@@ -2,7 +2,7 @@ defmodule CodeMySpec.Projects.Tools do
   @moduledoc "Project definition tools available before a working copy exists."
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Projects, CodeMySpec.Devices, CodeMySpec.Tools]
+    deps: [CodeMySpec.Projects, CodeMySpec.Devices, CodeMySpec.Tools, CodeMySpec.Paths]
 
   def all, do: [__MODULE__.GetProjectOnboarding, __MODULE__.UpdateProjectOnboarding]
 
@@ -11,6 +11,7 @@ defmodule CodeMySpec.Projects.Tools do
       phase: CodeMySpec.Projects.Onboarding.phase(project),
       project_id: project.id,
       name: project.name,
+      local_directory: local_directory(project),
       onboarding: embedded(project.onboarding),
       sources: Enum.map(project.sources, &embedded/1),
       available_devices:
@@ -22,6 +23,13 @@ defmodule CodeMySpec.Projects.Tools do
           }
         end)
     }
+  end
+
+  defp local_directory(project) do
+    if Application.get_env(:code_my_spec, :env) == :desktop do
+      (project.onboarding && project.onboarding.destination_path) || project.local_path ||
+        CodeMySpec.Paths.project_home(project)
+    end
   end
 
   defp embedded(nil), do: %{}

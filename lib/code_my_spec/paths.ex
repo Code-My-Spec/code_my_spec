@@ -64,6 +64,23 @@ defmodule CodeMySpec.Paths do
   @doc "Default destination for generated projects without a user-selected directory."
   def projects_root, do: Path.join(local_state_dir(), "projects")
 
+  @doc "Default folder for a new local project; resolving it does not create or move files."
+  def project_home(%{name: name, id: id}) do
+    folder =
+      name
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9]+/, "-")
+      |> String.trim("-")
+      |> String.slice(0, 80)
+
+    folder =
+      if folder == "" or Regex.match?(~r/^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/, folder),
+        do: "project-#{id}",
+        else: folder
+
+    Path.join(projects_root(), folder)
+  end
+
   @doc "The desktop SQLite database, preserving CMS_DESKTOP_DB when supplied."
   def desktop_database do
     (System.get_env("CMS_DESKTOP_DB") || Path.join(user_state_dir(), "desktop.db"))

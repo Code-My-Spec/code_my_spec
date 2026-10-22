@@ -11,8 +11,8 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{Jason.encode!(%{onboarding: fields(project.onboarding), sources: Enum.map(project.sources, &fields/1)})}
 
     Your current directory may be detached agent scratch, NOT the project's working copy.
-    Do not generate the application there. On this desktop, the default project home is
-    #{CodeMySpec.Paths.projects_root()}; scratch belongs under #{CodeMySpec.Paths.scratch_root()}.
+    Do not generate the application there.
+    #{local_directory_guidance(project)}
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.
     Work out the environment, inspect existing sources without changing them, and establish a
@@ -24,6 +24,18 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     """
   end
 
+  defp local_directory_guidance(project) do
+    if Application.get_env(:code_my_spec, :env) == :desktop do
+      directory =
+        (project.onboarding && project.onboarding.destination_path) || project.local_path ||
+          CodeMySpec.Paths.project_home(project)
+
+      "Use #{directory} for local development. This honors an explicitly selected path, otherwise defaults under CodeMySpec home. Do not ask the user to choose a folder. Scratch belongs under #{CodeMySpec.Paths.scratch_root()}. Do not overwrite existing files if the directory is occupied."
+    else
+      "Use the chosen execution host's CodeMySpec home as the default project location, unless the user chose a different path. Do not use a path on this web server as the user's development directory."
+    end
+  end
+
   def workflow do
     """
     Onboarding order is strict: (1) brief project synopsis and audience, (2) new or existing code
@@ -31,6 +43,9 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     (4) only after that tool succeeds, interview for stories and record them while Main sets up.
     Read get_project_onboarding for the current phase. Keep the synopsis short: no feature deep
     dives, personas, acceptance criteria, epics, or story creation before the setup handoff.
+    Save agreed answers with update_project_onboarding, including name for a requested rename.
+    For local development use local_directory from get_project_onboarding by default; do not ask
+    which folder to use. Preserve an explicitly chosen location as onboarding.destination_path.
     Save agreed answers with update_project_onboarding. Existing code needs a selected source.
     A saved destination alone is NOT a handoff: call start_project_setup. If it fails, resolve
     the setup blocker with the user instead of silently moving on to stories.

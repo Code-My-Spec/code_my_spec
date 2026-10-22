@@ -9,6 +9,11 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
   def description do
     """
     Record the user's agreed onboarding choices on the connected project, without a working copy.
+    Set name to rename this project (display name only; existing files are not moved).
+    onboarding supports description, starting_point (new/existing), destination (local/cloud/external),
+    and optional destination_path (an absolute path explicitly chosen by the user).
+    For local development, use local_directory from get_project_onboarding by default; do not ask
+    the user to pick a folder. Leave destination_path unset unless they request a different location.
     Omitted fields are preserved. Read get_project_onboarding first. If sources is supplied, it
     replaces the entire list: retain existing source IDs and entries you want to keep; [] clears it.
     Use available_devices from get_project_onboarding for local device IDs; paths are absolute on
@@ -20,10 +25,14 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
   @impl true
   def params do
     %{
+      name:
+        {:meta, :string,
+         [description: "The user-agreed project display name. Renames the current project only."]},
       onboarding:
         {:meta,
          %{
            description: :string,
+           destination_path: :string,
            starting_point: {:enum, ~w(new existing)},
            destination: {:enum, ~w(local cloud external)}
          }, [description: "Only the agreed fields to change; omitted fields remain unchanged."]},

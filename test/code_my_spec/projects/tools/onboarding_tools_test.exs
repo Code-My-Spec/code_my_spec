@@ -57,6 +57,79 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert data.onboarding.setup_agent_id == nil
   end
 
+  test "product can rename its project and preserve an explicitly chosen folder", %{
+    context: context,
+    scope: scope
+  } do
+    assert {:ok, text} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{
+                 "name" => "Mahjong Coach",
+                 "onboarding" => %{
+                   "destination" => "local",
+                   "destination_path" => "/Users/example/Documents/github/mahjong-coach"
+                 }
+               },
+               context
+             )
+
+    data = Jason.decode!(text)
+    assert data["name"] == "Mahjong Coach"
+    assert data["onboarding"]["destination"] == "local"
+
+    assert data["onboarding"]["destination_path"] ==
+             "/Users/example/Documents/github/mahjong-coach"
+
+    {:ok, project} = Onboarding.fetch(scope)
+    assert project.name == "Mahjong Coach"
+
+    assert {:ok, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{"onboarding" => %{"description" => "A teaching game"}},
+               context
+             )
+
+    {:ok, project} = Onboarding.fetch(scope)
+    assert project.name == "Mahjong Coach"
+    assert project.onboarding.destination_path == "/Users/example/Documents/github/mahjong-coach"
+  end
+
+  test "local default stays under CodeMySpec home and a rename does not move an explicit directory",
+       %{context: context} do
+    previous = Application.get_env(:code_my_spec, :env)
+    Application.put_env(:code_my_spec, :env, :desktop)
+    on_exit(fn -> Application.put_env(:code_my_spec, :env, previous) end)
+    assert {:ok, _} = Tools.run(UpdateProjectOnboarding, %{"name" => "Mahjong Coach"}, context)
+    assert {:ok, data} = GetProjectOnboarding.script_result(%{}, context)
+    assert data.local_directory == Path.join(CodeMySpec.Paths.projects_root(), "mahjong-coach")
+
+    assert {:ok, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{"onboarding" => %{"destination_path" => "C:\\Projects\\mahjong-coach"}},
+               context
+             )
+
+    assert {:ok, _} = Tools.run(UpdateProjectOnboarding, %{"name" => "A new name"}, context)
+    assert {:ok, data} = GetProjectOnboarding.script_result(%{}, context)
+    assert data.local_directory == "C:\\Projects\\mahjong-coach"
+    Application.put_env(:code_my_spec, :env, :test)
+    assert {:ok, %{local_directory: nil}} = GetProjectOnboarding.script_result(%{}, context)
+  end
+
+  test "empty names and relative destination paths are rejected", %{context: context} do
+    assert {:error, _} = Tools.run(UpdateProjectOnboarding, %{"name" => " "}, context)
+
+    assert {:error, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{"onboarding" => %{"destination_path" => "../project"}},
+               context
+             )
+  end
+
   test "JSON tool arguments patch choices, preserve omitted data and broadcast saved state", %{
     scope: scope,
     context: context

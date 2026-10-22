@@ -36,7 +36,9 @@ defmodule CodeMySpec.Projects.Onboarding do
     with {:ok, project} <- fetch(scope) do
       project
       |> change()
-      |> cast(attrs, [])
+      |> cast(attrs, [:name])
+      |> validate_required([:name])
+      |> validate_length(:name, max: 255)
       |> cast_embed(:onboarding)
       |> cast_embed(:sources,
         with: fn source, attrs ->

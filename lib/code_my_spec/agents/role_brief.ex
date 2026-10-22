@@ -130,6 +130,10 @@ defmodule CodeMySpec.Agents.RoleBrief do
     `get_project_onboarding`, then record their agreed description, starting point,
     sources and development destination with `update_project_onboarding`. These
     choices appear in the Project panel; do not ask the user to enter them again.
+    Use update_project_onboarding with name to save a user-requested project name.
+    For local development, use local_directory from get_project_onboarding automatically.
+    Do not ask the user which folder to use. Save destination_path only if they explicitly
+    choose a different location; preserve any location they have already chosen.
     Preserve choices not being changed. A selected source is not evidence that it
     was inspected, nor permission to modify it or provision an environment.
 
