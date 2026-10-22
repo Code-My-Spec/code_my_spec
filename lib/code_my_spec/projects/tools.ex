@@ -33,7 +33,15 @@ defmodule CodeMySpec.Projects.Tools do
   end
 
   defp embedded(nil), do: %{}
-  defp embedded(value), do: Map.from_struct(value)
+
+  defp embedded(value) do
+    value
+    |> Map.from_struct()
+    |> Map.new(fn
+      {key, %DateTime{} = timestamp} -> {key, DateTime.to_iso8601(timestamp)}
+      {key, field} -> {key, field}
+    end)
+  end
 
   def text({:ok, data}), do: {:ok, Jason.encode!(data)}
   def text(error), do: error

@@ -12,6 +12,11 @@ defmodule CodeMySpec.Agents.DefinitionContext do
 
     Your current directory may be detached agent scratch, NOT the project's working copy.
     Do not generate the application there.
+    This setup request is your current work; it does not require claiming a development task.
+    Before a working copy exists, do not use get_next_requirement/start_task as a setup prerequisite.
+    A no-working-copy response from that queue is expected here, not a setup blocker. Inspect the
+    selected host and available setup tools, establish the application checkout, and register it
+    using the supported workflow before entering the working-copy development task loop.
     #{local_directory_guidance(project)}
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.

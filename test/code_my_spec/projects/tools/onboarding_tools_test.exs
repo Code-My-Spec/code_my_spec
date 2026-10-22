@@ -288,6 +288,44 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert {:ok, %{onboarding: nil}} = Onboarding.fetch(scope)
   end
 
+  test "Main can read and update onboarding through Lua after setup handoff", %{scope: scope} do
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        role: :main,
+        engine: :alloy,
+        provider: "claude-code",
+        execution_mode: :detached,
+        working_copy: System.tmp_dir!()
+      })
+
+    {:ok, _} =
+      Onboarding.save(scope, %{
+        onboarding: %{description: "Tutor", starting_point: "new", destination: "local"}
+      })
+
+    {:ok, handed_off} = Onboarding.record_handoff(scope, agent.id)
+    timestamp = DateTime.to_iso8601(handed_off.onboarding.setup_started_at)
+    frame = %Anubis.Server.Frame{assigns: %{current_scope: scope, agent_id: agent.id}}
+
+    for script <- [
+          "return get_project_onboarding({})",
+          ~S[return update_project_onboarding({description = "Mahjong tutor"})]
+        ] do
+      assert {:reply, response, ^frame} =
+               CodeMySpec.McpServers.CodeMode.Tools.RunScript.execute(%{script: script}, frame)
+
+      refute response.isError
+      assert Enum.map_join(response.content, "", & &1["text"]) =~ timestamp
+    end
+
+    assert {:ok, data} = GetProjectOnboarding.script_result(%{}, %{scope: scope})
+    assert data.onboarding.setup_started_at == timestamp
+    assert data.phase == :stories
+    assert {:ok, saved} = Onboarding.fetch(scope)
+    assert %DateTime{} = saved.onboarding.setup_started_at
+    assert saved.onboarding.setup_started_at == handed_off.onboarding.setup_started_at
+  end
+
   test "detached product saves flat arguments through the actual script catalog", %{scope: scope} do
     {:ok, agent} =
       CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
