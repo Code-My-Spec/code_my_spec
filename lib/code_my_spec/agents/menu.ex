@@ -284,12 +284,10 @@ defmodule CodeMySpec.Agents.Menu do
   defp offers(scope, owner) do
     answer_offer(open_questions(scope, owner)) <>
       blocked_task_note(owner) <>
-      "\n\nNobody is reading this conversation. If you need a decision from the " <>
-      "user, `ask_question` is what reaches them — name the alternatives and " <>
-      "they answer with a tap; use a single free-text question when the answer is genuinely " <>
-      "prose. A question written into your reply reaches no one, and stopping on " <>
-      "it just brings you back here. Ask, then carry on with anything the answer " <>
-      "does not block." <>
+      "\n\nFor a structured decision, use `ask_question` with answer options. " <>
+      "For an open-ended question, ask in ordinary chat; the user can reply " <>
+      "there. Do not create a separate free-text form. Then carry on with " <>
+      "anything the answer does not block." <>
       "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."

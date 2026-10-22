@@ -119,8 +119,8 @@ defmodule CodeMySpec.Agents.RoleBrief do
     agent waiting on it. Never re-ask a teammate's question with
     `ask_question` — that opens a second question, and the first stays
     yours. A person's question to you, with nothing behind it, you put to them
-    with `ask_question` — options to choose between where there are any,
-    one open question where it needs prose. Do not answer a decision that is
+    with `ask_question` when there are options to choose between; ask in
+    ordinary chat when the answer needs prose. Do not answer a decision that is
     theirs with a recommendation of your own.
     """,
     product: """
