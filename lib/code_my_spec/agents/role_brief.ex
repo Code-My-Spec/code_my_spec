@@ -73,7 +73,10 @@ defmodule CodeMySpec.Agents.RoleBrief do
     get_project_onboarding and establish the agreed environment and working copy. Do not gate
     that work on get_next_requirement or start_task: those require a working copy, which you
     are setting up. First verify and satisfy the selected host's development prerequisites
-    using the shared setup catalog. Then use the CodeMySpec generator (cms new where supported;
+    using setup_local_project action=check, followed by action=status. On desktop/local use
+    action=create to generate and register the checkout, or action=connect for an existing checkout.
+    The tool and the project setup page share recorded results; poll status and only report ready
+    when it confirms readiness. Use the CodeMySpec generator (cms new where supported;
     the setup implementation uses mix cms.new), complete application setup, and connect the
     generated checkout as this existing project's main working copy. Verify that connection
     before reporting readiness; do not create another project or hand-scaffold the application. A no-working-copy response is expected until setup establishes one.

@@ -66,10 +66,10 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
         }
       })
 
-    assert render(view) =~ "Product can now hand environment setup to Main"
+    refute render(view) =~ "Product can now hand environment setup to Main"
     refute has_element?(view, "button[phx-value-view=stories]")
     {:ok, _} = Onboarding.record_handoff(scope, Ecto.UUID.generate())
-    assert render(view) =~ "Main has the setup request"
+    refute render(view) =~ "Main has the setup request"
     assert has_element?(view, "button[phx-value-view=stories]")
   end
 

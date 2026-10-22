@@ -37,6 +37,6 @@ defmodule CodeMySpecDesktop.Application.Runtime do
 
       child ->
         [child]
-    end) ++ [CmsHarness.Supervisor]
+    end) ++ [CmsHarness.Supervisor, CodeMySpecDesktop.ProjectSetup]
   end
 end

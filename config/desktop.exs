@@ -9,6 +9,7 @@ import_config "harness_base.exs"
 
 config :code_my_spec,
   env: :desktop,
+  desktop_project_setup: {CodeMySpecDesktop.ProjectSetup, :run},
   desktop_agent_transport: CodeMySpecDesktop.AgentTransport,
   desktop_device_associator:
     {CodeMySpecWeb.DeviceController.DesktopAssociation, :associate_current}

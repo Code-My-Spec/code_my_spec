@@ -4,7 +4,12 @@ defmodule CodeMySpec.Projects.Tools do
     top_level?: true,
     deps: [CodeMySpec.Projects, CodeMySpec.Devices, CodeMySpec.Tools, CodeMySpec.Paths]
 
-  def all, do: [__MODULE__.GetProjectOnboarding, __MODULE__.UpdateProjectOnboarding]
+  def all,
+    do: [
+      __MODULE__.GetProjectOnboarding,
+      __MODULE__.UpdateProjectOnboarding,
+      __MODULE__.SetupLocalProject
+    ]
 
   def snapshot(project, scope) do
     %{

@@ -20,22 +20,17 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{local_directory_guidance(project)}
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.
-    First verify development prerequisites on the selected execution host using the shared
-    CmsHarness.Setup.Prerequisites catalog and recorded setup workflow: PostgreSQL/pgvector,
-    the version manager, Erlang, Elixir, cms, and Vibium. Resolve missing prerequisites and
-    recheck before generation; the desktop control plane using SQLite does not waive the
-    generated application's database requirements. Use platform-aware setup/install commands.
-    Inspect reference repositories without modifying them.
-    For a new app, use the CodeMySpec generator, not hand-written scaffolding or stock phx.new.
-    Verify the host's CLI: use cms new if supported; the existing setup implementation invokes
-    mix cms.new PATH --app APP --no-install. A cms release that only exposes start/rpc/version
-    does not support cms new. Use/install the supported cms.new generator rather than repeatedly
-    calling an unsupported command. PATH is the agreed destination; APP is a valid snake_case
-    OTP application name. Never generate in agent scratch or overwrite an occupied directory.
-    After generation, complete dependency/database setup and connect/register that checkout as
-    the EXISTING selected project's main working copy. Preserve its account and project IDs;
-    do not create a second project record. Verify the registered root, main designation and
-    harness connection before reporting the main working copy ready or entering development tasks.
+    Use setup_local_project for desktop/local setup. It is available now, without a working copy:
+    call action=check, then poll action=status until running=false and inspect the shared prerequisite
+    results. Resolve failed checks before continuing. For a new app call action=create; for an
+    already generated checkout at the saved destination call action=connect. Poll status; use
+    action=refresh if the connection is pending. These operations use the CodeMySpec generator,
+    register this existing project, and record command results in the same setup workflow the page
+    at /app/projects/#{project.id}/console/dev-boxes displays. Do not look for the catalog in your scratch files,
+    hand-write identity files, create another project record, or use production provisioning.
+    An accepted background request is not completion: ready=true requires dev setup and a live
+    main working-copy connection. The desktop control plane's SQLite database does not waive
+    the generated application's database requirements. Inspect references without modifying them.
     #{source_guidance()}
     Ask Product via message_agent for unresolved user choices. Do not restart the product interview.
     Report concrete setup progress and blockers; never claim a checkout or environment is ready

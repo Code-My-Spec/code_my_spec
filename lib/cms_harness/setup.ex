@@ -9,6 +9,29 @@ defmodule CmsHarness.Setup do
 
   alias CmsHarness.Setup.{Command, Prerequisites, Step, Store}
 
+  @doc "The same project-specific record used by desktop tools and setup UI."
+  def project_options(project_id), do: [directory: Path.join(Store.directory(), project_id)]
+
+  def project_status(project_id), do: status(project_options(project_id))
+
+  @doc "Persist orchestration results alongside the prerequisite and checkout operation records."
+  def record_job(project_id, result) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.put(snapshot, "job", json_map(result)), [])
+      end
+    end)
+  end
+
+  @doc "Reuse this device's recorded checks for a checkout, without moving checkout operations."
+  def use_machine_checks(project_id, machine) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.merge(snapshot, Map.take(machine, ["steps", "state"])), [])
+      end
+    end)
+  end
+
   @spec status(keyword()) :: {:ok, map()} | :none | {:error, term()}
   def status(opts \\ []), do: Store.load(directory(opts))
 

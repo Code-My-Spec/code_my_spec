@@ -11,6 +11,9 @@ defmodule CodeMySpecDesktop do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.Devices,
+      CodeMySpec.Projects,
+      CodeMySpec.WorkingCopies,
       CodeMySpec.Agents,
       CodeMySpec.Conversations,
       CodeMySpec.AgentPerformance,
