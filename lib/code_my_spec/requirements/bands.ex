@@ -78,7 +78,7 @@ defmodule CodeMySpec.Requirements.Bands do
 
   @doc """
   Where the project stands. The stories in progress — ready for development,
-  not promoted, not retired — are each their steps counted four ways: done
+  not retired, with any requirement unsatisfied — are each their steps counted four ways: done
   when satisfied; held by issues when not and the story has any open; working
   when its own earlier steps are done; not started otherwise. Furthest reached
   first.
@@ -86,12 +86,13 @@ defmodule CodeMySpec.Requirements.Bands do
   @spec read(Scope.t()) :: t()
   def read(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     vantage = Projection.vantage(scope)
+    {in_progress, done} = stories(project_id, vantage)
 
     %{
       satisfied: satisfied_gates(project_id, vantage),
       late_names: late_project_names(),
-      stories: stories(project_id, vantage),
-      story_counts: story_counts(project_id),
+      stories: in_progress,
+      story_counts: Map.put(story_counts(project_id), :done, done),
       components: component_counts(project_id, vantage),
       issues: issue_counts(project_id)
     }
@@ -110,16 +111,28 @@ defmodule CodeMySpec.Requirements.Bands do
     |> MapSet.new()
   end
 
+  # A story is done when every one of its requirements is satisfied at this
+  # vantage, promoted or not; anything else is in progress and on the chart.
+  # Returns the in-progress stories and the count of done ones.
   defp stories(project_id, vantage) do
     rows =
       Node
       |> join(:inner, [r], s in Story, on: s.id == r.story_id)
       |> where([_r, s], s.project_id == ^project_id)
-      |> where([_r, s], s.ready_for_dev and is_nil(s.promoted_at) and is_nil(s.retired_at))
+      |> where([_r, s], s.ready_for_dev and is_nil(s.retired_at))
       |> at_vantage(vantage)
       |> select([r, s], {{r.story_id, s.number, s.title, s.working_copy_id}, r.name, r.satisfied})
       |> Repo.all()
 
+    {done, in_progress} =
+      rows
+      |> Enum.group_by(&elem(&1, 0))
+      |> Enum.split_with(fn {_story, reqs} -> Enum.all?(reqs, &elem(&1, 2)) end)
+
+    {in_progress |> Enum.flat_map(&elem(&1, 1)) |> in_progress_bars(project_id), length(done)}
+  end
+
+  defp in_progress_bars(rows, project_id) do
     with_issues = stories_with_open_issues(project_id)
     prereqs = story_prerequisite_names()
     steps = story_step_names()
@@ -142,13 +155,12 @@ defmodule CodeMySpec.Requirements.Bands do
     |> Enum.sort_by(&{&1.none, -&1.done, &1.issues, &1.number})
   end
 
-  # The stories outside the chart: promoted (done), not yet ready for
-  # development (backlog), and retired.
+  # The other stories outside the chart: not yet ready for development
+  # (backlog) and retired. Done is counted from the requirements in `stories/2`.
   defp story_counts(project_id) do
     Story
     |> where([s], s.project_id == ^project_id)
     |> select([s], %{
-      done: count(s.id) |> filter(not is_nil(s.promoted_at) and is_nil(s.retired_at)),
       backlog: count(s.id) |> filter(not s.ready_for_dev and is_nil(s.retired_at)),
       retired: count(s.id) |> filter(not is_nil(s.retired_at))
     })
