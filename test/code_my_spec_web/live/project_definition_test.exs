@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     scope: scope
   } do
     {:ok, view, _} = live(conn, path)
-    assert has_element?(view, "[data-test=onboarding-progress]")
+    assert has_element?(view, "#project-definition-form")
     refute has_element?(view, "button[phx-value-view=stories]")
 
     {:ok, _} =
