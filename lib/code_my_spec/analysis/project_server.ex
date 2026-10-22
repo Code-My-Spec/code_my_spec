@@ -81,6 +81,10 @@ defmodule CodeMySpec.Analysis.ProjectServer do
     GenServer.call(server, {:await, scope, job}, :infinity)
   end
 
+  @doc "Cancel a running or queued run (story 1142)."
+  @spec cancel(GenServer.server(), integer()) :: :ok | {:error, :not_running}
+  def cancel(server, run_id), do: GenServer.call(server, {:cancel, run_id})
+
   @doc "Sources currently running or queued."
   def in_flight(server) do
     GenServer.call(server, :in_flight)
@@ -125,6 +129,29 @@ defmodule CodeMySpec.Analysis.ProjectServer do
           {:ok, run_id, state} -> {:noreply, add_waiter(state, run_id, from)}
           {:error, reason} -> {:reply, {:error, reason}, state}
         end
+    end
+  end
+
+  def handle_call({:cancel, run_id}, _from, state) do
+    queued = Enum.find(state.queue, &(&1.run.id == run_id))
+
+    cond do
+      state.running && state.running.run.id == run_id ->
+        Task.Supervisor.terminate_child(
+          CodeMySpec.Analysis.TaskSupervisor,
+          state.running.task.pid
+        )
+
+        Process.demonitor(state.running.task.ref, [:flush])
+        Reconciler.cancel(state.running.run)
+        {:reply, :ok, finish_current(state, {:ok, %{status: :cancelled}})}
+
+      queued ->
+        Reconciler.cancel(queued.run)
+        {:reply, :ok, %{state | queue: List.delete(state.queue, queued)}}
+
+      true ->
+        {:reply, {:error, :not_running}, state}
     end
   end
 

@@ -777,6 +777,13 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # One run, by id (story 1142); without one, everything on the copy.
+  def handle_message(_topic, "cancel_analysis", %{"run_id" => run_id}, socket)
+      when is_integer(run_id) do
+    AnalysisServer.cancel_run(socket.assigns.project.root, run_id)
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "cancel_analysis", payload, socket) do
     root = socket.assigns.project.root
     reason = Map.get(payload, "reason") || "cancelled by the server"

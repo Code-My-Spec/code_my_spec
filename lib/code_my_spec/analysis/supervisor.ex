@@ -40,7 +40,7 @@ defmodule CodeMySpec.Analysis.Supervisor do
       _ ->
         [
           Supervisor.child_spec(
-            {Task, fn -> Analysis.fail_stranded_runs() end},
+            {Task, fn -> Analysis.settle_stranded_runs() end},
             id: :fail_stranded_runs,
             restart: :temporary
           )

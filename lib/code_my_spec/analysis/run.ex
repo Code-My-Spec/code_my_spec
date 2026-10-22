@@ -73,7 +73,7 @@ defmodule CodeMySpec.Analysis.Run do
     # its source report `failed` when nothing had failed, and — until
     # `latest_completed_run/2` — made a good result read stale. 14 of these in
     # half an hour on one harness.
-    field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded]
+    field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded, :cancelled]
     field :args, :map
     field :stats, :map
 

@@ -22,15 +22,22 @@ defmodule CodeMySpec.Analysis.RunNode do
   foreign pid once the node gets a name ("no connection to nonode@nohost",
   issue 8b863c74).
   """
+  #
+  # The calling process is the run's owner, registered globally as
+  # `{:cms_run, run_id}`: the run watches it and halts when it goes — its copy
+  # stopping, its harness restarting, or the run being cancelled (story 1142).
+  #
+  # Hidden, so the run shares no `:global` with this node or any other run:
+  # test processes registered globally (`Mox.Server`) collided across runs,
+  # and global's conflict resolution killed the harness's own, taking the
+  # harness down.
   @spec env(integer(), module()) :: [{String.t(), String.t()}]
   def env(run_id, listener) do
+    :yes = :global.re_register_name({:cms_run, run_id}, self())
     cookie = Atom.to_string(Node.get_cookie())
     name = "cms_run_#{run_id}_#{System.unique_integer([:positive])}@127.0.0.1"
 
     [
-      # Hidden, so the run shares no `:global` with this node or any other
-      # run: globally registered test processes (`Mox.Server`) collided
-      # across runs and took the harness down.
       {"ELIXIR_ERL_OPTIONS", "-hidden -name #{name} -setcookie #{cookie}"},
       {"CMS_HARNESS_NODE", Atom.to_string(node())},
       {"CMS_HARNESS_COOKIE", cookie},
