@@ -338,6 +338,29 @@ defmodule CodeMySpec.Analysis do
 
   def record_live_event(_scope, _run_id, _event), do: {:error, :unknown_run}
 
+  @doc """
+  Cancel a running run (story 1142): on the harness that holds it, or here
+  when this server executes it. Its `mix test` halts when its owner is killed.
+  """
+  @spec cancel_run(Scope.t(), integer()) :: :ok | {:error, :not_running}
+  def cancel_run(%Scope{} = scope, run_id) when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil -> {:error, :not_running}
+      run -> cancel_where_it_runs(scope, run)
+    end
+  end
+
+  defp cancel_where_it_runs(scope, run) do
+    case remote_executor(scope) do
+      {:ok, channel} ->
+        send(channel, {:cancel_run, run.id})
+        :ok
+
+      :none ->
+        with {:ok, server} <- ensure_server(scope), do: ProjectServer.cancel(server, run.id)
+    end
+  end
+
   @doc "What `run_id` has reported as it ran, or nil."
   @spec live_state(integer()) :: LiveRuns.t() | nil
   defdelegate live_state(run_id), to: LiveRuns, as: :get
@@ -469,6 +492,10 @@ defmodule CodeMySpec.Analysis do
     Reconciler.supersede(run, reason)
     {:error, {:superseded, reason}}
   end
+
+  # Somebody cancelled it: closed as that, and accepted, since it is the
+  # answer the harness was asked for.
+  defp apply_remote_result(_scope, run, %{"status" => "cancelled"}), do: Reconciler.cancel(run)
 
   defp apply_remote_result(_scope, run, %{"status" => "error"} = payload) do
     reason = payload["error"] || "the harness reported a failure with no reason"

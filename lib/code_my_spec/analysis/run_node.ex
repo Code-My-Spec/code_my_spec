@@ -22,8 +22,13 @@ defmodule CodeMySpec.Analysis.RunNode do
   foreign pid once the node gets a name ("no connection to nonode@nohost",
   issue 8b863c74).
   """
+  #
+  # The calling process is the run's owner, registered globally as
+  # `{:cms_run, run_id}`: the run watches it and halts when it goes — its copy
+  # stopping, its harness restarting, or the run being cancelled (story 1142).
   @spec env(integer(), module()) :: [{String.t(), String.t()}]
   def env(run_id, listener) do
+    :yes = :global.re_register_name({:cms_run, run_id}, self())
     cookie = Atom.to_string(Node.get_cookie())
     name = "cms_run_#{run_id}_#{System.unique_integer([:positive])}@127.0.0.1"
 
