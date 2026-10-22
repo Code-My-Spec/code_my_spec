@@ -509,8 +509,11 @@ reload:
 # has already merged the branch onto this checkout — there is nothing new
 # to pull, only a harness to bring current with what is already on disk.
 #
-# Only when the harness's own code or its wire contract moved since the build
-# it is running. A restart stops every agent on every copy mid-turn, and an
+# Only when the harness's own code, the analyzer code it executes, or its wire
+# contract moved since the build it is running. The analyzer paths are there
+# because the harness has no code reloader: cf93cefe4 changed run_node.ex,
+# which builds every test run's env, and the harness kept running the old one
+# (issue 075d47f0 is deciding this from what the harness loads instead). A restart stops every agent on every copy mid-turn, and an
 # unconditional one did that on every landing: three to five cut turns an hour
 # for one team on 2026-10-13. Everything else reaches :4000 by code reload.
 # Diffed from the harness's reported build, so skipped landings accumulate and
@@ -521,7 +524,7 @@ after-promote:
     set -euo pipefail
     built="$(curl -s --max-time 10 http://localhost:4004/health | sed -nE 's/.*"build":"([0-9a-f]+)".*/\1/p')"
     if [ -n "$built" ] && git cat-file -e "${built}^{commit}" 2>/dev/null; then
-        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks lib/code_my_spec/promotion mix.exs mix.lock config)"
+        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks lib/code_my_spec/promotion lib/code_my_spec/analysis lib/code_my_spec/tests.ex lib/code_my_spec/compile.ex lib/code_my_spec/static_analysis lib/code_my_spec/bdd_specs lib/code_my_spec/environments mix.exs mix.lock config)"
         if [ -z "$changed" ]; then
             echo "→ harness stays up: nothing it runs or speaks changed since $built"
             exit 0
