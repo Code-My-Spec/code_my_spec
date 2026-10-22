@@ -948,6 +948,17 @@ defmodule CodeMySpec.Analysis do
   @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
   defdelegate wait_on_running_at_commit(scope, source, commit, agent_id), to: RunsRepository
 
+  @doc """
+  `wait_on_running_at_commit/4`, answering the runs joined, newest first.
+  """
+  @spec join_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: [integer()]
+  defdelegate join_running_at_commit(scope, source, commit, agent_id), to: RunsRepository
+
+  @doc "Whether this copy has a full run of `source` still running."
+  @spec running_full?(Scope.t(), String.t()) :: boolean()
+  def running_full?(%Scope{} = scope, source),
+    do: RunsRepository.running_full_runs(scope, source) != []
+
   # -- Internals --
 
   # Compile first: it's the cheapest signal and every other source

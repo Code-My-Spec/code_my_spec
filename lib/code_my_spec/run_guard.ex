@@ -270,13 +270,19 @@ defmodule CodeMySpec.RunGuard do
   end
 
   defp recorded_runs(path) do
-    for file <- List.wrap(ls(path)),
+    for file <- ls(path),
         {pid, ""} <- [Integer.parse(file)],
         {:ok, command} <- [File.read(Path.join(path, file))],
         do: {pid, command}
   end
 
-  defp ls(path), do: with({:ok, files} <- File.ls(path), do: files)
+  # A BEAM's directory can go between listing its parent and listing it.
+  defp ls(path) do
+    case File.ls(path) do
+      {:ok, files} -> files
+      {:error, _} -> []
+    end
+  end
 
   # --- the OS ---
 

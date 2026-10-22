@@ -7,6 +7,7 @@ defmodule CmsHarness.OnboardRemoteTest do
   alias CmsHarness.Device.Client.Http
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Token
+  alias CmsHarness.Onboarding
   alias CmsHarnessTest.FakeServer
   alias CmsHarnessTest.Projects
   alias Mix.Tasks.Cms.Harness.Onboard
@@ -77,7 +78,7 @@ defmodule CmsHarness.OnboardRemoteTest do
       json(conn, %{device_id: id, working_copies: %{}})
     end)
 
-    Req.Test.stub(Onboard, fn conn ->
+    Req.Test.stub(Onboarding, fn conn ->
       assert conn.method == "POST"
       assert conn.request_path == "/api/harnesses"
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -179,5 +180,40 @@ defmodule CmsHarness.OnboardRemoteTest do
     assert {:ok, _} = Projects.ensure_started(ctx.root)
     copy_id = ctx.copy_id
     assert_receive {:joined, _, %{"harness_id" => ^copy_id}}, 10_000
+  end
+
+  describe "the test-only sandbox user-agent seam (story 1013, criterion 916)" do
+    test "with CMS_TEST_SANDBOX_UA unset, the mint request carries no sandbox user-agent",
+         ctx do
+      System.delete_env("CMS_TEST_SANDBOX_UA")
+      parent = self()
+
+      Req.Test.stub(Onboarding, fn conn ->
+        send(parent, {:user_agent, Plug.Conn.get_req_header(conn, "user-agent")})
+        json(conn, %{harness_id: ctx.copy_id})
+      end)
+
+      onboard(ctx.root)
+
+      assert_received {:user_agent, [ua]}
+
+      refute ua =~ "Elixir.Ecto.Adapters.SQL.Sandbox",
+             "the mint request carried sandbox metadata with the seam's own variable unset: #{ua}"
+    end
+
+    test "with CMS_TEST_SANDBOX_UA set, the mint request carries it verbatim", ctx do
+      on_exit(fn -> System.delete_env("CMS_TEST_SANDBOX_UA") end)
+      System.put_env("CMS_TEST_SANDBOX_UA", "sandbox-metadata-fixture-value")
+      parent = self()
+
+      Req.Test.stub(Onboarding, fn conn ->
+        send(parent, {:user_agent, Plug.Conn.get_req_header(conn, "user-agent")})
+        json(conn, %{harness_id: ctx.copy_id})
+      end)
+
+      onboard(ctx.root)
+
+      assert_received {:user_agent, ["sandbox-metadata-fixture-value"]}
+    end
   end
 end

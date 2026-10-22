@@ -18,7 +18,7 @@ defmodule CodeMySpec.CheckTestMigrationsCreateTest do
   """
   use ExUnit.Case, async: true
 
-  alias Mix.Tasks.Cms.CheckTestMigrations
+  alias CodeMySpec.TestMigrations, as: CheckTestMigrations
 
   describe "missing_database?/1" do
     test "a Postgres invalid_catalog_name is the database not being there" do

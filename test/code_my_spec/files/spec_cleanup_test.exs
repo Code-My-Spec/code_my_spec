@@ -2,8 +2,9 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
   @moduledoc """
   73e302aa. A criterion's wording is never changed (story 1076), so retiring it
   is the only change that invalidates its spex. Retiring deletes the spex naming
-  its number on every working copy, a sweep deletes any spex whose number is not
-  a live criterion, and each is reported as deleted or pending (copy offline).
+  its number on the caller's working copy, a sweep deletes any spex there whose
+  number is not a live criterion, and each is reported as deleted or pending
+  (copy offline). Another copy's spex are left to it.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -44,7 +45,15 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
     one = criterion_fixture(scope, story, %{description: "A thing happens"})
     two = criterion_fixture(scope, story, %{description: "Another thing happens"})
 
-    %{scope: scope, env: env, online: online, offline: offline, story: story, one: one, two: two}
+    %{
+      scope: %{scope | active_working_copy_id: online.id},
+      env: env,
+      online: online,
+      offline: offline,
+      story: story,
+      one: one,
+      two: two
+    }
   end
 
   # Only the reachable copy has a disk to write to.
@@ -101,13 +110,25 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
 
     {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
 
+    on_offline = %{ctx.scope | active_working_copy_id: ctx.offline.id}
+
     assert [%{path: ^path, outcome: {:pending, _why}}] =
-             SpecCleanup.for_retired(ctx.scope, ctx.one.number)
+             SpecCleanup.for_retired(on_offline, ctx.one.number)
 
     assert Map.has_key?(rows(ctx), path)
 
-    assert SpecCleanup.report(SpecCleanup.for_retired(ctx.scope, ctx.one.number)) =~
+    assert SpecCleanup.report(SpecCleanup.for_retired(on_offline, ctx.one.number)) =~
              "Pending deletion: #{path}"
+  end
+
+  test "another copy's spex is left for that copy to remove", ctx do
+    theirs = spex(ctx, ctx.offline, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
+
+    {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
+
+    assert SpecCleanup.for_retired(ctx.scope, ctx.one.number) == []
+    assert SpecCleanup.sweep_orphans(ctx.scope) == []
+    assert Map.has_key?(rows(ctx), theirs)
   end
 
   test "the sweep deletes a spex naming a retired or unknown number, and only those", ctx do

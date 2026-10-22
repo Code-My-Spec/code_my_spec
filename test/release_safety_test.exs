@@ -21,7 +21,12 @@ defmodule CodeMySpec.ReleaseSafetyTest do
   # guarantees the property is the compiled-artifact test below, which asks the
   # beam rather than the source and so cannot be fooled by where the call sits.
   @allowed_paths [
-    "code_my_spec/agent_tasks/setup/compilers.ex"
+    "code_my_spec/agent_tasks/setup/compilers.ex",
+    # Same exemption as `@allowed_modules`, below, applied where the source
+    # scan can see it: both calls are guarded by `running_under_mix?/0`,
+    # mirroring `CmsHarness.Application`'s own pattern.
+    "cms_harness/onboarding.ex",
+    "code_my_spec/test_migrations.ex"
   ]
 
   # Modules whose reference to Mix survives compilation and is still safe.
@@ -34,7 +39,17 @@ defmodule CodeMySpec.ReleaseSafetyTest do
     # `Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0)` — which
     # is the correct way to answer "am I running under Mix" and is safe
     # precisely because it never assumes.
-    ~r/^Elixir\.CmsHarness\.Application$/
+    ~r/^Elixir\.CmsHarness\.Application$/,
+    # Story 1013: logic extracted from two mix tasks (so a spex could drive
+    # it in-process, instead of a real subprocess) into plain modules, so a
+    # Boundary `exports: :all` would actually cover it -- a `classify_to:`
+    # mix task sitting outside its boundary's own namespace is not covered
+    # by that, confirmed against Boundary's own source. Every Mix call
+    # either of these makes is guarded the same way `CmsHarness.Application`
+    # already is, and neither is ever called by the running application --
+    # only by its own mix task wrapper, or by a test/spex.
+    ~r/^Elixir\.CmsHarness\.Onboarding$/,
+    ~r/^Elixir\.CodeMySpec\.TestMigrations$/
   ]
 
   test "no Mix.env() calls in lib/ (crashes in compiled releases)" do

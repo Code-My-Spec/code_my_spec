@@ -308,7 +308,18 @@ config :code_my_spec, :claude_config_dir, Path.expand("../tmp/test-claude-config
 # unpinned, the boot-announce spec POSTed to https://dev.codemyspec.com with a
 # valid bearer token attached. That is not something each new test should have
 # to remember.
-config :code_my_spec, :device_client, CodeMySpecTest.InProcessDeviceClient
+# CMS_TEST_REAL_DEVICE_CLIENT (story 1013, criterion 916): a real subprocess
+# driven as its own OS process has no started endpoint for the in-process
+# stub to dispatch against at all -- it needs the real HTTP client, safely,
+# because its own Config.server_url() points at a spec's own local listener,
+# not the production server the comment above guards against. Does nothing
+# unless set.
+config :code_my_spec,
+       :device_client,
+       if(System.get_env("CMS_TEST_REAL_DEVICE_CLIENT"),
+         do: CmsHarness.Device.Client.Http,
+         else: CodeMySpecTest.InProcessDeviceClient
+       )
 
 # The run-wide harness tree's reporter does not tick by itself (e258f257). Its
 # announce drives the endpoint in its own process, and a tick landing while a
@@ -359,9 +370,13 @@ config :code_my_spec, :harness_connect_headers, CmsHarnessTest.ConnectHeaders
 # Belt and braces. The seam above means the HTTP client never runs in test, but
 # pinning its plug as well keeps that true even if something unsets the seam —
 # and an unset plug plus a real credential is a live request that logs nothing
-# when it works.
-config :code_my_spec, CmsHarness.Device.Client.Http,
-  plug: {Req.Test, CmsHarness.Device.Client.Http}
+# when it works. CMS_TEST_REAL_DEVICE_CLIENT (story 1013, criterion 916) is the
+# one case that wants exactly that: a real subprocess's own real request to a
+# spec's own local listener, not the production server this pin guards against.
+unless System.get_env("CMS_TEST_REAL_DEVICE_CLIENT") do
+  config :code_my_spec, CmsHarness.Device.Client.Http,
+    plug: {Req.Test, CmsHarness.Device.Client.Http}
+end
 
 config :code_my_spec, CmsHarness.Mcp.Http, plug: {Req.Test, CmsHarness.Mcp.Http}
 
@@ -608,11 +623,18 @@ config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.
 config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.Ga4}
 
 # c1b2d03a: this mix task confirms an existing working copy's recorded id
-# against the server before trusting it. Hundreds of onboarding specs call
-# it through `Mix.Task.run/2`, so an unset plug is a real request from the
-# unit suite, same as every other client here.
+# against the server before trusting it (`confirm/2`'s own `Req.get`).
+# Hundreds of onboarding specs call it through `Mix.Task.run/2`, so an unset
+# plug is a real request from the unit suite, same as every other client
+# here.
 config :code_my_spec, Mix.Tasks.Cms.Harness.Onboard,
   plug: {Req.Test, Mix.Tasks.Cms.Harness.Onboard}
+
+# Story 1013: the mint POST itself, extracted into `CmsHarness.Onboarding`
+# (criteria 916-918, so a spex could drive it in-process). Pinned
+# separately from the mix task above -- different module, different Req
+# call, now that the two are no longer the same piece of code.
+config :code_my_spec, CmsHarness.Onboarding, plug: {Req.Test, CmsHarness.Onboarding}
 
 config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
   plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}
