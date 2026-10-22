@@ -2478,11 +2478,7 @@ defmodule CodeMySpec.Agents do
   # tool it is running now, and that it is waiting on its person. State on the
   # row, never a step in the conversation.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "tool_activity"} = event, _opts),
-    do:
-      record_activity(scope, agent_id, %{
-        current_tool: tool_summary(event["tool"]),
-        waiting_since: nil
-      })
+    do: count_tool(scope, agent_id, tool_name(event["tool"]))
 
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "waiting"}, _opts),
     do: record_activity(scope, agent_id, %{waiting_since: DateTime.utc_now()})
@@ -2508,7 +2504,12 @@ defmodule CodeMySpec.Agents do
              scope,
              agent,
              Map.merge(
-               %{turn_started_at: nil, current_tool: nil, waiting_since: nil},
+               %{
+                 turn_started_at: nil,
+                 current_tool: nil,
+                 turn_tool_count: nil,
+                 waiting_since: nil
+               },
                refusal_outlived(agent, agent.turn_started_at)
              )
            ) do
@@ -2544,10 +2545,15 @@ defmodule CodeMySpec.Agents do
     # compares task completions against it.
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
-           AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
-             waiting_since: nil
-           }),
+           AgentsRepository.update_agent(
+             scope,
+             agent,
+             %{
+               turn_started_at: agent.turn_started_at || DateTime.utc_now(),
+               waiting_since: nil
+             }
+             |> Map.merge(fresh_turn_tally(agent))
+           ),
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
@@ -2619,15 +2625,46 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The tool an agent is running, as the team panel shows it: the same line for
-  # an agent we run (its tool call) and a terminal session (its hook).
-  defp track_tool(scope, agent, %{"kind" => "tool_start", "tool" => tool}),
-    do: record_activity(scope, agent.id, %{current_tool: tool_summary(tool)})
+  # The tool an agent last called this turn and how many it has called, as the
+  # team panel shows them: an icon and a tally, the same for an agent we run
+  # and a terminal session (both report tool_start from their transcript).
+  # Names only, never the command.
+  # A terminal session's tools are counted from its PreToolUse hook (above),
+  # which arrives first; its transcript's tool_start would count them twice.
+  defp track_tool(_scope, %Agent{engine: engine}, _event) when engine in [:claude_code, :codex],
+    do: :ok
 
-  defp track_tool(scope, agent, %{"kind" => "tool_end"}),
-    do: record_activity(scope, agent.id, %{current_tool: nil})
+  defp track_tool(scope, agent, %{"kind" => "tool_start", "tool" => tool}),
+    do: count_tool(scope, agent.id, tool_name(tool))
 
   defp track_tool(_scope, _agent, _event), do: :ok
+
+  # Counted on the fresh row: tool calls arrive faster than any caller's copy.
+  # A nil tool (a hook reporting none running) clears the name, not the tally.
+  defp count_tool(scope, agent_id, name) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, agent} <-
+           AgentsRepository.update_agent(scope, agent, tool_attrs(agent, name)) do
+      broadcast(scope, {:agent_turn, agent})
+    end
+
+    :ok
+  end
+
+  defp tool_attrs(_agent, nil), do: %{current_tool: nil, waiting_since: nil}
+
+  defp tool_attrs(agent, name),
+    do: %{
+      current_tool: name,
+      turn_tool_count: (agent.turn_tool_count || 0) + 1,
+      waiting_since: nil
+    }
+
+  # A new turn starts its tally from nothing; a duplicate start keeps it.
+  defp fresh_turn_tally(%Agent{turn_started_at: nil}),
+    do: %{current_tool: nil, turn_tool_count: nil}
+
+  defp fresh_turn_tally(_agent), do: %{}
 
   defp record_activity(scope, agent_id, attrs) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
@@ -2638,16 +2675,8 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  defp tool_summary(%{"name" => name} = tool) when is_binary(name) do
-    input = tool["input"] || %{}
-
-    case input["command"] || input["file_path"] || input["path"] || input["pattern"] do
-      detail when is_binary(detail) and detail != "" -> "#{name}: #{String.slice(detail, 0, 80)}"
-      _ -> name
-    end
-  end
-
-  defp tool_summary(_tool), do: nil
+  defp tool_name(%{"name" => name}) when is_binary(name), do: name
+  defp tool_name(_tool), do: nil
 
   defp broadcast_unreferenced_ready(scope, agent_id, agent, event) do
     if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do

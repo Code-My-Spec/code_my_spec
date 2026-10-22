@@ -31,8 +31,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion2165Spex do
         context = HarnessHooks.ensure_live_harness(context)
         Fixtures.fresh_analysis_runs(context.scope, ["compiler", "credo", "exunit"])
         context = context |> start_session() |> put_to_work()
-        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        coder = Fixtures.running_agent(context.scope, role: "coding")
         context = start_agent_task(context, coder.id, next_task(context, coder.id))
+        {:ok, _agent, _disposition} = Fixtures.continue_agent(context.scope, coder.id)
         id = coder.id
         :ok = Fixtures.put_agent_mid_turn(context.scope, id)
         :ok = Fixtures.end_turn(context.scope, id)

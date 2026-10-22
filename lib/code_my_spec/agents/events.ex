@@ -206,10 +206,13 @@ defmodule CodeMySpec.Agents.Events do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
+      # a1c5e9a7 (criterion 2178): a denied tap-out is a notice, never an offer.
+      # Recording it as one made the agent's offers depend on whether its open
+      # work offer had already settled when the denial arrived; that open work
+      # offer is what asks the agent to act. (A denied task-scoped tap-out is
+      # the released task's own offer, `Work.wake_released/6`, criterion 1799.)
       _not_admissible ->
-        meta.agent
-        |> Conversations.record_sent_to_agent(meta.notice)
-        |> Offers.record(meta.agent, :denial, meta.subject)
+        Conversations.record_sent_to_agent(meta.agent, meta.notice)
 
         # Exclude this agent: it was just told directly above, on its own
         # thread. Without the exclusion, if the same not-admissible window

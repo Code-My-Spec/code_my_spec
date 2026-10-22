@@ -64,6 +64,7 @@ defmodule CodeMySpec.Agents.Agent do
           stopped_reason: atom() | nil,
           git_rewrite_at: DateTime.t() | nil,
           current_tool: String.t() | nil,
+          turn_tool_count: non_neg_integer() | nil,
           waiting_since: DateTime.t() | nil,
           off_at: DateTime.t() | nil,
           off_by: String.t() | nil,
@@ -103,6 +104,7 @@ defmodule CodeMySpec.Agents.Agent do
     # The tool the agent is running now, as one line, or nil. Set by a tool call
     # starting and cleared by it ending or the turn ending.
     field :current_tool, :string
+    field :turn_tool_count, :integer
     # Since when a terminal session has been waiting on its person (a permission
     # prompt), or nil. It cannot take work while it is.
     field :waiting_since, :utc_datetime_usec
@@ -327,6 +329,7 @@ defmodule CodeMySpec.Agents.Agent do
       :transcript_path,
       :git_rewrite_at,
       :current_tool,
+      :turn_tool_count,
       :waiting_since,
       :provider,
       :model,

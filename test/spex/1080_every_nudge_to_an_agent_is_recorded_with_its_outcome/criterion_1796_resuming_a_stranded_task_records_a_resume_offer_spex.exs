@@ -40,8 +40,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1796Spex do
       end
 
       given_ "a continuous coder on it holding a task, with no turn in flight", context do
-        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        coder = Fixtures.running_agent(context.scope, role: "coding")
         context = start_agent_task(context, coder.id, next_task(context, coder.id))
+        {:ok, _agent, _disposition} = Fixtures.continue_agent(context.scope, coder.id)
         {:ok, Map.put(context, :coder, coder.id)}
       end
 

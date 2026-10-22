@@ -233,9 +233,10 @@ defmodule CodeMySpecSpex.OfferHelpers do
   @spec coder_holding_a_task(map()) :: map()
   def coder_holding_a_task(context) do
     context = context |> coding_work_waiting() |> start_session() |> put_to_work()
-    coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+    coder = Fixtures.running_agent(context.scope, role: "coding")
     task = next_task(context, coder.id)
     context = start_agent_task(context, coder.id, task)
+    {:ok, _agent, _disposition} = Fixtures.continue_agent(context.scope, coder.id)
 
     Map.merge(context, %{coder: coder.id, task: task, task_id: held_task_id(context, coder.id)})
   end

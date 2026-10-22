@@ -250,6 +250,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
          :ok <- team_may_claim(scope, owner, requirement),
          :ok <- not_already_done(scope, owner, requirement),
          :ok <- qa_eligible_to_start(scope, owner, requirement),
+         :ok <- prerequisites_met(scope, owner, requirement),
          # 783f3709: only a NEW claim reaches this clause (the `nil` match
          # above) -- resuming a task the owner already holds matches
          # `handle_existing/6` further down and never checks the hold.
@@ -424,6 +425,55 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
     else
       :ok
     end
+  end
+
+  # The claim reads what the offer does (5a0c4944): a team member names a story
+  # requirement the graph is not offering it because a declared prerequisite is
+  # unsatisfied, and the claim is refused, saying which. `story_promoted` was
+  # claimed while QA ran, and only `evaluate_task`'s own check stopped it
+  # afterwards. Work the agent is not offered for another reason is left to the
+  # checks above and below; an agent already holding a task is refused by
+  # `TaskOwner` first.
+  # Only the stages that follow certification. The earlier requirements are
+  # claimed in specs (2021, 1868) whose stories have an unmet prerequisite by
+  # construction and no other way to hold work, so enforcing them here would
+  # rewrite those fixtures; the late stages are where a premature claim costs
+  # QA's or promotion's time.
+  @late_stages ~w(ready_for_qa qa_complete story_promoted)
+
+  defp prerequisites_met(
+         scope,
+         %Agent{role: role} = agent,
+         %{entity_type: "story", name: name} = requirement
+       )
+       when role in [:coding, :qa] and name in @late_stages do
+    if Agent.active_task(agent) || offered?(scope, agent, requirement) do
+      :ok
+    else
+      refuse_unmet(scope, requirement, Requirements.unmet_prerequisites(scope, requirement))
+    end
+  end
+
+  defp prerequisites_met(_scope, _owner, _requirement), do: :ok
+
+  defp offered?(scope, agent, requirement) do
+    scope
+    |> owner_scope(agent)
+    |> Work.claimable_work(agent)
+    |> Enum.any?(
+      &(&1.name == requirement.name and
+          to_string(&1.entity_id) == to_string(requirement.entity_id))
+    )
+  end
+
+  defp refuse_unmet(_scope, _requirement, []), do: :ok
+
+  defp refuse_unmet(scope, requirement, unmet) do
+    {:error,
+     "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
+       "is not open yet: it follows #{Enum.map_join(unmet, ", ", &"`#{&1}`")}, which " <>
+       "#{if length(unmet) == 1, do: "is", else: "are"} not satisfied. " <>
+       "`get_next_requirement` shows what is open now."}
   end
 
   # A story's own offer subject is keyed on its public number (the same key

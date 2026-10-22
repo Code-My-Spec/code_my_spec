@@ -95,16 +95,20 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
           {_view, html} = cockpit(context)
 
           activity =
-            Regex.scan(~r/data-test="team-agent-tool"[^>]*>([^<]*)</, html)
-            |> Enum.map(fn [_, text] -> String.trim(text) end)
+            Regex.scan(
+              ~r/data-test="team-agent-tool"[^>]*data-tool="([^"]*)"[^>]*data-count="([^"]*)"/,
+              html
+            )
+            |> Enum.map(fn [_, tool, count] -> {tool, count} end)
 
           assert [first, second] = activity,
-                 "each agent's row names the tool it is running; got #{inspect(activity)}"
+                 "each agent's row shows its tool activity; got #{inspect(activity)}"
 
           assert first == second,
                  "the two rows must show it in the same form; got #{inspect(activity)}"
 
-          assert first =~ "mix test"
+          assert first == {"Bash", "1"}
+          refute html =~ "mix test", "the row shows a tool icon and tally, never the command"
         end)
 
         {:ok, context}

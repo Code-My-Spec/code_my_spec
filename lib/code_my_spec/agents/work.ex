@@ -389,12 +389,22 @@ defmodule CodeMySpec.Agents.Work do
   def notice_kind(_event, {"tap_out", _id}), do: :denial
   def notice_kind(_event, _subject), do: :unblocked
 
+  @stale_retries 2
+
   @doc """
   Offer `agent` a work turn if it is idle and `Wake` allows `event` — a
   `:work_offer`, or main's `:teammate_question` — and there is work it has not
   just declined. `reason` is why it is being asked, for the log.
   """
-  def request_turn_if_runnable(scope, %Agent{} = agent, _reason, event \\ :work_offer) do
+  def request_turn_if_runnable(scope, %Agent{} = agent, reason, event \\ :work_offer),
+    do: request_turn(scope, agent, reason, event, @stale_retries)
+
+  # a3354bfc: the offer was decided from a read the agent then moved past -- its
+  # blocker was answered while this offer held the agent's one open slot, so the
+  # answer's own wake was refused ("a second offer to an agent with one open",
+  # 2170) and left on the thread. Withdrawn alone, the agent is then woken by
+  # nothing. The read is taken again, which now names the released task.
+  defp request_turn(scope, %Agent{} = agent, reason, event, retries) do
     with {:ok, current} <- AgentsRepository.fetch_agent(scope, agent.id),
          :ok <- admit(scope, current, event),
          {:work, offer, subject} <- offer(scope, current),
@@ -411,6 +421,7 @@ defmodule CodeMySpec.Agents.Work do
       hand_turn(waking, offered, turn_prompt)
     else
       :none -> {:ok, :not_runnable}
+      :stale when retries > 0 -> request_turn(scope, agent, reason, event, retries - 1)
       :stale -> {:ok, :not_runnable}
       true -> {:ok, :offer_declined}
       hold -> not_admitted(hold)
