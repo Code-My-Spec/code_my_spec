@@ -64,12 +64,12 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
         phx-submit="save"
         phx-target={@myself}
         data-test="agent-models-form"
-        class="mt-4 space-y-6"
+        class="mt-3 space-y-3"
       >
         <div
           :for={row <- @settings}
           data-test={"agent-type-#{row.role}"}
-          class="border-b border-base-300 pb-4"
+          class="space-y-1"
         >
           <div class="flex items-center gap-2">
             <span class="font-semibold">{row.role}</span>
@@ -78,10 +78,10 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
             </span>
           </div>
 
-          <div class="grid gap-2 sm:grid-cols-2 mt-2">
+          <div class="grid gap-2 sm:grid-cols-2">
             <label class="form-control">
               <span class="label-text">Provider</span>
-              <select name={"#{row.role}[provider]"} class="select w-full text-base-content">
+              <select name={"#{row.role}[provider]"} class="select select-sm w-full text-base-content">
                 <%!-- The way to leave a type alone, and the way back to
                             leaving it alone. Without this the select renders the
                             resolved default as its value, so an untouched row
@@ -109,14 +109,10 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
                 type="text"
                 name={"#{row.role}[model]"}
                 value={row.model}
-                class="w-full input text-base-content"
+                class="w-full input input-sm text-base-content"
               />
             </label>
           </div>
-
-          <p class="text-sm text-base-content/70 mt-2" data-test="model-cost">
-            {cost_hint(row)}
-          </p>
         </div>
 
         <button
@@ -176,25 +172,6 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
         {:noreply, assign(socket, :error, refusal(reason))}
     end
   end
-
-  # The model this account would actually get, not the top of the preference
-  # list. The first version read `Defaults.for_role/1 |> hd()` and named
-  # glm-5.3 on an account that can only connect openai — while the same screen
-  # marked zai "connect it first". Two contradicting statements in one glance,
-  # and the wrong one was the answer.
-  #
-  # `row` already carries what `Agents.resolve_model/2` returned, which is the
-  # question the launcher asks a moment later.
-  defp cost_hint(%{provider: nil}), do: "Nothing to run on until a provider is connected."
-
-  defp cost_hint(%{role: role, model: model, source: :default}),
-    do: "Defaults to #{model} — #{tier(role)}."
-
-  defp cost_hint(%{role: role, model: model}), do: "Set to #{model} — #{tier(role)}."
-
-  defp tier(:qa), do: "for focused, repeatable validation"
-  defp tier(:coding), do: "balances coding capability, speed and cost"
-  defp tier(_role), do: "for broad reasoning and product decisions"
 
   defp refusal(:unknown_provider),
     do: "That provider is not connected, so nothing was saved for it."
