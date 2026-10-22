@@ -38,7 +38,7 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
   end
 
   test "choices tool cannot fake a completed setup handoff", %{context: context} do
-    assert {:ok, _} =
+    assert {:error, _} =
              UpdateProjectOnboarding.script_result(
                %{
                  onboarding: %{
@@ -53,8 +53,28 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
              )
 
     assert {:ok, data} = GetProjectOnboarding.script_result(%{}, context)
-    assert data.phase == :setup_handoff
-    assert data.onboarding.setup_agent_id == nil
+    assert data.phase == :synopsis
+    refute Map.get(data.onboarding, :setup_agent_id)
+  end
+
+  test "script calls reject invented destination fields without partially saving", %{
+    context: context
+  } do
+    assert {:error, message} =
+             UpdateProjectOnboarding.script_result(
+               %{
+                 "onboarding" => %{
+                   "starting_point" => "new",
+                   "build_destination" => %{"kind" => "local", "path" => "/tmp/project"}
+                 }
+               },
+               context
+             )
+
+    assert message =~ "build_destination"
+    assert message =~ "destination_path"
+    assert {:ok, data} = GetProjectOnboarding.script_result(%{}, context)
+    assert data.onboarding == %{}
   end
 
   test "product can rename its project and preserve an explicitly chosen folder", %{

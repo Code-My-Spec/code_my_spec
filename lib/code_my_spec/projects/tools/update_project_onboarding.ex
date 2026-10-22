@@ -17,6 +17,8 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
     A new Phoenix application can have reference sources: keep starting_point=new when the user
     is starting fresh or supplies inspiration. Non-Phoenix repositories are references, not fork
     candidates for the application. Adding sources does not by itself mean starting_point=existing.
+    Example: {onboarding: {destination: "local", destination_path: "/absolute/project/path"}}.
+    destination is the host type, not a folder or build_destination object.
     Omitted fields are preserved. Read get_project_onboarding first. If sources is supplied, it
     replaces the entire list: retain existing source IDs and entries you want to keep; [] clears it.
     Use available_devices from get_project_onboarding for local device IDs; paths are absolute on
@@ -61,11 +63,35 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
   def call(params, context), do: params |> script_result(context) |> Tools.text()
   @impl true
   def script_result(params, context) do
-    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+    with :ok <- validate_fields(params),
+         {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, project} <- Onboarding.save(scope, params) do
       {:ok, Tools.snapshot(project, scope)}
     else
       {:error, reason} -> Tools.error(reason)
+    end
+  end
+
+  defp validate_fields(params) do
+    onboarding = Map.get(params, :onboarding, Map.get(params, "onboarding", %{}))
+    allowed = ~w(description starting_point destination destination_path)
+
+    if is_map(onboarding) do
+      unknown =
+        onboarding |> Map.keys() |> Enum.map(&to_string/1) |> Enum.reject(&(&1 in allowed))
+
+      case unknown do
+        [] ->
+          :ok
+
+        fields ->
+          {:error,
+           "Unsupported onboarding fields: #{Enum.join(fields, ", ")}. " <>
+             "Use destination (local/cloud/external) and destination_path (absolute folder path). " <>
+             "Allowed fields: #{Enum.join(allowed, ", ")}. Nothing was saved; correct the fields and retry."}
+      end
+    else
+      {:error, "onboarding must be an object. Nothing was saved."}
     end
   end
 end
