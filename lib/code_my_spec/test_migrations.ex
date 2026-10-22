@@ -131,14 +131,30 @@ defmodule CodeMySpec.TestMigrations do
   defp provision do
     config = CodeMySpec.Repo.config()
 
-    with :ok <- creatable(config),
-         :ok <- create(config) do
-      migrate()
-    else
-      {:error, message} ->
-        IO.puts(:stderr, "[check_test_migrations] #{message}")
-        :ok
+    case creatable(config) do
+      :ok -> create_and_migrate(config)
+      {:error, message} -> refuse(message)
     end
+  end
+
+  # `creatable/1`'s refusal is a deliberate no-op (wrong env, no name) and
+  # stays silent-and-proceed. A `create/1` failure is not: it means an
+  # attempt to make the database genuinely did not land, and silently
+  # returning `:ok` anyway is exactly the swallow this module twice fought
+  # already (`missing_database?/1`'s own doc). Only `{:error, :already_up}`
+  # means the database is already there; anything else raises instead of
+  # reporting, so a run that cannot act on its own database never reads as
+  # one that did (story 1013, criterion 917).
+  defp create_and_migrate(config) do
+    case create(config) do
+      :ok -> migrate()
+      {:error, message} -> raise message
+    end
+  end
+
+  defp refuse(message) do
+    IO.puts(:stderr, "[check_test_migrations] #{message}")
+    :ok
   end
 
   @doc """

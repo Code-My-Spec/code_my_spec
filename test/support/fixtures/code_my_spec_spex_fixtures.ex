@@ -5333,11 +5333,18 @@ defmodule CodeMySpecSpex.Fixtures do
   every query still ran against whatever this process was already
   connected to.
 
-  Drops `database` afterward, whether `fun` created it or not -- the
+  Drops `database` on exit, whether `fun` created it or not -- the
   pending-migrations check this exists to drive always ends by creating
   one, so that is not an edge case here, but a run that answers earlier
   (an unreachable postgres, say) should not leave a scratch database for
   the next one to collide with.
+
+  On exit, not inline `after`: a scenario's `then_` steps run *after*
+  `fun` returns, in the same test, and still need `database` to exist --
+  an inline `after` tore it down the instant `fun` returned, before any
+  `then_` could see it created at all (story 1013, criterion 917).
+  `on_exit/1` runs once, at the true end of the test, after everything
+  the scenario itself does.
   """
   @spec with_throwaway_database(String.t(), (-> result)) :: result when result: term()
   def with_throwaway_database(database, fun) do
@@ -5359,11 +5366,9 @@ defmodule CodeMySpecSpex.Fixtures do
     previous = CodeMySpec.Repo.get_dynamic_repo()
     CodeMySpec.Repo.put_dynamic_repo(pid)
 
-    try do
-      fun.()
-    after
+    ExUnit.Callbacks.on_exit(fn ->
       CodeMySpec.Repo.put_dynamic_repo(previous)
-      GenServer.stop(pid)
+      if Process.alive?(pid), do: GenServer.stop(pid)
       Application.put_env(:code_my_spec, CodeMySpec.Repo, original_config)
 
       run_cmd("psql", [
@@ -5371,7 +5376,9 @@ defmodule CodeMySpecSpex.Fixtures do
         "-tAc",
         "drop database if exists #{database}"
       ])
-    end
+    end)
+
+    fun.()
   end
 
   @doc """

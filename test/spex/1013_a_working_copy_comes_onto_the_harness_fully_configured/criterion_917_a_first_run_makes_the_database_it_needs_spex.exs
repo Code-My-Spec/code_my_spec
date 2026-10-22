@@ -24,7 +24,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  spex "A first run makes the database it needs, before the suite starts", criterion: 917 do
+  # `fail_on_error_logs: false`: the throwaway pool's own connection
+  # attempts legitimately log `[error] ... does not exist` while the
+  # database genuinely does not exist yet, before `create/1` makes it.
+  spex "A first run makes the database it needs, before the suite starts",
+    criterion: 917,
+    fail_on_error_logs: false do
     scenario "A migration check against a never-used database creates and migrates it" do
       given_ "a database name nothing has used before", context do
         database = "code_my_spec_test_spex_#{System.unique_integer([:positive])}"
