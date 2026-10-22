@@ -3,69 +3,76 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
   @behaviour CodeMySpec.Tools.Tool
   alias CodeMySpec.Projects.{Onboarding, Tools}
 
+  @choices ~w(description starting_point destination destination_path)
+  @source_fields ~w(source_kind repository_url ref device_id path)
+
   @impl true
   def name, do: "update_project_onboarding"
+
   @impl true
   def description do
     """
-    Record the user's agreed onboarding choices on the connected project, without a working copy.
-    Set name to rename this project (display name only; existing files are not moved).
-    onboarding supports description, starting_point (new/existing), destination (local/cloud/external),
-    and optional destination_path (an absolute path explicitly chosen by the user).
-    For local development, use local_directory from get_project_onboarding by default; do not ask
-    the user to pick a folder. Leave destination_path unset unless they request a different location.
-    A new Phoenix application can have reference sources: keep starting_point=new when the user
-    is starting fresh or supplies inspiration. Non-Phoenix repositories are references, not fork
-    candidates for the application. Adding sources does not by itself mean starting_point=existing.
-    Example: {onboarding: {destination: "local", destination_path: "/absolute/project/path"}}.
-    destination is the host type, not a folder or build_destination object.
-    Omitted fields are preserved. Read get_project_onboarding first. If sources is supplied, it
-    replaces the entire list: retain existing source IDs and entries you want to keep; [] clears it.
-    Use available_devices from get_project_onboarding for local device IDs; paths are absolute on
-    that device, not this agent's scratch directory. Do not invent choices or assessment results.
-    Saving updates the cockpit Project panel. It does not inspect, clone, provision, or modify code.
+    Record agreed choices on the connected project without a working copy. All arguments are
+    top-level fields; do not wrap them in onboarding or sources. Omitted fields are preserved.
+    For local development use local_directory from get_project_onboarding unless the user chooses
+    another folder. Set destination to local, cloud, or external; destination_path is a folder.
+    A fresh Phoenix app with reference repositories still has starting_point=new.
+    To add a reference, pass source_kind and repository_url (GitHub), or device_id and path (local).
+    To edit a saved source, also pass its source_id. Other sources are preserved. Call once per source.
+    Use source_action=remove with source_id to remove one, or source_action=clear to remove all.
+    Read get_project_onboarding for source IDs and accessible device IDs. Never invent assessments.
+    Saving does not inspect, clone, provision, or modify code. Renaming does not move existing files.
     """
   end
 
   @impl true
   def params do
     %{
-      name:
+      name: {:meta, :string, [description: "Project display name."]},
+      description: {:meta, :string, [description: "Brief project synopsis and audience."]},
+      starting_point:
+        {:meta, {:enum, ~w(new existing)},
+         [description: "new or existing. References for a fresh app still mean new."]},
+      destination:
+        {:meta, {:enum, ~w(local cloud external)},
+         [description: "Development host: local, cloud, or external."]},
+      destination_path:
         {:meta, :string,
-         [description: "The user-agreed project display name. Renames the current project only."]},
-      onboarding:
-        {:meta,
-         %{
-           description: :string,
-           destination_path: :string,
-           starting_point: {:enum, ~w(new existing)},
-           destination: {:enum, ~w(local cloud external)}
-         }, [description: "Only the agreed fields to change; omitted fields remain unchanged."]},
-      sources:
-        {:meta,
-         {:list,
-          %{
-            id: :string,
-            kind: {:required, {:enum, ~w(github local)}},
-            repository_url: :string,
-            ref: :string,
-            device_id: :string,
-            path: :string
-          }},
          [
            description:
-             "Optional complete replacement source list. GitHub requires repository_url; local requires device_id and path."
-         ]}
+             "Optional absolute folder on the development host, only when explicitly chosen."
+         ]},
+      source_action:
+        {:meta, {:enum, ~w(upsert remove clear)},
+         [
+           description:
+             "upsert (default when source fields supplied), remove, or clear. Omit to leave sources unchanged."
+         ]},
+      source_id:
+        {:meta, :string,
+         [description: "Existing source ID to edit or remove. Omit to add a source."]},
+      source_kind:
+        {:meta, {:enum, ~w(github local)},
+         [description: "github or local; required when adding a source."]},
+      repository_url: {:meta, :string, [description: "GitHub URL for this source."]},
+      ref: {:meta, :string, [description: "Optional source branch or tag."]},
+      device_id: {:meta, :string, [description: "Accessible device ID for a local source."]},
+      path:
+        {:meta, :string,
+         [description: "Absolute local source folder; distinct from destination_path."]}
     }
   end
 
   @impl true
   def call(params, context), do: params |> script_result(context) |> Tools.text()
+
   @impl true
   def script_result(params, context) do
     with :ok <- validate_input(params),
          {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
-         {:ok, project} <- Onboarding.save(scope, params) do
+         {:ok, project} <- Onboarding.fetch(scope),
+         {:ok, attrs} <- attributes(params, project),
+         {:ok, project} <- Onboarding.save(scope, attrs) do
       {:ok, Tools.snapshot(project, scope)}
     else
       {:error, reason} -> Tools.error(reason)
@@ -74,25 +81,76 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
 
   @impl true
   def validate_input(params) do
-    onboarding = Map.get(params, :onboarding, Map.get(params, "onboarding", %{}))
-    allowed = ~w(description starting_point destination destination_path)
+    allowed = params() |> Map.keys() |> Enum.map(&to_string/1)
+    unknown = params |> Map.keys() |> Enum.map(&to_string/1) |> Enum.reject(&(&1 in allowed))
 
-    if is_map(onboarding) do
-      unknown =
-        onboarding |> Map.keys() |> Enum.map(&to_string/1) |> Enum.reject(&(&1 in allowed))
+    case unknown do
+      [] ->
+        :ok
 
-      case unknown do
-        [] ->
-          :ok
+      fields ->
+        {:error,
+         "Unsupported fields: #{Enum.join(fields, ", ")}. Pass fields at the top level: #{Enum.join(allowed, ", ")}. Nothing was saved; correct the fields and retry."}
+    end
+  end
 
-        fields ->
-          {:error,
-           "Unsupported onboarding fields: #{Enum.join(fields, ", ")}. " <>
-             "Use destination (local/cloud/external) and destination_path (absolute folder path). " <>
-             "Allowed fields: #{Enum.join(allowed, ", ")}. Nothing was saved; correct the fields and retry."}
+  defp attributes(params, project) do
+    params = Map.new(params, fn {k, v} -> {to_string(k), v} end)
+    attrs = Map.take(params, ["name"]) |> Map.put("onboarding", Map.take(params, @choices))
+
+    source? =
+      Enum.any?(["source_action", "source_id" | @source_fields], &Map.has_key?(params, &1))
+
+    if source? do
+      existing =
+        Enum.map(project.sources, fn source ->
+          source |> Map.from_struct() |> Map.new(fn {k, v} -> {to_string(k), v} end)
+        end)
+
+      with {:ok, sources} <- update_sources(existing, params) do
+        {:ok, Map.put(attrs, "sources", sources)}
       end
     else
-      {:error, "onboarding must be an object. Nothing was saved."}
+      {:ok, attrs}
+    end
+  end
+
+  defp update_sources(existing, params) do
+    id = params["source_id"]
+    current = Enum.find(existing, &(&1["id"] == id))
+    action = params["source_action"] || "upsert"
+
+    cond do
+      action == "clear" ->
+        {:ok, []}
+
+      id && is_nil(current) ->
+        {:error, "source_id does not belong to this project. Nothing was saved."}
+
+      action == "remove" && is_nil(id) ->
+        {:error, "source_id is required to remove a source."}
+
+      action == "remove" ->
+        {:ok, Enum.reject(existing, &(&1["id"] == id))}
+
+      action == "upsert" ->
+        changes = Map.take(params, @source_fields)
+
+        changes =
+          if Map.has_key?(changes, "source_kind"),
+            do: changes |> Map.put("kind", changes["source_kind"]) |> Map.delete("source_kind"),
+            else: changes
+
+        source = Map.merge(current || %{}, changes)
+
+        {:ok,
+         if(current,
+           do: Enum.map(existing, &if(&1["id"] == id, do: source, else: &1)),
+           else: existing ++ [source]
+         )}
+
+      true ->
+        {:error, "source_action must be upsert, remove, or clear."}
     end
   end
 end

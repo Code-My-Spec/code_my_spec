@@ -45,7 +45,7 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     dives, personas, acceptance criteria, epics, or story creation before the setup handoff.
     Save agreed answers with update_project_onboarding, including name for a requested rename.
     For local development use local_directory from get_project_onboarding by default; do not ask
-    which folder to use. Preserve an explicitly chosen location as onboarding.destination_path.
+    which folder to use. Preserve an explicitly chosen location as destination_path.
     #{source_guidance()}
     Existing code needs a selected source.
     A saved destination alone is NOT a handoff: call start_project_setup. If it fails, resolve
