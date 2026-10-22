@@ -2349,6 +2349,30 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def handle_cast({:analysis_started, _payload}, socket), do: {:noreply, socket}
 
+  # A run's events as it happens (story 1141). Dropped when disconnected, like
+  # its start: the server closes a departed harness's runs.
+  def handle_cast({:analysis_event, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "analysis_event",
+           payload,
+           Channel.decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not send an event of run #{payload["run_id"]}: #{inspect(reason)}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:analysis_event, _payload}, socket), do: {:noreply, socket}
+
   def handle_cast({:head_commit, sha}, %{assigns: %{joined: true}} = socket) do
     case transport().push(
            socket,

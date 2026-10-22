@@ -32,6 +32,7 @@ defmodule CodeMySpec.Analysis.Runners do
   It lands in the run's `stats`, not on each problem; an older harness omits it.
   """
 
+  alias CodeMySpec.Analysis.LocalRunLink
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter
@@ -127,8 +128,14 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  defp run_resolved("exunit", %Scope{} = _scope, args, opts) do
-    exec_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
+  defp run_resolved("exunit", %Scope{} = scope, args, opts) do
+    exec_opts =
+      [
+        environment: opts[:environment],
+        cwd: opts[:cwd],
+        extra_env: LocalRunLink.env(scope, opts[:run_id])
+      ]
+      |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
       {:ok, test_run} ->

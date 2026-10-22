@@ -116,6 +116,8 @@ defmodule CodeMySpecWeb.Application do
         # Which projects a light harness holds (so where their analyzers run).
         # Not in `Analysis.Supervisor`, which starts only where analyzers run locally.
         CodeMySpec.Analysis.HarnessRegistry,
+        # What runs report as they go, for the run page (story 1141).
+        CodeMySpec.Analysis.LiveRuns,
         # Working copies mid-reconcile; server-held state for remote harnesses.
         CodeMySpec.Files.ReconcileRegistry,
         # One setup run per project; provisioning calls providers from here.
@@ -293,7 +295,8 @@ defmodule CodeMySpecWeb.Application do
       start: {Agent, :start_link, [fn -> :ok end, [name: CodeMySpecWeb.QaEnvironments]]}
     }
 
-    [CodeMySpec.Analysis.Supervisor, qa_environments]
+    # Where the runs it executes report their events as they happen (story 1141).
+    [CodeMySpec.Analysis.Supervisor, CodeMySpec.Analysis.LocalRunLink, qa_environments]
   end
 
   # `tunnel_config` is main's tunnel; only main may run its connector. Set by
