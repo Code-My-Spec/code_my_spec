@@ -244,7 +244,16 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     })
     |> Repo.insert!()
 
-    CodeMySpecSpex.GraphGivens.sync(ctx)
+    CodeMySpec.Requirements.GraphInputs.event(
+      ctx.scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      [{"story", story.id}],
+      :project_wide
+    )
+
+    :ok = GraphWatcher.settle(ctx.scope)
     refute "qa_complete" in names(ctx, ctx.qa)
 
     {:ok, _} = Issues.resolve_issue(ctx.scope, blocker, "Browser access repaired")
@@ -273,7 +282,16 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     })
     |> Repo.insert!()
 
-    CodeMySpecSpex.GraphGivens.sync(ctx)
+    CodeMySpec.Requirements.GraphInputs.event(
+      ctx.scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      [{"story", story.id}],
+      :project_wide
+    )
+
+    :ok = GraphWatcher.settle(ctx.scope)
     refute "qa_complete" in names(ctx, ctx.qa)
 
     new_head = String.duplicate("b", 40)
