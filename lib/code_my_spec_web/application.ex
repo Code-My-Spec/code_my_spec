@@ -266,7 +266,7 @@ defmodule CodeMySpecWeb.Application do
         enabled: serving? and main_copy?() and not tunnel_held_by_harness?()
       )
 
-    children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
+    children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}] ++ copy_analysis(main_copy?())
   end
 
   def children(children, :test, _serving?) do
@@ -280,6 +280,11 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, _env, _serving?), do: children
+
+  # A copy's own app has no harness, so it runs analysis itself: what QA drives
+  # through `/dev/qa-agents` before a change lands. Main's sends it to its harness.
+  defp copy_analysis(true), do: []
+  defp copy_analysis(false), do: [CodeMySpec.Analysis.Supervisor]
 
   # `tunnel_config` is main's tunnel; only main may run its connector. Set by
   # `AppInstance.Runner.Local`; unset (a plain `mix phx.server`) reads as main.
