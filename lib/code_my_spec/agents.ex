@@ -2504,7 +2504,12 @@ defmodule CodeMySpec.Agents do
              scope,
              agent,
              Map.merge(
-               %{turn_started_at: nil, current_tool: nil, turn_tool_count: nil, waiting_since: nil},
+               %{
+                 turn_started_at: nil,
+                 current_tool: nil,
+                 turn_tool_count: nil,
+                 waiting_since: nil
+               },
                refusal_outlived(agent, agent.turn_started_at)
              )
            ) do
@@ -2540,10 +2545,15 @@ defmodule CodeMySpec.Agents do
     # compares task completions against it.
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
-           AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
-             waiting_since: nil
-           } |> Map.merge(fresh_turn_tally(agent))),
+           AgentsRepository.update_agent(
+             scope,
+             agent,
+             %{
+               turn_started_at: agent.turn_started_at || DateTime.utc_now(),
+               waiting_since: nil
+             }
+             |> Map.merge(fresh_turn_tally(agent))
+           ),
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
@@ -2644,7 +2654,11 @@ defmodule CodeMySpec.Agents do
   defp tool_attrs(_agent, nil), do: %{current_tool: nil, waiting_since: nil}
 
   defp tool_attrs(agent, name),
-    do: %{current_tool: name, turn_tool_count: (agent.turn_tool_count || 0) + 1, waiting_since: nil}
+    do: %{
+      current_tool: name,
+      turn_tool_count: (agent.turn_tool_count || 0) + 1,
+      waiting_since: nil
+    }
 
   # A new turn starts its tally from nothing; a duplicate start keeps it.
   defp fresh_turn_tally(%Agent{turn_started_at: nil}),
