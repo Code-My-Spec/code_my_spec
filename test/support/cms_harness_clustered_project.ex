@@ -111,7 +111,7 @@ defmodule CmsHarnessTest.ClusteredProject do
       build_env(root) ++
         [
           {"ELIXIR_ERL_OPTIONS",
-           "-name cms_run_absent_#{System.unique_integer([:positive])}@127.0.0.1 -setcookie qa"},
+           "-hidden -name cms_run_absent_#{System.unique_integer([:positive])}@127.0.0.1 -setcookie qa"},
           {"CMS_HARNESS_NODE", "absent@127.0.0.1"},
           {"CMS_HARNESS_COOKIE", "qa"},
           {"CMS_RUN_ID", "1"}
