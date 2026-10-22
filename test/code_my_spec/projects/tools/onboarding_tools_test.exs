@@ -192,6 +192,35 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert {:ok, %{sources: []}} = GetProjectOnboarding.script_result(%{}, context)
   end
 
+  test "adding reference sources preserves saved onboarding choices", %{context: context} do
+    assert {:ok, before} =
+             UpdateProjectOnboarding.script_result(
+               %{
+                 "onboarding" => %{
+                   "description" => "Mahjong tutor",
+                   "starting_point" => "new",
+                   "destination" => "local",
+                   "destination_path" => "/Users/example/mahjong-coach"
+                 }
+               },
+               context
+             )
+
+    assert {:ok, after_save} =
+             UpdateProjectOnboarding.script_result(
+               %{
+                 "sources" => [
+                   %{"kind" => "github", "repository_url" => "https://github.com/KDE/kajongg"}
+                 ]
+               },
+               context
+             )
+
+    assert after_save.onboarding == before.onboarding
+    assert after_save.phase == :setup_handoff
+    assert [%{repository_url: "https://github.com/KDE/kajongg"}] = after_save.sources
+  end
+
   test "local source IDs come from accessible devices and accept Windows paths", %{
     scope: scope,
     context: context
