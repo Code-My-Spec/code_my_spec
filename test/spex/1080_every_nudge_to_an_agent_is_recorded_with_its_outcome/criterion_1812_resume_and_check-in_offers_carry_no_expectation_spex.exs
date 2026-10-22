@@ -41,8 +41,9 @@ defmodule CodeMySpecSpex.Story1080.Criterion1812Spex do
 
       given_ "a continuous coder holding a task, with no turn in flight, resumed by a restart",
              context do
-        coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        coder = Fixtures.running_agent(context.scope, role: "coding")
         context = start_agent_task(context, coder.id, next_task(context, coder.id))
+        {:ok, _agent, _disposition} = Fixtures.continue_agent(context.scope, coder.id)
 
         ref =
           Phoenix.ChannelTest.push(context.socket, "agents_present", %{
