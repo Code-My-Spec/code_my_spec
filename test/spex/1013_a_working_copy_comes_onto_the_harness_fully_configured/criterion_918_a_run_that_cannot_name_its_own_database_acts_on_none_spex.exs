@@ -6,9 +6,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
   Was driven as a real, separate OS process against a scratch git worktree.
   Main's call (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh
   worktree is too heavy for a spex on this shared machine. Driven in-process
-  instead, against `Mix.Tasks.Cms.CheckTestMigrations.creatable/1` -- the
-  exact function `provision/0` asks before ever calling `create/1` -- public
-  precisely so it can be exercised directly, per its own doc.
+  instead, against `CodeMySpec.TestMigrations.creatable/1` (reached via
+  `Fixtures.check_test_migrations_creatable/1`) -- the exact function
+  `provision/0` asks before ever calling `create/1` -- public precisely so
+  it can be exercised directly, per its own doc.
 
   `creatable/1`'s first check is `Mix.env() != :test`. A real subprocess
   reached that by booting under `MIX_ENV=dev`; in this already-booted VM,

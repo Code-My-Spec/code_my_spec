@@ -7,7 +7,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
   Main's call (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh
   worktree is too heavy for a spex on this shared machine, and slows every
   other team's run. Driven in-process instead: the same code
-  (`Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!/0`) runs in this VM,
+  (`CodeMySpec.TestMigrations.refuse_if_behind!/0`, reached via
+  `Fixtures.check_test_migrations_refuse_if_behind!/0`) runs in this VM,
   with `Fixtures.with_throwaway_database/2` redirecting `CodeMySpec.Repo` to
   a database nothing has used, rather than a real subprocess reaching for
   one via its own environment.

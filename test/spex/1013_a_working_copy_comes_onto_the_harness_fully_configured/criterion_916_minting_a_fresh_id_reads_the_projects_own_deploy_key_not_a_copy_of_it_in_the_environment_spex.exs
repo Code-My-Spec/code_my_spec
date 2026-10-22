@@ -8,11 +8,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   with a real local listener standing in for the server. Main's call
   (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh worktree is
   too heavy for a spex on this shared machine. Driven in-process instead,
-  against `Mix.Tasks.Cms.Harness.Onboard.mint/2` directly -- public,
-  precisely so it can be exercised this way -- with `Req.Test` standing in
-  for the server both requests reach (the mint POST, already wired in
-  `config/test.exs`; the token exchange, wired here for the duration of the
-  call).
+  against `CmsHarness.Onboarding.mint/2` (reached via
+  `Fixtures.onboard_mint/2`) -- extracted from the mix task specifically so
+  it could be exercised this way -- with `Req.Test` standing in for the
+  server both requests reach (the mint POST, keyed on the mix task's own
+  module name in `config/test.exs`, kept that way on purpose; the token
+  exchange, wired here for the duration of the call).
 
   Driving `mint/2` in-process rather than `run/1` or `onboard/4`: those also
   provision a preview tunnel and configure git, neither of which this
