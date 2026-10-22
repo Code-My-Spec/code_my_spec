@@ -412,10 +412,18 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   by the agent is left as it is.
   """
   @spec wait_on_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: boolean()
-  def wait_on_running_at_commit(%Scope{active_working_copy_id: nil}, _source, _commit, _agent),
-    do: false
+  def wait_on_running_at_commit(scope, source, commit, agent_id),
+    do: join_running_at_commit(scope, source, commit, agent_id) != []
 
-  def wait_on_running_at_commit(%Scope{} = scope, source, commit, agent_id) do
+  @doc """
+  `wait_on_running_at_commit/4`, answering the ids of the runs joined, newest
+  first.
+  """
+  @spec join_running_at_commit(Scope.t(), String.t(), String.t(), String.t()) :: [integer()]
+  def join_running_at_commit(%Scope{active_working_copy_id: nil}, _source, _commit, _agent),
+    do: []
+
+  def join_running_at_commit(%Scope{} = scope, source, commit, agent_id) do
     ids =
       scope
       |> running_full_runs(source)
@@ -429,7 +437,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     |> Repo.all()
     |> add_waiters([agent_id])
 
-    ids != []
+    ids
   end
 
   defp at_clean_commit?(%Run{start_commit: commit, start_tree_dirty: false}, commit), do: true
