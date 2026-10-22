@@ -4577,6 +4577,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Switch an agent on, the way the continuous control does -- the counterpart of
+  `pause_agent/2`.
+
+  A scenario that needs an agent to hold a task before it can be woken creates
+  it not continuous (nothing offers it work), has it claim, and switches it on
+  here; an agent holding a task is not offered another (a3354bfc).
+  """
+  @spec continue_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, map(), atom()} | {:error, term()}
+  def continue_agent(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.set_agent_continuous(scope, agent_id, true)
+  end
+
+  @doc """
   Put this session into continuous mode, the way `start_implementation` does.
 
   The stop hook's menu-on-turn-end path is gated on the *session's* own
