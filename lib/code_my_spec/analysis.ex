@@ -341,12 +341,18 @@ defmodule CodeMySpec.Analysis do
   @doc """
   Cancel a running run (story 1142): on the harness that holds it, or here
   when this server executes it. Its `mix test` halts when its owner is killed.
+
+  Any running run of the project, as the run page shows it: the canceller's
+  own copy need not be the run's, so it is cancelled on the run's.
   """
   @spec cancel_run(Scope.t(), integer()) :: :ok | {:error, :not_running}
   def cancel_run(%Scope{} = scope, run_id) when is_integer(run_id) do
-    case RunsRepository.get_running_run(scope, run_id) do
-      nil -> {:error, :not_running}
-      run -> cancel_where_it_runs(scope, run)
+    case RunsRepository.get_run_in_project(scope, run_id) do
+      %Run{status: :running} = run ->
+        cancel_where_it_runs(%{scope | active_working_copy_id: run.working_copy_id}, run)
+
+      _not_running ->
+        {:error, :not_running}
     end
   end
 
