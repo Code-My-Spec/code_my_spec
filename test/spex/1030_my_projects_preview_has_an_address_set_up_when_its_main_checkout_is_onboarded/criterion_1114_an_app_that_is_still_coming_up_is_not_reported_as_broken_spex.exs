@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1114Spex do
   spex "An app still coming up is not reported as broken", criterion: 1114 do
     scenario "An app still coming up is not reported as broken" do
       given_ "the container is alive but has not answered yet", context do
-        :ok = Fixtures.workspace_in(context.scope, context.project.id, :starting)
+        :ok = Fixtures.boot_waiting_workspace(context.scope)
 
         {:ok, context}
       end
@@ -49,6 +49,21 @@ defmodule CodeMySpecSpex.Story1030.Criterion1114Spex do
         refute has_element?(context.view, "[data-test='preview-broken']"),
                "an app that has not answered yet was reported as erroring, which reads a " <>
                  "slow boot as a broken build"
+
+        {:ok, context}
+      end
+      when_ "the app begins serving", context do
+        Fixtures.put_workspace_serving(:serving)
+        Fixtures.put_workspace_healthy(true)
+
+        {:ok, context}
+      end
+
+      then_ "the open preview changes over without a reload", context do
+        eventually(fn ->
+          assert has_element?(context.view, "[data-test='preview-frame']")
+          refute has_element?(context.view, "[data-test='preview-starting']")
+        end)
 
         {:ok, context}
       end

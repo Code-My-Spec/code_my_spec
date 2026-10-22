@@ -4011,6 +4011,14 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc "Starts a workspace with its real boot watcher while the fake app waits to answer."
+  @spec boot_waiting_workspace(Scope.t()) :: :ok
+  def boot_waiting_workspace(%Scope{} = scope) do
+    install_workspace_runner(healthy?: false, alive?: true, serving: :down)
+    {:ok, _workspace} = CodeMySpec.Workspaces.boot(scope)
+    :ok
+  end
+
   @doc "The address a project's preview is served at, so a spex need not know the rule."
   @spec preview_host(String.t()) :: String.t()
   defdelegate preview_host(project_id), to: PreviewAddress, as: :host
