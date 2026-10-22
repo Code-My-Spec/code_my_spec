@@ -1,6 +1,6 @@
 defmodule CodeMySpecDesktop.AgentTransport do
   @moduledoc """
-  Detached product execution in the desktop's own harness.
+  Detached onboarding agent execution in the desktop's own harness.
 
   The directory is agent-owned scratch space, not a registered working copy.
   Everything else uses the normal engine: supervised provider sessions, durable

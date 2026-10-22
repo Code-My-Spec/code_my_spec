@@ -17,6 +17,11 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
       {:ok, %{agent_id: agent.id}}
     end
 
+    def stop_agent(_, agent, _) do
+      Presence.untrack(self(), Presence.topic(agent.project_id), agent.id)
+      :ok
+    end
+
     def dispatch_message(_, _, _, _, _), do: {:error, :busy}
   end
 
@@ -26,12 +31,13 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
 
   setup do
     previous =
-      for key <- [:env, :desktop_agent_transport, :detached_agents_root],
+      for key <- [:env, :desktop_agent_transport, :agent_transport, :detached_agents_root],
           do: {key, Application.fetch_env(:code_my_spec, key)}
 
     root = CodeMySpec.TempFile.owned_dir("detached-product")
     Application.put_env(:code_my_spec, :env, :desktop)
     Application.put_env(:code_my_spec, :desktop_agent_transport, Transport)
+    Application.put_env(:code_my_spec, :agent_transport, Transport)
     Application.put_env(:code_my_spec, :detached_agents_root, root)
 
     on_exit(fn ->
@@ -105,7 +111,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert Agents.list_agents(scope) == []
   end
 
-  test "ordinary agents still require a copy and detached mode is only for product", %{
+  test "coding agents still require a copy", %{
     scope: scope
   } do
     attrs = %{
@@ -119,6 +125,90 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
 
     refute Agent.changeset(%Agent{}, attrs).valid?
     refute Agent.changeset(%Agent{}, Map.put(attrs, :execution_mode, :detached)).valid?
+  end
+
+  defp ready_for_setup(scope) do
+    {:ok, _} = Agents.put_model_setting(scope, :main, "claude-code", "claude-opus-5-5")
+
+    CodeMySpec.Projects.Onboarding.save(scope, %{
+      "onboarding" => %{
+        "description" => "Meal planning for families",
+        "starting_point" => "new",
+        "destination" => "local"
+      }
+    })
+  end
+
+  test "setup starts one detached Main and records one durable handoff on retries", %{
+    scope: scope
+  } do
+    {:ok, _} = ready_for_setup(scope)
+    assert {:ok, project, main} = Agents.start_project_setup(scope)
+    assert main.role == :main
+    assert main.execution_mode == :detached
+    assert main.working_copy_id == nil
+    assert main.model == "claude-opus-5-5"
+    assert CodeMySpec.Projects.Onboarding.phase(project) == :stories
+    assert project.onboarding.setup_agent_id == main.id
+    assert Agents.main_agent(scope).id == main.id
+    assert {:ok, _, again} = Agents.start_project_setup(scope)
+    assert again.id == main.id
+    assert {:ok, conversation_id} = Agents.conversation_id(scope, main.id)
+    messages = Repo.all(from(m in Message, where: m.conversation_id == ^conversation_id))
+    assert length(messages) == 1
+    assert inspect(hd(messages).content) =~ "Product has handed development environment setup"
+    assert length(Agents.list_agents(scope)) == 1
+  end
+
+  test "the first main copy reuses the onboarding team and Product stays detached", %{
+    scope: scope
+  } do
+    {:ok, _} = ready_for_setup(scope)
+    {:ok, product} = Agents.ensure_product_agent(scope)
+    {:ok, _, main} = Agents.start_project_setup(scope)
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+
+    copy =
+      copy |> Ecto.Changeset.change(main: true, root: "/tmp/onboarding-main") |> Repo.update!()
+
+    assert %{started: [], failed: []} = Agents.ensure_copy_agents(scope, copy)
+
+    assert {:ok, moved} =
+             Agents.move_main_agent(%{scope | active_working_copy_id: nil, cwd: nil}, copy)
+
+    assert moved.id == main.id
+    assert moved.execution_mode == :working_copy
+    assert moved.working_copy_id == copy.id
+    assert {:ok, retained_product} = Agents.fetch_agent(scope, product.id)
+    assert retained_product.execution_mode == :detached
+    assert retained_product.working_copy_id == nil
+    assert length(Agents.list_agents(scope)) == 2
+  end
+
+  test "incomplete choices do not create Main or unlock stories", %{scope: scope} do
+    assert {:error, :incomplete_onboarding} = Agents.start_project_setup(scope)
+    assert Agents.list_agents(scope) == []
+  end
+
+  test "failed setup startup keeps handoff pending and retries the same agent", %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, RefusingTransport)
+    assert {:error, :no_credential} = Agents.start_project_setup(scope)
+    {:ok, project} = CodeMySpec.Projects.Onboarding.fetch(scope)
+    assert CodeMySpec.Projects.Onboarding.phase(project) == :setup_handoff
+    [main] = Agents.list_agents(scope)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, Transport)
+    assert {:ok, _, retried} = Agents.start_project_setup(scope)
+    assert retried.id == main.id
+  end
+
+  test "setup without a host stays pending", %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+    Application.put_env(:code_my_spec, :env, :test)
+    assert {:error, :no_execution_host} = Agents.start_project_setup(scope)
+    assert Agents.list_agents(scope) == []
+    {:ok, project} = CodeMySpec.Projects.Onboarding.fetch(scope)
+    assert CodeMySpec.Projects.Onboarding.phase(project) == :setup_handoff
   end
 
   test "another user's project scope is refused", %{scope: scope} do

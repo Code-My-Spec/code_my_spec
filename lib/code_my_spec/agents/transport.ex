@@ -175,7 +175,7 @@ defmodule CodeMySpec.Agents.Transport do
   def stop_agent(copy_id, %Agent{} = agent, timeout),
     do: implementation(agent).stop_agent(copy_id, agent, timeout)
 
-  defp implementation(%Agent{execution_mode: :detached, role: :product}) do
+  defp implementation(%Agent{execution_mode: :detached}) do
     if Application.get_env(:code_my_spec, :env) == :desktop,
       do: Application.fetch_env!(:code_my_spec, :desktop_agent_transport),
       else: impl()

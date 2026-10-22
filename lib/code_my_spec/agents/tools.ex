@@ -33,6 +33,7 @@ defmodule CodeMySpec.Agents.Tools do
     [
       CodeMySpec.Agents.Tools.AnswerNotification,
       CodeMySpec.Agents.Tools.AskQuestion,
+      CodeMySpec.Agents.Tools.StartProjectSetup,
       CodeMySpec.Agents.Tools.Cadence,
       CodeMySpec.Agents.Tools.CancelTask,
       CodeMySpec.Agents.Tools.CheckAnswer,

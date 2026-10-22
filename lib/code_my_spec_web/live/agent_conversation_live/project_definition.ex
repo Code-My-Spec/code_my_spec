@@ -71,6 +71,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
       |> Map.new(fn {key, value} -> {key, to_string(value)} end)
 
     assign(socket,
+      phase: Onboarding.phase(project),
       form: to_form(values, as: "definition"),
       sources: project.sources,
       saved_snapshot: {project.onboarding, project.sources},
@@ -152,10 +153,31 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
     end
   end
 
+  defp next_step(:synopsis), do: "Tell Product briefly what you want to build and who it is for."
+
+  defp next_step(:build_destination),
+    do: "Decide with Product whether to start fresh or use existing code, and where to develop."
+
+  defp next_step(:setup_handoff),
+    do: "Your initial choices are saved. Product can now hand environment setup to Main."
+
+  defp next_step(:stories),
+    do:
+      "Main has the setup request. Continue the story interview with Product while setup proceeds."
+
   def render(assigns) do
     ~H"""
     <section data-test="project-definition" class="space-y-3">
-      <h2 class="font-semibold">Define your project</h2>
+      <h2 class="font-semibold">Definition &amp; setup</h2>
+      <ol data-test="onboarding-progress" class="space-y-1 text-sm">
+        <li aria-current={@phase == :synopsis && "step"}>1. Project synopsis</li>
+        <li aria-current={@phase == :build_destination && "step"}>
+          2. Choose how and where to build
+        </li>
+        <li aria-current={@phase == :setup_handoff && "step"}>3. Hand environment setup to Main</li>
+        <li aria-current={@phase == :stories && "step"}>4. Interview for stories</li>
+      </ol>
+      <p data-test="onboarding-next" class="text-sm">{next_step(@phase)}</p>
       <p class="text-sm opacity-70">
         Talk with product about what you want to build. Your choices here stay with the project.
       </p>
@@ -234,7 +256,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
         <button class="btn btn-primary btn-sm" type="submit">Save choices</button>
       </.form>
       <p class="text-xs opacity-60">
-        Environment setup comes next. Selecting source code does not modify it.
+        Selecting source code does not modify it. Main handles environment setup.
       </p>
     </section>
     """

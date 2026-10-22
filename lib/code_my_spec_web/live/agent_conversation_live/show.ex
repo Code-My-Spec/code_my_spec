@@ -2311,6 +2311,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           scope={@current_scope}
           screen={@screen}
           open={@open_panels}
+          stories_available={
+            CodeMySpec.Projects.Onboarding.phase(@project) == :stories or
+              (is_nil(@project.onboarding) and @copies != [])
+          }
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
@@ -2422,6 +2426,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               scope={@current_scope}
               screen={:wide}
               open={@open_panels}
+              stories_available={
+                CodeMySpec.Projects.Onboarding.phase(@project) == :stories or
+                  (is_nil(@project.onboarding) and @copies != [])
+              }
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}

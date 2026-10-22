@@ -48,6 +48,31 @@ defmodule CodeMySpec.Projects.Onboarding do
     end
   end
 
+  @doc "The next onboarding step, derived from saved choices and a durable setup handoff."
+  def phase(%Project{onboarding: nil}), do: :synopsis
+
+  def phase(%Project{onboarding: state} = project) do
+    cond do
+      is_nil(state.description) or String.trim(state.description) == "" -> :synopsis
+      is_nil(state.starting_point) or is_nil(state.destination) -> :build_destination
+      state.starting_point == :existing and project.sources == [] -> :build_destination
+      is_nil(state.setup_agent_id) or is_nil(state.setup_started_at) -> :setup_handoff
+      true -> :stories
+    end
+  end
+
+  @doc "Record an accepted setup handoff. Not writable through the choices tool."
+  def record_handoff(scope, agent_id) do
+    with {:ok, project} <- fetch(scope) do
+      state = %{
+        setup_agent_id: agent_id,
+        setup_started_at: project.onboarding.setup_started_at || DateTime.utc_now()
+      }
+
+      project |> change() |> put_embed(:onboarding, state) |> Repo.update() |> broadcast(scope)
+    end
+  end
+
   defp validate_device(changeset, scope) do
     id = get_field(changeset, :device_id)
 

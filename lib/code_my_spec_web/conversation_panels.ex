@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   attr :screen, :atom, required: true
   attr :open, :list, required: true
+  attr :stories_available, :boolean, default: true
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
@@ -117,6 +118,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
       >
         <.panel_body
           which={hd(@open)}
+          stories_available={@stories_available}
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
@@ -212,6 +214,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           <div class="h-full overflow-y-auto py-2 text-sm">
             <.panel_body
               which={key}
+              stories_available={@stories_available}
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
@@ -291,6 +294,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   end
 
   attr :which, :atom, required: true
+  attr :stories_available, :boolean, default: true
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
@@ -331,6 +335,11 @@ defmodule CodeMySpecWeb.ConversationPanels do
   end
 
   defp panel_body(%{which: :dynamic} = assigns) do
+    assigns =
+      if assigns.stories_available,
+        do: assigns,
+        else: assign(assigns, :dynamic_view, "definition")
+
     ~H"""
     <div data-dynamic-view={@dynamic_view}>
       <div :if={@scope} class="mb-3 flex gap-3 text-xs">
@@ -342,6 +351,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           aria-pressed={to_string(@dynamic_view == "definition")}
         >Definition &amp; setup</button>
         <button
+          :if={@stories_available}
           type="button"
           phx-click="dynamic_view"
           phx-value-view="stories"

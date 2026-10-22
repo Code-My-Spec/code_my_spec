@@ -8,6 +8,7 @@ defmodule CodeMySpec.Projects.Tools do
 
   def snapshot(project, scope) do
     %{
+      phase: CodeMySpec.Projects.Onboarding.phase(project),
       project_id: project.id,
       name: project.name,
       onboarding: embedded(project.onboarding),

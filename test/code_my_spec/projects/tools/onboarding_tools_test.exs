@@ -27,6 +27,36 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert Jason.decode!(text)["onboarding"] == %{}
   end
 
+  test "handoff is discoverable and product can request it without a checkout", %{
+    context: context
+  } do
+    tool = CodeMySpec.Agents.Tools.StartProjectSetup
+    assert {:ok, ^tool} = ToolLibrary.fetch("start_project_setup")
+    assert CodeMySpec.Agents.RoleProfile.carries?(:product, "start_project_setup")
+    assert {:error, message} = Tools.run(tool, %{}, context)
+    assert message =~ "First save"
+  end
+
+  test "choices tool cannot fake a completed setup handoff", %{context: context} do
+    assert {:ok, _} =
+             UpdateProjectOnboarding.script_result(
+               %{
+                 onboarding: %{
+                   description: "Meal planning",
+                   starting_point: "new",
+                   destination: "local",
+                   setup_agent_id: Ecto.UUID.generate(),
+                   setup_started_at: DateTime.utc_now()
+                 }
+               },
+               context
+             )
+
+    assert {:ok, data} = GetProjectOnboarding.script_result(%{}, context)
+    assert data.phase == :setup_handoff
+    assert data.onboarding.setup_agent_id == nil
+  end
+
   test "JSON tool arguments patch choices, preserve omitted data and broadcast saved state", %{
     scope: scope,
     context: context

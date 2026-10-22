@@ -48,6 +48,31 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     }
   end
 
+  test "stories remain hidden until setup is handed off, then appear without refreshing", %{
+    conn: conn,
+    path: path,
+    scope: scope
+  } do
+    {:ok, view, _} = live(conn, path)
+    assert has_element?(view, "[data-test=onboarding-progress]")
+    refute has_element?(view, "button[phx-value-view=stories]")
+
+    {:ok, _} =
+      Onboarding.save(scope, %{
+        "onboarding" => %{
+          "description" => "Meal planning",
+          "starting_point" => "new",
+          "destination" => "local"
+        }
+      })
+
+    assert render(view) =~ "Product can now hand environment setup to Main"
+    refute has_element?(view, "button[phx-value-view=stories]")
+    {:ok, _} = Onboarding.record_handoff(scope, Ecto.UUID.generate())
+    assert render(view) =~ "Main has the setup request"
+    assert has_element?(view, "button[phx-value-view=stories]")
+  end
+
   test "named conversation opens without main and saves definition across refresh", %{
     conn: conn,
     path: path,

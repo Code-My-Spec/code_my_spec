@@ -7,6 +7,8 @@ defmodule CodeMySpec.Projects.OnboardingState do
   embedded_schema do
     field(:starting_point, Ecto.Enum, values: [:new, :existing])
     field(:description, :string)
+    field(:setup_agent_id, Ecto.UUID)
+    field(:setup_started_at, :utc_datetime_usec)
     field(:destination, Ecto.Enum, values: [:local, :cloud, :external])
   end
 

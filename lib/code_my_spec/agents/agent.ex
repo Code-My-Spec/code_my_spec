@@ -390,13 +390,13 @@ defmodule CodeMySpec.Agents.Agent do
   # left that way must still be writable (a stop, say).
   defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}) do
     case {get_field(changeset, :execution_mode), get_field(changeset, :role)} do
-      {:detached, :product} ->
+      {:detached, role} when role in [:product, :main] ->
         if get_field(changeset, :working_copy_id),
           do: add_error(changeset, :working_copy_id, "must be empty for a detached agent"),
           else: changeset
 
       {:detached, _} ->
-        add_error(changeset, :execution_mode, "is only available for product")
+        add_error(changeset, :execution_mode, "is only available for product and main")
 
       _ ->
         validate_required(changeset, [:working_copy_id])
