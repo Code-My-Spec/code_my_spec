@@ -803,10 +803,6 @@ defmodule CodeMySpec.Analysis do
     {:ok, length(failed)}
   end
 
-  # A run killed on every attempt is killing its harness or riding a restart
-  # storm; running it again will not help.
-  @max_redispatches 3
-
   @doc """
   Settle the runs this copy's harness took with it when it went, now that one
   has joined again.
@@ -819,12 +815,11 @@ defmodule CodeMySpec.Analysis do
 
     * claimed by the harness in `claimed` — it is still executing it, so the
       row goes back to `:running` and its result is accepted when it lands;
-    * requested through `start_analysis`, whose answer is still owed —
-      started again at the current tree, carrying the same requester, so the
-      answer reaches whoever asked;
-    * killed #{@max_redispatches} times over — reported to its requester as
-      failed instead;
-    * anything else — left closed. Nothing starts analysis on its own.
+    * owed to somebody (requested through `start_analysis`, or waited on) —
+      settled and its requester and waiters told that its harness went away.
+      It is not run again (story 1142): whoever asked decides whether to ask
+      again, rather than a run starting behind their back;
+    * anything else — left closed.
 
   A run that failed on its own is never an orphan: only the two sweeps above
   mark one, so an analyzer error is not re-run.
@@ -833,15 +828,14 @@ defmodule CodeMySpec.Analysis do
   def resume_orphaned(%Scope{} = scope, claimed) do
     scope
     |> RunsRepository.unsettled_orphans()
-    |> Enum.each(&resume_orphan(scope, &1, claimed))
+    |> Enum.each(&resume_orphan(&1, claimed))
   end
 
-  defp resume_orphan(scope, run, claimed) do
+  defp resume_orphan(run, claimed) do
     cond do
       run.id in claimed -> reopen_orphan(run)
       not answer_owed?(run) -> RunsRepository.settle_orphan(run, "nobody waiting")
-      redispatches(run) >= @max_redispatches -> give_up_on_orphan(run)
-      true -> rerun_orphan(scope, run)
+      true -> report_orphan(run)
     end
   end
 
@@ -853,38 +847,13 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp rerun_orphan(scope, run) do
-    with :ok <- RunsRepository.settle_orphan(run, "run again") do
-      requested_by =
-        Map.merge(run.requested_by, %{
-          "rerun_of" => run.id,
-          "redispatches" => redispatches(run) + 1
-        })
-
-      case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
-        {:ok, outcome, id} ->
-          RunsRepository.copy_waiters(run.id, id)
-
-          Logger.info(
-            "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
-              "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
-          )
-
-        {:error, reason} ->
-          Reconciler.announce_failed(
-            run,
-            "#{orphan_error(run)} — and running it again failed: #{inspect(reason)}"
-          )
-      end
-    end
-  end
-
-  defp give_up_on_orphan(run) do
-    with :ok <- RunsRepository.settle_orphan(run, "gave up") do
+  defp report_orphan(run) do
+    with :ok <- RunsRepository.settle_orphan(run, "harness went away") do
       Reconciler.announce_failed(
         run,
-        "#{orphan_error(run)} — its harness went away on each of " <>
-          "#{redispatches(run) + 1} attempts, so it is not being run again automatically"
+        "#{orphan_error(run)} — its harness went away while it ran, so it ended " <>
+          "there and is not being run again automatically. Start it again if you " <>
+          "still need it."
       )
     end
   end
@@ -896,12 +865,6 @@ defmodule CodeMySpec.Analysis do
     do: Map.has_key?(by, "agent_id") or RunsRepository.waiter_ids(run) != []
 
   defp answer_owed?(run), do: RunsRepository.waiter_ids(run) != []
-
-  defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
-  defp redispatches(_run), do: 0
-
-  defp orphan_args(%Run{args: %{"args" => args}}) when is_list(args), do: args
-  defp orphan_args(_run), do: []
 
   defp orphan_error(%Run{stats: %{"error" => error}}) when is_binary(error), do: error
   defp orphan_error(_run), do: "its harness went away"
