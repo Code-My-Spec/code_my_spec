@@ -858,6 +858,18 @@ defmodule CodeMySpec.Analysis do
     |> Enum.each(&resume_orphan(&1, claimed))
   end
 
+  @doc """
+  Where runs execute here (`Analysis.Supervisor`), at boot: close the runs the
+  last server took with it, and settle them as `resume_orphaned/2` does. No
+  harness rejoins to do it, so whoever was waiting would otherwise never hear.
+  """
+  @spec settle_stranded_runs() :: {:ok, non_neg_integer()}
+  def settle_stranded_runs do
+    {:ok, failed} = RunsRepository.fail_stranded_runs()
+    Enum.each(failed, &resume_orphan(&1, []))
+    {:ok, length(failed)}
+  end
+
   defp resume_orphan(run, claimed) do
     cond do
       run.id in claimed -> reopen_orphan(run)
