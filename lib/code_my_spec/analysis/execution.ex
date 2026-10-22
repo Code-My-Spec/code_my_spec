@@ -9,7 +9,7 @@ defmodule CodeMySpec.Analysis.Execution do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{Reconciler, Run, Runners}
+  alias CodeMySpec.Analysis.{Reconciler, Run, Runners, RunsRepository}
   alias CodeMySpec.Environments
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
@@ -39,6 +39,7 @@ defmodule CodeMySpec.Analysis.Execution do
     args = run_args(run)
     environment = resolve_environment(scope, opts)
     opts = Keyword.put(opts, :environment, environment)
+    run = record_start(run, environment)
 
     case Runners.run(run.source, scope, args, runner_opts(environment, run, opts)) do
       {:ok, %{problems: problems} = result} ->
@@ -125,6 +126,29 @@ defmodule CodeMySpec.Analysis.Execution do
   defp run_args(%Run{args: %{"args" => args}}) when is_list(args), do: args
   defp run_args(%Run{args: args}) when is_list(args), do: args
   defp run_args(_run), do: []
+
+  # A run executed here on a real checkout records the tree it starts on, as
+  # the harness reports one for a run it executes, so a run under way at a
+  # clean commit can answer a second request there (story 1143).
+  defp record_start(run, %Environments.Environment{type: :local} = env) do
+    status =
+      git(env, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"])
+
+    RunsRepository.record_tree(run, %{
+      "start_commit" => git(env, ["rev-parse", "HEAD"]),
+      "start_tree_dirty" => if(is_binary(status), do: status != ""),
+      "began_at" => DateTime.utc_now()
+    })
+  end
+
+  defp record_start(run, _environment), do: run
+
+  defp git(env, args) do
+    case Environments.cmd(env, "git", args, stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      _ -> nil
+    end
+  end
 
   defp resolve_environment(scope, opts) do
     cwd = opts[:cwd] || scope.cwd
