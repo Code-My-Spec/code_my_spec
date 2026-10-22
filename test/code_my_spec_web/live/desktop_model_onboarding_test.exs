@@ -47,7 +47,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     assert has_element?(view, "[data-test=account-rung][data-state=pending]")
     assert has_element?(view, "[data-test=project-rung][data-state=pending]")
     assert has_element?(view, "[data-step=models][aria-current=step]")
-    assert has_element?(view, "[data-test=ladder-progress-count]", "/ 3 complete")
+    assert has_element?(view, "[data-test=ladder-progress-count]", "/ 4 complete")
     refute render(view) =~ "Set up this machine"
     refute render(view) =~ "pgvector"
   end
@@ -180,7 +180,8 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
       assert has_element?(finished, "[data-step=#{step}][data-state=done]")
     end
 
-    refute has_element?(finished, "[aria-current=step]")
+    assert has_element?(finished, "[data-step=define][aria-current=step]")
+    assert has_element?(finished, "[data-test=define-rung] a", "Define your project")
     refute has_element?(finished, "[data-test=model-onboarding]")
   end
 
@@ -197,7 +198,11 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     assert refreshed.active_project.name == "Desktop project"
     assert refreshed.active_project_id == refreshed.active_project.id
     {:ok, returning, _} = live(conn, "/app")
-    assert has_element?(returning, "a[href='/app/projects/#{refreshed.active_project_id}/agent-conversation']")
+
+    assert has_element?(
+             returning,
+             "a[href='/app/projects/#{refreshed.active_project_id}/agent-conversation']"
+           )
   end
 
   test "recheck sees an agent installed while the page is open", ctx do

@@ -1,0 +1,204 @@
+defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
+  @moduledoc "Persisted project definition and source choices inside the cockpit's Project panel."
+  use CodeMySpecWeb, :live_component
+
+  alias CodeMySpec.Projects.Onboarding
+  alias CodeMySpec.Devices
+
+  def update(%{scope: scope} = assigns, socket) do
+    socket = assign(socket, assigns)
+
+    if socket.assigns[:project_id] == scope.active_project_id do
+      {:ok, socket}
+    else
+      {:ok, project} = Onboarding.fetch(scope)
+
+      {:ok,
+       socket
+       |> assign(
+         project_id: project.id,
+         error: nil,
+         saved?: false,
+         devices: available_devices(scope)
+       )
+       |> assign_form(project)}
+    end
+  end
+
+  defp available_devices(scope) do
+    local =
+      if Application.get_env(:code_my_spec, :env) == :desktop do
+        case CmsHarness.Device.recorded_id() do
+          id when is_binary(id) -> Devices.get_harness_device(scope, id)
+          _ -> nil
+        end
+      end
+
+    Enum.uniq_by(Enum.reject([local | Devices.list_devices(scope)], &is_nil/1), & &1.id)
+  end
+
+  defp assign_form(socket, project) do
+    onboarding = project.onboarding
+    source = List.first(project.sources)
+
+    values =
+      %{
+        "description" => (onboarding && onboarding.description) || "",
+        "starting_point" => (onboarding && onboarding.starting_point) || "",
+        "destination" => (onboarding && onboarding.destination) || "",
+        "source_kind" => (source && source.kind) || "github",
+        "repository_url" => (source && source.repository_url) || "",
+        "path" => (source && source.path) || "",
+        "device_id" => (source && source.device_id) || "",
+        "ref" => (source && source.ref) || ""
+      }
+      |> Map.new(fn {key, value} -> {key, to_string(value)} end)
+
+    assign(socket, form: to_form(values, as: "definition"), sources: project.sources)
+  end
+
+  def handle_event("change", %{"definition" => values}, socket) do
+    # Fields hidden by the previous choice are absent from the browser payload.
+    # Preserve their defaults so revealing a source immediately shows its controls.
+    values = Map.merge(socket.assigns.form.params, values)
+    {:noreply, assign(socket, form: to_form(values, as: "definition"), saved?: false)}
+  end
+
+  def handle_event("save", %{"definition" => values}, socket) do
+    attrs = %{"onboarding" => Map.take(values, ~w(description starting_point destination))}
+
+    attrs =
+      if values["starting_point"] == "existing" do
+        source =
+          case values["source_kind"] do
+            "local" -> Map.take(values, ~w(path device_id)) |> Map.put("kind", "local")
+            _ -> Map.take(values, ~w(repository_url ref)) |> Map.put("kind", "github")
+          end
+
+        source =
+          case socket.assigns.sources do
+            [%{id: id} | _] -> Map.put(source, "id", id)
+            _ -> source
+          end
+
+        others =
+          socket.assigns.sources
+          |> Enum.drop(1)
+          |> Enum.map(fn source ->
+            source
+            |> Map.from_struct()
+            |> Map.drop([:__meta__])
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+          end)
+
+        Map.put(attrs, "sources", [source | others])
+      else
+        attrs
+      end
+
+    case Onboarding.save(socket.assigns.scope, attrs) do
+      {:ok, project} ->
+        send(self(), {:project_definition_saved, project})
+        {:noreply, socket |> assign(error: nil, saved?: true) |> assign_form(project)}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply,
+         assign(socket,
+           error:
+             "Check your choices. Use a GitHub repository URL or an absolute folder path on an accessible device.",
+           saved?: false
+         )}
+
+      {:error, _} ->
+        {:noreply,
+         assign(socket,
+           error: "Could not save your project choices. Please try again.",
+           saved?: false
+         )}
+    end
+  end
+
+  def render(assigns) do
+    ~H"""
+    <section data-test="project-definition" class="space-y-3">
+      <h2 class="font-semibold">Define your project</h2>
+      <p class="text-sm opacity-70">
+        Talk with product about what you want to build. Your choices here stay with the project.
+      </p>
+      <.form
+        for={@form}
+        id="project-definition-form"
+        phx-change="change"
+        phx-submit="save"
+        phx-target={@myself}
+        class="space-y-3"
+      >
+        <.input field={@form[:description]} type="textarea" label="What are we building?" />
+        <.input
+          field={@form[:starting_point]}
+          type="select"
+          label="Starting point"
+          prompt="Choose a starting point"
+          options={[{"A fresh project", "new"}, {"Existing code", "existing"}]}
+        />
+        <div :if={@form[:starting_point].value == "existing"} class="space-y-3">
+          <.input
+            field={@form[:source_kind]}
+            type="select"
+            label="Source"
+            options={[{"GitHub repository", "github"}, {"Folder on a connected device", "local"}]}
+          />
+          <div :if={@form[:source_kind].value == "github"} class="space-y-2">
+            <.input
+              field={@form[:repository_url]}
+              type="url"
+              label="Repository URL"
+              placeholder="https://github.com/owner/repository"
+            />
+            <.input field={@form[:ref]} label="Branch or tag (optional)" />
+            <p class="text-xs opacity-70">
+              Public code can be inspected without signing in. For private code,
+              <.link navigate={~p"/app/users/settings"} class="link">connect GitHub</.link>
+              with access to the repository.
+            </p>
+          </div>
+          <div :if={@form[:source_kind].value == "local"} class="space-y-2">
+            <.input
+              field={@form[:device_id]}
+              type="select"
+              label="Device"
+              prompt="Choose a device"
+              options={Enum.map(@devices, &{Devices.Device.display_name(&1), &1.id})}
+            />
+            <.input
+              field={@form[:path]}
+              label="Folder path"
+              placeholder="Absolute path on the selected device"
+            />
+            <p :if={@devices == []} class="text-xs opacity-70">
+              Connect a device before selecting a local folder.
+            </p>
+          </div>
+        </div>
+        <.input
+          field={@form[:destination]}
+          type="select"
+          label="Where would you like to develop?"
+          prompt="Decide with product"
+          options={[
+            {"On my device", "local"},
+            {"Managed cloud", "cloud"},
+            {"Another execution host", "external"}
+          ]}
+        />
+        <p :if={@error} role="alert" class="text-sm text-error">{@error}</p>
+        <p :if={@saved?} role="status" class="text-sm text-success">Project choices saved.</p>
+        <button class="btn btn-primary btn-sm" type="submit">Save choices</button>
+      </.form>
+      <p class="text-xs opacity-60">
+        Environment setup comes next. Selecting source code does not modify it.
+      </p>
+    </section>
+    """
+  end
+end

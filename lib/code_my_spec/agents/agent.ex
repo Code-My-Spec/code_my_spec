@@ -91,6 +91,7 @@ defmodule CodeMySpec.Agents.Agent do
   @foreign_key_type :binary_id
   schema "agents" do
     field :engine, Ecto.Enum, values: @engines, default: :alloy
+    field(:execution_mode, Ecto.Enum, values: [:working_copy, :detached], default: :working_copy)
     # A terminal Claude Code session's own session id (story 1122): how a
     # resumed session finds its agent again, and how its tool calls name it.
     field :engine_session_id, :string
@@ -356,6 +357,7 @@ defmodule CodeMySpec.Agents.Agent do
       :provider_refused_at,
       :provider_retry_at,
       :working_copy_id,
+      :execution_mode,
       :story_id,
       :epic_id,
       :issue_id,
@@ -381,12 +383,25 @@ defmodule CodeMySpec.Agents.Agent do
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
     |> unique_constraint([:project_id, :engine_session_id])
+    |> unique_constraint(:project_id, name: :agents_one_detached_product_per_project)
   end
 
   # Required on creation only: the FK nilifies on checkout delete, and a row
   # left that way must still be writable (a stop, say).
-  defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}),
-    do: validate_required(changeset, [:working_copy_id])
+  defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}) do
+    case {get_field(changeset, :execution_mode), get_field(changeset, :role)} do
+      {:detached, :product} ->
+        if get_field(changeset, :working_copy_id),
+          do: add_error(changeset, :working_copy_id, "must be empty for a detached agent"),
+          else: changeset
+
+      {:detached, _} ->
+        add_error(changeset, :execution_mode, "is only available for product")
+
+      _ ->
+        validate_required(changeset, [:working_copy_id])
+    end
+  end
 
   defp maybe_require_working_copy_id(changeset, %__MODULE__{}), do: changeset
 

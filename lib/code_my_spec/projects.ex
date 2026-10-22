@@ -6,6 +6,8 @@ defmodule CodeMySpec.Projects do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Accounts,
+      CodeMySpec.Devices,
       CodeMySpec.Auth,
       CodeMySpec.Oauth,
       CodeMySpec.Repo,

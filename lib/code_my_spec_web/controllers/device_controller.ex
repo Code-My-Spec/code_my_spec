@@ -46,6 +46,7 @@ defmodule CodeMySpecWeb.DeviceController do
 
   def create(conn, params) do
     scope = scope(conn)
+    __MODULE__.DesktopAssociation.associate(scope, params["device_id"])
 
     case Devices.announce(scope, params["device_id"], attrs(params)) do
       {:ok, device} ->

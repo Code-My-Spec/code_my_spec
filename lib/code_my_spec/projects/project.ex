@@ -38,6 +38,9 @@ defmodule CodeMySpec.Projects.Project do
         }
 
   schema "projects" do
+    embeds_one(:onboarding, CodeMySpec.Projects.OnboardingState, on_replace: :update)
+    embeds_many(:sources, CodeMySpec.Projects.Source, on_replace: :delete)
+
     field :name, :string
     field :module_name, :string
     # Harness-reported, like `module_name`: a content check the server cannot

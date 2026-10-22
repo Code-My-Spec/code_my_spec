@@ -26,6 +26,7 @@ defmodule Mix.Tasks.ResetOnboardingTest do
     test "step #{step} clears that step and later steps, preserving earlier choices" do
       scope = owner_scope()
       other = CodeMySpec.UsersFixtures.full_scope_fixture()
+      device = CodeMySpec.DevicesFixtures.device_fixture(scope)
       {:ok, _} = UserPreferences.select_active_account(scope, scope.active_account_id)
       {:ok, _} = UserPreferences.select_active_project(scope, scope.active_project_id)
       {:ok, _} = Agents.put_model_setting(scope, :main, "claude-code", "claude-opus-5-5")
@@ -40,6 +41,8 @@ defmodule Mix.Tasks.ResetOnboardingTest do
       assert Repo.get(Project, other.active_project_id)
       assert Repo.get(Account, other.active_account_id)
       assert Repo.get(CodeMySpec.Users.User, scope.user.id)
+      device = Repo.reload!(device)
+      assert device.account_id == if(unquote(step) <= 2, do: nil, else: scope.active_account_id)
     end
   end
 
@@ -49,5 +52,23 @@ defmodule Mix.Tasks.ResetOnboardingTest do
     CodeMySpec.AccountsFixtures.member_fixture(other, scope.active_account)
     assert {:error, :shared_accounts} = ResetOnboarding.reset(Repo, scope.user.id, 1)
     assert Repo.get(Project, scope.active_project_id)
+  end
+
+  test "a running detached product must be stopped before its conversation is deleted" do
+    scope = owner_scope()
+
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        role: :product,
+        engine: :alloy,
+        provider: "claude-code",
+        execution_mode: :detached,
+        working_copy: System.tmp_dir!(),
+        status: :running
+      })
+
+    assert {:error, :stop_agents_before_reset} = ResetOnboarding.reset(Repo, scope.user.id, 1)
+    assert Repo.get(Project, scope.active_project_id)
+    assert Repo.get(CodeMySpec.Agents.Agent, agent.id)
   end
 end

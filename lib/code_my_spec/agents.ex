@@ -32,6 +32,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.Issues,
+      CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.PromotionQueue.Waits,
@@ -593,6 +594,12 @@ defmodule CodeMySpec.Agents do
     * Otherwise unchanged.
   """
   @spec scope_for(Scope.t(), Agent.t()) :: Scope.t()
+  def scope_for(%Scope{} = scope, %Agent{execution_mode: :detached, role: :product}) do
+    # The authenticated user may have another checkout selected. A detached
+    # conversation must never borrow that checkout or its filesystem scope.
+    %{scope | active_working_copy_id: nil, cwd: nil}
+  end
+
   def scope_for(%Scope{active_working_copy_id: nil} = scope, %Agent{working_copy_id: id})
       when is_binary(id) do
     case WorkingCopies.fetch(id) do
@@ -1008,7 +1015,7 @@ defmodule CodeMySpec.Agents do
   # a surviving process collides and leaves the row stuck at `:starting`.
   defp halt_for_restart(%Agent{} = agent) do
     agent.working_copy_id
-    |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
+    |> Transport.stop_agent(agent, @stop_timeout_ms)
     |> stopped?(agent)
   end
 
@@ -1023,6 +1030,9 @@ defmodule CodeMySpec.Agents do
   the copy can be alive.
   """
   @spec working_copy_connected?(Agent.t()) :: boolean()
+  def working_copy_connected?(%Agent{execution_mode: :detached} = agent),
+    do: present?(agent.project_id, agent)
+
   def working_copy_connected?(%Agent{working_copy_id: id}) do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
@@ -1396,7 +1406,15 @@ defmodule CodeMySpec.Agents do
 
         with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
              {:ok, {message, offered, admission}} <-
-               record_admission(agent, conversation, text, ref, event, opts[:offer]) do
+               record_admission(
+                 agent,
+                 conversation,
+                 text,
+                 ref,
+                 event,
+                 opts[:offer],
+                 Keyword.get(opts, :sender_id, "operator")
+               ) do
           agent
           |> dispatch_admitted(admission, timeout, message, offered, opts)
           |> dispatch_disposition()
@@ -1734,6 +1752,111 @@ defmodule CodeMySpec.Agents do
       {copy, nil} -> main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
     end
   end
+
+  @doc "The project's product conversation can begin before a checkout exists."
+  def ensure_product_agent(%Scope{user: %{id: _}, active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    with {:ok, project} <- CodeMySpec.Projects.get_project(scope, scope.active_project_id),
+         true <-
+           CodeMySpec.Accounts.Authorization.authorize(:read_account, scope, project.account_id) do
+      :global.trans({{__MODULE__, :product, project.id}, self()}, fn ->
+        with {:ok, agent} <- product_or_start(scope),
+             {:ok, agent} <- ensure_product_running(scope, agent),
+             :ok <- introduce_product(scope, agent) do
+          {:ok, agent}
+        end
+      end)
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def ensure_product_agent(_scope), do: {:error, :missing_active_project}
+
+  defp product_or_start(scope) do
+    case Enum.find(list_agents(scope), &(&1.role == :product and is_nil(&1.retired_at))) do
+      %Agent{} = agent -> {:ok, agent}
+      nil -> start_detached_product(scope)
+    end
+  end
+
+  defp start_detached_product(scope) do
+    if Application.get_env(:code_my_spec, :env) == :desktop do
+      with {:ok, {provider, model}, _source} <- resolve_model(scope, :product),
+           {:ok, _credential} <- Credential.fetch(scope, provider) do
+        root = CodeMySpec.Paths.agents_root()
+        directory = Path.join([root, scope.active_project_id, "product"])
+
+        with :ok <- File.mkdir_p(directory) do
+          AgentsRepository.create_agent(scope, %{
+            role: :product,
+            engine: :alloy,
+            provider: provider,
+            model: model,
+            execution_mode: :detached,
+            working_copy_id: nil,
+            working_copy: directory,
+            continuous: false,
+            tools: tools_for(scope, %{role: :product, working_copy_id: nil}),
+            status: :starting
+          })
+        end
+      end
+    else
+      {:error, :no_execution_host}
+    end
+  end
+
+  defp ensure_product_running(scope, %Agent{execution_mode: :detached} = agent) do
+    scope = scope_for(scope, agent)
+
+    cond do
+      Agent.off?(agent) or present?(scope, agent) ->
+        {:ok, agent}
+
+      Application.get_env(:code_my_spec, :env) != :desktop ->
+        {:error, :no_execution_host}
+
+      true ->
+        with {:ok, credential} <- Credential.fetch(scope, agent.provider),
+             {:ok, _} <- open_conversation(scope, agent),
+             hydrated = LaunchRequest.hydrate(scope, %{agent | credential: credential}),
+             {:ok, report} <- Transport.start_agent(nil, hydrated, @start_timeout_ms),
+             {:ok, started} <- record_started(scope, agent, report) do
+          broadcast(scope, {:agent_started, started})
+          {:ok, started}
+        end
+    end
+  end
+
+  defp ensure_product_running(_scope, agent), do: {:ok, agent}
+
+  defp introduce_product(scope, %Agent{execution_mode: :detached} = agent) do
+    with false <- Agent.off?(agent),
+         {:ok, conversation} <- open_conversation(scope, agent),
+         ref = "project-definition-#{agent.id}",
+         nil <-
+           Repo.get_by(Conversations.Message, conversation_id: conversation.id, delivery_ref: ref),
+         {:ok, {message, offered, admission}} <-
+           record_admission(
+             agent,
+             conversation,
+             CodeMySpec.Agents.DefinitionContext.message(scope),
+             ref,
+             :operator_message,
+             nil,
+             "setup"
+           ) do
+      dispatch_admitted(agent, admission, @message_timeout_ms, message, offered, async: true)
+      :ok
+    else
+      true -> :ok
+      %Conversations.Message{} -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp introduce_product(_scope, _agent), do: :ok
 
   # A main agent somebody turned off is still the project's agent; opening the
   # project shows it off rather than starting another.
@@ -3254,7 +3377,7 @@ defmodule CodeMySpec.Agents do
   # stands.
   # See knowledge/agents, "Stopping".
   defp end_process(_scope, %Agent{} = agent) do
-    result = Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
+    result = Transport.stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
     if present?(agent.project_id, agent), do: stopped?(result, agent), else: :ok
   end
 

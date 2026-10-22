@@ -5,7 +5,7 @@ defmodule Mix.Tasks.ResetOnboarding do
   import Ecto.Query
 
   alias CodeMySpec.Accounts.{Account, Member}
-  alias CodeMySpec.Agents.ModelSetting
+  alias CodeMySpec.Agents.{Agent, ModelSetting}
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences.DesktopUser
@@ -85,23 +85,36 @@ defmodule Mix.Tasks.ResetOnboarding do
          ),
          do: repo.rollback(:shared_accounts)
 
+      # This task runs in a separate VM and cannot stop the desktop's engines.
+      # Never delete the durable mailbox underneath a live product conversation.
+      if repo.exists?(
+           from(a in Agent,
+             where: a.account_id in ^account_ids and a.status in [:starting, :running]
+           )
+         ),
+         do: repo.rollback(:stop_agents_before_reset)
+
       # Preferences have no database foreign keys; clear them before deletion.
       repo.update_all(from(p in "user_preferences", where: p.user_id == ^user_id),
         set: [active_project_id: nil]
       )
 
-      repo.delete_all(from p in Project, where: p.account_id in ^account_ids)
+      repo.delete_all(from(p in Project, where: p.account_id in ^account_ids))
 
       if step <= 2 do
         repo.update_all(from(p in "user_preferences", where: p.user_id == ^user_id),
           set: [active_account_id: nil]
         )
 
-        repo.delete_all(from r in "rules", where: r.account_id in ^account_ids)
-        repo.delete_all(from a in Account, where: a.id in ^account_ids)
+        repo.update_all(from(d in "devices", where: d.account_id in ^account_ids),
+          set: [account_id: nil]
+        )
+
+        repo.delete_all(from(r in "rules", where: r.account_id in ^account_ids))
+        repo.delete_all(from(a in Account, where: a.id in ^account_ids))
       end
 
-      if step == 1, do: repo.delete_all(from m in ModelSetting, where: m.user_id == ^user_id)
+      if step == 1, do: repo.delete_all(from(m in ModelSetting, where: m.user_id == ^user_id))
       :ok
     end)
   end

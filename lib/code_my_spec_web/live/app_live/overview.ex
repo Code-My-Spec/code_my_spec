@@ -115,16 +115,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     }
   end
 
-  # The active step is always the first incomplete one in the fixed order.
-  # Once both are done there is no active step and the ladder is resolved.
-  #
-  # The ladder ends at a project. Everything past that — installing a plugin,
-  # signing in to the local app — happened somewhere this page cannot see, so
-  # a rung for it could only ever sit unfinished and make a working setup look
-  # broken.
+  # Definition continues in the product conversation after the setup forms.
   defp active_step(false, _), do: :account
   defp active_step(true, false), do: :project
-  defp active_step(true, true), do: nil
+  defp active_step(true, true), do: :define
 
   # A rung is "done" if its prerequisite has been fulfilled, "active"
   # if it's the current first-incomplete step, otherwise "pending".
@@ -324,6 +318,22 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             project_form={@project_form}
             project_module_preview={@project_module_preview}
           />
+          <div
+            :if={@project_done? and !@model_setup?}
+            data-test="define-rung"
+            data-state="active"
+            class="card bg-base-100 border border-primary"
+          >
+            <div class="card-body gap-3">
+              <span class="text-sm">Step 4 · Define</span>
+              <h2 class="text-xl font-semibold">What are we building?</h2>
+              <p>Talk with product to shape your idea and choose where to develop it.</p>
+              <.link
+                navigate={~p"/app/projects/#{@active_project_id}/agent-conversation?role=product"}
+                class="btn btn-primary self-start"
+              >Define your project</.link>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -370,7 +380,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     steps = [
       %{key: :models, label: "Agent models", done?: assigns.models_done?},
       %{key: :account, label: "Account", done?: assigns.account_done?},
-      %{key: :project, label: "Project", done?: assigns.project_done?}
+      %{key: :project, label: "Project", done?: assigns.project_done?},
+      %{key: :define, label: "Define", done?: false}
     ]
 
     assigns = assign(assigns, steps: steps, done: Enum.count(steps, & &1.done?))
@@ -395,11 +406,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <div class="text-center text-xs text-base-content/60">
         <span data-test="ladder-progress-count">
           <span class={
-            if @done == 3, do: "text-primary font-bold", else: "text-base-content font-semibold"
+            if @done == 4, do: "text-primary font-bold", else: "text-base-content font-semibold"
           }>
             {@done}
           </span>
-          / 3 complete
+          / 4 complete
         </span>
       </div>
     </div>

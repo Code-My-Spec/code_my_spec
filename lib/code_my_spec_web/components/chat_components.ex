@@ -80,6 +80,19 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
+  def turn(%{message: %{sender_id: "setup"}} = assigns) do
+    ~H"""
+    <details
+      id={@id}
+      data-test="project-context"
+      class="min-w-0 flex-1 rounded border border-base-300 px-3 py-1 text-xs opacity-70"
+    >
+      <summary class="cursor-pointer">Project context</summary>
+      <div class="mt-2 whitespace-pre-wrap break-words">{Message.text(@message)}</div>
+    </details>
+    """
+  end
+
   def turn(assigns) do
     if routine_notice?(assigns.message), do: routine_notice(assigns), else: plain_turn(assigns)
   end
