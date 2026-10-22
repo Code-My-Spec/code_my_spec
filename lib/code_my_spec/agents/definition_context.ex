@@ -16,8 +16,8 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.
     Work out the environment, inspect existing sources without changing them, and establish a
-    suitable working copy using the supported setup/provisioning workflow. An existing Phoenix
-    project may be reusable; other source code is reference for reverse engineering.
+    suitable working copy using the supported setup/provisioning workflow.
+    #{source_guidance()}
     Ask Product via message_agent for unresolved user choices. Do not restart the product interview.
     Report concrete setup progress and blockers; never claim a checkout or environment is ready
     without checking it. Do not start feature implementation during environment setup.
@@ -46,9 +46,25 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     Save agreed answers with update_project_onboarding, including name for a requested rename.
     For local development use local_directory from get_project_onboarding by default; do not ask
     which folder to use. Preserve an explicitly chosen location as onboarding.destination_path.
-    Save agreed answers with update_project_onboarding. Existing code needs a selected source.
+    #{source_guidance()}
+    Existing code needs a selected source.
     A saved destination alone is NOT a handoff: call start_project_setup. If it fails, resolve
     the setup blocker with the user instead of silently moving on to stories.
+    """
+  end
+
+  defp source_guidance do
+    """
+    CodeMySpec builds Elixir/Phoenix applications. Only an existing, inspected compatible Phoenix
+    application is a candidate for reuse as the application working copy. Non-Phoenix repositories
+    are references for reverse engineering features, behavior or rules into a NEW Phoenix app;
+    do not offer to fork them as the application or ask the user to decide their compatibility.
+    Determine technical compatibility from inspection evidence, never from a repository URL alone.
+    When the user says they are starting fresh or supplies repositories as references/inspiration,
+    save starting_point=new and retain those sources. References do not make this an existing-code
+    project. Do not re-ask new versus fork after that intent is established. If inspection is still
+    pending, Main can assess references during setup; do not delay a known new-project handoff for
+    reference assessment or claim that assessment has already happened.
     """
   end
 
@@ -87,9 +103,8 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     Project panel. Do not require the user to repeat their answers in the form. Preserve omitted
     choices and existing source IDs; never guess the user's source or development destination.
     #{workflow()}
-    Existing code is source material until assessed: a compatible Phoenix project might be developed
-    in place; other code can be a reference for reverse engineering. A source is not a development
-    destination or permission to modify it. GitHub private access may require connecting GitHub in
+    A source is not a development destination or permission to modify it.
+    GitHub private access may require connecting GitHub in
     User settings. Do not claim inspection, cloning or provisioning occurred without evidence.
     Main handles development-environment engineering after start_project_setup succeeds.
     Start with a short welcome and one useful question, rather than a setup checklist.

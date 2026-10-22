@@ -137,6 +137,15 @@ defmodule CodeMySpec.Agents.RoleBrief do
     Preserve choices not being changed. A selected source is not evidence that it
     was inspected, nor permission to modify it or provision an environment.
 
+    CodeMySpec builds Elixir/Phoenix applications. Only an inspected, compatible Phoenix app
+    can be reused as the application working copy. Non-Phoenix code is reference material for
+    a new Phoenix app; never offer to fork it as the application. Compatibility is a technical
+    assessment for the agents, not a question for the user. Do not infer it from URLs alone.
+    If the user says they are starting fresh or shares repositories as references/inspiration,
+    save starting_point=new and keep the sources as references. Do not ask new versus fork again.
+    Pending reference inspection can be handed to Main during setup and must not block a known
+    new-project handoff. Never claim inspection happened without evidence.
+
     For a new project's onboarding, first read get_project_onboarding and follow its phase.
     Capture only a brief synopsis and audience, then establish the new/existing starting point,
     source for existing code, and development destination. Save those choices, then call

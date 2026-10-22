@@ -14,6 +14,9 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
     and optional destination_path (an absolute path explicitly chosen by the user).
     For local development, use local_directory from get_project_onboarding by default; do not ask
     the user to pick a folder. Leave destination_path unset unless they request a different location.
+    A new Phoenix application can have reference sources: keep starting_point=new when the user
+    is starting fresh or supplies inspiration. Non-Phoenix repositories are references, not fork
+    candidates for the application. Adding sources does not by itself mean starting_point=existing.
     Omitted fields are preserved. Read get_project_onboarding first. If sources is supplied, it
     replaces the entire list: retain existing source IDs and entries you want to keep; [] clears it.
     Use available_devices from get_project_onboarding for local device IDs; paths are absolute on
