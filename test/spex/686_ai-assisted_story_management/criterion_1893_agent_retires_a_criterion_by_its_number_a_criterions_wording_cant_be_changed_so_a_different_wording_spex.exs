@@ -116,7 +116,10 @@ defmodule CodeMySpecSpex.Story686.Criterion1893Spex do
         response =
           ToolLibrary.run(
             "update_criterion",
-            %{criterion_number: context.criterion.id, description: "Players have a continuous age"},
+            %{
+              criterion_number: context.criterion.id,
+              description: "Players have a continuous age"
+            },
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 
