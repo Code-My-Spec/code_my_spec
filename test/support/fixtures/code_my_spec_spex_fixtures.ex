@@ -5281,7 +5281,8 @@ defmodule CodeMySpecSpex.Fixtures do
 
     ExUnit.Callbacks.on_exit(fn -> kill_os_pid(os_pid) end)
 
-    collect_bounded(port, os_pid, timeout_ms, "")
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    collect_bounded(port, os_pid, deadline, "")
   end
 
   defp put_port_opt(opts, _key, nil), do: opts
@@ -5292,16 +5293,22 @@ defmodule CodeMySpecSpex.Fixtures do
   defp env_charlists(env),
     do: Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
 
-  defp collect_bounded(port, os_pid, timeout_ms, acc) do
+  # `after` on a bare `receive` is an inactivity timer, not a deadline -- it
+  # resets on every message, and a real `mix compile` sends one every few ms.
+  # `remaining/1` turns that into an absolute bound: total elapsed matters,
+  # not the gap since the last line of compiler output.
+  defp collect_bounded(port, os_pid, deadline, acc) do
     receive do
-      {^port, {:data, data}} -> collect_bounded(port, os_pid, timeout_ms, acc <> data)
+      {^port, {:data, data}} -> collect_bounded(port, os_pid, deadline, acc <> data)
       {^port, {:exit_status, status}} -> {acc, status}
     after
-      timeout_ms ->
+      remaining(deadline) ->
         kill_os_pid(os_pid)
-        {acc <> "\n[run_cmd_bounded] killed after exceeding #{timeout_ms}ms", :timeout}
+        {acc <> "\n[run_cmd_bounded] killed after exceeding its deadline", :timeout}
     end
   end
+
+  defp remaining(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
 
   defp kill_os_pid(os_pid) do
     System.cmd("kill", ["-TERM", to_string(os_pid)], stderr_to_stdout: true)
