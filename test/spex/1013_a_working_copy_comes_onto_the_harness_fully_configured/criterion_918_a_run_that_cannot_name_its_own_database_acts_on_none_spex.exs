@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
-  alias Mix.Tasks.Cms.CheckTestMigrations
 
   spex "A runner that cannot name its own database refuses rather than acting",
     criterion: 918 do
@@ -39,7 +38,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
         config = Fixtures.repo_config_naming(context.missing_db)
 
         Mix.env(:dev)
-        result = CheckTestMigrations.creatable(config)
+        result = Fixtures.check_test_migrations_creatable(config)
         Mix.env(:test)
 
         {:ok, Map.put(context, :result, result)}

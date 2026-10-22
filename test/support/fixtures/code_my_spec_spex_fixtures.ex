@@ -5384,6 +5384,34 @@ defmodule CodeMySpecSpex.Fixtures do
   def repo_config_naming(database), do: Keyword.put(CodeMySpec.Repo.config(), :database, database)
 
   @doc """
+  `Mix.Tasks.Cms.Harness.Onboard.mint/2`, for a spex driving onboarding's
+  own credential resolution in-process (story 1013, criterion 916) without
+  reaching across the boundary from `CodeMySpecSpex` into `CmsHarness`
+  itself.
+  """
+  @spec onboard_mint(Path.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  def onboard_mint(root, project_id), do: Mix.Tasks.Cms.Harness.Onboard.mint(root, project_id)
+
+  @doc """
+  `Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!/0`, for a spex
+  driving the real first-run migration check in-process (story 1013,
+  criterion 917) without reaching across the boundary into `CodeMySpec`
+  itself.
+  """
+  @spec check_test_migrations_refuse_if_behind!() :: :ok
+  def check_test_migrations_refuse_if_behind!,
+    do: Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
+
+  @doc """
+  `Mix.Tasks.Cms.CheckTestMigrations.creatable/1`, for a spex asking whether
+  a config naming some partition may be created (story 1013, criterion 918)
+  without reaching across the boundary into `CodeMySpec` itself.
+  """
+  @spec check_test_migrations_creatable(keyword()) :: :ok | {:error, String.t()}
+  def check_test_migrations_creatable(config),
+    do: Mix.Tasks.Cms.CheckTestMigrations.creatable(config)
+
+  @doc """
   Sets an OS env var for the rest of the test, restored (or unset, if it
   was never set) on exit -- so a spex asserting about `CMS_DEPLOY_KEY` or
   similar never calls `System.put_env/2` itself.

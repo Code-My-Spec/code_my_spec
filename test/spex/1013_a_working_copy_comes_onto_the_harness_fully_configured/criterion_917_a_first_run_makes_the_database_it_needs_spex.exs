@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
         output =
           ExUnit.CaptureIO.capture_io(:stderr, fn ->
             Fixtures.with_throwaway_database(context.database, fn ->
-              :ok = Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
+              :ok = Fixtures.check_test_migrations_refuse_if_behind!()
             end)
           end)
 

@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
       end
 
       when_ "onboarding mints against it", context do
-        result = Onboard.mint(context.root, context.project.id)
+        result = Fixtures.onboard_mint(context.root, context.project.id)
 
         {:ok, Map.put(context, :result, result)}
       end
@@ -119,7 +119,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
       end
 
       when_ "onboarding mints against it", context do
-        result = Onboard.mint(context.root, context.project.id)
+        result = Fixtures.onboard_mint(context.root, context.project.id)
 
         {:ok, Map.put(context, :result, result)}
       end
