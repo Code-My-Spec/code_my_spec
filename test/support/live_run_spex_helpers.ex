@@ -16,6 +16,11 @@ defmodule CodeMySpecSpex.LiveRun do
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
+  # How long the run may take to reach its held test: a queue behind the
+  # machine's analyzer slots and a `mix test` boot, on a loaded machine. Under
+  # the spex timeout (`CodeMySpecSpex.Case.spex_timeout/0`, three minutes).
+  @start_ms 120_000
+
   @doc """
   A live harness serving Sam's checkout with the watchable suite, and the run
   of it Sam's agent started, held open. Puts `:run_id` and `:os_pid` (the
@@ -38,7 +43,7 @@ defmodule CodeMySpecSpex.LiveRun do
 
     Map.merge(context, %{
       run_id: String.to_integer(run_id),
-      os_pid: ClusteredProject.await_running(context.harness.root)
+      os_pid: ClusteredProject.await_running(context.harness.root, @start_ms)
     })
   end
 
