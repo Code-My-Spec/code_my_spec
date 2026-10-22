@@ -634,8 +634,7 @@ config :code_my_spec, Mix.Tasks.Cms.Harness.Onboard,
 # (criteria 916-918, so a spex could drive it in-process). Pinned
 # separately from the mix task above -- different module, different Req
 # call, now that the two are no longer the same piece of code.
-config :code_my_spec, CmsHarness.Onboarding,
-  plug: {Req.Test, CmsHarness.Onboarding}
+config :code_my_spec, CmsHarness.Onboarding, plug: {Req.Test, CmsHarness.Onboarding}
 
 config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
   plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}

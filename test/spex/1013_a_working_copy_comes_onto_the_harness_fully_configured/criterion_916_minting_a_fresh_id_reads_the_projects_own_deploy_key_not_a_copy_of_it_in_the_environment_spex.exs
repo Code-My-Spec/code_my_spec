@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   end
 
   spex "Minting a fresh id reads the project's own deploy key, not the environment's",
-       criterion: 916 do
+    criterion: 916 do
     scenario "A different deploy key in the environment does not override the database's own" do
       given_ "a committed project with its own deploy key, with a different key named in " <>
                "the environment",

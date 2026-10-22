@@ -126,7 +126,10 @@ defmodule CodeMySpec.IntegrationsTest do
         conn
         |> Plug.Conn.put_status(429)
         |> Req.Test.json(%{
-          "error" => %{"code" => "1113", "message" => "Insufficient balance or no resource package."}
+          "error" => %{
+            "code" => "1113",
+            "message" => "Insufficient balance or no resource package."
+          }
         })
       end)
 
