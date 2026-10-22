@@ -5379,6 +5379,37 @@ defmodule CodeMySpecSpex.Fixtures do
     ] ++ Enum.map(overrides, fn {k, v} -> {to_string(k), to_string(v)} end)
   end
 
+  @doc """
+  Compiles a `scratch_worktree!/0` once, untimed, so the command a spex
+  actually bounds and asserts on pays an incremental compile, not a full
+  one.
+
+  Sharing this checkout's `_build` (`scratch_worktree_env/1`) does not make
+  the worktree's first `mix` invocation incremental on its own: the
+  worktree's files sit at a different absolute path than this checkout's,
+  which the compiler manifest reads as "every file is stale," so the first
+  command run in a fresh worktree recompiles all ~1550 files regardless of
+  what `_build` already holds. Story 1013's criteria 916-918 learned this
+  by timing out: that recompile, done inside the timed command, routinely
+  took long enough on a busy machine to blow even a generous bound. Once
+  paid here, a second `mix` command against the *same* worktree path finds
+  nothing stale and skips it -- the saving `scratch_worktree_env/1`'s own
+  doc promised is real, just not on the very first command.
+  """
+  @spec warm_scratch_worktree!(Path.t()) :: :ok
+  def warm_scratch_worktree!(root) do
+    {output, 0} =
+      run_cmd_bounded(
+        "mix",
+        ["compile"],
+        [cd: root, env: scratch_worktree_env(MIX_ENV: "test")],
+        150_000
+      )
+
+    _ = output
+    :ok
+  end
+
   @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."
   @spec spex_tmp_dir!(String.t()) :: Path.t()
   def spex_tmp_dir!(prefix) do

@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
     scenario "An exunit run against a never-used partition creates and migrates its database" do
       given_ "a scratch checkout and a partition nothing has used before", context do
         root = Fixtures.scratch_worktree!()
+        :ok = Fixtures.warm_scratch_worktree!(root)
         partition = "cms_spex_#{System.unique_integer([:positive])}"
         database = "code_my_spec_test#{partition}"
 
@@ -45,7 +46,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
           Fixtures.scratch_worktree_env(MIX_ENV: "test", MIX_TEST_PARTITION: context.partition)
 
         {output, status} =
-          Fixtures.run_cmd_bounded("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
+          Fixtures.run_cmd_bounded(
+            "mix",
+            ["cms.check_test_migrations"],
+            [cd: context.root, env: env],
+            60_000
+          )
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
       end

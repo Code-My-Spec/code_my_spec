@@ -48,6 +48,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
         db_key = "dk_db_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
         project = Fixtures.committed_project_with_deploy_key!(db_key)
         root = Fixtures.scratch_worktree!()
+        :ok = Fixtures.warm_scratch_worktree!(root)
 
         {:ok,
          context
@@ -73,8 +74,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
           Fixtures.run_cmd_bounded(
             "mix",
             ["cms.harness.onboard", "--project", context.project.id],
-            cd: context.root,
-            env: env
+            [cd: context.root, env: env],
+            60_000
           )
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
@@ -99,6 +100,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
         db_key = "dk_db2_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
         project = Fixtures.committed_project_with_deploy_key!(db_key)
         root = Fixtures.scratch_worktree!()
+        :ok = Fixtures.warm_scratch_worktree!(root)
 
         {:ok,
          context
@@ -121,8 +123,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
           Fixtures.run_cmd_bounded(
             "mix",
             ["cms.harness.onboard", "--project", context.project.id],
-            cd: context.root,
-            env: env
+            [cd: context.root, env: env],
+            60_000
           )
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}

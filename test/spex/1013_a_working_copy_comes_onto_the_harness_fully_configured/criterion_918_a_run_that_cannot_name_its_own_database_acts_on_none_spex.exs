@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
     scenario "A config naming no database is refused, and nothing is created" do
       given_ "a scratch checkout, and a database name nothing has created", context do
         root = Fixtures.scratch_worktree!()
+        :ok = Fixtures.warm_scratch_worktree!(root)
         missing_db = "cms_spex_missing_#{System.unique_integer([:positive])}"
 
         {:ok,
@@ -45,7 +46,12 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
           )
 
         {output, status} =
-          Fixtures.run_cmd_bounded("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
+          Fixtures.run_cmd_bounded(
+            "mix",
+            ["cms.check_test_migrations"],
+            [cd: context.root, env: env],
+            60_000
+          )
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
       end
