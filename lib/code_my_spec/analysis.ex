@@ -51,6 +51,7 @@ defmodule CodeMySpec.Analysis do
     FleetHold,
     FleetHolds,
     HarnessRegistry,
+    LiveRuns,
     ProjectServer,
     Reconciler,
     Run,
@@ -309,6 +310,56 @@ defmodule CodeMySpec.Analysis do
   end
 
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
+
+  @doc """
+  Fold one event of a running run into what can be seen of it (story 1141),
+  and publish the new state on `"analysis_run:<run_id>"`. A failing test is a
+  problem as soon as it fails; the run's reconcile replaces it when it ends.
+  """
+  @spec record_live_event(Scope.t(), integer(), map()) :: :ok | {:error, :unknown_run}
+  def record_live_event(%Scope{} = scope, run_id, %{} = event) when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil ->
+        {:error, :unknown_run}
+
+      %Run{} = run ->
+        live = LiveRuns.fold(run.id, event)
+        record_failure(scope, event)
+
+        Phoenix.PubSub.broadcast(
+          CodeMySpec.PubSub,
+          "analysis_run:#{run.id}",
+          {:run_live, run.id, live}
+        )
+
+        :ok
+    end
+  end
+
+  def record_live_event(_scope, _run_id, _event), do: {:error, :unknown_run}
+
+  @doc "What `run_id` has reported as it ran, or nil."
+  @spec live_state(integer()) :: LiveRuns.t() | nil
+  defdelegate live_state(run_id), to: LiveRuns, as: :get
+
+  defp record_failure(scope, %{"event" => "test", "state" => "failed"} = test) do
+    {:ok, _} =
+      CodeMySpec.Problems.create_problems(scope, [
+        %{
+          source: "exunit",
+          source_type: :test,
+          category: "test_failure",
+          severity: :error,
+          file_path: test["file"],
+          line: test["failure_line"] || test["line"],
+          message: test["message"] || "#{test["name"]} failed"
+        }
+      ])
+
+    :ok
+  end
+
+  defp record_failure(_scope, _event), do: :ok
 
   @doc """
   Record the commit a harness's analyzer started on, whether the tree was

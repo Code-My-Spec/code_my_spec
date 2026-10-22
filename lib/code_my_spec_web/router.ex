@@ -573,6 +573,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/content", ContentLive
       live "/projects/:project_id/content/:id", ContentLive.Show
       live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/runs/:run_id", RunLive
 
       live "/projects/:project_id/files", FilesLive
       live "/projects/:project_id/next-task", Tasks.NextTaskLive

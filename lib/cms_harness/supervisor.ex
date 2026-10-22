@@ -81,6 +81,10 @@ defmodule CmsHarness.Supervisor do
       # about the machine rather than about a project.
       CmsHarness.AnalysisSlots,
 
+      # The node a test run joins to report its events as they happen, and
+      # whose going away stops the run (story 1141).
+      CmsHarness.RunLink,
+
       # Watches every agent the engine starts, so a death is reported the
       # moment it happens (`CmsHarness.Agents.Liveness`). Before the copies,
       # so it is up to watch the first agent.
