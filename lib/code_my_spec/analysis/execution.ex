@@ -158,8 +158,9 @@ defmodule CodeMySpec.Analysis.Execution do
 
   # Cassette escape hatch: spex inject pre-recorded tool output per source,
   # per call or attached to the environment selected for this run.
-  defp runner_opts(environment, %Run{source: source}, opts) do
+  defp runner_opts(environment, %Run{id: run_id, source: source}, opts) do
     key = :"#{output_key(source)}_output_file"
+    opts = Keyword.put(opts, :run_id, run_id)
 
     output_file = Keyword.get(opts, key) || Environments.recorded_output(environment, source)
     if output_file, do: Keyword.put(opts, :output_file, output_file), else: opts

@@ -295,7 +295,8 @@ defmodule CodeMySpecWeb.Application do
       start: {Agent, :start_link, [fn -> :ok end, [name: CodeMySpecWeb.QaEnvironments]]}
     }
 
-    [CodeMySpec.Analysis.Supervisor, qa_environments]
+    # Where the runs it executes report their events as they happen (story 1141).
+    [CodeMySpec.Analysis.Supervisor, CodeMySpec.Analysis.LocalRunLink, qa_environments]
   end
 
   # `tunnel_config` is main's tunnel; only main may run its connector. Set by

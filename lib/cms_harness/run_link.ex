@@ -7,15 +7,13 @@ defmodule CmsHarness.RunLink do
   run's working copy's channel. The run watches this process and halts when it
   goes, so a run never outlives the harness that started it.
 
-  Distribution is started on the first run, at `<name>@127.0.0.1`: a harness
-  that never runs a suite never opens a port.
+  Distribution is started on the first run (`CodeMySpec.Analysis.RunNode`).
   """
 
   use GenServer
 
-  require Logger
-
   alias CmsHarness.Channel
+  alias CodeMySpec.Analysis.RunNode
 
   def start_link(opts \\ []),
     do: GenServer.start_link(__MODULE__, :ok, name: opts[:name] || __MODULE__)
@@ -33,12 +31,7 @@ defmodule CmsHarness.RunLink do
 
   defp link_env(root, run_id) do
     :ok = GenServer.call(__MODULE__, {:expect, run_id, root})
-
-    [
-      {"CMS_HARNESS_NODE", Atom.to_string(node())},
-      {"CMS_HARNESS_COOKIE", Atom.to_string(Node.get_cookie())},
-      {"CMS_RUN_ID", Integer.to_string(run_id)}
-    ]
+    RunNode.env(run_id, __MODULE__)
   end
 
   @impl true
@@ -46,7 +39,7 @@ defmodule CmsHarness.RunLink do
 
   @impl true
   def handle_call({:expect, run_id, root}, _from, runs) do
-    :ok = distribute()
+    :ok = RunNode.ensure_started("cms_harness")
     {:reply, :ok, Map.put(runs, run_id, root)}
   end
 
@@ -66,28 +59,4 @@ defmodule CmsHarness.RunLink do
 
   defp forget_finished(runs, run_id, %{"event" => "finished"}), do: Map.delete(runs, run_id)
   defp forget_finished(runs, _run_id, _event), do: runs
-
-  defp distribute do
-    if Node.alive?(), do: :ok, else: start_node()
-  end
-
-  # `Node.start/2` registers with epmd; a machine whose epmd is not running
-  # gets one started, once.
-  defp start_node do
-    name = :"cms_harness_#{System.pid()}@127.0.0.1"
-
-    case Node.start(name, :longnames) do
-      {:ok, _pid} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning(
-          "[CmsHarness] starting distribution failed (#{inspect(reason)}); starting epmd"
-        )
-
-        System.cmd("epmd", ["-daemon"])
-        {:ok, _pid} = Node.start(name, :longnames)
-        :ok
-    end
-  end
 end
