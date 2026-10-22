@@ -1820,7 +1820,12 @@ defmodule CodeMySpec.Agents do
       true ->
         with {:ok, credential} <- Credential.fetch(scope, agent.provider),
              {:ok, _} <- open_conversation(scope, agent),
-             hydrated = LaunchRequest.hydrate(scope, %{agent | credential: credential}),
+             hydrated =
+               LaunchRequest.hydrate(scope, %{
+                 agent
+                 | credential: credential,
+                   tools: tools_of(scope, agent)
+               }),
              {:ok, report} <- Transport.start_agent(nil, hydrated, @start_timeout_ms),
              {:ok, started} <- record_started(scope, agent, report) do
           broadcast(scope, {:agent_started, started})

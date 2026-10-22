@@ -17,6 +17,7 @@ defmodule CodeMySpec.ToolLibrary do
     top_level?: true,
     deps: [
       CodeMySpec.WorkingCopies.Tools,
+      CodeMySpec.Projects.Tools,
       CodeMySpec.Stories.Tools,
       CodeMySpec.Provisioning.Tools,
       CodeMySpec.Components.Tools,
@@ -45,6 +46,7 @@ defmodule CodeMySpec.ToolLibrary do
   def tools,
     do:
       CodeMySpec.Personas.Tools.all() ++
+        CodeMySpec.Projects.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
         CodeMySpec.Embeddings.Tools.all() ++

@@ -155,6 +155,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
     socket = follow_conversation(socket, conversation)
 
+    socket =
+      if connected?(socket) and socket.assigns[:onboarding_project_id] != project.id do
+        if previous = socket.assigns[:onboarding_project_id] do
+          Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "project:#{previous}:onboarding")
+        end
+
+        CodeMySpec.Projects.Onboarding.subscribe(scope)
+        assign(socket, :onboarding_project_id, project.id)
+      else
+        socket
+      end
+
     # Project-wide subscriptions, taken once per connected mount (this runs on
     # every patch).
     if connected?(socket) && !socket.assigns[:watching_project?] do
@@ -1894,6 +1906,21 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       do: send_update(ProjectTimeline, id: "project-timeline", refresh: true)
 
     {:noreply, socket}
+  end
+
+  # Agent tools save through the same context. Refresh the panel without sending
+  # a second message back to the agent that just made the change.
+  def handle_info({:project_onboarding_updated, project}, socket) do
+    if project.id == socket.assigns.project.id do
+      send_update(CodeMySpecWeb.AgentConversationLive.ProjectDefinition,
+        id: "project-definition",
+        saved_project: project
+      )
+
+      {:noreply, assign(socket, :project, project)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_info({:project_definition_saved, project}, socket) do

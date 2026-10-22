@@ -6,6 +6,14 @@ defmodule CodeMySpec.Projects.Onboarding do
   alias CodeMySpec.Projects.{Project, Source}
   alias CodeMySpec.Users.Scope
 
+  def subscribe(%Scope{} = scope) do
+    with {:ok, _} <- fetch(scope) do
+      Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic(scope))
+    end
+  end
+
+  defp topic(scope), do: "project:#{scope.active_project_id}:onboarding"
+
   def fetch(
         %Scope{user: %{id: _}, active_account_id: account_id, active_project_id: project_id} =
           scope
@@ -52,6 +60,12 @@ defmodule CodeMySpec.Projects.Onboarding do
   end
 
   defp broadcast({:ok, project} = result, scope) do
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      topic(scope),
+      {:project_onboarding_updated, project}
+    )
+
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       "user:#{scope.user.id}:projects",

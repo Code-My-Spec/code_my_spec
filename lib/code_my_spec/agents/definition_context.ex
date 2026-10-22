@@ -30,7 +30,11 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     You are running independently of a project checkout. Your current directory is private agent
     runtime storage, not the user's project. Do not create a project there or treat it as source code.
     The Project panel saves the user's description, new/existing choice, source and destination.
-    Help them use it and continue the conversation while environment setup is pending.
+    Use get_project_onboarding to read the current choices and accessible device IDs. As the user
+    agrees on choices, use update_project_onboarding to record them directly; they appear in the
+    Project panel. Do not require the user to repeat their answers in the form. Preserve omitted
+    choices and existing source IDs; never guess the user's source or development destination.
+    Continue the conversation while environment setup is pending.
     Existing code is source material until assessed: a compatible Phoenix project might be developed
     in place; other code can be a reference for reverse engineering. A source is not a development
     destination or permission to modify it. GitHub private access may require connecting GitHub in

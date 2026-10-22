@@ -5,6 +5,22 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
   alias CodeMySpec.Projects.Onboarding
   alias CodeMySpec.Devices
 
+  def update(%{saved_project: project}, socket) do
+    cond do
+      socket.assigns.project_id != project.id ->
+        {:ok, socket}
+
+      socket.assigns.saved_snapshot == {project.onboarding, project.sources} ->
+        {:ok, socket}
+
+      socket.assigns.dirty? ->
+        {:ok, assign(socket, :external_update?, true)}
+
+      true ->
+        {:ok, socket |> assign(saved?: false, error: nil) |> assign_form(project)}
+    end
+  end
+
   def update(%{scope: scope} = assigns, socket) do
     socket = assign(socket, assigns)
 
@@ -54,14 +70,32 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
       }
       |> Map.new(fn {key, value} -> {key, to_string(value)} end)
 
-    assign(socket, form: to_form(values, as: "definition"), sources: project.sources)
+    assign(socket,
+      form: to_form(values, as: "definition"),
+      sources: project.sources,
+      saved_snapshot: {project.onboarding, project.sources},
+      dirty?: false,
+      external_update?: false
+    )
   end
 
   def handle_event("change", %{"definition" => values}, socket) do
     # Fields hidden by the previous choice are absent from the browser payload.
     # Preserve their defaults so revealing a source immediately shows its controls.
     values = Map.merge(socket.assigns.form.params, values)
-    {:noreply, assign(socket, form: to_form(values, as: "definition"), saved?: false)}
+
+    {:noreply,
+     assign(socket, form: to_form(values, as: "definition"), saved?: false, dirty?: true)}
+  end
+
+  def handle_event("reload_saved", _params, socket) do
+    case Onboarding.fetch(socket.assigns.scope) do
+      {:ok, project} ->
+        {:noreply, socket |> assign(saved?: false, error: nil) |> assign_form(project)}
+
+      {:error, _} ->
+        {:noreply, assign(socket, error: "Could not reload project choices. Please try again.")}
+    end
   end
 
   def handle_event("save", %{"definition" => values}, socket) do
@@ -125,6 +159,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.ProjectDefinition do
       <p class="text-sm opacity-70">
         Talk with product about what you want to build. Your choices here stay with the project.
       </p>
+      <div :if={@external_update?} role="status" data-test="definition-updated" class="text-sm">
+        Project choices changed. Your unsaved edits are still here.
+        <button type="button" phx-click="reload_saved" phx-target={@myself} class="link">Reload saved choices</button>
+      </div>
       <.form
         for={@form}
         id="project-definition-form"

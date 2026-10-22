@@ -161,6 +161,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # (`accept_issue`, `dismiss_issue`); declaring an issue fixed (`resolve_issue`)
   # is coding's. No staffing: that is main's.
   @product_tools ~w(
+    get_project_onboarding update_project_onboarding
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
     add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario

@@ -85,6 +85,39 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
            )
   end
 
+  test "agent-side saves refresh the panel and preserve unsaved user edits", %{
+    conn: conn,
+    path: path,
+    scope: scope
+  } do
+    {:ok, view, _} = live(conn, path)
+
+    {:ok, _} =
+      Onboarding.save(scope, %{
+        onboarding: %{description: "Recorded by product", starting_point: :new}
+      })
+
+    assert has_element?(view, "textarea[name='definition[description]']", "Recorded by product")
+    refute has_element?(view, "[data-test=definition-updated]")
+
+    view
+    |> form("#project-definition-form", definition: %{description: "My unsaved refinement"})
+    |> render_change()
+
+    {:ok, _} = Onboarding.save(scope, %{onboarding: %{description: "A newer saved brief"}})
+    assert has_element?(view, "textarea[name='definition[description]']", "My unsaved refinement")
+
+    assert has_element?(
+             view,
+             "[data-test=definition-updated]",
+             "Your unsaved edits are still here"
+           )
+
+    view |> element("[data-test=definition-updated] button") |> render_click()
+    assert has_element?(view, "textarea[name='definition[description]']", "A newer saved brief")
+    refute has_element?(view, "[data-test=definition-updated]")
+  end
+
   test "setup context is collapsed while product's response stays visible", %{
     conn: conn,
     path: path,
@@ -200,6 +233,18 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     refute has_element?(view, "[data-test=queued-message-text]", "Begin defining this project")
     {:ok, conversation_id} = CodeMySpec.Agents.conversation_id(scope, product.id)
     assert has_element?(view, "#agent-scroll-#{conversation_id}")
+
+    conversation = Conversations.get_agent_conversation_by_id(scope, conversation_id)
+    before_messages = Conversations.list_messages(conversation)
+    {:ok, _} = Onboarding.save(scope, %{onboarding: %{description: "Product recorded our plan"}})
+
+    assert has_element?(
+             view,
+             "textarea[name='definition[description]']",
+             "Product recorded our plan"
+           )
+
+    assert Conversations.list_messages(conversation) == before_messages
 
     view |> element("[data-test=panel-tab-activity]") |> render_click()
 
