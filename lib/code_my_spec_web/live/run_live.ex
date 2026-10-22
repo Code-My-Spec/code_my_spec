@@ -47,7 +47,12 @@ defmodule CodeMySpecWeb.RunLive do
   @impl true
   def render(%{run: nil} = assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <p>No such run.</p>
     </Layouts.app>
     """
@@ -62,7 +67,12 @@ defmodule CodeMySpecWeb.RunLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div class="space-y-4">
         <div class="flex items-baseline gap-3">
           <h1 class="text-xl font-semibold">{@run.source} run {@run.id}</h1>
