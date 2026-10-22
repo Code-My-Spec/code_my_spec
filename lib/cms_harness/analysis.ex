@@ -32,6 +32,7 @@ defmodule CmsHarness.Analysis do
   require Logger
 
   alias CmsHarness.AnalyzerEnv
+  alias CmsHarness.RunLink
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
@@ -64,7 +65,7 @@ defmodule CmsHarness.Analysis do
       when is_binary(source) and is_list(args) do
     env =
       Environment.new(:local, project.root,
-        metadata: %{output_capture: Keyword.get(opts, :output_capture)}
+        metadata: %{output_capture: Keyword.get(opts, :output_capture), run_id: run_id}
       )
 
     started = System.monotonic_time(:millisecond)
@@ -264,7 +265,8 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
-    extra_env = AnalyzerEnv.extra_env(env, "exunit")
+    extra_env =
+      AnalyzerEnv.extra_env(env, "exunit") ++ RunLink.env(env.cwd, env.metadata[:run_id])
 
     # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
 

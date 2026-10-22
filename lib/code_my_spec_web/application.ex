@@ -116,6 +116,8 @@ defmodule CodeMySpecWeb.Application do
         # Which projects a light harness holds (so where their analyzers run).
         # Not in `Analysis.Supervisor`, which starts only where analyzers run locally.
         CodeMySpec.Analysis.HarnessRegistry,
+        # What runs report as they go, for the run page (story 1141).
+        CodeMySpec.Analysis.LiveRuns,
         # Working copies mid-reconcile; server-held state for remote harnesses.
         CodeMySpec.Files.ReconcileRegistry,
         # One setup run per project; provisioning calls providers from here.

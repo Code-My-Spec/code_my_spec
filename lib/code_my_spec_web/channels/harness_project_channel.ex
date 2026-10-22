@@ -592,6 +592,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The commit an analyzer started on, and whether the tree was clean, from the
   # machine holding the checkout. Inline: one row update, and it must land
   # before this run's `analysis_result`, which is deferred.
+  # Each event of a run as it happens (story 1141). An event for a run that is
+  # not running here is dropped: a late event of a run already closed.
+  def handle_in("analysis_event", %{"run_id" => run_id, "event" => %{} = event}, socket)
+      when is_integer(run_id) do
+    _ = Analysis.record_live_event(socket.assigns.scope, run_id, event)
+    {:reply, :ok, socket}
+  end
+
   def handle_in("analysis_started", payload, socket) do
     case Analysis.record_remote_start(socket.assigns.scope, payload) do
       {:ok, _run} ->

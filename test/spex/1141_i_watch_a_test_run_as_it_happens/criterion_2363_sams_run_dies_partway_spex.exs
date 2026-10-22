@@ -24,7 +24,8 @@ defmodule CodeMySpecSpex.Story1141.Criterion2363Spex do
     :ok
   end
 
-  spex "Sam's run dies partway", criterion: 2363 do
+  # A run that dies logs it: the harness reports a result the server refuses.
+  spex "Sam's run dies partway", criterion: 2363, fail_on_error_logs: false do
     scenario "the run is killed while the held test runs" do
       given_ "Sam's suite is running", context do
         {:ok, LiveRun.start(context)}
