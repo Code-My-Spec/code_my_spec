@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
           )
 
         {output, status} =
-          Fixtures.run_cmd("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
+          Fixtures.run_cmd_bounded("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
       end

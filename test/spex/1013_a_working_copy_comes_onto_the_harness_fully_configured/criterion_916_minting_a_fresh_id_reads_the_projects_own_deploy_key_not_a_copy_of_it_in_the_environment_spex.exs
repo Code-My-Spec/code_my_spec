@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
           )
 
         {output, status} =
-          Fixtures.run_cmd(
+          Fixtures.run_cmd_bounded(
             "mix",
             ["cms.harness.onboard", "--project", context.project.id],
             cd: context.root,
@@ -118,7 +118,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
           )
 
         {output, status} =
-          Fixtures.run_cmd(
+          Fixtures.run_cmd_bounded(
             "mix",
             ["cms.harness.onboard", "--project", context.project.id],
             cd: context.root,

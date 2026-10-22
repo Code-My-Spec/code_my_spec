@@ -5248,6 +5248,69 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Like `run_cmd/3`, but for a `mix` subprocess that must not outlive this
+  test -- story 1013's criteria 916-918 learned why the hard way.
+
+  `System.cmd/3` blocks this process until the external program exits, and
+  an ExUnit test timeout kills this process outright rather than letting it
+  unwind: the port closes, but the `erl` VM `mix` execs into is a real OS
+  process on the other side of it, and nothing reaps it. Orphaned (`ppid`
+  1), it kept running at ~190% CPU, and every run like it slowed the whole
+  machine enough to produce another one -- a 6-problem spex run compounded
+  to 11 before the cause was found.
+
+  Spawns via `Port.open/2` so the OS pid is known immediately, registers
+  its kill with `on_exit/1` (which ExUnit runs on every path out of a
+  test -- pass, fail, or its own timeout), and races the command against
+  `timeout_ms`, strictly shorter than the test's own `spex_timeout/0`, so a
+  genuinely stuck command fails here and is killed here, long before ExUnit
+  would ever have to kill the test process itself.
+  """
+  @spec run_cmd_bounded(String.t(), [String.t()], keyword(), pos_integer()) ::
+          {String.t(), non_neg_integer() | :timeout}
+  def run_cmd_bounded(cmd, args, opts \\ [], timeout_ms \\ 120_000) do
+    executable = System.find_executable(cmd) || raise "#{cmd} not found on PATH"
+
+    port_opts =
+      [:binary, :exit_status, :use_stdio, :stderr_to_stdout, args: args]
+      |> put_port_opt(:cd, opts[:cd])
+      |> put_port_opt(:env, env_charlists(opts[:env]))
+
+    port = Port.open({:spawn_executable, String.to_charlist(executable)}, port_opts)
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+
+    ExUnit.Callbacks.on_exit(fn -> kill_os_pid(os_pid) end)
+
+    collect_bounded(port, os_pid, timeout_ms, "")
+  end
+
+  defp put_port_opt(opts, _key, nil), do: opts
+  defp put_port_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp env_charlists(nil), do: nil
+
+  defp env_charlists(env),
+    do: Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+
+  defp collect_bounded(port, os_pid, timeout_ms, acc) do
+    receive do
+      {^port, {:data, data}} -> collect_bounded(port, os_pid, timeout_ms, acc <> data)
+      {^port, {:exit_status, status}} -> {acc, status}
+    after
+      timeout_ms ->
+        kill_os_pid(os_pid)
+        {acc <> "\n[run_cmd_bounded] killed after exceeding #{timeout_ms}ms", :timeout}
+    end
+  end
+
+  defp kill_os_pid(os_pid) do
+    System.cmd("kill", ["-TERM", to_string(os_pid)], stderr_to_stdout: true)
+    Process.sleep(200)
+    System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+    :ok
+  end
+
+  @doc """
   A throwaway git worktree of this same checkout, detached at `HEAD`, for a
   spec that must run a `mix` task of this repo's own as a real, separate OS
   process (story 1013, criteria 916-918) rather than reach into the module

@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
           Fixtures.scratch_worktree_env(MIX_ENV: "test", MIX_TEST_PARTITION: context.partition)
 
         {output, status} =
-          Fixtures.run_cmd("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
+          Fixtures.run_cmd_bounded("mix", ["cms.check_test_migrations"], cd: context.root, env: env)
 
         {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
       end
