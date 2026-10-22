@@ -3,65 +3,53 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
   Story 1013 — A working copy comes onto the harness fully configured.
   Criterion 918 — A run that cannot name its own database acts on none.
 
-  Driven as product directed on this question: a real, separate OS process
-  running the actual command, asserting only what can be seen from outside
-  (exit status, output, whether a named database exists) -- never `apply/3`
-  and never a direct call into `Mix.Tasks.Cms.CheckTestMigrations`.
+  Was driven as a real, separate OS process against a scratch git worktree.
+  Main's call (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh
+  worktree is too heavy for a spex on this shared machine. Driven in-process
+  instead, against `Mix.Tasks.Cms.CheckTestMigrations.creatable/1` -- the
+  exact function `provision/0` asks before ever calling `create/1` -- public
+  precisely so it can be exercised directly, per its own doc.
 
-  `creatable/1`'s first check is `Mix.env() != :test` -- so "an environment
-  that does not name MIX_ENV" is reached by actually running outside
-  MIX_ENV=test. `:dev`'s own config (`config/dev.exs`) still names a real
-  database by default, so the scenario also points `DATABASE_NAME` (the one
-  override `:dev` reads) at a name nothing has ever created -- a missing
-  database is what sends `cms.check_test_migrations` down `provision/0` into
-  `creatable/1` at all; a healthy, reachable `:dev` database each worktree
-  already has would short-circuit before ever asking whether it may create
-  one.
+  `creatable/1`'s first check is `Mix.env() != :test`. A real subprocess
+  reached that by booting under `MIX_ENV=dev`; in this already-booted VM,
+  `Mix.env/1` is the same switch the subprocess's own boot made, flipped for
+  the one call under test and restored immediately after -- nothing else
+  here reads it mid-test. A healthy, reachable `:dev` database would
+  short-circuit before ever asking whether it may create one, which is why
+  the scenario names a database nothing has created rather than `:dev`'s
+  own default.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias Mix.Tasks.Cms.CheckTestMigrations
 
   spex "A runner that cannot name its own database refuses rather than acting",
     criterion: 918 do
     scenario "A config naming no database is refused, and nothing is created" do
-      given_ "a scratch checkout, and a database name nothing has created", context do
-        root = Fixtures.scratch_worktree!()
-        :ok = Fixtures.warm_scratch_worktree!(root)
+      given_ "a database name nothing has created", context do
         missing_db = "cms_spex_missing_#{System.unique_integer([:positive])}"
 
-        {:ok,
-         context
-         |> Map.put(:root, root)
-         |> Map.put(:missing_db, missing_db)}
+        {:ok, Map.put(context, :missing_db, missing_db)}
       end
 
-      when_ "the migration check runs there, outside MIX_ENV=test, naming that database",
+      when_ "the migration check asks whether it may create that database, outside MIX_ENV=test",
             context do
-        env =
-          Fixtures.scratch_worktree_env(
-            MIX_ENV: "dev",
-            DATABASE_NAME: context.missing_db
-          )
+        config = Keyword.put(CodeMySpec.Repo.config(), :database, context.missing_db)
 
-        {output, status} =
-          Fixtures.run_cmd_bounded(
-            "mix",
-            ["cms.check_test_migrations"],
-            [cd: context.root, env: env],
-            60_000
-          )
+        Mix.env(:dev)
+        result = CheckTestMigrations.creatable(config)
+        Mix.env(:test)
 
-        {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
+        {:ok, Map.put(context, :result, result)}
       end
 
       then_ "it refuses and names what was missing", context do
-        assert context.status == 0,
-               "a refusal should print and proceed, not crash the run: #{context.output}"
+        assert {:error, message} = context.result
 
-        assert context.output =~ "refusing to create a database from MIX_ENV=dev",
-               "the refusal did not name MIX_ENV as what was missing: #{context.output}"
+        assert message =~ "refusing to create a database from MIX_ENV=dev",
+               "the refusal did not name MIX_ENV as what was missing: #{message}"
 
         {:ok, context}
       end

@@ -4,23 +4,20 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   Criterion 916 — Minting a fresh id reads the project's own deploy key,
   not a copy of it in the environment.
 
-  Title-only criterion; no scenario was recorded against it. Driven per
-  product's decisions on the two questions it raised: a user-agent seam
-  (commit 2385ba3b9) was built first and found not to reach the read that
-  matters -- `ensure_local_credential/1`'s own local-database lookup is a
-  plain Ecto query made by the mint subprocess's own, freshly-started
-  connection, not an HTTP request, so no sandbox header can carry test
-  metadata into it. Product's second decision: commit the project row for
-  real, outside the sandbox, so that subprocess's own connection sees it
-  exactly as production would, and delete it afterward.
+  Was driven as a real, separate OS process against a scratch git worktree,
+  with a real local listener standing in for the server. Main's call
+  (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh worktree is
+  too heavy for a spex on this shared machine. Driven in-process instead,
+  against `Mix.Tasks.Cms.Harness.Onboard.mint/2` directly -- public,
+  precisely so it can be exercised this way -- with `Req.Test` standing in
+  for the server both requests reach (the mint POST, already wired in
+  `config/test.exs`; the token exchange, wired here for the duration of the
+  call).
 
-  A real subprocess also needs `MIX_TEST_PARTITION` pinned explicitly to
-  this process's own partition (`Fixtures.live_test_partition!/0`):
-  `mix cms.spex` assigns each shard its own database by overriding
-  `Application.get_env` at runtime, never the OS-level `MIX_TEST_PARTITION`
-  variable, so an uncorrected subprocess resolves to whatever ambient
-  partition this whole session started with -- a different database than
-  the one the committed row actually lives in.
+  Driving `mint/2` in-process rather than `run/1` or `onboard/4`: those also
+  provision a preview tunnel and configure git, neither of which this
+  criterion is about, and neither of which a stub should have to pretend to
+  answer for.
 
   `ensure_local_credential/1`'s own `cond` answers this criterion
   structurally: its first clause, "this server's own database", wins
@@ -28,115 +25,112 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   `CMS_DEPLOY_KEY` is never even inspected in that branch, set or not.
   Both scenarios below exercise that same branch; the point is that a
   wrong value sitting in the environment changes nothing about the
-  outcome.
+  outcome. `:harness_server_url_override` is what makes the target local
+  for the duration of each scenario -- `local_server?/1` reads the host,
+  and "localhost" is what it checks for.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CmsHarness.Token
+  alias Mix.Tasks.Cms.Harness.Onboard
+
+  setup do
+    original_server_url = Application.get_env(:code_my_spec, :harness_server_url_override)
+    original_token_config = Application.get_env(:code_my_spec, Token, [])
+
+    Application.put_env(:code_my_spec, :harness_server_url_override, "http://localhost:9999")
+
+    Application.put_env(
+      :code_my_spec,
+      Token,
+      Keyword.put(original_token_config, :plug, {Req.Test, Token})
+    )
+
+    Req.Test.stub(Onboard, fn conn ->
+      Req.Test.json(conn, %{"harness_id" => "harness-" <> Ecto.UUID.generate()})
+    end)
+
+    Req.Test.stub(Token, fn conn ->
+      Req.Test.json(conn, %{
+        "access_token" => "spex-token-" <> Ecto.UUID.generate(),
+        "expires_in" => 3600
+      })
+    end)
+
+    # `CmsHarness.Token` is a long-lived named GenServer the app supervisor
+    # already started, not a process this test owns -- its own request runs
+    # on that pid, not this test's, and Req.Test's stub lookup is per-owner.
+    # `allow/3` grants that pid this test's stub without starting a second
+    # Token server (which `Token.start_link/1` would refuse: already named).
+    case Process.whereis(Token) do
+      nil -> :ok
+      pid -> Req.Test.allow(Token, self(), pid)
+    end
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, :harness_server_url_override, original_server_url)
+      Application.put_env(:code_my_spec, Token, original_token_config)
+    end)
+
+    :ok
+  end
 
   spex "Minting a fresh id reads the project's own deploy key, not the environment's",
        criterion: 916 do
     scenario "A different deploy key in the environment does not override the database's own" do
-      given_ "a committed project with its own deploy key, reachable by a real local listener",
+      given_ "a committed project with its own deploy key, with a different key named in " <>
+               "the environment",
              context do
-        {listener, url} = Fixtures.start_live_listener!()
-        # Not System.unique_integer/1: it resets near 1 on every fresh VM
-        # boot, and each run of this file is one -- a low-entropy key can
-        # collide with deploy_key_hash's unique index against a leftover
-        # row from an earlier run.
         db_key = "dk_db_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
         project = Fixtures.committed_project_with_deploy_key!(db_key)
-        root = Fixtures.scratch_worktree!()
-        :ok = Fixtures.warm_scratch_worktree!(root)
+        root = Fixtures.spex_tmp_dir!("onboard")
 
-        {:ok,
-         context
-         |> Map.put(:listener, listener)
-         |> Map.put(:url, url)
-         |> Map.put(:project, project)
-         |> Map.put(:root, root)}
+        env_key = "dk_env_copy_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
+        System.put_env("CMS_DEPLOY_KEY", env_key)
+        on_exit(fn -> System.delete_env("CMS_DEPLOY_KEY") end)
+
+        {:ok, context |> Map.put(:project, project) |> Map.put(:root, root)}
       end
 
-      when_ "onboarding mints against it, with a different deploy key named in the environment",
-            context do
-        env =
-          Fixtures.scratch_worktree_env(
-            MIX_ENV: "test",
-            MIX_TEST_PARTITION: Fixtures.live_test_partition!(),
-            CMS_SERVER_URL: context.url,
-            CMS_TEST_REAL_DEVICE_CLIENT: "1",
-            CMS_DEPLOY_KEY:
-              "dk_env_copy_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
-          )
+      when_ "onboarding mints against it", context do
+        result = Onboard.mint(context.root, context.project.id)
 
-        {output, status} =
-          Fixtures.run_cmd_bounded(
-            "mix",
-            ["cms.harness.onboard", "--project", context.project.id],
-            [cd: context.root, env: env],
-            60_000
-          )
-
-        {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
+        {:ok, Map.put(context, :result, result)}
       end
 
       then_ "the mint succeeds, authenticated by the database's key rather than the environment's",
             context do
-        assert context.status == 0,
-               "onboarding did not succeed against the database's own key: #{context.output}"
-
-        assert context.output =~ "Issued a new harness id",
-               "the mint did not report success: #{context.output}"
+        assert {:ok, _id} = context.result,
+               "onboarding did not succeed against the database's own key: #{inspect(context.result)}"
 
         {:ok, context}
       end
     end
 
     scenario "With no deploy key in the environment at all, the database's own still authenticates the mint" do
-      given_ "a second committed project with its own deploy key, reachable by a real local listener",
+      given_ "a second committed project with its own deploy key, with no deploy key in the environment",
              context do
-        {listener, url} = Fixtures.start_live_listener!()
         db_key = "dk_db2_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
         project = Fixtures.committed_project_with_deploy_key!(db_key)
-        root = Fixtures.scratch_worktree!()
-        :ok = Fixtures.warm_scratch_worktree!(root)
+        root = Fixtures.spex_tmp_dir!("onboard")
 
-        {:ok,
-         context
-         |> Map.put(:listener, listener)
-         |> Map.put(:url, url)
-         |> Map.put(:project, project)
-         |> Map.put(:root, root)}
+        System.delete_env("CMS_DEPLOY_KEY")
+
+        {:ok, context |> Map.put(:project, project) |> Map.put(:root, root)}
       end
 
-      when_ "onboarding mints against it, with the environment naming no deploy key", context do
-        env =
-          Fixtures.scratch_worktree_env(
-            MIX_ENV: "test",
-            MIX_TEST_PARTITION: Fixtures.live_test_partition!(),
-            CMS_SERVER_URL: context.url,
-            CMS_TEST_REAL_DEVICE_CLIENT: "1"
-          )
+      when_ "onboarding mints against it", context do
+        result = Onboard.mint(context.root, context.project.id)
 
-        {output, status} =
-          Fixtures.run_cmd_bounded(
-            "mix",
-            ["cms.harness.onboard", "--project", context.project.id],
-            [cd: context.root, env: env],
-            60_000
-          )
-
-        {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
+        {:ok, Map.put(context, :result, result)}
       end
 
       then_ "the mint succeeds from the database's own key alone", context do
-        assert context.status == 0,
+        assert {:ok, _id} = context.result,
                "onboarding did not succeed from the database's own key with none in the " <>
-                 "environment: #{context.output}"
-
-        assert context.output =~ "Issued a new harness id",
-               "the mint did not report success: #{context.output}"
+                 "environment: #{inspect(context.result)}"
 
         {:ok, context}
       end

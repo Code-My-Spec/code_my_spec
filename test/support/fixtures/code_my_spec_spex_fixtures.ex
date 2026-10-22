@@ -5318,96 +5318,60 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  A throwaway git worktree of this same checkout, detached at `HEAD`, for a
-  spec that must run a `mix` task of this repo's own as a real, separate OS
-  process (story 1013, criteria 916-918) rather than reach into the module
-  directly. Shares this checkout's already-fetched `deps` and compiled
-  `_build` via `scratch_worktree_env/0`, so a subprocess run in it costs a
-  fork and (at most) an incremental recompile, not `mix deps.get`.
+  Runs `fun` with `CodeMySpec.Repo` redirected to `database`, a name nothing
+  has used, for story 1013's criteria 916-918: driving the real
+  onboarding/migration code in-process against a genuinely fresh database,
+  instead of a real `mix` subprocess whose own full recompile proved too
+  heavy for this shared machine (main, 2026-10-22).
 
-  `.git` in a linked worktree is a regular file, not a directory, pointing
-  at the real one -- which is exactly the state `config/test.exs`'s own
-  partition fallback (`File.regular?(Path.join(File.cwd!(), ".git"))`)
-  reads to name a deterministic, collision-free scratch database after the
-  worktree's own directory name when nothing else names one.
+  Two redirects, both required: `Application.put_env/3` so `Repo.config/0`
+  (and anything that reads it, like `creatable/1`) names `database`; a
+  second, unpooled connection via `put_dynamic_repo/1` so queries *through*
+  `Repo` -- `Ecto.Migrator`, `SQL.query/3` -- reach it too. `Repo.config/0`
+  does not consult the dynamic repo's own startup options, so the first
+  redirect alone would leave every config read naming `database` while
+  every query still ran against whatever this process was already
+  connected to.
 
-  Removed, and its worktree entry pruned, on exit.
+  Drops `database` afterward, whether `fun` created it or not -- the
+  pending-migrations check this exists to drive always ends by creating
+  one, so that is not an edge case here, but a run that answers earlier
+  (an unreachable postgres, say) should not leave a scratch database for
+  the next one to collide with.
   """
-  @spec scratch_worktree!() :: Path.t()
-  def scratch_worktree! do
-    main_root = File.cwd!()
-    root = spex_tmp_dir!("scratch-worktree")
-    File.rmdir!(root)
+  @spec with_throwaway_database(String.t(), (-> result)) :: result when result: term()
+  def with_throwaway_database(database, fun) do
+    original_config = Application.get_env(:code_my_spec, CodeMySpec.Repo)
 
-    {_out, 0} = run_cmd("git", ["worktree", "add", "--detach", root, "HEAD"], cd: main_root)
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Repo,
+      Keyword.put(original_config, :database, database)
+    )
 
-    ExUnit.Callbacks.on_exit(fn ->
-      run_cmd("git", ["worktree", "remove", "--force", root], cd: main_root)
-    end)
+    dyn_config =
+      CodeMySpec.Repo.config()
+      |> Keyword.put(:name, nil)
+      |> Keyword.put(:pool, DBConnection.ConnectionPool)
+      |> Keyword.put(:pool_size, 2)
 
-    # `config/runtime.exs` sources `envs/<env>.env` (Dotenvy) relative to cwd
-    # for every env but :test -- a worktree without it crashes at boot on a
-    # missing OAuth var before ever reaching anything this spec is about.
-    # `git worktree add` already checked out `envs/*.enc.env` (tracked), but
-    # not the decrypted `*.env` beside them (gitignored, generated locally) --
-    # those are what's actually missing. Linked per file, the way
-    # `cms.harness.onboard`'s own bootstrap links `envs` as a whole for a
-    # fresh worktree it mints; this one is not minted through that command,
-    # and the destination directory already exists here.
-    for name <- ~w(dev.env test.env) do
-      source = Path.join([main_root, "envs", name])
-      dest = Path.join([root, "envs", name])
+    {:ok, pid} = CodeMySpec.Repo.start_link(dyn_config)
+    previous = CodeMySpec.Repo.get_dynamic_repo()
+    CodeMySpec.Repo.put_dynamic_repo(pid)
 
-      if File.exists?(source) and not match?({:ok, _}, File.lstat(dest)) do
-        File.ln_s!(source, dest)
-      end
+    try do
+      fun.()
+    after
+      CodeMySpec.Repo.put_dynamic_repo(previous)
+      GenServer.stop(pid)
+      Application.put_env(:code_my_spec, CodeMySpec.Repo, original_config)
+
+      run_cmd("psql", [
+        "postgres://postgres:postgres@localhost/postgres",
+        "-tAc",
+        "drop database if exists #{database}"
+      ])
     end
-
-    root
-  end
-
-  @doc """
-  Env vars that point a `scratch_worktree!/0`'s `mix` invocation at this
-  checkout's own fetched `deps` and compiled `_build`, merged over the base
-  env a `run_cmd/3` call passes for a given scenario.
-  """
-  @spec scratch_worktree_env(keyword()) :: [{String.t(), String.t()}]
-  def scratch_worktree_env(overrides \\ []) do
-    [
-      {"MIX_BUILD_PATH", Path.join(File.cwd!(), "_build")},
-      {"MIX_DEPS_PATH", Path.join(File.cwd!(), "deps")}
-    ] ++ Enum.map(overrides, fn {k, v} -> {to_string(k), to_string(v)} end)
-  end
-
-  @doc """
-  Compiles a `scratch_worktree!/0` once, untimed, so the command a spex
-  actually bounds and asserts on pays an incremental compile, not a full
-  one.
-
-  Sharing this checkout's `_build` (`scratch_worktree_env/1`) does not make
-  the worktree's first `mix` invocation incremental on its own: the
-  worktree's files sit at a different absolute path than this checkout's,
-  which the compiler manifest reads as "every file is stale," so the first
-  command run in a fresh worktree recompiles all ~1550 files regardless of
-  what `_build` already holds. Story 1013's criteria 916-918 learned this
-  by timing out: that recompile, done inside the timed command, routinely
-  took long enough on a busy machine to blow even a generous bound. Once
-  paid here, a second `mix` command against the *same* worktree path finds
-  nothing stale and skips it -- the saving `scratch_worktree_env/1`'s own
-  doc promised is real, just not on the very first command.
-  """
-  @spec warm_scratch_worktree!(Path.t()) :: :ok
-  def warm_scratch_worktree!(root) do
-    {output, 0} =
-      run_cmd_bounded(
-        "mix",
-        ["compile"],
-        [cd: root, env: scratch_worktree_env(MIX_ENV: "test")],
-        150_000
-      )
-
-    _ = output
-    :ok
   end
 
   @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."

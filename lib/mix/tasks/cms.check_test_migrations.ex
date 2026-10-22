@@ -35,8 +35,6 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  alias Ecto.Adapters.SQL
-
   @requirements ["app.start"]
 
   @impl Mix.Task
@@ -231,8 +229,15 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
     end
   end
 
+  # `CodeMySpec.Repo.query/2`, not `SQL.query(CodeMySpec.Repo, ...)`: the
+  # latter resolves a bare module atom via `GenServer.whereis/1`
+  # (`Ecto.Repo.Registry.lookup/1`), which always finds the one real,
+  # globally-named connection and never consults `get_dynamic_repo/0`. The
+  # module's own `query/2` does, which is what lets a caller (story 1013,
+  # criterion 917) exercise this against a throwaway connection in-process
+  # rather than the live one every other test shares.
   defp applied_versions do
-    SQL.query(CodeMySpec.Repo, "SELECT version FROM schema_migrations", [])
+    CodeMySpec.Repo.query("SELECT version FROM schema_migrations", [])
   end
 
   defp migration_versions(files) do

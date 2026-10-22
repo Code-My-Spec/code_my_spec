@@ -686,7 +686,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # to mint it cannot work for a copy nobody serves yet: the harness learns
   # which copies to serve by looking ids up, so a copy with no id would never
   # be served and would never acquire one.
-  defp mint(root, project_id) do
+  #
+  # Public, like `CheckTestMigrations.creatable/1`, so it can be exercised
+  # directly (story 1013, criteria 916-918): the credential-resolution
+  # question this decides needs a real database and a real HTTP round trip
+  # to answer honestly, and a spec driving it in-process through `mint/2`
+  # gets both without a `mix` subprocess recompiling this checkout to ask it.
+  @spec mint(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  def mint(root, project_id) do
     with {:ok, project} <- project_for(root, project_id),
          credential = ensure_local_credential(project.id),
          {:ok, token} <- token_for(credential),

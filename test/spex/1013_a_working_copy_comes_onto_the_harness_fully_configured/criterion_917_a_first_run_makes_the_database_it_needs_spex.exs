@@ -3,15 +3,20 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
   Story 1013 — A working copy comes onto the harness fully configured.
   Criterion 917 — A first run makes the database it needs.
 
-  Driven as product directed on this question: a real, separate OS process
-  running the actual command against a scratch checkout, asserting only what
-  can be seen from outside -- never a direct call into the module under test.
+  Was driven as a real, separate OS process against a scratch git worktree.
+  Main's call (2026-10-22, issue 99c05f98): a full `mix` compile in a fresh
+  worktree is too heavy for a spex on this shared machine, and slows every
+  other team's run. Driven in-process instead: the same code
+  (`Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!/0`) runs in this VM,
+  with `Fixtures.with_throwaway_database/2` redirecting `CodeMySpec.Repo` to
+  a database nothing has used, rather than a real subprocess reaching for
+  one via its own environment.
 
   `test/test_helper.exs` and the `spex` alias both run
   `mix cms.check_test_migrations` before anything else, which is what
-  `provision/0` means by "before the suite starts" -- so running that command
-  directly, against a partition nothing has used yet, is the real first-run
-  path itself, not a stand-in for it.
+  `provision/0` means by "before the suite starts" -- so calling
+  `refuse_if_behind!/0` directly against a partition nothing has used is the
+  real first-run path itself, not a stand-in for it.
   """
 
   use CodeMySpecSpex.Case
@@ -19,47 +24,25 @@ defmodule CodeMySpecSpex.Story1013.Criterion917Spex do
   alias CodeMySpecSpex.Fixtures
 
   spex "A first run makes the database it needs, before the suite starts", criterion: 917 do
-    scenario "An exunit run against a never-used partition creates and migrates its database" do
-      given_ "a scratch checkout and a partition nothing has used before", context do
-        root = Fixtures.scratch_worktree!()
-        :ok = Fixtures.warm_scratch_worktree!(root)
-        partition = "cms_spex_#{System.unique_integer([:positive])}"
-        database = "code_my_spec_test#{partition}"
+    scenario "A migration check against a never-used database creates and migrates it" do
+      given_ "a database name nothing has used before", context do
+        database = "code_my_spec_test_spex_#{System.unique_integer([:positive])}"
 
-        ExUnit.Callbacks.on_exit(fn ->
-          Fixtures.run_cmd("psql", [
-            "postgres://postgres:postgres@localhost/postgres",
-            "-tAc",
-            "drop database if exists #{database}"
-          ])
-        end)
-
-        {:ok,
-         context
-         |> Map.put(:root, root)
-         |> Map.put(:partition, partition)
-         |> Map.put(:database, database)}
+        {:ok, Map.put(context, :database, database)}
       end
 
       when_ "the analyzer's migration check runs there for the first time", context do
-        env =
-          Fixtures.scratch_worktree_env(MIX_ENV: "test", MIX_TEST_PARTITION: context.partition)
+        output =
+          ExUnit.CaptureIO.capture_io(:stderr, fn ->
+            Fixtures.with_throwaway_database(context.database, fn ->
+              :ok = Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
+            end)
+          end)
 
-        {output, status} =
-          Fixtures.run_cmd_bounded(
-            "mix",
-            ["cms.check_test_migrations"],
-            [cd: context.root, env: env],
-            60_000
-          )
-
-        {:ok, context |> Map.put(:output, output) |> Map.put(:status, status)}
+        {:ok, Map.put(context, :output, output)}
       end
 
       then_ "the partition database is created and migrated before the suite starts", context do
-        assert context.status == 0,
-               "the first run against an unused partition did not complete: #{context.output}"
-
         {exists, 0} =
           Fixtures.run_cmd("psql", [
             "postgres://postgres:postgres@localhost/postgres",
