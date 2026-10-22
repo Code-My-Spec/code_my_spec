@@ -652,9 +652,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     - Attribution follows automatically: every `scope: app` issue you file
       from this task carries this story unless you pass a `story_number`.
       `qa`, `docs` and `framework` findings are about the tooling, so they
-      stay off the story unless you name one. Until each story issue is triaged and every accepted one at the
-      project's threshold is submitted and readiness is recertified, this story is not re-offered for QA —
-      a `partial` or `fail` result resumes by itself once they are. If an
+      stay off the story unless you name one. Each story issue must be triaged and
+      every accepted one at the project's threshold submitted. A `partial` or
+      `fail` resumes automatically once its cited blockers are resolved, dismissed,
+      or submitted at the required threshold and the copy is certified at HEAD.
+      An unchanged certified commit can be reviewed again without recertification;
+      if HEAD has moved, readiness must be certified at the new commit first. If an
       issue belongs to a *different* story, pass that `story_number` on the
       `create_issue` call — an explicit attribution is never overwritten.
     - Don't write findings into a result.md file. The harness doesn't read it.
