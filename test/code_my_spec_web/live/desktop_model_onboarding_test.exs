@@ -184,6 +184,22 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     refute has_element?(finished, "[data-test=model-onboarding]")
   end
 
+  test "desktop project form persists its new project as active", %{conn: conn, scope: scope} do
+    {:ok, _} = Agents.put_model_setting(scope, :main, "claude-code", "claude-opus-5-5")
+    {:ok, account} = CodeMySpec.Accounts.create_account(scope, %{name: "Desktop workspace"})
+    {:ok, _} = UserPreferences.select_active_account(scope, account.id)
+
+    {:ok, view, _} = live(conn, "/app")
+    view |> form("#project_form", project: %{name: "Desktop project"}) |> render_submit()
+    assert_redirect(view, "/app")
+
+    refreshed = UserPreferences.scope_for(scope.user)
+    assert refreshed.active_project.name == "Desktop project"
+    assert refreshed.active_project_id == refreshed.active_project.id
+    {:ok, returning, _} = live(conn, "/app")
+    assert has_element?(returning, "a[href='/app/projects/#{refreshed.active_project_id}/agent-conversation']")
+  end
+
   test "recheck sees an agent installed while the page is open", ctx do
     {:ok, view, _} = live(ctx.conn, "/app")
     render_async(view)
