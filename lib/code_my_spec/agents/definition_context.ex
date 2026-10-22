@@ -20,8 +20,22 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{local_directory_guidance(project)}
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.
-    Work out the environment, inspect existing sources without changing them, and establish a
-    suitable working copy using the supported setup/provisioning workflow.
+    First verify development prerequisites on the selected execution host using the shared
+    CmsHarness.Setup.Prerequisites catalog and recorded setup workflow: PostgreSQL/pgvector,
+    the version manager, Erlang, Elixir, cms, and Vibium. Resolve missing prerequisites and
+    recheck before generation; the desktop control plane using SQLite does not waive the
+    generated application's database requirements. Use platform-aware setup/install commands.
+    Inspect reference repositories without modifying them.
+    For a new app, use the CodeMySpec generator, not hand-written scaffolding or stock phx.new.
+    Verify the host's CLI: use cms new if supported; the existing setup implementation invokes
+    mix cms.new PATH --app APP --no-install. A cms release that only exposes start/rpc/version
+    does not support cms new. Use/install the supported cms.new generator rather than repeatedly
+    calling an unsupported command. PATH is the agreed destination; APP is a valid snake_case
+    OTP application name. Never generate in agent scratch or overwrite an occupied directory.
+    After generation, complete dependency/database setup and connect/register that checkout as
+    the EXISTING selected project's main working copy. Preserve its account and project IDs;
+    do not create a second project record. Verify the registered root, main designation and
+    harness connection before reporting the main working copy ready or entering development tasks.
     #{source_guidance()}
     Ask Product via message_agent for unresolved user choices. Do not restart the product interview.
     Report concrete setup progress and blockers; never claim a checkout or environment is ready

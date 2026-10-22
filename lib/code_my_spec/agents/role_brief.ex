@@ -72,7 +72,11 @@ defmodule CodeMySpec.Agents.RoleBrief do
     During detached onboarding, the development setup request itself is your work. Read
     get_project_onboarding and establish the agreed environment and working copy. Do not gate
     that work on get_next_requirement or start_task: those require a working copy, which you
-    are setting up. A no-working-copy response is expected until setup establishes one.
+    are setting up. First verify and satisfy the selected host's development prerequisites
+    using the shared setup catalog. Then use the CodeMySpec generator (cms new where supported;
+    the setup implementation uses mix cms.new), complete application setup, and connect the
+    generated checkout as this existing project's main working copy. Verify that connection
+    before reporting readiness; do not create another project or hand-scaffold the application. A no-working-copy response is expected until setup establishes one.
     Your scratch directory is not the application destination; honor the saved local_directory
     or selected execution host. Do not substitute production provisioning for local development.
 
