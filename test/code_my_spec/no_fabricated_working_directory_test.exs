@@ -37,6 +37,10 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # checkout's own .git, and the cwd of the process serving it is that checkout.
     "lib/code_my_spec_web/plugs/hold_during_landing.ex" =>
       "dev-only plug: the serving process's cwd is the checkout a landing merges into",
+    # `/dev/qa-agents` mirrors the checkout a copy's own app runs from, so QA
+    # can act as agents against it; dev routes only.
+    "lib/code_my_spec_web/controllers/dev_provisioning_fixture_controller.ex" =>
+      "dev-only route: the serving process's cwd is the copy it mirrors for QA",
 
     # Mix tasks and the CLI-only init path run on the machine holding the code.
     "lib/mix/tasks/set_story_component.ex" => "mix task: cwd is the project by definition",
