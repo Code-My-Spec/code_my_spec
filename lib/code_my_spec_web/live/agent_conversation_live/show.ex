@@ -648,6 +648,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # is not one). A run is one row; each notice in it can still be taken back.
   defp pending_runs(pending) do
     pending
+    |> Enum.reject(&(&1.sender_id == "setup"))
     |> Enum.chunk_by(&ChatComponents.routine_notice?/1)
     |> Enum.flat_map(fn [first | _] = run ->
       if ChatComponents.routine_notice?(first),
@@ -673,14 +674,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   end
 
   attr :message, :any, required: true
-
-  # One line until asked: a brief can run to a screen, and the queue sits above
-  # the composer. Toggled client-side so a patch does not fold it back up.
-  defp queued_text(%{message: %{sender_id: "setup"}} = assigns) do
-    ~H"""
-    <ChatComponents.turn id={"queued-context-#{@message.id}"} message={@message} />
-    """
-  end
 
   defp queued_text(assigns) do
     assigns =

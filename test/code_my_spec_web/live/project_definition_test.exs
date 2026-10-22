@@ -249,11 +249,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     refute has_element?(view, "[data-test=no-main-working-copy]")
     refute has_element?(view, "[data-test=product-unavailable]")
 
-    assert has_element?(
-             view,
-             "details[data-test=project-context]:not([open]) summary",
-             "Project context"
-           )
+    refute has_element?(view, "[data-test=agent-pending-message] [data-test=project-context]")
 
     refute has_element?(view, "[data-test=queued-message-text]", "Begin defining this project")
     {:ok, conversation_id} = CodeMySpec.Agents.conversation_id(scope, product.id)
