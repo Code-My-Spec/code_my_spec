@@ -13,12 +13,24 @@ defmodule CodeMySpec.Analysis.RunNode do
     if Node.alive?(), do: :ok, else: start(:"#{prefix}_#{System.pid()}@127.0.0.1")
   end
 
-  @doc "What a run needs in its environment to join this node."
+  @doc """
+  What a run needs in its environment to join this node.
+
+  The run's BEAM is distributed from boot (`ELIXIR_ERL_OPTIONS`), never by the
+  formatter starting distribution itself: `mix test` is still requiring test
+  files in parallel then, and a process minted as `nonode@nohost` reads as a
+  foreign pid once the node gets a name ("no connection to nonode@nohost",
+  issue 8b863c74).
+  """
   @spec env(integer(), module()) :: [{String.t(), String.t()}]
   def env(run_id, listener) do
+    cookie = Atom.to_string(Node.get_cookie())
+    name = "cms_run_#{run_id}_#{System.unique_integer([:positive])}@127.0.0.1"
+
     [
+      {"ELIXIR_ERL_OPTIONS", "-name #{name} -setcookie #{cookie}"},
       {"CMS_HARNESS_NODE", Atom.to_string(node())},
-      {"CMS_HARNESS_COOKIE", Atom.to_string(Node.get_cookie())},
+      {"CMS_HARNESS_COOKIE", cookie},
       {"CMS_RUN_ID", Integer.to_string(run_id)},
       {"CMS_RUN_LISTENER", Atom.to_string(listener)}
     ]
