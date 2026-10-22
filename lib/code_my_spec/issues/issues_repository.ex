@@ -41,6 +41,14 @@ defmodule CodeMySpec.Issues.IssuesRepository do
 
   def open_issue_titled?(%Scope{}, _title), do: false
 
+  @doc "Whether a fault is open or was resolved after the latest restart."
+  def fault_reported?(%Scope{active_project_id: project_id}, fault_key, restarted_at) do
+    Issue
+    |> where([i], i.project_id == ^project_id and i.fault_key == ^fault_key)
+    |> where([i], i.status != :resolved or i.closed_at >= ^restarted_at)
+    |> Repo.exists?()
+  end
+
   def list_by_status(%Scope{} = scope, status) do
     Issue
     |> by_project(scope.active_project.id)

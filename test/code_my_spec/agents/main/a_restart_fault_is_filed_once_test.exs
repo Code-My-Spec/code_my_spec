@@ -88,6 +88,45 @@ defmodule CodeMySpec.Agents.Main.ARestartFaultIsFiledOnceTest do
     end
   end
 
+  test "a resolved fault stays closed until another restart", ctx do
+    reason = "continued silence after restart"
+    agent = an_unresolved_agent(ctx.scope, ctx.copy, reason)
+    title = "A restart changed nothing: #{reason}"
+
+    Main.list_agent_work(ctx.scope)
+
+    [issue] =
+      ctx.scope
+      |> Issues.list_issues()
+      |> Enum.filter(&(&1.title == title))
+
+    {:ok, accepted} = Issues.accept_issue(ctx.scope, issue)
+    {:ok, resolved} = Issues.resolve_issue(ctx.scope, accepted, "Fault handled")
+
+    Enum.each(1..3, fn _ -> Main.list_agent_work(ctx.scope) end)
+
+    matching =
+      ctx.scope
+      |> Issues.list_issues()
+      |> Enum.filter(&(&1.title == title))
+
+    assert Enum.map(matching, &{&1.id, &1.status}) == [{resolved.id, :resolved}]
+
+    {:ok, _restart} = RestartRepository.record(agent, reason)
+    Main.list_agent_work(ctx.scope)
+    Main.list_agent_work(ctx.scope)
+
+    matching =
+      ctx.scope
+      |> Issues.list_issues()
+      |> Enum.filter(&(&1.title == title))
+
+    assert length(matching) == 2
+    assert Enum.count(matching, &(&1.status == :resolved)) == 1
+    assert Enum.count(matching, &(&1.status == :incoming)) == 1
+    assert Enum.find(matching, &(&1.id == resolved.id)).status == :resolved
+  end
+
   describe "the database-level guard" do
     test "a second issue with the same fault_key and project is refused", ctx do
       fault_key = "A restart changed nothing: the same fault, raced"

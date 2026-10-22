@@ -52,6 +52,10 @@ defmodule CodeMySpec.Issues do
   def open_issue_titled?(%Scope{} = scope, title),
     do: IssuesRepository.open_issue_titled?(scope, title)
 
+  @doc "Whether a fault is open or was resolved after the latest restart."
+  @spec fault_reported?(Scope.t(), String.t(), DateTime.t()) :: boolean()
+  defdelegate fault_reported?(scope, fault_key, restarted_at), to: IssuesRepository
+
   def list_by_status_and_min_severity(%Scope{} = scope, status, min_severity) do
     IssuesRepository.list_by_status_and_min_severity(scope, status, min_severity)
   end
