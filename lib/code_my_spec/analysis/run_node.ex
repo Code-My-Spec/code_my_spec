@@ -28,7 +28,10 @@ defmodule CodeMySpec.Analysis.RunNode do
     name = "cms_run_#{run_id}_#{System.unique_integer([:positive])}@127.0.0.1"
 
     [
-      {"ELIXIR_ERL_OPTIONS", "-name #{name} -setcookie #{cookie}"},
+      # Hidden, so the run shares no `:global` with this node or any other
+      # run: globally registered test processes (`Mox.Server`) collided
+      # across runs and took the harness down.
+      {"ELIXIR_ERL_OPTIONS", "-hidden -name #{name} -setcookie #{cookie}"},
       {"CMS_HARNESS_NODE", Atom.to_string(node())},
       {"CMS_HARNESS_COOKIE", cookie},
       {"CMS_RUN_ID", Integer.to_string(run_id)},
