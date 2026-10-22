@@ -407,6 +407,9 @@ defmodule CodeMySpecWeb.Router do
 
       post "/provisioning-fixtures", DevProvisioningFixtureController, :create
 
+      # Agents for QA to act as against this copy's own app (story 1143).
+      post "/qa-agents", DevProvisioningFixtureController, :qa_agents
+
       post "/provisioning-fixtures/:project_id/start-agent",
            DevProvisioningFixtureController,
            :start_agent

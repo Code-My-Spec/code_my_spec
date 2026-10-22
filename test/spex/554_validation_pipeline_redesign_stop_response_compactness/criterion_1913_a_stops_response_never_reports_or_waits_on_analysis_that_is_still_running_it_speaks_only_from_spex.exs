@@ -70,7 +70,8 @@ defmodule CodeMySpecSpex.Story554.Criterion1913Spex do
         {:ok, context}
       end
 
-      then_ "the still-running spex analyzer is never named or waited on in the response", context do
+      then_ "the still-running spex analyzer is never named or waited on in the response",
+            context do
         refute Map.has_key?(context.response, "waiting"),
                "the response must not report a wait on the still-running analyzer, got: #{inspect(context.response)}"
 

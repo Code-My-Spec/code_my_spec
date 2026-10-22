@@ -916,7 +916,9 @@ defmodule CodeMySpec.Agents do
   defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent) do
     Offers.abandon_turns(agent.id)
 
-    if agent.continuous && is_nil(Agent.active_task(agent)) do
+    # An agent that is off is told nothing: nothing reaches it until it is
+    # turned on, so the note would only pile up as undelivered.
+    if agent.continuous && not Agent.off?(agent) && is_nil(Agent.active_task(agent)) do
       send_to_agent(agent.id, "The harness restarted.", :own_reply,
         offer: {:resume, {"restart", nil}}
       )

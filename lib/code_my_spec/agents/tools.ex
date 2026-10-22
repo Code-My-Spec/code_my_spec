@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.Tools do
       CodeMySpec.Conversations,
       CodeMySpec.Embeddings,
       CodeMySpec.Notifications,
+      CodeMySpec.Promotion,
       CodeMySpec.Qa,
       CodeMySpec.Requirements,
       CodeMySpec.ScreenState,
