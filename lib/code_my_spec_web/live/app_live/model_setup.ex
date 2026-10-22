@@ -4,6 +4,7 @@ defmodule CodeMySpecWeb.AppLive.ModelSetup do
 
   attr :current_scope, :any, required: true
   attr :installations, :map, required: true
+  attr :local_checks?, :boolean, required: true
   attr :checking?, :boolean, required: true
   attr :error, :string, default: nil
   attr :selected_provider, :string, default: nil
@@ -25,7 +26,7 @@ defmodule CodeMySpecWeb.AppLive.ModelSetup do
     ]
 
     selected = Enum.find(agents, &(&1.provider == assigns.selected_provider))
-    ready? = selected && get_in(assigns.installations, [selected.key, :installed?])
+    ready? = selected != nil
     assigns = assign(assigns, agents: agents, selected: selected, ready?: ready?)
 
     ~H"""
@@ -39,7 +40,7 @@ defmodule CodeMySpecWeb.AppLive.ModelSetup do
         <h1 class="text-2xl font-bold mt-3">Choose your agent</h1>
         <p class="text-base-content/70 mt-2">
           Pick the agent you want to use, then choose its default models.
-          Your agents use the CLI login on this machine.
+          Your agents use the CLI login on the machine where they run.
         </p>
       </div>
       <p :if={@error} role="alert" class="alert alert-error">{@error}</p>
@@ -53,6 +54,8 @@ defmodule CodeMySpecWeb.AppLive.ModelSetup do
             <h2 class="card-title">{agent.name}</h2>
             <p role="status">
               <%= cond do %>
+                <% !@local_checks? -> %>
+                  Installation status is available in the desktop app.
                 <% @checking? -> %>
                   Checking installation…
                 <% get_in(@installations, [agent.key, :installed?]) -> %>
@@ -76,22 +79,21 @@ defmodule CodeMySpecWeb.AppLive.ModelSetup do
               Open {agent.name} once to sign in before starting your first conversation.
             </p>
             <.link
-              :if={get_in(@installations, [agent.key, :installed?]) == true}
               patch={~p"/app?provider=#{agent.provider}"}
               class="btn btn-primary"
             >
               Use {agent.name}
             </.link>
-            <button
-              :if={get_in(@installations, [agent.key, :installed?]) != true}
-              type="button"
-              class="btn btn-primary"
-              disabled
-            >Use {agent.name}</button>
           </div>
         </div>
       </div>
-      <button type="button" phx-click="check_agents" disabled={@checking?} class="btn btn-ghost">
+      <button
+        :if={@local_checks?}
+        type="button"
+        phx-click="check_agents"
+        disabled={@checking?}
+        class="btn btn-ghost"
+      >
         Check again
       </button>
       <div :if={@ready?} class="card bg-base-100 border border-base-300" data-test="onboarding-models">

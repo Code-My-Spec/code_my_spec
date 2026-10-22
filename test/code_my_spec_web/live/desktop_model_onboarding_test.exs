@@ -42,11 +42,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     assert has_element?(view, "[data-test=agent-installation-codex] a", "Install Codex")
     assert has_element?(view, "[data-test=agent-installation-claude] a", "Install Claude Code")
 
-    assert has_element?(
-             view,
-             "[data-test=agent-installation-codex] button[disabled]",
-             "Use Codex"
-           )
+    assert has_element?(view, "[data-test=agent-installation-codex] a", "Use Codex")
 
     assert has_element?(view, "[data-test=account-rung][data-state=pending]")
     assert has_element?(view, "[data-test=project-rung][data-state=pending]")
@@ -61,7 +57,11 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
       install(ctx.root, unquote(command))
       {:ok, view, _} = live(ctx.conn, "/app")
       render_async(view)
-      view |> element("[data-test=agent-installation-#{unquote(command)}] a") |> render_click()
+
+      view
+      |> element("[data-test=agent-installation-#{unquote(command)}] a[data-phx-link=patch]")
+      |> render_click()
+
       assert_patch(view, "/app?provider=#{unquote(provider)}")
 
       for role <- Agents.roles() do
@@ -106,6 +106,83 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     refute has_element?(view, "#project_form")
   end
 
+  test "hosted users can configure Claude before a local installation exists", %{
+    conn: conn,
+    scope: scope
+  } do
+    Application.put_env(:code_my_spec, :env, :test)
+    {:ok, view, _} = live(log_in_user(conn, scope.user), "/app")
+
+    assert has_element?(
+             view,
+             "[data-test=agent-installation-claude]",
+             "Installation status is available in the desktop app"
+           )
+
+    view
+    |> element("[data-test=agent-installation-claude] a[data-phx-link=patch]")
+    |> render_click()
+
+    assert has_element?(view, "[data-test=agent-models-form]")
+    view |> form("[data-test=agent-models-form]") |> render_submit()
+    assert_redirect(view, "/app")
+    assert Agents.models_configured?(scope)
+  end
+
+  test "hosted Codex selection explains how to connect the provider", %{conn: conn, scope: scope} do
+    Application.put_env(:code_my_spec, :env, :test)
+    {:ok, view, _} = live(log_in_user(conn, scope.user), "/app?provider=openai-codex")
+
+    assert has_element?(
+             view,
+             "[data-test=onboarding-models] a[href='/app/users/settings']",
+             "Connect provider"
+           )
+  end
+
+  test "rechecking installations preserves custom model edits", ctx do
+    install(ctx.root, "claude")
+    {:ok, view, _} = live(ctx.conn, "/app?provider=claude-code")
+    render_async(view)
+
+    view
+    |> form("[data-test=agent-models-form]", %{
+      "main" => %{"provider" => "claude-code", "model" => "custom-model"}
+    })
+    |> render_change()
+
+    view |> element("button", "Check again") |> render_click()
+    render_async(view)
+    assert has_element?(view, "input[name='main[model]'][value='custom-model']")
+  end
+
+  test "the timeline advances through models, account and project", %{conn: conn, scope: scope} do
+    Application.put_env(:code_my_spec, :env, :test)
+    conn = log_in_user(conn, scope.user)
+    {:ok, models, _} = live(conn, "/app?provider=claude-code")
+    models |> form("[data-test=agent-models-form]") |> render_submit()
+    assert_redirect(models, "/app")
+
+    {:ok, account, _} = live(conn, "/app")
+    assert has_element?(account, "[data-step=account][aria-current=step]")
+    account |> form("#account_form", account: %{name: "My workspace"}) |> render_submit()
+    assert_redirect(account, "/app")
+
+    {:ok, project, _} = live(conn, "/app")
+    assert has_element?(project, "[data-step=project][aria-current=step]")
+    project |> form("#project_form", project: %{name: "First project"}) |> render_submit()
+    assert_redirect(project, "/app")
+
+    {:ok, finished, _} = live(conn, "/app")
+
+    for step <- ["models", "account", "project"] do
+      assert has_element?(finished, "[data-step=#{step}][data-state=done]")
+    end
+
+    refute has_element?(finished, "[aria-current=step]")
+    refute has_element?(finished, "[data-test=model-onboarding]")
+  end
+
   test "recheck sees an agent installed while the page is open", ctx do
     {:ok, view, _} = live(ctx.conn, "/app")
     render_async(view)
@@ -113,7 +190,12 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     view |> element("button", "Check again") |> render_click()
     render_async(view)
     assert has_element?(view, "[data-test=agent-installation-codex] a", "Use Codex")
-    refute has_element?(view, "[data-test=agent-installation-claude] a", "Use Claude Code")
+
+    assert has_element?(
+             view,
+             "[data-test=agent-installation-claude]",
+             "Not installed or unavailable"
+           )
   end
 
   test "failed model save does not partially overwrite settings", %{scope: scope} do

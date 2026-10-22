@@ -12,6 +12,16 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
   @impl true
   def update(assigns, socket) do
     socket = socket |> assign(assigns) |> assign_new(:save_label, fn -> "Save" end)
+    key = {assigns.current_scope.user.id, assigns[:preset_provider]}
+
+    if socket.assigns[:loaded_key] == key do
+      {:ok, socket}
+    else
+      {:ok, socket |> assign(:loaded_key, key) |> load_settings(assigns)}
+    end
+  end
+
+  defp load_settings(socket, assigns) do
     settings = Agents.model_settings(assigns.current_scope)
 
     settings =
@@ -30,13 +40,13 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
           end)
       end
 
-    {:ok,
-     assign(socket,
-       settings: settings,
-       providers: Agents.provider_names(),
-       connected: Agents.connected_providers(assigns.current_scope),
-       error: nil
-     )}
+    assign(socket,
+      settings: settings,
+      providers: Agents.provider_names(),
+      connected: Agents.connected_providers(assigns.current_scope),
+      preset_provider: assigns[:preset_provider],
+      error: nil
+    )
   end
 
   @impl true
@@ -44,7 +54,13 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
     ~H"""
     <div>
       <p :if={@error} role="alert" class="alert alert-error">{@error}</p>
+      <div :if={@preset_provider && @preset_provider not in @connected} class="alert alert-warning">
+        Connect this provider before saving its models.
+        <.link navigate={~p"/app/users/settings"} class="link">Connect provider in User settings</.link>
+      </div>
       <form
+        id={"#{@id}-form"}
+        phx-change="change"
         phx-submit="save"
         phx-target={@myself}
         data-test="agent-models-form"
@@ -103,10 +119,48 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
           </p>
         </div>
 
-        <button type="submit" class="btn btn-primary">{@save_label}</button>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={@preset_provider && @preset_provider not in @connected}
+        >
+          {@save_label}
+        </button>
       </form>
     </div>
     """
+  end
+
+  @impl true
+  def handle_event("change", params, socket) do
+    settings =
+      Enum.map(socket.assigns.settings, fn row ->
+        case params[to_string(row.role)] do
+          %{"provider" => provider, "model" => model} when provider != "" ->
+            changed? = row.source != :set or provider != row.provider
+
+            %{
+              row
+              | provider: provider,
+                model: if(changed?, do: Agents.default_model(row.role, provider), else: model),
+                source: :set
+            }
+
+          %{"provider" => ""} ->
+            case Agents.Defaults.resolve(row.role, socket.assigns.connected) do
+              {:ok, {provider, model}} ->
+                %{row | provider: provider, model: model, source: :default}
+
+              _ ->
+                %{row | provider: nil, model: nil, source: :default}
+            end
+
+          _ ->
+            row
+        end
+      end)
+
+    {:noreply, assign(socket, settings: settings, error: nil)}
   end
 
   @impl true

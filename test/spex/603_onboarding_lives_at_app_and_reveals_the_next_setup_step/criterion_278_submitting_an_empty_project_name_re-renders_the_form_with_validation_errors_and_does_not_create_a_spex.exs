@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex.Story603.Criterion5504Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "Empty submission re-renders the form with errors and does not create a project",
     criterion: 278 do
     scenario "Empty submission re-renders the form with errors and does not create a project" do

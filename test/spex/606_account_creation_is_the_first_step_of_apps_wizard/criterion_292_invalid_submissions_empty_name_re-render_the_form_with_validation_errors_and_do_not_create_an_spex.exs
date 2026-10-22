@@ -18,6 +18,10 @@ defmodule CodeMySpecSpex.Story606.Criterion5516Spex do
 
   setup :register_and_log_in_user
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "Invalid create-account submission keeps the user on the first step", criterion: 292 do
     scenario "Invalid submission re-renders the form with errors" do
       given_ "the user is on /app with no accounts", context do

@@ -20,6 +20,10 @@ defmodule CodeMySpecSpex.Story606.Criterion5517Spex do
 
   setup :register_and_log_in_user
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   setup %{user: user} do
     account = Fixtures.account_with_owner_fixture(user, %{name: "First Workspace"})
     {:ok, %{first_account: account}}

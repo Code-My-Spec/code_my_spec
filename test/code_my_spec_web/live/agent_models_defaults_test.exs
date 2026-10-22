@@ -90,6 +90,28 @@ defmodule CodeMySpecWeb.AgentModelsDefaultsTest do
              "which is the whole point of the page."
   end
 
+  test "switching providers fills the corresponding default and preserves subsequent edits", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, ~p"/app/agent-models")
+
+    view
+    |> form("[data-test=agent-models-form]", %{
+      "qa" => %{"provider" => "claude-code", "model" => "old-model"}
+    })
+    |> render_change()
+
+    assert has_element?(view, "input[name='qa[model]'][value='haiku']")
+
+    view
+    |> form("[data-test=agent-models-form]", %{
+      "qa" => %{"provider" => "claude-code", "model" => "my-model"}
+    })
+    |> render_change()
+
+    assert has_element?(view, "input[name='qa[model]'][value='my-model']")
+  end
+
   test "the form offers the default as a choice", %{conn: conn, scope: scope} do
     {:ok, _live, html} = live(conn, ~p"/app/agent-models")
 

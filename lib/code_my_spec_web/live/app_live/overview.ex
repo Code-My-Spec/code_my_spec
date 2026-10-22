@@ -13,13 +13,18 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     socket =
       assign(socket,
         model_setup?: model_setup?,
+        local_agent_checks?: Application.get_env(:code_my_spec, :env) == :desktop,
         agent_installations: %{},
         checking_agents?: false,
         agent_check_error: nil,
         selected_provider: nil
       )
 
-    socket = if model_setup? and connected?(socket), do: check_agents(socket), else: socket
+    socket =
+      if model_setup? and socket.assigns.local_agent_checks? and connected?(socket),
+        do: check_agents(socket),
+        else: socket
+
     mount_overview(socket)
   end
 
@@ -156,7 +161,11 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
-  def handle_event("check_agents", _params, %{assigns: %{model_setup?: true}} = socket) do
+  def handle_event(
+        "check_agents",
+        _params,
+        %{assigns: %{model_setup?: true, local_agent_checks?: true}} = socket
+      ) do
     {:noreply, check_agents(socket)}
   end
 
@@ -286,6 +295,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
             :if={@model_setup?}
             current_scope={@current_scope}
             installations={@agent_installations}
+            local_checks?={@local_agent_checks?}
             checking?={@checking_agents?}
             error={@agent_check_error}
             selected_provider={@selected_provider}

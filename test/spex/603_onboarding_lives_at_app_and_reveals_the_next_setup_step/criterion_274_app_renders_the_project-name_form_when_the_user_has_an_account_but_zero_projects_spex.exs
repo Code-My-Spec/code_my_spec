@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex.Story603.Criterion5500Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "User with an account but no projects sees the project-name form on /app",
     criterion: 274 do
     scenario "User with an account but no projects sees the project-name form on /app" do
