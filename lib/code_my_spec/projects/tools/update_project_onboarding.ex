@@ -63,7 +63,7 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
   def call(params, context), do: params |> script_result(context) |> Tools.text()
   @impl true
   def script_result(params, context) do
-    with :ok <- validate_fields(params),
+    with :ok <- validate_input(params),
          {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, project} <- Onboarding.save(scope, params) do
       {:ok, Tools.snapshot(project, scope)}
@@ -72,7 +72,8 @@ defmodule CodeMySpec.Projects.Tools.UpdateProjectOnboarding do
     end
   end
 
-  defp validate_fields(params) do
+  @impl true
+  def validate_input(params) do
     onboarding = Map.get(params, :onboarding, Map.get(params, "onboarding", %{}))
     allowed = ~w(description starting_point destination destination_path)
 

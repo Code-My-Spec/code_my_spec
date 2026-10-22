@@ -192,6 +192,21 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert {:ok, %{sources: []}} = GetProjectOnboarding.script_result(%{}, context)
   end
 
+  test "schema validation rejects destination typos before dropping them", %{context: context} do
+    args = %{
+      "onboarding" => %{
+        "starting_point" => "existing",
+        "development_destination" => %{"kind" => "local"}
+      }
+    }
+
+    assert {:error, error} = Tools.validate(UpdateProjectOnboarding, args)
+    assert error =~ "development_destination"
+    assert {:error, _} = Tools.run(UpdateProjectOnboarding, args, context)
+    assert {:ok, %{onboarding: %{}} = data} = GetProjectOnboarding.script_result(%{}, context)
+    assert data.onboarding == %{}
+  end
+
   test "adding reference sources preserves saved onboarding choices", %{context: context} do
     assert {:ok, before} =
              UpdateProjectOnboarding.script_result(

@@ -33,7 +33,14 @@ defmodule CodeMySpec.Tools do
 
   @doc "Casts and checks arguments against the tool's parameters."
   @spec validate(module(), map()) :: {:ok, map()} | {:error, term()}
-  def validate(tool, args), do: Peri.validate(tool.params(), args)
+  def validate(tool, args) do
+    preflight =
+      if function_exported?(tool, :validate_input, 1),
+        do: tool.validate_input(args),
+        else: :ok
+
+    with :ok <- preflight, do: Peri.validate(tool.params(), args)
+  end
 
   @doc "Validates `args` and calls the tool."
   @spec run(module(), map(), context()) :: Tool.result()
