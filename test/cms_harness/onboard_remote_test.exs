@@ -7,6 +7,7 @@ defmodule CmsHarness.OnboardRemoteTest do
   alias CmsHarness.Device.Client.Http
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Token
+  alias CmsHarness.Onboarding
   alias CmsHarnessTest.FakeServer
   alias CmsHarnessTest.Projects
   alias Mix.Tasks.Cms.Harness.Onboard
@@ -77,7 +78,7 @@ defmodule CmsHarness.OnboardRemoteTest do
       json(conn, %{device_id: id, working_copies: %{}})
     end)
 
-    Req.Test.stub(Onboard, fn conn ->
+    Req.Test.stub(Onboarding, fn conn ->
       assert conn.method == "POST"
       assert conn.request_path == "/api/harnesses"
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -117,7 +118,7 @@ defmodule CmsHarness.OnboardRemoteTest do
     %{root: root, working_copy_id: copy_id} = Projects.project_dir(project_id: project.id)
     parent = self()
 
-    Req.Test.stub(Onboard, fn conn ->
+    Req.Test.stub(Onboarding, fn conn ->
       assert conn.method == "GET"
       assert conn.request_path == "/api/harnesses/#{copy_id}"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer " <> project.deploy_key]
@@ -187,7 +188,7 @@ defmodule CmsHarness.OnboardRemoteTest do
       System.delete_env("CMS_TEST_SANDBOX_UA")
       parent = self()
 
-      Req.Test.stub(Onboard, fn conn ->
+      Req.Test.stub(Onboarding, fn conn ->
         send(parent, {:user_agent, Plug.Conn.get_req_header(conn, "user-agent")})
         json(conn, %{harness_id: ctx.copy_id})
       end)
@@ -205,7 +206,7 @@ defmodule CmsHarness.OnboardRemoteTest do
       System.put_env("CMS_TEST_SANDBOX_UA", "sandbox-metadata-fixture-value")
       parent = self()
 
-      Req.Test.stub(Onboard, fn conn ->
+      Req.Test.stub(Onboarding, fn conn ->
         send(parent, {:user_agent, Plug.Conn.get_req_header(conn, "user-agent")})
         json(conn, %{harness_id: ctx.copy_id})
       end)

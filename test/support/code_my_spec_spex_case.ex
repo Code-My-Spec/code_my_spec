@@ -6072,8 +6072,10 @@ defmodule CodeMySpecSpex.Case do
       # c1b2d03a: confirming a recorded working copy id reads its own `:plug`
       # the same way every provider above does. Added here directly rather
       # than waiting for `provider_modules_complete_test.exs` to name it,
-      # since that check is exactly what caught it.
-      Mix.Tasks.Cms.Harness.Onboard,
+      # since that check is exactly what caught it. Story 1013: the Req call
+      # moved from the mix task into `CmsHarness.Onboarding` (so it could be
+      # driven in-process); the `:plug` key moved with it.
+      CmsHarness.Onboarding,
       # Remote onboarding's token exchange now reads the same HTTP plug.
       CmsHarness.Token
     ]

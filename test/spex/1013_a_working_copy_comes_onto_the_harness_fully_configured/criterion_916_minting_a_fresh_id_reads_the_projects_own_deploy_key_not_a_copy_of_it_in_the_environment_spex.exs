@@ -11,9 +11,9 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   against `CmsHarness.Onboarding.mint/2` (reached via
   `Fixtures.onboard_mint/2`) -- extracted from the mix task specifically so
   it could be exercised this way -- with `Req.Test` standing in for the
-  server both requests reach (the mint POST, keyed on the mix task's own
-  module name in `config/test.exs`, kept that way on purpose; the token
-  exchange, wired here for the duration of the call).
+  server both requests reach (the mint POST, keyed on `CmsHarness.Onboarding`
+  itself in `config/test.exs` -- the module that now makes the call; the
+  token exchange, wired here for the duration of the call).
 
   Driving `mint/2` in-process rather than `run/1` or `onboard/4`: those also
   provision a preview tunnel and configure git, neither of which this
@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CmsHarness.Onboarding
   alias CmsHarness.Token
-  alias Mix.Tasks.Cms.Harness.Onboard
 
   setup do
     original_server_url = Application.get_env(:code_my_spec, :harness_server_url_override)
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
       Keyword.put(original_token_config, :plug, {Req.Test, Token})
     )
 
-    Req.Test.stub(Onboard, fn conn ->
+    Req.Test.stub(Onboarding, fn conn ->
       Req.Test.json(conn, %{"harness_id" => "harness-" <> Ecto.UUID.generate()})
     end)
 

@@ -47,7 +47,7 @@ defmodule CmsHarness.Onboarding do
              server_url: Config.server_url(),
              root: root
            }) do
-      Mix.shell().info("Issued a new harness id for #{root}")
+      if running_under_mix?(), do: Mix.shell().info("Issued a new harness id for #{root}")
       {:ok, id}
     else
       {:error, :no_project_id} ->
@@ -101,13 +101,15 @@ defmodule CmsHarness.Onboarding do
       {:ok, %{id: other}} ->
         # Said out loud rather than resolved quietly either way. One of the two
         # is wrong and only the person running this knows which.
-        Mix.shell().info([
-          :yellow,
-          "warning: #{root} says it belongs to project #{other}, and you asked for " <>
-            "#{project_id}. Using #{project_id}. If that is wrong, fix " <>
-            "`.code_my_spec/config.yml` in that checkout rather than passing the flag.",
-          :reset
-        ])
+        if running_under_mix?() do
+          Mix.shell().info([
+            :yellow,
+            "warning: #{root} says it belongs to project #{other}, and you asked for " <>
+              "#{project_id}. Using #{project_id}. If that is wrong, fix " <>
+              "`.code_my_spec/config.yml` in that checkout rather than passing the flag.",
+            :reset
+          ])
+        end
 
         {:ok, %{id: project_id, root: root, working_copy_id: nil}}
 
@@ -138,13 +140,15 @@ defmodule CmsHarness.Onboarding do
         # This database backs only a server on this machine; for a remote
         # project id it can only answer "never heard of it", which says nothing
         # about the credential.
-        Mix.shell().info([
-          :yellow,
-          "Not reading a deploy key from the local database: this is onboarding " <>
-            "against #{Config.server_url()}, whose projects are not in it. Export " <>
-            "CMS_DEPLOY_KEY with a key from that server if the mint is refused.",
-          :reset
-        ])
+        if running_under_mix?() do
+          Mix.shell().info([
+            :yellow,
+            "Not reading a deploy key from the local database: this is onboarding " <>
+              "against #{Config.server_url()}, whose projects are not in it. Export " <>
+              "CMS_DEPLOY_KEY with a key from that server if the mint is refused.",
+            :reset
+          ])
+        end
 
         :none
     end
@@ -234,21 +238,22 @@ defmodule CmsHarness.Onboarding do
       headers: [{"authorization", "Bearer " <> token}] ++ test_sandbox_header(),
       retry: false,
       receive_timeout: to_timeout(second: 15),
-      # Keyed on the mix task's own module name, not this one -- that is
-      # the key `config/test.exs` already stubs (`{Req.Test, Mix.Tasks.Cms.
-      # Harness.Onboard}`), and changing it would silently stop honoring
-      # every existing stub registered under it.
-      plug: Application.get_env(:code_my_spec, Mix.Tasks.Cms.Harness.Onboard, [])[:plug]
+      # Keyed on this module, the one actually making the call --
+      # `http_clients_are_stubbable_test.exs` checks the calling module's own
+      # name against `config/test.exs`, not whichever module happens to
+      # invoke it.
+      plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
     )
   end
 
   # Test-only seam (story 1013, criterion 916, product's decision on the
   # question it raised): exists only so a spex's own subprocess mint request
   # joins that test's Ecto Sandbox transaction, the same way the websocket
-  # channel's :harness_connect_headers already does. `Mix.env() == :test`
-  # gates it at compile time, so prod never reads this env var at all.
+  # channel's :harness_connect_headers already does. Guarded so a release
+  # (where Mix is never loaded) answers [] rather than crashing -- it would
+  # never read a test-only env var anyway.
   defp test_sandbox_header do
-    if Mix.env() == :test do
+    if running_under_mix?() and Mix.env() == :test do
       case System.get_env("CMS_TEST_SANDBOX_UA") do
         ua when is_binary(ua) and ua != "" -> [{"user-agent", ua}]
         _ -> []
@@ -257,6 +262,13 @@ defmodule CmsHarness.Onboarding do
       []
     end
   end
+
+  # Guarded the same way `CmsHarness.Application.running_under_mix?/0` is:
+  # every real caller boots under Mix (a mix task, or a test/spex run), so
+  # this never actually answers false -- it exists so a compiled release,
+  # which never calls this module at all, could not crash on `Mix.env()`
+  # or `Mix.shell()` even if it somehow did.
+  defp running_under_mix?, do: Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0)
 
   # Which machine this checkout is on. The machine's recorded identity
   # (`~/.codemyspec/device.json`), announcing first if it has none.

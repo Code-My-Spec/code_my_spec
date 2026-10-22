@@ -631,8 +631,8 @@ config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.
 # would otherwise send down the same "no stub registered" dead end as the
 # device-client pin it sits beside.
 unless System.get_env("CMS_TEST_REAL_DEVICE_CLIENT") do
-  config :code_my_spec, Mix.Tasks.Cms.Harness.Onboard,
-    plug: {Req.Test, Mix.Tasks.Cms.Harness.Onboard}
+  config :code_my_spec, CmsHarness.Onboarding,
+    plug: {Req.Test, CmsHarness.Onboarding}
 end
 
 config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,

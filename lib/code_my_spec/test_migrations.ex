@@ -171,6 +171,9 @@ defmodule CodeMySpec.TestMigrations do
   @spec creatable(keyword()) :: :ok | {:error, String.t()}
   def creatable(config) do
     cond do
+      not running_under_mix?() ->
+        {:error, "refusing to create a database outside of Mix; only :test creates one"}
+
       Mix.env() != :test ->
         {:error,
          "refusing to create a database from MIX_ENV=#{Mix.env()}; only :test creates one"}
@@ -186,6 +189,13 @@ defmodule CodeMySpec.TestMigrations do
   defp blank?(nil), do: true
   defp blank?(""), do: true
   defp blank?(_), do: false
+
+  # Guarded the same way `CmsHarness.Application.running_under_mix?/0` is:
+  # every real caller boots under Mix (a mix task, or a test/spex run), so
+  # this never actually answers false -- it exists so a compiled release,
+  # which never calls this module at all, could not crash on `Mix.env()`
+  # even if it somehow did.
+  defp running_under_mix?, do: Code.ensure_loaded?(Mix) and function_exported?(Mix, :env, 0)
 
   # `Repo.__adapter__()`, not `config[:adapter]`: `Repo.config/0` carries no
   # adapter key, so that read `nil`.
