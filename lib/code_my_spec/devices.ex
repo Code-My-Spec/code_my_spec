@@ -398,6 +398,19 @@ defmodule CodeMySpec.Devices do
 
   def list_devices(%Scope{}), do: []
 
+  @doc "Devices accessible to a user's harness across their account memberships."
+  def list_harness_devices(%Scope{user_id: user_id}) when is_integer(user_id) do
+    accounts = from(m in Member, where: m.user_id == ^user_id, select: m.account_id)
+
+    from(d in Device,
+      where: d.account_id in subquery(accounts),
+      order_by: [desc_nulls_last: d.last_seen_at]
+    )
+    |> Repo.all()
+  end
+
+  def list_harness_devices(%Scope{} = scope), do: list_devices(scope)
+
   @doc "One device on this account, or nil. Never an unscoped lookup by id."
   @spec get_device(Scope.t(), String.t()) :: Device.t() | nil
   def get_device(%Scope{active_account_id: account_id}, id) when is_binary(account_id),

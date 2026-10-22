@@ -14,7 +14,7 @@ defmodule CodeMySpec.Projects.Tools do
       onboarding: embedded(project.onboarding),
       sources: Enum.map(project.sources, &embedded/1),
       available_devices:
-        Enum.map(CodeMySpec.Devices.list_devices(scope), fn device ->
+        Enum.map(CodeMySpec.Devices.list_harness_devices(scope), fn device ->
           %{
             id: device.id,
             name: CodeMySpec.Devices.Device.display_name(device),

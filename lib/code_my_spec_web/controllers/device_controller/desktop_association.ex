@@ -5,6 +5,8 @@ defmodule CodeMySpecWeb.DeviceController.DesktopAssociation do
   alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users.Scope
 
+  def associate_current(scope), do: associate(scope, CmsHarness.Device.recorded_id())
+
   # The request UUID alone is not ownership proof. Only the desktop singleton,
   # matching the identity read from this server's own local harness file, may
   # associate its accountless local machine. Other devices keep normal scoping.

@@ -9,6 +9,8 @@ defmodule CodeMySpec.Projects.Tools.GetProjectOnboarding do
   def description do
     "Read the connected project's saved definition, starting point, development destination, " <>
       "selected sources and accessible device IDs. No working copy is required. " <>
+      "Devices are accessible registrations, not a live connectivity check. Do not infer that " <>
+      "desktop execution is unavailable from an empty list; start_project_setup checks the host. " <>
       "A selected source is not an inspected or provisioned environment."
   end
 
