@@ -6,9 +6,11 @@ defmodule CmsHarnessTest.ClusteredProject do
   `mix test` running it, which is what "nothing of it keeps running" is
   checked against.
 
-  Built on CodeMySpec's own `deps/` and lockfile, so nothing is fetched. Every
-  copy is the same `:demo` app, so all of them build into one shared
-  directory and only the first scenario in a run pays for the compile.
+  Built on CodeMySpec's own `deps/` and lockfile, so nothing is fetched. The
+  dependencies are compiled once per test run into a template build, and each
+  copy starts from its own copy of that, so only the first scenario pays for
+  the compile. Copied, not shared: the copy's own runs write into its build,
+  and a run killed mid-write must not corrupt the next scenario's.
   """
 
   import CmsHarnessTest.Projects, only: [write: 3]
@@ -22,8 +24,11 @@ defmodule CmsHarnessTest.ClusteredProject do
     write(root, "mix.exs", mix_exs())
     write(root, "test/test_helper.exs", "ExUnit.start()\n")
     write(root, "test/held_test.exs", held_test(pid_file(root), release_file(root)))
-    share_build(root)
+    seed_build(root)
+    compile!(root)
+  end
 
+  defp compile!(root) do
     {output, status} =
       System.cmd("mix", ["compile"], cd: root, env: build_env(root), stderr_to_stdout: true)
 
@@ -119,12 +124,29 @@ defmodule CmsHarnessTest.ClusteredProject do
   defp build_env(root),
     do: [{"MIX_ENV", "test"}, {"MIX_BUILD_PATH", CmsHarness.AnalyzerEnv.build_path(root)}]
 
-  defp share_build(root) do
-    shared = Path.join(System.tmp_dir!(), "cms_clustered_project_build")
-    File.mkdir_p!(shared)
+  # The copy's build starts as a copy of the template's.
+  defp seed_build(root) do
     build = CmsHarness.AnalyzerEnv.build_path(root)
     File.mkdir_p!(Path.dirname(build))
-    :ok = File.ln_s(shared, build)
+    {:ok, _} = File.cp_r(template_build(), build)
+    :ok
+  end
+
+  # Compiled once per BEAM, from scratch, in a project of its own.
+  defp template_build do
+    case :persistent_term.get({__MODULE__, :template}, nil) do
+      nil ->
+        root = CodeMySpec.TempFile.dir("clustered_project_template")
+        File.mkdir_p!(root)
+        write(root, "mix.exs", mix_exs())
+        compile!(root)
+        build = CmsHarness.AnalyzerEnv.build_path(root)
+        :persistent_term.put({__MODULE__, :template}, build)
+        build
+
+      build ->
+        build
+    end
   end
 
   defp await_pid(_file, 0), do: raise("the held test never started — was the run dispatched?")
