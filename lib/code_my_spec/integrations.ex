@@ -178,27 +178,42 @@ defmodule CodeMySpec.Integrations do
 
   The key is verified before it is stored, and a refusal stores nothing.
   `ApiKey.verify/2` distinguishes a key the provider refused from a provider
-  that did not answer; both are passed through.
+  that did not answer; both are passed through. A key the provider accepted on
+  an account with nothing to spend (`{:ok, :no_balance}`) is stored the same
+  as any other accepted key, but returned as a 3-tuple so the caller can warn
+  rather than say plainly "connected".
 
   Stored with no refresh token and an expiry a year out, so
   `fetch_access_token/2` takes the fresh path for it.
   """
   @spec connect_api_key(Scope.t(), atom(), String.t()) ::
-          {:ok, Integration.t()} | {:error, ApiKey.failure() | term()}
+          {:ok, Integration.t()}
+          | {:ok, Integration.t(), :no_balance}
+          | {:error, ApiKey.failure() | term()}
   def connect_api_key(%Scope{} = scope, provider, key) when is_binary(key) do
     trimmed = String.trim(key)
 
     with :ok <- present(trimmed),
-         :ok <- ApiKey.verify(provider, trimmed) do
-      IntegrationRepository.upsert_integration(scope, provider, %{
+         verdict <- ApiKey.verify(provider, trimmed),
+         :ok <- accepted(verdict) do
+      scope
+      |> IntegrationRepository.upsert_integration(provider, %{
         access_token: trimmed,
         refresh_token: nil,
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day),
         granted_scopes: [],
         provider_metadata: %{}
       })
+      |> with_warning(verdict)
     end
   end
+
+  defp accepted(:ok), do: :ok
+  defp accepted({:ok, :no_balance}), do: :ok
+  defp accepted({:error, _reason} = error), do: error
+
+  defp with_warning({:ok, integration}, {:ok, :no_balance}), do: {:ok, integration, :no_balance}
+  defp with_warning(result, _verdict), do: result
 
   defp present(""), do: {:error, :blank}
   defp present(_key), do: :ok

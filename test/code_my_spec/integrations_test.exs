@@ -111,6 +111,42 @@ defmodule CodeMySpec.IntegrationsTest do
     end
   end
 
+  describe "connect_api_key/3" do
+    test "stores the key once the provider accepts it", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      assert {:ok, integration} = Integrations.connect_api_key(scope, :zai, "zai-live-key")
+      assert integration.access_token == "zai-live-key"
+    end
+
+    test "a valid key on an account with no balance is stored, not refused", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        conn
+        |> Plug.Conn.put_status(429)
+        |> Req.Test.json(%{
+          "error" => %{"code" => "1113", "message" => "Insufficient balance or no resource package."}
+        })
+      end)
+
+      assert {:ok, integration, :no_balance} =
+               Integrations.connect_api_key(scope, :zai, "zai-live-key")
+
+      assert integration.access_token == "zai-live-key"
+      assert Integrations.connected?(scope, :zai)
+    end
+
+    test "a refused key stores nothing", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{})
+      end)
+
+      assert {:error, :rejected} = Integrations.connect_api_key(scope, :zai, "zai-bad-key")
+      refute Integrations.connected?(scope, :zai)
+    end
+  end
+
   describe "refresh_token/2" do
     @cassette_name "google_refresh_success"
 
