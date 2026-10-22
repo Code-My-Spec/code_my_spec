@@ -502,6 +502,19 @@ defmodule CodeMySpecSpex.HarnessHooks do
   # This test's connection, as `Phoenix.Ecto.SQL.Sandbox` encodes it for a
   # client to send back. Not trapping exits: the process it is applied to is
   # the socket's transport, whose exit handling is Phoenix's.
+  @doc """
+  The live harness goes away and comes back: it stops serving the checkout,
+  then serves it again and rejoins the cloud, as a restart does.
+  """
+  @spec restart_live_harness(map()) :: map()
+  def restart_live_harness(%{harness: %{root: root, working_copy_id: id, topic: topic}} = context) do
+    :ok = LiveHarness.stop_serving(root)
+    handler = watch_channel(topic, id)
+    :ok = LiveHarness.serve(root, sandbox_user_agent())
+    await_joined(id, root, handler)
+    context
+  end
+
   defp sandbox_user_agent do
     CodeMySpec.Repo
     |> SQLSandbox.metadata_for(self(), trap_exit: false)
