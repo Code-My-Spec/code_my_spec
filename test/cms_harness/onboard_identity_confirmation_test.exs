@@ -48,7 +48,6 @@ defmodule CmsHarness.OnboardIdentityConfirmationTest do
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CmsHarness.Onboarding
   alias CodeMySpec.WorkingCopies
   alias Mix.Tasks.Cms.Harness.Onboard
 
@@ -101,7 +100,7 @@ defmodule CmsHarness.OnboardIdentityConfirmationTest do
       copy: copy,
       root: root
     } do
-      Req.Test.stub(Onboarding, fn conn ->
+      Req.Test.stub(Onboard, fn conn ->
         assert String.ends_with?(conn.request_path, copy.id)
         Plug.Conn.send_resp(conn, 200, "{}")
       end)

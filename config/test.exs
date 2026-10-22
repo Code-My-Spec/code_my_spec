@@ -623,17 +623,19 @@ config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.
 config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.Ga4}
 
 # c1b2d03a: this mix task confirms an existing working copy's recorded id
-# against the server before trusting it. Hundreds of onboarding specs call
-# it through `Mix.Task.run/2`, so an unset plug is a real request from the
-# unit suite, same as every other client here. CMS_TEST_REAL_DEVICE_CLIENT
-# (story 1013, criterion 916) skips this pin too: a real `mix
-# cms.harness.onboard` subprocess makes its own real mint POST, which this
-# would otherwise send down the same "no stub registered" dead end as the
-# device-client pin it sits beside.
-unless System.get_env("CMS_TEST_REAL_DEVICE_CLIENT") do
-  config :code_my_spec, CmsHarness.Onboarding,
-    plug: {Req.Test, CmsHarness.Onboarding}
-end
+# against the server before trusting it (`confirm/2`'s own `Req.get`).
+# Hundreds of onboarding specs call it through `Mix.Task.run/2`, so an unset
+# plug is a real request from the unit suite, same as every other client
+# here.
+config :code_my_spec, Mix.Tasks.Cms.Harness.Onboard,
+  plug: {Req.Test, Mix.Tasks.Cms.Harness.Onboard}
+
+# Story 1013: the mint POST itself, extracted into `CmsHarness.Onboarding`
+# (criteria 916-918, so a spex could drive it in-process). Pinned
+# separately from the mix task above -- different module, different Req
+# call, now that the two are no longer the same piece of code.
+config :code_my_spec, CmsHarness.Onboarding,
+  plug: {Req.Test, CmsHarness.Onboarding}
 
 config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
   plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}

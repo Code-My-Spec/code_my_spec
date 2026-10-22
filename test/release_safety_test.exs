@@ -21,7 +21,12 @@ defmodule CodeMySpec.ReleaseSafetyTest do
   # guarantees the property is the compiled-artifact test below, which asks the
   # beam rather than the source and so cannot be fooled by where the call sits.
   @allowed_paths [
-    "code_my_spec/agent_tasks/setup/compilers.ex"
+    "code_my_spec/agent_tasks/setup/compilers.ex",
+    # Same exemption as `@allowed_modules`, below, applied where the source
+    # scan can see it: both calls are guarded by `running_under_mix?/0`,
+    # mirroring `CmsHarness.Application`'s own pattern.
+    "cms_harness/onboarding.ex",
+    "code_my_spec/test_migrations.ex"
   ]
 
   # Modules whose reference to Mix survives compilation and is still safe.

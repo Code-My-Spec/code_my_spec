@@ -118,7 +118,7 @@ defmodule CmsHarness.OnboardRemoteTest do
     %{root: root, working_copy_id: copy_id} = Projects.project_dir(project_id: project.id)
     parent = self()
 
-    Req.Test.stub(Onboarding, fn conn ->
+    Req.Test.stub(Onboard, fn conn ->
       assert conn.method == "GET"
       assert conn.request_path == "/api/harnesses/#{copy_id}"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer " <> project.deploy_key]
