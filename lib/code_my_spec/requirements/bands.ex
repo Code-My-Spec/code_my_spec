@@ -78,20 +78,26 @@ defmodule CodeMySpec.Requirements.Bands do
 
   @doc """
   Where the project stands. The stories in progress — ready for development,
-  not promoted, not retired — are each their steps counted four ways: done
-  when satisfied; held by issues when not and the story has any open; working
-  when its own earlier steps are done; not started otherwise. Furthest reached
-  first.
+  not retired, and not done at this vantage — are each their steps counted
+  four ways: done when satisfied; held by issues when not and the story has
+  any open; working when its own earlier steps are done; not started
+  otherwise. Furthest reached first.
+
+  Done is one definition, shared with `story_counts/2`: every step satisfied
+  at this vantage — not `is_nil(s.promoted_at)`. A promoted story can still
+  have outstanding re-certification, QA, or a submitted fix; an unpromoted
+  one can have every requirement already satisfied.
   """
   @spec read(Scope.t()) :: t()
   def read(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
     vantage = Projection.vantage(scope)
+    {stories, done} = stories(project_id, vantage)
 
     %{
       satisfied: satisfied_gates(project_id, vantage),
       late_names: late_project_names(),
-      stories: stories(project_id, vantage),
-      story_counts: story_counts(project_id),
+      stories: stories,
+      story_counts: story_counts(project_id, done),
       components: component_counts(project_id, vantage),
       issues: issue_counts(project_id)
     }
@@ -110,12 +116,16 @@ defmodule CodeMySpec.Requirements.Bands do
     |> MapSet.new()
   end
 
+  # One query for both the chart and the done count: each row folds into the
+  # done set a story's column is drawn from, and into whether every row seen
+  # for that story is satisfied. A story that is all-satisfied is `done` and
+  # left off the chart; everything else is drawn as a column.
   defp stories(project_id, vantage) do
     rows =
       Node
       |> join(:inner, [r], s in Story, on: s.id == r.story_id)
       |> where([_r, s], s.project_id == ^project_id)
-      |> where([_r, s], s.ready_for_dev and is_nil(s.promoted_at) and is_nil(s.retired_at))
+      |> where([_r, s], s.ready_for_dev and is_nil(s.retired_at))
       |> at_vantage(vantage)
       |> select([r, s], {{r.story_id, s.number, s.title, s.working_copy_id}, r.name, r.satisfied})
       |> Repo.all()
@@ -124,35 +134,51 @@ defmodule CodeMySpec.Requirements.Bands do
     prereqs = story_prerequisite_names()
     steps = story_step_names()
 
-    rows
-    |> Enum.reduce(%{}, fn {story, name, satisfied}, acc ->
-      Map.update(acc, story, done_set(name, satisfied), &add_done(&1, name, satisfied))
-    end)
-    |> Enum.map(fn {{id, number, title, copy_id}, done} ->
-      issues? = MapSet.member?(with_issues, id)
+    by_story =
+      rows
+      |> Enum.reduce(%{}, fn {story, name, satisfied}, acc ->
+        Map.update(
+          acc,
+          story,
+          {done_set(name, satisfied), satisfied},
+          fn {done, all_satisfied?} ->
+            {add_done(done, name, satisfied), all_satisfied? and satisfied}
+          end
+        )
+      end)
 
-      steps
-      |> Enum.map(&step_status(&1, done, prereqs[&1], issues?))
-      |> Enum.frequencies()
-      |> then(&Map.merge(%{done: 0, working: 0, issues: 0, none: 0}, &1))
-      |> Map.merge(%{id: id, working_copy_id: copy_id, number: number, title: title})
-    end)
-    # Furthest reached first, then most done: grey only grows toward the end,
-    # so the columns' tops fall away in one line.
-    |> Enum.sort_by(&{&1.none, -&1.done, &1.issues, &1.number})
+    done_count = Enum.count(by_story, fn {_story, {_done, all_satisfied?}} -> all_satisfied? end)
+
+    columns =
+      by_story
+      |> Enum.reject(fn {_story, {_done, all_satisfied?}} -> all_satisfied? end)
+      |> Enum.map(fn {{id, number, title, copy_id}, {done, _all_satisfied?}} ->
+        issues? = MapSet.member?(with_issues, id)
+
+        steps
+        |> Enum.map(&step_status(&1, done, prereqs[&1], issues?))
+        |> Enum.frequencies()
+        |> then(&Map.merge(%{done: 0, working: 0, issues: 0, none: 0}, &1))
+        |> Map.merge(%{id: id, working_copy_id: copy_id, number: number, title: title})
+      end)
+      # Furthest reached first, then most done: grey only grows toward the end,
+      # so the columns' tops fall away in one line.
+      |> Enum.sort_by(&{&1.none, -&1.done, &1.issues, &1.number})
+
+    {columns, done_count}
   end
 
-  # The stories outside the chart: promoted (done), not yet ready for
-  # development (backlog), and retired.
-  defp story_counts(project_id) do
+  # The stories outside the chart: done (folded in `stories/2`, above), not
+  # yet ready for development (backlog), and retired.
+  defp story_counts(project_id, done) do
     Story
     |> where([s], s.project_id == ^project_id)
     |> select([s], %{
-      done: count(s.id) |> filter(not is_nil(s.promoted_at) and is_nil(s.retired_at)),
       backlog: count(s.id) |> filter(not s.ready_for_dev and is_nil(s.retired_at)),
       retired: count(s.id) |> filter(not is_nil(s.retired_at))
     })
     |> Repo.one()
+    |> Map.put(:done, done)
   end
 
   defp done_set(name, true), do: MapSet.new([name])
