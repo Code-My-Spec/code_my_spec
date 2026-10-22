@@ -5368,7 +5368,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     ExUnit.Callbacks.on_exit(fn ->
       CodeMySpec.Repo.put_dynamic_repo(previous)
-      if Process.alive?(pid), do: GenServer.stop(pid)
+      stop_dynamic_repo(pid)
       Application.put_env(:code_my_spec, CodeMySpec.Repo, original_config)
 
       run_cmd("psql", [
@@ -5379,6 +5379,20 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
 
     fun.()
+  end
+
+  # By the time `on_exit` runs, the test process that `start_link`ed this
+  # repo has already exited; a non-:normal exit (ExUnit does not always use
+  # :normal) propagates to this linked, non-trapping child too. That is a
+  # race against the `GenServer.stop/1` below it, not a reason to skip the
+  # stop: `Process.alive?/1` can see the pid as alive and then have it start
+  # dying before `GenServer.stop/1`'s own call lands, which that call
+  # reports as an EXIT rather than swallowing. The database is already
+  # dropped right after this regardless of how the pid went down.
+  defp stop_dynamic_repo(pid) do
+    if Process.alive?(pid), do: GenServer.stop(pid)
+  catch
+    :exit, _ -> :ok
   end
 
   @doc """
