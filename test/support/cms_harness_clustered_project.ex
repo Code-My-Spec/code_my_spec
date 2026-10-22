@@ -32,6 +32,34 @@ defmodule CmsHarnessTest.ClusteredProject do
   end
 
   @doc """
+  `make/1` with a suite to watch: a file whose test passes, a file whose test
+  fails with `failure/0`, and the held file, all `async: true` so they run
+  together and the held one keeps the run going while the others report.
+  """
+  @spec make_suite(String.t()) :: :ok
+  def make_suite(root) do
+    write(root, "test/passing_test.exs", passing_test())
+    write(root, "test/failing_test.exs", failing_test())
+    make(root)
+  end
+
+  @doc "What `make_suite/1`'s failing test reports: its message, file and line."
+  @spec failure() :: %{message: String.t(), file: String.t(), line: pos_integer()}
+  def failure,
+    do: %{message: "the ledger did not balance", file: "test/failing_test.exs", line: 5}
+
+  @doc "The held test's file, the one still running while the others have reported."
+  @spec held_file() :: String.t()
+  def held_file, do: "test/held_test.exs"
+
+  @doc "End the run outright, as a crash would: the held `mix test` is killed."
+  @spec kill(pos_integer()) :: :ok
+  def kill(pid) do
+    System.cmd("kill", ["-9", "#{pid}"], stderr_to_stdout: true)
+    :ok
+  end
+
+  @doc """
   The OS pid of the `mix test` holding the test open, once the test is running.
   Raises if it never starts within `timeout_ms`.
   """
@@ -142,10 +170,33 @@ defmodule CmsHarnessTest.ClusteredProject do
     """
   end
 
+  defp passing_test do
+    """
+    defmodule Demo.PassingTest do
+      use ExUnit.Case, async: true
+
+      test "adds up", do: assert(1 + 1 == 2)
+    end
+    """
+  end
+
+  # `failure/0` names this file and line 5, the assertion's.
+  defp failing_test do
+    """
+    defmodule Demo.FailingTest do
+      use ExUnit.Case, async: true
+
+      test "balances the ledger" do
+        flunk("#{failure().message}")
+      end
+    end
+    """
+  end
+
   defp held_test(pid_file, release_file) do
     """
     defmodule Demo.HeldTest do
-      use ExUnit.Case
+      use ExUnit.Case, async: true
 
       @tag timeout: :infinity
       test "is held open until released" do
