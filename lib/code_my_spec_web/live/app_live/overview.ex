@@ -196,10 +196,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     attrs = Map.put(params, "module_name", derive_module_name(params["name"] || ""))
 
     case Projects.create_project(scope, attrs) do
-      {:ok, _project} ->
-        # Back to /app, as before — only the preference write is gone. Nothing
-        # downstream requires an active project any more, so there is no state
-        # to pre-select and no gate that would bounce the user if we didn't.
+      {:ok, project} ->
+        {:ok, _} = UserPreferences.select_active_project(scope, project.id)
         {:noreply, push_navigate(socket, to: ~p"/app")}
 
       {:error, changeset} ->

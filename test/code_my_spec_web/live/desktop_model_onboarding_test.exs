@@ -172,6 +172,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     assert has_element?(project, "[data-step=project][aria-current=step]")
     project |> form("#project_form", project: %{name: "First project"}) |> render_submit()
     assert_redirect(project, "/app")
+    assert UserPreferences.scope_for(scope.user).active_project.name == "First project"
 
     {:ok, finished, _} = live(conn, "/app")
 

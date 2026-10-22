@@ -15,7 +15,7 @@ defmodule CodeMySpec.MixProject do
       # compiles under :dev instead of :test, missing test/support paths.
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_cli_env: [spex: :test],
+      preferred_cli_env: [spex: :test, reset_onboarding: :desktop],
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       # _spex.exs files are a separate suite run by `mix spex` (which loads
       # them via Path.wildcard, not these filters). Declare them ignored so
@@ -421,7 +421,13 @@ defmodule CodeMySpec.MixProject do
     [
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test, "cms.spex": :test]
+      preferred_envs: [
+        spex: :test,
+        agent_test: :test,
+        "cms.eval": :test,
+        "cms.spex": :test,
+        reset_onboarding: :desktop
+      ]
     ]
   end
 
