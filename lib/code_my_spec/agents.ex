@@ -3358,6 +3358,42 @@ defmodule CodeMySpec.Agents do
   @spec roles() :: [atom()]
   defdelegate roles(), to: Agent
 
+  @doc "The recommended model for a role on a selected provider."
+  def default_model(role, "claude-code") do
+    if role == :qa, do: "haiku", else: "sonnet"
+  end
+
+  def default_model(role, provider) do
+    case List.keyfind(Defaults.for_role(role), provider, 0) do
+      {_, model} -> model
+      nil -> nil
+    end
+  end
+
+  @doc "Whether this user has deliberately chosen agent models."
+  def models_configured?(scope), do: AgentsRepository.list_model_settings(scope) != []
+
+  @doc "Saves the submitted role choices together, or leaves all choices unchanged."
+  def save_model_settings(scope, params) do
+    CodeMySpec.Repo.transaction(fn ->
+      for role <- roles(), choice = params[to_string(role)], is_map(choice) do
+        result =
+          case choice["provider"] do
+            blank when blank in [nil, ""] -> clear_model_setting(scope, role)
+            provider -> put_model_setting(scope, role, provider, empty_model(choice["model"]))
+          end
+
+        case result do
+          {:error, reason} -> CodeMySpec.Repo.rollback(reason)
+          _ -> :ok
+        end
+      end
+    end)
+  end
+
+  defp empty_model(model) when model in [nil, ""], do: nil
+  defp empty_model(model), do: String.trim(model)
+
   @doc "Every provider that can be chosen, connected or not."
   @spec provider_names() :: [String.t()]
   defdelegate provider_names(), to: Providers, as: :names

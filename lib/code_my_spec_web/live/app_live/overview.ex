@@ -7,18 +7,37 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
 
-  def mount(params, session, socket) do
-    desktop? = Application.get_env(:code_my_spec, :env) == :desktop
-    socket = assign(socket, :desktop_setup?, desktop?)
+  def mount(_params, _session, socket) do
+    model_setup? = not CodeMySpec.Agents.models_configured?(socket.assigns.current_scope)
 
-    if desktop? do
-      CodeMySpecWeb.AppLive.DesktopSetup.mount(params, session, socket)
-    else
-      mount_web(socket)
-    end
+    socket =
+      assign(socket,
+        model_setup?: model_setup?,
+        agent_installations: %{},
+        checking_agents?: false,
+        agent_check_error: nil,
+        selected_provider: nil
+      )
+
+    socket = if model_setup? and connected?(socket), do: check_agents(socket), else: socket
+    mount_overview(socket)
   end
 
-  defp mount_web(socket) do
+  def handle_params(params, _uri, socket) do
+    provider = params["provider"]
+    provider = if provider in ["openai-codex", "claude-code"], do: provider
+    {:noreply, assign(socket, :selected_provider, provider)}
+  end
+
+  defp check_agents(socket) do
+    socket
+    |> assign(checking_agents?: true, agent_check_error: nil)
+    |> start_async(:agent_installations, fn ->
+      CmsHarness.Setup.Prerequisites.agent_installations(System.user_home!())
+    end)
+  end
+
+  defp mount_overview(socket) do
     scope = socket.assigns.current_scope
 
     socket =
@@ -64,6 +83,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   defp assign_steps(socket, scope) do
     state = build_step_state(scope)
+    state = if socket.assigns.model_setup?, do: %{state | active_step: :models}, else: state
 
     socket
     |> assign(:current_scope, scope)
@@ -136,8 +156,8 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
-  def handle_event(event, params, %{assigns: %{desktop_setup?: true}} = socket) do
-    CodeMySpecWeb.AppLive.DesktopSetup.handle_event(event, params, socket)
+  def handle_event("check_agents", _params, %{assigns: %{model_setup?: true}} = socket) do
+    {:noreply, check_agents(socket)}
   end
 
   def handle_event("create_account", %{"account" => params}, socket) do
@@ -178,21 +198,20 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     end
   end
 
-  def handle_async(name, result, %{assigns: %{desktop_setup?: true}} = socket)
-      when name in [:machine_checks, :setup_project, :setup_help] do
-    CodeMySpecWeb.AppLive.DesktopSetup.handle_async(name, result, socket)
+  def handle_async(:agent_installations, {:ok, installations}, socket) do
+    {:noreply, assign(socket, agent_installations: installations, checking_agents?: false)}
   end
 
-  def handle_info(
-        {:machine_setup, _snapshot} = message,
-        %{assigns: %{desktop_setup?: true}} = socket
-      ) do
-    CodeMySpecWeb.AppLive.DesktopSetup.handle_info(message, socket)
+  def handle_async(:agent_installations, {:exit, _reason}, socket) do
+    {:noreply,
+     assign(socket,
+       checking_agents?: false,
+       agent_check_error: "Could not check agent installations. Try checking again."
+     )}
   end
 
-  def handle_info({event, _message} = message, %{assigns: %{desktop_setup?: true}} = socket)
-      when event in [:new_message, :message_updated] do
-    CodeMySpecWeb.AppLive.DesktopSetup.handle_info(message, socket)
+  def handle_info(:agent_models_saved, socket) do
+    {:noreply, socket |> put_flash(:info, "Agent models saved") |> push_navigate(to: ~p"/app")}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -246,10 +265,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     :crypto.strong_rand_bytes(4) |> Base.encode16(case: :upper) |> String.slice(0, 6)
   end
 
-  def render(%{desktop_setup?: true} = assigns) do
-    CodeMySpecWeb.AppLive.DesktopSetup.render(assigns)
-  end
-
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -258,14 +273,34 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <div
-        id="onboarding-page"
-        phx-hook=".SignUpTracking"
-      >
-        <div class="mx-auto max-w-2xl flex flex-col gap-4">
-          <.welcome_banner :if={!@account_done?} />
+      <div id="onboarding-page" phx-hook=".SignUpTracking">
+        <div class="mx-auto max-w-3xl flex flex-col gap-4">
+          <.ladder_progress
+            models_done?={!@model_setup?}
+            account_done?={@account_done?}
+            project_done?={@project_done?}
+            active_step={@active_step}
+          />
 
-          <.ladder_progress account_done?={@account_done?} project_done?={@project_done?} />
+          <CodeMySpecWeb.AppLive.ModelSetup.wizard
+            :if={@model_setup?}
+            current_scope={@current_scope}
+            installations={@agent_installations}
+            checking?={@checking_agents?}
+            error={@agent_check_error}
+            selected_provider={@selected_provider}
+          />
+          <div :if={!@model_setup?} data-test="models-rung" data-state="done">
+            <.metric_tile
+              state="done"
+              eyebrow="Step 1 · Agent models"
+              label="Agent models"
+              value="Configured"
+            />
+            <.link navigate={~p"/app/agent-models"} class="link text-sm">Change agent models</.link>
+          </div>
+
+          <.welcome_banner :if={!@model_setup? and !@account_done?} />
 
           <.account_rung
             state={rung_state(:account, @active_step, @account_done?, @project_done?)}
@@ -314,7 +349,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
           You're in. Let's set up your workspace.
         </h2>
         <p class="text-base-content/70">
-          Four steps below — each builds on the last.
+          Name your workspace and your first project.
         </p>
       </div>
     </div>
@@ -324,29 +359,39 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   # Audit C6: numeric summary above the ladder so the user can always see
   # where they are in the sequence without counting eyebrows.
   defp ladder_progress(assigns) do
-    done =
-      [
-        assigns.account_done?,
-        assigns.project_done?
-      ]
-      |> Enum.count(& &1)
+    steps = [
+      %{key: :models, label: "Agent models", done?: assigns.models_done?},
+      %{key: :account, label: "Account", done?: assigns.account_done?},
+      %{key: :project, label: "Project", done?: assigns.project_done?}
+    ]
 
-    assigns = assign(assigns, done: done)
+    assigns = assign(assigns, steps: steps, done: Enum.count(steps, & &1.done?))
 
     ~H"""
     <div data-test="ladder-progress" class="flex flex-col gap-2 py-1">
-      <ul class="steps steps-horizontal w-full text-sm">
-        <li class={["step", @account_done? && "step-primary"]}>Account</li>
-        <li class={["step", @project_done? && "step-primary"]}>Project</li>
+      <ul class="steps steps-horizontal w-full text-sm" aria-label="Onboarding progress">
+        <li
+          :for={step <- @steps}
+          data-step={step.key}
+          data-state={
+            if step.done?,
+              do: "done",
+              else: if(step.key == @active_step, do: "active", else: "pending")
+          }
+          aria-current={if step.key == @active_step, do: "step"}
+          class={["step", (step.done? or step.key == @active_step) && "step-primary"]}
+        >
+          {step.label}
+        </li>
       </ul>
       <div class="text-center text-xs text-base-content/60">
         <span data-test="ladder-progress-count">
           <span class={
-            if @done == 2, do: "text-primary font-bold", else: "text-base-content font-semibold"
+            if @done == 3, do: "text-primary font-bold", else: "text-base-content font-semibold"
           }>
             {@done}
           </span>
-          / 2 complete
+          / 3 complete
         </span>
       </div>
     </div>
@@ -358,7 +403,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="account-rung"
       state="done"
-      eyebrow="Step 1 · Account"
+      eyebrow="Step 2 · Account"
       label="Accounts"
       value={@name || @count}
     />
@@ -374,7 +419,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     >
       <div class="card-body gap-4">
         <div class="flex items-center gap-2">
-          <span class="badge badge-primary badge-outline">Step 1 · Account</span>
+          <span class="badge badge-primary badge-outline">Step 2 · Account</span>
           <span class="badge badge-primary">Active</span>
         </div>
         <div>
@@ -412,7 +457,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="account-rung"
       state="pending"
-      eyebrow="Step 1 · Account"
+      eyebrow="Step 2 · Account"
       label="Accounts"
       value="—"
       hint="Name your workspace."
@@ -426,7 +471,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="project-rung"
       state="done"
-      eyebrow="Step 2 · Project"
+      eyebrow="Step 3 · Project"
       label="Projects"
       value={@name || @count}
     />
@@ -442,7 +487,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     >
       <div class="card-body gap-4">
         <div class="flex items-center gap-2">
-          <span class="badge badge-primary badge-outline">Step 2 · Project</span>
+          <span class="badge badge-primary badge-outline">Step 3 · Project</span>
           <span class="badge badge-primary">Active</span>
         </div>
         <div>
@@ -494,7 +539,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     <.metric_tile
       data_test="project-rung"
       state="pending"
-      eyebrow="Step 2 · Project"
+      eyebrow="Step 3 · Project"
       label="Projects"
       value="—"
       hint="Name your first Phoenix project."

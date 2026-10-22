@@ -3,10 +3,19 @@ defmodule CmsHarness.Setup.Prerequisites do
 
   alias CmsHarness.Setup.{Command, Platform, Step}
 
+  @agent_keys ~w(codex claude)
   @keys ~w(postgres pgvector version_manager erlang elixir cms vibium)
 
   @spec keys() :: [String.t()]
   def keys, do: @keys
+
+  @doc "Checks local agent installations without running development setup or installing anything."
+  def agent_installations(cwd) do
+    Map.new(@agent_keys, fn key ->
+      step = Step.new(key, 0) |> Step.start(DateTime.utc_now()) |> run(cwd)
+      {key, %{installed?: step.state == :done, error: step.error}}
+    end)
+  end
 
   @doc """
   Runs the check for `step`'s key, in `cwd`.
@@ -22,7 +31,8 @@ defmodule CmsHarness.Setup.Prerequisites do
   @spec run(Step.t(), String.t(), Platform.t() | nil) :: Step.t()
   def run(step, cwd, platform \\ nil)
 
-  def run(%Step{key: key, state: :running} = step, cwd, platform) when key in @keys do
+  def run(%Step{key: key, state: :running} = step, cwd, platform)
+      when key in @keys or key in @agent_keys do
     step = maybe_install(step, key, cwd, platform)
     {command, args} = command(key)
     result = Command.run(cwd, command, args)
@@ -39,6 +49,9 @@ defmodule CmsHarness.Setup.Prerequisites do
         Step.record_command(step, Command.run(cwd, install_cmd, install_args))
     end
   end
+
+  defp command("codex"), do: {"codex", ["--version"]}
+  defp command("claude"), do: {"claude", ["-v"]}
 
   defp command("postgres"), do: {"psql", ["--version"]}
 

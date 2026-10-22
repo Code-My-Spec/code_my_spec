@@ -29,6 +29,7 @@ defmodule CmsHarnessTest do
       CodeMySpec.TempFile
     ],
     exports: [
+      SetupFixture,
       Machine,
       LiveHarness,
       ConnectHeaders,

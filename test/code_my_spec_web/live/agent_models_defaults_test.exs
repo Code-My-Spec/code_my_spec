@@ -83,6 +83,8 @@ defmodule CodeMySpecWeb.AgentModelsDefaultsTest do
 
     live |> element("[data-test=agent-models-form]") |> render_submit(params)
 
+    assert has_element?(live, "select[name='qa[provider]'] option[selected][value='anthropic']")
+
     assert pinned(scope) == [:qa],
            "guarding the untouched rows must not stop a deliberate choice being written, " <>
              "which is the whole point of the page."

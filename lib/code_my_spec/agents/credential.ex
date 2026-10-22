@@ -35,7 +35,7 @@ defmodule CodeMySpec.Agents.Credential do
   @spec fetch(Scope.t(), String.t()) ::
           {:ok, t()} | {:error, :not_connected | :reconnect_required | term()}
   def fetch(%Scope{} = scope, provider) when is_binary(provider) do
-    case Providers.kind(provider) do
+    case provider_kind(provider) do
       {:ok, :local} ->
         {:ok, %{}}
 
@@ -48,6 +48,16 @@ defmodule CodeMySpec.Agents.Credential do
         {:error, reason}
     end
   end
+
+  # Desktop runs Codex on this machine's login, just like its local Claude CLI.
+  # Hosted deployments retain their integration credential checks.
+  defp provider_kind("openai-codex" = provider) do
+    if Application.get_env(:code_my_spec, :env) == :desktop,
+      do: {:ok, :local},
+      else: Providers.kind(provider)
+  end
+
+  defp provider_kind(provider), do: Providers.kind(provider)
 
   defp build_or_platform(scope, provider, integration_provider) do
     case build(scope, provider, integration_provider) do
@@ -93,7 +103,7 @@ defmodule CodeMySpec.Agents.Credential do
   """
   @spec source(Scope.t(), String.t()) :: :user | :platform | :none
   def source(%Scope{} = scope, provider) when is_binary(provider) do
-    case Providers.kind(provider) do
+    case provider_kind(provider) do
       # Never ours to pay for: the harness machine spends its own login.
       {:ok, :local} ->
         :user
