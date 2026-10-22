@@ -37,7 +37,20 @@ defmodule CodeMySpec.Agents.Tools.AskQuestion do
       session_id: {:meta, :string, [description: "Injected by hook — do not set manually"]},
       questions:
         {:required,
-         {:meta, {:list, :map},
+         {:meta,
+          {:list,
+           %{
+             question: {:required, :string},
+             header: :string,
+             multiSelect: :boolean,
+             options:
+               {:required,
+                {:list,
+                 %{
+                   label: {:required, :string},
+                   description: :string
+                 }}}
+           }},
           [
             description:
               "1-4 objects: question (required), options (required, [{label, description}]), header, multiSelect."

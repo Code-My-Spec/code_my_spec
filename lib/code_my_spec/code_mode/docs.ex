@@ -103,17 +103,46 @@ defmodule CodeMySpec.CodeMode.Docs do
 
   defp reserved_note(_tool), do: ""
 
-  defp arguments(%{"properties" => properties} = schema) when map_size(properties) > 0 do
+  defp arguments(schema), do: arguments(schema, "")
+
+  defp arguments(%{"properties" => properties} = schema, prefix) when map_size(properties) > 0 do
     required = Map.get(schema, "required", [])
 
     properties
     |> Enum.sort_by(fn {name, _spec} -> {name not in required, name} end)
     |> Enum.map_join("\n", fn {name, spec} ->
-      "  #{name} (#{Map.get(spec, "type", "any")}#{requirement(name, required)})#{described(spec)}"
+      path = prefix <> name
+
+      line =
+        "  #{path} (#{schema_type(spec)}#{requirement(name, required)})#{choices(spec)}#{described(spec)}"
+
+      line <> nested_arguments(spec, path)
     end)
   end
 
-  defp arguments(_schema), do: "  none"
+  defp arguments(_schema, _prefix), do: "  none"
+
+  defp nested_arguments(%{"properties" => properties} = schema, path)
+       when map_size(properties) > 0,
+       do: "\n" <> arguments(schema, path <> ".")
+
+  defp nested_arguments(%{"items" => items}, path),
+    do:
+      "\n  #{path}[] (#{schema_type(items)})#{choices(items)}#{described(items)}" <>
+        nested_arguments(items, path <> "[]")
+
+  defp nested_arguments(_schema, _path), do: ""
+
+  defp schema_type(%{"type" => type}), do: type
+
+  defp schema_type(%{"enum" => values}) do
+    if Enum.all?(values, &is_binary/1), do: "string", else: "enum"
+  end
+
+  defp schema_type(_), do: "any"
+
+  defp choices(%{"enum" => values}), do: " — allowed: " <> Enum.map_join(values, ", ", &inspect/1)
+  defp choices(_schema), do: ""
 
   defp requirement(name, required) do
     if name in required, do: ", required", else: ""
@@ -136,14 +165,17 @@ defmodule CodeMySpec.CodeMode.Docs do
   defp example(_schema), do: "{}"
 
   defp pair(name, properties) do
-    "#{name} = #{placeholder(Map.get(properties, name, %{}))}"
+    key = if name in @lua_reserved, do: "[#{inspect(name)}]", else: name
+    "#{key} = #{placeholder(Map.get(properties, name, %{}))}"
   end
 
+  defp placeholder(%{"enum" => [value | _]}), do: inspect(value)
+  defp placeholder(%{"type" => "array", "items" => items}), do: "{ " <> placeholder(items) <> " }"
+  defp placeholder(%{"type" => "object"} = schema), do: example(schema)
   defp placeholder(%{"type" => "integer"}), do: "1"
   defp placeholder(%{"type" => "number"}), do: "1"
   defp placeholder(%{"type" => "boolean"}), do: "true"
   defp placeholder(%{"type" => "array"}), do: "{}"
-  defp placeholder(%{"type" => "object"}), do: "{}"
   defp placeholder(_spec), do: ~s("…")
 
   defp search(catalog, term) do

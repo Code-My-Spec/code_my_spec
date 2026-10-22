@@ -28,7 +28,7 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
       assert docs =~ "#{field} ("
     end
 
-    for {_, schema} <- registration.input_schema["properties"] do
+    for {name, schema} <- registration.input_schema["properties"], name != "sources" do
       refute schema["type"] in ["object", "array"]
     end
 
@@ -49,7 +49,6 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     for invalid <- [
           %{"onboarding" => %{"destination" => "local"}},
           %{"development_destination" => %{"kind" => "local"}},
-          %{"sources" => []},
           %{"setup_agent_id" => Ecto.UUID.generate()}
         ] do
       assert {:error, error} =
@@ -159,6 +158,66 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert {:ok, %{sources: []}} = Onboarding.fetch(scope)
   end
 
+  test "batch sources merge atomically and preserve unmentioned sources and choices", %{
+    context: context,
+    scope: scope
+  } do
+    assert {:ok, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{
+                 description: "Tutor",
+                 starting_point: "new",
+                 destination: "local",
+                 source_kind: "github",
+                 repository_url: "https://github.com/example/keep"
+               },
+               context
+             )
+
+    {:ok, before} = Onboarding.fetch(scope)
+    [original] = before.sources
+
+    assert {:ok, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{
+                 sources: [
+                   %{kind: "github", repository_url: "https://github.com/KDE/kajongg"},
+                   %{kind: "github", repository_url: "https://github.com/FluffyStuff/OpenRiichi"}
+                 ]
+               },
+               context
+             )
+
+    {:ok, saved} = Onboarding.fetch(scope)
+    assert saved.onboarding == before.onboarding
+    assert [^original, kajongg, riichi] = saved.sources
+    assert kajongg.repository_url != riichi.repository_url
+
+    assert {:ok, _} =
+             Tools.run(
+               UpdateProjectOnboarding,
+               %{sources: [%{id: kajongg.id, ref: "main"}]},
+               context
+             )
+
+    {:ok, edited} = Onboarding.fetch(scope)
+    assert [^original, %{ref: "main"}, ^riichi] = edited.sources
+    assert {:ok, _} = Tools.run(UpdateProjectOnboarding, %{sources: []}, context)
+    assert {:ok, ^edited} = Onboarding.fetch(scope)
+
+    for invalid <- [
+          %{sources: [%{id: kajongg.id, ref: "changed"}, %{kind: "local"}]},
+          %{sources: [%{kind: "github", repository_urll: "typo"}]},
+          %{sources: [], source_action: "clear"},
+          %{sources: [%{id: Ecto.UUID.generate(), ref: "main"}]}
+        ] do
+      assert {:error, _} = Tools.run(UpdateProjectOnboarding, invalid, context)
+      assert {:ok, ^edited} = Onboarding.fetch(scope)
+    end
+  end
+
   test "local sources use accessible devices and Windows paths", %{context: context, scope: scope} do
     device = CodeMySpec.DevicesFixtures.device_fixture(scope)
     path = ~S(C:\Users\person\source)
@@ -245,7 +304,7 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
              CodeMySpec.McpServers.CodeMode.Tools.RunScript.execute(
                %{
                  script:
-                   ~S[return update_project_onboarding({description = "A shared meal planner", starting_point = "new", destination = "local", source_kind = "github", repository_url = "https://github.com/example/meals"})]
+                   ~S[return update_project_onboarding({description = "A shared meal planner", starting_point = "new", destination = "local", sources = {{kind = "github", repository_url = "https://github.com/example/meals"}, {kind = "github", repository_url = "https://github.com/example/recipes"}}})]
                },
                frame
              )
@@ -254,6 +313,6 @@ defmodule CodeMySpec.Projects.Tools.OnboardingToolsTest do
     assert {:ok, project} = Onboarding.fetch(scope)
     assert project.onboarding.destination == :local
     assert project.onboarding.starting_point == :new
-    assert length(project.sources) == 1
+    assert length(project.sources) == 2
   end
 end

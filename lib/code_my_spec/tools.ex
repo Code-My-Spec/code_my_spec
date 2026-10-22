@@ -182,6 +182,8 @@ defmodule CodeMySpec.Tools do
 
   defp describe(errors) when is_list(errors), do: Enum.map_join(errors, "; ", &describe/1)
 
+  defp describe(%{errors: [_ | _] = errors}), do: describe(errors)
+
   defp describe(%{path: [_ | _] = path, message: message}),
     do: "#{Enum.join(path, ".")} #{message}"
 
