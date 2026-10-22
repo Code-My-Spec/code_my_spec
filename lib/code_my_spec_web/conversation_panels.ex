@@ -749,11 +749,13 @@ defmodule CodeMySpecWeb.ConversationPanels do
       <.icon name="hero-hand-raised" class="size-3.5" />
     </span>
     <span
-      :if={@a.agent.current_tool}
+      :if={turn_running?(@a) and (@a.agent.turn_tool_count || 0) > 0}
       data-test="team-agent-tool"
-      title="Running a tool"
-      class="min-w-0 truncate font-mono text-[10px] opacity-60"
-    >{@a.agent.current_tool}</span>
+      data-tool={@a.agent.current_tool}
+      data-count={@a.agent.turn_tool_count}
+      title={"#{@a.agent.turn_tool_count} tool calls this turn, last: #{@a.agent.current_tool}"}
+      class="flex shrink-0 items-center gap-0.5 opacity-70"
+    ><.icon name="hero-wrench-screwdriver" class="size-3.5" /><span class="badge badge-ghost badge-xs font-mono tabular-nums">{@a.agent.turn_tool_count}</span></span>
     """
   end
 

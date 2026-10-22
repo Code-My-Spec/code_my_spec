@@ -48,7 +48,7 @@ defmodule CodeMySpec.Agents.AnAgentWaitingOnItsPersonTakesNoWorkTest do
         "tool" => %{"name" => "Bash", "input" => %{"command" => "mix test"}}
       })
 
-    assert reload(scope, agent).current_tool == "Bash: mix test"
+    assert %{current_tool: "Bash", turn_tool_count: 1} = reload(scope, agent)
 
     :ok = Agents.record_turn_event(scope, agent.id, %{"kind" => "tool_activity", "tool" => nil})
     assert is_nil(reload(scope, agent).current_tool)
