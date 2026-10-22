@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion918Spex do
 
       when_ "the migration check asks whether it may create that database, outside MIX_ENV=test",
             context do
-        config = Keyword.put(CodeMySpec.Repo.config(), :database, context.missing_db)
+        config = Fixtures.repo_config_naming(context.missing_db)
 
         Mix.env(:dev)
         result = CheckTestMigrations.creatable(config)

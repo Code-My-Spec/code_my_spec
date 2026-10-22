@@ -62,12 +62,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
     # `CmsHarness.Token` is a long-lived named GenServer the app supervisor
     # already started, not a process this test owns -- its own request runs
     # on that pid, not this test's, and Req.Test's stub lookup is per-owner.
-    # `allow/3` grants that pid this test's stub without starting a second
-    # Token server (which `Token.start_link/1` would refuse: already named).
-    case Process.whereis(Token) do
-      nil -> :ok
-      pid -> Req.Test.allow(Token, self(), pid)
-    end
+    # `allow_stub/1` grants that pid this test's stub without starting a
+    # second Token server (which `Token.start_link/1` would refuse: already
+    # named).
+    Fixtures.allow_stub(Token)
 
     on_exit(fn ->
       Application.put_env(:code_my_spec, :harness_server_url_override, original_server_url)
@@ -88,8 +86,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
         root = Fixtures.spex_tmp_dir!("onboard")
 
         env_key = "dk_env_copy_" <> (:crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower))
-        System.put_env("CMS_DEPLOY_KEY", env_key)
-        on_exit(fn -> System.delete_env("CMS_DEPLOY_KEY") end)
+        :ok = Fixtures.set_env_var!("CMS_DEPLOY_KEY", env_key)
 
         {:ok, context |> Map.put(:project, project) |> Map.put(:root, root)}
       end
@@ -116,7 +113,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion916Spex do
         project = Fixtures.committed_project_with_deploy_key!(db_key)
         root = Fixtures.spex_tmp_dir!("onboard")
 
-        System.delete_env("CMS_DEPLOY_KEY")
+        :ok = Fixtures.ensure_env_var_unset!("CMS_DEPLOY_KEY")
 
         {:ok, context |> Map.put(:project, project) |> Map.put(:root, root)}
       end

@@ -5374,6 +5374,68 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc """
+  `CodeMySpec.Repo.config/0`, naming a different database -- for a spex that
+  has to ask whether a config naming some other partition would be allowed
+  to create it (story 1013, criterion 918), without calling into
+  `CodeMySpec.Repo` from the spex file itself.
+  """
+  @spec repo_config_naming(String.t()) :: keyword()
+  def repo_config_naming(database), do: Keyword.put(CodeMySpec.Repo.config(), :database, database)
+
+  @doc """
+  Sets an OS env var for the rest of the test, restored (or unset, if it
+  was never set) on exit -- so a spex asserting about `CMS_DEPLOY_KEY` or
+  similar never calls `System.put_env/2` itself.
+  """
+  @spec set_env_var!(String.t(), String.t()) :: :ok
+  def set_env_var!(name, value) do
+    previous = System.get_env(name)
+    System.put_env(name, value)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        nil -> System.delete_env(name)
+        value -> System.put_env(name, value)
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Unsets an OS env var for the rest of the test, restored on exit -- the
+  "ensure it is absent" counterpart to `set_env_var!/2`.
+  """
+  @spec ensure_env_var_unset!(String.t()) :: :ok
+  def ensure_env_var_unset!(name) do
+    previous = System.get_env(name)
+    System.delete_env(name)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        nil -> :ok
+        value -> System.put_env(name, value)
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Lets `mod`'s `Req.Test` stub answer a request made from a persistent named
+  process (story 1013, criterion 916: `CmsHarness.Token`'s GenServer, already
+  started by the app supervisor, not spawned per test) rather than only from
+  the calling test process itself. A no-op when nothing is registered under
+  `mod`; multi-clause, not a `case`, so a spex's own `setup` can call it
+  without tripping `NoControlFlowInTests`.
+  """
+  @spec allow_stub(module()) :: :ok
+  def allow_stub(mod), do: mod |> Process.whereis() |> allow_stub_pid(mod, self())
+
+  defp allow_stub_pid(nil, _mod, _owner), do: :ok
+  defp allow_stub_pid(pid, mod, owner), do: Req.Test.allow(mod, owner, pid)
+
   @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."
   @spec spex_tmp_dir!(String.t()) :: Path.t()
   def spex_tmp_dir!(prefix) do
