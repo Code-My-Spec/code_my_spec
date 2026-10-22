@@ -6,6 +6,6 @@ defmodule CodeMySpec.Oauth.AccessGrant do
   schema "oauth_access_grants" do
     access_grant_fields()
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 end

@@ -178,7 +178,7 @@ defmodule Mix.Tasks.ProdIssues.Pull do
   end
 
   defp insert_issue(data) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     sql = """
     INSERT INTO issues (

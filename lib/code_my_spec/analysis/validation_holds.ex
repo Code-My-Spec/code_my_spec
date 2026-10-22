@@ -228,7 +228,7 @@ defmodule CodeMySpec.Analysis.ValidationHolds do
 
         hold ->
           unknown? =
-            get_in(run.stats || %{}, ["orphaned"]) == true or
+            run.orphaned or
               (run.status == :failed and is_nil(run.exit_status) and
                  get_in(run.stats || %{}, ["execution_terminal"]) != true)
 

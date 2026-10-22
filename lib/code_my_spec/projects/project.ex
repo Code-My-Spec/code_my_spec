@@ -89,7 +89,7 @@ defmodule CodeMySpec.Projects.Project do
     # domain; `domain_verified_at` is set once the provider confirms DNS, and
     # mailboxes can only send/receive on a verified domain.
     field :domain, :string
-    field :domain_verified_at, :utc_datetime
+    field :domain_verified_at, :utc_datetime_usec
     # Resend's domain id, captured when the domain is registered with the
     # provider; used to fetch DNS records and trigger verification.
     field :resend_domain_id, :string
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Projects.Project do
     # `Migration`.
     field :components_authored_at, :utc_datetime_usec
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc """

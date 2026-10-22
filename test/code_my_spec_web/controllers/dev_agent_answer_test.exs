@@ -118,7 +118,7 @@ defmodule CodeMySpecWeb.DevAgentAnswerTest do
       # can come back first (ejected ff9a042a6). Make "oldest" true.
       CodeMySpec.Repo.update_all(
         from(q in CodeMySpec.Notifications.QuestionRequest, where: q.id == ^oldest.id),
-        set: [inserted_at: DateTime.add(DateTime.utc_now(:second), -60)]
+        set: [inserted_at: DateTime.add(DateTime.utc_now(), -60)]
       )
 
       body =

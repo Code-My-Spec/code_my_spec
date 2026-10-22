@@ -84,7 +84,7 @@ defmodule CodeMySpec.Users do
   def mark_cli_first_connect(%User{cli_first_connected_at: %DateTime{}} = user), do: {:ok, user}
 
   def mark_cli_first_connect(%User{} = user) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     user
     |> Ecto.Changeset.change(%{cli_first_connected_at: now})
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Users do
   defp register_oauth_user(attrs) do
     case %User{}
          |> User.email_changeset(attrs)
-         |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now(:second))
+         |> Ecto.Changeset.put_change(:confirmed_at, DateTime.utc_now())
          |> Repo.insert() do
       {:ok, user} -> {:ok, user, :new}
       {:error, changeset} -> {:error, changeset}

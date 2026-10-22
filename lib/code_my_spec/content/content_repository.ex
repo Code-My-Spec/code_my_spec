@@ -124,15 +124,23 @@ defmodule CodeMySpec.Content.ContentRepository do
     now = DateTime.utc_now()
 
     Content
-    |> where([c], fragment("?->'metadata'->>'series' = ?", c.metadata, ^series_name))
+    |> where([c], json_extract_path(c.metadata, ["metadata", "series"]) == ^series_name)
     |> where([c], c.protected == false)
     |> where([c], is_nil(c.publish_at) or c.publish_at <= ^now)
     |> where([c], is_nil(c.expires_at) or c.expires_at > ^now)
-    |> order_by([c], fragment("(?->'metadata'->>'series_part')::integer", c.metadata))
     |> Repo.all()
+    |> Enum.sort_by(&series_part/1)
   end
 
   def list_series_posts(_), do: []
+
+  defp series_part(%Content{metadata: metadata}) do
+    case get_in(metadata || %{}, ["metadata", "series_part"]) do
+      part when is_integer(part) -> part
+      part when is_binary(part) -> String.to_integer(part)
+      _ -> 0
+    end
+  end
 
   @doc """
   Returns published, in-window content of `content_type` carrying the given

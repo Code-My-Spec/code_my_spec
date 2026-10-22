@@ -34,7 +34,7 @@ defmodule CodeMySpec.UsersFixtures do
     {1, _} =
       Repo.update_all(
         from(u in User, where: u.id == ^user_id),
-        set: [cli_first_connected_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+        set: [cli_first_connected_at: DateTime.utc_now()]
       )
 
     :ok
@@ -257,7 +257,7 @@ defmodule CodeMySpec.UsersFixtures do
   end
 
   def offset_user_token(token, amount_to_add, unit) do
-    dt = DateTime.add(DateTime.utc_now(:second), amount_to_add, unit)
+    dt = DateTime.add(DateTime.utc_now(), amount_to_add, unit)
 
     CodeMySpec.Repo.update_all(
       from(ut in Users.UserToken, where: ut.token == ^token),
@@ -274,7 +274,7 @@ defmodule CodeMySpec.UsersFixtures do
   approved test-only bridge.
   """
   def expire_magic_link_tokens_for(email) when is_binary(email) do
-    dt = DateTime.add(DateTime.utc_now(:second), -31, :day)
+    dt = DateTime.add(DateTime.utc_now(), -31, :day)
 
     CodeMySpec.Repo.update_all(
       from(ut in Users.UserToken,

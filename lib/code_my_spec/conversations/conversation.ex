@@ -48,7 +48,7 @@ defmodule CodeMySpec.Conversations.Conversation do
 
     has_many :messages, Message, preload_order: [asc: :inserted_at]
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

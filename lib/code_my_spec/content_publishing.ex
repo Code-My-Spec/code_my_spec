@@ -442,7 +442,7 @@ defmodule CodeMySpec.ContentPublishing do
     %ImageAsset{}
     |> ImageAsset.changeset(%{project_id: scope.active_project_id, key: key, content_hash: hash})
     |> Repo.insert(
-      on_conflict: [set: [content_hash: hash, updated_at: DateTime.utc_now(:second)]],
+      on_conflict: [set: [content_hash: hash, updated_at: DateTime.utc_now()]],
       conflict_target: [:project_id, :key]
     )
   end

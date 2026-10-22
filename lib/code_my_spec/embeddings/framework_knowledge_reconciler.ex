@@ -231,7 +231,7 @@ defmodule CodeMySpec.Embeddings.FrameworkKnowledgeReconciler do
 
   defp swap(version, model, planned_current, plan, embedded) do
     Repo.transaction(fn ->
-      Repo.query!("SELECT pg_advisory_xact_lock(hashtext('framework_knowledge_reconcile'))")
+      Repo.lock!("framework_knowledge_reconcile")
 
       cond do
         complete?(version, model) -> Repo.rollback(:already_done)

@@ -1,9 +1,10 @@
 defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
   @moduledoc """
   181f3469: a row EXCLUDED agrees with on every stored column is left alone,
-  not rewritten -- proved here on the real table via `xmin`, Postgres's own
-  per-tuple version counter, since `satisfied`/`details` staying equal is not
-  by itself evidence that no new tuple was written.
+  not rewritten -- proved here on the real table by backdating every row's
+  `updated_at` first: a row the write rewrote is stamped again, one it left
+  alone keeps the old stamp. `satisfied`/`details` staying equal is not by
+  itself evidence that nothing was written.
 
   A row the write still covers but does not touch must not read as reaped
   either -- that is the trap a naive `RETURNING`-only diff falls into, and
@@ -32,6 +33,7 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
 
   test "an unchanged row is not rewritten, and still is not reaped", ctx do
     {:ok, _} = event_write(ctx.scope, ctx.story)
+    backdate(ctx.story.id)
     before_versions = row_versions(ctx.story.id)
     assert map_size(before_versions) > 0
 
@@ -41,11 +43,12 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     assert reaped == 0, "a row this write still covers must not read as reaped"
 
     assert row_versions(ctx.story.id) == before_versions,
-           "xmin moving means a row was rewritten even though nothing about it changed"
+           "a row was stamped again, so it was rewritten even though nothing about it changed"
   end
 
   test "a row that did change is rewritten; its unchanged siblings are not", ctx do
     {:ok, _} = event_write(ctx.scope, ctx.story)
+    backdate(ctx.story.id)
     before_versions = row_versions(ctx.story.id)
 
     set_devops(ctx.scope, :prod)
@@ -55,7 +58,7 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     after_versions = row_versions(ctx.story.id)
 
     changed =
-      for {name, xmin} <- after_versions, Map.get(before_versions, name) != xmin, do: name
+      for {name, stamp} <- after_versions, Map.get(before_versions, name) != stamp, do: name
 
     assert changed != [], "devops going from unset to :prod has to change at least one row"
 
@@ -135,10 +138,16 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     |> Repo.update_all(set: [devops: level])
   end
 
+  defp backdate(story_id) do
+    GraphStore.event_target()
+    |> where([n], n.story_id == ^story_id)
+    |> Repo.update_all(set: [updated_at: ~N[2000-01-01 00:00:00]])
+  end
+
   defp row_versions(story_id) do
     GraphStore.event_target()
     |> where([n], n.story_id == ^story_id)
-    |> select([n], {n.name, fragment("xmin::text")})
+    |> select([n], {n.name, n.updated_at})
     |> Repo.all()
     |> Map.new()
   end

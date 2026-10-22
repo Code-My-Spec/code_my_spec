@@ -24,12 +24,14 @@ defmodule CodeMySpec.Agents.Agent do
   # and match agent rows without depending on Agents.
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Agents.RoleProfile],
+    deps: [CodeMySpec.Agents.RoleProfile, CodeMySpec.Repo],
     exports: [Task, TaskType]
 
   use Ecto.Schema
 
   import Ecto.Changeset
+
+  alias CodeMySpec.Repo.References
 
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Projects.Project
@@ -196,7 +198,7 @@ defmodule CodeMySpec.Agents.Agent do
 
     belongs_to :project, Project
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec statuses() :: [atom()]
@@ -368,6 +370,7 @@ defmodule CodeMySpec.Agents.Agent do
     ])
     |> maybe_require_working_copy_id(agent)
     |> foreign_key_constraint(:working_copy_id)
+    |> References.check()
     |> foreign_key_constraint(:story_id)
     |> validate_story_holder()
     |> foreign_key_constraint(:epic_id)

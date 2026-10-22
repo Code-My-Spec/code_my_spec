@@ -18,7 +18,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
       |> Map.replace!(:secret_key_base, CodeMySpecWeb.Endpoint.config(:secret_key_base))
       |> init_test_session(%{})
 
-    %{user: %{user_fixture() | authenticated_at: DateTime.utc_now(:second)}, conn: conn}
+    %{user: %{user_fixture() | authenticated_at: DateTime.utc_now()}, conn: conn}
   end
 
   describe "log_in_user/3" do
@@ -301,7 +301,7 @@ defmodule CodeMySpecWeb.UserAuthTest do
     end
 
     test "redirects when authentication is too old", %{conn: conn, user: user} do
-      eleven_minutes_ago = DateTime.utc_now(:second) |> DateTime.add(-11, :minute)
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-11, :minute)
       user = %{user | authenticated_at: eleven_minutes_ago}
       user_token = Users.generate_user_session_token(user)
       {user, token_inserted_at} = Users.get_user_by_session_token(user_token)

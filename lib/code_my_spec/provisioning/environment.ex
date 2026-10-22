@@ -36,9 +36,11 @@ defmodule CodeMySpec.Provisioning.Environment do
   """
   # A leaf: Deploys, Servers and Telemetry read environments without
   # depending on Provisioning (John, 2026-10-04).
-  use Boundary, top_level?: true, deps: []
+  use Boundary, top_level?: true, deps: [CodeMySpec.Repo]
   use Ecto.Schema
   import Ecto.Changeset
+
+  alias CodeMySpec.Repo.References
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -80,5 +82,6 @@ defmodule CodeMySpec.Provisioning.Environment do
     |> unique_constraint([:project_id, :name])
     |> foreign_key_constraint(:project_id)
     |> foreign_key_constraint(:server_id)
+    |> References.check()
   end
 end

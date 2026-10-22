@@ -60,7 +60,9 @@ defmodule CodeMySpecWeb.FeedController do
     """
   end
 
-  defp format_date(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp format_date(%DateTime{} = dt),
+    do: dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
   defp format_date(_), do: nil
 
   defp escape(text) do

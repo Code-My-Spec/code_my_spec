@@ -17,10 +17,10 @@ defmodule CodeMySpec.Users.UserToken do
     field :token, :binary
     field :context, :string
     field :sent_to, :string
-    field :authenticated_at, :utc_datetime
+    field :authenticated_at, :utc_datetime_usec
     belongs_to :user, CodeMySpec.Users.User
 
-    timestamps(type: :utc_datetime, updated_at: false)
+    timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
   @doc """
@@ -44,7 +44,9 @@ defmodule CodeMySpec.Users.UserToken do
   """
   def build_session_token(user) do
     token = :crypto.strong_rand_bytes(@rand_size)
-    dt = user.authenticated_at || DateTime.utc_now(:second)
+    %DateTime{microsecond: {us, _}} = dt = user.authenticated_at || DateTime.utc_now()
+    # The column holds microseconds; a second-precision value is padded, not refused.
+    dt = %{dt | microsecond: {us, 6}}
     {token, %UserToken{token: token, context: "session", user_id: user.id, authenticated_at: dt}}
   end
 

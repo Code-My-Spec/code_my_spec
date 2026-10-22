@@ -1389,7 +1389,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec age_story(Scope.t(), term(), number()) :: :ok
   def age_story(%Scope{} = scope, story_id, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
-    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+    naive = at |> DateTime.to_naive()
 
     from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
     |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
@@ -2424,7 +2424,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def age_question(%Scope{user: %{id: user_id}}, question_id, seconds)
       when is_integer(seconds) and seconds > 0 do
     timestamp =
-      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+      DateTime.utc_now() |> DateTime.add(-seconds, :second)
 
     {1, _} =
       from(q in Notifications.QuestionRequest,
@@ -2445,7 +2445,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def age_permission(%Scope{user: %{id: user_id}}, permission_id, seconds)
       when is_integer(seconds) and seconds > 0 do
     timestamp =
-      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+      DateTime.utc_now() |> DateTime.add(-seconds, :second)
 
     {1, _} =
       from(p in Notifications.PermissionRequest,
@@ -2639,7 +2639,6 @@ defmodule CodeMySpecSpex.Fixtures do
     past =
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
-      |> NaiveDateTime.truncate(:second)
 
     {_, _} =
       CodeMySpec.Repo.update_all(
@@ -4711,8 +4710,8 @@ defmodule CodeMySpecSpex.Fixtures do
       where: o.agent_id == type(^agent_id, :binary_id),
       update: [
         set: [
-          turn_requested_at: fragment("? - make_interval(secs => ?)", o.turn_requested_at, ^secs),
-          outcome_at: fragment("? - make_interval(secs => ?)", o.outcome_at, ^secs)
+          turn_requested_at: datetime_add(o.turn_requested_at, ^(-secs), "second"),
+          outcome_at: datetime_add(o.outcome_at, ^(-secs), "second")
         ]
       ]
     )
@@ -4737,7 +4736,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec age_agent_messages(Scope.t(), map(), number()) :: :ok
   def age_agent_messages(%Scope{} = _scope, %{id: agent_id}, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
-    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+    naive = at |> DateTime.to_naive()
 
     conversation_ids =
       from(c in CodeMySpec.Conversations.Conversation,
@@ -5019,7 +5018,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     project
     |> Ecto.Changeset.change(domain: domain, domain_verified_at: now)

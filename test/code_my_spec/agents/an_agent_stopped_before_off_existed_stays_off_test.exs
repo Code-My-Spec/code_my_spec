@@ -11,6 +11,9 @@ defmodule CodeMySpec.Agents.AnAgentStoppedBeforeOffExistedStaysOffTest do
 
   use CodeMySpecTest.DataCase, async: false
 
+  # Replays a Postgres migration (priv/repo/migrations): Postgres only.
+  @moduletag :postgres
+
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
@@ -41,9 +44,11 @@ defmodule CodeMySpec.Agents.AnAgentStoppedBeforeOffExistedStaysOffTest do
 
   # A row as the code before 2026-09-28 left it: stopped, and nothing more.
   defp stopped(agent, reason) do
-    Repo.query!(
-      "UPDATE agents SET status = 'stopped', stopped_reason = $2, off_at = NULL WHERE id = $1",
-      [Ecto.UUID.dump!(agent.id), reason]
+    import Ecto.Query, only: [from: 2]
+
+    Repo.update_all(
+      from(a in "agents", where: a.id == type(^agent.id, :binary_id)),
+      set: [status: "stopped", stopped_reason: reason, off_at: nil]
     )
 
     agent

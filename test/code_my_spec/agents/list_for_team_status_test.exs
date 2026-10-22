@@ -69,7 +69,7 @@ defmodule CodeMySpec.Agents.ListForTeamStatusTest do
   # the tie either way. Stamping distinct timestamps directly is this
   # project's own answer to that, not a sleep between them.
   defp backdate(agent, seconds_ago) do
-    at = DateTime.add(DateTime.utc_now(), -seconds_ago, :second) |> DateTime.truncate(:second)
+    at = DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
 
     {1, _} =
       from(a in Agent, where: a.id == ^agent.id) |> Repo.update_all(set: [updated_at: at])

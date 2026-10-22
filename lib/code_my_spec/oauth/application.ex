@@ -7,7 +7,7 @@ defmodule CodeMySpec.Oauth.Application do
   schema "oauth_applications" do
     application_fields()
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   def changeset(application, attrs) do

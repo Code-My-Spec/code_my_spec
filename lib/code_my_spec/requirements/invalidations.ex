@@ -84,7 +84,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
   def enabled?, do: Application.get_env(:code_my_spec, :graph_invalidations, true)
 
   defp do_record(project_id, source, entities, observation_id, copy) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     rows =
       entities
@@ -126,7 +126,7 @@ defmodule CodeMySpec.Requirements.Invalidations do
   def record_event(project_id, source, kind, payload, entities, observation_id, copy)
       when is_binary(project_id) do
     if enabled?() do
-      now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      now = NaiveDateTime.utc_now()
 
       event =
         :project
@@ -160,11 +160,13 @@ defmodule CodeMySpec.Requirements.Invalidations do
             working_copy_id: copy,
             source: source,
             kind: "invalidate",
+            payload: nil,
             observation_id: observation_id,
             inserted_at: now
           })
         end)
 
+      # Every row names the same columns: SQLite has no per-row DEFAULT.
       Repo.insert_all(Invalidation, [event | marks])
     end
 

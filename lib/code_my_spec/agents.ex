@@ -821,9 +821,10 @@ defmodule CodeMySpec.Agents do
         import Ecto.Query, only: [from: 2]
 
         from(q in "question_requests",
-          where: q.agent_id == type(^id, :binary_id) and q.status == "pending"
+          where: q.agent_id == type(^id, :binary_id) and q.status == "pending",
+          update: [set: [agent_id: type(^to, :binary_id)]]
         )
-        |> Repo.update_all(set: [agent_id: Ecto.UUID.dump!(to)])
+        |> Repo.update_all([])
 
         :ok
     end

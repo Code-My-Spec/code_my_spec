@@ -223,7 +223,7 @@ if config_env() != :harness do
         "BASE_URL",
         :string,
         if(config_env() == :desktop,
-          do: "http://localhost:4000",
+          do: "http://127.0.0.1:47400",
           else: "https://dev.codemyspec.com"
         )
       ),
@@ -267,17 +267,19 @@ end
 # model), and loading the real 90MB ONNX file on every test boot for a
 # backend nothing in that env calls would just be a slow no-op.
 # Desktop's FirstBoot refuses a Postgres without pgvector, so it is always here.
-if config_env() in [:dev, :prod, :desktop] do
+if config_env() in [:dev, :prod] do
   config :code_my_spec,
     embeddings_backend: CodeMySpec.Embeddings.PgVectorBackend,
     embedding_serving: CodeMySpec.Embeddings.OrtexServing
 end
 
 if config_env() == :desktop do
-  # No user or password: Postgrex's default, $PGUSER or the OS user, which is
-  # the superuser a fresh Homebrew Postgres has.
+  # One SQLite file beside the rest of the machine's CodeMySpec state.
   config :code_my_spec, CodeMySpec.Repo,
-    url: System.get_env("DATABASE_URL") || "ecto://localhost/code_my_spec_desktop",
+    database: System.get_env("CMS_DESKTOP_DB") || Path.expand("~/.codemyspec/desktop.db"),
+    journal_mode: :wal,
+    busy_timeout: 10_000,
+    default_transaction_mode: :immediate,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10")
 
   # Per install, created on first boot.
@@ -285,10 +287,10 @@ if config_env() == :desktop do
     secret_key_base:
       System.get_env("SECRET_KEY_BASE") || CodeMySpecDesktop.Secret.read_or_create!()
 
-  # For a machine where 4000 or 4004 is taken. The harness follows the app's
+  # For a machine where 47400 or 47403 is taken. The harness follows the app's
   # port, since base_url is the server it talks to.
   if port = System.get_env("PORT") do
-    url = "http://localhost:#{port}"
+    url = "http://127.0.0.1:#{port}"
 
     config :code_my_spec,
       base_url: url,

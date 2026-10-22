@@ -17,7 +17,8 @@ config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 # SQLite, for `cms migrate`: the one thing in a harness build that opens a
 # database is that import, and what it reads is a local CLI database. Desktop
-# overrides it for Postgres. No embeddings backend: search lives on the server.
+# keeps SQLite with its own migrations (priv/sqlite). No embeddings backend:
+# search lives on the server.
 config :code_my_spec, adapter: Ecto.Adapters.SQLite3
 
 # PaperTrail strict_mode uses Postgres sequences — SQLite doesn't have them.

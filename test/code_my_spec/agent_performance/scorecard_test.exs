@@ -22,7 +22,7 @@ defmodule CodeMySpec.AgentPerformance.ScorecardTest do
   end
 
   test "an expired tap-out is a lost decision, and past a quarter of them is bad", context do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
     tap_out(context, "expired", now)
     tap_out(context, "approved", now)
     tap_out(context, "pending", now)
@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentPerformance.ScorecardTest do
   end
 
   test "an answered question's wait runs from asking to answering", context do
-    asked = DateTime.utc_now() |> DateTime.add(-3600, :second) |> DateTime.truncate(:second)
+    asked = DateTime.utc_now() |> DateTime.add(-3600, :second)
     question(context, "answered", asked, DateTime.add(asked, 30 * 60, :second))
 
     kpi = kpi(context, :question_wait)

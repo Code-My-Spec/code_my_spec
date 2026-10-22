@@ -75,16 +75,25 @@ defmodule Mix.Tasks.Cms.GuardCliMigrate do
   harness build `cms migrate` is the thing that runs the migrations this task
   is refusing to run by hand.
   """
-  @spec refuse_on_sqlite!(module()) :: :ok
-  def refuse_on_sqlite!(adapter \\ configured_adapter())
+  @spec refuse_on_sqlite!(module(), String.t() | nil) :: :ok
+  def refuse_on_sqlite!(adapter \\ configured_adapter(), priv \\ configured_priv())
 
-  def refuse_on_sqlite!(Ecto.Adapters.SQLite3), do: raise(wrong_set_message())
-  def refuse_on_sqlite!(_adapter), do: :ok
+  # A SQLite repo with its own `priv` (the desktop, `priv/sqlite`) migrates
+  # from its own set.
+
+  def refuse_on_sqlite!(Ecto.Adapters.SQLite3, nil), do: raise(wrong_set_message())
+  def refuse_on_sqlite!(_adapter, _priv), do: :ok
 
   @doc "The repo adapter this environment is configured with."
   @spec configured_adapter() :: module()
   def configured_adapter do
     Application.get_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres)
+  end
+
+  @doc "The repo's own `priv`, when this environment sets one."
+  @spec configured_priv() :: String.t() | nil
+  def configured_priv do
+    Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:priv]
   end
 
   defp wrong_set_message do

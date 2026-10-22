@@ -64,7 +64,7 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
       {:ok, conn} =
         conn
         |> log_in_user(user_fixture(),
-          token_authenticated_at: DateTime.add(DateTime.utc_now(:second), -11, :minute)
+          token_authenticated_at: DateTime.add(DateTime.utc_now(), -11, :minute)
         )
         |> live(~p"/app/users/settings")
         |> follow_redirect(conn, ~p"/users/log-in")
