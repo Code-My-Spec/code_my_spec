@@ -3359,10 +3359,6 @@ defmodule CodeMySpec.Agents do
   defdelegate roles(), to: Agent
 
   @doc "The recommended model for a role on a selected provider."
-  def default_model(role, "claude-code") do
-    if role == :qa, do: "haiku", else: "sonnet"
-  end
-
   def default_model(role, provider) do
     case List.keyfind(Defaults.for_role(role), provider, 0) do
       {_, model} -> model

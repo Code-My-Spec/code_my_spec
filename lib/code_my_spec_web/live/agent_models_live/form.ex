@@ -192,8 +192,9 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
 
   defp cost_hint(%{role: role, model: model}), do: "Set to #{model} — #{tier(role)}."
 
-  defp tier(:qa), do: "the cheapest that can follow instructions, because it runs constantly"
-  defp tier(_role), do: "a stronger model, because this one is reasoning rather than checking"
+  defp tier(:qa), do: "for focused, repeatable validation"
+  defp tier(:coding), do: "balances coding capability, speed and cost"
+  defp tier(_role), do: "for broad reasoning and product decisions"
 
   defp refusal(:unknown_provider),
     do: "That provider is not connected, so nothing was saved for it."

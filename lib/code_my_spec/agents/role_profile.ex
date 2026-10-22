@@ -183,22 +183,32 @@ defmodule CodeMySpec.Agents.RoleProfile do
     query_logs get_trace slow_spans error_summary
   )
 
-  # Models, most preferred first; the first whose provider the account holds a
-  # key for wins (`Agents.Defaults`). QA runs constantly and reads more than it
-  # reasons, so it leads cheap. openai-codex is `gpt-6-astra` in both: the
-  # ChatGPT-plan account refuses the older Codex models.
+  # Models, most preferred first; the first connected provider wins.
+  # Main/product handle broad judgment, coding balances capability and cost,
+  # and QA runs focused, repeatable checks. Keep provider-specific defaults
+  # here so the launcher and the onboarding form resolve the same choices.
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
     {"zai", "glm-5.3"},
-    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-opus-5-5"}
+  ]
+
+  @coding [
+    {"anthropic", "claude-sonnet-5"},
+    {"openai-codex", "gpt-6.1-sol"},
+    {"zai", "glm-5.3"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-sonnet-5"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
-    {"openai-codex", "gpt-6-astra"},
+    {"openai-codex", "gpt-6-luna"},
     {"anthropic", "claude-haiku-4-5"},
-    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-sonnet-5"}
   ]
 
   # In role order: `roles/0` is this list's order, and so is every enum built
@@ -289,7 +299,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       browses?: true,
       holds_problems?: true,
       claims_any?: false,
-      model_preference: @strong
+      model_preference: @coding
     },
     %{
       role: :qa,
