@@ -35,7 +35,7 @@ defmodule CodeMySpec.Tools do
   @spec validate(module(), map()) :: {:ok, map()} | {:error, term()}
   def validate(tool, args) do
     preflight =
-      if function_exported?(tool, :validate_input, 1),
+      if Code.ensure_loaded?(tool) and function_exported?(tool, :validate_input, 1),
         do: tool.validate_input(args),
         else: :ok
 
