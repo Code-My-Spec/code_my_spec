@@ -53,17 +53,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
       end
 
       when_ "setup finishes the machine steps by linking the project", context do
-        assert {:ok, _snapshot} =
-                 CmsHarness.Setup.connect_project(
-                   context.project_dir,
-                   %{
-                     project_id: Ecto.UUID.generate(),
-                     working_copy_id: Ecto.UUID.generate(),
-                     app: "dev_setup_app"
-                   },
-                   []
-                 )
-
+        assert {:ok, _snapshot} = DesktopSetupHelpers.connect_setup_project(context)
         {:ok, context}
       end
 

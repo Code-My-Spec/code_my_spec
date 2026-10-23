@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3012Spex do
   spex "The compact form exposes the cheaper QA default", criterion: 1087 do
     scenario "Codex models are balanced by role" do
       given_ "Codex is connected", context do
-        Fixtures.connect_provider(context.scope, "openai-codex")
+        Fixtures.connect_provider(context.scope, :openai)
         {:ok, context}
       end
 
