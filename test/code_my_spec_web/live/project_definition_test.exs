@@ -224,10 +224,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
 
     on_exit(fn ->
       for {key, prior} <- previous do
-        case prior do
-          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
-          :error -> Application.delete_env(:code_my_spec, key)
-        end
+        CodeMySpecTest.EnvRestore.restore_fetched_app_env(key, prior)
       end
     end)
 
@@ -363,10 +360,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
 
     on_exit(fn ->
       for {key, prior} <- previous do
-        case prior do
-          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
-          :error -> Application.delete_env(:code_my_spec, key)
-        end
+        CodeMySpecTest.EnvRestore.restore_fetched_app_env(key, prior)
       end
     end)
 
