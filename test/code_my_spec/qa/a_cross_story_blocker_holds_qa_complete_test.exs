@@ -15,6 +15,7 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Issues
+  alias CodeMySpec.Qa.Invalidations
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
@@ -105,6 +106,19 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
     assert held.waiting_on == "cross_story_issue_block"
 
     {:ok, _} = Issues.dismiss_issue(ctx.scope, blocker, "No longer applicable")
+    {false, details} = Verdict.complete_check(ctx.scope, ctx.story)
+    refute Map.has_key?(details, :waiting_on)
+  end
+
+  test "an invalidated attempt's citation no longer withholds QA", ctx do
+    other = story_fixture(ctx.scope)
+    {:ok, _blocker} = Issues.update_issue(ctx.scope, ctx.blocker, %{story_id: other.id})
+    {false, held} = Verdict.complete_check(ctx.scope, ctx.story)
+    assert held.waiting_on == "cross_story_issue_block"
+
+    [attempt] = Repo.all(QaAttempt)
+    {:ok, _} = Invalidations.invalidate(ctx.scope, attempt.id, "Taken before the build existed")
+
     {false, details} = Verdict.complete_check(ctx.scope, ctx.story)
     refute Map.has_key?(details, :waiting_on)
   end
