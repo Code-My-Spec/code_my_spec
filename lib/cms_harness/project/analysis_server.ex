@@ -102,6 +102,18 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   @doc """
+  Cancel one run, executing or queued, answered as `cancelled` (story 1142).
+  Its task is killed, and the run, which watches it, halts.
+  """
+  @spec cancel_run(String.t(), integer()) :: :ok | :not_found
+  def cancel_run(root, run_id) when is_integer(run_id) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.call(pid, {:cancel_run, run_id}, 5_000)
+      [] -> :not_found
+    end
+  end
+
+  @doc """
   Test seam: block until the queue is empty. Not used in production — the
   server learns a run finished by being told, not by anyone waiting.
   """
@@ -211,6 +223,36 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
 
     {:reply, length(held), clear_running(%{state | queue: []})}
+  end
+
+  def handle_call({:cancel_run, run_id}, _from, state) do
+    queued = Enum.find(state.queue, &(run_id in answers_for(&1)))
+
+    cond do
+      state.running && run_id in answers_for(state.running) ->
+        running = state.running
+
+        Task.Supervisor.terminate_child(
+          Sync.task_supervisor(state.project.root),
+          running.task.pid
+        )
+
+        Process.demonitor(running.task.ref, [:flush])
+
+        if capture = Map.get(running, :output_capture) do
+          StringIO.close(capture)
+        end
+
+        answer_cancelled(state.project.root, running)
+        {:reply, :ok, state |> clear_running() |> maybe_start_next()}
+
+      queued ->
+        answer_cancelled(state.project.root, queued)
+        {:reply, :ok, %{state | queue: List.delete(state.queue, queued)}}
+
+      true ->
+        {:reply, :not_found, state}
+    end
   end
 
   def handle_call(:status, _from, %{running: %{started: false} = waiting} = state) do
@@ -638,6 +680,20 @@ defmodule CmsHarness.Project.AnalysisServer do
             "every one of them report failures that are the load rather than the code. " <>
             "Nothing ran. The next stop re-enqueues this."}, nil}
     end
+  end
+
+  defp answers_for(entry), do: [entry.run_id | Map.get(entry, :tied_run_ids, [])]
+
+  defp answer_cancelled(root, entry) do
+    for run_id <- answers_for(entry) do
+      Channel.deliver_analysis_result(root, %{
+        "run_id" => run_id,
+        "source" => entry.source,
+        "status" => "cancelled"
+      })
+    end
+
+    Logger.info("[CmsHarness] #{entry.source} run #{entry.run_id} cancelled for #{root}")
   end
 
   defp clear_running(state) do

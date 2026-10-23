@@ -106,7 +106,16 @@ defmodule CmsHarnessTest.ClusteredProject do
   """
   @spec run_for_absent_harness(String.t()) :: %{exit: non_neg_integer(), ran?: boolean()}
   def run_for_absent_harness(root) do
-    env = build_env(root) ++ [{"CMS_HARNESS_NODE", "absent@127.0.0.1"}, {"CMS_RUN_ID", "1"}]
+    # Distributed from boot, as the harness starts a run; only the harness is missing.
+    env =
+      build_env(root) ++
+        [
+          {"ELIXIR_ERL_OPTIONS",
+           "-hidden -name cms_run_absent_#{System.unique_integer([:positive])}@127.0.0.1 -setcookie qa"},
+          {"CMS_HARNESS_NODE", "absent@127.0.0.1"},
+          {"CMS_HARNESS_COOKIE", "qa"},
+          {"CMS_RUN_ID", "1"}
+        ]
 
     {_output, status} =
       System.cmd("mix", ["test", "--formatter", "ClientUtils.TestFormatter"],

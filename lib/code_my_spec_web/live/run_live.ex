@@ -34,6 +34,12 @@ defmodule CodeMySpecWeb.RunLive do
   end
 
   @impl true
+  def handle_event("cancel", _params, %{assigns: %{run: run, current_scope: scope}} = socket) do
+    _ = Analysis.cancel_run(scope, run.id)
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info({:run_live, run_id, live}, %{assigns: %{run: %{id: run_id}}} = socket),
     do: {:noreply, assign(socket, live: live)}
 
@@ -77,6 +83,14 @@ defmodule CodeMySpecWeb.RunLive do
         <div class="flex items-baseline gap-3">
           <h1 class="text-xl font-semibold">{@run.source} run {@run.id}</h1>
           <span id="run-status" class={["badge", status_class(@status)]}>{@status}</span>
+          <button
+            :if={@status == "running"}
+            id="run-cancel"
+            phx-click="cancel"
+            class="btn btn-sm btn-ghost"
+          >
+            Cancel
+          </button>
         </div>
 
         <p :if={(@status == "running" and @live) && @live.running_files != []} id="run-current-files">
@@ -104,6 +118,7 @@ defmodule CodeMySpecWeb.RunLive do
 
   defp status(%{status: :running}), do: "running"
   defp status(%{status: :completed}), do: "finished"
+  defp status(%{status: :cancelled}), do: "cancelled"
   defp status(_run), do: "died"
 
   defp tests(nil), do: []
@@ -111,6 +126,7 @@ defmodule CodeMySpecWeb.RunLive do
 
   defp status_class("running"), do: "badge-info"
   defp status_class("finished"), do: "badge-success"
+  defp status_class("cancelled"), do: "badge-warning"
   defp status_class(_died), do: "badge-error"
 
   defp test_class("passed"), do: "badge-success"

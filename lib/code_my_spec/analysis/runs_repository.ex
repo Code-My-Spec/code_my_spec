@@ -493,8 +493,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   @doc """
   Any run of this project by id, whatever its status or owner.
 
-  For explaining a refusal, never for deciding one — `get_running_run/2` is
-  what a result is matched against.
+  For explaining a refusal or finding a run to cancel, never for deciding a
+  result — `get_running_run/2` is what a result is matched against.
   """
   @spec get_run_in_project(Scope.t(), integer()) :: Run.t() | nil
   def get_run_in_project(%Scope{active_project_id: project_id}, run_id) do

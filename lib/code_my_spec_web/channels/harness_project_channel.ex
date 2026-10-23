@@ -1373,6 +1373,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # One run, by id: somebody cancelled it (story 1142).
+  def handle_info({:cancel_run, run_id}, socket) do
+    push(socket, "cancel_analysis", %{"run_id" => run_id, "reason" => "cancelled"})
+    {:noreply, socket}
+  end
+
   def handle_info({:cancel_analysis, reason}, socket) do
     push(socket, "cancel_analysis", %{"reason" => reason})
     {:noreply, socket}
