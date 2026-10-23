@@ -5,17 +5,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2037Spex do
   spex "Provisioning attempts are recorded once", criterion: 2037 do
     scenario "Reopening an explicit setup run preserves its outcomes" do
       given_ "an isolated setup directory and unavailable development tools", context do
-        root = Path.join(System.tmp_dir!(), "setup-history-#{System.unique_integer([:positive])}")
-        File.mkdir_p!(root)
-        previous = System.get_env("PATH")
-        System.put_env("PATH", root)
-
-        on_exit(fn ->
-          System.put_env("PATH", previous)
-          File.rm_rf!(root)
-        end)
-
-        {:ok, Map.put(context, :opts, directory: Path.join(root, "results"))}
+        {:ok, Map.put(context, :opts, CmsHarnessTest.SetupFixture.isolated_history())}
       end
 
       when_ "provisioning is explicitly run", context do
@@ -31,8 +21,7 @@ defmodule CodeMySpecSpex.Story1112.Criterion2037Spex do
 
         assert Enum.all?(context.snapshot["steps"], &is_binary(&1["finished_at"]))
 
-        assert context.snapshot ==
-                 context.snapshot["results_path"] |> File.read!() |> Jason.decode!()
+        assert context.snapshot == CmsHarnessTest.SetupFixture.persisted_result(context.snapshot)
 
         {:ok, context}
       end

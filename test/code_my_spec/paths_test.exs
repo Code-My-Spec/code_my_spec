@@ -10,24 +10,17 @@ defmodule CodeMySpec.PathsTest do
 
     on_exit(fn ->
       for {key, value} <- previous do
-        if value, do: System.put_env(key, value), else: System.delete_env(key)
+        restore_env(key, value)
       end
 
-      if agents,
-        do: Application.put_env(:code_my_spec, :detached_agents_root, agents),
-        else: Application.delete_env(:code_my_spec, :detached_agents_root)
+      restore_agents(agents)
     end)
 
     :ok
   end
 
   test "machine defaults share the user state directory" do
-    home =
-      if Code.ensure_loaded?(Desktop.OS),
-        do: apply(Desktop.OS, :home, []),
-        else: System.user_home!()
-
-    root = Paths.expand(Path.join(home, ".codemyspec"))
+    root = Paths.expand(Path.join(System.user_home!(), ".codemyspec"))
     assert Paths.user_state_dir() == root
     assert Paths.local_state_dir() == root
     assert Paths.agents_root() == Path.join(root, "agents")
@@ -58,4 +51,9 @@ defmodule CodeMySpec.PathsTest do
     assert Paths.base_dir() == ".code_my_spec"
     assert Paths.tasks_dir() == ".code_my_spec/tasks"
   end
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+  defp restore_agents(nil), do: Application.delete_env(:code_my_spec, :detached_agents_root)
+  defp restore_agents(value), do: Application.put_env(:code_my_spec, :detached_agents_root, value)
 end
