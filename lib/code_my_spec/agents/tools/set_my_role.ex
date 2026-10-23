@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Tools.SetMyRole do
     """
     Take the role you agreed with the person: main, coding, qa or product.
 
-    For a Claude Code session in a terminal, which joins as this project's main
+    For a Claude Code or Codex session in a terminal, which joins as this project's main
     agent by default. Ask the person which role you should play before changing
     it. Any role is open on any working copy, even one another agent holds.
     """

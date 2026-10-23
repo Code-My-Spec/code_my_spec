@@ -283,8 +283,16 @@ defmodule CodeMySpec.Agents do
   reaches agents already running.
   """
   @spec tools_of(Scope.t(), Agent.t()) :: [String.t()] | nil
-  def tools_of(%Scope{} = scope, %Agent{} = agent),
-    do: tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+  def tools_of(%Scope{} = scope, %Agent{} = agent) do
+    granted = tools_for(scope, %{role: agent.role, working_copy_id: agent.working_copy_id})
+
+    # A terminal chooses its role with the person. Switching away from main
+    # must not remove the very tool needed to switch again. This is a terminal
+    # capability, not a grant for in-app agents to change their assigned seat.
+    if is_list(granted) and agent.engine in [:claude_code, :codex],
+      do: Enum.uniq(["set_my_role" | granted]),
+      else: granted
+  end
 
   @doc """
   Starts an agent on a working copy, on the provider the caller named.
