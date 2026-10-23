@@ -3,6 +3,7 @@ defmodule CodeMySpecSpex.Story1128.Criterion2290Spex do
   Story 1128 — A terminal Codex agent is told things like any agent.
   Criterion 2290 — A Codex too old for codex queue gets its messages at stop.
   """
+  # User decision: direct messages use native transports, never the Stop-hook inbox.
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.TerminalCodexHelpers
@@ -27,7 +28,7 @@ defmodule CodeMySpecSpex.Story1128.Criterion2290Spex do
     )
   end
 
-  spex "A Codex without codex queue is told at its stop, and everyone hears why",
+  spex "A Codex without codex queue refuses direct messages",
     criterion: 2290 do
     scenario "main messages a terminal Codex agent whose Codex has no queue command" do
       given_ "a terminal Codex agent whose Codex has no queue command", context do
@@ -45,10 +46,10 @@ defmodule CodeMySpecSpex.Story1128.Criterion2290Spex do
          })}
       end
 
-      then_ "the agent was told at join that messages arrive at stop, and why", context do
+      then_ "the agent was told at join that native messaging is unavailable", context do
         said = context.started["hookSpecificOutput"]["additionalContext"]
         assert said =~ "codex queue"
-        assert said =~ "when you stop"
+        assert said =~ "Direct messages require native session messaging"
         {:ok, context}
       end
 
@@ -56,9 +57,9 @@ defmodule CodeMySpecSpex.Story1128.Criterion2290Spex do
         {:ok, Map.put(context, :sent, message(context, "Check the failing spex."))}
       end
 
-      then_ "the message waits in its inbox, and main is told when it will arrive", context do
-        assert {:ok, said} = context.sent
-        assert said =~ "when it next stops"
+      then_ "main receives an explicit native delivery failure", context do
+        assert {:error, said} = context.sent
+        assert said =~ "Message not sent"
         {:ok, context}
       end
 
@@ -66,9 +67,8 @@ defmodule CodeMySpecSpex.Story1128.Criterion2290Spex do
         {:ok, Map.put(context, :stopped, codex_stop_turn(context, context.session))}
       end
 
-      then_ "the message is handed over at its stop hook", context do
-        assert %{"decision" => "block", "reason" => reason} = context.stopped
-        assert reason =~ "Check the failing spex."
+      then_ "the Stop hook does not deliver the rejected direct message", context do
+        refute inspect(context.stopped) =~ "Check the failing spex."
         {:ok, context}
       end
     end

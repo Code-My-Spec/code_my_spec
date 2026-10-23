@@ -2,7 +2,7 @@ defmodule CodeMySpec.Agents.ATerminalAgentUnreachableBySocketIsToldAtStopTest do
   @moduledoc """
   Story 1123: a terminal session that cannot take socket messages — its
   Claude Code is too old, or it holds or refuses them — is told why when it
-  starts, and is handed what was waiting when it stops.
+  starts. Direct messages fail rather than silently falling back to Stop.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.ATerminalAgentUnreachableBySocketIsToldAtStopTest do
   alias CodeMySpec.Hooks.SessionStart
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpecTest.RecordingAgentTransport
+  alias CodeMySpecTest.AgentPresence
 
   setup do
     scope = full_scope_fixture()
@@ -43,7 +44,7 @@ defmodule CodeMySpec.Agents.ATerminalAgentUnreachableBySocketIsToldAtStopTest do
 
     context = body.hookSpecificOutput.additionalContext
     assert context =~ why
-    assert context =~ "handed to you when you stop"
+    assert context =~ "Direct messages require native session messaging"
   end
 
   test "a session reached by socket hears nothing about stopping", %{scope: scope} do
@@ -56,28 +57,48 @@ defmodule CodeMySpec.Agents.ATerminalAgentUnreachableBySocketIsToldAtStopTest do
     refute body.hookSpecificOutput.additionalContext =~ "when you stop"
   end
 
-  test "what waited for an agent nothing reaches is handed over once, at its stop", %{
+  test "an unreachable terminal refuses direct delivery without saving a Stop-hook message", %{
     scope: scope
   } do
     session = session_id()
     {:ok, agent} = Agents.register_terminal(scope, session)
 
-    {:ok, _, _} =
-      Agents.dispatch_message(
-        scope,
-        agent.id,
-        "Rebase on main before you go on.",
-        :operator_message
-      )
+    assert {:error, why} =
+             Agents.dispatch_message(
+               scope,
+               agent.id,
+               "Rebase on main before you go on.",
+               :operator_message
+             )
 
-    assert %{"decision" => "block", "reason" => reason} =
-             Stop.decide(scope, %{"session_id" => session})
+    assert why =~ "Claude's messaging API is unavailable"
+    assert Agents.take_held_for_stop(scope, session) == []
 
-    assert reason =~ "Rebase on main before you go on."
+    refute inspect(Stop.decide(scope, %{"session_id" => session})) =~
+             "Rebase on main before you go on."
+  end
 
-    refute match?(
-             %{"reason" => "Messages for you" <> _},
-             Stop.decide(scope, %{"session_id" => session})
-           )
+  test "a lost native connection does not move an admitted direct message into Stop", %{
+    scope: scope
+  } do
+    session = session_id()
+    {:ok, agent} = Agents.register_terminal(scope, session)
+    AgentPresence.present(agent)
+
+    assert {:ok, :queued, _} =
+             Agents.dispatch_message(scope, agent.id, "Native delivery only.", :operator_message)
+
+    assert_receive {:agent_dispatch, _, _, "Native delivery only."}
+    AgentPresence.absent(agent)
+    assert Agents.take_held_for_stop(scope, session) == []
+  end
+
+  test "an unavailable Codex queue refuses direct messages", %{scope: scope} do
+    {:ok, agent} = Agents.register_terminal(scope, session_id(), :main, :codex)
+
+    assert {:error, why} =
+             Agents.dispatch_message(scope, agent.id, "Native delivery only.", :operator_message)
+
+    assert why =~ "codex queue is unavailable"
   end
 end
