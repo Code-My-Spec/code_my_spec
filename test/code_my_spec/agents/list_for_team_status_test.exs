@@ -158,4 +158,26 @@ defmodule CodeMySpec.Agents.ListForTeamStatusTest do
     assert coding.id in ids
     assert qa.id in ids
   end
+
+  test "inactive agents left without a copy do not become onboarding agents", %{
+    scope: scope,
+    copy: copy
+  } do
+    active = agent(scope, copy, %{role: "coding", status: :starting})
+    stopped = agent(scope, copy, %{role: "qa", status: :starting}) |> then(&stop(scope, &1))
+    legacy = agent(scope, copy, %{role: "coding", status: :starting})
+
+    # Removing a checkout nilifies the association while preserving history.
+    from(a in Agent, where: a.id in ^[active.id, stopped.id, legacy.id])
+    |> Repo.update_all(set: [working_copy_id: nil])
+
+    from(a in Agent, where: a.id == ^legacy.id)
+    |> Repo.update_all(set: [status: :stopped, off_at: nil])
+
+    ids = Agents.list_for_team_status(scope) |> Enum.map(& &1.id)
+    assert active.id in ids
+    refute stopped.id in ids
+    refute legacy.id in ids
+    assert Repo.get!(Agent, stopped.id)
+  end
 end
