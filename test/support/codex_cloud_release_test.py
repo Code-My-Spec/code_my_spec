@@ -2,6 +2,7 @@ import importlib.util
 import io
 import os
 import pathlib
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -47,6 +48,22 @@ class HarnessReleaseTest(unittest.TestCase):
                         'https://github.com/Code-My-Spec/plugins/releases/download/v2.0.700/cms-linux-x64.tar.gz',
                         self.box.state / 'cache/cms-2.0.700-linux-x64.tar.gz')
                 self.assertTrue((self.box.tools / 'harness/bin/cms_harness').is_file())
+
+    def test_exact_tag_build_output_is_accepted_by_installer(self):
+        repository = self.base / 'release-source'
+        repository.mkdir()
+        subprocess.run(['git', 'init', '--quiet', str(repository)], check=True)
+        subprocess.run(['git', '-c', 'user.name=ReleaseTest', '-c', 'user.email=release@example.invalid',
+                        'commit', '--quiet', '--allow-empty', '-m', 'Release source'], cwd=repository, check=True)
+        subprocess.run(['git', 'tag', 'v2.0.700'], cwd=repository, check=True)
+        version = subprocess.check_output(['bash', str(ROOT / 'scripts/version.sh')],
+                                          cwd=repository, text=True).strip()
+        self.assertEqual(version, '2.0.700')
+        self.box.config['harness_version'] = version
+        with patch.object(self.box, 'download', side_effect=lambda url, path: self.archive(path)) as download:
+            self.box.install_harness()
+        self.assertIn('/v' + version + '/', download.call_args.args[0])
+        self.assertTrue((self.box.tools / 'harness/bin/cms_harness').is_file())
 
     def test_development_version_is_rejected_before_download(self):
         self.box.config['harness_version'] = '2.0.10+4555.gf3d7c5b07'
