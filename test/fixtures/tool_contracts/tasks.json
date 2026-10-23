@@ -1,7 +1,7 @@
 [
   {
     "name": "ask_question",
-    "description": "Ask the user a question with the answers written out for them.\n\nOne to four questions with choices, or one free-text question with options: [].\nA linked task is blocked atomically; omitted task_id uses your active task.\nYou may continue unrelated work. Collect answers with check_answer, then\nexplicitly resume the blocked task after its blocker has been resolved.\n",
+    "description": "Ask the user a question with the answers written out for them.\n\nOne to four structured questions, each with non-empty answer options.\nFor open-ended questions, ask in ordinary chat instead of calling this tool.\nA linked task is blocked atomically; omitted task_id uses your active task.\nYou may continue unrelated work. Collect answers with check_answer, then\nexplicitly resume the blocked task after its blocker has been resolved.\n",
     "input_schema": {
       "properties": {
         "about": {
@@ -11,6 +11,38 @@
         "questions": {
           "description": "1-4 objects: question (required), options (required, [{label, description}]), header, multiSelect.",
           "items": {
+            "properties": {
+              "header": {
+                "type": "string"
+              },
+              "multiSelect": {
+                "type": "boolean"
+              },
+              "options": {
+                "items": {
+                  "properties": {
+                    "description": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "label"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "question": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "options",
+              "question"
+            ],
             "type": "object"
           },
           "type": "array"

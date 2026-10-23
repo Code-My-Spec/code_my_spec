@@ -42,7 +42,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion2124Spex do
       when_ "the coder asks for product by name", context do
         params = %{
           to: "product",
-          questions: [%{"question" => "Should this surface a warning?", "options" => []}]
+          questions: [
+            %{
+              "question" => "Should this surface a warning?",
+              "options" => [
+                %{"label" => "Keep current behavior"},
+                %{"label" => "Change behavior"}
+              ]
+            }
+          ]
         }
 
         reply =
@@ -95,7 +103,15 @@ defmodule CodeMySpecSpex.Story1052.Criterion2124Spex do
 
       when_ "the coder asks a plain question", context do
         params = %{
-          questions: [%{"question" => "Should this surface a warning?", "options" => []}]
+          questions: [
+            %{
+              "question" => "Should this surface a warning?",
+              "options" => [
+                %{"label" => "Keep current behavior"},
+                %{"label" => "Change behavior"}
+              ]
+            }
+          ]
         }
 
         reply =

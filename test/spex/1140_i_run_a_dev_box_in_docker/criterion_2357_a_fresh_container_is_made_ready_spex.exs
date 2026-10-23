@@ -18,35 +18,24 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
   spex "A new Docker box runs the same setup as any box", criterion: 2357 do
     scenario "The container starts from the clean image" do
       given_ "a new Docker box starts from the clean image", context do
-        {:ok, view, _} = live(context.conn, "/app")
-        {:ok, Map.put(context, :view, view)}
-      end
-
-      when_ "its setup runs", context do
-        context.view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(context.view, 10_000)
         {:ok, context}
       end
 
-      then_ "the same setup steps run, each outcome recorded", context do
-        assert has_element?(context.view, "[data-test='prerequisite'][data-name='postgres']")
-        assert has_element?(context.view, "[data-test='setup-results-file'][data-path]")
+      when_ "its setup runs", context do
+        {:ok, snapshot} = CmsHarness.Setup.check_prerequisites()
+        {:ok, Map.put(context, :snapshot, snapshot)}
+      end
 
-        [path] =
-          context.view
-          |> element("[data-test='setup-results-file']")
-          |> render()
-          |> Floki.parse_fragment!()
-          |> Floki.attribute("data-path")
+      then_ "the same setup steps run, each outcome recorded", context do
+        assert Enum.any?(context.snapshot["steps"], &(&1["key"] == "postgres"))
+        path = context.snapshot["results_path"]
 
         assert {:ok, _results} = Environments.read_file(context.machine_environment, path)
         {:ok, context}
       end
 
-      then_ "and the box's app is reachable when setup finishes", context do
-        refute has_element?(context.view, "[data-test='prerequisite'][data-state='failed']"),
-               "setup finished with a failed step"
-
+      then_ "the machine prerequisites are ready for project generation", context do
+        assert CmsHarness.Setup.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end

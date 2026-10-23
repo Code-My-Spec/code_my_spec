@@ -931,6 +931,9 @@ defmodule CodeMySpecSpex.SharedGivens do
         auth_path
       )
 
+    user = CodeMySpec.Users.get_user_by_email(context.registered_email)
+    CodeMySpecSpex.Fixtures.configure_agent_models(CodeMySpec.UserPreferences.scope_for(user))
+
     # Mount onboarding while the user has zero accounts — the LV
     # shows the create-account form. Submit it via the LV so the
     # account + member + active-account preference are written

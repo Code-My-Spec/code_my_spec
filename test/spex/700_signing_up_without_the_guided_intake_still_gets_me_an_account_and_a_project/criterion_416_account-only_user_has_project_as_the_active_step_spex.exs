@@ -14,6 +14,11 @@ defmodule CodeMySpecSpex.Story700.Criterion6053Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    :ok = CodeMySpecSpex.Fixtures.configure_agent_models(context.scope)
+    :ok
+  end
+
   spex "First incomplete step is the unique active step (account-only user)", criterion: 416 do
     scenario "Account-only user has project as the active step" do
       given_ "the user has an active account but no project and no CLI history", context do

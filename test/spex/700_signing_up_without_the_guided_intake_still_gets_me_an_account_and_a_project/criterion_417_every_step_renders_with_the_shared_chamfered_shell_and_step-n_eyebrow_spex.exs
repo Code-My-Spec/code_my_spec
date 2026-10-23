@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6055Spex do
       end
 
       then_ "each step's root carries the shared card shell class", context do
-        for rung <- ~w(account-rung project-rung) do
+        for rung <- ~w(model-onboarding account-rung project-rung) do
           assert has_element?(context.view, "[data-test='#{rung}'].card"),
                  "expected #{rung} to carry the shared .card shell class"
         end
@@ -33,8 +33,9 @@ defmodule CodeMySpecSpex.Story700.Criterion6055Spex do
 
       then_ "each step's eyebrow declares its step number and name", context do
         eyebrows = [
-          {"account-rung", 1, "Account"},
-          {"project-rung", 2, "Project"}
+          {"model-onboarding", 1, "Agent models"},
+          {"account-rung", 2, "Account"},
+          {"project-rung", 3, "Project"}
         ]
 
         for {rung, n, name} <- eyebrows do

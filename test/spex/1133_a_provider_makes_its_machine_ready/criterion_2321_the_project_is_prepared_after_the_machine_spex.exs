@@ -43,24 +43,27 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
             """
           )
 
-        {:ok, view, _} = live(context.conn, "/app")
-        view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(view, 10_000)
+        {:ok, _snapshot} = CmsHarness.Setup.check_prerequisites()
 
         {:ok,
          Map.merge(context, %{
-           view: view,
            project_dir: project_dir,
            commands_before_project: read_machine_file!(context, context.command_log)
          })}
       end
 
       when_ "setup finishes the machine steps by linking the project", context do
-        context.view
-        |> form("[data-test='link-project-form']", project: %{path: context.project_dir})
-        |> render_submit()
+        assert {:ok, _snapshot} =
+                 CmsHarness.Setup.connect_project(
+                   context.project_dir,
+                   %{
+                     project_id: Ecto.UUID.generate(),
+                     working_copy_id: Ecto.UUID.generate(),
+                     app: "dev_setup_app"
+                   },
+                   []
+                 )
 
-        render_async(context.view, 10_000)
         {:ok, context}
       end
 

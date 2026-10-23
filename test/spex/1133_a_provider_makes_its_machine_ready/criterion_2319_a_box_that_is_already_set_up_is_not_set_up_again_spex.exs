@@ -20,9 +20,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
   spex "A box with yesterday's setup on record is not set up again today", criterion: 2319 do
     scenario "The harness starts a day after setup finished" do
       given_ "Sam's box finished setup yesterday", context do
-        {:ok, view, _} = live(context.conn, "/app")
-        view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(view, 10_000)
+        {:ok, _snapshot} = CmsHarness.Setup.check_prerequisites()
 
         {:ok,
          Map.merge(context, %{
@@ -44,14 +42,8 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
       end
 
       then_ "the record of yesterday's setup is still readable", context do
-        assert has_element?(context.reopened, "[data-test='setup-results-file'][data-path]")
-
-        [path] =
-          context.reopened
-          |> element("[data-test='setup-results-file']")
-          |> render()
-          |> Floki.parse_fragment!()
-          |> Floki.attribute("data-path")
+        assert {:ok, snapshot} = CmsHarness.Setup.status()
+        path = snapshot["results_path"]
 
         assert {:ok, _results} = Environments.read_file(context.machine_environment, path)
         {:ok, context}

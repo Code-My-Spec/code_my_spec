@@ -41,7 +41,15 @@ defmodule CodeMySpec.McpServers.AQuestionThatReachedAPersonSaysSoTest do
         "ask_question",
         %{
           title: "A question",
-          questions: [%{"question" => "Which way?", "options" => ["left", "right"]}]
+          questions: [
+            %{
+              "question" => "Which way?",
+              "options" => [
+                %{"label" => "left", "description" => "Go left"},
+                %{"label" => "right", "description" => "Go right"}
+              ]
+            }
+          ]
         },
         Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )

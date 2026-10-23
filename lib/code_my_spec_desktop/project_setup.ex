@@ -302,8 +302,16 @@ defmodule CodeMySpecDesktop.ProjectSetup do
     end
   end
 
+  defp move_team(scope) do
+    case Agents.move_main_agent(scope, WorkingCopies.main(scope)) do
+      {:ok, _} -> :ok
+      :none -> :ok
+      error -> error
+    end
+  end
+
   defp connected_ready(scope, snapshot, dev_ready) do
-    with {:ok, _} <- Agents.move_main_agent(scope, WorkingCopies.main(scope)),
+    with :ok <- move_team(scope),
          :ok <- activate_team(scope, snapshot, dev_ready) do
       {:ok, %{ready: dev_ready, snapshot: snapshot}}
     end

@@ -75,7 +75,10 @@ defmodule CodeMySpecSpex.Story1060.Criterion2180Spex do
             %{
               title: "which port is dev on",
               questions: [
-                %{"question" => "Which port does dev listen on?", "options" => []}
+                %{
+                  "question" => "Which port does dev listen on?",
+                  "options" => [%{"label" => "4000"}, %{"label" => "4001"}]
+                }
               ]
             },
             Map.put(asking.assigns, :scope, asking.assigns[:current_scope])

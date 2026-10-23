@@ -1174,6 +1174,13 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Complete model selection before account/project onboarding scenarios."
+  def configure_agent_models(scope) do
+    {:ok, _} = connect_provider(scope, "anthropic")
+    {:ok, _} = CodeMySpec.Agents.put_model_setting(scope, :main, "anthropic", "claude-opus-5-5")
+    :ok
+  end
+
   @doc "Remove a provider connection, for the revoked-credential cases."
   @spec disconnect_provider(Scope.t(), atom()) :: :ok
   def disconnect_provider(scope, provider) do

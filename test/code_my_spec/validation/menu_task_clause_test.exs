@@ -210,22 +210,18 @@ defmodule CodeMySpec.Validation.MenuTaskClauseTest do
     end
   end
 
-  describe "the unattended notice" do
+  describe "question guidance" do
     setup do
       %{scope: scope_with_waiting_requirements()}
     end
 
-    # The second half of the incident. A question in the reply reached nobody,
-    # and nothing in the refusal said so.
-    test "says the conversation is unread and names the tool that is not", %{scope: scope} do
+    test "distinguishes structured decisions from open-ended chat", %{scope: scope} do
       menu = Menu.render(scope, true, nil, agent([task(%{})]))
 
-      assert menu =~ "Nobody is reading this conversation"
+      assert menu =~ "For an open-ended question, ask in ordinary chat"
       assert menu =~ "`ask_question`"
 
-      # `send_message` was the other half of this sentence and is gone: the
-      # agent was never sending prose, it was creating a durable blocker and
-      # asking a person. `ask_question` is the whole surface now.
+      # The removed free-text blocker must not return to the tool guidance.
       refute menu =~ "`send_message`"
     end
   end

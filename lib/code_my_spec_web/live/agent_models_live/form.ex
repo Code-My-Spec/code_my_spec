@@ -109,6 +109,7 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
                 type="text"
                 name={"#{row.role}[model]"}
                 value={row.model}
+                placeholder={if is_nil(row.provider), do: "Nothing to run on"}
                 class="w-full input input-sm text-base-content"
               />
             </label>

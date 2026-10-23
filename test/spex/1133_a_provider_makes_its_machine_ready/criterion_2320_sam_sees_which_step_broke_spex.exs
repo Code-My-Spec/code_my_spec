@@ -17,37 +17,27 @@ defmodule CodeMySpecSpex.Story1133.Criterion2320Spex do
   defp fresh_machine(context), do: DesktopSetupHelpers.fresh_machine(context)
 
   spex "A failed step says which one and why, and the box is not ready", criterion: 2320 do
-    scenario "Postgres fails to install on Sam's laptop" do
-      given_ "Postgres fails to install on Sam's laptop", context do
+    scenario "Postgres fails its prerequisite check on Sam's laptop" do
+      given_ "Postgres fails its prerequisite check on Sam's laptop", context do
         DesktopSetupHelpers.without_postgres(context)
-        {:ok, view, _html} = live(context.conn, "/app")
-        {:ok, Map.put(context, :view, view)}
-      end
-
-      when_ "setup runs", context do
-        context.view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(context.view, 10_000)
         {:ok, context}
       end
 
-      then_ "it says the Postgres step failed and why", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='prerequisite'][data-name='postgres'][data-state='failed']"
-               )
+      when_ "setup runs", context do
+        {:ok, snapshot} = CmsHarness.Setup.check_prerequisites()
+        {:ok, Map.put(context, :snapshot, snapshot)}
+      end
 
-        assert has_element?(
-                 context.view,
-                 "[data-name='postgres'] [data-test='install-instructions']",
-                 "psql"
-               )
+      then_ "it says the Postgres step failed and why", context do
+        step = Enum.find(context.snapshot["steps"], &(&1["key"] == "postgres"))
+        assert step["state"] == "errored"
+        assert step["error"] =~ "psql"
 
         {:ok, context}
       end
 
       then_ "the box is not shown as ready", context do
-        refute has_element?(context.view, "[data-test='create-project']:not([disabled])")
-        refute has_element?(context.view, "[data-test='project-connected']")
+        refute CmsHarness.Setup.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end

@@ -37,8 +37,7 @@ defmodule Mix.Tasks.ResetOnboarding do
     step = parse_step!(args)
     Mix.Task.run("app.config")
 
-    unless Repo.__adapter__() == Ecto.Adapters.SQLite3,
-      do: Mix.raise("reset_onboarding requires the desktop SQLite database (MIX_ENV=desktop)")
+    require_sqlite!(Repo)
 
     database = Repo.config() |> Keyword.fetch!(:database) |> Path.expand()
     unless File.regular?(database), do: Mix.raise("Database does not exist: #{database}")
@@ -63,6 +62,11 @@ defmodule Mix.Tasks.ResetOnboarding do
       {:ok, :ok} -> Mix.shell().info("Reset #{database} to step #{step}. Refresh /app.")
       {:error, reason} -> Mix.raise("Reset rolled back: #{inspect(reason)}")
     end
+  end
+
+  defp require_sqlite!(repo) do
+    unless repo.__adapter__() == Ecto.Adapters.SQLite3,
+      do: Mix.raise("reset_onboarding requires the desktop SQLite database (MIX_ENV=desktop)")
   end
 
   @doc false
@@ -95,22 +99,24 @@ defmodule Mix.Tasks.ResetOnboarding do
          do: repo.rollback(:stop_agents_before_reset)
 
       # Preferences have no database foreign keys; clear them before deletion.
-      repo.update_all(from(p in "user_preferences", where: p.user_id == ^user_id),
+      repo.update_all(
+        from(p in CodeMySpec.UserPreferences.UserPreference, where: p.user_id == ^user_id),
         set: [active_project_id: nil]
       )
 
       repo.delete_all(from(p in Project, where: p.account_id in ^account_ids))
 
       if step <= 2 do
-        repo.update_all(from(p in "user_preferences", where: p.user_id == ^user_id),
+        repo.update_all(
+          from(p in CodeMySpec.UserPreferences.UserPreference, where: p.user_id == ^user_id),
           set: [active_account_id: nil]
         )
 
-        repo.update_all(from(d in "devices", where: d.account_id in ^account_ids),
+        repo.update_all(from(d in CodeMySpec.Devices.Device, where: d.account_id in ^account_ids),
           set: [account_id: nil]
         )
 
-        repo.delete_all(from(r in "rules", where: r.account_id in ^account_ids))
+        repo.delete_all(from(r in "rules", where: type(r.account_id, :binary_id) in ^account_ids))
         repo.delete_all(from(a in Account, where: a.id in ^account_ids))
       end
 
