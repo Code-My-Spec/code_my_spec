@@ -48,6 +48,7 @@ defmodule CmsHarness.Web.HealthController do
       build: BootVersion.describe(),
       build_drift: drift(),
       server_url: Config.server_url(),
+      device_id: CmsHarness.Device.recorded_id(),
       credential: match?({:ok, _}, Config.credential()),
       projects: projects,
       # Explicit, so "serving nothing" is never read off a 200 as fine.
