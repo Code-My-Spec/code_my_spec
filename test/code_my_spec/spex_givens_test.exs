@@ -274,7 +274,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # drives the app -- creates a copy and its team, files and accepts a real
   # issue, assigns it, wakes the team, and declines the resulting offer
   # through the real reject_offer tool.
+  # Story 1146's prepared_cloud/1 creates a real target directory and validation
+  # marker and starts the external harness HTTP boundary used by the shipped CLI.
+  # It establishes the scenario's filesystem and provider preconditions.
   @establishes ~w(
+    prepared_cloud(
     Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
     the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it
