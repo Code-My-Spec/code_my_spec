@@ -1177,7 +1177,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
 
   defdelegate without_setup_postgres(context),
-    to: CodeMySpecSpex.DesktopSetupHelpers,
+    to: CmsHarnessTest.SetupFixture,
     as: :without_postgres
 
   def configure_agent_models_for_email(email) do

@@ -31,4 +31,23 @@ defmodule CmsHarnessTest.SetupFixture do
 
   def directory_contents(root),
     do: Map.new(File.ls!(root), &{&1, File.read!(Path.join(root, &1))})
+
+  def without_postgres(context) do
+    path = Path.join([context.machine_root, "bin", "psql"])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'psql' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    case "$*" in
+      *--version*) printf 'psql: error: could not connect to server\\n' >&2; exit 1 ;;
+      *vector*) printf 'vector|0.8.0\\n' ;;
+      *) exit 0 ;;
+    esac
+    """)
+
+    File.chmod!(path, 0o700)
+    context
+  end
 end
