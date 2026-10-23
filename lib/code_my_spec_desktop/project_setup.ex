@@ -125,13 +125,7 @@ defmodule CodeMySpecDesktop.ProjectSetup do
         CmsHarness.Setup.Database.prepare(Paths.local_state_dir())
 
       "check" ->
-        with {:ok, _} <- Setup.new_run(),
-             {:ok, checked} <- Setup.check_prerequisites(),
-             {:ok, _} <- Setup.use_machine_checks(project.id, checked) do
-          if Setup.prerequisites_passed?(checked),
-            do: {:ok, %{prerequisites_passed: true}},
-            else: {:error, :prerequisites_failed}
-        end
+        check_machine(project)
 
       "create" ->
         with :new <- project.onboarding.starting_point,
@@ -154,6 +148,16 @@ defmodule CodeMySpecDesktop.ProjectSetup do
         with {:ok, snapshot} <- Setup.refresh_connection(opts) do
           ready(scope, snapshot)
         end
+    end
+  end
+
+  defp check_machine(project) do
+    with {:ok, _} <- Setup.new_run(),
+         {:ok, checked} <- Setup.check_prerequisites(),
+         {:ok, _} <- Setup.use_machine_checks(project.id, checked) do
+      if Setup.prerequisites_passed?(checked),
+        do: {:ok, %{prerequisites_passed: true}},
+        else: {:error, :prerequisites_failed}
     end
   end
 
@@ -292,17 +296,16 @@ defmodule CodeMySpecDesktop.ProjectSetup do
     dev_ready = get_in(snapshot, ["operations", "dev_setup", "state"]) == "done"
 
     if connected do
-      case Agents.move_main_agent(scope, WorkingCopies.main(scope)) do
-        {:error, _} = error ->
-          error
-
-        _ ->
-          with :ok <- activate_team(scope, snapshot, dev_ready) do
-            {:ok, %{ready: dev_ready, snapshot: snapshot}}
-          end
-      end
+      connected_ready(scope, snapshot, dev_ready)
     else
       {:ok, %{ready: false, snapshot: snapshot}}
+    end
+  end
+
+  defp connected_ready(scope, snapshot, dev_ready) do
+    with {:ok, _} <- Agents.move_main_agent(scope, WorkingCopies.main(scope)),
+         :ok <- activate_team(scope, snapshot, dev_ready) do
+      {:ok, %{ready: dev_ready, snapshot: snapshot}}
     end
   end
 end
