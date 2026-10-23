@@ -10,6 +10,7 @@ import platform
 import re
 import shutil
 import shlex
+import socket
 import subprocess
 import sys
 import tarfile
@@ -262,8 +263,59 @@ class Cloud:
             run(privilege + ['apt-get', 'install', '-y', 'curl', 'ca-certificates', 'git', 'build-essential',
                 'pkg-config', 'libssl-dev', 'libncurses-dev', 'inotify-tools'])
         if not shutil.which('docker') and not shutil.which('psql'):
+            fresh = self.empty_postgres_host()
             run(self.privilege() + ['apt-get', 'update'])
             run(self.privilege() + ['apt-get', 'install', '-y', 'postgresql', 'postgresql-contrib', 'postgresql-server-dev-all'])
+            if fresh:
+                # Only the cluster created by this package installation belongs to setup.
+                clusters = subprocess.check_output(['pg_lsclusters', '--no-header'], text=True).splitlines()
+                if len(clusters) != 1:
+                    raise SetupError('PostgreSQL installation did not create exactly one cluster; configure target credentials explicitly')
+                version, name, port, status, owner, data, *_ = clusters[0].split()
+                if port != '5432' or owner != 'postgres' or not pathlib.Path(data).is_relative_to('/var/lib/postgresql'):
+                    raise SetupError('New PostgreSQL cluster has unexpected configuration; configure it explicitly')
+                stat = pathlib.Path(data).stat()
+                save(self.state / 'provisioned-postgres.json', {'version': version, 'name': name, 'data': data,
+                     'inode': stat.st_ino, 'device': stat.st_dev, 'initialized': False})
+        self.initialize_provisioned_postgres()
+
+    @staticmethod
+    def empty_postgres_host():
+        # Any previous config/data (including unreadable directories) prevents credential changes.
+        try:
+            for directory in ('/etc/postgresql', '/var/lib/postgresql'):
+                path = pathlib.Path(directory)
+                if path.exists() and any(path.iterdir()):
+                    return False
+            with socket.create_connection(('127.0.0.1', 5432), timeout=2):
+                return False
+        except ConnectionRefusedError:
+            return True
+        except OSError:
+            return False
+
+    def initialize_provisioned_postgres(self):
+        marker = self.state / 'provisioned-postgres.json'
+        if not marker.exists():
+            return
+        cluster = read(marker)
+        stat = pathlib.Path(cluster['data']).stat()
+        if (stat.st_ino, stat.st_dev) != (cluster['inode'], cluster['device']):
+            raise SetupError('New PostgreSQL cluster was replaced; refusing to initialize its credentials')
+        clusters = [line.split() for line in subprocess.check_output(['pg_lsclusters', '--no-header'], text=True).splitlines()]
+        owned = [row for row in clusters if row[:2] == [cluster['version'], cluster['name']]]
+        if len(owned) != 1 or owned[0][2] != '5432' or owned[0][4:6] != ['postgres', cluster['data']]:
+            raise SetupError('Provisioned PostgreSQL cluster configuration changed; refusing credential initialization')
+        # A package can start its new cluster automatically; inspect it before starting again.
+        status = subprocess.run(self.privilege() + ['pg_ctlcluster', cluster['version'], cluster['name'], 'status'], capture_output=True)
+        if status.returncode:
+            run(self.privilege() + ['pg_ctlcluster', cluster['version'], cluster['name'], 'start'])
+        if cluster.get('initialized'):
+            return
+        run(self.privilege() + ['runuser', '-u', 'postgres', '--', 'psql', '-h', '/var/run/postgresql',
+             '-p', '5432', '-d', 'postgres', '-c', "ALTER USER postgres PASSWORD 'postgres'"])
+        cluster['initialized'] = True
+        save(marker, cluster)
 
     def install(self):
         if platform.system() != 'Linux' or platform.machine() not in ('x86_64', 'amd64'):
@@ -372,6 +424,7 @@ class Cloud:
         link.symlink_to(target)
 
     def database(self):
+        self.initialize_provisioned_postgres()
         mode = os.environ.get('CMS_POSTGRES_MODE', 'auto')
         if mode not in ('auto', 'existing', 'docker', 'system'):
             raise SetupError('CMS_POSTGRES_MODE must be auto, existing, docker or system')

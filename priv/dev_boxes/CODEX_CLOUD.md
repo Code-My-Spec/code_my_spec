@@ -16,6 +16,33 @@ Private machine state defaults to `~/.codemyspec/codex-cloud/<device-id>`.
 running target Mix commands. `CMS_HARNESS_PORT` selects an unused loopback port;
 startup refuses to reuse a harness belonging to another device or project.
 
+## PostgreSQL and non-root images
+
+With the default `CMS_POSTGRES_MODE=auto`, setup reuses an authenticated local
+PostgreSQL service or a Docker container publishing port 5432. Otherwise it creates
+a Docker container with the pinned pgvector image and a durable named volume.
+`CMS_POSTGRES_CONTAINER` selects a particular container. Container data survives
+setup and startup; these commands never drop databases or remove volumes.
+
+On a fresh privileged image without PostgreSQL or Docker, setup installs
+PostgreSQL and initializes development credentials only for the cluster it just
+created. It first verifies that no cluster configuration, data or listener exists,
+then records that new cluster's identity. Existing clusters never receive this
+automatic credential initialization.
+
+For a preexisting service, use `CMS_POSTGRES_MODE=existing` and set `PGHOST`,
+`PGPORT`, `PGUSER` and `PGPASSWORD` to match the target's database configuration.
+These variables configure the readiness check; the target's Ecto configuration
+must use the same connection details. Authentication failures require correcting
+credentials, not resetting the server. `CMS_POSTGRES_MODE=system` explicitly
+allows initialization of a stopped local system service; it still refuses to
+change a listening server's password. `CMS_POSTGRES_MODE=docker` selects Docker.
+
+Non-root images can reuse their installed build tools and Docker service. Missing
+inotify tools are extracted into private state when apt/dpkg are available. Other
+missing native build prerequisites produce an actionable image-configuration
+error. Source `environment.sh` before running target commands.
+
 ## Release requirement
 
 Ship the server/provider and a Linux harness release containing `CMS_STATE_DIR`,
