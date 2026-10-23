@@ -8,6 +8,16 @@ defmodule CodeMySpecSpex.CodexCloudHelpers do
 
   def prepared_cloud(context) do
     base = Path.join(System.tmp_dir!(), "codex-cloud-spex-#{System.unique_integer([:positive])}")
+
+    # Match pathlib.Path.resolve() in the CLI, including macOS /var symlinks.
+    {canonical_base, 0} =
+      System.cmd("python3", [
+        "-c",
+        "import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())",
+        base
+      ])
+
+    base = String.trim(canonical_base)
     root = Path.join(base, "target")
     state = Path.join(base, "state")
     File.mkdir_p!(root)
