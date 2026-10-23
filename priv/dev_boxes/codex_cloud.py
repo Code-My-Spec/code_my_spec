@@ -354,6 +354,16 @@ class Cloud:
                     binary.chmod(0o755)
             self.symlink(target, self.tools / 'elixir')
             save(installed, versions)
+        self.install_harness()
+        run(['mix', 'local.hex', '--force'], cwd=self.root, env=self.env)
+        run(['mix', 'local.rebar', '--force'], cwd=self.root, env=self.env)
+        run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=self.root)
+        self.native_dependencies()
+        self.validate_target()
+        self.environment_file()
+        return {'installed': True, 'next': 'Run the startup script to authorize the box and connect the harness'}
+
+    def install_harness(self):
         release = str(os.environ.get('CMS_HARNESS_VERSION') or self.config['harness_version']).removeprefix('v')
         if not re.fullmatch(r'\d+\.\d+\.\d+', release):
             raise SetupError('CMS_HARNESS_VERSION must pin a published version, e.g. 2.0.355')
@@ -370,13 +380,6 @@ class Cloud:
             self.download(f'https://github.com/Code-My-Spec/plugins/releases/download/v{release}/cms-linux-x64.tar.gz', archive)
             self.extract(archive, harness)
         self.symlink(harness, self.tools / 'harness')
-        run(['mix', 'local.hex', '--force'], cwd=self.root, env=self.env)
-        run(['mix', 'local.rebar', '--force'], cwd=self.root, env=self.env)
-        run(['git', 'submodule', 'update', '--init', '--recursive'], cwd=self.root)
-        self.native_dependencies()
-        self.validate_target()
-        self.environment_file()
-        return {'installed': True, 'next': 'Run the startup script to authorize the box and connect the harness'}
 
     def native_dependencies(self):
         lock = (self.root / 'mix.lock').read_text()
