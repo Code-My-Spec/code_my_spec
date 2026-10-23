@@ -2,13 +2,19 @@ defmodule CodeMySpecSpex.Story1146.Criterion2384Spex do
   @moduledoc "The real resume CLI reuses target validation and preserves files. External database commands and harness HTTP are boundaries; real PostgreSQL persistence requires install QA."
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.CodexCloudHelpers
+  alias CodeMySpecSpex.RealDisk
 
   spex "Sam resumes without destroying state", criterion: 2384 do
     scenario "A previously validated cloud target resumes twice" do
       given_ "a validated checkout with generated work and private state", context do
         context = context |> prepared_cloud() |> database_boundary()
-        File.write!(Path.join(context.cloud_root, "generated-work.txt"), "keep my work")
-        File.write!(Path.join(context.cloud_state, "credential-sentinel"), "keep private state")
+        RealDisk.write!(Path.join(context.cloud_root, "generated-work.txt"), "keep my work")
+
+        RealDisk.write!(
+          Path.join(context.cloud_state, "credential-sentinel"),
+          "keep private state"
+        )
+
         {:ok, context}
       end
 
@@ -19,9 +25,11 @@ defmodule CodeMySpecSpex.Story1146.Criterion2384Spex do
 
       then_ "both resumes succeed while preserving work and state", context do
         Enum.each(context.results, fn result -> assert result.status == 0, result.output end)
-        assert File.read!(Path.join(context.cloud_root, "generated-work.txt")) == "keep my work"
 
-        assert File.read!(Path.join(context.cloud_state, "credential-sentinel")) ==
+        assert RealDisk.read!(Path.join(context.cloud_root, "generated-work.txt")) ==
+                 "keep my work"
+
+        assert RealDisk.read!(Path.join(context.cloud_state, "credential-sentinel")) ==
                  "keep private state"
 
         # This prepared target has no executable mix project: rerunning dependency

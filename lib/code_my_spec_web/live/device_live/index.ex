@@ -251,6 +251,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 
+  def handle_info(:refresh_devices, socket) do
+    Process.send_after(self(), :refresh_devices, 5_000)
+    {:noreply, load(socket)}
+  end
+
   # A Docker box runs on a machine that has a daemon, so adding it starts its
   # container; the others are brought up by the person from the instructions.
   defp launch(%Device{provider: :docker} = box, token, server_url),
@@ -273,11 +278,6 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: "Docker is not reachable. Start Docker and add the box again."
 
   defp launch_error(_reason), do: "The dev box could not be started."
-
-  def handle_info(:refresh_devices, socket) do
-    Process.send_after(self(), :refresh_devices, 5_000)
-    {:noreply, load(socket)}
-  end
 
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)

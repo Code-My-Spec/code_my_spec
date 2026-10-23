@@ -15,10 +15,7 @@ defmodule CmsHarness.ChannelClientSocketOptionsTest do
 
     on_exit(fn ->
       for {key, value} <- previous do
-        case value do
-          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
-          :error -> Application.delete_env(:code_my_spec, key)
-        end
+        restore_env(key, value)
       end
     end)
 
@@ -41,4 +38,7 @@ defmodule CmsHarness.ChannelClientSocketOptionsTest do
     assert retry.channel_config.mint_opts == mint
     assert retry.channel_config.uri.host == "server.example"
   end
+
+  defp restore_env(key, {:ok, value}), do: Application.put_env(:code_my_spec, key, value)
+  defp restore_env(key, :error), do: Application.delete_env(:code_my_spec, key)
 end

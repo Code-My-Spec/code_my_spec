@@ -2,12 +2,13 @@ defmodule CodeMySpecSpex.Story1146.Criterion2385Spex do
   @moduledoc "Exercises the shipped CLI against an external harness boundary; full release installation is integration QA."
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.CodexCloudHelpers
+  alias CodeMySpecSpex.RealDisk
 
   spex "Sam sees readiness only after validation", criterion: 2385 do
     scenario "A connected harness cannot bypass target validation" do
       given_ "a prepared generation target and its harness boundary", context do
         context = prepared_cloud(context)
-        File.rm!(Path.join(context.cloud_state, "validation.json"))
+        RealDisk.rm_rf!(Path.join(context.cloud_state, "validation.json"))
         {:ok, context}
       end
 
@@ -33,9 +34,9 @@ defmodule CodeMySpecSpex.Story1146.Criterion2385Spex do
 
       when_ "Sam generates a migration without changing the dependency lock", context do
         directory = Path.join(context.cloud_root, "priv/repo/migrations")
-        File.mkdir_p!(directory)
+        RealDisk.mkdir_p!(directory)
 
-        File.write!(
+        RealDisk.write!(
           Path.join(directory, "20261023000000_add_widget.exs"),
           "defmodule AddWidget do\nend\n"
         )
