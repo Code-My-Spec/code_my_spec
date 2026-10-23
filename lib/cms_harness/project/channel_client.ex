@@ -157,8 +157,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # Names the address each attempt dials, so a harness aimed at the
         # wrong server is distinguishable from one being refused. Token redacted.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-        {:noreply,
-         socket |> connect!(connect_options(socket, uri)) |> arm_join_deadline()}
+        {:noreply, socket |> connect!(connect_options(socket, uri)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop: waiting produces no credential.
