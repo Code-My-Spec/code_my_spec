@@ -20,7 +20,7 @@ defmodule CodeMySpecDesktop.ProjectSetup do
       action == "status" ->
         {:reply, {:ok, status(project, job)}, jobs}
 
-      action not in ~w(check create connect refresh) ->
+      action not in ~w(check prepare_database create connect refresh) ->
         {:reply, {:error, "Unknown setup action."}, jobs}
 
       Enum.any?(jobs, fn {_, job} -> job.running end) ->
@@ -63,7 +63,16 @@ defmodule CodeMySpecDesktop.ProjectSetup do
   end
 
   defp result_data({:ok, data}) when is_map(data),
-    do: %{"ok" => true, "ready" => Map.get(data, :ready, false)}
+    do: %{
+      "ok" => true,
+      "ready" => Map.get(data, :ready, false),
+      "prerequisites_passed" => Map.get(data, :prerequisites_passed),
+      "commands" => Map.get(data, :commands),
+      "database_role_created" => Map.get(data, :created?)
+    }
+
+  defp result_data({:error, %{commands: commands, error: reason}}),
+    do: %{"ok" => false, "error" => reason, "commands" => commands}
 
   defp result_data({:error, reason}), do: %{"ok" => false, "error" => inspect(reason)}
   defp result_data(other), do: %{"ok" => false, "error" => inspect(other)}
@@ -112,8 +121,17 @@ defmodule CodeMySpecDesktop.ProjectSetup do
     app = app || Macro.underscore(project.module_name || "app") |> String.replace("/", "_")
 
     case action do
+      "prepare_database" ->
+        CmsHarness.Setup.Database.prepare(Paths.local_state_dir())
+
       "check" ->
-        check([])
+        with {:ok, _} <- Setup.new_run(),
+             {:ok, checked} <- Setup.check_prerequisites(),
+             {:ok, _} <- Setup.use_machine_checks(project.id, checked) do
+          if Setup.prerequisites_passed?(checked),
+            do: {:ok, %{prerequisites_passed: true}},
+            else: {:error, :prerequisites_failed}
+        end
 
       "create" ->
         with :new <- project.onboarding.starting_point,
@@ -256,14 +274,32 @@ defmodule CodeMySpecDesktop.ProjectSetup do
     end
   end
 
+  defp activate_team(scope, snapshot, true) do
+    if snapshot["team_activated"] do
+      :ok
+    else
+      with {:ok, _} <- Agents.set_copy_continuous(scope, WorkingCopies.main(scope).id, true),
+           {:ok, _} <- Setup.mark_team_activated(scope.active_project_id) do
+        :ok
+      end
+    end
+  end
+
+  defp activate_team(_scope, _snapshot, false), do: :ok
+
   defp ready(scope, snapshot) do
     connected = get_in(snapshot, ["operations", "connect", "result", "connected"]) == true
     dev_ready = get_in(snapshot, ["operations", "dev_setup", "state"]) == "done"
 
-    if connected and dev_ready do
+    if connected do
       case Agents.move_main_agent(scope, WorkingCopies.main(scope)) do
-        {:error, _} = error -> error
-        _ -> {:ok, %{ready: true, snapshot: snapshot}}
+        {:error, _} = error ->
+          error
+
+        _ ->
+          with :ok <- activate_team(scope, snapshot, dev_ready) do
+            {:ok, %{ready: dev_ready, snapshot: snapshot}}
+          end
       end
     else
       {:ok, %{ready: false, snapshot: snapshot}}

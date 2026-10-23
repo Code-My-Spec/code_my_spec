@@ -81,4 +81,45 @@ defmodule CodeMySpecDesktop.ProjectSetupTest do
     assert CodeMySpec.Agents.RoleProfile.carries?(:main, "setup_local_project")
     refute CodeMySpec.Agents.RoleProfile.carries?(:product, "setup_local_project")
   end
+
+  test "explicit check reruns machine checks and records the same results for the project", %{
+    scope: scope,
+    root: root
+  } do
+    bin = Path.join(root, "bin")
+    File.mkdir_p!(bin)
+    previous_path = System.get_env("PATH")
+    on_exit(fn -> System.put_env("PATH", previous_path) end)
+
+    for {name, output} <- [
+          {"psql", "psql 16\nvector|0.8"},
+          {"mise", "erlang 28\nelixir 1.19"},
+          {"erl", "28"},
+          {"elixir", "Elixir 1.19"},
+          {"mix", "mix cms.new"},
+          {"vibium", "Vibium 1"},
+          {"just", "just 1.40.0"}
+        ] do
+      file = Path.join(bin, name)
+      File.write!(file, "#!/bin/sh\nprintf '%s\\n' '#{output}'\n")
+      File.chmod!(file, 0o700)
+    end
+
+    System.put_env("PATH", bin)
+    {:ok, old} = Setup.new_run()
+    {:ok, project} = Projects.Onboarding.fetch(scope)
+
+    assert {:ok, %{prerequisites_passed: true}} =
+             ProjectSetup.execute(scope, project, "check", nil)
+
+    assert {:ok, machine} = Setup.status()
+    assert {:ok, recorded} = Setup.project_status(project.id)
+    refute machine["run_id"] == old["run_id"]
+    assert Setup.prerequisites_passed?(recorded)
+    assert recorded["steps"] == machine["steps"]
+    File.write!(Path.join(bin, "elixir"), "#!/bin/sh\nexit 1\n")
+    assert {:error, :prerequisites_failed} = ProjectSetup.execute(scope, project, "check", nil)
+    assert {:ok, failed} = Setup.project_status(project.id)
+    refute Setup.prerequisites_passed?(failed)
+  end
 end

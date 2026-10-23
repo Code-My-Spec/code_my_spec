@@ -1753,10 +1753,22 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
   def ensure_main_agent(%Scope{} = scope) do
     case {WorkingCopies.main(scope), main_agent(scope)} do
-      {nil, %Agent{execution_mode: :detached} = agent} -> ensure_detached_running(scope, agent)
-      {nil, _} -> {:error, :no_main_working_copy}
-      {_copy, %Agent{} = agent} -> {:ok, agent}
-      {copy, nil} -> main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
+      {nil, %Agent{execution_mode: :detached} = agent} ->
+        ensure_detached_running(scope, agent)
+
+      {nil, _} ->
+        {:error, :no_main_working_copy}
+
+      {copy, %Agent{execution_mode: :detached} = agent} ->
+        if copy_connected?(copy),
+          do: move_main_agent(scope, copy),
+          else: ensure_detached_running(scope, agent)
+
+      {_copy, %Agent{} = agent} ->
+        {:ok, agent}
+
+      {copy, nil} ->
+        main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
     end
   end
 
@@ -1852,10 +1864,22 @@ defmodule CodeMySpec.Agents do
 
   defp product_or_start(scope) do
     case Enum.find(list_agents(scope), &(&1.role == :product and is_nil(&1.retired_at))) do
-      %Agent{} = agent -> {:ok, agent}
-      nil -> start_detached_product(scope)
+      %Agent{execution_mode: :detached} = agent ->
+        case WorkingCopies.main(scope) do
+          nil -> {:ok, agent}
+          copy -> if copy_connected?(copy), do: relocate(scope, agent, copy), else: {:ok, agent}
+        end
+
+      %Agent{} = agent ->
+        {:ok, agent}
+
+      nil ->
+        start_detached_product(scope)
     end
   end
+
+  defp copy_connected?(copy),
+    do: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
 
   defp start_detached_product(scope), do: start_detached_agent(scope, :product)
 
@@ -2329,18 +2353,18 @@ defmodule CodeMySpec.Agents do
         :none
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
-        :none
+        with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
 
       %Agent{} = agent ->
-        with {:ok, moved} <- relocate(scope, agent, copy) do
-          move_main_copy_roster(scope, agent.working_copy_id, copy)
+        with {:ok, moved} <- relocate(scope, agent, copy),
+             :ok <- move_main_copy_roster(scope, agent.working_copy_id, copy) do
           {:ok, moved}
         end
     end
   end
 
   # Main can leave setup scratch when a real main copy is designated. Stop the
-  # old engine before changing its routing; Product keeps its detached interview.
+  # old engine before changing its routing; its conversation stays with its id.
   defp relocate(scope, %Agent{execution_mode: :detached} = agent, copy) do
     with {:ok, credential} <- Credential.fetch(scope, agent.provider),
          :ok <- halt_for_restart(agent),
@@ -2383,9 +2407,16 @@ defmodule CodeMySpec.Agents do
     scope
     |> seat_holders()
     |> Enum.filter(
-      &(&1.working_copy_id == from_id and &1.role in others and &1.execution_mode != :detached)
+      &(&1.role in others and
+          (&1.execution_mode == :detached or
+             (&1.working_copy_id == from_id and &1.working_copy_id != copy.id)))
     )
-    |> Enum.each(&relocate(scope, &1, copy))
+    |> Enum.reduce_while(:ok, fn agent, :ok ->
+      case relocate(scope, agent, copy) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   # The project's agent wherever it currently is, which during a move is not
@@ -2429,6 +2460,7 @@ defmodule CodeMySpec.Agents do
     subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         {:ok, agent} <- restore_detached_recipient(scope, agent),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, conversation} <- open_conversation(scope, agent),
@@ -2453,6 +2485,14 @@ defmodule CodeMySpec.Agents do
       result
     end
   end
+
+  defp restore_detached_recipient(
+         scope,
+         %Agent{execution_mode: :detached, retired_at: nil} = agent
+       ),
+       do: ensure_detached_running(scope, agent)
+
+  defp restore_detached_recipient(_scope, agent), do: {:ok, agent}
 
   defp report_repeated_instruction(scope, agent, offered) do
     Offers.take_instruction_attention(offered, fn ->

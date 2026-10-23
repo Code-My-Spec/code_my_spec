@@ -893,6 +893,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
        |> Keyword.put(:max_tokens, @context_budget)
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
+       # Bash owns its explicit deadline (up to one hour), including process
+       # cleanup. The executor's default two minutes must not kill an install
+       # before Bash can enforce that deadline and report partial output.
+       |> Keyword.put(:tool_timeout, :timer.hours(1) + 5_000)
        # `ToolResults`: an error struct in a result block cannot be JSON-encoded
        # for the next request. `UnknownTool`: where an uncarried tool is
        # reachable. `TurnProgress`: an interrupted turn keeps what it did.

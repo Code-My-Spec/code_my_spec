@@ -4,7 +4,7 @@ defmodule CmsHarness.Setup.Prerequisites do
   alias CmsHarness.Setup.{Command, Platform, Step}
 
   @agent_keys ~w(codex claude)
-  @keys ~w(postgres pgvector version_manager erlang elixir cms vibium)
+  @keys ~w(postgres pgvector version_manager erlang elixir cms vibium just)
 
   @spec keys() :: [String.t()]
   def keys, do: @keys
@@ -86,8 +86,11 @@ defmodule CmsHarness.Setup.Prerequisites do
   end
 
   defp command("elixir"), do: {"elixir", ["--version"]}
-  defp command("cms"), do: {"cms", ["version"]}
+  # Keep the persisted key, but check the generator used by generate_project/3.
+  # Desktop already embeds the harness; a second cms installation is unnecessary.
+  defp command("cms"), do: {"mix", ["help", "cms.new"]}
   defp command("vibium"), do: {"vibium", ["--version"]}
+  defp command("just"), do: {"just", ["--version"]}
 
   # What (if anything) makes `key` ready on `platform`. On Windows, `mise`
   # installs the Elixir toolchain (the `version_manager` step itself, and
@@ -106,10 +109,13 @@ defmodule CmsHarness.Setup.Prerequisites do
   defp install_command(key, %Platform{os: :windows}) when key in ~w(postgres pgvector),
     do: {"winget", ["install", "--id", "PostgreSQL.PostgreSQL", "-e"]}
 
+  defp install_command("just", %Platform{os: :windows}),
+    do: {"winget", ["install", "--id", "Casey.Just", "-e"]}
+
   defp install_command(_key, %Platform{os: :windows}), do: nil
 
   defp install_command(key, %Platform{os: :darwin, arch: :aarch64})
-       when key in ~w(postgres pgvector version_manager erlang elixir),
+       when key in ~w(postgres pgvector version_manager erlang elixir just),
        do: {"arch", ["-arm64", "brew", "install", homebrew_formula(key)]}
 
   defp install_command(_key, _platform), do: nil

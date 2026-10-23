@@ -87,6 +87,20 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert clean.user == scope.user
   end
 
+  test "sending to detached Product restores it after process presence is lost", %{scope: scope} do
+    {:ok, product} = Agents.ensure_product_agent(scope)
+    Presence.untrack(self(), Presence.topic(scope.active_project_id), product.id)
+    refute Agents.present?(scope, product)
+
+    assert {:ok, [%{"status" => "stopped"}]} =
+             CodeMySpec.Agents.Tools.ListAgents.script_result(%{}, %{scope: scope})
+
+    assert {:ok, :queued} = Agents.message_agent(scope, product.id, "Setup status")
+    assert Agents.present?(scope, product)
+    assert {:ok, restored} = Agents.fetch_agent(scope, product.id)
+    refute restored.mailbox_generation == product.mailbox_generation
+  end
+
   test "startup failure reaches the caller and retry reuses the product row", %{scope: scope} do
     Application.put_env(:code_my_spec, :desktop_agent_transport, RefusingTransport)
     assert {:error, :no_credential} = Agents.ensure_product_agent(scope)
@@ -160,7 +174,28 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert length(Agents.list_agents(scope)) == 1
   end
 
-  test "the first main copy reuses the onboarding team and Product stays detached", %{
+  test "opening onboarding conversations keeps the team detached while the main copy is offline",
+       %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+    {:ok, product} = Agents.ensure_product_agent(scope)
+    {:ok, _, main} = Agents.start_project_setup(scope)
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+
+    copy
+    |> Ecto.Changeset.change(main: true, root: "/tmp/offline-onboarding-main")
+    |> Repo.update!()
+
+    {:ok, same_main} = Agents.ensure_main_agent(scope)
+    {:ok, same_product} = Agents.ensure_product_agent(scope)
+    assert same_main.id == main.id
+    assert same_product.id == product.id
+    assert same_main.execution_mode == :detached
+    assert same_product.execution_mode == :detached
+    assert Agents.present?(scope, same_main)
+    assert Agents.present?(scope, same_product)
+  end
+
+  test "the first main copy moves the onboarding team and retains both conversations", %{
     scope: scope
   } do
     {:ok, _} = ready_for_setup(scope)
@@ -172,6 +207,8 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
       copy |> Ecto.Changeset.change(main: true, root: "/tmp/onboarding-main") |> Repo.update!()
 
     assert %{started: [], failed: []} = Agents.ensure_copy_agents(scope, copy)
+    {:ok, main_conversation} = Agents.conversation_id(scope, main.id)
+    {:ok, product_conversation} = Agents.conversation_id(scope, product.id)
 
     assert {:ok, moved} =
              Agents.move_main_agent(%{scope | active_working_copy_id: nil, cwd: nil}, copy)
@@ -180,8 +217,11 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert moved.execution_mode == :working_copy
     assert moved.working_copy_id == copy.id
     assert {:ok, retained_product} = Agents.fetch_agent(scope, product.id)
-    assert retained_product.execution_mode == :detached
-    assert retained_product.working_copy_id == nil
+    assert retained_product.execution_mode == :working_copy
+    assert retained_product.working_copy_id == copy.id
+    assert {:ok, ^main_conversation} = Agents.conversation_id(scope, main.id)
+    assert {:ok, ^product_conversation} = Agents.conversation_id(scope, product.id)
+    assert :none = Agents.move_main_agent(scope, copy)
     assert length(Agents.list_agents(scope)) == 2
   end
 

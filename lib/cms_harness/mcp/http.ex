@@ -19,7 +19,7 @@ defmodule CmsHarness.Mcp.Http do
   without restarting the agent.
   """
 
-  defstruct [:url, :headers, :protocol_version, :session]
+  defstruct [:url, :headers, :protocol_version, :session, :headers_provider]
 
   @type t :: %__MODULE__{}
 
@@ -28,14 +28,15 @@ defmodule CmsHarness.Mcp.Http do
 
   @doc "Initialize a session against `url`."
   @spec open(String.t(), map(), String.t()) :: {:ok, t()} | {:error, term()}
-  def open(url, headers, protocol_version) do
+  def open(url, headers, protocol_version, opts \\ []) do
     {:ok, session} = Agent.start_link(fn -> nil end)
 
     client = %__MODULE__{
       url: url,
       headers: headers,
       protocol_version: protocol_version,
-      session: session
+      session: session,
+      headers_provider: Keyword.get(opts, :headers_provider)
     }
 
     case initialize(client) do
@@ -53,7 +54,8 @@ defmodule CmsHarness.Mcp.Http do
   @spec close(t()) :: :ok
   def close(%__MODULE__{session: session} = client) do
     if Process.alive?(session) do
-      with id when is_binary(id) <- Agent.get(session, & &1) do
+      with id when is_binary(id) <- Agent.get(session, & &1),
+           {:ok, client} <- refresh_headers(client) do
         Req.delete(req_options(client, @handshake_timeout, id))
       end
 
@@ -146,10 +148,20 @@ defmodule CmsHarness.Mcp.Http do
   end
 
   defp post(client, body, timeout, session) do
-    client
-    |> req_options(timeout, session)
-    |> Keyword.put(:body, Jason.encode!(body))
-    |> Req.post()
+    with {:ok, client} <- refresh_headers(client) do
+      client
+      |> req_options(timeout, session)
+      |> Keyword.put(:body, Jason.encode!(body))
+      |> Req.post()
+    end
+  end
+
+  # Long-lived agents must use the credential store's current token, not the
+  # token that happened to be valid when their MCP session was opened.
+  defp refresh_headers(%{headers_provider: nil} = client), do: {:ok, client}
+
+  defp refresh_headers(client) do
+    with {:ok, headers} <- client.headers_provider.(), do: {:ok, %{client | headers: headers}}
   end
 
   defp req_options(client, timeout, session) do

@@ -24,6 +24,12 @@ defmodule CmsHarness.Mcp.ASlowToolCallHoldsUpOnlyItselfTest do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
     message = Jason.decode!(body)
     send(test, {:request, message["method"], Plug.Conn.get_req_header(conn, "mcp-session-id")})
+
+    send(
+      test,
+      {:authorization, message["method"], Plug.Conn.get_req_header(conn, "authorization")}
+    )
+
     respond(conn, message, test)
   end
 
@@ -109,5 +115,15 @@ defmodule CmsHarness.Mcp.ASlowToolCallHoldsUpOnlyItselfTest do
 
     assert_received :forgot
     assert_received {:request, "initialize", []}
+  end
+
+  test "a running agent uses refreshed credentials without reopening its conversation" do
+    {:ok, credential} = Agent.start_link(fn -> "old" end)
+    provider = fn -> {:ok, %{"authorization" => "Bearer " <> Agent.get(credential, & &1)}} end
+    {:ok, client} = Http.open(@url, %{}, "2025-06-18", headers_provider: provider)
+    assert_received {:authorization, "initialize", ["Bearer old"]}
+    Agent.update(credential, fn _ -> "fresh" end)
+    assert {:ok, _} = Http.call_tool(client, "quick", %{})
+    assert_received {:authorization, "tools/call", ["Bearer fresh"]}
   end
 end

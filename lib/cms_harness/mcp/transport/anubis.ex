@@ -36,7 +36,9 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       opts
       |> Keyword.fetch!(:base_url)
       |> Kernel.<>(Keyword.fetch!(opts, :mcp_path))
-      |> Http.open(headers, Keyword.get(opts, :protocol_version, @protocol_version))
+      |> Http.open(headers, Keyword.get(opts, :protocol_version, @protocol_version),
+        headers_provider: fn -> headers(opts) end
+      )
     end
   end
 

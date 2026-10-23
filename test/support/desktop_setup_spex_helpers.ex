@@ -26,8 +26,9 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
         {"asdf", "v0.16.0\nerlang 27.2\nelixir 1.18.1"},
         {"erl", "27"},
         {"elixir", "Erlang/OTP 27\nElixir 1.18.1"},
-        {"cms", "cms 2.0.0"},
-        {"vibium", "Vibium 1.0.0"}
+        {"mix", "mix cms.new"},
+        {"vibium", "Vibium 1.0.0"},
+        {"just", "just 1.40.0"}
       ],
       fn {name, output} ->
         script =

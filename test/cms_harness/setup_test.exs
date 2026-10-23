@@ -21,8 +21,9 @@ defmodule CmsHarness.SetupTest do
         {"mise", "erlang 27.2\nelixir 1.18.1"},
         {"erl", "27"},
         {"elixir", "Elixir 1.18.1"},
-        {"cms", "cms 2.0.0"},
-        {"vibium", "Vibium 1.0.0"}
+        {"mix", "mix cms.new"},
+        {"vibium", "Vibium 1.0.0"},
+        {"just", "just 1.40.0"}
       ],
       fn {name, output} ->
         path = Path.join(bin, name)
@@ -63,11 +64,11 @@ defmodule CmsHarness.SetupTest do
     assert {:ok, first} = Setup.check_prerequisites(ctx.opts)
     assert Setup.prerequisites_passed?(first)
     assert first["state"] == "done"
-    assert length(first["steps"]) == 7
+    assert length(first["steps"]) == 8
     assert Enum.all?(first["steps"], &is_binary(&1["finished_at"]))
     assert Enum.all?(first["steps"], &(length(&1["commands"]) == 1))
     recorded = File.read!(ctx.log)
-    assert length(String.split(recorded, "\n", trim: true)) == 7
+    assert length(String.split(recorded, "\n", trim: true)) == 8
     assert {:ok, ^first} = Setup.status(ctx.opts)
     assert {:ok, ^first} = Setup.check_prerequisites(ctx.opts)
     assert File.read!(ctx.log) == recorded
@@ -82,15 +83,15 @@ defmodule CmsHarness.SetupTest do
     assert next["state"] == "not_started"
     assert {:ok, checked} = Setup.check_prerequisites(ctx.opts)
     assert Setup.prerequisites_passed?(checked)
-    assert length(String.split(File.read!(ctx.log), "\n", trim: true)) == 14
+    assert length(String.split(File.read!(ctx.log), "\n", trim: true)) == 16
     assert File.read!(first["results_path"]) == previous_bytes
   end
 
-  test "checks the shipped cms version subcommand and persists its real output", ctx do
-    File.write!(Path.join(ctx.bin, "cms"), """
+  test "checks the generator without requiring a standalone harness executable", ctx do
+    File.write!(Path.join(ctx.bin, "mix"), """
     #!/bin/sh
     case "$*" in
-      version) printf 'code_my_spec_cli 2.0.10\\n' ;;
+      "help cms.new") printf 'mix cms.new\\n' ;;
       *) printf 'unsupported command\\n' >&2; exit 1 ;;
     esac
     """)
@@ -100,15 +101,29 @@ defmodule CmsHarness.SetupTest do
     cms = Enum.find(result["steps"], &(&1["key"] == "cms"))
     assert cms["state"] == "done"
     assert [%{"exit_status" => 0, "output" => output}] = cms["commands"]
-    assert output =~ "code_my_spec_cli 2.0.10"
+    assert output =~ "mix cms.new"
+    assert [%{"command" => "mix", "args" => ["help", "cms.new"]}] = cms["commands"]
+    refute File.exists?(Path.join(ctx.bin, "cms"))
     assert {:ok, ^result} = Setup.status(ctx.opts)
+  end
+
+  test "missing Just blocks setup before a generated recipe needs it", ctx do
+    File.rm!(Path.join(ctx.bin, "just"))
+
+    assert {:ok, result} = Setup.check_prerequisites(ctx.opts)
+    refute Setup.prerequisites_passed?(result)
+    just = Enum.find(result["steps"], &(&1["key"] == "just"))
+    assert just["state"] == "errored"
+
+    assert [%{"command" => "just", "args" => ["--version"], "exit_status" => nil}] =
+             just["commands"]
   end
 
   test "a missing executable and nonzero exit are recorded as failures", ctx do
     File.rm!(Path.join(ctx.bin, "vibium"))
 
     File.write!(
-      Path.join(ctx.bin, "cms"),
+      Path.join(ctx.bin, "mix"),
       "#!/bin/sh\nprintf 'runtime unavailable' >&2\nexit 126\n"
     )
 
@@ -192,6 +207,7 @@ defmodule CmsHarness.SetupTest do
 
     File.write!(executable, """
     #!/bin/sh
+    if [ \"$*\" = \"help cms.new\" ]; then printf 'mix cms.new\\n'; exit 0; fi
     printf 'generate\\n' >> '#{ctx.log}'
     /bin/mkdir -p "$2" || exit 1
     printf '%s\\n' 'defmodule Generated.MixProject do' '  use Mix.Project' 'end' > "$2/mix.exs"
@@ -213,6 +229,7 @@ defmodule CmsHarness.SetupTest do
 
   test "an unavailable generator records a finished failure", ctx do
     assert {:ok, _} = Setup.check_prerequisites(ctx.opts)
+    File.rm!(Path.join(ctx.bin, "mix"))
     target = Path.join(ctx.root, "generated_project")
 
     assert {:error, {:generator_unavailable, message}} =
@@ -327,6 +344,45 @@ defmodule CmsHarness.SetupTest do
     completed_bytes = File.read!(completed["results_path"])
     assert {:ok, ^completed} = Setup.refresh_connection(ctx.opts)
     assert File.read!(completed["results_path"]) == completed_bytes
+  end
+
+  @tag timeout: 30_000
+  test "retrying a pending connection restarts the same checkout and retries dev setup", ctx do
+    assert {:ok, checked} = Setup.check_prerequisites(ctx.opts)
+    restore_path(ctx.original_path)
+    previous_id = System.get_env("CMS_PROJECT_ID")
+    System.delete_env("CMS_PROJECT_ID")
+    on_exit(fn -> restore_project_id(previous_id) end)
+    CmsHarnessTest.FakeServer.start(hold_joins: true)
+    project = CmsHarnessTest.Projects.project_dir()
+    on_exit(fn -> CmsHarnessTest.Projects.stop_project(project.root) end)
+
+    File.write!(
+      Path.join(project.root, "mix.exs"),
+      "defmodule Retry.MixProject do\n use Mix.Project\n def project, do: [app: :retry, version: \"0.1.0\", deps: []]\nend\n"
+    )
+
+    identity = %{project_id: project.id, working_copy_id: project.working_copy_id, app: "retry"}
+    assert {:ok, pending} = Setup.connect_project(project.root, identity, ctx.opts)
+    assert pending["operations"]["connect"]["state"] == "pending"
+    CmsHarnessTest.Projects.stop_project(project.root)
+    CmsHarnessTest.FakeServer.hold_joins(false)
+
+    File.write!(
+      Path.join(project.root, "justfile"),
+      "dev-setup:\n    printf done > .setup-done\n"
+    )
+
+    assert {:ok, completed} = Setup.connect_project(project.root, identity, ctx.opts)
+    assert completed["operations"]["connect"]["state"] == "done"
+
+    assert completed["operations"]["connect"]["result"]["working_copy_id"] ==
+             project.working_copy_id
+
+    assert completed["operations"]["dev_setup"]["state"] == "done"
+    assert File.read!(Path.join(project.root, ".setup-done")) == "done"
+    assert completed["run_id"] == checked["run_id"]
+    assert completed["steps"] == checked["steps"]
   end
 
   defp restore_project_id(nil), do: System.delete_env("CMS_PROJECT_ID")

@@ -134,6 +134,12 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
       case conversation do
         %{agent_id: id} when is_binary(id) ->
           case Agents.fetch_agent(scope, id) do
+            {:ok, %{role: :main, execution_mode: :detached, retired_at: nil}} ->
+              case Agents.ensure_main_agent(scope) do
+                {:ok, agent} -> assign(socket, :main, {:ok, agent, conversation})
+                {:error, reason} -> assign(socket, :main, {:error, reason})
+              end
+
             {:ok, %{role: :main} = agent} ->
               assign(socket, :main, {:ok, agent, conversation})
 

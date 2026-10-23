@@ -342,4 +342,60 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     assert [%{kind: :local, path: ^windows_path, device_id: id}] = project.sources
     assert id == device.id
   end
+
+  test "opening a saved detached Main conversation restores its engine after desktop restart", %{
+    conn: conn,
+    scope: scope,
+    project: project
+  } do
+    previous =
+      for key <- [:env, :desktop_agent_transport, :detached_agents_root],
+          do: {key, Application.fetch_env(:code_my_spec, key)}
+
+    Application.put_env(:code_my_spec, :env, :desktop)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, Transport)
+
+    Application.put_env(
+      :code_my_spec,
+      :detached_agents_root,
+      CodeMySpec.TempFile.owned_dir("define-cockpit")
+    )
+
+    on_exit(fn ->
+      for {key, prior} <- previous do
+        case prior do
+          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
+          :error -> Application.delete_env(:code_my_spec, key)
+        end
+      end
+    end)
+
+    {:ok, _} = CodeMySpec.Agents.put_model_setting(scope, :main, "claude-code", "claude-opus-5-5")
+
+    {:ok, _} =
+      Onboarding.save(scope, %{
+        onboarding: %{description: "A tutor", starting_point: :new, destination: :local}
+      })
+
+    {:ok, _, main} = CodeMySpec.Agents.start_project_setup(scope)
+    {:ok, conversation_id} = CodeMySpec.Agents.conversation_id(scope, main.id)
+    conversation = Conversations.get_agent_conversation_by_id(scope, conversation_id)
+    messages = Conversations.list_messages(conversation)
+
+    CodeMySpec.Agents.Presence.untrack(
+      self(),
+      CodeMySpec.Agents.Presence.topic(project.id),
+      main.id
+    )
+
+    refute CodeMySpec.Agents.present?(scope, main)
+
+    {:ok, view, _} =
+      live(conn, "/app/projects/#{project.id}/agent-conversation?conversation=#{conversation_id}")
+
+    assert CodeMySpec.Agents.present?(scope, main)
+    assert has_element?(view, "#agent-scroll-#{conversation_id}")
+    assert Conversations.list_messages(conversation) == messages
+    assert CodeMySpec.Agents.main_agent(scope).id == main.id
+  end
 end

@@ -42,6 +42,11 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
         "The agent running this, when one is. Its row says which tools it carries; " <>
           "omitted, the script may call everything the caller can."
 
+    field :client_shapes_output, :boolean,
+      description:
+        "Transport option for harness clients that save full output in their own agent-scoped " <>
+          "directory and cap it before showing it to the model. Omit for ordinary MCP clients."
+
     field :session_id, :string, description: "Injected by hook — do not set manually"
   end
 
@@ -72,7 +77,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
                 direct_names: direct_names(allowed)
               )
 
-            {:reply, render(result), frame}
+            {:reply, render(result, params), frame}
 
           {:error, :agent_id_mismatch} ->
             {:reply,
@@ -169,17 +174,29 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
     end
   end
 
-  defp render(%Result{} = result) do
+  defp render(%Result{} = result, params) do
     if Result.failed?(result) do
-      text = CodeMode.cap(failure(result), spill_label: "run_script")
+      text = shape(failure(result), params)
 
       Response.tool() |> Response.error(text)
     else
-      text = CodeMode.cap(success(result), spill_label: "run_script")
+      text = shape(success(result), params)
 
       Response.tool() |> Response.text(text)
     end
   end
+
+  # Return data over the transport, never a path on the server that the
+  # harness might mistake for a local file. Ordinary clients retain the cap.
+  @transport_limit 1_048_576
+  defp shape(text, %{client_shapes_output: true}) when byte_size(text) > @transport_limit do
+    note = "\n[Transport limit reached. Summarize or select fewer fields in run_script.]"
+    prefix = binary_part(text, 0, @transport_limit - byte_size(note) - 4)
+    String.replace_invalid(prefix, "") <> note
+  end
+
+  defp shape(text, %{client_shapes_output: true}), do: String.replace_invalid(text)
+  defp shape(text, _params), do: CodeMode.cap(text, spill_label: "run_script")
 
   defp success(result) do
     [printed(result), value(result.value)]

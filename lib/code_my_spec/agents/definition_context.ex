@@ -21,8 +21,13 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     Honor the selected destination: local, managed cloud, or another execution host. Local
     availability does not authorize provisioning locally when the user chose cloud or external.
     Use setup_local_project for desktop/local setup. It is available now, without a working copy:
-    call action=check, then poll action=status until running=false and inspect the shared prerequisite
-    results. Resolve failed checks before continuing. For a new app call action=create; for an
+    read its tool_docs first, call action=check, then poll action=status until running=false and inspect the shared prerequisite
+    results. Resolve failed checks before continuing. For missing local PostgreSQL user access,
+    use action=prepare_database after installing and starting the service; do not bypass shell
+    restrictions or change authentication policy. Install/build commands may take minutes: give
+    Bash an explicit timeout such as 600000 milliseconds and verify the result. Choose a managed
+    Elixir version compatible with the generator archive before installing it; desktop's private
+    application runtime is not a development toolchain. For a new app call action=create; for an
     already generated checkout at the saved destination call action=connect. Poll status; use
     action=refresh if the connection is pending. These operations use the CodeMySpec generator,
     register this existing project, and record command results in the same setup workflow the page
@@ -34,7 +39,9 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{source_guidance()}
     Ask Product via message_agent for unresolved user choices. Do not restart the product interview.
     Report concrete setup progress and blockers; never claim a checkout or environment is ready
-    without checking it. Do not start feature implementation during environment setup.
+    without checking it. Successful setup automatically enables continuous work for the existing
+    team. Notify Product when ready, then let the normal requirement loop proceed. Do not start
+    feature implementation during environment setup.
     """
   end
 
