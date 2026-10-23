@@ -2471,6 +2471,7 @@ defmodule CodeMySpec.Agents do
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          {:ok, agent} <- restore_detached_recipient(scope, agent),
+         :ok <- direct_message_transport(scope, agent, event),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, conversation} <- open_conversation(scope, agent),
@@ -2503,6 +2504,24 @@ defmodule CodeMySpec.Agents do
        do: ensure_detached_running(scope, agent)
 
   defp restore_detached_recipient(_scope, agent), do: {:ok, agent}
+
+  # A direct message must reach the external session through its native
+  # transport. An absent adapter is not an invitation to deliver it at Stop.
+  defp direct_message_transport(scope, %{engine: engine, id: id}, :operator_message)
+       when engine in [:claude_code, :codex] do
+    if MapSet.member?(present_ids(scope), id) do
+      :ok
+    else
+      transport = if engine == :codex, do: "codex queue", else: "Claude's messaging API"
+
+      {:error,
+       "Message not sent: #{transport} is unavailable for this session. " <>
+         "Reconnect its harness and enable native messaging, then retry. " <>
+         "The message was not saved for Stop-hook delivery."}
+    end
+  end
+
+  defp direct_message_transport(_scope, _agent, _event), do: :ok
 
   defp report_repeated_instruction(scope, agent, offered) do
     Offers.take_instruction_attention(offered, fn ->
