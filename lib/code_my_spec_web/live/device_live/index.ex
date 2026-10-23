@@ -61,6 +61,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     if connected?(socket) and is_binary(scope.active_account_id),
       do: Devices.subscribe(scope.active_account_id)
 
+    if connected?(socket), do: Process.send_after(self(), :refresh_devices, 5_000)
+
     {:ok,
      assign(socket,
        page_title: "Dev boxes",
@@ -68,6 +70,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
        adding?: false,
        fire_form_for: nil,
        sessions: %{},
+       selected_provider: nil,
+       dev_box_name: "",
        new_box: nil,
        providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
@@ -85,16 +89,22 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   @impl true
   def handle_event("new_dev_box", _params, %{assigns: %{can_add?: true}} = socket),
-    do: {:noreply, assign(socket, adding?: true, new_box: nil)}
+    do:
+      {:noreply,
+       assign(socket, adding?: true, new_box: nil, selected_provider: nil, dev_box_name: "")}
+
+  def handle_event("choose_dev_box_provider", %{"dev_box" => params}, socket) do
+    {:noreply,
+     assign(socket,
+       selected_provider: params["provider"],
+       dev_box_name: params["name"] || ""
+     )}
+  end
 
   # An add sent by someone who cannot add is refused, whether or not the page
   # offered it: the check is the context's, not the button's.
   def handle_event("add_dev_box", %{"dev_box" => params}, socket) do
-    case Devices.add_dev_box(
-           socket.assigns.current_scope,
-           params,
-           Runner.dev_box(params["provider"])
-         ) do
+    case add_box(socket.assigns.current_scope, params) do
       {:ok, box, token} ->
         server_url = CodeMySpecWeb.Endpoint.url()
 
@@ -110,7 +120,15 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                  device: box,
                  name: Device.display_name(box),
                  token: token,
-                 sections: provider.instructions(%{token: token, server_url: server_url})
+                 show_token?: box.provider != :codex_cloud,
+                 sections:
+                   provider.instructions(%{
+                     token: token,
+                     server_url: server_url,
+                     project_id: socket.assigns.project_id,
+                     device_id: box.id,
+                     target: params["target"] || "phoenix"
+                   })
                }
              )
              |> load()}
@@ -127,6 +145,10 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
       {:error, :unknown_provider} ->
         {:noreply, put_flash(socket, :error, "Choose where the dev box runs.")}
+
+      {:error, :unsupported_target} ->
+        {:noreply,
+         put_flash(socket, :error, "Choose a supported generation target: Phoenix (CodeMySpec).")}
 
       {:error, %Ecto.Changeset{}} ->
         {:noreply, put_flash(socket, :error, "Name the dev box.")}
@@ -252,6 +274,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   defp launch_error(_reason), do: "The dev box could not be started."
 
+  def handle_info(:refresh_devices, socket) do
+    Process.send_after(self(), :refresh_devices, 5_000)
+    {:noreply, load(socket)}
+  end
+
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
 
@@ -286,7 +313,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
       device: device,
       previews: previews,
       startable?: Devices.startable?(device),
-      status: box_status(device),
+      status: box_status(device, up?),
       provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
       presence: presence(up?, device, now),
@@ -336,9 +363,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: %{label: "Last seen", since: Liveness.since(at, now)}
 
   # A dev box says whether anything has ever signed in with its token.
-  defp box_status(%Device{token_revoked_at: %DateTime{}}), do: "Revoked"
-  defp box_status(%Device{token_last_used_at: nil}), do: "Never connected"
-  defp box_status(%Device{}), do: "Connected"
+  defp box_status(%Device{token_revoked_at: %DateTime{}}, _reachable), do: "Revoked"
+  defp box_status(%Device{provider: :codex_cloud}, true), do: "Connected"
+  defp box_status(%Device{provider: :codex_cloud}, false), do: "Waiting for connection"
+  defp box_status(%Device{token_last_used_at: nil}, _reachable), do: "Never connected"
+  defp box_status(%Device{}, _reachable), do: "Connected"
 
   # "unknown", not a guess. A default here would make a sprite read as somebody's
   # laptop, which is the one distinction the field exists for.
@@ -375,12 +404,19 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
             id="add-dev-box-form"
             data-test="add-dev-box-form"
             phx-submit="add_dev_box"
+            phx-change="choose_dev_box_provider"
             class="card card-compact mt-4 border border-base-300 bg-base-100"
           >
             <div class="card-body gap-3">
               <label class="form-control">
                 <span class="label-text">Name</span>
-                <input type="text" name="dev_box[name]" class="input input-bordered" required />
+                <input
+                  type="text"
+                  name="dev_box[name]"
+                  value={@dev_box_name}
+                  class="input input-bordered"
+                  required
+                />
               </label>
               <fieldset class="flex flex-col gap-2">
                 <legend class="label-text">Where it runs</legend>
@@ -389,11 +425,22 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                     type="radio"
                     name="dev_box[provider]"
                     value={provider.id()}
+                    checked={@selected_provider == to_string(provider.id())}
                     data-test={"provider-#{provider.id()}"}
                   />
                   {provider.label()}
                 </label>
               </fieldset>
+              <label :if={@selected_provider == "codex_cloud"} class="form-control">
+                <span class="label-text">Generation target</span>
+                <select
+                  name="dev_box[target]"
+                  data-test="generation-target"
+                  class="select select-bordered"
+                >
+                  <option value="phoenix">Phoenix (CodeMySpec)</option>
+                </select>
+              </label>
               <div class="flex gap-2">
                 <.button type="submit">Add dev box</.button>
                 <.button type="button" phx-click="cancel_dev_box" class="btn btn-ghost">
@@ -410,10 +457,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
           >
             <div class="card-body gap-3">
               <h2 class="card-title">{@new_box.name} added</h2>
-              <p class="text-sm">
+              <p :if={@new_box.show_token?} class="text-sm">
                 This is its token. It is shown once: copy it now, because it cannot be shown again.
               </p>
               <code
+                :if={@new_box.show_token?}
                 data-test="new-dev-box-token"
                 data-token={@new_box.token}
                 class="break-all rounded bg-base-200 p-2 text-sm"
@@ -601,4 +649,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     </Layouts.app>
     """
   end
+
+  defp add_box(_scope, %{"provider" => "codex_cloud", "target" => target})
+       when target != "phoenix",
+       do: {:error, :unsupported_target}
+
+  defp add_box(scope, params),
+    do: Devices.add_dev_box(scope, params, Runner.dev_box(params["provider"]))
 end

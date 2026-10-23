@@ -157,9 +157,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # Names the address each attempt dials, so a harness aimed at the
         # wrong server is distinguishable from one being refused. Token redacted.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-
-        {:noreply,
-         socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
+        {:noreply, socket |> connect!(connect_options(socket, uri)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop: waiting produces no credential.
@@ -2453,6 +2451,11 @@ defmodule CmsHarness.Project.ChannelClient do
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
   defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
 
+  defp connect_options(socket, uri) do
+    [uri: uri, headers: connect_headers(socket)] ++
+      Application.get_env(:code_my_spec, :harness_socket_options, [])
+  end
+
   defp transport, do: Transport.impl()
 
   # This working copy is already being served, usually by the process this one
@@ -2519,7 +2522,7 @@ defmodule CmsHarness.Project.ChannelClient do
   defp dial(socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
+        {:ok, socket} = connect(socket, connect_options(socket, uri))
         {:noreply, arm_join_deadline(socket)}
 
       {:error, _} ->

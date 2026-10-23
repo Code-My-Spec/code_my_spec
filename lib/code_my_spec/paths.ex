@@ -20,16 +20,25 @@ defmodule CodeMySpec.Paths do
   def base_dir, do: @base_dir
 
   @doc """
-  This machine's state dir: `~/.codemyspec`, or beside `CMS_PROJECT_DIR` on a
-  workspace (`CmsHarness.Config.local_state_dir/0` says why).
+  This machine's state dir: explicit `CMS_STATE_DIR`, otherwise `~/.codemyspec`,
+  or beside `CMS_PROJECT_DIR` on a workspace.
   """
   @spec local_state_dir() :: String.t()
   def local_state_dir do
+    case System.get_env("CMS_STATE_DIR") do
+      state when is_binary(state) and state != "" -> state
+      _ -> default_local_state_dir()
+    end
+    |> Path.expand()
+  end
+
+  # Explicit state separates provider-hosted boxes without changing HOME.
+  # Existing desktop and one-project workspace defaults remain the same.
+  defp default_local_state_dir do
     case System.get_env("CMS_PROJECT_DIR") do
       dir when is_binary(dir) and dir != "" -> Path.dirname(dir)
       _ -> "~/.codemyspec"
     end
-    |> Path.expand()
   end
 
   # ============================================================================
