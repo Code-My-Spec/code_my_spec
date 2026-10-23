@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2317Spex do
   spex "A Windows laptop is set up through mise and Windows installers", criterion: 2317 do
     scenario "Sam adds a Local box on a Windows laptop" do
       given_ "Sam adds a Local box on a Windows laptop", context do
+        # given: already true — setup :fresh_machine creates this isolated machine.
         {:ok, context}
       end
 

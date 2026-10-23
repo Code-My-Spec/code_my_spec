@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2320Spex do
   spex "A failed step says which one and why, and the box is not ready", criterion: 2320 do
     scenario "Postgres fails its prerequisite check on Sam's laptop" do
       given_ "Postgres fails its prerequisite check on Sam's laptop", context do
-        DesktopSetupHelpers.without_postgres(context)
+        CodeMySpecSpex.Fixtures.without_setup_postgres(context)
         {:ok, context}
       end
 

@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
   spex "Every prerequisite on an ARM Mac is installed for ARM", criterion: 2318 do
     scenario "Sam adds a Local box on an Apple Silicon Mac" do
       given_ "Sam adds a Local box on an Apple Silicon Mac", context do
+        # given: already true — setup :fresh_machine creates this isolated machine.
         {:ok, context}
       end
 

@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
   spex "A new Docker box runs the same setup as any box", criterion: 2357 do
     scenario "The container starts from the clean image" do
       given_ "a new Docker box starts from the clean image", context do
+        # given: already true — setup :fresh_machine creates this isolated machine.
         {:ok, context}
       end
 

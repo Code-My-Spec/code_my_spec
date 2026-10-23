@@ -1174,6 +1174,12 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
+
+  defdelegate without_setup_postgres(context),
+    to: CodeMySpecSpex.DesktopSetupHelpers,
+    as: :without_postgres
+
   def configure_agent_models_for_email(email) do
     email
     |> CodeMySpec.Users.get_user_by_email()

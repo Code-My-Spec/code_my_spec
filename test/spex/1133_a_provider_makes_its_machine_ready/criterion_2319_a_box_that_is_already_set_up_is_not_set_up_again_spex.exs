@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
   spex "A box with yesterday's setup on record is not set up again today", criterion: 2319 do
     scenario "The harness starts a day after setup finished" do
       given_ "Sam's box finished setup yesterday", context do
-        {:ok, _snapshot} = CmsHarness.Setup.check_prerequisites()
+        {:ok, _snapshot} = CodeMySpecSpex.Fixtures.check_machine_prerequisites()
 
         {:ok,
          Map.merge(context, %{
