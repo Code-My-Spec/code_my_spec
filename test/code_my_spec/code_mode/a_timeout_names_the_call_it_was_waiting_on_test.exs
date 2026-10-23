@@ -33,8 +33,6 @@ defmodule CodeMySpec.CodeMode.ATimeoutNamesTheCallItWasWaitingOnTest do
     )
   end
 
-  defp run(script), do: CodeMode.eval(catalog(), script, timeout: 300)
-
   @script """
   browser_navigate({ url = "http://localhost/dev-boxes" })
   print("on dev boxes")
@@ -42,18 +40,23 @@ defmodule CodeMySpec.CodeMode.ATimeoutNamesTheCallItWasWaitingOnTest do
   return "done"
   """
 
-  test "the timeout names the call that never answered" do
-    result = run(@script)
-
-    assert result.error.kind == :timeout
-    assert result.error.message =~ "Still waiting on `browser_wait_for_text`"
+  # Run once: the deadline has to outlast building the sandbox on a loaded
+  # machine, or it fires before the first call and the script truthfully
+  # reports nothing in flight.
+  setup_all do
+    %{error: CodeMode.eval(catalog(), @script, timeout: 5_000).error}
   end
 
-  test "and lists what finished before it" do
-    assert run(@script).error.message =~ ~r/Finished before it: browser_navigate \(\d+ms\)/
+  test "the timeout names the call that never answered", %{error: error} do
+    assert error.kind == :timeout
+    assert error.message =~ "Still waiting on `browser_wait_for_text`"
   end
 
-  test "and keeps what the script printed" do
-    assert run(@script).error.message =~ "Printed:\non dev boxes"
+  test "and lists what finished before it", %{error: error} do
+    assert error.message =~ ~r/Finished before it: browser_navigate \(\d+ms\)/
+  end
+
+  test "and keeps what the script printed", %{error: error} do
+    assert error.message =~ "Printed:\non dev boxes"
   end
 end
