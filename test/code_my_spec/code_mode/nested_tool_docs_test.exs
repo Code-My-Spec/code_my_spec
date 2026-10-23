@@ -47,10 +47,7 @@ defmodule CodeMySpec.CodeMode.NestedToolDocsTest do
         scenarios: [%{name: "Check", status: "pass", observation: "Worked"}]
       }
 
-      base =
-        if tool == CodeMySpec.Qa.Tools.SubmitIssueQaResult,
-          do: Map.put(base, :issue_id, "issue"),
-          else: base
+      base = with_issue_id(tool, base)
 
       assert {:ok, _} = Tools.validate(tool, base)
 
@@ -72,4 +69,9 @@ defmodule CodeMySpec.CodeMode.NestedToolDocsTest do
     assert text =~ ~s|destination (string) — allowed: "local", "cloud", "external"|
     refute text =~ "onboarding (object)"
   end
+
+  defp with_issue_id(CodeMySpec.Qa.Tools.SubmitIssueQaResult, params),
+    do: Map.put(params, :issue_id, "issue")
+
+  defp with_issue_id(_tool, params), do: params
 end

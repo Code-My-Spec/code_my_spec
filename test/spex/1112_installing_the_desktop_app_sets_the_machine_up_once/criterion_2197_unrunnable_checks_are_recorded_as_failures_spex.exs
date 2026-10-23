@@ -5,17 +5,8 @@ defmodule CodeMySpecSpex.Story1112.Criterion2197Spex do
   spex "An unavailable agent is recorded as a failed check", criterion: 2197 do
     scenario "Neither CLI is installed" do
       given_ "a machine with no CLI executables on its path", context do
-        root = Path.join(System.tmp_dir!(), "agent-checks-#{System.unique_integer([:positive])}")
-        File.mkdir_p!(root)
-        previous = System.get_env("PATH")
-        System.put_env("PATH", root)
-
-        on_exit(fn ->
-          System.put_env("PATH", previous)
-          File.rm_rf!(root)
-        end)
-
-        {:ok, Map.put(context, :root, root)}
+        opts = CmsHarnessTest.SetupFixture.isolated_history()
+        {:ok, Map.put(context, :root, Path.dirname(opts[:directory]))}
       end
 
       when_ "the shared prerequisites catalog checks the agents", context do
