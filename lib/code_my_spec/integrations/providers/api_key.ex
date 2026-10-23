@@ -76,16 +76,22 @@ defmodule CodeMySpec.Integrations.Providers.ApiKey do
 
   @doc """
   Ask the provider whether this key works.
+
+  `{:ok, :no_balance}` is still a working key: Z.ai answers its chat
+  completions check with 429 code 1113 ("Insufficient balance or no resource
+  package") for a real key on an account with nothing to spend, which is proof
+  of the key rather than a reason to refuse it. Every other unexpected status,
+  for every provider, stays an error.
   """
-  @spec verify(atom(), String.t()) :: :ok | {:error, failure()}
+  @spec verify(atom(), String.t()) :: :ok | {:ok, :no_balance} | {:error, failure()}
   def verify(provider, key) when is_binary(key) do
     case Map.fetch(@providers, provider) do
-      {:ok, spec} -> request(spec, key)
+      {:ok, spec} -> request(provider, spec, key)
       :error -> {:error, {:unreachable, :unknown_provider}}
     end
   end
 
-  defp request(spec, key) do
+  defp request(provider, spec, key) do
     [
       method: spec.method,
       url: spec.url,
@@ -95,7 +101,7 @@ defmodule CodeMySpec.Integrations.Providers.ApiKey do
     |> put_json(spec.json)
     |> Keyword.merge(config())
     |> Req.request()
-    |> classify()
+    |> classify(provider)
   end
 
   defp put_json(options, nil), do: options
@@ -104,13 +110,25 @@ defmodule CodeMySpec.Integrations.Providers.ApiKey do
   defp auth_header(:bearer, key), do: [{"authorization", "Bearer " <> key}]
   defp auth_header({:header, name}, key), do: [{name, key}]
 
-  defp classify({:ok, %Req.Response{status: status}}) when status in 200..299, do: :ok
+  defp classify({:ok, %Req.Response{status: status}}, _provider) when status in 200..299,
+    do: :ok
 
-  defp classify({:ok, %Req.Response{status: status}}) when status in [401, 403],
+  defp classify({:ok, %Req.Response{status: status}}, _provider) when status in [401, 403],
     do: {:error, :rejected}
 
-  defp classify({:ok, %Req.Response{status: status}}), do: {:error, {:unexpected, status}}
-  defp classify({:error, reason}), do: {:error, {:unreachable, reason}}
+  defp classify({:ok, %Req.Response{status: 429, body: body}}, :zai) do
+    if zai_insufficient_balance?(body),
+      do: {:ok, :no_balance},
+      else: {:error, {:unexpected, 429}}
+  end
+
+  defp classify({:ok, %Req.Response{status: status}}, _provider),
+    do: {:error, {:unexpected, status}}
+
+  defp classify({:error, reason}, _provider), do: {:error, {:unreachable, reason}}
+
+  defp zai_insufficient_balance?(%{"error" => %{"code" => code}}), do: to_string(code) == "1113"
+  defp zai_insufficient_balance?(_body), do: false
 
   defp config, do: Application.get_env(:code_my_spec, __MODULE__, [])
 end

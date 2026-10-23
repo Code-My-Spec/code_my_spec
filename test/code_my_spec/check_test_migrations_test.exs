@@ -22,7 +22,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   use CodeMySpecTest.DataCase, async: false
 
   import Ecto.Query
-  alias Mix.Tasks.Cms.CheckTestMigrations
+  alias CodeMySpec.TestMigrations, as: CheckTestMigrations
 
   describe "pending/0" do
     test "is empty when the database has applied every migration on disk" do

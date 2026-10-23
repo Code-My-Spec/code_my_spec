@@ -4,6 +4,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.FleetHolds
+  alias CodeMySpec.Promotion
 
   @sources ~w(spex exunit credo compiler)
 
@@ -50,30 +51,9 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
 
     requested_by = %{kind: "mcp_tool", tool: "start_analysis", agent_id: agent_id}
 
-    response =
-      case Analysis.start_run(scope, source, paths, requested_by: requested_by) do
-        {:ok, :skipped, run_id} ->
-          {:error, "#{source} run #{run_id} skipped because of compiler errors."}
-
-        {:ok, _admission, run_id} ->
-          {:ok, "Run #{run_id} admitted.\n\n" <> started(source, agent_id)}
-
-        {:error, :no_executor} ->
-          {:error,
-           "Cannot request #{source}: no harness is connected for this working copy " <>
-             "and this server has no local analysis executor. Reconnect its harness and retry."}
-
-        # 783f3709: a hold reaches here at the point of admission, not only
-        # as a queued instruction offer, so an agent mid-run finds out at its
-        # very next attempt rather than at its next turn boundary.
-        {:error, {:held, hold}} ->
-          {:error, FleetHolds.refusal(hold)}
-
-        {:error, reason} ->
-          {:error, "Could not admit #{source}: #{inspect(reason)}"}
-      end
-
-    response
+    with :none <- shared_run(scope, source, paths, agent_id) do
+      admit(scope, source, paths, agent_id, requested_by)
+    end
   rescue
     error ->
       {:error, "Could not admit #{source}: #{Exception.message(error)}"}
@@ -84,6 +64,47 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
 
   def call(%{source: source}, _context) do
     {:error, "#{inspect(source)} is not an analyzer. Use one of: #{Enum.join(@sources, ", ")}."}
+  end
+
+  # A full run already under way at this copy's commit, on a clean tree,
+  # answers this request too: the agent waits on it rather than starting
+  # another (story 1143). Anything else ties to the next run (criterion 1378).
+  defp shared_run(scope, source, [], agent_id) when is_binary(agent_id) do
+    with true <- Analysis.running_full?(scope, source),
+         {:ok, head} <- Promotion.clean_head(scope),
+         [run_id | _] <- Analysis.join_running_at_commit(scope, source, head, agent_id) do
+      {:ok,
+       "Run #{run_id} is already under way at this commit; you are waiting on it.\n\n" <>
+         started(source, agent_id)}
+    else
+      _ -> :none
+    end
+  end
+
+  defp shared_run(_scope, _source, _paths, _agent_id), do: :none
+
+  defp admit(scope, source, paths, agent_id, requested_by) do
+    case Analysis.start_run(scope, source, paths, requested_by: requested_by) do
+      {:ok, :skipped, run_id} ->
+        {:error, "#{source} run #{run_id} skipped because of compiler errors."}
+
+      {:ok, _admission, run_id} ->
+        {:ok, "Run #{run_id} admitted.\n\n" <> started(source, agent_id)}
+
+      {:error, :no_executor} ->
+        {:error,
+         "Cannot request #{source}: no harness is connected for this working copy " <>
+           "and this server has no local analysis executor. Reconnect its harness and retry."}
+
+      # 783f3709: a hold reaches here at the point of admission, not only
+      # as a queued instruction offer, so an agent mid-run finds out at its
+      # very next attempt rather than at its next turn boundary.
+      {:error, {:held, hold}} ->
+        {:error, FleetHolds.refusal(hold)}
+
+      {:error, reason} ->
+        {:error, "Could not admit #{source}: #{inspect(reason)}"}
+    end
   end
 
   # "Requested", not "Started", and the difference is not pedantry.

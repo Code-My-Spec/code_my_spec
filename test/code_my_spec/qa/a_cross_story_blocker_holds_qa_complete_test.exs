@@ -78,6 +78,37 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
     assert details.blocking_issue_id == blocker.id
   end
 
+  test "a submitted cross-story blocker releases QA at the configured threshold", ctx do
+    other = story_fixture(ctx.scope)
+
+    ctx.blocker
+    |> Ecto.Changeset.change(
+      story_id: other.id,
+      severity: :medium,
+      story_submission_ref: Ecto.UUID.generate()
+    )
+    |> Repo.update!()
+
+    {false, details} = Verdict.complete_check(ctx.scope, ctx.story)
+    refute Map.has_key?(details, :waiting_on)
+
+    {:ok, _} =
+      CodeMySpec.Configurations.update(ctx.scope, %{fix_issues_min_severity: :high})
+
+    {false, details} = Verdict.complete_check(ctx.scope, ctx.story)
+    assert details.waiting_on == "cross_story_issue_block"
+  end
+
+  test "a dismissed cited blocker releases QA", ctx do
+    {:ok, blocker} = Issues.update_issue(ctx.scope, ctx.blocker, %{story_id: nil})
+    {false, held} = Verdict.complete_check(ctx.scope, ctx.story)
+    assert held.waiting_on == "cross_story_issue_block"
+
+    {:ok, _} = Issues.dismiss_issue(ctx.scope, blocker, "No longer applicable")
+    {false, details} = Verdict.complete_check(ctx.scope, ctx.story)
+    refute Map.has_key?(details, :waiting_on)
+  end
+
   test "asking twice with nothing changed answers alike", %{
     scope: scope,
     story: story,

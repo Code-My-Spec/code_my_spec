@@ -51,9 +51,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
-  alias CmsHarness.Token
   alias CodeMySpec.Environments
-  alias CodeMySpec.Projects
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
@@ -189,7 +187,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Started *and* answering: Postgrex pools connect lazily, so a started repo is
   # not evidence a query will work. One `SELECT 1`, which returns a tuple.
   defp reachable_repo do
-    with :ok <- start_local_repo(),
+    with :ok <- CmsHarness.Onboarding.start_local_repo(),
          {:ok, _result} <- SQL.query(CodeMySpec.Repo, "SELECT 1", []) do
       :ok
     else
@@ -281,95 +279,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     if not match?({:ok, _}, File.lstat(dest)) and File.exists?(source) do
       File.ln_s!(source, dest)
-    end
-  end
-
-  # The project's own deploy key, from this machine's database (a local dev
-  # server and this task share `code_my_spec_dev`). Returned, not exported.
-  # Best-effort: no database, an unknown project or a blank key leaves
-  # `CmsHarness.Token` to answer.
-  defp ensure_local_credential(project_id) do
-    cond do
-      local_server?(Config.server_url()) ->
-        case local_project_deploy_key(project_id) do
-          key when is_binary(key) and key != "" -> {:ok, key}
-          _ -> :none
-        end
-
-      not blank?(System.get_env("CMS_DEPLOY_KEY")) ->
-        {:ok, System.get_env("CMS_DEPLOY_KEY")}
-
-      not local_server?(Config.server_url()) ->
-        # This database backs only a server on this machine; for a remote
-        # project id it can only answer "never heard of it", which says nothing
-        # about the credential.
-        Mix.shell().info([
-          :yellow,
-          "Not reading a deploy key from the local database: this is onboarding " <>
-            "against #{Config.server_url()}, whose projects are not in it. Export " <>
-            "CMS_DEPLOY_KEY with a key from that server if the mint is refused.",
-          :reset
-        ])
-
-        :none
-    end
-  end
-
-  # A key in hand exchanges directly; otherwise fall back to the lookup.
-  # `Token.access_token/0` cannot serve this: its credentials are indexed by
-  # roots and projects the daemon already serves, and a copy being onboarded
-  # is neither.
-  defp token_for({:ok, key}), do: Token.access_token_for_key(key)
-  defp token_for(:none), do: Token.access_token()
-
-  defp credential_key({:ok, key}), do: key
-  defp credential_key(:none), do: nil
-
-  # Does this machine's database back the server being posted to?
-  #
-  # Host, not the whole URL: the port distinguishes the dev app from the
-  # packaged one and both read `code_my_spec_dev` on this machine, so a port
-  # comparison would skip a lookup that is fine.
-  defp local_server?(url) do
-    case URI.parse(url) do
-      %URI{host: host} when host in ["localhost", "127.0.0.1", "::1"] -> true
-      _ -> false
-    end
-  end
-
-  defp blank?(nil), do: true
-  defp blank?(""), do: true
-  defp blank?(_), do: false
-
-  defp local_project_deploy_key(project_id) do
-    with :ok <- start_local_repo(),
-         %{deploy_key: key} <- Projects.get_project_by_id(project_id) do
-      key
-    else
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
-
-  # Only `Vault` (to decrypt the column) and `Repo`, never the full
-  # application: a `mix phx.server` may already hold :4000.
-  defp start_local_repo do
-    Application.ensure_all_started(:postgrex)
-    Application.ensure_all_started(:ecto_sql)
-    Application.ensure_all_started(:cloak)
-
-    with {:ok, _} <- ensure_started(CodeMySpec.Vault),
-         {:ok, _} <- ensure_started(CodeMySpec.Repo) do
-      :ok
-    end
-  end
-
-  defp ensure_started(mod) do
-    case mod.start_link([]) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      other -> other
     end
   end
 
@@ -555,7 +464,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp identity(env, root, project_id) do
     case Environments.read_file(env, @harness_config_file) do
       {:ok, contents} -> existing_id(contents, env, root, project_id)
-      _ -> mint(root, project_id)
+      _ -> CmsHarness.Onboarding.mint(root, project_id)
     end
   end
 
@@ -605,7 +514,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # sibling: story 1030's onboarding criteria failed this way whenever a
   # full-suite run reached this spec after any other real-root onboard call).
   defp confirm_or_remint(id, env, root, project_id) do
-    case project_for(root, project_id) do
+    case CmsHarness.Onboarding.project_for(root, project_id) do
       {:ok, project} -> confirm_with_project(id, env, root, project, project_id)
       _ -> {:ok, id}
     end
@@ -621,7 +530,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # always logs at `:error` on anything but a clean 200, win or lose. Every
   # confirmation this code performs reached that log, real server or not.
   defp confirm_with_project(id, env, root, project, project_id) do
-    case ensure_local_credential(project.id) do
+    case CmsHarness.Onboarding.ensure_local_credential(project.id) do
       {:ok, key} -> handle_confirmation(confirm(id, key), id, env, root, project_id)
       _ -> {:ok, id}
     end
@@ -667,7 +576,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   defp mint_and_record(env, root, project_id) do
-    with {:ok, id} <- mint(root, project_id) do
+    with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `Environments` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
@@ -679,134 +588,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
       Environments.write_file(env, @harness_config_file, body)
       {:ok, id}
-    end
-  end
-
-  # A checkout with no id asks the server for one. Waiting for a channel join
-  # to mint it cannot work for a copy nobody serves yet: the harness learns
-  # which copies to serve by looking ids up, so a copy with no id would never
-  # be served and would never acquire one.
-  defp mint(root, project_id) do
-    with {:ok, project} <- project_for(root, project_id),
-         credential = ensure_local_credential(project.id),
-         {:ok, token} <- token_for(credential),
-         {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
-         :ok <-
-           HarnessConfig.write(root, %{
-             working_copy_id: id,
-             project_id: project.id,
-             deploy_key: credential_key(credential),
-             # The id is meaningful only to the server that issued it; a later
-             # run reads this back rather than defaulting to its own server.
-             server_url: Config.server_url(),
-             root: root
-           }) do
-      Mix.shell().info("Issued a new harness id for #{root}")
-      {:ok, id}
-    else
-      {:error, :no_project_id} ->
-        {:error,
-         """
-         #{root} does not say which project it is.
-
-         Put a `project_id` in .code_my_spec/config.yml. In a fresh worktree the
-         submodule is usually just not checked out: `git submodule update --init
-         .code_my_spec`.
-         """}
-
-      # Named: against a server this machine's database does not back, the
-      # truth is "your credential is for another server", not "you have none".
-      {:error, :no_credential} ->
-        {:error,
-         """
-         No credential to mint a harness id for #{root} against #{Config.server_url()}.
-
-         A deploy key reaches exactly one project on exactly one server. This task
-         reads one from this machine's database, which only holds projects for a
-         CodeMySpec running here — so onboarding against anything else needs the
-         key passed in:
-
-             CMS_DEPLOY_KEY=<a key from that server> \\
-               mix cms.harness.onboard #{root} --project <that server's project id>
-
-         Generate one on that server's project page if it has none.
-         """}
-
-      other ->
-        {:error, "Could not get a harness id for #{root} from the server: #{inspect(other)}"}
-    end
-  end
-
-  # Which project this checkout belongs to. `--project` wins; otherwise
-  # `.code_my_spec/config.yml`, then an existing `.cms_harness.json`. A
-  # disagreement is said out loud rather than resolved quietly.
-  defp project_for(root, nil), do: ProjectIdentity.resolve(root)
-
-  defp project_for(root, project_id) do
-    case ProjectIdentity.resolve(root) do
-      {:ok, %{id: ^project_id}} = resolved ->
-        resolved
-
-      {:ok, %{id: other}} ->
-        # Said out loud rather than resolved quietly either way. One of the two
-        # is wrong and only the person running this knows which.
-        Mix.shell().info([
-          :yellow,
-          "warning: #{root} says it belongs to project #{other}, and you asked for " <>
-            "#{project_id}. Using #{project_id}. If that is wrong, fix " <>
-            "`.code_my_spec/config.yml` in that checkout rather than passing the flag.",
-          :reset
-        ])
-
-        {:ok, %{id: project_id, root: root, working_copy_id: nil}}
-
-      {:error, _reason} ->
-        {:ok, %{id: project_id, root: root, working_copy_id: nil}}
-    end
-  end
-
-  defp post(project, root, token) do
-    Req.post(
-      url:
-        Config.server_url()
-        |> String.trim_trailing("/")
-        |> Kernel.<>("/api/harnesses"),
-      json: %{
-        project_id: project.id,
-        root: root,
-        label: Config.label(root),
-        device_id: device_id(token)
-      },
-      headers: [{"authorization", "Bearer " <> token}],
-      retry: false,
-      receive_timeout: to_timeout(second: 15),
-      plug: Application.get_env(:code_my_spec, __MODULE__, [])[:plug]
-    )
-  end
-
-  # Which machine this checkout is on. `--device` when given (a shared dev box,
-  # whose own identity is nobody's answer); otherwise the machine's recorded
-  # identity (`~/.codemyspec/device.json`), announcing first if it has none.
-  # Announcing is idempotent — it presents the id we hold — and the credential
-  # is already in hand from `mint/2`.
-  defp device_id(token) do
-    case Application.get_env(:code_my_spec, :onboard_device_id) do
-      id when is_binary(id) and id != "" -> id
-      # Announce even with an id on file: it presents that id, so a machine the
-      # server already knows stays one machine, and one whose first announce
-      # never arrived (it records the id before the round trip) gets registered
-      # instead of being sent as an id the devices table has never seen.
-      _ -> announced_id(token) || CmsHarness.Device.recorded_id()
-    end
-  end
-
-  # `nil` when the announce could not reach the server. It logs its own warning
-  # and the mint below will fail on the same unreachable server a moment later,
-  # so there is nothing useful to add here.
-  defp announced_id(token) do
-    case CmsHarness.Device.announce(%{}, token) do
-      {:ok, %{device_id: id}} -> id
-      {:error, _reason} -> nil
     end
   end
 
@@ -862,9 +643,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # that may be another project's. `nil` is ordinary; `onboard/2` then leaves
   # any recorded key alone.
   defp deploy_key_for(root) do
-    if local_server?(Config.server_url()) do
+    if CmsHarness.Onboarding.local_server?(Config.server_url()) do
       with {:ok, project} <- ProjectIdentity.resolve(root),
-           key when is_binary(key) and key != "" <- local_project_deploy_key(project.id) do
+           key when is_binary(key) and key != "" <-
+             CmsHarness.Onboarding.local_project_deploy_key(project.id) do
         key
       else
         _ -> nil
@@ -876,7 +658,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   defp remote_exported_key do
     key = System.get_env("CMS_DEPLOY_KEY")
-    if not local_server?(Config.server_url()) and not blank?(key), do: key
+
+    if not CmsHarness.Onboarding.local_server?(Config.server_url()) and
+         not CmsHarness.Onboarding.blank?(key),
+       do: key
   end
 
   # `client_utils`' own refusal sentence for malformed JSON is passed through;

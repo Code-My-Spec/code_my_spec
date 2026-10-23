@@ -98,13 +98,14 @@ ExUnit.start(
 #
 # Cannot-answer is reported, not treated as clean.
 #
-# The check itself now lives in `Mix.Tasks.Cms.CheckTestMigrations`, because
+# The check itself now lives in `CodeMySpec.TestMigrations`, because
 # `mix spex` needed it too and had no way to get it: it loads no helper at all,
 # so the one command an agent is told to run for BDD work was the one that
 # skipped this — and the symptom arrived as `ERROR 42703 (undefined_column)`
 # from inside a `given_` step, naming no migration (40b6424d). The `spex` alias
-# runs that task before booting; this line is the same check for `mix test`.
-Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
+# runs `Mix.Tasks.Cms.CheckTestMigrations` (a thin wrapper over the same
+# function) before booting; this line is the same check for `mix test`.
+CodeMySpec.TestMigrations.refuse_if_behind!()
 
 # Back, because the escape it watched for is back too (195ac5e5).
 #

@@ -273,6 +273,17 @@ defmodule CodeMySpec.Agents.Offers.EveryNudgeIsRecordedAsAnOfferTest do
       assert linked_texts(offer) == ["The harness restarted."]
     end
 
+    test "an agent that is off is told nothing about a restart", ctx do
+      agent = agent(ctx.scope)
+
+      {:ok, off} =
+        AgentsRepository.update_agent(ctx.scope, agent, %{off_at: DateTime.utc_now()})
+
+      :ok = Agents.account_for_interrupted_turns(ctx.scope, [off])
+
+      assert Offers.list_for_agent(agent.id) == []
+    end
+
     test "a mid-turn agent's carry-on records a resume offer linked to it", ctx do
       agent = agent(ctx.scope)
 

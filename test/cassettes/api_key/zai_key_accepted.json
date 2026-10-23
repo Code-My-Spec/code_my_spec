@@ -1,0 +1,99 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-10-22T01:54:18.740470Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 1,
+          "messages": [
+            {
+              "content": "hi",
+              "role": "user"
+            }
+          ],
+          "model": "glm-4.5-flash"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.5"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.z.ai/api/paas/v4/chat/completions"
+      },
+      "response": {
+        "body_json": {
+          "choices": [
+            {
+              "finish_reason": "length",
+              "index": 0,
+              "message": {
+                "content": "",
+                "role": "assistant"
+              }
+            }
+          ],
+          "created": 1792634058,
+          "id": "20261022095417aa587bd7414f45c2",
+          "model": "glm-4.5-flash",
+          "object": "chat.completion",
+          "request_id": "20261022095417aa587bd7414f45c2",
+          "usage": {
+            "completion_tokens": 1,
+            "prompt_tokens": 6,
+            "prompt_tokens_details": {
+              "cached_tokens": 5
+            },
+            "total_tokens": 7
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=3600"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-length": [
+            "361"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Thu, 22 Oct 2026 01:54:18 GMT"
+          ],
+          "ga-traceid": [
+            "9a4a3ce8e7d9eb7d8363dc0aa9260b0e"
+          ],
+          "vary": [
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Origin"
+          ],
+          "x-log-id": [
+            "20261022095417aa587bd7414f45c2"
+          ],
+          "x-request-id": [
+            "a0fc6d55-7f4c-48e2-a862-4a3b2217ce23"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

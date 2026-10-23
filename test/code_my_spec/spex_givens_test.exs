@@ -57,6 +57,10 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
+  # `LiveRun.start(` (story 1141) starts a live harness on Sam's checkout and
+  # has his agent start the suite through `start_analysis`: the run is the
+  # premise, and it holds it open for the scenario to watch.
+  #
   # `Req.Test.stub` is a provider seam, listed by the same precedent as `stage_`
   # and `with_provider_cassette`. A block saying "Z.ai will accept this key" and
   # calling it has made its precondition true in the only way available: the
@@ -297,7 +301,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
-    join_working_copy report_agents
+    join_working_copy report_agents LiveRun.start(
     H.start( EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
     given_a_live_harness HarnessHooks.

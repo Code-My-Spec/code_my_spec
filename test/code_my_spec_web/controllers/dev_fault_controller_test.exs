@@ -9,7 +9,9 @@ defmodule CodeMySpecWeb.DevFaultControllerTest do
   exist to end.
   """
 
-  use CodeMySpecTest.ConnCase, async: true
+  # Synchronous: `Faults` is one table for the whole node, and these tests
+  # assert on all of it and clear all of it (issue 6fbc2e56).
+  use CodeMySpecTest.ConnCase, async: false
 
   alias CodeMySpec.Faults
 

@@ -6074,6 +6074,11 @@ defmodule CodeMySpecSpex.Case do
       # than waiting for `provider_modules_complete_test.exs` to name it,
       # since that check is exactly what caught it.
       Mix.Tasks.Cms.Harness.Onboard,
+      # Story 1013: the mint POST, extracted into its own module
+      # (criteria 916-918, so a spex could drive it in-process) and pinned
+      # separately from the confirm call above -- different module, own
+      # `:plug` key, own cassette coverage.
+      CmsHarness.Onboarding,
       # Remote onboarding's token exchange now reads the same HTTP plug.
       CmsHarness.Token
     ]

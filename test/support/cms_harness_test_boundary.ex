@@ -39,6 +39,7 @@ defmodule CmsHarnessTest do
       FakeServer,
       HarnessOAuthFixture,
       BlockingProject,
+      ClusteredProject,
       SlotHolder,
       AppInstanceHelpers,
       FakeAppInstanceRunner,

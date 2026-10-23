@@ -803,6 +803,21 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
+  @doc """
+  The commit the caller's working copy is on, when its tree is clean: what a
+  run started there on a clean tree answers for. `:none` otherwise.
+  """
+  @spec clean_head(Scope.t()) :: {:ok, String.t()} | :none
+  def clean_head(%Scope{} = scope) do
+    with {:ok, copy} <- promoting_copy(scope, nil),
+         {:ok, %{head: head}} when is_binary(head) <-
+           Runner.precheck(copy_environment(scope, copy), copy.root, copy.id) do
+      {:ok, head}
+    else
+      _ -> :none
+    end
+  end
+
   defp promoting_copy(%Scope{active_working_copy_id: id}, _running) when is_binary(id) do
     case WorkingCopies.fetch(id) do
       {:ok, %WorkingCopy{root: root} = copy} when is_binary(root) -> {:ok, copy}

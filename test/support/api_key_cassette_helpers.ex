@@ -82,6 +82,22 @@ defmodule CodeMySpec.ApiKeyCassetteHelpers do
     if record?(), do: live_key() |> String.slice(0..-2//1), else: "replay-key-broken"
   end
 
+  @doc """
+  A real but unfunded Z.ai key, read from disk only while recording.
+
+  `~/.codemyspec/zai_test_key` rather than an env var: the key is a standing
+  fixture on this machine, not something each recording run supplies. Never
+  logged or returned on replay — the placeholder is enough, since the
+  `authorization` header is filtered out of every cassette regardless.
+  """
+  def zai_live_key do
+    if record?() do
+      "~/.codemyspec/zai_test_key" |> Path.expand() |> File.read!() |> String.trim()
+    else
+      "replay-zai-key"
+    end
+  end
+
   def record?, do: System.get_env("API_KEY_RECORD") in ~w(1 true yes)
 
   defp mode, do: if(record?(), do: :record, else: :replay)

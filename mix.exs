@@ -103,6 +103,14 @@ defmodule CodeMySpec.MixProject do
     ErlangError -> nil
   end
 
+  # `client_utils` is checked out beside the main checkout. Every worktree
+  # shares that checkout's git dir, wherever the worktree itself lives.
+  defp client_utils_path do
+    args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
+    {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
+    Path.expand("../../client_utils", String.trim(common))
+  end
+
   defp from_describe(described) do
     case Regex.run(~r/^v(\d+\.\d+\.\d+)-(\d+)-(g[0-9a-f]+)$/, described) do
       [_, version, "0", _sha] -> version
@@ -207,12 +215,12 @@ defmodule CodeMySpec.MixProject do
        git: "https://github.com/Code-My-Spec/spex.git",
        branch: "feature/reusable-givens",
        only: [:dev, :test]},
-      # git rather than hex, so the harness and the library it shares a contract
-      # with move together. `Onboarding.databases/2` lists the partitions and
-      # `TestDatabase.partition_for/2` uses them; a release boundary between the
-      # two means a window where the harness runs a suite against a database
-      # nothing told anyone to create.
-      {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "main"},
+      # A path rather than hex, so the harness and the library it shares a
+      # contract with move together. `Onboarding.databases/2` lists the
+      # partitions and `TestDatabase.partition_for/2` uses them; a release
+      # boundary between the two means a window where the harness runs a suite
+      # against a database nothing told anyone to create.
+      {:client_utils, path: client_utils_path()},
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
