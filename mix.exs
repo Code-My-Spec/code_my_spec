@@ -103,12 +103,17 @@ defmodule CodeMySpec.MixProject do
     ErlangError -> nil
   end
 
-  # `client_utils` is checked out beside the main checkout. Every worktree
-  # shares that checkout's git dir, wherever the worktree itself lives.
-  defp client_utils_path do
+  # `client_utils` is checked out beside the main checkout on a dev machine.
+  # Every worktree shares that checkout's git dir, wherever the worktree itself
+  # lives. A machine without it (CI, a release build) takes it from GitHub.
+  defp client_utils do
     args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
     {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
-    Path.expand("../../client_utils", String.trim(common))
+    path = Path.expand("../../client_utils", String.trim(common))
+
+    if File.dir?(path),
+      do: {:client_utils, path: path},
+      else: {:client_utils, github: "Code-My-Spec/client_utils", branch: "main"}
   end
 
   defp from_describe(described) do
@@ -220,7 +225,7 @@ defmodule CodeMySpec.MixProject do
       # partitions and `TestDatabase.partition_for/2` uses them; a release
       # boundary between the two means a window where the harness runs a suite
       # against a database nothing told anyone to create.
-      {:client_utils, path: client_utils_path()},
+      client_utils(),
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
