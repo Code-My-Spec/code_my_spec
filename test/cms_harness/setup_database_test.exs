@@ -144,7 +144,7 @@ defmodule CmsHarness.Setup.DatabaseTest do
     runner = fn _cwd, command, args ->
       [{expected_command, expected_args, output, status} | rest] = Process.get(key)
       assert command == expected_command
-      if expected_args != :any, do: assert(args == expected_args)
+      assert_args(args, expected_args)
       Process.put(key, rest)
 
       %{
@@ -152,7 +152,7 @@ defmodule CmsHarness.Setup.DatabaseTest do
         args: args,
         output: output,
         exit_status: status,
-        error: if(status == 0, do: nil, else: "command failed")
+        error: command_error(status)
       }
     end
 
@@ -172,4 +172,9 @@ defmodule CmsHarness.Setup.DatabaseTest do
     assert Process.delete(key) == []
     result
   end
+
+  defp assert_args(_args, :any), do: :ok
+  defp assert_args(args, expected), do: assert(args == expected)
+  defp command_error(0), do: nil
+  defp command_error(_status), do: "command failed"
 end

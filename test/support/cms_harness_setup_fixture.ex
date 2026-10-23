@@ -20,4 +20,15 @@ defmodule CmsHarnessTest.SetupFixture do
   end
 
   def persisted_result(snapshot), do: snapshot["results_path"] |> File.read!() |> Jason.decode!()
+
+  def non_elixir_project do
+    root = Path.join(System.tmp_dir!(), "invalid-project-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    File.write!(Path.join(root, "index.html"), "<h1>Site</h1>")
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf!(root) end)
+    root
+  end
+
+  def directory_contents(root),
+    do: Map.new(File.ls!(root), &{&1, File.read!(Path.join(root, &1))})
 end

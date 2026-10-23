@@ -36,9 +36,7 @@ defmodule CodeMySpecWeb.DesktopDeviceAssociationTest do
       File.rm(file)
 
       for {key, value} <- previous do
-        if value,
-          do: Application.put_env(:code_my_spec, key, value),
-          else: Application.delete_env(:code_my_spec, key)
+        CodeMySpecTest.EnvRestore.restore_app_env(key, value)
       end
     end)
 

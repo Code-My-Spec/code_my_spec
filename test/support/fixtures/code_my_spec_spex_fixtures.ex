@@ -1174,6 +1174,27 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  def configure_agent_models_for_email(email) do
+    email
+    |> CodeMySpec.Users.get_user_by_email()
+    |> UserPreferences.scope_for()
+    |> configure_agent_models()
+  end
+
+  def connect_setup_project(context) do
+    CmsHarnessTest.FakeServer.start()
+
+    CmsHarness.Setup.connect_project(
+      context.project_dir,
+      %{
+        project_id: Ecto.UUID.generate(),
+        working_copy_id: Ecto.UUID.generate(),
+        app: "dev_setup_app"
+      },
+      []
+    )
+  end
+
   @doc "Complete model selection before account/project onboarding scenarios."
   def configure_agent_models(scope) do
     {:ok, _} = connect_provider(scope, "anthropic")

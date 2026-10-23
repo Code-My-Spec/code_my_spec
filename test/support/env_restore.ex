@@ -27,4 +27,9 @@ defmodule CodeMySpecTest.EnvRestore do
   @spec restore_app_env(atom(), term()) :: :ok
   def restore_app_env(key, nil), do: Application.delete_env(:code_my_spec, key)
   def restore_app_env(key, value), do: Application.put_env(:code_my_spec, key, value)
+
+  def restore_fetched_app_env(key, {:ok, value}),
+    do: Application.put_env(:code_my_spec, key, value)
+
+  def restore_fetched_app_env(key, :error), do: Application.delete_env(:code_my_spec, key)
 end

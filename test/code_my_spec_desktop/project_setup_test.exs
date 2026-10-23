@@ -17,9 +17,7 @@ defmodule CodeMySpecDesktop.ProjectSetupTest do
     System.put_env("CMS_PROJECT_DIR", Path.join(root, "workspace"))
 
     on_exit(fn ->
-      if previous,
-        do: System.put_env("CMS_PROJECT_DIR", previous),
-        else: System.delete_env("CMS_PROJECT_DIR")
+      CodeMySpecTest.EnvRestore.restore("CMS_PROJECT_DIR", previous)
 
       File.rm_rf!(root)
     end)

@@ -98,7 +98,7 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     start_supervised!(CodeMySpecDesktop.ProjectSetup)
 
     on_exit(fn ->
-      Enum.each(env, fn {k, v} -> if v, do: System.put_env(k, v), else: System.delete_env(k) end)
+      Enum.each(env, fn {k, v} -> CodeMySpecTest.EnvRestore.restore(k, v) end)
 
       Enum.each(previous, fn
         {k, {:ok, v}} -> Application.put_env(:code_my_spec, k, v)
@@ -222,13 +222,17 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     assert remaining > 0, "setup job did not finish"
     assert {:ok, status} = SetupLocalProject.script_result(%{action: "status"}, %{scope: scope})
 
-    if status.running do
-      Process.sleep(25)
-      await_setup(scope, remaining - 1)
-    else
-      assert status.result["ok"], inspect(status)
-      status
-    end
+    await_status(status, scope, remaining)
+  end
+
+  defp await_status(%{running: true}, scope, remaining) do
+    Process.sleep(25)
+    await_setup(scope, remaining - 1)
+  end
+
+  defp await_status(status, _scope, _remaining) do
+    assert status.result["ok"], inspect(status)
+    status
   end
 
   defp executable(bin, name, script) do

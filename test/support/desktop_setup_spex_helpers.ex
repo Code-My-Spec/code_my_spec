@@ -100,19 +100,7 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
      })}
   end
 
-  def connect_setup_project(context) do
-    CmsHarnessTest.FakeServer.start()
-
-    CmsHarness.Setup.connect_project(
-      context.project_dir,
-      %{
-        project_id: Ecto.UUID.generate(),
-        working_copy_id: Ecto.UUID.generate(),
-        app: "dev_setup_app"
-      },
-      []
-    )
-  end
+  defdelegate connect_setup_project(context), to: Fixtures
 
   def with_project_generator(context) do
     previous_runner = Application.fetch_env(:code_my_spec, :generator_runner)

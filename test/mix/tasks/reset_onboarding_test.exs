@@ -36,13 +36,15 @@ defmodule Mix.Tasks.ResetOnboardingTest do
       assert refreshed.active_project_id == nil
       assert Agents.models_configured?(refreshed) == unquote(step) > 1
       assert !!Repo.get(Account, scope.active_account_id) == (unquote(step) == 3)
-      if unquote(step) <= 2, do: assert(refreshed.active_account_id == nil)
-      if unquote(step) == 3, do: assert(refreshed.active_account_id == scope.active_account_id)
+
+      assert refreshed.active_account_id ==
+               Map.get(%{3 => scope.active_account_id}, unquote(step))
+
       assert Repo.get(Project, other.active_project_id)
       assert Repo.get(Account, other.active_account_id)
       assert Repo.get(CodeMySpec.Users.User, scope.user.id)
       device = Repo.reload!(device)
-      assert device.account_id == if(unquote(step) <= 2, do: nil, else: scope.active_account_id)
+      assert device.account_id == Map.get(%{3 => scope.active_account_id}, unquote(step))
     end
   end
 

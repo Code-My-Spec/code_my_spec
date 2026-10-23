@@ -17,10 +17,7 @@ defmodule CodeMySpecWeb.DesktopModelOnboardingTest do
     scope = UserPreferences.scope_for(user)
 
     on_exit(fn ->
-      case previous_env do
-        {:ok, env} -> Application.put_env(:code_my_spec, :env, env)
-        :error -> Application.delete_env(:code_my_spec, :env)
-      end
+      CodeMySpecTest.EnvRestore.restore_fetched_app_env(:env, previous_env)
 
       System.put_env("PATH", previous_path)
       File.rm_rf!(root)

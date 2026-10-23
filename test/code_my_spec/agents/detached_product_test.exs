@@ -42,10 +42,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
 
     on_exit(fn ->
       for {key, value} <- previous do
-        case value do
-          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
-          :error -> Application.delete_env(:code_my_spec, key)
-        end
+        CodeMySpecTest.EnvRestore.restore_fetched_app_env(key, value)
       end
     end)
 

@@ -16,8 +16,11 @@ defmodule CmsHarness.Agents.Tools.RunScriptSpillTest do
       text =
         response |> Response.to_protocol() |> Map.fetch!("content") |> hd() |> Map.fetch!("text")
 
-      if response.isError, do: {:error, text}, else: {:ok, text}
+      reply(response.isError, text)
     end
+
+    defp reply(true, text), do: {:error, text}
+    defp reply(false, text), do: {:ok, text}
   end
 
   setup %{tmp_dir: root} do
@@ -50,7 +53,7 @@ defmodule CmsHarness.Agents.Tools.RunScriptSpillTest do
 
     assert [_, path] = Regex.run(~r/Full output saved to: (\S+)/, notice)
     assert Path.dirname(path) == context.spill_dir
-    assert File.read!(path) == "Returned:\n" <> String.duplicate("x", 60000) <> "TAIL"
+    assert File.read!(path) == "Returned:\n" <> String.duplicate("x", 60_000) <> "TAIL"
 
     assert {:ok, output} =
              Read.execute(%{"file_path" => path, "offset" => 1, "limit" => 1}, context)
@@ -71,7 +74,7 @@ defmodule CmsHarness.Agents.Tools.RunScriptSpillTest do
 
     assert [_, path] = Regex.run(~r/Full output saved to: (\S+)/, notice)
     assert Path.dirname(path) == context.spill_dir
-    assert File.read!(path) =~ String.duplicate("bad", 20000)
+    assert File.read!(path) =~ String.duplicate("bad", 20_000)
   end
 
   test "without a local spill directory the fallback caps without a server file path", %{
