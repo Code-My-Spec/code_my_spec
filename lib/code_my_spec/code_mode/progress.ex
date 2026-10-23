@@ -72,7 +72,7 @@ defmodule CodeMySpec.CodeMode.Progress do
   end
 
   defp in_flight(nil, _stopped_at),
-    do: "No tool call was in flight: the script's own code was still running."
+    do: "No tool call was in flight: the deadline fell inside the script's own code."
 
   defp in_flight({name, started}, stopped_at),
     do: "Still waiting on `#{name}`, called #{stopped_at - started}ms before the deadline."
