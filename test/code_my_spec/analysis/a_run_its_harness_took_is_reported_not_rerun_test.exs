@@ -1,12 +1,12 @@
-defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
+defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   @moduledoc """
-  A requested run that dies because its harness went away is run again when a
-  harness rejoins the copy, and its answer reaches the agent that asked.
+  A requested run that dies because its harness went away is reported to the
+  agent that asked when a harness rejoins the copy, and is not run again
+  (story 1142): whoever asked decides whether to ask again.
 
   metric_flow, 2026-09-30 (cc578c21): spex run 53537 was failed at 14:00:33 by
-  a promote's restart. The failure was announced while the harness was gone, so
-  nobody heard it, nothing re-ran it, and the coder answered "Your turn is done"
-  nudges until someone queued the run again by hand 16 minutes later.
+  a promote's restart, announced while the harness was gone, so nobody heard
+  it. The answer now waits for the rejoin, when somebody can hear it.
   """
   use CodeMySpecTest.DataCase, async: true
 
@@ -83,37 +83,33 @@ defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
     }
   end
 
-  test "a run a disconnect killed is re-dispatched on rejoin and answers its requester", ctx do
-    killed = requested_run(ctx.scope, ctx.agent)
+  test "a run a disconnect killed is reported on rejoin and not run again", ctx do
+    requested_run(ctx.scope, ctx.agent)
 
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
 
-    # Not "your run failed, start it again": it is about to be started again,
-    # and telling the agent to do it too queues the same sweep twice.
+    # Not while the harness is gone: nobody could hear it.
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100
 
     rejoin(ctx.scope)
 
-    assert_receive {:run_analysis, [%{"run_id" => rerun_id, "source" => "compiler"}]}
-    assert rerun_id != killed.id
-
-    rerun = RunsRepository.get_running_run(ctx.scope, rerun_id)
-    assert rerun.requested_by["agent_id"] == ctx.agent.id
-
-    Analysis.record_remote_result(ctx.scope, clean_compile(rerun_id))
-
-    assert_receive {:agent_dispatch, id, _ref, _message}
+    refute_receive {:run_analysis, _}, 100
+    assert_receive {:agent_dispatch, id, _ref, message}
     assert id == ctx.agent.id
+    assert message =~ "harness went away"
+    assert message =~ "not being run again"
+    refute Analysis.awaiting_runs?(ctx.scope, ctx.copy.id, ctx.agent.id)
   end
 
-  test "a run a server restart killed is re-dispatched once, not on every join", ctx do
+  test "a run a server restart killed is reported once, not on every join", ctx do
     requested_run(ctx.scope, ctx.agent)
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, @restart)
 
     rejoin(ctx.scope)
-    assert_receive {:run_analysis, [_]}
+    assert_receive {:agent_dispatch, _id, _ref, _message}
 
     Analysis.resume_orphaned(ctx.scope, [])
+    refute_receive {:agent_dispatch, _id, _ref, _message}, 100
     refute_receive {:run_analysis, _}, 100
   end
 
@@ -147,19 +143,6 @@ defmodule CodeMySpec.Analysis.ARunARestartKilledIsRunAgainTest do
     rejoin(ctx.scope)
 
     refute_receive {:run_analysis, _}, 100
-  end
-
-  test "a run killed on every attempt stops being re-run and its requester is told", ctx do
-    requested_run(ctx.scope, ctx.agent, %{"redispatches" => 3})
-    {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
-
-    rejoin(ctx.scope)
-
-    refute_receive {:run_analysis, _}, 100
-    assert_receive {:agent_dispatch, id, _ref, message}
-    assert id == ctx.agent.id
-    assert message =~ "harness_disconnected"
-    refute Analysis.awaiting_runs?(ctx.scope, ctx.copy.id, ctx.agent.id)
   end
 
   test "the agent is still awaiting a killed run until the rejoin settles it", ctx do

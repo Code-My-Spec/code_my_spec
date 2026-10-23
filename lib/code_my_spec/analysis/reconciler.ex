@@ -299,6 +299,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
     })
   end
 
+  @doc "Close a run somebody cancelled (story 1142). Not a failure: nothing found, nothing reconciled."
+  @spec cancel(Run.t()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
+  def cancel(%Run{} = run) do
+    Logger.info("[Analysis] run #{run.id} (#{run.source}) cancelled" <> requested_by_suffix(run))
+    RunsRepository.finish_run(run, :cancelled, %{stats: %{"cancelled" => true}})
+  end
+
   # -- Problem preparation --
 
   defp stamp_project(problem, scope),
