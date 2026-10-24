@@ -7,6 +7,8 @@ defmodule CodeMySpec.Analysis.RunNode do
 
   require Logger
 
+  @credo_reporter_config ~s(%{configs: [%{name: "default", plugins: [{ClientUtils.CredoReporter, []}]}]})
+
   @doc "Start distribution if this node has none."
   @spec ensure_started(String.t()) :: :ok
   def ensure_started(prefix) do
@@ -45,6 +47,17 @@ defmodule CodeMySpec.Analysis.RunNode do
       {"CMS_RUN_LISTENER", Atom.to_string(listener)}
     ]
   end
+
+  @doc """
+  `env/2` for a credo run (story 1144): the same link, and Credo told to load
+  `ClientUtils.CredoReporter` through `CREDO_EXTRA_CONFIG`, which Credo merges
+  into the project's own config. No link, nothing added.
+  """
+  @spec credo_env([{String.t(), String.t()}]) :: [{String.t(), String.t()}]
+  def credo_env([]), do: []
+
+  def credo_env(link_env),
+    do: [{"CREDO_EXTRA_CONFIG", @credo_reporter_config} | link_env]
 
   # `Node.start/2` registers with epmd; a machine whose epmd is not running
   # gets one started, once.
