@@ -36,13 +36,17 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
           {:ok, %{published: false}}
 
         ^head ->
-          with {:ok, %{head: remote}} <- remote_head(env, root, branch) do
-            reconcile(env, root, branch, base, head, remote)
-          end
+          reconcile_receipt(env, root, branch, base, head)
 
         _ ->
           failure(:rejected, "promotion receipt identifies another candidate")
       end
+    end
+  end
+
+  defp reconcile_receipt(env, root, branch, base, head) do
+    with {:ok, %{head: remote}} <- remote_head(env, root, branch) do
+      reconcile(env, root, branch, base, head, remote)
     end
   end
 
