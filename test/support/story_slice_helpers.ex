@@ -266,8 +266,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   call this.
   """
   def land(context) do
-    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
-    {:ok, _} = CodeMySpec.Stories.mark_story_promoted(context.scope, story, "2.0.44")
+    {:ok, _} = Fixtures.record_story_publication(context.scope, context.story.id, "2.0.44")
     context
   end
 
