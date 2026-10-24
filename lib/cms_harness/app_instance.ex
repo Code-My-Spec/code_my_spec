@@ -999,9 +999,10 @@ defmodule CmsHarness.AppInstance do
     do: {:error, {:cannot_confirm_process_stopped, pid}}
 
   defp confirm_stop(%{root: root} = state, true, root) do
-    case owned_by_another?(state, state.os_pid) do
-      true -> {:ok, persist_stopped(state)}
-      false -> stop_process(state)
+    if owned_by_another?(state, state.os_pid) do
+      {:ok, persist_stopped(state)}
+    else
+      stop_process(state)
     end
   end
 

@@ -288,35 +288,29 @@ defmodule CodeMySpec.AppInstances do
   def call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
 
   defp lifecycle(scope, id, verb, timeout, _timeout_reason) do
-    with %AppInstance{} = i <- get(scope, id) do
-      result = CodeMySpec.AppInstances.Transport.request(i, verb, timeout)
+    case get(scope, id) do
+      %AppInstance{} = instance ->
+        result = CodeMySpec.AppInstances.Transport.request(instance, verb, timeout)
+        record_lifecycle_reply(scope, instance, verb, result)
 
-      case result do
-        {:ok, info} when is_map(info) ->
-          case reply_for_instance(info, i.id) do
-            {:ok, info} ->
-              case record_status(scope, i, info) do
-                {:ok, _updated} -> {:ok, info}
-                error -> error
-              end
-
-            error ->
-              error
-          end
-
-        :ok when verb in [:stop_app, :discard_app] ->
-          case record_status(scope, i, %{status: "down"}) do
-            {:ok, _} -> :ok
-            error -> error
-          end
-
-        other ->
-          other
-      end
-    else
-      nil -> {:error, :not_found}
+      nil ->
+        {:error, :not_found}
     end
   end
+
+  defp record_lifecycle_reply(scope, instance, _verb, {:ok, info}) when is_map(info) do
+    with {:ok, info} <- reply_for_instance(info, instance.id),
+         {:ok, _updated} <- record_status(scope, instance, info) do
+      {:ok, info}
+    end
+  end
+
+  defp record_lifecycle_reply(scope, instance, verb, :ok)
+       when verb in [:stop_app, :discard_app] do
+    with {:ok, _updated} <- record_status(scope, instance, %{status: "down"}), do: :ok
+  end
+
+  defp record_lifecycle_reply(_scope, _instance, _verb, result), do: result
 
   defp reply_for_instance(info, id) do
     reported_id = value(info, :instance_id)

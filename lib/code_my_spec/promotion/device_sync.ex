@@ -240,28 +240,36 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       if serving?(current, desired["head"]) do
         {:ok, desired["head"]}
       else
-        plan =
-          Promotion.deployment_plan(changed_files,
-            restart: desired["restart"],
-            reload_supported: reload_supported(app, scope, instance.id)
-          )
-
-        result =
-          case plan.action do
-            :restart -> restart(app, scope, instance.id)
-            :reload -> reload(app, scope, instance.id)
-          end
-
-        if serving?(result, desired["head"]) do
-          {:ok, desired["head"]}
-        else
-          verify = ensure_running(app, scope, instance.id)
-
-          if serving?(verify, desired["head"]),
-            do: {:ok, desired["head"]},
-            else: {:error, {:app_revision_unconfirmed, result, verify}}
-        end
+        refresh_revision(app, scope, instance.id, desired, changed_files)
       end
+    end
+  end
+
+  defp refresh_revision(app, scope, id, desired, changed_files) do
+    plan =
+      Promotion.deployment_plan(changed_files,
+        restart: desired["restart"],
+        reload_supported: reload_supported(app, scope, id)
+      )
+
+    result =
+      case plan.action do
+        :restart -> restart(app, scope, id)
+        :reload -> reload(app, scope, id)
+      end
+
+    verify_revision(app, scope, id, desired["head"], result)
+  end
+
+  defp verify_revision(app, scope, id, head, result) do
+    if serving?(result, head) do
+      {:ok, head}
+    else
+      verify = ensure_running(app, scope, id)
+
+      if serving?(verify, head),
+        do: {:ok, head},
+        else: {:error, {:app_revision_unconfirmed, result, verify}}
     end
   end
 
