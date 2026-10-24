@@ -461,7 +461,8 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
     detached =
       if scope,
-        do: Enum.filter(CodeMySpec.Agents.list_agents(scope), &is_nil(&1.working_copy_id)),
+        do:
+          Enum.filter(CodeMySpec.Agents.list_for_team_status(scope), &is_nil(&1.working_copy_id)),
         else: []
 
     conversations =
@@ -485,22 +486,12 @@ defmodule CodeMySpecWeb.ConversationPanels do
     assigns =
       assigns
       |> assign(:detached, detached)
-      |> assign(:devices, activity_devices(scope))
       |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
       |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
-      |> assign(:devices, device_groups(assigns.copies))
+      |> assign(:devices, device_groups(assigns.copies, activity_devices(scope)))
 
     ~H"""
     <div class="space-y-3">
-      <div
-        :for={device <- @devices}
-        data-test="team-device"
-        data-device-id={device.id}
-        class="text-xs opacity-70"
-      >
-        <.icon name="hero-computer-desktop" class="size-3 inline" />
-        {CodeMySpec.Devices.Device.display_name(device)}
-      </div>
       <div
         :for={entry <- @detached}
         data-test="team-detached-agent"
@@ -720,18 +711,26 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   # Preserve the copy ordering (main first), but identify machines by their
   # stable ID: two devices can have the same hostname or user-facing label.
-  defp device_groups(copies) do
+  defp device_groups(copies, devices) do
     key = fn copy -> copy.row.device && copy.row.device.id end
     groups = Enum.group_by(copies, key)
 
-    copies
-    |> Enum.map(key)
-    |> Enum.uniq()
-    |> Enum.map(fn id ->
-      copies = Map.fetch!(groups, id)
-      name = if id, do: hd(copies).row.device_name, else: "Device unknown"
-      %{id: id, name: name, copies: copies}
-    end)
+    grouped =
+      copies
+      |> Enum.map(key)
+      |> Enum.uniq()
+      |> Enum.map(fn id ->
+        copies = Map.fetch!(groups, id)
+        name = if id, do: hd(copies).row.device_name, else: "Device unknown"
+        %{id: id, name: name, copies: copies}
+      end)
+
+    empty =
+      devices
+      |> Enum.reject(&Map.has_key?(groups, &1.id))
+      |> Enum.map(&%{id: &1.id, name: CodeMySpec.Devices.Device.display_name(&1), copies: []})
+
+    grouped ++ empty
   end
 
   attr :copy, :map, required: true
