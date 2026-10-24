@@ -66,6 +66,9 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
       "id" => copy.id,
       "root" => copy.root,
       "main" => copy.main,
+      "promotion_sync" => copy.promotion_sync,
+      "app_status" => copy.app_status,
+      "app_serving_commit" => copy.app_serving_commit,
       "agents" => Enum.map(agents, &agent_row/1)
     }
   end
@@ -91,7 +94,8 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
       copy.id,
       describe_root(copy.root),
       if(copy.main, do: "main", else: "—"),
-      describe_agents(agents)
+      describe_agents(agents),
+      describe_sync(copy.promotion_sync)
     ]
     |> Enum.join("  |  ")
   end
@@ -101,6 +105,12 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
   # list of checkouts. Issue 28e838cc is that mistake made by code.
   defp describe_root(root) when is_binary(root) and root != "", do: root
   defp describe_root(_), do: "no checkout on disk — nothing can be built here"
+
+  defp describe_sync(%{"status" => status, "head" => head} = sync),
+    do:
+      "device sync #{status} at #{head}" <> if(sync["error"], do: ": #{sync["error"]}", else: "")
+
+  defp describe_sync(_), do: "no pending publication"
 
   defp describe_agents([]), do: "nothing running"
 

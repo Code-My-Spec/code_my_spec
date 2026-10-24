@@ -105,6 +105,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns.
       Analysis.resume_orphaned(scope, claimed_runs(payload))
       PromotionQueue.copy_joined(scope, harness)
+      CodeMySpec.Promotion.DeviceSync.copy_joined(scope, harness)
 
       # The id goes back whether minted or recognised; a first join writes it
       # down so its next restart is the same harness.

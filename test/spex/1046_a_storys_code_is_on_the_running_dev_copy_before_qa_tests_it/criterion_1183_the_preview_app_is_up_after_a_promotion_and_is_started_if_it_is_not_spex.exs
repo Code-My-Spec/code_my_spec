@@ -172,6 +172,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   # The other specs in this story build two, because a promotion between copies
   # is what they are about.
   defp a_running_copy(context) do
+    CodeMySpecSpex.PromotionHelpers.local_bootstrap_project(context)
     running_root = CodeMySpec.TempFile.dir("spex-3176-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
 

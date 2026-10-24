@@ -1065,6 +1065,69 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # One clause per named operation, and deliberately no general `cmd`: analysis
   # owns command execution here. App restarts go through the app verbs.
+  defp apply_promotion("promotion_publication_status", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publication_status(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_remote_head", %{"root" => root, "branch" => branch}),
+    do:
+      with_served_root(
+        root,
+        &CodeMySpec.Promotion.RemoteSteps.remote_head(Environment.new(:local, &1), &1, branch)
+      )
+
+  defp apply_promotion("promotion_publish", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publish(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_sync_remote", %{
+         "root" => root,
+         "branch" => branch,
+         "head" => head
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.sync_remote(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             head
+           )
+         )
+
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1, payload["main"]))
 

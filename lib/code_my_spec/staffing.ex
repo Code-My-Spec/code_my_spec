@@ -63,8 +63,13 @@ defmodule CodeMySpec.Staffing do
   end
 
   @doc false
-  def handle_event(@gate_copy_needed, _measurements, %{scope: scope, label: label}, _config) do
-    case mint(scope, label: label, roles: []) do
+  def handle_event(
+        @gate_copy_needed,
+        _measurements,
+        %{scope: scope, label: label} = metadata,
+        _config
+      ) do
+    case mint(scope, label: label, roles: [], host_copy_id: metadata[:source_copy_id]) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
 
@@ -108,6 +113,9 @@ defmodule CodeMySpec.Staffing do
       copies
       |> Enum.sort_by(& &1.main, :desc)
       |> Enum.map(& &1.id)
+      |> then(fn ids ->
+        if opts[:host_copy_id], do: Enum.filter(ids, &(&1 == opts[:host_copy_id])), else: ids
+      end)
 
     request = %{
       "project_id" => project_id,
@@ -145,7 +153,7 @@ defmodule CodeMySpec.Staffing do
              WorkingCopies.issue(scope, id,
                root: root,
                label: opts[:label],
-               device: host_device(scope),
+               device: host_device(scope, opts[:host_copy_id]),
                # Already written into the checkout's config; a row under
                # another id is a copy nothing can recognise.
                working_copy_id: id
@@ -318,10 +326,17 @@ defmodule CodeMySpec.Staffing do
 
   # The host's device: a created copy is on the same filesystem, and recording
   # it keeps two machines' copies at one path apart.
-  defp host_device(scope) do
+  defp host_device(scope, nil) do
     scope
     |> WorkingCopies.list_harnesses()
     |> Enum.find_value(& &1.device_id)
+  end
+
+  defp host_device(_scope, copy_id) do
+    case WorkingCopies.fetch(copy_id) do
+      {:ok, copy} -> copy.device_id
+      _ -> nil
+    end
   end
 
   # Retire (not off: the copy is going away) everything on this copy, and count

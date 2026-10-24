@@ -10,6 +10,7 @@ defmodule CodeMySpec.WorkingCopies.Tools do
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
       CodeMySpec.CodeMode,
+      CodeMySpec.Promotion,
       CodeMySpec.Staffing,
       CodeMySpec.Tools,
       CodeMySpec.WorkingCopies,

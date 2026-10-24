@@ -309,6 +309,7 @@ defmodule CodeMySpec.SpexGivensTest do
     main_answers user_answers
     Req.Test.stub
     a_promotable_project analyzers_are_current
+    remote_project verified_candidate
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
     ensure_harness_supervisor_started FakeServer. BlockingProject.

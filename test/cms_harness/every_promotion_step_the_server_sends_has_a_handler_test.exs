@@ -14,7 +14,19 @@ defmodule CmsHarness.EveryPromotionStepTheServerSendsHasAHandlerTest do
   @handler "lib/cms_harness/project/channel_client.ex"
 
   test "each promotion_* op the runner sends is an apply_promotion clause on the harness" do
-    sent = Regex.scan(~r/"(promotion_[a-z_]+)"/, File.read!(@runner)) |> Enum.map(&List.last/1)
+    {_ast, sent} =
+      @runner
+      |> File.read!()
+      |> Code.string_to_quoted!()
+      |> Macro.prewalk([], fn
+        {function, _, [_environment, _copy, "promotion_" <> _ = operation | _]} = node, sent
+        when function in [:run, :publication_request] ->
+          {node, [operation | sent]}
+
+        node, sent ->
+          {node, sent}
+      end)
+
     handled = File.read!(@handler)
 
     assert sent != [], "found no promotion ops in #{@runner}; the pattern is stale"

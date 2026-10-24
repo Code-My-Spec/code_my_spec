@@ -1,38 +1,10 @@
 defmodule CodeMySpec.AgentTasks.PromoteWork do
   @moduledoc """
-  Agent task for getting a story's finished code onto the running dev copy.
-
-  Sits after `qa_complete`, and exists because of what happened without it on
-  2026-09-09: nine stories reached QA whose implementation had never left the
-  coding agent's worktree. QA failed all nine, correctly — the code it tested
-  was not the code that had been written.
-
-  ## Promotion is completing this task (28d72f8a, chunk 3)
-
-  The prompt lists every problem on the copy the promotion gate would block
-  on and says to fix them all, then complete. There is no separate `promote`
-  call: `evaluate/3` runs the same ordered gate and promotion the tool does
-  (`Promotion.promote/3`) — the copy contains main, its tree is clean, every
-  analyzer has a clean run at HEAD, the 30fd997f rule — and merges exactly
-  that commit, stamping this story.
-
-    * Promoted: the task is valid.
-    * Pending (analysis running at HEAD): the task stays open. The runs it
-      started, and any already running there, answer the agent when they land
-      (`requested_by` and its waiters, `Agents.AnalysisReport`), and
-      `Analysis.awaiting_runs?/3` holds its nudges meanwhile. It completes again
-      then.
-    * Refused (behind main, a dirty tree, problems): the task stays open with
-      the refusal as feedback.
-
-  Nothing here cancels the task, and only the stamp satisfies it: the graph
-  reads `promoted_version`, so a story already stamped is valid without
-  promoting again.
-
-  `evaluate/2` — callers that do not say who owns the task — only reads the
-  stamp. The stop hook and the reconciler's background evaluation reach this
-  task through the requirement calculator, not here, and must not merge: the
-  reconciler runs inside the harness channel a promotion talks to.
+  Publish a story's verified candidate through the project promotion queue.
+  Completing the task enqueues its committed HEAD; the task remains open until
+  verified remote publication stamps the story. Read-only evaluation checks
+  that stamp without publishing. Device synchronization and preview health
+  do not determine whether the story was published.
   """
 
   alias CodeMySpec.Promotion
@@ -40,10 +12,8 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   alias CodeMySpec.Stories
 
   def dispatch(_node) do
-    "Put this working copy's finished work on the checkout the application " <>
-      "runs from, so QA tests the code that was written rather than a stale " <>
-      "app. Use when a story has passed QA but its code has not reached the " <>
-      "running dev copy."
+    "Publish this working copy's QA-passed work to the configured remote " <>
+      "development branch through the promotion queue."
   end
 
   def command(scope, task) do
@@ -79,12 +49,13 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   end
 
   defp stamp_verdict({true, %{status: status}}, story) do
-    {:ok, :valid, "Story #{story.number}'s work is on the running dev copy (#{status})."}
+    {:ok, :valid,
+     "Story #{story.number}'s work is published to the development branch (#{status})."}
   end
 
   defp stamp_verdict({false, %{reason: reason}}, story) do
     {:ok, :invalid,
-     "Story #{story.number} is not on the running dev copy yet: " <>
+     "Story #{story.number} is not published to the development branch yet: " <>
        reason <> " " <> complete_again()}
   end
 
@@ -145,8 +116,8 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
   defp prompt_for({true, _details}, _scope, story) do
     """
-    Story #{story.number} — "#{story.title}" — is already on the running dev
-    copy. Nothing to promote; evaluate this task to record it.
+    Story #{story.number} — "#{story.title}" — is already published to the development
+    branch. Nothing to promote; evaluate this task to record it.
     """
     |> String.trim()
   end
@@ -154,7 +125,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   defp prompt_for({false, %{reason: reason}}, scope, story) do
     """
     Story #{story.number} — "#{story.title}" — has passed QA, but its work is
-    not on the checkout the application runs from yet.
+    not published to the configured remote development branch yet.
 
     #{reason}
 
@@ -162,9 +133,9 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
 
     Fix them all, commit, then complete this task (evaluate_task). Completing
     it queues your HEAD for promotion: the tree must be clean, and the queue
-    then gates it on top of main, with any candidates ahead of it, by a clean
-    run of every analyzer. When that batch is green it lands on main, this
-    story is stamped and the application is reloaded.
+    then certifies it against the current remote development head. When the
+    batch is green its exact commit is published and this story is stamped.
+    Device synchronization and preview health are tracked separately.
 
     The task stays open while it is queued. End your turn: you are told when it
     lands — complete again then and it is done — or why it was taken out of the
@@ -182,7 +153,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
   end
 
   defp project_prompt do
-    "Promote this working copy's finished work to the running dev copy with " <>
+    "Promote this working copy's finished work to the remote development branch with " <>
       "`promote`, naming the story you are promoting."
   end
 

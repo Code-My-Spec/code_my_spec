@@ -26,6 +26,7 @@ defmodule CodeMySpec.Promotion.Runner do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Promotion.RemoteSteps
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
@@ -38,6 +39,69 @@ defmodule CodeMySpec.Promotion.Runner do
   # Each drop boots `mix` in the test env, which compiles a candidate the gate
   # has not built yet; its analyzers reuse that build.
   @reset_timeout 600_000
+
+  @doc "Fetch the authoritative origin branch on the addressed machine."
+  def remote_head(environment, root, branch, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_remote_head",
+        %{"root" => root, "branch" => branch},
+        @git_timeout,
+        fn env -> RemoteSteps.remote_head(env, root, branch) end
+      )
+
+  @doc "Reconcile a publication receipt without attempting a push."
+  def publication_status(environment, root, branch, base, head, promotion_id, copy_id),
+    do:
+      publication_request(
+        environment,
+        copy_id,
+        "promotion_publication_status",
+        %{
+          "root" => root,
+          "branch" => branch,
+          "base" => base,
+          "head" => head,
+          "promotion_id" => promotion_id
+        },
+        @git_timeout,
+        fn env -> RemoteSteps.publication_status(env, root, branch, base, head, promotion_id) end
+      )
+
+  @doc "Atomically publish the certified candidate with an immutable promotion receipt."
+  def publish(environment, root, branch, base, head, promotion_id, copy_id),
+    do:
+      publication_request(
+        environment,
+        copy_id,
+        "promotion_publish",
+        %{
+          "root" => root,
+          "branch" => branch,
+          "base" => base,
+          "head" => head,
+          "promotion_id" => promotion_id
+        },
+        @git_timeout,
+        fn env -> RemoteSteps.publish(env, root, branch, base, head, promotion_id) end
+      )
+
+  def remote_sync(environment, root, copy_id, branch, head),
+    do: sync_remote(environment, root, branch, head, copy_id)
+
+  @doc "Safely synchronize a clean destination checkout from origin."
+  def sync_remote(environment, root, branch, head, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_sync_remote",
+        %{"root" => root, "branch" => branch, "head" => head},
+        @git_timeout,
+        fn env -> RemoteSteps.sync_remote(env, root, branch, head) end
+      )
 
   @doc """
   What is on this checkout, and is it safe to move. `main` is main's HEAD,
@@ -301,6 +365,16 @@ defmodule CodeMySpec.Promotion.Runner do
 
   defp commit_suffix(nil), do: ""
   defp commit_suffix(commit), do: ", now on #{commit}"
+
+  # A lost publication response is not a rejected publication. Keep the
+  # certified batch until its immutable origin receipt can be inspected.
+  defp publication_request(environment, copy_id, op, payload, timeout, local) do
+    case run(environment, copy_id, op, payload, timeout, local) do
+      {:error, %{status: _}} = refusal -> refusal
+      {:error, reason} -> {:error, Map.merge(reason, %{retryable: true, uncertain: true})}
+      result -> result
+    end
+  end
 
   # The harness is addressed by working copy id, never by root: two checkouts
   # of one project are two copies.

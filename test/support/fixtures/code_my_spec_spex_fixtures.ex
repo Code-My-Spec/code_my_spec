@@ -1540,6 +1540,12 @@ defmodule CodeMySpecSpex.Fixtures do
     reply
   end
 
+  @doc "A publication stamp delivered by the server, for downstream graph-cache scenarios."
+  def record_story_publication(scope, story_id, version, opts \\ []) do
+    story = CodeMySpec.Stories.get_story(scope, story_id)
+    CodeMySpec.Stories.mark_story_promoted(scope, story, version, opts)
+  end
+
   @doc """
   Record what a checkout's application is doing, the way its harness would.
 

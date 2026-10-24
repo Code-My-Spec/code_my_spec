@@ -1,35 +1,28 @@
 defmodule CodeMySpec.Promotion do
   @moduledoc """
-  Getting a working copy's finished work onto the checkout the local
-  application runs from, so QA tests the code that was written.
+  Publication of verified working-copy changes to the project's development branch.
 
-  Two independent halves:
+  The promotion queue certifies an isolated candidate, then `land_remote/6`
+  publishes that exact commit through the source device's Git origin. An atomic
+  receipt allows a retry to distinguish an accepted push from an unknown outcome.
+  Story completion follows publication; destination synchronization and application
+  health are tracked independently by `Promotion.DeviceSync`.
 
-    * **A read model.** `running_copy_check/2` / `running_copy_verdicts/2`
-      (in `Promotion.RunningCopy`) answer, per story, whether its files are on
-      the running copy at the content its work produced — a question about
-      state, so an agent working on the running copy satisfies it by arriving.
-
-    * **An action.** `promote/3` gates, merges, reloads the app (or restarts
-      it — `deployment_plan/2`), and reports what is being served.
-
-  Not a deploy (`CodeMySpec.Deploys` is remote infrastructure). The merge is a
-  `--ff-only` merge of the certified commit into the project's main copy, run
-  through the harness; the deployment is the project's `just reload` / restart
-  recipe, dispatched and not awaited.
-
-  See knowledge/promotion, "Promotion".
+  `Promotion.RunningCopy` reads the story's publication stamp for requirement
+  verdicts. Legacy local landing remains available for the upgrade bootstrap.
   """
 
   use Boundary,
     top_level?: true,
     deps: [
       CodeMySpec.Analysis,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.BootVersion,
       CodeMySpec.Environments,
       CodeMySpec.Files,
       CodeMySpec.LandingHold,
       CodeMySpec.Problems,
+      CodeMySpec.Projects,
       CodeMySpec.Promotion.RunningCopy,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
@@ -306,6 +299,92 @@ defmodule CodeMySpec.Promotion do
 
     log_outcome(result)
   end
+
+  @doc "Publishes a queue-certified candidate to origin; device deployment is independent."
+  def land_remote(%Scope{} = scope, %WorkingCopy{} = from, head, stories, swept, opts \\ []) do
+    if from.project_id == scope.active_project_id do
+      Lock.with_lock(scope.active_project_id, fn ->
+        publish_remote(scope, from, head, stories, swept, opts)
+      end)
+      |> unlocked()
+      |> log_outcome()
+    else
+      {:error, %{reason: "The promotion checkout does not belong to the active project."}}
+    end
+  end
+
+  defp publish_remote(scope, from, head, stories, swept, opts) do
+    branch = Keyword.fetch!(opts, :branch)
+    base = Keyword.fetch!(opts, :base)
+    promotion_id = Keyword.fetch!(opts, :promotion_id)
+    environment = copy_environment(scope, from)
+
+    with {:ok, status} <-
+           Runner.publication_status(
+             environment,
+             from.root,
+             branch,
+             base,
+             head,
+             promotion_id,
+             from.id
+           ),
+         :ok <- remote_review_check(status, scope, stories),
+         {:ok, publication} <-
+           remote_publish(status, environment, from, branch, base, head, promotion_id) do
+      case CodeMySpec.Promotion.DeviceSync.request(scope, head, branch, promotion_id,
+             restart: Keyword.get(opts, :restart, false),
+             publication_sequence: Keyword.get(opts, :publication_sequence)
+           ) do
+        {:ok, sync} ->
+          complete_remote(scope, publication, head, branch, promotion_id, stories, swept, sync)
+
+        {:error, reason} ->
+          {:error,
+           %{
+             landed: true,
+             published: true,
+             assignment_held: true,
+             head: head,
+             branch: branch,
+             reason:
+               "Code was published, but its durable device update could not be saved: #{inspect(reason)}"
+           }}
+      end
+    end
+  end
+
+  defp complete_remote(scope, publication, head, branch, promotion_id, stories, swept, sync) do
+    version = Map.get(publication, :stamp_version) || head
+
+    case record_landed_stories(scope, stories, version, head) do
+      :ok ->
+        {:ok,
+         Map.merge(publication, %{
+           published: true,
+           head: head,
+           branch: branch,
+           promotion_id: promotion_id,
+           version: version,
+           certified_by: swept,
+           device_sync: sync
+         })}
+        |> with_stories(stories, version)
+
+      {:error, error} ->
+        {:error,
+         Map.merge(error, %{published: true, head: head, branch: branch, device_sync: sync})}
+    end
+  end
+
+  defp remote_review_check(%{published: true}, _scope, _stories), do: :ok
+  defp remote_review_check(_status, scope, stories), do: story_reviews_current(scope, stories)
+
+  defp remote_publish(%{published: true} = status, _env, _from, _branch, _base, _head, _id),
+    do: {:ok, status}
+
+  defp remote_publish(_status, env, from, branch, base, head, id),
+    do: Runner.publish(env, from.root, branch, base, head, id, from.id)
 
   defp land_into(scope, running, from, candidate, stories, opts) do
     %{head: head, branch: branch, swept: swept, untracked: untracked} = candidate
@@ -721,6 +800,11 @@ defmodule CodeMySpec.Promotion do
 
   defp version_note(_result), do: ""
 
+  defp base_outcome_text({:ok, %{published: true, head: head, branch: branch}}) do
+    "Promotion published #{head} to origin/#{branch}. Device synchronization and preview " <>
+      "startup are tracked separately; publication does not confirm that a device is serving it."
+  end
+
   defp base_outcome_text({:ok, %{merged: branch, serving: %{unconfirmed: _}} = report}) do
     {action, why} = deployment_words(report)
 
@@ -747,6 +831,11 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp base_outcome_text({:ok, %{pending: pending}}), do: pending_text(pending)
+
+  defp base_outcome_text({:error, %{published: true, branch: branch, reason: reason}}),
+    do:
+      "The certified code is published to origin/#{branch}, but completion is held. " <>
+        "#{reason} Retry completion with the same promotion; do not publish another candidate."
 
   defp base_outcome_text({:error, %{landed: true, reason: reason}}),
     do:

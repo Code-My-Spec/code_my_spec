@@ -103,6 +103,10 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # hot reload moves this one and leaves `app_commit` on the launch.
     field :app_serving_commit, :string
 
+    # Desired published revision and device application receipt. Publication
+    # remains successful while this device is offline or blocked by local edits.
+    field :promotion_sync, :map, default: %{}
+
     # The machine this checkout is on. Nullable for rows never seen (the
     # `seen_copies_are_on_a_machine` constraint requires it once `last_seen_at`
     # is set); new mints always carry one.
@@ -141,7 +145,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :app_checked_at,
       :app_url,
       :app_commit,
-      :app_serving_commit
+      :app_serving_commit,
+      :promotion_sync
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)

@@ -217,6 +217,23 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       )
   end
 
+  @doc "Explicitly retain local bootstrap semantics for no-origin legacy fixtures."
+  def local_bootstrap_project(context) do
+    # These scenarios exercise the retained local/bootstrap promotion contract.
+    # Remote publication scenarios use RemotePromotionHelpers and real origin.
+    local_projects = Application.get_env(:code_my_spec, :local_promotion_projects, [])
+
+    Application.put_env(:code_my_spec, :local_promotion_projects, [
+      context.project.id | local_projects
+    ])
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :local_promotion_projects, local_projects)
+    end)
+
+    context
+  end
+
   @doc """
   A running checkout on `main` and an agent's worktree on `story/war`.
 
@@ -225,6 +242,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   agent actually holds.
   """
   def a_promotable_project(context, opts \\ []) do
+    local_bootstrap_project(context)
     stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
