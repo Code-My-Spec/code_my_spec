@@ -214,6 +214,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1376Spex do
   # See criterion 1170's own copy of this helper for the full rationale. The
   # running copy keeps its socket — this spec answers `restart_app` on it.
   defp a_promotable_project(context) do
+    PromotionHelpers.local_bootstrap_project(context)
     PromotionHelpers.stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1376-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])

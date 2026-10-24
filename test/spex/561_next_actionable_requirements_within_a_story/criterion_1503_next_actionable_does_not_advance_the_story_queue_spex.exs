@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3605Spex do
   spex "Next actionable does not advance the story queue", criterion: 1503 do
     scenario "Next actionable does not advance the story queue" do
       given_ "an active story that is finished, and another story waiting", context do
-        context = context |> Slice.complete() |> Slice.waiting()
+        context = context |> Slice.complete() |> Slice.land() |> Slice.waiting()
         {:ok, context}
       end
 

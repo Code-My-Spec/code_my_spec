@@ -239,6 +239,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1394Spex do
   # Two checkouts of one repository, which is what a promotion actually meets.
   # See criterion 1170's own copy of this helper for the full rationale.
   defp a_promotable_project(context) do
+    PromotionHelpers.local_bootstrap_project(context)
     PromotionHelpers.stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1394-running")
     {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
