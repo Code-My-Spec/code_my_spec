@@ -73,6 +73,46 @@ defmodule CodeMySpec.AppInstancesMigrationTest do
     refute Enum.any?(columns, &(Enum.at(&1, 1) == "app_status"))
     refute Enum.any?(columns, &(Enum.at(&1, 1) == "preview_tunnel_secret"))
     refute Enum.any?(columns, &(Enum.at(&1, 1) == "promotion_sync"))
+
+    verify_device_deletion_migration()
+  end
+
+  defp verify_device_deletion_migration do
+    path = "priv/sqlite/migrations/20261024170000_app_instances_follow_device_deletion.exs"
+
+    source =
+      path
+      |> File.read!()
+      |> String.replace(
+        "defmodule CodeMySpec.Repo.Migrations.AppInstancesFollowDeviceDeletion do",
+        "defmodule CodeMySpec.AppInstancesMigrationTest.DeviceDeletionMigration do",
+        global: false
+      )
+
+    [{migration, _binary}] = Code.compile_string(source, path)
+    version = 20_261_024_170_000
+    options = [log: false, migration_lock: false]
+    before = TestRepo.query!("SELECT * FROM app_instances ORDER BY id").rows
+
+    assert :ok = Ecto.Migrator.up(TestRepo, version, migration, options)
+    assert TestRepo.query!("SELECT * FROM app_instances ORDER BY id").rows == before
+    assert_device_delete_action("CASCADE")
+    assert :ok = Ecto.Migrator.down(TestRepo, version, migration, options)
+    assert TestRepo.query!("SELECT * FROM app_instances ORDER BY id").rows == before
+    assert_device_delete_action("SET NULL")
+    assert :ok = Ecto.Migrator.up(TestRepo, version, migration, options)
+
+    assert {:error, _} = TestRepo.query("DELETE FROM working_copies WHERE id = 'copy-rooted'")
+    TestRepo.query!("DELETE FROM devices WHERE id = 'device-1'")
+    assert TestRepo.query!("SELECT * FROM working_copies").rows == []
+    assert TestRepo.query!("SELECT * FROM app_instances").rows == []
+    assert TestRepo.query!("PRAGMA foreign_key_check").rows == []
+  end
+
+  defp assert_device_delete_action(action) do
+    foreign_keys = TestRepo.query!("PRAGMA foreign_key_list(app_instances)").rows
+    device_key = Enum.find(foreign_keys, &(Enum.at(&1, 3) == "device_id"))
+    assert Enum.at(device_key, 6) == action
   end
 
   defp create_legacy_schema do
@@ -83,7 +123,7 @@ defmodule CodeMySpec.AppInstancesMigrationTest do
     CREATE TABLE working_copies (
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
-      device_id TEXT,
+      device_id TEXT REFERENCES devices(id) ON DELETE CASCADE,
       root TEXT,
       main INTEGER NOT NULL,
       app_status TEXT,

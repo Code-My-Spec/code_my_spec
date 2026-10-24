@@ -335,6 +335,13 @@ defmodule CodeMySpec.AppInstances do
   end
 
   defp announce_change({:ok, updated} = result, before) do
+    if Enum.any?(
+         [:status, :url, :preview_status, :preview_url],
+         &(Map.get(before, &1) != Map.get(updated, &1))
+       ) do
+      CodeMySpec.Devices.runtime_changed(updated.device_id)
+    end
+
     if Enum.any?([:preview_status, :preview_url], &(Map.get(before, &1) != Map.get(updated, &1))) do
       CodeMySpec.Requirements.GraphInputs.announce(
         updated.project_id,

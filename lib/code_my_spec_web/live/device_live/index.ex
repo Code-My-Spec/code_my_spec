@@ -234,6 +234,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
 
   @impl true
+  def handle_info({:device_runtime_changed, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 

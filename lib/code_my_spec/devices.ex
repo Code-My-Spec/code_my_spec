@@ -323,6 +323,16 @@ defmodule CodeMySpec.Devices do
 
   def box_joined(_device_id), do: :ok
 
+  @doc "Notify the device page after one of its runtime instances changes."
+  def runtime_changed(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{} = device -> broadcast(device, {:device_runtime_changed, device.id})
+      nil -> :ok
+    end
+  end
+
+  def runtime_changed(_device_id), do: :ok
+
   @doc """
   Give a cloud box the routine that starts it (story 1136). Owners and admins
   only. The token is stored encrypted and never shown again.

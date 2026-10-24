@@ -49,6 +49,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Staffing
+  alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
   alias CodeMySpecWeb.WorkingCopyLive.Rows
 
@@ -121,7 +122,8 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Index do
 
     with row when not is_nil(row) <-
            Rows.get(scope, socket.assigns.project, id, DateTime.utc_now()),
-         {:ok, counts} <- Staffing.offboard(scope, row.harness) do
+         {:ok, copy} <- WorkingCopies.fetch(row.harness.id),
+         {:ok, counts} <- Staffing.offboard(scope, copy, instance_disposition: :discard) do
       {:noreply,
        socket
        |> put_flash(:info, Copy.offboarded(row, counts))

@@ -86,6 +86,25 @@ defmodule CodeMySpec.AppInstancesTest do
     assert {:ok, _deleted} = AppInstances.delete(scope, stopped)
   end
 
+  test "runtime status changes notify the owning device page after persistence" do
+    scope = full_scope_fixture()
+    device = device_fixture(scope)
+    {:ok, copy} = WorkingCopies.issue(scope, nil, device: device, root: "/tmp/preview")
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+    CodeMySpec.Devices.subscribe(scope.active_account_id)
+
+    {:ok, running} = AppInstances.record_status(scope, instance, %{status: "serving"})
+    assert_receive {:device_runtime_changed, device_id}
+    assert device_id == device.id
+    assert AppInstances.for_working_copy(scope, copy).status == "serving"
+
+    {:ok, _} = AppInstances.record_status(scope, running, %{status: "serving"})
+    refute_receive {:device_runtime_changed, _}
+
+    {:ok, _} = AppInstances.record_status(scope, running, %{status: "down"})
+    assert_receive {:device_runtime_changed, ^device_id}
+  end
+
   test "a copy from another project cannot seed an instance" do
     first_scope = full_scope_fixture()
     second_scope = full_scope_fixture()
