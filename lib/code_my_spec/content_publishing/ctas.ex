@@ -212,7 +212,8 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
       "shape" => "aside",
       "headline" => "Most agent memory is a file somebody wrote by hand.",
       "sub" => "Which is fine, until it stops matching the code.",
-      "body" => "CodeMySpec derives context from the repo, so it cannot drift from what is actually there.",
+      "body" =>
+        "CodeMySpec derives context from the repo, so it cannot drift from what is actually there.",
       "label" => "See what repo-derived context looks like",
       "path" => "/install",
       "campaign" => "repo-native-memory"
@@ -303,7 +304,11 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
             <span class="text-xl font-bold text-base-content">{@headline}</span><br />
             <span class="text-base-content/70">{@sub}</span>
           </span>
-          <a href={@href} class="btn btn-primary shrink-0" data-event-label={"cta-inline-#{@campaign}"}>
+          <a
+            href={@href}
+            class="btn btn-primary shrink-0"
+            data-event-label={"cta-inline-#{@campaign}"}
+          >
             {@label}
           </a>
         </p>

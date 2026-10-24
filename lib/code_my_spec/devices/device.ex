@@ -48,6 +48,8 @@ defmodule CodeMySpec.Devices.Device do
           preview_tunnel_id: String.t() | nil,
           preview_tunnel_secret: String.t() | nil,
           provider: atom() | nil,
+          token_revoked_at: DateTime.t() | nil,
+          fire_routine_id: String.t() | nil,
           token_hash: String.t() | nil,
           token_last_used_at: DateTime.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -77,6 +79,13 @@ defmodule CodeMySpec.Devices.Device do
     field :account_id, Ecto.UUID
     field :last_seen_at, :utc_datetime_usec
 
+    # The last moment this device's harness was known to be connected (story
+    # 1138). Set when its last connected working copy's channel actually
+    # closes, not on activity like `last_seen_at` -- so a quiet-but-connected
+    # box never ages this, and a box that just went down shows the moment it
+    # did rather than whenever it last happened to do something.
+    field :last_up_at, :utc_datetime_usec
+
     # What this machine is carrying, as it last reported it.
     #
     # Story 1057, criterion 3324. A harness reports facts it observes about
@@ -100,11 +109,17 @@ defmodule CodeMySpec.Devices.Device do
     # the token the box signs in with: the token itself is shown once, when the box
     # is added, and kept nowhere. `token_last_used_at` is the first and latest
     # sign-in with it; nil is "never connected".
-    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud, :codex_cloud]
+    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud, :docker, :codex_cloud]
     field :token_hash, :string
     field :token_last_used_at, :utc_datetime_usec
+    # Story 1131: set when Sam revokes the box; the token no longer signs in.
+    field :token_revoked_at, :utc_datetime_usec
+    # Story 1136: the Claude Code routine that starts this cloud box, and its
+    # per-routine fire token (encrypted).
+    field :fire_routine_id, :string
+    field :fire_token, CodeMySpec.Encrypted.Binary
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec kinds() :: [atom()]
@@ -141,6 +156,23 @@ defmodule CodeMySpec.Devices.Device do
   def token_used_changeset(device, at) do
     cast(device, %{token_last_used_at: at}, [:token_last_used_at])
   end
+
+  @doc "The device's harness just disconnected for the last of its working copies."
+  def went_down_changeset(device, at) do
+    cast(device, %{last_up_at: at}, [:last_up_at])
+  end
+
+  @doc "The routine that starts this box, with its fire token."
+  def fire_changeset(device, attrs) do
+    device
+    |> cast(attrs, [:fire_routine_id, :fire_token])
+    |> validate_required([:fire_routine_id, :fire_token])
+    |> validate_format(:fire_routine_id, ~r/^trig_/)
+  end
+
+  @doc "The box's token was revoked."
+  def revoked_changeset(device, at),
+    do: cast(device, %{token_revoked_at: at}, [:token_revoked_at])
 
   @doc "Whether this device is a dev box added from a provider."
   @spec dev_box?(t()) :: boolean()
@@ -179,6 +211,8 @@ defmodule CodeMySpec.Devices.Device do
     |> put_change(:id, id)
     |> validate_required([:kind, :id])
     |> unique_constraint(:id, name: :devices_pkey)
+    # SQLite names a unique violation after its columns.
+    |> unique_constraint(:id, name: :devices_id_index)
   end
 
   @doc """

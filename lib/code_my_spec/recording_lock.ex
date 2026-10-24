@@ -130,8 +130,11 @@ defmodule CodeMySpec.RecordingLock do
   # permission error still means the process exists.
   defp alive?(pid) do
     case Integer.parse(pid) do
-      {n, ""} when n > 0 -> match?({_, 0}, System.cmd("kill", ["-0", pid], stderr_to_stdout: true))
-      _ -> false
+      {n, ""} when n > 0 ->
+        match?({_, 0}, System.cmd("kill", ["-0", pid], stderr_to_stdout: true))
+
+      _ ->
+        false
     end
   end
 end

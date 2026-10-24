@@ -45,7 +45,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2922Spex do
     :ok
   end
 
-  spex "The main agent has the run of the whole project — its records, its code, its tests and its problems", criterion: 1010 do
+  spex "The main agent has the run of the whole project — its records, its code, its tests and its problems",
+    criterion: 1010 do
     scenario "It can check the work rather than take somebody's word for it" do
       given_ "work has been done on my project", context do
         copy = CodeMySpec.TempFile.dir("spex_2922")

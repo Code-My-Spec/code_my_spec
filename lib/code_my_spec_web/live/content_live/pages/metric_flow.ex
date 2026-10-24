@@ -29,7 +29,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       {hero_section(assigns)}
       {overview_section(assigns)}
       {stories_section(assigns)}
@@ -93,8 +97,18 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
           "@type" => "BreadcrumbList",
           "itemListElement" => [
             %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
-            %{"@type" => "ListItem", "position" => 2, "name" => "Case Studies", "item" => "#{base_url}/case-studies"},
-            %{"@type" => "ListItem", "position" => 3, "name" => "MetricFlow", "item" => "#{base_url}/case-studies/metric-flow"}
+            %{
+              "@type" => "ListItem",
+              "position" => 2,
+              "name" => "Case Studies",
+              "item" => "#{base_url}/case-studies"
+            },
+            %{
+              "@type" => "ListItem",
+              "position" => 3,
+              "name" => "MetricFlow",
+              "item" => "#{base_url}/case-studies/metric-flow"
+            }
           ]
         }
       ])
@@ -541,5 +555,4 @@ defmodule CodeMySpecWeb.ContentLive.Pages.MetricFlow do
     </section>
     """
   end
-
 end

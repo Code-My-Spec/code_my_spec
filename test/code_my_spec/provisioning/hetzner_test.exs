@@ -184,7 +184,8 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 201, %{"server" => %{"id" => 1, "name" => payload["name"]}})
       end)
 
-      assert {:ok, %{"server" => %{"id" => 1}}} = Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
+      assert {:ok, %{"server" => %{"id" => 1}}} =
+               Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
     end
 
     test "an explicit option beats the arch default", ctx do
@@ -194,15 +195,20 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 201, %{"server" => %{"id" => 1}})
       end)
 
-      assert {:ok, _} = Hetzner.create_server(ctx.scope, "box", location: "hel1", ssh_key_ids: [1])
+      assert {:ok, _} =
+               Hetzner.create_server(ctx.scope, "box", location: "hel1", ssh_key_ids: [1])
     end
 
     test "surfaces the provider's own error rather than a generic one", ctx do
       stub(fn conn ->
-        json(conn, 400, %{"error" => %{"code" => "invalid_input", "message" => "server type 104 is deprecated"}})
+        json(conn, 400, %{
+          "error" => %{"code" => "invalid_input", "message" => "server type 104 is deprecated"}
+        })
       end)
 
-      assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
+      assert {:error, {:hetzner_error, 400, body}} =
+               Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
+
       assert body["error"]["message"] =~ "deprecated"
     end
 
@@ -312,7 +318,8 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert {:ok, %{"id" => 7}} =
                Hetzner.ensure_server(ctx.scope, "box", firewall_ids: [5], ssh_key_ids: [1])
 
-      assert_received {:applied_to, %{"apply_to" => [%{"type" => "server", "server" => %{"id" => 7}}]}}
+      assert_received {:applied_to,
+                       %{"apply_to" => [%{"type" => "server", "server" => %{"id" => 7}}]}}
     end
 
     # Found live against fuellytics-prod: a box that already carries the
@@ -423,7 +430,10 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       end)
 
       assert {:ok, [%{"id" => 99}]} =
-               Hetzner.list_images(ctx.scope, type: "snapshot", label_selector: "cms-builder-role=x86")
+               Hetzner.list_images(ctx.scope,
+                 type: "snapshot",
+                 label_selector: "cms-builder-role=x86"
+               )
     end
 
     test "no matching image is an empty list, not an error", ctx do
@@ -476,8 +486,12 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
                 "id" => 3,
                 "name" => "sam-app",
                 "rules" => [
-                  %{"direction" => "in", "protocol" => "tcp", "port" => "22",
-                    "source_ips" => ["0.0.0.0/0", "::/0"]}
+                  %{
+                    "direction" => "in",
+                    "protocol" => "tcp",
+                    "port" => "22",
+                    "source_ips" => ["0.0.0.0/0", "::/0"]
+                  }
                 ]
               }
             ]
@@ -592,7 +606,8 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           conn
       end)
 
-      assert {:ok, %{"id" => 7, "__adopted__" => true}} = Hetzner.ensure_network(ctx.scope, "sam-app")
+      assert {:ok, %{"id" => 7, "__adopted__" => true}} =
+               Hetzner.ensure_network(ctx.scope, "sam-app")
     end
 
     # Setup runs more than once and Hetzner answers a repeat attach with 409.
@@ -614,7 +629,10 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     test "already attached is success at the status the provider really sends", ctx do
       stub(fn conn ->
         json(conn, 422, %{
-          "error" => %{"code" => "server_already_attached", "message" => "server already attached"}
+          "error" => %{
+            "code" => "server_already_attached",
+            "message" => "server already attached"
+          }
         })
       end)
 

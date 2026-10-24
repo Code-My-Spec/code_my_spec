@@ -39,7 +39,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
   # answers — is injected by `stage_deploy/2` either way.
   setup :fake_providers
 
-  spex "Every public hostname is answering before setup calls the environment done", criterion: 601 do
+  spex "Every public hostname is answering before setup calls the environment done",
+    criterion: 601 do
     scenario "the hostname is checked, and the check is what makes the step done" do
       given_ "an environment has deployed", context do
         context = stage_deploy(context, :ok)

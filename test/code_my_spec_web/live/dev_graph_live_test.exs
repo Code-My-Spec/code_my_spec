@@ -32,7 +32,6 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
       DateTime.utc_now()
       |> DateTime.add(-seconds_ago, :second)
       |> DateTime.to_naive()
-      |> NaiveDateTime.truncate(:second)
 
     ids =
       from(n in Node,
@@ -99,12 +98,14 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
     # page judges what is served against the graph recomputed now.
     component = CodeMySpec.ComponentsFixtures.component_fixture(scope)
 
+    moved_at = DateTime.utc_now() |> DateTime.add(60, :second) |> DateTime.to_naive()
+
     Repo.update_all(
-      from(s in "stories", where: s.id == ^story.id),
-      set: [
-        component_id: Ecto.UUID.dump!(component.id),
-        updated_at: DateTime.utc_now() |> DateTime.add(60, :second) |> DateTime.to_naive()
-      ]
+      from(s in "stories",
+        where: s.id == ^story.id,
+        update: [set: [component_id: type(^component.id, :binary_id), updated_at: ^moved_at]]
+      ),
+      []
     )
 
     html = view |> element("button[phx-click='recheck']") |> render_click()

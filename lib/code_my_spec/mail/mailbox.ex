@@ -18,7 +18,7 @@ defmodule CodeMySpec.Mail.Mailbox do
     belongs_to :user, CodeMySpec.Users.User, type: :id
     has_many :emails, CodeMySpec.Mail.Email
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

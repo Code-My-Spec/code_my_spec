@@ -36,7 +36,11 @@ defmodule CodeMySpec.Embeddings.HexDocSweepTest do
   end
 
   test "drives a pending package to embedded", %{scope: scope} do
-    tarball = HexTarballFixtures.build(%{"lib/swept.ex" => "defmodule Swept do\n  @moduledoc \"hi\"\nend\n"})
+    tarball =
+      HexTarballFixtures.build(%{
+        "lib/swept.ex" => "defmodule Swept do\n  @moduledoc \"hi\"\nend\n"
+      })
+
     checksum = HexTarballFixtures.checksum(tarball)
 
     lock =

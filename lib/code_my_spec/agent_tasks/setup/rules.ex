@@ -22,10 +22,11 @@ defmodule CodeMySpec.AgentTasks.Setup.Rules do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(_scope, _task) do
-    {:ok, """
-    # Install Default Rules
+    {:ok,
+     """
+     # Install Default Rules
 
-    Use the `install_rules` tool to copy default rule files into `.code_my_spec/rules/`.
-    """}
+     Use the `install_rules` tool to copy default rule files into `.code_my_spec/rules/`.
+     """}
   end
 end

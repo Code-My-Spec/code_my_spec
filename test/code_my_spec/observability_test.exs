@@ -18,9 +18,14 @@ defmodule CodeMySpec.ObservabilityTest do
   setup do
     scope = full_scope_fixture()
 
-    {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_URL", "http://ch.test", environment: "uat")
-    {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_USERNAME", "tel_test_uat", environment: "uat")
-    {:ok, _} = ProjectSecrets.put_value(scope, "CLICKHOUSE_PASSWORD", "secret", environment: "uat")
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_URL", "http://ch.test", environment: "uat")
+
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_USERNAME", "tel_test_uat", environment: "uat")
+
+    {:ok, _} =
+      ProjectSecrets.put_value(scope, "CLICKHOUSE_PASSWORD", "secret", environment: "uat")
 
     %{scope: scope}
   end
@@ -37,7 +42,9 @@ defmodule CodeMySpec.ObservabilityTest do
     end
 
     test "returns rows for the default (uat) environment and window", %{scope: scope} do
-      stub_rows([%{"Timestamp" => "2026-01-01 00:00:00", "SeverityText" => "INFO", "Body" => "hi"}])
+      stub_rows([
+        %{"Timestamp" => "2026-01-01 00:00:00", "SeverityText" => "INFO", "Body" => "hi"}
+      ])
 
       assert {:ok, %{rows: [%{"Body" => "hi"}], truncated: false}} =
                Observability.query_logs(scope)
@@ -108,7 +115,8 @@ defmodule CodeMySpec.ObservabilityTest do
         Plug.Conn.send_resp(conn, 200, Jason.encode!(row))
       end)
 
-      assert {:ok, %{log_errors: [%{"message" => "oops"}], span_errors: [%{"name" => "Repo.query"}]}} =
+      assert {:ok,
+              %{log_errors: [%{"message" => "oops"}], span_errors: [%{"name" => "Repo.query"}]}} =
                Observability.error_summary(scope)
     end
   end

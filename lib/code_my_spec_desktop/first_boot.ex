@@ -1,14 +1,13 @@
 defmodule CodeMySpecDesktop.FirstBoot do
   @moduledoc """
   Every desktop boot, after the Repo and before anything reads it (bb8bc042
-  step 6): migrate and ensure the desktop user and an account it owns.
+  step 6): migrate and ensure the desktop user. The user creates and names
+  their account during /app onboarding.
   The harness obtains its own credential through device authorization.
   Idempotent; returns `:ignore` so it occupies no process.
   """
 
-  alias CodeMySpec.Accounts
   alias CodeMySpec.Repo
-  alias CodeMySpec.UserPreferences
   alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
@@ -16,10 +15,8 @@ defmodule CodeMySpecDesktop.FirstBoot do
   def child_spec(_), do: %{id: __MODULE__, start: {__MODULE__, :run, []}, restart: :temporary}
 
   def run do
-    require_pgvector!()
     CodeMySpec.Release.migrate()
-    user = ensure_user()
-    ensure_account(user)
+    ensure_user()
     :ignore
   end
 
@@ -36,24 +33,10 @@ defmodule CodeMySpecDesktop.FirstBoot do
     end
   end
 
-  defp require_pgvector! do
-    if Repo.query!("SELECT 1 FROM pg_available_extensions WHERE name = 'vector'").num_rows == 0 do
-      raise "CodeMySpec needs the pgvector extension in this Postgres. " <>
-              "Install it (macOS: `brew install pgvector`; Debian: `apt install postgresql-<ver>-pgvector`) and restart."
-    end
-  end
-
   defp ensure_user do
     with nil <- Users.get_user_by_email(DesktopUser.email()) do
       {:ok, user} = Users.register_user(%{email: DesktopUser.email()})
       user |> User.confirm_changeset() |> Repo.update!()
     end
-  end
-
-  defp ensure_account(user) do
-    scope = UserPreferences.scope_for(user)
-
-    if Accounts.list_accounts(scope) == [],
-      do: {:ok, _} = Accounts.create_account(scope, %{name: "Local"})
   end
 end

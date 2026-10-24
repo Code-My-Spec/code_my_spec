@@ -32,6 +32,7 @@ defmodule CodeMySpec.Provisioning.CassetteSessionTest do
     opts = SpexCase.cassette_session([])
 
     assert Keyword.get(opts, :session) == session
+
     refute Keyword.has_key?(opts, :shared),
            "a per-block session was requested as well, which is what dies early"
   end

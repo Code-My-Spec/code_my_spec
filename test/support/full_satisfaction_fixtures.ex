@@ -92,6 +92,14 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     context
     |> apply_without_deploy()
     |> ProjectStateFixtures.apply_deploy_record()
+    |> apply_publication_record()
+  end
+
+  defp apply_publication_record(context) do
+    {:ok, story} =
+      Fixtures.record_story_publication(context.scope, context.story.id, "fixture-published")
+
+    Map.put(context, :story, story)
   end
 
   @doc """

@@ -127,6 +127,8 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
 
   defp ready_to_promote do
     scope = full_scope_fixture()
+    # This fixture retains bootstrap-local deployment confirmation semantics.
+    local_promotion_project(scope)
     RecordingAgentTransport.listen(scope)
     {running_root, agent_root, gate_root} = a_project_whose_restart_succeeds()
 

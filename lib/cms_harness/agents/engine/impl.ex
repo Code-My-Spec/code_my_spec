@@ -18,10 +18,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
-  alias CmsHarness.Agents.Tools.Direct
   alias CmsHarness.Agents.Provider
   alias CmsHarness.Agents.SystemPrompt
   alias CmsHarness.Agents.ToolResults
+  alias CmsHarness.Agents.Tools.Direct
   alias CmsHarness.Agents.TurnEvents
   alias CmsHarness.Agents.TurnProgress
   alias CmsHarness.Agents.UnknownTool
@@ -481,7 +481,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # stopped together. The waiter is not shut down first: that would orphan
   # them before they are found.
   defp stop_turn_task(%Task{pid: pid} = task) do
-    result = Execution.stop(pid)
+    result = Execution.stop_and_release(pid)
     Task.shutdown(task, :brutal_kill)
     result
   end
@@ -893,6 +893,10 @@ defmodule CmsHarness.Agents.Engine.Impl do
        |> Keyword.put(:max_tokens, @context_budget)
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
+       # Bash owns its explicit deadline (up to one hour), including process
+       # cleanup. The executor's default two minutes must not kill an install
+       # before Bash can enforce that deadline and report partial output.
+       |> Keyword.put(:tool_timeout, :timer.hours(1) + 5_000)
        # `ToolResults`: an error struct in a result block cannot be JSON-encoded
        # for the next request. `UnknownTool`: where an uncarried tool is
        # reachable. `TurnProgress`: an interrupted turn keeps what it did.
@@ -945,7 +949,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   a QA run builds through `bash` to test against -- may be written and read
   back.
 
-  f72b7ba3: QA builds fixtures like this under an ad hoc `mktemp` path, which
+  QA built fixtures like this under an ad hoc `mktemp` path, which
   `bash` (a guardrail, not a sandbox) can always write to, but the read tool
   refused -- outside `working_copy` and `spill_dir`, the only paths `Alloy`'s
   own tools allow. This path is advertised instead (`RoleBrief`'s QA entry),

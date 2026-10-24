@@ -63,12 +63,14 @@ And the owner sees an error that a service address is required"
           ]
         },
         %{
-          statement: "A property's access details (entry method, lockbox/alarm codes, parking notes, pet notes) are carried onto every job scheduled at that property.",
+          statement:
+            "A property's access details (entry method, lockbox/alarm codes, parking notes, pet notes) are carried onto every job scheduled at that property.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Job brief inherits property access details",
-              body: "Given a property with lockbox code \"4821\", parking note \"driveway only\", and pet note \"dog in yard\"
+              body:
+                "Given a property with lockbox code \"4821\", parking note \"driveway only\", and pet note \"dog in yard\"
 When a job is scheduled at that property
 Then the job brief shows the lockbox code, parking note, and pet note from the property"
             },
@@ -82,19 +84,22 @@ Then the upcoming job's brief shows lockbox code \"9077\""
           ]
         },
         %{
-          statement: "Any change to a property's entry codes is recorded in an audit trail capturing who changed it and when.",
+          statement:
+            "Any change to a property's entry codes is recorded in an audit trail capturing who changed it and when.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Entry code change is logged",
-              body: "Given a property with alarm code \"1234\"
+              body:
+                "Given a property with alarm code \"1234\"
 When the owner changes the alarm code to \"5678\"
 Then an audit entry records the owner's identity, the timestamp, and that the alarm code was changed"
             }
           ]
         },
         %{
-          statement: "A client with upcoming scheduled jobs cannot be permanently deleted, only deactivated.",
+          statement:
+            "A client with upcoming scheduled jobs cannot be permanently deleted, only deactivated.",
           scenarios: [
             %{
               kind: "happy path",
@@ -115,8 +120,7 @@ And the owner is told to deactivate the client or first remove its upcoming jobs
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -141,24 +145,28 @@ And the owner is told to deactivate the client or first remove its upcoming jobs
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "A recurring plan generates a job for every occurrence in its series (weekly, biweekly, or monthly), not just the first.",
+          statement:
+            "A recurring plan generates a job for every occurrence in its series (weekly, biweekly, or monthly), not just the first.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Weekly plan generates the full series",
-              body: "Given the owner creates a weekly cleaning plan for a property running for 8 weeks
+              body:
+                "Given the owner creates a weekly cleaning plan for a property running for 8 weeks
 When the plan is saved
 Then 8 jobs are created, one on each scheduled date"
             }
           ]
         },
         %{
-          statement: "Conflict detection runs across every occurrence in the series, not only the first visit.",
+          statement:
+            "Conflict detection runs across every occurrence in the series, not only the first visit.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Conflict on a later occurrence is detected",
-              body: "Given the assigned cleaner has a time-off block on the date of the 4th weekly visit
+              body:
+                "Given the assigned cleaner has a time-off block on the date of the 4th weekly visit
 When the owner creates the 8-week weekly plan
 Then the system flags the 4th visit as conflicting
 And the first visit is not the only date checked"
@@ -166,7 +174,8 @@ And the first visit is not the only date checked"
             %{
               kind: "happy path",
               title: "Clean series saves without warnings",
-              body: "Given the assigned cleaner is available on every date in an 8-week weekly plan
+              body:
+                "Given the assigned cleaner is available on every date in an 8-week weekly plan
 When the owner creates the plan
 Then no conflicts are reported
 And all 8 jobs are scheduled"
@@ -174,7 +183,8 @@ And all 8 jobs are scheduled"
           ]
         },
         %{
-          statement: "A job cannot be assigned to a cleaner during one of that cleaner's availability blocks.",
+          statement:
+            "A job cannot be assigned to a cleaner during one of that cleaner's availability blocks.",
           scenarios: [
             %{
               kind: "happy path",
@@ -206,7 +216,8 @@ Then the second assignment is rejected as an overlap conflict"
           ]
         },
         %{
-          statement: "When a series has conflicting occurrences, the owner is shown which dates conflict before the plan is saved.",
+          statement:
+            "When a series has conflicting occurrences, the owner is shown which dates conflict before the plan is saved.",
           scenarios: [
             %{
               kind: "happy path",
@@ -219,8 +230,7 @@ And the owner can resolve or override them before the plan is saved"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -243,19 +253,22 @@ And the owner can resolve or override them before the plan is saved"
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "The weekly board shows every cleaner's jobs for the selected week on a single screen.",
+          statement:
+            "The weekly board shows every cleaner's jobs for the selected week on a single screen.",
           scenarios: [
             %{
               kind: "happy path",
               title: "See the whole week at a glance",
-              body: "Given the company has 4 cleaners with jobs scheduled this week
+              body:
+                "Given the company has 4 cleaners with jobs scheduled this week
 When the owner opens the weekly board for that week
 Then the board shows all 4 cleaners and their jobs across the seven days on one screen without switching tabs"
             }
           ]
         },
         %{
-          statement: "Reassigning a job to another cleaner on the board updates that job's assignment immediately.",
+          statement:
+            "Reassigning a job to another cleaner on the board updates that job's assignment immediately.",
           scenarios: [
             %{
               kind: "happy path",
@@ -268,7 +281,8 @@ And the job no longer appears under Ana"
           ]
         },
         %{
-          statement: "The board blocks assigning a job to a cleaner who has an availability block or overlapping job at that time.",
+          statement:
+            "The board blocks assigning a job to a cleaner who has an availability block or overlapping job at that time.",
           scenarios: [
             %{
               kind: "failure path",
@@ -281,7 +295,8 @@ And the owner sees a conflict warning"
           ]
         },
         %{
-          statement: "Unassigned jobs for the week are visible on the board so the owner can dispatch them.",
+          statement:
+            "Unassigned jobs for the week are visible on the board so the owner can dispatch them.",
           scenarios: [
             %{
               kind: "happy path",
@@ -294,7 +309,8 @@ And the owner can assign it to an available cleaner from the board"
           ]
         },
         %{
-          statement: "A job reassigned on the board is reflected on the newly assigned cleaner's own schedule.",
+          statement:
+            "A job reassigned on the board is reflected on the newly assigned cleaner's own schedule.",
           scenarios: [
             %{
               kind: "happy path",
@@ -307,8 +323,7 @@ And it is gone from Ana's schedule"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -332,7 +347,8 @@ And it is gone from Ana's schedule"
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "A quote is priced using exactly one pricing model: per-room, per-square-foot, or hourly.",
+          statement:
+            "A quote is priced using exactly one pricing model: per-room, per-square-foot, or hourly.",
           scenarios: [
             %{
               kind: "happy path",
@@ -344,14 +360,16 @@ Then the quote is priced per room and no square-footage or hourly inputs are req
             %{
               kind: "failure path",
               title: "Switching pricing model clears the other model's inputs",
-              body: "Given the owner has started a per-room quote with rooms entered
+              body:
+                "Given the owner has started a per-room quote with rooms entered
 When the owner switches the pricing model to hourly
 Then the per-room line items are cleared and the quote is priced only on hours, never a mix of both models"
             }
           ]
         },
         %{
-          statement: "The quote total is computed by applying the owner's own saved rate card to the entered line items (rooms, square footage, or hours).",
+          statement:
+            "The quote total is computed by applying the owner's own saved rate card to the entered line items (rooms, square footage, or hours).",
           scenarios: [
             %{
               kind: "happy path",
@@ -363,31 +381,36 @@ Then the quote total is calculated as $200"
           ]
         },
         %{
-          statement: "A quote can be built and sent from client-supplied property details without an in-person walkthrough.",
+          statement:
+            "A quote can be built and sent from client-supplied property details without an in-person walkthrough.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner quotes a phone lead without visiting the property",
-              body: "Given a lead has given the owner their room count and square footage over the phone
+              body:
+                "Given a lead has given the owner their room count and square footage over the phone
 When the owner builds a quote entering those details from their device
 Then the owner can produce and send a complete priced quote without scheduling a site visit"
             }
           ]
         },
         %{
-          statement: "A quote cannot be finalized until every line item in the chosen model has a rate, and the total is greater than zero.",
+          statement:
+            "A quote cannot be finalized until every line item in the chosen model has a rate, and the total is greater than zero.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Missing rate on the chosen model blocks finalizing",
-              body: "Given the owner's rate card has no rate configured for the hourly model
+              body:
+                "Given the owner's rate card has no rate configured for the hourly model
 When the owner builds an hourly quote and tries to finalize it
 Then finalizing is blocked and the owner is prompted to set the missing rate before sending, preventing a zero-dollar quote"
             }
           ]
         },
         %{
-          statement: "A sent quote captures the rates and amounts at the moment it was sent, so later rate-card edits do not change it.",
+          statement:
+            "A sent quote captures the rates and amounts at the moment it was sent, so later rate-card edits do not change it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -399,8 +422,7 @@ Then the previously sent quote still shows $200 and its line items are unchanged
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -424,7 +446,8 @@ Then the previously sent quote still shows $200 and its line items are unchanged
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "Marking a job complete automatically generates an invoice for that job at its agreed price.",
+          statement:
+            "Marking a job complete automatically generates an invoice for that job at its agreed price.",
           scenarios: [
             %{
               kind: "happy path",
@@ -436,7 +459,8 @@ Then an invoice for $150 is generated for that job and appears in the owner's bi
           ]
         },
         %{
-          statement: "An invoice can be collected by charging the client's card-on-file or by sending the client a payment link.",
+          statement:
+            "An invoice can be collected by charging the client's card-on-file or by sending the client a payment link.",
           scenarios: [
             %{
               kind: "happy path",
@@ -455,7 +479,8 @@ Then the invoice is collected and the client's card can be saved for next time"
           ]
         },
         %{
-          statement: "Each invoice carries the completed job's proof-of-work — checklist and before/after photos — as evidence for billing disputes.",
+          statement:
+            "Each invoice carries the completed job's proof-of-work — checklist and before/after photos — as evidence for billing disputes.",
           scenarios: [
             %{
               kind: "happy path",
@@ -467,19 +492,22 @@ Then the completed checklist and photos are attached to the invoice as dispute e
           ]
         },
         %{
-          statement: "A declined or failed card charge leaves the invoice unpaid and alerts the owner to retry or send a payment link.",
+          statement:
+            "A declined or failed card charge leaves the invoice unpaid and alerts the owner to retry or send a payment link.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Card-on-file charge is declined",
-              body: "Given an invoice is set to auto-charge the card on file
+              body:
+                "Given an invoice is set to auto-charge the card on file
 When the payment provider declines the card
 Then the invoice remains unpaid and the owner is alerted to retry the charge or send a payment link"
             }
           ]
         },
         %{
-          statement: "An invoice is marked paid only after the payment provider confirms the charge succeeded.",
+          statement:
+            "An invoice is marked paid only after the payment provider confirms the charge succeeded.",
           scenarios: [
             %{
               kind: "happy path",
@@ -491,8 +519,7 @@ Then the invoice is marked paid and the owner sees it settled in the billing que
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -516,12 +543,14 @@ Then the invoice is marked paid and the owner sees it settled in the billing que
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "Each scheduled appointment automatically sends the client a reminder at the owner's configured lead time before the appointment.",
+          statement:
+            "Each scheduled appointment automatically sends the client a reminder at the owner's configured lead time before the appointment.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Reminder fires at the configured lead time",
-              body: "Given the owner's reminder lead time is set to 24 hours and a client has an appointment tomorrow at 9am
+              body:
+                "Given the owner's reminder lead time is set to 24 hours and a client has an appointment tomorrow at 9am
 When the clock reaches 9am today
 Then an appointment reminder is automatically sent to the client"
             }
@@ -552,7 +581,8 @@ Then the reminder presents a confirm action and a reschedule action the client c
           ]
         },
         %{
-          statement: "When a client confirms via the reminder, the appointment is marked confirmed and the owner sees the confirmation.",
+          statement:
+            "When a client confirms via the reminder, the appointment is marked confirmed and the owner sees the confirmation.",
           scenarios: [
             %{
               kind: "happy path",
@@ -564,32 +594,35 @@ Then the appointment is marked confirmed and shows as confirmed on the owner's s
           ]
         },
         %{
-          statement: "When a client requests reschedule via the reminder, the appointment is flagged for reschedule and the owner is notified to rebook.",
+          statement:
+            "When a client requests reschedule via the reminder, the appointment is flagged for reschedule and the owner is notified to rebook.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Client requests a reschedule",
-              body: "Given a client received a reminder for an upcoming appointment
+              body:
+                "Given a client received a reminder for an upcoming appointment
 When the client taps reschedule
 Then the appointment is flagged for reschedule and the owner is notified to rebook it, protecting route density"
             }
           ]
         },
         %{
-          statement: "A reminder that fails to deliver on the primary channel falls back to the alternate channel and is flagged to the owner.",
+          statement:
+            "A reminder that fails to deliver on the primary channel falls back to the alternate channel and is flagged to the owner.",
           scenarios: [
             %{
               kind: "failure path",
               title: "SMS reminder is undeliverable and falls back to email",
-              body: "Given a client prefers SMS but has blocked the reminder sender's number
+              body:
+                "Given a client prefers SMS but has blocked the reminder sender's number
 When the SMS reminder fails to deliver
 Then the reminder falls back to the client's email and the owner is flagged that the SMS did not reach the client"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -615,7 +648,8 @@ Then the reminder falls back to the client's email and the owner is flagged that
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "Worked time is recorded when a cleaner clocks in on arrival and clocks out on completion of a job assigned to them.",
+          statement:
+            "Worked time is recorded when a cleaner clocks in on arrival and clocks out on completion of a job assigned to them.",
           scenarios: [
             %{
               kind: "happy path",
@@ -634,7 +668,8 @@ Then the clock-in is rejected and no time entry is recorded"
           ]
         },
         %{
-          statement: "Each job's pay is calculated from its configured pay model: hourly pay equals the cleaner's rate times worked hours, and per-job pay is a fixed piece rate regardless of time.",
+          statement:
+            "Each job's pay is calculated from its configured pay model: hourly pay equals the cleaner's rate times worked hours, and per-job pay is a fixed piece rate regardless of time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -653,51 +688,57 @@ Then the job's gross pay is $80 regardless of the worked time recorded"
           ]
         },
         %{
-          statement: "A pay period accumulates each cleaner's gross earnings into a running total across all their jobs.",
+          statement:
+            "A pay period accumulates each cleaner's gross earnings into a running total across all their jobs.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Running pay-period total builds as jobs complete",
-              body: "Given a pay period in progress for Maria with an hourly job paying $62.50 already recorded
+              body:
+                "Given a pay period in progress for Maria with an hourly job paying $62.50 already recorded
 When Maria completes a second per-job job paying $80 in the same pay period
 Then Maria's running pay-period total shows $142.50"
             }
           ]
         },
         %{
-          statement: "The owner can export a pay period as a payroll-ready CSV listing each cleaner's hours, jobs, and gross pay.",
+          statement:
+            "The owner can export a pay period as a payroll-ready CSV listing each cleaner's hours, jobs, and gross pay.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner exports a completed pay period to CSV",
-              body: "Given a closed pay period with all time entries resolved for three cleaners
+              body:
+                "Given a closed pay period with all time entries resolved for three cleaners
 When the owner exports the pay period
 Then a CSV downloads with one row per cleaner showing worked hours, job count, and gross pay ready for the payroll provider"
             }
           ]
         },
         %{
-          statement: "A time entry with no clock-out is flagged for owner review and excluded from pay totals and export until the owner resolves it.",
+          statement:
+            "A time entry with no clock-out is flagged for owner review and excluded from pay totals and export until the owner resolves it.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Cleaner forgets to clock out",
-              body: "Given Maria clocked in at 9:00 and left the job without clocking out
+              body:
+                "Given Maria clocked in at 9:00 and left the job without clocking out
 When the owner opens the pay period for review
 Then the open time entry is flagged for review, is excluded from Maria's pay total, and the owner can set the missing clock-out time to resolve it"
             },
             %{
               kind: "failure path",
               title: "Export blocked while an unresolved time entry remains",
-              body: "Given a pay period that still contains one flagged open time entry
+              body:
+                "Given a pay period that still contains one flagged open time entry
 When the owner attempts to export the pay period to CSV
 Then the owner is warned that unresolved time entries exist and the export excludes or blocks until the entry is resolved"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -722,7 +763,8 @@ Then the owner is warned that unresolved time entries exist and the export exclu
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "A job cannot be marked complete until every required checklist task is checked off or explicitly marked skipped with a reason.",
+          statement:
+            "A job cannot be marked complete until every required checklist task is checked off or explicitly marked skipped with a reason.",
           scenarios: [
             %{
               kind: "happy path",
@@ -734,26 +776,30 @@ Then the job is marked complete with checklist completion recorded"
             %{
               kind: "failure path",
               title: "Cleaner tries to complete with unchecked required tasks",
-              body: "Given a job checklist with two required tasks still unchecked
+              body:
+                "Given a job checklist with two required tasks still unchecked
 When the cleaner taps complete
 Then completion is blocked and the cleaner is prompted to check off or mark the remaining tasks skipped with a reason before the job can close"
             }
           ]
         },
         %{
-          statement: "Required before and after photos are captured per photo task and attached to the completed job with a timestamp.",
+          statement:
+            "Required before and after photos are captured per photo task and attached to the completed job with a timestamp.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Before and after photos attached with timestamps",
-              body: "Given a checklist task that requires a before and an after photo of the kitchen
+              body:
+                "Given a checklist task that requires a before and an after photo of the kitchen
 When the cleaner captures both photos during the job
 Then both photos are attached to the completed job, each stamped with the time it was taken"
             }
           ]
         },
         %{
-          statement: "Each completed job produces a quality score derived from checklist completion and any owner quality review of the job.",
+          statement:
+            "Each completed job produces a quality score derived from checklist completion and any owner quality review of the job.",
           scenarios: [
             %{
               kind: "happy path",
@@ -765,44 +811,49 @@ Then the job records a quality score combining checklist completion and the owne
           ]
         },
         %{
-          statement: "A per-cleaner quality scorecard aggregates that cleaner's job scores over time so the owner can spot trends and coach.",
+          statement:
+            "A per-cleaner quality scorecard aggregates that cleaner's job scores over time so the owner can spot trends and coach.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner reviews a cleaner's scorecard over time",
-              body: "Given a cleaner with twenty scored jobs over the last month
+              body:
+                "Given a cleaner with twenty scored jobs over the last month
 When the owner opens that cleaner's quality scorecard
 Then the scorecard shows the average score and the trend across those jobs so the owner can coach on declining areas"
             }
           ]
         },
         %{
-          statement: "Completed-job proof — checklist state, photos, and timestamps — is retained and retrievable so the owner can defend against a complaint or chargeback.",
+          statement:
+            "Completed-job proof — checklist state, photos, and timestamps — is retained and retrievable so the owner can defend against a complaint or chargeback.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner pulls up job proof to answer a chargeback",
-              body: "Given a client disputes a charge claiming the job was not done
+              body:
+                "Given a client disputes a charge claiming the job was not done
 When the owner opens the completed job from three weeks ago
 Then the owner sees the completed checklist, before and after photos, and timestamps to present as proof the work was performed"
             }
           ]
         },
         %{
-          statement: "Photos captured while the cleaner has no connection are queued on the device and uploaded automatically when connectivity returns.",
+          statement:
+            "Photos captured while the cleaner has no connection are queued on the device and uploaded automatically when connectivity returns.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Photo taken offline uploads when signal returns",
-              body: "Given a cleaner in a basement with no cell signal captures the required after photos
+              body:
+                "Given a cleaner in a basement with no cell signal captures the required after photos
 When the photo upload cannot reach the server
 Then the photos are queued on the device and upload automatically once the cleaner regains connectivity, without the cleaner having to retake them"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -818,38 +869,46 @@ Then the photos are queued on the device and upload automatically once the clean
       %{description: "Price change records old and new value", verified: true},
       %{description: "Nobody can alter or delete an audit entry", verified: true},
       %{description: "Owner filters the trail to find who moved a job", verified: true},
-      %{description: "Automated recurring job generation is attributed to the system", verified: true}
+      %{
+        description: "Automated recurring job generation is attributed to the system",
+        verified: true
+      }
     ],
     qa: %{final: :pass, attempts: 3, history: [:partial, :partial, :pass]},
     three_amigos: %{
       persona: %{name: "Cleaning Business Owner", slug: "cleaning-business-owner", type: "proto"},
       rules: [
         %{
-          statement: "Every create, update, or delete of an audited record — job, assignment, client record, or price — records who made the change, what changed, and when.",
+          statement:
+            "Every create, update, or delete of an audited record — job, assignment, client record, or price — records who made the change, what changed, and when.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Office staff reschedules a job and it is logged",
-              body: "Given office staffer Dana is signed in
+              body:
+                "Given office staffer Dana is signed in
 When Dana moves a job from Tuesday 9:00 to Wednesday 1:00
 Then an audit entry records that Dana rescheduled that job, the old and new times, and the timestamp of the change"
             }
           ]
         },
         %{
-          statement: "Each audit entry captures the before and after values of the fields that changed.",
+          statement:
+            "Each audit entry captures the before and after values of the fields that changed.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Price change records old and new value",
-              body: "Given a client's recurring job is priced at $120
+              body:
+                "Given a client's recurring job is priced at $120
 When Dana changes the price to $140
 Then the audit entry shows the price field changed from $120 to $140 and leaves other unchanged fields out of the entry"
             }
           ]
         },
         %{
-          statement: "The audit log is append-only per company — entries cannot be edited or deleted by anyone, including the owner.",
+          statement:
+            "The audit log is append-only per company — entries cannot be edited or deleted by anyone, including the owner.",
           scenarios: [
             %{
               kind: "failure path",
@@ -861,7 +920,8 @@ Then the system provides no way to modify or remove it and the entry remains int
           ]
         },
         %{
-          statement: "The owner can filter the audit trail by user, record type, specific record, and date range to untangle a change.",
+          statement:
+            "The owner can filter the audit trail by user, record type, specific record, and date range to untangle a change.",
           scenarios: [
             %{
               kind: "happy path",
@@ -873,20 +933,21 @@ Then the owner sees the entry showing which user deleted or moved the job and wh
           ]
         },
         %{
-          statement: "A change made by an automated or system process is attributed to the system so that every audit entry has a named actor.",
+          statement:
+            "A change made by an automated or system process is attributed to the system so that every audit entry has a named actor.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Automated recurring job generation is attributed to the system",
-              body: "Given a recurring plan that automatically generates next week's jobs overnight
+              body:
+                "Given a recurring plan that automatically generates next week's jobs overnight
 When the system creates those jobs with no human involved
 Then each resulting audit entry names the system as the actor rather than showing a blank author"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -912,7 +973,8 @@ Then each resulting audit entry names the system as the actor rather than showin
       persona: %{name: "Cleaner", slug: "cleaner", type: "proto"},
       rules: [
         %{
-          statement: "The day view lists only the signed-in cleaner's own jobs for the selected day, ordered by scheduled start time.",
+          statement:
+            "The day view lists only the signed-in cleaner's own jobs for the selected day, ordered by scheduled start time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -934,12 +996,14 @@ Then the coworker's job does not appear on my list"
           ]
         },
         %{
-          statement: "Lockbox and alarm access codes are revealed on a job card only on the job's scheduled date, and are masked before then.",
+          statement:
+            "Lockbox and alarm access codes are revealed on a job card only on the job's scheduled date, and are masked before then.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Access code appears on the day of the job",
-              body: "Given I have a job scheduled for today with a lockbox code and an alarm code on file
+              body:
+                "Given I have a job scheduled for today with a lockbox code and an alarm code on file
 When I open that job card
 Then the lockbox code and alarm code are shown in full"
             },
@@ -954,12 +1018,14 @@ And the card indicates the code unlocks on the day of the job"
           ]
         },
         %{
-          statement: "Each job card displays address, parking notes, entry method, pet notes, and client preferences drawn from the property record.",
+          statement:
+            "Each job card displays address, parking notes, entry method, pet notes, and client preferences drawn from the property record.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Job card shows the full get-in-the-door brief",
-              body: "Given my job's property has an address, parking notes, entry method, pet notes, and client preferences on file
+              body:
+                "Given my job's property has an address, parking notes, entry method, pet notes, and client preferences on file
 When I open the job card
 Then I see the address, parking notes, entry method, pet notes, and client preferences all on that card"
             },
@@ -974,12 +1040,14 @@ And the card does not error or leave the section blank"
           ]
         },
         %{
-          statement: "When a property's access details change, every future job for that property reflects the updated details with no manual re-entry per job.",
+          statement:
+            "When a property's access details change, every future job for that property reflects the updated details with no manual re-entry per job.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Updated lockbox code propagates to future jobs",
-              body: "Given a property with a lockbox code has jobs assigned to me today and on future dates
+              body:
+                "Given a property with a lockbox code has jobs assigned to me today and on future dates
 When the office updates that property's lockbox code
 Then today's job reveals the new code on my day view
 And no job — today or future — ever shows the old code
@@ -989,7 +1057,8 @@ And future jobs keep the code masked until their own date (per criterion 7133), 
           ]
         },
         %{
-          statement: "A cleaner with no jobs scheduled for the selected day sees an explicit empty-day state rather than a blank screen.",
+          statement:
+            "A cleaner with no jobs scheduled for the selected day sees an explicit empty-day state rather than a blank screen.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1002,8 +1071,7 @@ And I am not shown a blank or broken screen"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1028,12 +1096,14 @@ And I am not shown a blank or broken screen"
       persona: %{name: "Cleaner", slug: "cleaner", type: "proto"},
       rules: [
         %{
-          statement: "Each job presents a room-by-room checklist generated from that property's checklist template.",
+          statement:
+            "Each job presents a room-by-room checklist generated from that property's checklist template.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Checklist opens grouped by room",
-              body: "Given my job's property has a checklist template with tasks for Kitchen, Bathroom, and Bedroom
+              body:
+                "Given my job's property has a checklist template with tasks for Kitchen, Bathroom, and Bedroom
 When I open the job's checklist
 Then I see the tasks grouped under Kitchen, Bathroom, and Bedroom
 And each task from the template appears under its room"
@@ -1041,7 +1111,8 @@ And each task from the template appears under its room"
           ]
         },
         %{
-          statement: "The checklist is the authoritative scope for the job: only tasks on the checklist are in scope, and completed checklists are retained as proof of what was agreed.",
+          statement:
+            "The checklist is the authoritative scope for the job: only tasks on the checklist are in scope, and completed checklists are retained as proof of what was agreed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1054,7 +1125,8 @@ And it serves as proof that cleaning inside the oven was out of scope"
           ]
         },
         %{
-          statement: "A cleaner can check off individual checklist tasks, and the job shows progress as completed-of-total tasks.",
+          statement:
+            "A cleaner can check off individual checklist tasks, and the job shows progress as completed-of-total tasks.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1066,7 +1138,8 @@ Then the job shows progress as 4 of 10 tasks complete"
           ]
         },
         %{
-          statement: "A cleaner can attach before and after photos to a task or room, each stored with a timestamp.",
+          statement:
+            "A cleaner can attach before and after photos to a task or room, each stored with a timestamp.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1079,7 +1152,8 @@ And each photo is stored with the time it was captured"
           ]
         },
         %{
-          statement: "A job can be marked complete only when every required task is checked and every required photo is attached.",
+          statement:
+            "A job can be marked complete only when every required task is checked and every required photo is attached.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1100,7 +1174,8 @@ And I am told which required task or photo is still missing"
           ]
         },
         %{
-          statement: "A photo upload that fails on poor connectivity is queued and retried, not silently dropped.",
+          statement:
+            "A photo upload that fails on poor connectivity is queued and retried, not silently dropped.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1113,8 +1188,7 @@ And when signal returns the photo uploads automatically without me re-taking it"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1139,7 +1213,8 @@ And when signal returns the photo uploads automatically without me re-taking it"
       persona: %{name: "Cleaner", slug: "cleaner", type: "proto"},
       rules: [
         %{
-          statement: "Every schedule change (added, moved, or cancelled job) affecting a cleaner's day sends that cleaner a notification.",
+          statement:
+            "Every schedule change (added, moved, or cancelled job) affecting a cleaner's day sends that cleaner a notification.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1158,7 +1233,8 @@ Then I receive a notification that the job has been cancelled"
           ]
         },
         %{
-          statement: "A schedule-change notification stays pending and keeps prompting the cleaner until it is explicitly acknowledged.",
+          statement:
+            "A schedule-change notification stays pending and keeps prompting the cleaner until it is explicitly acknowledged.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1179,7 +1255,8 @@ And I am prompted about it again when I next open the app"
           ]
         },
         %{
-          statement: "The office can see the acknowledgment status of each change and which cleaners still have unacknowledged changes.",
+          statement:
+            "The office can see the acknowledgment status of each change and which cleaners still have unacknowledged changes.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1193,7 +1270,8 @@ And once the cleaner acknowledges, the office sees it flip to acknowledged"
           ]
         },
         %{
-          statement: "A same-day change left unacknowledged past the escalation window (default 10 minutes) is escalated: re-sent via fallback channel and flagged to the office.",
+          statement:
+            "A same-day change left unacknowledged past the escalation window (default 10 minutes) is escalated: re-sent via fallback channel and flagged to the office.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1207,7 +1285,8 @@ And the change is flagged to the office as unacknowledged and escalated"
           ]
         },
         %{
-          statement: "If the primary push channel fails to deliver, the notification falls back to SMS so the change still reaches the cleaner.",
+          statement:
+            "If the primary push channel fails to deliver, the notification falls back to SMS so the change still reaches the cleaner.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1220,8 +1299,7 @@ Then it falls back to sending me an SMS with the change details"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1259,7 +1337,8 @@ Then I am clocked in and the job shows a running elapsed time starting now"
             %{
               kind: "failure path",
               title: "Cleaner cannot clock in to a job assigned to someone else",
-              body: "Given a job at the Jones home is assigned to another cleaner, not me
+              body:
+                "Given a job at the Jones home is assigned to another cleaner, not me
 When I attempt to open that job
 Then I am redirected away with an error explaining the job is not assigned to me
 And I cannot start time on it
@@ -1273,7 +1352,8 @@ And I cannot start time on it
             %{
               kind: "failure path",
               title: "Clocking in to a second job while already clocked in",
-              body: "Given I am already clocked in to the 9:00 AM Smith job
+              body:
+                "Given I am already clocked in to the 9:00 AM Smith job
 When I open my 11:00 AM job and tap Clock In
 Then I am warned that I am still clocked in to the Smith job and must clock out there first before starting the new one"
             },
@@ -1287,7 +1367,8 @@ Then the Smith job's time is closed and the next job begins accumulating time"
           ]
         },
         %{
-          statement: "Each job shows its pay basis — hourly clock time or fixed piece-rate — and its earnings are computed on that basis.",
+          statement:
+            "Each job shows its pay basis — hourly clock time or fixed piece-rate — and its earnings are computed on that basis.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1306,7 +1387,8 @@ Then it clearly shows I will earn $60 for this job regardless of how long it tak
           ]
         },
         %{
-          statement: "Pay-period earnings accumulate as a running total the cleaner can see at any time.",
+          statement:
+            "Pay-period earnings accumulate as a running total the cleaner can see at any time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1318,7 +1400,8 @@ Then the current pay period shows a running total of $110"
           ]
         },
         %{
-          statement: "The company's drive-time pay policy is shown to the cleaner alongside their earnings.",
+          statement:
+            "The company's drive-time pay policy is shown to the cleaner alongside their earnings.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1330,8 +1413,7 @@ Then the drive-time policy is stated plainly so I understand what is and is not 
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1355,7 +1437,8 @@ Then the drive-time policy is stated plainly so I understand what is and is not 
       persona: %{name: "Cleaner", slug: "cleaner", type: "proto"},
       rules: [
         %{
-          statement: "An incident report is filed against a specific job and typed as damage, missing item, or unsafe condition.",
+          statement:
+            "An incident report is filed against a specific job and typed as damage, missing item, or unsafe condition.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1367,7 +1450,8 @@ Then a damage report is created and attached to the Smith job"
           ]
         },
         %{
-          statement: "Each incident report is automatically stamped with the time it was filed and the cleaner who filed it.",
+          statement:
+            "Each incident report is automatically stamped with the time it was filed and the cleaner who filed it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1379,7 +1463,8 @@ Then it records that I filed it at 2:15 PM without my having to enter the time o
           ]
         },
         %{
-          statement: "A submitted incident report cannot be edited or deleted — it is a permanent record.",
+          statement:
+            "A submitted incident report cannot be edited or deleted — it is a permanent record.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1391,7 +1476,8 @@ Then it is shown read-only with no option to edit or delete it, so the record st
           ]
         },
         %{
-          statement: "A damage or missing-item report requires at least one photo before it can be submitted.",
+          statement:
+            "A damage or missing-item report requires at least one photo before it can be submitted.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1403,7 +1489,8 @@ Then submission is blocked and I am prompted to add at least one photo first"
             %{
               kind: "happy path",
               title: "Unsafe-condition report can be filed without a photo",
-              body: "Given I encounter an aggressive dog and need to leave the property immediately
+              body:
+                "Given I encounter an aggressive dog and need to leave the property immediately
 When I file an unsafe-condition report without a photo
 Then the report is accepted, because photo is required only for damage and missing-item types, not when my safety requires leaving"
             }
@@ -1415,15 +1502,15 @@ Then the report is accepted, because photo is required only for damage and missi
             %{
               kind: "happy path",
               title: "Office is notified when a report is filed",
-              body: "Given I submit a missing-item report for a missing TV remote
+              body:
+                "Given I submit a missing-item report for a missing TV remote
 When the report is filed
 Then the office is notified of the report so they hear it from the record rather than a text thread"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1436,9 +1523,18 @@ Then the office is notified of the report so they hear it from the record rather
     tags: [%{name: "owner"}],
     criteria: [
       %{description: "Owner sets a preferred cleaner on a recurring plan", verified: true},
-      %{description: "New recurring visit is pre-assigned to the preferred cleaner", verified: true},
-      %{description: "Owner is warned when reassigning away from the preferred cleaner", verified: true},
-      %{description: "Substitute for one visit leaves the plan's preferred cleaner intact", verified: true},
+      %{
+        description: "New recurring visit is pre-assigned to the preferred cleaner",
+        verified: true
+      },
+      %{
+        description: "Owner is warned when reassigning away from the preferred cleaner",
+        verified: true
+      },
+      %{
+        description: "Substitute for one visit leaves the plan's preferred cleaner intact",
+        verified: true
+      },
       %{description: "No warning when the plan has no preferred cleaner", verified: true}
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
@@ -1458,7 +1554,8 @@ Then the plan records Maria as the client's preferred cleaner for the Smith home
           ]
         },
         %{
-          statement: "Visits generated from a recurring plan default to the client's preferred cleaner.",
+          statement:
+            "Visits generated from a recurring plan default to the client's preferred cleaner.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1470,7 +1567,8 @@ Then that visit is assigned to Maria by default"
           ]
         },
         %{
-          statement: "Assigning a cleaner other than the client's preferred cleaner warns the owner before it is saved.",
+          statement:
+            "Assigning a cleaner other than the client's preferred cleaner warns the owner before it is saved.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1482,19 +1580,22 @@ Then I am warned that David is not the client's preferred cleaner before the cha
           ]
         },
         %{
-          statement: "The owner can accept the warning and assign a substitute for a single visit without changing the plan's preferred cleaner.",
+          statement:
+            "The owner can accept the warning and assign a substitute for a single visit without changing the plan's preferred cleaner.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Substitute for one visit leaves the plan's preferred cleaner intact",
-              body: "Given Maria is out sick and I have been warned that David is not the preferred cleaner
+              body:
+                "Given Maria is out sick and I have been warned that David is not the preferred cleaner
 When I confirm assigning David to this one visit
 Then this visit is assigned to David and the Smith plan still lists Maria as the preferred cleaner for future visits"
             }
           ]
         },
         %{
-          statement: "A recurring plan with no preferred cleaner produces no consistency warning on assignment.",
+          statement:
+            "A recurring plan with no preferred cleaner produces no consistency warning on assignment.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1506,8 +1607,7 @@ Then the assignment saves with no consistency warning"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1519,12 +1619,21 @@ Then the assignment saves with no consistency warning"
       "As a cleaning client, I want a public instant-quote form (bedrooms, bathrooms, square footage, frequency, add-ons) that shows me a real price from the company's rate card before I hand over contact details, so that I can decide in one sitting instead of waiting for a callback I may never answer. (Research: instant-quote booking forms are the residential standard and convert where request-a-quote friction loses time-pressured jobs — customer-side.md §1, §3)",
     tags: [%{name: "customer"}],
     criteria: [
-      %{description: "Building a quote with room counts shows a price with no contact info", verified: true},
+      %{
+        description: "Building a quote with room counts shows a price with no contact info",
+        verified: true
+      },
       %{description: "Building a quote by square footage instead of room counts", verified: true},
       %{description: "Changing any input recomputes the total live", verified: true},
-      %{description: "Selecting bi-weekly frequency applies the recurring discount", verified: true},
+      %{
+        description: "Selecting bi-weekly frequency applies the recurring discount",
+        verified: true
+      },
       %{description: "Selecting add-ons increases the running total", verified: true},
-      %{description: "Unsupported input combination shows a message instead of a wrong price", verified: true},
+      %{
+        description: "Unsupported input combination shows a message instead of a wrong price",
+        verified: true
+      },
       %{description: "Instant quote price matches the later acceptance total", verified: true}
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
@@ -1532,12 +1641,14 @@ Then the assignment saves with no consistency warning"
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "The quote form computes a price from the business's active rate card (per-room, per-square-foot, or hourly) based on service type, size inputs, frequency, and selected add-ons — no contact information is required to see the price.",
+          statement:
+            "The quote form computes a price from the business's active rate card (per-room, per-square-foot, or hourly) based on service type, size inputs, frequency, and selected add-ons — no contact information is required to see the price.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Building a quote with room counts shows a price with no contact info",
-              body: "Given a business with a per-room rate card and a visitor on the public quote page
+              body:
+                "Given a business with a per-room rate card and a visitor on the public quote page
 When the visitor selects a service type, bedroom count, and bathroom count without entering a name, email, or phone
 Then a real price computed from the rate card is displayed immediately"
             },
@@ -1551,19 +1662,22 @@ Then the displayed price is computed using the per-square-foot rate"
           ]
         },
         %{
-          statement: "The displayed price updates immediately as the customer changes any input (rooms, bathrooms, square footage, frequency, add-ons).",
+          statement:
+            "The displayed price updates immediately as the customer changes any input (rooms, bathrooms, square footage, frequency, add-ons).",
           scenarios: [
             %{
               kind: "happy path",
               title: "Changing any input recomputes the total live",
-              body: "Given a quote is currently displayed for a 2-bedroom home
+              body:
+                "Given a quote is currently displayed for a 2-bedroom home
 When the visitor changes the bedroom count to 3
 Then the displayed price updates immediately to reflect the new bedroom count without a page reload"
             }
           ]
         },
         %{
-          statement: "Selecting a recurring frequency applies the rate card's configured discount to the subtotal.",
+          statement:
+            "Selecting a recurring frequency applies the rate card's configured discount to the subtotal.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1587,19 +1701,22 @@ Then the running total increases by the sum of both add-ons' configured amounts"
           ]
         },
         %{
-          statement: "If the client's inputs fall outside what the business's rate card can price, the form shows a clear message and withholds a price rather than guessing or showing a wrong number.",
+          statement:
+            "If the client's inputs fall outside what the business's rate card can price, the form shows a clear message and withholds a price rather than guessing or showing a wrong number.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Unsupported input combination shows a message instead of a wrong price",
-              body: "Given a business's rate card has no configured price for a selected service type and size combination
+              body:
+                "Given a business's rate card has no configured price for a selected service type and size combination
 When the visitor selects that unsupported combination
 Then the form shows a clear \"can't price this yet, request a custom quote\" message instead of displaying $0 or a guessed price"
             }
           ]
         },
         %{
-          statement: "The quoted price is the same number that carries through to acceptance and booking — no hidden fees are added afterward.",
+          statement:
+            "The quoted price is the same number that carries through to acceptance and booking — no hidden fees are added afterward.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1612,8 +1729,17 @@ Then the total shown at acceptance is exactly $195 with no added fees"
         }
       ],
       questions: [
-        %{body: "Does the instant quote form need to support all three of Quoting's rate card types (per-room, per-sqft, hourly), or just one?", status: :resolved, resolution: nil},
-        %{body: "Should bedroom/bathroom counts allow fractional values (e.g. 2.5 baths)?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Does the instant quote form need to support all three of Quoting's rate card types (per-room, per-sqft, hourly), or just one?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body: "Should bedroom/bathroom counts allow fractional values (e.g. 2.5 baths)?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1628,19 +1754,26 @@ Then the total shown at acceptance is exactly $195 with no added fees"
     criteria: [
       %{description: "Client selects an open slot and proceeds to review", verified: true},
       %{description: "Selected slot becomes unavailable before confirmation", verified: true},
-      %{description: "Client views and agrees to the cancellation policy before confirming", verified: true},
+      %{
+        description: "Client views and agrees to the cancellation policy before confirming",
+        verified: true
+      },
       %{description: "Booking is blocked without cancellation policy agreement", verified: true},
       %{description: "Client enters a valid card and the booking confirms", verified: true},
       %{description: "Payment gateway declines the card", verified: true},
       %{description: "Card is authorized for the exact quoted amount", verified: true},
-      %{description: "Confirmed booking appears for client and business with portal access", verified: true}
+      %{
+        description: "Confirmed booking appears for client and business with portal access",
+        verified: true
+      }
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "Booking requires an available time slot to be selected before the client can confirm.",
+          statement:
+            "Booking requires an available time slot to be selected before the client can confirm.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1659,7 +1792,8 @@ Then the booking is blocked with a message to pick another slot and no charge is
           ]
         },
         %{
-          statement: "The client must explicitly agree to the cancellation policy — the 24-hour notice window and the fee — before the booking can be confirmed.",
+          statement:
+            "The client must explicitly agree to the cancellation policy — the 24-hour notice window and the fee — before the booking can be confirmed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1678,7 +1812,8 @@ Then the booking is not confirmed and the client is prompted to agree first"
           ]
         },
         %{
-          statement: "A valid payment card must be captured and stored on file via the payment gateway before the booking is confirmed.",
+          statement:
+            "A valid payment card must be captured and stored on file via the payment gateway before the booking is confirmed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1697,7 +1832,8 @@ Then the booking is not confirmed and the client is prompted to retry with a dif
           ]
         },
         %{
-          statement: "The amount authorized on the client's card at booking is exactly the quoted price the client saw, in integer cents — the same number later invoiced at job completion, with no adjustment.",
+          statement:
+            "The amount authorized on the client's card at booking is exactly the quoted price the client saw, in integer cents — the same number later invoiced at job completion, with no adjustment.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1709,12 +1845,14 @@ Then the gateway authorizes exactly $195 with no added fee"
           ]
         },
         %{
-          statement: "Confirming the booking converts the accepted quote into a scheduled job visible to both the client and the business, and sends the client a confirmation with portal access.",
+          statement:
+            "Confirming the booking converts the accepted quote into a scheduled job visible to both the client and the business, and sends the client a confirmation with portal access.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Confirmed booking appears for client and business with portal access",
-              body: "Given the booking has been confirmed with card on file
+              body:
+                "Given the booking has been confirmed with card on file
 When the confirmation completes
 Then the visit appears as scheduled for both the business and the client, and the client receives a confirmation containing a magic-link to their portal"
             }
@@ -1722,8 +1860,18 @@ Then the visit appears as scheduled for both the business and the client, and th
         }
       ],
       questions: [
-        %{body: "Does accepting the quote authorize/charge the card immediately at booking, or just tokenize it for later charge on job completion?", status: :resolved, resolution: nil},
-        %{body: "Is a deposit required at booking, separate from the full invoice charged on job completion?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Does accepting the quote authorize/charge the card immediately at booking, or just tokenize it for later charge on job completion?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is a deposit required at booking, separate from the full invoice charged on job completion?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1738,10 +1886,16 @@ Then the visit appears as scheduled for both the business and the client, and th
     criteria: [
       %{description: "Client opens the portal via a valid magic link", verified: true},
       %{description: "Expired or invalid magic link denies access", verified: true},
-      %{description: "Upcoming visit shows the assigned cleaner's name and photo", verified: true},
+      %{
+        description: "Upcoming visit shows the assigned cleaner's name and photo",
+        verified: true
+      },
       %{description: "Reassigning the cleaner updates what the client sees", verified: true},
       %{description: "Unassigned upcoming visit shows a placeholder", verified: true},
-      %{description: "Completed visit in history shows checklist and before/after photos", verified: true},
+      %{
+        description: "Completed visit in history shows checklist and before/after photos",
+        verified: true
+      },
       %{description: "Portal proof-of-work matches the invoice's evidence", verified: true}
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
@@ -1749,12 +1903,14 @@ Then the visit appears as scheduled for both the business and the client, and th
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "Portal access is granted via a unique magic-link token tied to the client — there is no username/password login.",
+          statement:
+            "Portal access is granted via a unique magic-link token tied to the client — there is no username/password login.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Client opens the portal via a valid magic link",
-              body: "Given a client has been sent a magic-link token for their portal
+              body:
+                "Given a client has been sent a magic-link token for their portal
 When the client follows the link
 Then the portal opens showing their upcoming visits and service history without requiring a password"
             },
@@ -1768,7 +1924,8 @@ Then access to the portal is denied and the client is offered a way to request a
           ]
         },
         %{
-          statement: "Upcoming visits display the date/time and the named, photo-identified cleaner assigned to that visit.",
+          statement:
+            "Upcoming visits display the date/time and the named, photo-identified cleaner assigned to that visit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1787,7 +1944,8 @@ Then the client's portal shows Cleaner B's name and photo the next time it is vi
           ]
         },
         %{
-          statement: "A visit with no cleaner assigned yet shows a clear \"not yet assigned\" state instead of a blank or broken cleaner card.",
+          statement:
+            "A visit with no cleaner assigned yet shows a clear \"not yet assigned\" state instead of a blank or broken cleaner card.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1799,24 +1957,28 @@ Then the visit shows a \"cleaner not yet assigned\" placeholder instead of a bla
           ]
         },
         %{
-          statement: "Completed visits show the finished checklist results and before/after photos as proof-of-work in the client's service history.",
+          statement:
+            "Completed visits show the finished checklist results and before/after photos as proof-of-work in the client's service history.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Completed visit in history shows checklist and before/after photos",
-              body: "Given a client has a past visit that was completed with a finished checklist and before/after photos
+              body:
+                "Given a client has a past visit that was completed with a finished checklist and before/after photos
 When the client views that visit in their service history
 Then the checklist results and before/after photos are displayed"
             }
           ]
         },
         %{
-          statement: "The proof-of-work shown in the portal for a completed visit is the same evidence attached to that visit's invoice.",
+          statement:
+            "The proof-of-work shown in the portal for a completed visit is the same evidence attached to that visit's invoice.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Portal proof-of-work matches the invoice's evidence",
-              body: "Given a completed visit has an invoice with attached checklist and photos as dispute evidence
+              body:
+                "Given a completed visit has an invoice with attached checklist and photos as dispute evidence
 When the client views that same visit in the portal
 Then the checklist and photos shown match exactly what is attached to the invoice"
             }
@@ -1824,8 +1986,18 @@ Then the checklist and photos shown match exactly what is attached to the invoic
         }
       ],
       questions: [
-        %{body: "How long does a magic-link token stay valid before it expires and needs reissuing?", status: :resolved, resolution: nil},
-        %{body: "Does the portal show trust badges (bonded/insured/background-checked) alongside the assigned cleaner, or is that a separate story?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "How long does a magic-link token stay valid before it expires and needs reissuing?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Does the portal show trust badges (bonded/insured/background-checked) alongside the assigned cleaner, or is that a separate story?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1851,7 +2023,8 @@ Then the checklist and photos shown match exactly what is attached to the invoic
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "A client can reschedule or cancel an upcoming visit from the portal via their magic-link session, without contacting the office.",
+          statement:
+            "A client can reschedule or cancel an upcoming visit from the portal via their magic-link session, without contacting the office.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1863,12 +2036,14 @@ Then the visit is rescheduled to the new date/time and no fee is shown"
           ]
         },
         %{
-          statement: "Cancelling or rescheduling inside the notice window displays the applicable late fee (percent or flat, as configured) and requires the client to confirm before the change is finalized.",
+          statement:
+            "Cancelling or rescheduling inside the notice window displays the applicable late fee (percent or flat, as configured) and requires the client to confirm before the change is finalized.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Late cancellation shows fee before confirming",
-              body: "Given a client's visit starts in 12 hours, inside the 24h notice window, and the company charges a 50% late fee
+              body:
+                "Given a client's visit starts in 12 hours, inside the 24h notice window, and the company charges a 50% late fee
 When the client attempts to cancel from the portal
 Then the portal displays the late fee amount and requires the client to confirm before the cancellation is finalized"
             }
@@ -1887,19 +2062,22 @@ Then the visit is cancelled immediately with no fee charged"
           ]
         },
         %{
-          statement: "A confirmed reschedule or cancellation notifies the office and the assigned cleaner through the schedule-change alert path.",
+          statement:
+            "A confirmed reschedule or cancellation notifies the office and the assigned cleaner through the schedule-change alert path.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Reschedule notifies office and cleaner",
-              body: "Given a client confirms a reschedule of their visit
+              body:
+                "Given a client confirms a reschedule of their visit
 When the change is saved
 Then the office and the assigned cleaner receive a schedule-change alert reflecting the new date/time"
             }
           ]
         },
         %{
-          statement: "Rescheduling changes only the date/time of the visit; the price and scope are unaffected.",
+          statement:
+            "Rescheduling changes only the date/time of the visit; the price and scope are unaffected.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1911,7 +2089,8 @@ Then the job's price and scope remain unchanged and only the schedule is updated
           ]
         },
         %{
-          statement: "A visit that has already started, completed, or been cancelled cannot be rescheduled or cancelled again from the portal.",
+          statement:
+            "A visit that has already started, completed, or been cancelled cannot be rescheduled or cancelled again from the portal.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1923,20 +2102,21 @@ Then the portal blocks the action and explains the visit can no longer be change
           ]
         },
         %{
-          statement: "Same-day cancellations or reschedules are charged the maximum configured fee tier, distinct from the standard late-fee tier.",
+          statement:
+            "Same-day cancellations or reschedules are charged the maximum configured fee tier, distinct from the standard late-fee tier.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Same-day cancellation charges the maximum fee",
-              body: "Given a client's visit is scheduled for later today and the company's policy charges 100% for same-day cancellation
+              body:
+                "Given a client's visit is scheduled for later today and the company's policy charges 100% for same-day cancellation
 When the client cancels from the portal
 Then the portal displays the 100% fee and requires confirmation before the cancellation is finalized"
             }
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1961,7 +2141,8 @@ Then the portal displays the 100% fee and requires confirmation before the cance
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "A client can view their invoices, and each invoice's current status (unpaid, charge_pending, or paid), in the portal via their magic-link session.",
+          statement:
+            "A client can view their invoices, and each invoice's current status (unpaid, charge_pending, or paid), in the portal via their magic-link session.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1973,7 +2154,8 @@ Then both invoices are listed with their current status"
           ]
         },
         %{
-          statement: "A client can pay an unpaid invoice online using a card, either one on file or one entered at checkout.",
+          statement:
+            "A client can pay an unpaid invoice online using a card, either one on file or one entered at checkout.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1985,7 +2167,8 @@ Then the invoice transitions to charge_pending while the payment processes"
           ]
         },
         %{
-          statement: "An invoice is marked paid only after the payment gateway's webhook confirms the charge succeeded.",
+          statement:
+            "An invoice is marked paid only after the payment gateway's webhook confirms the charge succeeded.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1997,19 +2180,22 @@ Then the invoice is marked paid and the client sees the updated status in the po
           ]
         },
         %{
-          statement: "A declined charge leaves the invoice unpaid and lets the client retry payment or use a different card.",
+          statement:
+            "A declined charge leaves the invoice unpaid and lets the client retry payment or use a different card.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Declined card leaves invoice unpaid",
-              body: "Given a client submits payment for an invoice
+              body:
+                "Given a client submits payment for an invoice
 When the payment gateway declines the card
 Then the invoice remains unpaid and the client is shown the decline reason with an option to retry"
             }
           ]
         },
         %{
-          statement: "A client can save a card on file at payment so future invoices can be paid without re-entering card details.",
+          statement:
+            "A client can save a card on file at payment so future invoices can be paid without re-entering card details.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2021,19 +2207,22 @@ Then the card is stored on file for use on future invoices"
           ]
         },
         %{
-          statement: "At payment, the client can add a digital tip via preset percentage options, and the tip is recorded for the assigned cleaner and reflected in that cleaner's earnings.",
+          statement:
+            "At payment, the client can add a digital tip via preset percentage options, and the tip is recorded for the assigned cleaner and reflected in that cleaner's earnings.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Client adds a tip at payment",
-              body: "Given a client is paying an invoice for a completed visit with an assigned cleaner
+              body:
+                "Given a client is paying an invoice for a completed visit with an assigned cleaner
 When they select a 20% tip preset and complete payment
 Then the tip is recorded for that cleaner and appears in the cleaner's earnings"
             }
           ]
         },
         %{
-          statement: "Tipping is optional; a client can pay an invoice in full without adding a tip.",
+          statement:
+            "Tipping is optional; a client can pay an invoice in full without adding a tip.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2045,8 +2234,7 @@ Then the invoice is paid successfully with no tip recorded"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -2071,7 +2259,8 @@ Then the invoice is paid successfully with no tip recorded"
       persona: %{name: "Cleaning Client", slug: "cleaning-client", type: "proto"},
       rules: [
         %{
-          statement: "Immediately after a job is marked complete, the client receives a thank-you message for that visit.",
+          statement:
+            "Immediately after a job is marked complete, the client receives a thank-you message for that visit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2083,7 +2272,8 @@ Then the client receives a thank-you notification for that visit"
           ]
         },
         %{
-          statement: "Approximately 24 hours after job completion, the client receives a low-friction review request if they haven't already responded.",
+          statement:
+            "Approximately 24 hours after job completion, the client receives a low-friction review request if they haven't already responded.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2095,7 +2285,8 @@ Then the client receives a review prompt for that visit"
           ]
         },
         %{
-          statement: "If the client has already left a review for a visit, no duplicate review request is sent for that visit.",
+          statement:
+            "If the client has already left a review for a visit, no duplicate review request is sent for that visit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2107,7 +2298,8 @@ Then no additional review request is sent to the client"
           ]
         },
         %{
-          statement: "A review rating of 4 or 5 stars routes the client to publish the review publicly with the visit's details pre-filled.",
+          statement:
+            "A review rating of 4 or 5 stars routes the client to publish the review publicly with the visit's details pre-filled.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2119,19 +2311,22 @@ Then the client is directed to publish the review publicly with the visit detail
           ]
         },
         %{
-          statement: "A review rating of 3 stars or lower routes the client to a private complaint form addressed to the owner instead of a public review page, and no public review link is offered.",
+          statement:
+            "A review rating of 3 stars or lower routes the client to a private complaint form addressed to the owner instead of a public review page, and no public review link is offered.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Low rating routes to private complaint",
-              body: "Given a client rates a visit 2 stars
+              body:
+                "Given a client rates a visit 2 stars
 When they submit the rating
 Then the client is shown a private complaint form with no public review link offered, and the owner is notified"
             }
           ]
         },
         %{
-          statement: "A submitted private complaint is delivered to the owner along with the client's rating and the visit's details so the issue can be addressed before it becomes a public review.",
+          statement:
+            "A submitted private complaint is delivered to the owner along with the client's rating and the visit's details so the issue can be addressed before it becomes a public review.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2143,7 +2338,8 @@ Then the owner receives the complaint along with the client's rating and the vis
           ]
         },
         %{
-          statement: "A review or complaint can only be submitted for a visit that has been completed; visits not yet finished show no review prompt.",
+          statement:
+            "A review or complaint can only be submitted for a visit that has been completed; visits not yet finished show no review prompt.",
           scenarios: [
             %{
               kind: "failure path",
@@ -2155,8 +2351,7 @@ Then no review or rating prompt is shown for that visit"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   }

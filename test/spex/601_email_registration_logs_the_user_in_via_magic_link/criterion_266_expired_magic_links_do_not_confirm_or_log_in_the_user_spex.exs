@@ -19,7 +19,8 @@ defmodule CodeMySpecSpex.Story601.Criterion5492Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  spex "Magic link click confirms + logs in directly without intermediate screen", criterion: 266 do
+  spex "Magic link click confirms + logs in directly without intermediate screen",
+    criterion: 266 do
     scenario "Expired magic link does not confirm or log in the user" do
       given_ :registered_user_with_magic_link
 

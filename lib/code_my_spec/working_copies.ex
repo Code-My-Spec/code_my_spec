@@ -54,9 +54,10 @@ defmodule CodeMySpec.WorkingCopies do
   never connected presents `nil` and is minted one, and a checkout that has
   presents its id and is recognised.
 
-  An id that names no harness (a row deleted while the checkout kept its
-  file), same as no id at all, is minted rather than failing: the cost of a
-  new id is a resync, which a join does anyway. Minted every time, never
+  An id that names no harness anywhere (a row deleted while the checkout kept
+  its file) is recreated under that same id, so the checkout and the server
+  keep agreeing about who it is; one held by another project is never taken
+  over and is minted fresh. A join with no id is minted, below. Minted every time, never
   matched back by device and root — story 1000's criterion 5 settled that a
   join with no id is always a new agent, even from a path and device the
   server has seen, because the alternative merges two different agents that
@@ -73,7 +74,7 @@ defmodule CodeMySpec.WorkingCopies do
 
     with :ok <- refuse_metadata_dir(opts[:root]) do
       case existing(project_id, working_copy_id) do
-        nil -> create(project_id, label, opts[:device], opts[:working_copy_id])
+        nil -> create(project_id, label, opts[:device], presented_id(working_copy_id, opts))
         harness -> touch(harness, label)
       end
     end
@@ -702,6 +703,22 @@ defmodule CodeMySpec.WorkingCopies do
 
   # Scoped by project as well as id: a misconfigured checkout must not adopt
   # another project's copy.
+  # The id to mint under: the one onboarding names, else the one the checkout
+  # presented and no row anywhere holds. A restarted box whose row is gone
+  # (a reset database, a deleted copy) comes back as the same working copy
+  # instead of being issued a second id its own file will not adopt. An id
+  # another project holds is never taken over: that one is minted fresh.
+  defp presented_id(presented, opts) do
+    with nil <- opts[:working_copy_id],
+         {:ok, id} <- Ecto.UUID.cast(presented),
+         false <- Repo.exists?(from(w in WorkingCopy, where: w.id == ^id)) do
+      id
+    else
+      id when is_binary(id) -> id
+      _ -> nil
+    end
+  end
+
   defp existing(_project_id, nil), do: nil
 
   defp existing(project_id, working_copy_id) do
@@ -916,6 +933,22 @@ defmodule CodeMySpec.WorkingCopies do
   end
 
   def list_on_device(_device_id), do: %{}
+
+  @doc """
+  The projects whose app is serving from a copy on these devices, as
+  `device_id => [project_id]`. A device with none is absent. A preview address
+  belongs to the project, so that is what a caller builds one from.
+  """
+  @spec serving_projects_by_device([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Ecto.UUID.t()]}
+  def serving_projects_by_device(device_ids) when is_list(device_ids) do
+    from(w in WorkingCopy,
+      where: w.device_id in ^device_ids and w.app_status == "serving",
+      distinct: true,
+      select: {w.device_id, w.project_id}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
 
   @doc """
   The ids of every copy on each of these devices, as `device_id => [id]`. A

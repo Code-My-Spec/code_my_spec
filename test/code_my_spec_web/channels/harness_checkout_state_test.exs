@@ -108,7 +108,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
 
     {:ok, prompt} = PromoteWork.command(scope, %{story_id: story.id})
 
-    assert prompt =~ ~r/already on the running dev\s+copy/,
+    assert prompt =~ ~r/already published to the development\s+branch/,
            "a promoted story should read as done rather than as something to " <>
              "remedy. Got: " <> prompt
 

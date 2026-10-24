@@ -157,6 +157,7 @@ config :logger, :default_formatter,
     :cms_decision,
     :cms_blocking,
     :cms_why,
+    :cms_budget_ms,
     # Whose graph a `[Requirements]` line is about. This server handles several
     # projects at once — broken_oaths and the qa sandboxes among them — and
     # without it a count of recomputes is a count across all of them. I reported

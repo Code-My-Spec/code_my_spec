@@ -52,7 +52,7 @@ defmodule CodeMySpec.Requirements.Node do
     field(:description, :string)
     field(:satisfied, :boolean, default: false)
     field(:details, :map, default: %{})
-    field(:checked_at, :naive_datetime)
+    field(:checked_at, :naive_datetime_usec)
 
     # What this requirement's own sources looked like when its answer was last
     # worked out. `nil` on a row computed before this existed, which reads as
@@ -88,7 +88,7 @@ defmodule CodeMySpec.Requirements.Node do
     # there is exactly one of it rather than a fresh duplicate per render.
     belongs_to(:working_copy, CodeMySpec.WorkingCopies.WorkingCopy, type: :binary_id)
 
-    timestamps()
+    timestamps(type: :naive_datetime_usec)
   end
 
   @cast_fields [

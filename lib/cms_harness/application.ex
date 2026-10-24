@@ -37,11 +37,16 @@ defmodule CmsHarness.Application do
     remaining = apply_harness_flags(argv)
     handle_cli_args(remaining)
 
-    if CmsHarness.Migrate.command?(remaining) do
-      ensure_directories()
-      CmsHarness.Migrate.start(remaining)
-    else
-      start_harness()
+    cond do
+      CmsHarness.Migrate.command?(remaining) ->
+        ensure_directories()
+        CmsHarness.Migrate.start(remaining)
+
+      CmsHarness.Cli.SopsKey.command?(remaining) ->
+        CmsHarness.Cli.SopsKey.start(remaining)
+
+      true ->
+        start_harness()
     end
   end
 

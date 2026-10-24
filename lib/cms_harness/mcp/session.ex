@@ -41,7 +41,8 @@ defmodule CmsHarness.Mcp.Session do
     case Mcp.connect(
            agent_id,
            Keyword.get(opts, :working_copy_id),
-           Keyword.get(opts, :working_copy)
+           Keyword.get(opts, :working_copy),
+           project_id: Keyword.get(opts, :project_id)
          ) do
       {:ok, client} ->
         {:ok, _} = Registry.register(CmsHarness.Registry, {:mcp_session, agent_id}, client)

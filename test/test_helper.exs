@@ -13,6 +13,14 @@
 # answering false for a reason nobody intended.
 sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:sops]
 
+# On SQLite (the desktop's database), two kinds of test are off:
+#   * :concurrent_writers — two sandbox owners writing at once; SQLite has one
+#     writer and each owner holds a write transaction for its whole test.
+#   * :postgres — a Postgres-only feature the desktop does not have: pgvector
+#     search, and the server's project import (catalog and sequences).
+sqlite_exclusions =
+  if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers, :postgres], else: []
+
 ExUnit.start(
   # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a
   # loaded gate (conversation_channel_test, 2026-10-06). A passing assert returns
@@ -55,7 +63,7 @@ ExUnit.start(
       # Spends real money and reaches a real provider. The cassettes it writes
       # are replayed by the rest of the suite, which runs by default.
       :record_alloy_turn
-    ] ++ sops_exclusions
+    ] ++ sops_exclusions ++ sqlite_exclusions
 )
 
 # Refuse to run against a schema this working copy has outgrown.
@@ -90,13 +98,14 @@ ExUnit.start(
 #
 # Cannot-answer is reported, not treated as clean.
 #
-# The check itself now lives in `Mix.Tasks.Cms.CheckTestMigrations`, because
+# The check itself now lives in `CodeMySpec.TestMigrations`, because
 # `mix spex` needed it too and had no way to get it: it loads no helper at all,
 # so the one command an agent is told to run for BDD work was the one that
 # skipped this — and the symptom arrived as `ERROR 42703 (undefined_column)`
 # from inside a `given_` step, naming no migration (40b6424d). The `spex` alias
-# runs that task before booting; this line is the same check for `mix test`.
-Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
+# runs `Mix.Tasks.Cms.CheckTestMigrations` (a thin wrapper over the same
+# function) before booting; this line is the same check for `mix test`.
+CodeMySpec.TestMigrations.refuse_if_behind!()
 
 # Back, because the escape it watched for is back too (195ac5e5).
 #
@@ -210,6 +219,33 @@ ExUnit.after_suite(fn _stats -> report_dirty_tables.("after this run") end)
 # visible to something out of process, which a sandboxed connection never is —
 # and `Sandbox.mode/2` raises against one rather than no-opping. It read as a
 # broken suite instead of a deliberate configuration.
+# A fresh SQLite database numbers every table from 1, so a story's id and its
+# number coincide — a coincidence a used database never has, and tests that
+# tell the two apart depend on. Start each table's ids at its own high offset.
+if CodeMySpec.Repo.sqlite?() do
+  import Ecto.Query, only: [from: 2]
+
+  :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo, sandbox: false)
+
+  CodeMySpec.Repo.all(from(s in "sqlite_sequence", select: s.name))
+  |> Enum.concat(
+    CodeMySpec.Repo.all(
+      from(m in "sqlite_master",
+        where: m.type == "table" and like(m.sql, "%AUTOINCREMENT%"),
+        select: m.name
+      )
+    )
+  )
+  |> Enum.uniq()
+  |> Enum.with_index(1)
+  |> Enum.each(fn {table, i} ->
+    CodeMySpec.Repo.delete_all(from(s in "sqlite_sequence", where: s.name == ^table))
+    CodeMySpec.Repo.insert_all("sqlite_sequence", [%{name: table, seq: i * 100_000}])
+  end)
+
+  Ecto.Adapters.SQL.Sandbox.checkin(CodeMySpec.Repo)
+end
+
 if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] ==
      Ecto.Adapters.SQL.Sandbox do
   Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)

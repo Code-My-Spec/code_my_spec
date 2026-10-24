@@ -9,6 +9,9 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
 
   use CodeMySpecTest.DataCase, async: false
 
+  # Pgvector: Postgres only.
+  @moduletag :postgres
+
   @moduletag :capture_log
 
   import Ecto.Query
@@ -175,8 +178,10 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
   end
 
   defp designate(scope, copy, true), do: {:ok, _} = WorkingCopies.designate_main(scope, copy.id)
+
   defp designate(scope, _copy, false) do
     {:ok, main_copy} = WorkingCopies.fetch(scope.active_working_copy_id)
+
     {:ok, main_copy} =
       WorkingCopies.report_root(main_copy, CodeMySpec.TempFile.owned_dir("main-copy"))
 

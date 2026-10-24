@@ -372,7 +372,7 @@
   },
   {
     "name": "retire_criterion",
-    "description": "Retires an acceptance criterion. There is no delete.\n\nA retired criterion keeps its number, which is never given to another, and\ndrops out of its story's coverage. `restore_criterion` brings it back.\nA spec file naming it is not touched; delete it if it no longer applies.\n",
+    "description": "Retires an acceptance criterion. There is no delete.\n\nA retired criterion keeps its number, which is never given to another, and\ndrops out of its story's coverage. `restore_criterion` brings it back.\nIts spex are deleted on every working copy (and any other spex naming a number\nthat is not a live criterion): the result lists each as deleted, or as\npending deletion when the working copy cannot be reached.\n",
     "input_schema": {
       "properties": {
         "criterion_number": {

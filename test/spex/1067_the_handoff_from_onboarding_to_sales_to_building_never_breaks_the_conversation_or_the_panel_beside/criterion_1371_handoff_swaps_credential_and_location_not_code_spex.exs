@@ -46,10 +46,11 @@ defmodule CodeMySpecSpex.Story1033.Criterion3432Spex do
   defp restore_credential_env(nil), do: Application.delete_env(:code_my_spec, Credential)
   defp restore_credential_env(config), do: Application.put_env(:code_my_spec, Credential, config)
 
-  spex "The same agent relocates to the working copy rather than a second one appearing", criterion: 1371 do
+  spex "The same agent relocates to the working copy rather than a second one appearing",
+    criterion: 1371 do
     scenario "Handoff swaps credential and location, not code" do
       given_ "the pre-signup agent has been running on our credential, on our infrastructure",
-            context do
+             context do
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 

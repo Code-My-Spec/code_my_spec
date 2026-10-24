@@ -22,7 +22,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion4671Spex do
   spex "A spec must name its criterion", criterion: 1547 do
     scenario "a spec whose spex call names no criterion" do
       given_ "a spec file whose spex call names no criterion", context do
-        :ok = Environments.write_file(context.environment, @path, CriterionScript.spex_naming(nil))
+        :ok =
+          Environments.write_file(context.environment, @path, CriterionScript.spex_naming(nil))
+
         {:ok, context}
       end
 

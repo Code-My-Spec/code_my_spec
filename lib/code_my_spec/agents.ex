@@ -32,6 +32,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.FileEdits,
       CodeMySpec.Integrations,
       CodeMySpec.Issues,
+      CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
       CodeMySpec.PromotionQueue.Waits,
@@ -593,6 +594,12 @@ defmodule CodeMySpec.Agents do
     * Otherwise unchanged.
   """
   @spec scope_for(Scope.t(), Agent.t()) :: Scope.t()
+  def scope_for(%Scope{} = scope, %Agent{execution_mode: :detached}) do
+    # The authenticated user may have another checkout selected. A detached
+    # conversation must never borrow that checkout or its filesystem scope.
+    %{scope | active_working_copy_id: nil, cwd: nil}
+  end
+
   def scope_for(%Scope{active_working_copy_id: nil} = scope, %Agent{working_copy_id: id})
       when is_binary(id) do
     case WorkingCopies.fetch(id) do
@@ -821,9 +828,10 @@ defmodule CodeMySpec.Agents do
         import Ecto.Query, only: [from: 2]
 
         from(q in "question_requests",
-          where: q.agent_id == type(^id, :binary_id) and q.status == "pending"
+          where: q.agent_id == type(^id, :binary_id) and q.status == "pending",
+          update: [set: [agent_id: type(^to, :binary_id)]]
         )
-        |> Repo.update_all(set: [agent_id: Ecto.UUID.dump!(to)])
+        |> Repo.update_all([])
 
         :ok
     end
@@ -915,7 +923,9 @@ defmodule CodeMySpec.Agents do
   defp account_for_interrupted_turn(_scope, %Agent{turn_started_at: nil} = agent) do
     Offers.abandon_turns(agent.id)
 
-    if agent.continuous && is_nil(Agent.active_task(agent)) do
+    # An agent that is off is told nothing: nothing reaches it until it is
+    # turned on, so the note would only pile up as undelivered.
+    if agent.continuous && not Agent.off?(agent) && is_nil(Agent.active_task(agent)) do
       send_to_agent(agent.id, "The harness restarted.", :own_reply,
         offer: {:resume, {"restart", nil}}
       )
@@ -1007,7 +1017,7 @@ defmodule CodeMySpec.Agents do
   # a surviving process collides and leaves the row stuck at `:starting`.
   defp halt_for_restart(%Agent{} = agent) do
     agent.working_copy_id
-    |> Transport.impl().stop_agent(agent, @stop_timeout_ms)
+    |> Transport.stop_agent(agent, @stop_timeout_ms)
     |> stopped?(agent)
   end
 
@@ -1022,6 +1032,9 @@ defmodule CodeMySpec.Agents do
   the copy can be alive.
   """
   @spec working_copy_connected?(Agent.t()) :: boolean()
+  def working_copy_connected?(%Agent{execution_mode: :detached} = agent),
+    do: present?(agent.project_id, agent)
+
   def working_copy_connected?(%Agent{working_copy_id: id}) do
     match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(id))
   end
@@ -1395,7 +1408,15 @@ defmodule CodeMySpec.Agents do
 
         with {:ok, conversation} <- open_conversation(agent_scope(agent), agent),
              {:ok, {message, offered, admission}} <-
-               record_admission(agent, conversation, text, ref, event, opts[:offer]) do
+               record_admission(
+                 agent,
+                 conversation,
+                 text,
+                 ref,
+                 event,
+                 opts[:offer],
+                 Keyword.get(opts, :sender_id, "operator")
+               ) do
           agent
           |> dispatch_admitted(admission, timeout, message, offered, opts)
           |> dispatch_disposition()
@@ -1447,8 +1468,14 @@ defmodule CodeMySpec.Agents do
   @spec main_agent(Scope.t()) :: Agent.t() | nil
   def main_agent(%Scope{} = scope) do
     case WorkingCopies.main(scope) do
-      nil -> nil
-      copy -> scope |> running_main_agents() |> Enum.find(&(&1.working_copy_id == copy.id))
+      nil ->
+        scope |> running_main_agents() |> Enum.find(&(&1.execution_mode == :detached))
+
+      copy ->
+        agents = running_main_agents(scope)
+
+        Enum.find(agents, &(&1.working_copy_id == copy.id)) ||
+          Enum.find(agents, &(&1.execution_mode == :detached))
     end
   end
 
@@ -1728,11 +1755,218 @@ defmodule CodeMySpec.Agents do
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
   def ensure_main_agent(%Scope{} = scope) do
     case {WorkingCopies.main(scope), main_agent(scope)} do
-      {nil, _} -> {:error, :no_main_working_copy}
-      {_copy, %Agent{} = agent} -> {:ok, agent}
-      {copy, nil} -> main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
+      {nil, %Agent{execution_mode: :detached} = agent} ->
+        ensure_detached_running(scope, agent)
+
+      {nil, _} ->
+        {:error, :no_main_working_copy}
+
+      {copy, %Agent{execution_mode: :detached} = agent} ->
+        if copy_connected?(copy),
+          do: move_main_agent(scope, copy),
+          else: ensure_detached_running(scope, agent)
+
+      {_copy, %Agent{} = agent} ->
+        {:ok, agent}
+
+      {copy, nil} ->
+        main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
     end
   end
+
+  @doc "Hand environment setup to main after product records the initial choices."
+  def start_project_setup(%Scope{} = scope) do
+    with {:ok, project} <- CodeMySpec.Projects.Onboarding.fetch(scope) do
+      :global.trans({{__MODULE__, :setup, project.id}, self()}, fn ->
+        with {:ok, project} <- CodeMySpec.Projects.Onboarding.fetch(scope),
+             phase when phase in [:setup_handoff, :stories] <-
+               CodeMySpec.Projects.Onboarding.phase(project),
+             {:ok, agent} <- setup_main(scope),
+             :ok <- if(Agent.off?(agent), do: {:error, :agent_off}, else: :ok),
+             {:ok, agent} <- ensure_detached_running(scope, agent),
+             true <- present?(scope, agent),
+             :ok <- deliver_setup(scope, project, agent),
+             {:ok, project} <- CodeMySpec.Projects.Onboarding.record_handoff(scope, agent.id) do
+          {:ok, project, agent}
+        else
+          phase when phase in [:synopsis, :build_destination] -> {:error, :incomplete_onboarding}
+          false -> {:error, :no_execution_host}
+          error -> error
+        end
+      end)
+    end
+  end
+
+  defp setup_main(scope) do
+    case main_agent(scope) ||
+           Enum.find(
+             list_agents(scope),
+             &(&1.role == :main and &1.execution_mode == :detached and is_nil(&1.retired_at))
+           ) do
+      %Agent{} = agent ->
+        {:ok, agent}
+
+      nil ->
+        case WorkingCopies.main(scope) do
+          nil -> start_detached_agent(scope, :main)
+          _copy -> ensure_main_agent(scope)
+        end
+    end
+  end
+
+  defp deliver_setup(scope, project, agent) do
+    ref = "project-setup-#{agent.id}"
+
+    with {:ok, conversation} <- open_conversation(scope, agent) do
+      case Repo.get_by(Conversations.Message, conversation_id: conversation.id, delivery_ref: ref) do
+        nil ->
+          with {:ok, {message, offered, admission}} <-
+                 record_admission(
+                   agent,
+                   conversation,
+                   CodeMySpec.Agents.DefinitionContext.setup_message(project),
+                   ref,
+                   :operator_message,
+                   nil,
+                   "setup"
+                 ) do
+            case dispatch_admitted(agent, admission, @message_timeout_ms, message, offered,
+                   async: true
+                 ) do
+              {:ok, _, _} -> :ok
+              error -> error
+            end
+          end
+
+        _message ->
+          :ok
+      end
+    end
+  end
+
+  @doc "The project's product conversation can begin before a checkout exists."
+  def ensure_product_agent(%Scope{user: %{id: _}, active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    with {:ok, project} <- CodeMySpec.Projects.get_project(scope, scope.active_project_id),
+         true <-
+           CodeMySpec.Accounts.Authorization.authorize(:read_account, scope, project.account_id) do
+      :global.trans({{__MODULE__, :product, project.id}, self()}, fn ->
+        with {:ok, agent} <- product_or_start(scope),
+             {:ok, agent} <- ensure_detached_running(scope, agent),
+             :ok <- introduce_product(scope, agent) do
+          {:ok, agent}
+        end
+      end)
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def ensure_product_agent(_scope), do: {:error, :missing_active_project}
+
+  defp product_or_start(scope) do
+    case Enum.find(list_agents(scope), &(&1.role == :product and is_nil(&1.retired_at))) do
+      %Agent{execution_mode: :detached} = agent ->
+        case WorkingCopies.main(scope) do
+          nil -> {:ok, agent}
+          copy -> if copy_connected?(copy), do: relocate(scope, agent, copy), else: {:ok, agent}
+        end
+
+      %Agent{} = agent ->
+        {:ok, agent}
+
+      nil ->
+        start_detached_product(scope)
+    end
+  end
+
+  defp copy_connected?(copy),
+    do: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
+
+  defp start_detached_product(scope), do: start_detached_agent(scope, :product)
+
+  defp start_detached_agent(scope, role) do
+    if Application.get_env(:code_my_spec, :env) == :desktop do
+      with {:ok, {provider, model}, _source} <- resolve_model(scope, role),
+           {:ok, _credential} <- Credential.fetch(scope, provider) do
+        root = CodeMySpec.Paths.agents_root()
+        directory = Path.join([root, scope.active_project_id, Atom.to_string(role)])
+
+        with :ok <- File.mkdir_p(directory) do
+          AgentsRepository.create_agent(scope, %{
+            role: role,
+            engine: :alloy,
+            provider: provider,
+            model: model,
+            execution_mode: :detached,
+            working_copy_id: nil,
+            working_copy: directory,
+            continuous: false,
+            tools: tools_for(scope, %{role: role, working_copy_id: nil}),
+            status: :starting
+          })
+        end
+      end
+    else
+      {:error, :no_execution_host}
+    end
+  end
+
+  defp ensure_detached_running(scope, %Agent{execution_mode: :detached} = agent) do
+    scope = scope_for(scope, agent)
+
+    cond do
+      Agent.off?(agent) or present?(scope, agent) ->
+        {:ok, agent}
+
+      Application.get_env(:code_my_spec, :env) != :desktop ->
+        {:error, :no_execution_host}
+
+      true ->
+        with {:ok, credential} <- Credential.fetch(scope, agent.provider),
+             {:ok, _} <- open_conversation(scope, agent),
+             hydrated =
+               LaunchRequest.hydrate(scope, %{
+                 agent
+                 | credential: credential,
+                   tools: tools_of(scope, agent)
+               }),
+             {:ok, report} <- Transport.start_agent(nil, hydrated, @start_timeout_ms),
+             {:ok, started} <- record_started(scope, agent, report) do
+          broadcast(scope, {:agent_started, started})
+          {:ok, started}
+        end
+    end
+  end
+
+  defp ensure_detached_running(_scope, agent), do: {:ok, agent}
+
+  defp introduce_product(scope, %Agent{execution_mode: :detached} = agent) do
+    with false <- Agent.off?(agent),
+         {:ok, conversation} <- open_conversation(scope, agent),
+         ref = "project-definition-#{agent.id}",
+         nil <-
+           Repo.get_by(Conversations.Message, conversation_id: conversation.id, delivery_ref: ref),
+         {:ok, {message, offered, admission}} <-
+           record_admission(
+             agent,
+             conversation,
+             CodeMySpec.Agents.DefinitionContext.message(scope),
+             ref,
+             :operator_message,
+             nil,
+             "setup"
+           ) do
+      dispatch_admitted(agent, admission, @message_timeout_ms, message, offered, async: true)
+      :ok
+    else
+      true -> :ok
+      %Conversations.Message{} -> :ok
+      {:error, _} = error -> error
+    end
+  end
+
+  defp introduce_product(_scope, _agent), do: :ok
 
   # A main agent somebody turned off is still the project's agent; opening the
   # project shows it off rather than starting another.
@@ -1770,10 +2004,15 @@ defmodule CodeMySpec.Agents do
       when is_binary(copy_id) and is_binary(root) and root != "",
       do: ensure_copy_agents(scope, copy, home_roles(copy))
 
-  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root}, roles)
+  def ensure_copy_agents(%Scope{} = scope, %{id: copy_id, root: root} = copy, roles)
       when is_binary(copy_id) and is_binary(root) and root != "" do
     on_copy =
-      scope |> AgentsRepository.list_agents() |> Enum.filter(&(&1.working_copy_id == copy_id))
+      scope
+      |> AgentsRepository.list_agents()
+      |> Enum.filter(fn agent ->
+        agent.working_copy_id == copy_id or
+          (Map.get(copy, :main, false) and agent.execution_mode == :detached)
+      end)
 
     agents = Enum.reject(on_copy, &Agent.retired?/1)
 
@@ -2116,13 +2355,39 @@ defmodule CodeMySpec.Agents do
         :none
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
-        :none
+        with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
 
       %Agent{} = agent ->
-        with {:ok, moved} <- relocate(scope, agent, copy) do
-          move_main_copy_roster(scope, agent.working_copy_id, copy)
+        with {:ok, moved} <- relocate(scope, agent, copy),
+             :ok <- move_main_copy_roster(scope, agent.working_copy_id, copy) do
           {:ok, moved}
         end
+    end
+  end
+
+  # Main can leave setup scratch when a real main copy is designated. Stop the
+  # old engine before changing its routing; its conversation stays with its id.
+  defp relocate(scope, %Agent{execution_mode: :detached} = agent, copy) do
+    with {:ok, credential} <- Credential.fetch(scope, agent.provider),
+         :ok <- halt_for_restart(agent),
+         {:ok, moved} <-
+           AgentsRepository.update_agent(scope, agent, %{
+             execution_mode: :working_copy,
+             working_copy_id: copy.id,
+             working_copy: copy.root,
+             status: :starting,
+             turn_started_at: nil,
+             os_pid: nil,
+             os_boot_id: nil
+           }),
+         :ok <- carry_on_if_mid_turn(scope, agent),
+         {:ok, started} <-
+           launch(
+             scope,
+             LaunchRequest.hydrate(scope_for(scope, moved), %{moved | credential: credential})
+           ) do
+      broadcast(scope, {:agent_started, started})
+      {:ok, started}
     end
   end
 
@@ -2143,8 +2408,17 @@ defmodule CodeMySpec.Agents do
 
     scope
     |> seat_holders()
-    |> Enum.filter(&(&1.working_copy_id == from_id and &1.role in others))
-    |> Enum.each(&relocate(scope, &1, copy))
+    |> Enum.filter(
+      &(&1.role in others and
+          (&1.execution_mode == :detached or
+             (&1.working_copy_id == from_id and &1.working_copy_id != copy.id)))
+    )
+    |> Enum.reduce_while(:ok, fn agent, :ok ->
+      case relocate(scope, agent, copy) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   # The project's agent wherever it currently is, which during a move is not
@@ -2188,6 +2462,7 @@ defmodule CodeMySpec.Agents do
     subject = :crypto.hash(:sha256, text) |> Base.encode16(case: :lower)
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
+         {:ok, agent} <- restore_detached_recipient(scope, agent),
          :ok <- direct_message_transport(scope, agent, event),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
@@ -2231,6 +2506,14 @@ defmodule CodeMySpec.Agents do
   end
 
   defp direct_message_transport(_scope, _agent, _event), do: :ok
+
+  defp restore_detached_recipient(
+         scope,
+         %Agent{execution_mode: :detached, retired_at: nil} = agent
+       ),
+       do: ensure_detached_running(scope, agent)
+
+  defp restore_detached_recipient(_scope, agent), do: {:ok, agent}
 
   defp report_repeated_instruction(scope, agent, offered) do
     Offers.take_instruction_attention(offered, fn ->
@@ -2496,11 +2779,7 @@ defmodule CodeMySpec.Agents do
   # tool it is running now, and that it is waiting on its person. State on the
   # row, never a step in the conversation.
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "tool_activity"} = event, _opts),
-    do:
-      record_activity(scope, agent_id, %{
-        current_tool: tool_summary(event["tool"]),
-        waiting_since: nil
-      })
+    do: count_tool(scope, agent_id, tool_name(event["tool"]))
 
   def record_turn_event(%Scope{} = scope, agent_id, %{"kind" => "waiting"}, _opts),
     do: record_activity(scope, agent_id, %{waiting_since: DateTime.utc_now()})
@@ -2526,7 +2805,12 @@ defmodule CodeMySpec.Agents do
              scope,
              agent,
              Map.merge(
-               %{turn_started_at: nil, current_tool: nil, waiting_since: nil},
+               %{
+                 turn_started_at: nil,
+                 current_tool: nil,
+                 turn_tool_count: nil,
+                 waiting_since: nil
+               },
                refusal_outlived(agent, agent.turn_started_at)
              )
            ) do
@@ -2562,10 +2846,15 @@ defmodule CodeMySpec.Agents do
     # compares task completions against it.
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
          {:ok, agent} <-
-           AgentsRepository.update_agent(scope, agent, %{
-             turn_started_at: agent.turn_started_at || DateTime.utc_now(),
-             waiting_since: nil
-           }),
+           AgentsRepository.update_agent(
+             scope,
+             agent,
+             %{
+               turn_started_at: agent.turn_started_at || DateTime.utc_now(),
+               waiting_since: nil
+             }
+             |> Map.merge(fresh_turn_tally(agent))
+           ),
          _ = broadcast(scope, {:agent_turn, agent}),
          {:ok, conversation} <- open_conversation(scope, agent) do
       :ok = Offers.observe_instruction_turn(agent)
@@ -2637,15 +2926,46 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # The tool an agent is running, as the team panel shows it: the same line for
-  # an agent we run (its tool call) and a terminal session (its hook).
-  defp track_tool(scope, agent, %{"kind" => "tool_start", "tool" => tool}),
-    do: record_activity(scope, agent.id, %{current_tool: tool_summary(tool)})
+  # The tool an agent last called this turn and how many it has called, as the
+  # team panel shows them: an icon and a tally, the same for an agent we run
+  # and a terminal session (both report tool_start from their transcript).
+  # Names only, never the command.
+  # A terminal session's tools are counted from its PreToolUse hook (above),
+  # which arrives first; its transcript's tool_start would count them twice.
+  defp track_tool(_scope, %Agent{engine: engine}, _event) when engine in [:claude_code, :codex],
+    do: :ok
 
-  defp track_tool(scope, agent, %{"kind" => "tool_end"}),
-    do: record_activity(scope, agent.id, %{current_tool: nil})
+  defp track_tool(scope, agent, %{"kind" => "tool_start", "tool" => tool}),
+    do: count_tool(scope, agent.id, tool_name(tool))
 
   defp track_tool(_scope, _agent, _event), do: :ok
+
+  # Counted on the fresh row: tool calls arrive faster than any caller's copy.
+  # A nil tool (a hook reporting none running) clears the name, not the tally.
+  defp count_tool(scope, agent_id, name) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, agent} <-
+           AgentsRepository.update_agent(scope, agent, tool_attrs(agent, name)) do
+      broadcast(scope, {:agent_turn, agent})
+    end
+
+    :ok
+  end
+
+  defp tool_attrs(_agent, nil), do: %{current_tool: nil, waiting_since: nil}
+
+  defp tool_attrs(agent, name),
+    do: %{
+      current_tool: name,
+      turn_tool_count: (agent.turn_tool_count || 0) + 1,
+      waiting_since: nil
+    }
+
+  # A new turn starts its tally from nothing; a duplicate start keeps it.
+  defp fresh_turn_tally(%Agent{turn_started_at: nil}),
+    do: %{current_tool: nil, turn_tool_count: nil}
+
+  defp fresh_turn_tally(_agent), do: %{}
 
   defp record_activity(scope, agent_id, attrs) do
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
@@ -2656,16 +2976,8 @@ defmodule CodeMySpec.Agents do
     :ok
   end
 
-  defp tool_summary(%{"name" => name} = tool) when is_binary(name) do
-    input = tool["input"] || %{}
-
-    case input["command"] || input["file_path"] || input["path"] || input["pattern"] do
-      detail when is_binary(detail) and detail != "" -> "#{name}: #{String.slice(detail, 0, 80)}"
-      _ -> name
-    end
-  end
-
-  defp tool_summary(_tool), do: nil
+  defp tool_name(%{"name" => name}) when is_binary(name), do: name
+  defp tool_name(_tool), do: nil
 
   defp broadcast_unreferenced_ready(scope, agent_id, agent, event) do
     if is_nil(event["ref"]) and not is_nil(agent.turn_started_at) do
@@ -3243,7 +3555,7 @@ defmodule CodeMySpec.Agents do
   # stands.
   # See knowledge/agents, "Stopping".
   defp end_process(_scope, %Agent{} = agent) do
-    result = Transport.impl().stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
+    result = Transport.stop_agent(agent.working_copy_id, agent, @stop_timeout_ms)
     if present?(agent.project_id, agent), do: stopped?(result, agent), else: :ok
   end
 
@@ -3346,6 +3658,38 @@ defmodule CodeMySpec.Agents do
   @doc "The agent types there are."
   @spec roles() :: [atom()]
   defdelegate roles(), to: Agent
+
+  @doc "The recommended model for a role on a selected provider."
+  def default_model(role, provider) do
+    case List.keyfind(Defaults.for_role(role), provider, 0) do
+      {_, model} -> model
+      nil -> nil
+    end
+  end
+
+  @doc "Whether this user has deliberately chosen agent models."
+  def models_configured?(scope), do: AgentsRepository.list_model_settings(scope) != []
+
+  @doc "Saves the submitted role choices together, or leaves all choices unchanged."
+  def save_model_settings(scope, params) do
+    CodeMySpec.Repo.transaction(fn ->
+      for role <- roles(), choice = params[to_string(role)], is_map(choice) do
+        result =
+          case choice["provider"] do
+            blank when blank in [nil, ""] -> clear_model_setting(scope, role)
+            provider -> put_model_setting(scope, role, provider, empty_model(choice["model"]))
+          end
+
+        case result do
+          {:error, reason} -> CodeMySpec.Repo.rollback(reason)
+          _ -> :ok
+        end
+      end
+    end)
+  end
+
+  defp empty_model(model) when model in [nil, ""], do: nil
+  defp empty_model(model), do: String.trim(model)
 
   @doc "Every provider that can be chosen, connected or not."
   @spec provider_names() :: [String.t()]

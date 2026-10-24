@@ -160,12 +160,12 @@ defmodule CodeMySpec.Qa.StoryReviews do
   defp read_story(scope, story_id, lock?) do
     query =
       from(s in "stories",
-        where: s.id == ^story_id and s.project_id == ^Ecto.UUID.dump!(scope.active_project_id),
+        where: s.id == ^story_id and s.project_id == type(^scope.active_project_id, :binary_id),
         select: %{
           id: s.id,
-          qa_ready_at: s.qa_ready_at,
+          qa_ready_at: type(s.qa_ready_at, :utc_datetime_usec),
           qa_ready_commit: s.qa_ready_commit,
-          qa_reviewed_at: s.qa_reviewed_at,
+          qa_reviewed_at: type(s.qa_reviewed_at, :utc_datetime_usec),
           qa_reviewed_commit: s.qa_reviewed_commit
         }
       )

@@ -17,6 +17,7 @@ defmodule CodeMySpec.ToolLibrary do
     top_level?: true,
     deps: [
       CodeMySpec.WorkingCopies.Tools,
+      CodeMySpec.Projects.Tools,
       CodeMySpec.Stories.Tools,
       CodeMySpec.Provisioning.Tools,
       CodeMySpec.Components.Tools,
@@ -45,6 +46,7 @@ defmodule CodeMySpec.ToolLibrary do
   def tools,
     do:
       CodeMySpec.Personas.Tools.all() ++
+        CodeMySpec.Projects.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
         CodeMySpec.Embeddings.Tools.all() ++
@@ -63,6 +65,18 @@ defmodule CodeMySpec.ToolLibrary do
         CodeMySpec.Bootstrap.Tools.all() ++
         CodeMySpec.Qa.Tools.all() ++
         CodeMySpec.BddRules.Tools.all()
+
+  @doc """
+  The names of tools that were removed and stay only to answer a stale caller
+  (`CodeMySpec.Tools.Tool.tombstone?/0`). Callable, never advertised.
+  """
+  @spec tombstoned() :: [String.t()]
+  def tombstoned do
+    for tool <- tools(),
+        Code.ensure_loaded?(tool) and function_exported?(tool, :tombstone?, 0) and
+          tool.tombstone?(),
+        do: tool.name()
+  end
 
   @doc "Every tool, described for a surface."
   @spec registrations() :: [map()]

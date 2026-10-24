@@ -36,7 +36,8 @@ defmodule CodeMySpecSpex.Story964.Criterion2939Spex do
     :ok
   end
 
-  spex "Once an epic is handed over, the main agent reports on that work rather than doing it", criterion: 1025 do
+  spex "Once an epic is handed over, the main agent reports on that work rather than doing it",
+    criterion: 1025 do
     scenario "Work that went wrong is reported as wrong, not as silence" do
       given_ :synced_context_component
 

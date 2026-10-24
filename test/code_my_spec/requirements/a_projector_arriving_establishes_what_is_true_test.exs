@@ -169,7 +169,7 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
       where: s.project_id == type(^scope.active_project_id, :binary_id),
       where: fragment("? IS NOT DISTINCT FROM ?", n.working_copy_id, type(^copy, :binary_id)),
       order_by: [asc: n.id],
-      select: {n.id, n.name, n.satisfied}
+      select: {n.id, n.name, type(n.satisfied, :boolean)}
     )
   end
 end

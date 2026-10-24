@@ -26,7 +26,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       <div id="agentic-marketing-page">
         <div
           id="reading-progress"
@@ -77,7 +81,9 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
   def mount(_params, _session, socket) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/blog/agentic-marketing-with-mcp"
-    og_image = CodeMySpecWeb.ImageUrl.image_url("og-blog-agentic-marketing-with-mcp.png", base_url)
+
+    og_image =
+      CodeMySpecWeb.ImageUrl.image_url("og-blog-agentic-marketing-with-mcp.png", base_url)
 
     json_ld =
       Jason.encode!([
@@ -122,7 +128,12 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
           "@type" => "BreadcrumbList",
           "itemListElement" => [
             %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
-            %{"@type" => "ListItem", "position" => 2, "name" => "Blog", "item" => "#{base_url}/blog"},
+            %{
+              "@type" => "ListItem",
+              "position" => 2,
+              "name" => "Blog",
+              "item" => "#{base_url}/blog"
+            },
             %{
               "@type" => "ListItem",
               "position" => 3,
@@ -540,7 +551,10 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
 
         <div class="mt-10 border-t border-base-300">
           <%= for {item, i} <- Enum.with_index(@copy.faq.items) do %>
-            <details class="collapse collapse-arrow border-b border-base-300 rounded-none" open={i == 0}>
+            <details
+              class="collapse collapse-arrow border-b border-base-300 rounded-none"
+              open={i == 0}
+            >
               <summary class="collapse-title px-0 font-bold tracking-tight text-lg text-base-content">
                 {item.question}
               </summary>

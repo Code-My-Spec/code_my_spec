@@ -9,7 +9,10 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetAdvancedSearchAnalytics do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
     field :start_date, :string, description: "YYYY-MM-DD (default 28 days ago)"
     field :end_date, :string, description: "YYYY-MM-DD (default today)"
     field :dimensions, :string, description: "Comma-separated dimensions (default query)"
@@ -18,10 +21,19 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetAdvancedSearchAnalytics do
     field :start_row, :integer, description: "Pagination start row (default 0)"
     field :sort_by, :string, description: "clicks, impressions, ctr, position (default clicks)"
     field :sort_direction, :string, description: "ascending or descending (default descending)"
-    field :filter_dimension, :string, description: "Single filter dimension: query, page, country, device"
-    field :filter_operator, :string, description: "contains, equals, notContains, notEquals (default contains)"
+
+    field :filter_dimension, :string,
+      description: "Single filter dimension: query, page, country, device"
+
+    field :filter_operator, :string,
+      description: "contains, equals, notContains, notEquals (default contains)"
+
     field :filter_expression, :string, description: "Single filter value"
-    field :filters, {:list, :map}, description: "List of {dimension, operator, expression} filter objects (AND logic). Overrides single-filter params."
+
+    field :filters, {:list, :map},
+      description:
+        "List of {dimension, operator, expression} filter objects (AND logic). Overrides single-filter params."
+
     field :data_state, :string, description: "all (default) or final"
   end
 
@@ -50,8 +62,11 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.GetAdvancedSearchAnalytics do
          {:ok, data} <- Gsc.get_advanced_search_analytics(token, params.site_url, opts) do
       {:reply, GoogleTools.ok("Advanced search analytics for #{params.site_url}.", data), frame}
     else
-      {:error, {:gsc_error, 404, _}} -> {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
-      {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
+      {:error, {:gsc_error, 404, _}} ->
+        {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
+
+      {:error, reason} ->
+        {:reply, GoogleTools.error(reason), frame}
     end
   end
 end

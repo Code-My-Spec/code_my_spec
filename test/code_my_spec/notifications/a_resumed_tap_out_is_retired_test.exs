@@ -66,7 +66,9 @@ defmodule CodeMySpec.Notifications.AResumedTapOutIsRetiredTest do
       })
 
     task = List.last(with_task.tasks)
-    {:ok, request} = Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id, "stuck")
+
+    {:ok, request} =
+      Notifications.request_agent_tap_out(ctx.scope, ctx.agent.id, task.id, "stuck")
 
     :ok = Notifications.retire_resumed_tap_out(with_task)
 

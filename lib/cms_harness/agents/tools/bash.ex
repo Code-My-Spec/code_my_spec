@@ -18,9 +18,29 @@ defmodule CmsHarness.Agents.Tools.Bash do
   @impl true
   defdelegate name(), to: Alloy.Tool.Core.Bash
   @impl true
-  defdelegate description(), to: Alloy.Tool.Core.Bash
+  def description do
+    """
+    Execute a restricted shell command and return its output. The default deadline
+    is 10 seconds. For dependency installation, compilation, and other long setup
+    commands, explicitly set timeout to 1800000 (30 minutes). A timeout kills the
+    local command and its subprocesses and can leave installation incomplete;
+    inspect the retained output and repair partial installation before retrying.
+    """
+  end
+
   @impl true
-  defdelegate input_schema(), to: Alloy.Tool.Core.Bash
+  def input_schema do
+    put_in(Alloy.Tool.Core.Bash.input_schema(), [:properties, :timeout], %{
+      type: "integer",
+      description:
+        "Deadline in milliseconds; default 10000. Use 1800000 for installs/builds. " <>
+          "Maximum 3600000 (one hour). Routed analysis uses its suite deadline if omitted.",
+      default: 10_000,
+      minimum: 1,
+      maximum: 3_600_000
+    })
+  end
+
   @impl true
   defdelegate concurrent?(), to: Alloy.Tool.Core.Bash
   @impl true
@@ -85,7 +105,7 @@ defmodule CmsHarness.Agents.Tools.Bash do
 
   defp timeout(input, default) do
     case input["timeout"] do
-      value when is_integer(value) and value > 0 -> value
+      value when is_integer(value) and value > 0 -> min(value, 3_600_000)
       _ -> default
     end
   end

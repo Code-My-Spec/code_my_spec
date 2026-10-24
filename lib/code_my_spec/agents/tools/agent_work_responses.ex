@@ -244,7 +244,8 @@ defmodule CodeMySpec.Agents.Tools.AgentWorkResponses do
   # Every agent in a group shares one working copy, and `WorkRepository`
   # keys `problems` by that same copy id -- so every member here already
   # carries the identical list; the first one speaks for the group.
-  defp copy_problems({copy_id, [first | _]}), do: {copy_id, first.working_copy_root, first.problems}
+  defp copy_problems({copy_id, [first | _]}),
+    do: {copy_id, first.working_copy_root, first.problems}
 
   defp unstaffed_line({copy_id, root, problems}),
     do: "  working copy: #{copy_id}#{copy_root_suffix(root)} — #{length(problems)} problem(s)"

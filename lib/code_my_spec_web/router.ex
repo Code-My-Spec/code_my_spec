@@ -281,6 +281,9 @@ defmodule CodeMySpecWeb.Router do
     # checkout. Here rather than there for the same reason the lookup above is.
     post "/devices", DeviceController, :create
 
+    # A dev box trades its own token for a short-lived access token (story 1131).
+    post "/devices/token", DeviceTokenController, :create
+
     # The cached requirement graph — the local app's
     # `/api/projects/:project_name/requirements/graph`, for a caller holding a
     # deploy key or an OAuth token instead of a seat on the machine.
@@ -403,6 +406,9 @@ defmodule CodeMySpecWeb.Router do
       post "/sign-up", DevSignInController, :register
 
       post "/provisioning-fixtures", DevProvisioningFixtureController, :create
+
+      # Agents for QA to act as against this copy's own app (story 1143).
+      post "/qa-agents", DevProvisioningFixtureController, :qa_agents
 
       post "/provisioning-fixtures/:project_id/start-agent",
            DevProvisioningFixtureController,
@@ -535,6 +541,7 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :assign_project}
       ] do
       # Static segments first so they win over `:id`.
+      live "/projects/:project_id/console/dev-boxes/:device_id/setup", AppLive.LocalSetup
       live "/projects/:project_id/init", InitLive, :index
       live "/projects/:project_id/init/:step", InitLive, :show
 
@@ -567,6 +574,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/content", ContentLive
       live "/projects/:project_id/content/:id", ContentLive.Show
       live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/runs/:run_id", RunLive
 
       live "/projects/:project_id/files", FilesLive
       live "/projects/:project_id/next-task", Tasks.NextTaskLive

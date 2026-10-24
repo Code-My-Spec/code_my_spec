@@ -224,6 +224,26 @@ defmodule CodeMySpec.Agents.Offers do
   def record_declined(_agent, _kind, _subject, _reason), do: nil
 
   @doc """
+  The open work offers of these agents are superseded (issue 2c435ea1).
+
+  For when their assignment changes under them: an offer made against the old
+  one (a story's `qa_complete`, for a team that has just been given an issue to
+  fix) is work their discovery and claim now refuse. Left open it is still shown
+  as backing a pull and can be handed on again, so it is closed here and the
+  next wake offers what the new assignment allows. Always `:ok`.
+  """
+  @spec supersede_work([String.t()]) :: :ok
+  def supersede_work(agent_ids) when is_list(agent_ids) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where([o], o.agent_id in ^agent_ids and o.kind == :work and o.status == :open)
+    |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
   Every open offer on this agent is superseded, not just one of a given kind
   and subject -- a restart discards the in-flight turn those offers were
   queued for (`turn_started_at: nil`), so none of them can still be claimed
@@ -236,6 +256,34 @@ defmodule CodeMySpec.Agents.Offers do
     Offer
     |> where([o], o.agent_id == ^agent_id and o.status == :open)
     |> Repo.update_all(set: [status: :superseded, outcome_at: now, updated_at: now])
+
+    :ok
+  end
+
+  @doc """
+  Lift a standing decline on `key` for `agent_id`: supersede any `:declined`
+  `:work` offer there, so `standing/1` no longer holds it back.
+
+  A decline is about the state at decline time (90beae27, criterion 2055) --
+  not a permanent veto on the subject. `standing/1`'s own status filter does
+  not include `:superseded`, so this is the same lever `supersede_work/1`
+  already pulls for an `:open` offer, reached for a `:declined` one instead:
+  nothing else closes that row once written, so without this an agent that
+  declined while the requirement's prerequisites were unsatisfied stays held
+  back from it even after they are satisfied, until main claims the work for
+  it directly. Always `:ok`.
+  """
+  @spec lift_decline(Ecto.UUID.t(), String.t()) :: :ok
+  def lift_decline(agent_id, key) when is_binary(agent_id) and is_binary(key) do
+    now = DateTime.utc_now()
+
+    Offer
+    |> where(
+      [o],
+      o.agent_id == ^agent_id and o.kind == :work and o.subject_type == "requirement" and
+        o.subject_key == ^key and o.status == :declined
+    )
+    |> Repo.update_all(set: [status: :superseded, updated_at: now])
 
     :ok
   end
@@ -283,16 +331,21 @@ defmodule CodeMySpec.Agents.Offers do
     insert_offer(agent, kind, type, key, attempt, turn_requested_at)
   end
 
+  # A failed write rolls the whole step back and answers its error, so the caller
+  # still gets the changeset.
   defp serialized(agent_id, fun) do
-    Repo.checkout(fn ->
-      Repo.query!("SELECT pg_advisory_lock(hashtext($1))", ["offers:" <> agent_id])
+    Repo.transaction(fn ->
+      Repo.lock!("offers:" <> agent_id)
 
-      try do
-        fun.()
-      after
-        Repo.query!("SELECT pg_advisory_unlock(hashtext($1))", ["offers:" <> agent_id])
+      case fun.() do
+        {:error, _} = error -> Repo.rollback(error)
+        result -> result
       end
     end)
+    |> case do
+      {:ok, result} -> result
+      {:error, error} -> error
+    end
   end
 
   # A turn handed to a harness reports started within seconds. It has to lapse
@@ -480,11 +533,10 @@ defmodule CodeMySpec.Agents.Offers do
   defp undelivered_by_message(message_id) do
     now = DateTime.utc_now()
 
-    from(o in Offer,
-      join: link in OfferMessage,
-      on: link.offer_id == o.id,
-      where: link.message_id == ^message_id and o.status == :open
-    )
+    linked =
+      from(link in OfferMessage, where: link.message_id == ^message_id, select: link.offer_id)
+
+    from(o in Offer, where: o.id in subquery(linked) and o.status == :open)
     |> Repo.update_all(set: [status: :undelivered, outcome_at: now, updated_at: now])
 
     :ok

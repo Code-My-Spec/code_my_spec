@@ -26,19 +26,20 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
 
   setup :set_deploy_key
 
-  spex "Schedule windows are enforced at render time, with no background re-pull", criterion: 483 do
+  spex "Schedule windows are enforced at render time, with no background re-pull",
+    criterion: 483 do
     scenario "Future-publish and expired slugs return 404 without re-pulling" do
       given_ "three posts with different schedule windows are synced", context do
         now = DateTime.utc_now()
 
         yesterday =
-          DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, -1, :day) |> DateTime.to_iso8601()
 
         tomorrow =
-          DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, 1, :day) |> DateTime.to_iso8601()
 
         two_days_ago =
-          DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+          DateTime.add(now, -2, :day) |> DateTime.to_iso8601()
 
         rows = [
           row("alpha", publish_at: yesterday, expires_at: nil),

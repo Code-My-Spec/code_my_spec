@@ -7,10 +7,15 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.GetAdPerformance do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string,
+      required: true,
+      description: "Customer ID (e.g. \"123-456-7890\")"
+
     field :date_range, :string, description: "GAQL date range, e.g. LAST_30_DAYS"
     field :limit, :integer, description: "Max rows to return"
-    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
+
+    field :login_customer_id, :string,
+      description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

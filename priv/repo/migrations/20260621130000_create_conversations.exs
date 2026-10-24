@@ -5,7 +5,10 @@ defmodule CodeMySpec.Repo.Migrations.CreateConversations do
     create table(:conversations, primary_key: false) do
       add :id, :binary_id, primary_key: true
       add :account_id, :binary_id, null: false
-      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all), null: false
+
+      add :project_id, references(:projects, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :end_user_id, :string
       add :end_user_email, :string, null: false
 

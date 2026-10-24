@@ -42,7 +42,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2913Spex do
     :ok
   end
 
-  spex "The main agent does its shaping work by changing the project the user is already looking at", criterion: 1002 do
+  spex "The main agent does its shaping work by changing the project the user is already looking at",
+    criterion: 1002 do
     scenario "Nothing the agent writes is trapped in the chat" do
       given_ "the main agent has shaped an epic in conversation", context do
         copy = CodeMySpec.TempFile.dir("spex_2913")

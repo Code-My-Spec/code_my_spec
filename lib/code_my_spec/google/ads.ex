@@ -257,13 +257,25 @@ defmodule CodeMySpec.Google.Ads do
     cid = normalize_customer_id(customer_id)
 
     with {:ok, dev_token} <- developer_token() do
-      body = if page_token, do: %{"query" => query, "pageToken" => page_token}, else: %{"query" => query}
+      body =
+        if page_token,
+          do: %{"query" => query, "pageToken" => page_token},
+          else: %{"query" => query}
 
-      case request(:post, url("customers/#{cid}/googleAds:search"), token, dev_token, opts, json: body) do
+      case request(:post, url("customers/#{cid}/googleAds:search"), token, dev_token, opts,
+             json: body
+           ) do
         {:ok, resp} ->
           results = acc ++ Map.get(resp, "results", [])
 
-          next_search_page(token, customer_id, query, opts, results, Map.get(resp, "nextPageToken"))
+          next_search_page(
+            token,
+            customer_id,
+            query,
+            opts,
+            results,
+            Map.get(resp, "nextPageToken")
+          )
 
         {:error, _} = error ->
           error
@@ -271,8 +283,9 @@ defmodule CodeMySpec.Google.Ads do
     end
   end
 
-  defp next_search_page(_token, _customer_id, _query, _opts, results, next) when next in [nil, ""],
-    do: {:ok, results}
+  defp next_search_page(_token, _customer_id, _query, _opts, results, next)
+       when next in [nil, ""],
+       do: {:ok, results}
 
   defp next_search_page(token, customer_id, query, opts, results, next),
     do: search(token, customer_id, query, opts, results, next)
@@ -282,7 +295,9 @@ defmodule CodeMySpec.Google.Ads do
     body = %{"operations" => operations}
 
     with {:ok, dev_token} <- developer_token() do
-      request(:post, url("customers/#{cid}/#{collection}:mutate"), token, dev_token, opts, json: body)
+      request(:post, url("customers/#{cid}/#{collection}:mutate"), token, dev_token, opts,
+        json: body
+      )
     end
   end
 
@@ -321,7 +336,8 @@ defmodule CodeMySpec.Google.Ads do
   `"1234567890"`, or `"customers/1234567890"`.
   """
   @spec normalize_customer_id(String.t() | integer()) :: String.t()
-  def normalize_customer_id(customer_id) when is_integer(customer_id), do: Integer.to_string(customer_id)
+  def normalize_customer_id(customer_id) when is_integer(customer_id),
+    do: Integer.to_string(customer_id)
 
   def normalize_customer_id(customer_id) when is_binary(customer_id) do
     customer_id

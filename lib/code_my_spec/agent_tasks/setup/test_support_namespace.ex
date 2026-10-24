@@ -21,7 +21,9 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
 
     if wrong == [],
       do: :valid,
-      else: {:invalid, "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `test/support/`"}
+      else:
+        {:invalid,
+         "#{Enum.join(wrong, ", ")} not in `#{test_ns}` namespace under `test/support/`"}
   end
 
   # Missing files are treated as OK (matches the original :enoent → true polarity).
@@ -45,54 +47,55 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
     app_name = Helpers.app_name(scope)
     mod = Macro.camelize(app_name)
 
-    {:ok, """
-    # Move Test Support to #{mod}Test Namespace
+    {:ok,
+     """
+     # Move Test Support to #{mod}Test Namespace
 
-    Rename in `test/support/conn_case.ex`:
-    `#{mod}Web.ConnCase` → `#{mod}Test.ConnCase`
+     Rename in `test/support/conn_case.ex`:
+     `#{mod}Web.ConnCase` → `#{mod}Test.ConnCase`
 
-    Rename in `test/support/data_case.ex`:
-    `#{mod}.DataCase` → `#{mod}Test.DataCase`
+     Rename in `test/support/data_case.ex`:
+     `#{mod}.DataCase` → `#{mod}Test.DataCase`
 
-    Update all test files that `use` these modules.
+     Update all test files that `use` these modules.
 
-    Then create compatibility shims so Phoenix generators keep working —
-    `mix phx.gen.auth` / `phx.gen.live` / `phx.gen.html` hardcode the default
-    case-module names in every test they emit, and without these shims their
-    output does not compile:
+     Then create compatibility shims so Phoenix generators keep working —
+     `mix phx.gen.auth` / `phx.gen.live` / `phx.gen.html` hardcode the default
+     case-module names in every test they emit, and without these shims their
+     output does not compile:
 
-    `test/support/conn_case_compat.ex`:
-    ```elixir
-    defmodule #{mod}Web.ConnCase do
-      @moduledoc \"\"\"
-      Compatibility shim: Phoenix generators emit `use #{mod}Web.ConnCase`.
-      The real case module is `#{mod}Test.ConnCase` — forward to it.
-      \"\"\"
-      defmacro __using__(opts) do
-        quote do
-          use #{mod}Test.ConnCase, unquote(opts)
-        end
-      end
-    end
-    ```
+     `test/support/conn_case_compat.ex`:
+     ```elixir
+     defmodule #{mod}Web.ConnCase do
+       @moduledoc \"\"\"
+       Compatibility shim: Phoenix generators emit `use #{mod}Web.ConnCase`.
+       The real case module is `#{mod}Test.ConnCase` — forward to it.
+       \"\"\"
+       defmacro __using__(opts) do
+         quote do
+           use #{mod}Test.ConnCase, unquote(opts)
+         end
+       end
+     end
+     ```
 
-    `test/support/data_case_compat.ex`:
-    ```elixir
-    defmodule #{mod}.DataCase do
-      @moduledoc \"\"\"
-      Compatibility shim: Phoenix generators emit `use #{mod}.DataCase`.
-      The real case module is `#{mod}Test.DataCase` — forward to it.
-      \"\"\"
-      defmacro __using__(opts) do
-        quote do
-          use #{mod}Test.DataCase, unquote(opts)
-        end
-      end
-    end
-    ```
+     `test/support/data_case_compat.ex`:
+     ```elixir
+     defmodule #{mod}.DataCase do
+       @moduledoc \"\"\"
+       Compatibility shim: Phoenix generators emit `use #{mod}.DataCase`.
+       The real case module is `#{mod}Test.DataCase` — forward to it.
+       \"\"\"
+       defmacro __using__(opts) do
+         quote do
+           use #{mod}Test.DataCase, unquote(opts)
+         end
+       end
+     end
+     ```
 
-    Newly generated tests then compile as-emitted; normalize them to the
-    `#{mod}Test.*` names whenever you next touch those files.
-    """}
+     Newly generated tests then compile as-emitted; normalize them to the
+     `#{mod}Test.*` names whenever you next touch those files.
+     """}
   end
 end

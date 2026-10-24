@@ -107,7 +107,7 @@ defmodule CodeMySpec.Analysis.ValidationHoldsTest do
   test "unknown execution cannot be released or retried without terminal evidence", ctx do
     {:ok, _} = authorize(ctx)
     {:ok, run} = start(ctx)
-    {:ok, _} = RunsRepository.finish_run(run, :failed, %{stats: %{"orphaned" => true}})
+    {:ok, _} = RunsRepository.finish_run(run, :failed, %{orphaned: true})
     assert [hold] = ValidationHolds.list(ctx.scope)
     assert hold.status == :unknown
 

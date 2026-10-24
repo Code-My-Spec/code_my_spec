@@ -27,7 +27,7 @@ defmodule CodeMySpec.Requirements.Edge do
     belongs_to :from_requirement, Node
     belongs_to :to_requirement, Node
 
-    timestamps(updated_at: false)
+    timestamps(type: :naive_datetime_usec, updated_at: false)
   end
 
   def changeset(edge, attrs) do

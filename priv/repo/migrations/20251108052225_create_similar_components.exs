@@ -3,8 +3,7 @@ defmodule CodeMySpec.Repo.Migrations.CreateSimilarComponents do
 
   def change do
     create table(:similar_components) do
-      add :component_id, references(:components, on_delete: :delete_all),
-        null: false
+      add :component_id, references(:components, on_delete: :delete_all), null: false
 
       add :similar_component_id,
           references(:components, on_delete: :delete_all),

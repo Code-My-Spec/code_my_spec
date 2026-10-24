@@ -20,7 +20,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6424Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Node color encodes satisfaction state consistently across project, story, and component bands", criterion: 503 do
+  spex "Node color encodes satisfaction state consistently across project, story, and component bands",
+    criterion: 503 do
     scenario "Satisfaction state maps to brand color tokens consistently across bands" do
       given_ :cross_context_dependency
 

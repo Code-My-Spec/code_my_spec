@@ -36,7 +36,7 @@ defmodule CodeMySpec.Stories.AcceptanceCriteria.Criterion do
     field :body, :string
     field :kind, Ecto.Enum, values: @kinds
     field :verified, :boolean, default: false
-    field :verified_at, :utc_datetime
+    field :verified_at, :utc_datetime_usec
     field :project_id, :binary_id
     field :rule_id, :binary_id
 

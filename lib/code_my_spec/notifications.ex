@@ -1610,6 +1610,18 @@ defmodule CodeMySpec.Notifications do
           "[Notifications] Failed to send push to #{subscription.endpoint}: #{inspect(reason)}"
         )
     end
+  rescue
+    # WebPushElixir.send_notification/2 only returns {:ok, _} / {:error, _} for
+    # an HTTP response; a transport failure (timeout, connection refused) comes
+    # back from Req.run/1 as {request, %Req.TransportError{}}, which its own
+    # case has no clause for, so it raises instead. The question this push is
+    # announcing is already durable server-side by the time we get here, so a
+    # raise here must not undo it.
+    error ->
+      Logger.warning(
+        "[Notifications] Failed to send push to #{subscription.endpoint}: " <>
+          Exception.format(:error, error, __STACKTRACE__)
+      )
   end
 
   # What reaches an agent is Agents' to deliver (`Agents.Events`); Notifications

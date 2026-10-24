@@ -23,7 +23,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1835Spex do
     scenario "the run reports the missing prerequisite instead of proceeding" do
       given_ "an environment has no provisioned server", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -21,8 +21,8 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   # Serial: every test mutates the one shared `schema_migrations` table.
   use CodeMySpecTest.DataCase, async: false
 
-  alias Ecto.Adapters.SQL
-  alias Mix.Tasks.Cms.CheckTestMigrations
+  import Ecto.Query
+  alias CodeMySpec.TestMigrations, as: CheckTestMigrations
 
   describe "pending/0" do
     test "is empty when the database has applied every migration on disk" do
@@ -35,7 +35,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
     test "names a migration the database has not applied" do
       version = newest_applied()
 
-      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [version])
+      delete_versions([version])
 
       assert {:ok, pending} = CheckTestMigrations.pending()
 
@@ -46,30 +46,26 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
     end
 
     test "names it beside a migration applied from a branch that never landed" do
-      SQL.query!(
-        Repo,
-        "INSERT INTO schema_migrations (version, inserted_at) VALUES (29991231000000, now())",
-        []
-      )
+      Repo.insert_all("schema_migrations", [
+        %{version: 29_991_231_000_000, inserted_at: NaiveDateTime.utc_now()}
+      ])
 
       version = newest_applied()
-      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [version])
+      delete_versions([version])
 
       assert {:ok, pending} = CheckTestMigrations.pending()
       assert version in pending_versions(pending)
     end
 
     test "reports every unapplied migration, not just the newest" do
-      [first, second] = Enum.take(applied_descending(), 2)
-
-      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = ANY($1)", [
-        [first, second]
-      ])
+      # Two where there are two; SQLite's set may be its baseline alone.
+      removed = Enum.take(applied_descending(), 2)
+      delete_versions(removed)
 
       assert {:ok, pending} = CheckTestMigrations.pending()
       versions = pending_versions(pending)
 
-      assert first in versions and second in versions
+      assert Enum.all?(removed, &(&1 in versions))
     end
   end
 
@@ -81,7 +77,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
 
     test "raises, and the message carries what to run" do
       version = newest_applied()
-      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [version])
+      delete_versions([version])
 
       %{message: message} =
         assert_raise(RuntimeError, fn -> CheckTestMigrations.refuse_if_behind!() end)
@@ -105,7 +101,7 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
     # days across 50 rejected runs (6f89b278).
     test "names the partition when one is set, so the command targets the right database" do
       version = newest_applied()
-      SQL.query!(Repo, "DELETE FROM schema_migrations WHERE version = $1", [version])
+      delete_versions([version])
 
       System.put_env("MIX_TEST_PARTITION", "habcd1234")
       on_exit(fn -> System.delete_env("MIX_TEST_PARTITION") end)
@@ -123,12 +119,15 @@ defmodule CodeMySpec.CheckTestMigrationsTest do
   # carries migrations from branches that never landed; deleting one of those
   # makes nothing pending, because pending/0 only knows the files on disk.
   defp applied_descending do
-    %{rows: rows} =
-      SQL.query!(Repo, "SELECT version FROM schema_migrations ORDER BY version DESC", [])
+    dir = Ecto.Migrator.migrations_path(Repo)
 
-    rows
-    |> Enum.map(fn [version] -> version end)
-    |> Enum.filter(&(Path.wildcard("priv/repo/migrations/#{&1}_*.exs") != []))
+    from(m in "schema_migrations", select: m.version, order_by: [desc: m.version])
+    |> Repo.all()
+    |> Enum.filter(&(Path.wildcard(Path.join(dir, "#{&1}_*.exs")) != []))
+  end
+
+  defp delete_versions(versions) do
+    Repo.delete_all(from(m in "schema_migrations", where: m.version in ^versions))
   end
 
   defp pending_versions(pending), do: Enum.map(pending, fn {version, _name} -> version end)

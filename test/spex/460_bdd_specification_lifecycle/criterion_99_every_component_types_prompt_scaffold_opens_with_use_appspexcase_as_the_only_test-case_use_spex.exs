@@ -32,7 +32,8 @@ defmodule CodeMySpecSpex.Story460.Criterion5556Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Prompt scaffold opens with `use <App>Spex.Case` for every component type", criterion: 99 do
+  spex "Prompt scaffold opens with `use <App>Spex.Case` for every component type",
+    criterion: 99 do
     scenario "context component → scaffold uses SpexCase, not bare `use SexySpex`" do
       given_ :synced_context_component
 

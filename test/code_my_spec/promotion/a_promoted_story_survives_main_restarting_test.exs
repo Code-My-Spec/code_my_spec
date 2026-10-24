@@ -41,14 +41,21 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
     assert {false, %{promoted: false}} = unpromoted
   end
 
-  # Criterion 1183: working on main itself, nothing down there is a deploy
-  # elsewhere — it is the agent's own application.
-  test "working on main itself still asks whether main is answering" do
+  test "a stamped story on main stays promoted while its preview is down" do
     scope = full_scope_fixture()
     main = main_copy(scope, "down")
     scope = %{scope | active_working_copy_id: main.id}
 
-    assert {false, %{preview_status: "down"}} =
+    assert {true, %{status: "Promoted at version 0.1.1"}} =
              RunningCopy.running_copy_check(scope, %{promoted_version: "0.1.1"})
+  end
+
+  test "working on main still requires remote publication" do
+    scope = full_scope_fixture()
+    main = main_copy(scope, "serving")
+    scope = %{scope | active_working_copy_id: main.id}
+
+    assert {false, %{promoted: false}} =
+             RunningCopy.running_copy_check(scope, %{promoted_version: nil})
   end
 end

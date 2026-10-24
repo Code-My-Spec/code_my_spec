@@ -65,7 +65,16 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
           ]}},
       scenarios:
         {:required,
-         {:meta, {:list, :map},
+         {:meta,
+          {:list,
+           %{
+             name: {:required, :string},
+             status: {:required, {:enum, ~w(pass partial fail blocked)}},
+             observation: {:required, :string},
+             blocker_issue_id:
+               {:meta, :string,
+                [description: "Required when status is blocked; must also appear in issue_ids."]}
+           }},
           [
             description:
               "Structured scenarios: %{name: string, status: 'pass'|'partial'|'fail'|'blocked', observation: string, blocker_issue_id: UUID}. Use 'blocked' for a check that could not run; blocker_issue_id is required for blocked scenarios and must also appear in issue_ids. An overall pass cannot contain failed or blocked scenarios; submit partial when checks remain blocked."
@@ -84,6 +93,9 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
          ]}
     }
   end
+
+  @impl true
+  def validate_input(params), do: CodeMySpec.Qa.Tools.validate_scenarios(params, name())
 
   @impl true
   def call(params, context) do

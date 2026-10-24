@@ -29,6 +29,11 @@ defmodule CodeMySpec.Hooks.Stop do
 
   @total_response_cap 4096
 
+  # The harness's own wait for this answer, sent with the request (c93e5fdc):
+  # the bound below is sized against it, not against a number that happens to
+  # be shorter than the wait today.
+  @budget_key "harness_budget_ms"
+
   @doc """
   The stop hook's verdict for a scope and a hook payload.
 
@@ -43,7 +48,11 @@ defmodule CodeMySpec.Hooks.Stop do
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
 
     # Stamped for the whole request so every line can be grouped by session.
-    Logger.metadata(cms_session: session_id, cms_hook: "stop")
+    Logger.metadata(
+      cms_session: session_id,
+      cms_hook: "stop",
+      cms_budget_ms: Map.get(params, @budget_key)
+    )
 
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
@@ -369,26 +378,130 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       true ->
-        # The same count the menu renders, so the decision and the menu in one
-        # response cannot disagree.
-        case length(Work.actionable(scope, role_of(agent), agent)) do
-          n when n > 0 ->
-            Logger.info(
-              "[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop"
-            )
+        continue_with_actionable_work(scope, agent, req_id)
+    end
+  end
 
-            %{
-              "decision" => "block",
-              "reason" =>
-                "Task completed successfully, and the loop is still running." <>
-                  Menu.render(scope, true, role_of(agent), agent)
-            }
+  # `role: :main` is the only role `Work.actionable/3` computes `:project`-wide
+  # rather than against one story (`Work.assignment/2`), and that read can
+  # queue behind `IncrementalGraph`'s post-reload reseed (e3c09c4d) or
+  # ordinary load -- the harness's own curl against this hook has a fixed
+  # wait, and "coding agents' stops don't show this" (ed5baac4) because every
+  # other role's story-scoped read stays cheap. Bounded here, narrowly, rather
+  # than threaded into the rest of `decide/2` -- an earlier cut wrapped the
+  # whole decision and broke a channel-process caller, confirmed by three
+  # `harness_project_channel_test.exs` failures on a path that never reaches
+  # this function. The mechanics mirror `CodeMySpec.CodeMode.Sandbox.with_timeout/2`,
+  # which already bounds a script evaluation that reaches the database the
+  # same way: `Task.Supervisor.async_nolink` so a kill on timeout cannot crash
+  # the caller, then a final non-blocking drain after the kill, because the
+  # task may answer in the gap between the timeout firing and the kill
+  # landing, and reporting a timeout for work that finished would be wrong.
+  #
+  # c93e5fdc: a fixed 25s never fired, because the harness stops waiting for a
+  # hook decision after 10s (`CmsHarness.Channel.decision_timeout/0`) and a
+  # stop answered at 13.5s reached nobody. The harness now sends its wait with
+  # the request; the bound is that wait less what the request and the reply
+  # spend crossing the channel. A request that names none (an older harness)
+  # gets the wait the harness has always had.
+  @unnamed_budget_ms 10_000
+  @transit_margin_ms 2_500
+  @min_bound_ms 1_000
 
-          0 ->
-            Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
-            notify_complete()
-            terminus_retrospective()
-        end
+  defp decide_timeout_ms do
+    case Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms) do
+      {:ok, override} -> override
+      :error -> bound_for(Logger.metadata()[:cms_budget_ms])
+    end
+  end
+
+  @doc false
+  @spec bound_for(term()) :: pos_integer()
+  def bound_for(budget) when is_integer(budget) and budget > 0,
+    do: max(budget - @transit_margin_ms, @min_bound_ms)
+
+  def bound_for(_unnamed), do: bound_for(@unnamed_budget_ms)
+
+  defp continue_with_actionable_work(scope, %Agent{role: :main} = agent, req_id) do
+    timeout = decide_timeout_ms()
+    started = System.monotonic_time(:millisecond)
+
+    task =
+      Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+        actionable_decision(scope, agent, req_id)
+      end)
+
+    case await_bounded(task, timeout) do
+      {:ok, result} ->
+        result
+
+      {:error, reason} ->
+        elapsed = System.monotonic_time(:millisecond) - started
+
+        Logger.warning(
+          "[StopHook] [#{req_id}] main's actionable-work read did not finish within " <>
+            "#{timeout}ms (#{elapsed}ms elapsed, #{inspect(reason)}) -- allowing rather than " <>
+            "leaving the harness to time out silently"
+        )
+
+        %{
+          "systemMessage" =>
+            "The CodeMySpec harness could not finish checking for more work within its own " <>
+              "#{timeout}ms budget, so it is allowing the stop rather than risking the " <>
+              "harness's own wait timing out with no answer at all. Nothing was skipped: " <>
+              "the next stop checks again."
+        }
+    end
+  end
+
+  defp continue_with_actionable_work(scope, agent, req_id),
+    do: actionable_decision(scope, agent, req_id)
+
+  defp actionable_decision(scope, agent, req_id) do
+    # The same count the menu renders, so the decision and the menu in one
+    # response cannot disagree.
+    {read_us, actionable} = :timer.tc(fn -> Work.actionable(scope, role_of(agent), agent) end)
+    Logger.info("[StopHook] [#{req_id}] actionable-work read took #{div(read_us, 1000)}ms")
+
+    case length(actionable) do
+      n when n > 0 ->
+        Logger.info("[StopHook] [#{req_id}] Continuous mode, more work available, blocking stop")
+
+        %{
+          "decision" => "block",
+          "reason" =>
+            "Task completed successfully, and the loop is still running." <>
+              Menu.render(scope, true, role_of(agent), agent)
+        }
+
+      0 ->
+        Logger.info("[StopHook] [#{req_id}] All work complete, allowing stop")
+        notify_complete()
+        terminus_retrospective()
+    end
+  end
+
+  defp await_bounded(task, timeout) do
+    receive do
+      {ref, result} when ref == task.ref ->
+        Process.demonitor(task.ref, [:flush])
+        {:ok, result}
+
+      {:DOWN, ref, :process, _pid, reason} when ref == task.ref ->
+        {:error, {:crashed, reason}}
+    after
+      timeout ->
+        Task.shutdown(task, :brutal_kill)
+        drain_bounded(task)
+    end
+  end
+
+  defp drain_bounded(task) do
+    receive do
+      {ref, result} when ref == task.ref -> {:ok, result}
+      {:DOWN, ref, :process, _pid, _reason} when ref == task.ref -> {:error, :timeout}
+    after
+      0 -> {:error, :timeout}
     end
   end
 

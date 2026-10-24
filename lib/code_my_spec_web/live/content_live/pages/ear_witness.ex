@@ -126,7 +126,11 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       {hero_section(assigns)}
       {overview_section(assigns)}
       {stories_section(assigns)}
@@ -234,8 +238,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.EarWitness do
         <div class="max-w-4xl">
           <div class="badge badge-error badge-lg mb-4 gap-2">
             <span class="relative flex h-2 w-2">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-content opacity-75">
-              </span>
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-content opacity-75"></span>
               <span class="relative inline-flex rounded-full h-2 w-2 bg-error-content"></span>
             </span>
             Live Build

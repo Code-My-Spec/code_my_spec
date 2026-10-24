@@ -39,7 +39,7 @@ defmodule CodeMySpec.Tests.TestRun do
     field :including, {:array, :string}, default: []
     field :excluding, {:array, :string}, default: []
     field :raw_output, :string
-    field :ran_at, :utc_datetime
+    field :ran_at, :utc_datetime_usec
 
     embeds_one :stats, TestStats
     embeds_many :tests, TestResult

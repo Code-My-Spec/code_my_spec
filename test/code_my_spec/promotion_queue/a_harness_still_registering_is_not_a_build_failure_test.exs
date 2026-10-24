@@ -1,14 +1,8 @@
 defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTest do
   @moduledoc """
-  Issue a3b34f83: the queue intermittently failed a tick with "could not read
-  main's HEAD: harness_not_registered" for the main copy, right after a
-  promote restarts its harness and before it rejoins the channel. The tick
-  treated it like a build failure and retried on a timer.
-
-  Main being unreachable is nobody's candidate. The queue reads main before it
-  takes one, so the candidate is never taken: it stays queued, nothing is
-  ejected, and no timer is armed. Main's harness rejoining is what wakes the
-  queue (`PromotionQueue.copy_joined/2`).
+  A source harness still registering must not eject its queued candidate.
+  Rejoining wakes the queue, and a slow retry timer recovers missed join events.
+  Destination availability is unrelated to admission.
   """
   use CodeMySpecTest.DataCase, async: false
 
@@ -43,6 +37,14 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
     {:ok, candidate} =
       WorkingCopies.issue(scope, nil, label: "a team", device: device_fixture(scope))
 
+    {:ok, candidate} = WorkingCopies.report_root(candidate, "/source")
+
+    :ok =
+      register_working_copy_environment(
+        %{scope | active_working_copy_id: candidate.id},
+        Environment.new(:harness, "/source", ref: %{"harness_id" => candidate.id})
+      )
+
     {:ok, entry} =
       Repository.enqueue(%{
         project_id: scope.active_project_id,
@@ -61,19 +63,19 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
     pid
   end
 
-  test "an unreachable main leaves the candidate queued and untaken, with no retry timer",
+  test "an unreachable source leaves the candidate queued with a recovery timer",
        ctx do
     :ok = PromotionQueue.ensure_worker(ctx.scope)
     # `init/1` sends itself `:next` before this call reaches it.
     state = :sys.get_state(worker_pid(ctx.scope.active_project_id))
 
     assert state.phase == :idle
-    assert state.timer == nil, "the queue retried on a timer instead of waiting for a join"
+    assert is_reference(state.timer), "a missed join must not strand this candidate forever"
 
     assert [waiting] = Repository.queued(ctx.scope.active_project_id, 10)
     assert waiting.id == ctx.entry.id
 
     assert waiting.status == :queued,
-           "the candidate was taken or ejected over main being unreachable"
+           "the candidate was taken or ejected over its source being unreachable"
   end
 end

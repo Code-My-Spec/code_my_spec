@@ -7,7 +7,39 @@ defmodule CmsHarness.Setup do
   another. This context does not create requirements-graph work.
   """
 
-  alias CmsHarness.Setup.{Prerequisites, Step, Store}
+  alias CmsHarness.Setup.{Command, Prerequisites, Step, Store}
+
+  @doc "The same project-specific record used by desktop tools and setup UI."
+  def project_options(project_id), do: [directory: Path.join(Store.directory(), project_id)]
+
+  def project_status(project_id), do: status(project_options(project_id))
+
+  @doc "Persist orchestration results alongside the prerequisite and checkout operation records."
+  def record_job(project_id, result) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.put(snapshot, "job", json_map(result)), [])
+      end
+    end)
+  end
+
+  @doc "Reuse this device's recorded checks for a checkout, without moving checkout operations."
+  def use_machine_checks(project_id, machine) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.merge(snapshot, Map.take(machine, ["steps", "state"])), [])
+      end
+    end)
+  end
+
+  @doc "Records the one-time transition from successful setup to continuous project work."
+  def mark_team_activated(project_id) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- Store.load(directory) do
+        persist(directory, Map.put(snapshot, "team_activated", true), [])
+      end
+    end)
+  end
 
   @spec status(keyword()) :: {:ok, map()} | :none | {:error, term()}
   def status(opts \\ []), do: Store.load(directory(opts))
@@ -88,7 +120,10 @@ defmodule CmsHarness.Setup do
             "finished_at" => observation.observed_at
           })
 
-        persist_operation(directory, snapshot, "connect", completed, opts)
+        with {:ok, persisted} <-
+               persist_operation(directory, snapshot, "connect", completed, opts) do
+          maybe_run_dev_setup("connect", completed, persisted, directory, opts)
+        end
 
       _pending ->
         {:ok, snapshot}
@@ -112,6 +147,18 @@ defmodule CmsHarness.Setup do
   end
 
   defp perform_operation(
+         %{"state" => "done", "request" => request} = completed,
+         key,
+         request,
+         snapshot,
+         directory,
+         opts,
+         _execute
+       )
+       when key == "connect",
+       do: maybe_run_dev_setup(key, completed, snapshot, directory, opts)
+
+  defp perform_operation(
          %{"state" => "done", "request" => request},
          _key,
          request,
@@ -121,6 +168,19 @@ defmodule CmsHarness.Setup do
          _execute
        ),
        do: {:ok, snapshot}
+
+  # A pending join may have lost its local supervisor (for example a missing
+  # file watcher). Reconnect the same identity without regenerating the app.
+  defp perform_operation(
+         %{"state" => "pending", "request" => request} = pending,
+         "connect",
+         request,
+         snapshot,
+         directory,
+         opts,
+         execute
+       ),
+       do: finish_operation(execute.(), directory, snapshot, "connect", pending, opts)
 
   defp perform_operation(previous, _key, _request, _snapshot, _directory, _opts, _execute)
        when is_map(previous), do: {:error, :operation_already_attempted_start_new_run}
@@ -158,7 +218,9 @@ defmodule CmsHarness.Setup do
         "finished_at" => DateTime.to_iso8601(DateTime.utc_now())
       })
 
-    persist_operation(directory, snapshot, key, completed, opts)
+    with {:ok, persisted} <- persist_operation(directory, snapshot, key, completed, opts) do
+      maybe_run_dev_setup(key, completed, persisted, directory, opts)
+    end
   end
 
   defp finish_operation({:error, reason}, directory, snapshot, key, operation, opts) do
@@ -177,6 +239,92 @@ defmodule CmsHarness.Setup do
   defp persist_operation(directory, snapshot, key, operation, opts) do
     operations = snapshot |> Map.get("operations", %{}) |> Map.put(key, operation)
     persist(directory, Map.put(snapshot, "operations", operations), opts)
+  end
+
+  # The last step of the same setup run: once the machine is ready and the
+  # project is generated or connected, `just dev-setup` prepares it (deps,
+  # database) with nobody pressing anything else. Recorded the same way as
+  # every other operation, and -- per product's decision on this story's
+  # own question -- a failure here (most commonly no `dev-setup` recipe in
+  # the project's justfile) never undoes the machine's own readiness; it is
+  # only named, the same way a failed prerequisite step is named.
+  defp maybe_run_dev_setup(key, %{"request" => %{"path" => root}}, snapshot, directory, opts)
+       when key in ~w(generate connect) do
+    run_dev_setup(
+      snapshot |> Map.get("operations", %{}) |> Map.get("dev_setup"),
+      root,
+      snapshot,
+      directory,
+      opts
+    )
+  end
+
+  defp maybe_run_dev_setup(_key, _operation, snapshot, _directory, _opts), do: {:ok, snapshot}
+
+  defp run_dev_setup(%{"state" => "done"}, _root, snapshot, _directory, _opts),
+    do: {:ok, snapshot}
+
+  defp run_dev_setup(_previous, root, snapshot, directory, opts) do
+    operation = %{
+      "state" => "running",
+      "request" => %{"path" => root},
+      "started_at" => DateTime.to_iso8601(DateTime.utc_now()),
+      "finished_at" => nil
+    }
+
+    with {:ok, started} <- persist_operation(directory, snapshot, "dev_setup", operation, opts) do
+      finish_dev_setup(
+        Command.run(root, "just", ["dev-setup"]),
+        directory,
+        started,
+        operation,
+        opts
+      )
+    end
+  end
+
+  defp finish_dev_setup(
+         %{exit_status: 0, error: nil} = result,
+         directory,
+         snapshot,
+         operation,
+         opts
+       ) do
+    completed =
+      Map.merge(operation, %{
+        "state" => "done",
+        "result" => json_map(result),
+        "finished_at" => DateTime.to_iso8601(DateTime.utc_now())
+      })
+
+    persist_operation(directory, snapshot, "dev_setup", completed, opts)
+  end
+
+  defp finish_dev_setup(result, directory, snapshot, operation, opts) do
+    failed =
+      Map.merge(operation, %{
+        "state" => "errored",
+        "error" => dev_setup_error(result),
+        "finished_at" => DateTime.to_iso8601(DateTime.utc_now())
+      })
+
+    persist_operation(directory, snapshot, "dev_setup", failed, opts)
+  end
+
+  defp dev_setup_error(%{output: output} = result) do
+    if missing_dev_setup_recipe?(output) do
+      "The project's dev-setup recipe is missing"
+    else
+      String.trim(to_string(result[:error]) <> "\n" <> output)
+    end
+  end
+
+  defp missing_dev_setup_recipe?(output) do
+    out = String.downcase(output)
+
+    String.contains?(out, "justfile does not contain recipe") or
+      String.contains?(out, "no justfile found") or
+      String.contains?(out, "could not find justfile")
   end
 
   @doc "Returns the recorded project and results for the cockpit without rerunning setup."
@@ -268,7 +416,7 @@ defmodule CmsHarness.Setup do
     running = key |> Step.new(position) |> Step.start(DateTime.utc_now())
 
     with {:ok, started} <- persist_step(directory, snapshot, running, opts) do
-      completed = Prerequisites.run(running, directory)
+      completed = Prerequisites.run(running, directory, Keyword.get(opts, :platform))
       persist_step(directory, started, completed, opts)
     end
   end

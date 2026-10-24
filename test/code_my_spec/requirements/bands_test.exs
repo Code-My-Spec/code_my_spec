@@ -1,7 +1,12 @@
 defmodule CodeMySpec.Requirements.BandsTest do
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.UsersFixtures
+  import CodeMySpec.StoriesFixtures
+
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Bands
+  alias CodeMySpec.Requirements.Node
 
   test "the project's gates after stories join are the QA journey" do
     late = Bands.late_project_names()
@@ -21,5 +26,76 @@ defmodule CodeMySpec.Requirements.BandsTest do
     assert position.("bdd_specs_exist") < position.("ready_for_qa")
     assert position.("ready_for_qa") < position.("qa_complete")
     assert position.("story_promoted") < position.("deploy")
+  end
+
+  describe "read/1 — done is every step satisfied, not promoted_at" do
+    # `full_scope_fixture/1` mints a real working copy and scopes the fixture
+    # user to it, so `Projection.vantage/1` is that copy's id, not nil — the
+    # seeded rows below have to carry it or `Bands.read/1` finds nothing.
+    setup do
+      %{scope: full_scope_fixture()}
+    end
+
+    defp seed_steps(story, satisfied_names, vantage) do
+      for name <- Bands.story_step_names() do
+        %Node{}
+        |> Node.changeset(%{
+          name: name,
+          description: name,
+          story_id: story.id,
+          working_copy_id: vantage,
+          satisfied: name in satisfied_names
+        })
+        |> Repo.insert!()
+      end
+    end
+
+    test "a promoted story with an unsatisfied step still shows on the chart, not as done", %{
+      scope: scope
+    } do
+      story = story_fixture(scope)
+      seed_steps(story, Bands.story_step_names() -- ["qa_complete"], scope.active_working_copy_id)
+
+      story
+      |> Ecto.Changeset.change(promoted_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      bands = Bands.read(scope)
+
+      assert Enum.any?(bands.stories, &(&1.id == story.id)),
+             "a promoted story with outstanding requirements (re-certification, QA, a " <>
+               "submitted fix) has to stay on the chart rather than vanish because it is promoted"
+    end
+
+    test "an unpromoted story whose requirements are all satisfied is done, off the chart", %{
+      scope: scope
+    } do
+      story = story_fixture(scope)
+      seed_steps(story, Bands.story_step_names(), scope.active_working_copy_id)
+
+      bands = Bands.read(scope)
+
+      refute Enum.any?(bands.stories, &(&1.id == story.id)),
+             "a story whose requirements are all satisfied has to come off the chart " <>
+               "regardless of promoted_at"
+
+      assert bands.story_counts.done >= 1
+    end
+
+    test "the chart and the done count agree: as many done stories as the count says", %{
+      scope: scope
+    } do
+      done_story = story_fixture(scope)
+      seed_steps(done_story, Bands.story_step_names(), scope.active_working_copy_id)
+
+      working_story = story_fixture(scope)
+      seed_steps(working_story, [], scope.active_working_copy_id)
+
+      bands = Bands.read(scope)
+
+      assert Enum.any?(bands.stories, &(&1.id == working_story.id))
+      refute Enum.any?(bands.stories, &(&1.id == done_story.id))
+      assert bands.story_counts.done == 1
+    end
   end
 end

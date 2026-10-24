@@ -265,14 +265,12 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # Threaded through so `AnalysisReport.deliver/4` answers the asker even on
   # a clean run, which everyone else is not told about.
-  defp requesting_agent_id(%{requested_by: %{"agent_id" => id}}) when is_binary(id), do: id
+  defp requesting_agent_id(%{requester_agent_id: id}), do: id
   defp requesting_agent_id(_run), do: nil
 
   # Agents waiting on a run somebody else started (e.g. a promotion that found
   # one already running at its commit). Answered as the requester is.
-  defp waiters(%{requested_by: %{"waiters" => waiters}}) when is_list(waiters),
-    do: Enum.filter(waiters, &is_binary/1)
-
+  defp waiters(%{id: id}) when not is_nil(id), do: RunsRepository.waiter_ids(id)
   defp waiters(_run), do: []
 
   defp new_findings?(previous, signatures) do
@@ -299,6 +297,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
     RunsRepository.finish_run(run, :superseded, %{
       stats: %{"superseded" => String.slice(inspect(reason), 0, 500)}
     })
+  end
+
+  @doc "Close a run somebody cancelled (story 1142). Not a failure: nothing found, nothing reconciled."
+  @spec cancel(Run.t()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
+  def cancel(%Run{} = run) do
+    Logger.info("[Analysis] run #{run.id} (#{run.source}) cancelled" <> requested_by_suffix(run))
+    RunsRepository.finish_run(run, :cancelled, %{stats: %{"cancelled" => true}})
   end
 
   # -- Problem preparation --

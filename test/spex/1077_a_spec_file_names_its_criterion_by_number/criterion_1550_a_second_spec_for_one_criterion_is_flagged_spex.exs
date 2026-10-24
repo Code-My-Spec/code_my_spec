@@ -25,7 +25,13 @@ defmodule CodeMySpecSpex.Story1077.Criterion4674Spex do
         story = CriterionScript.create_story(context.scope, "Story A", ["A thing happens"])
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
-        :ok = Environments.write_file(context.environment, @first, CriterionScript.spex_naming(number, "First"))
+        :ok =
+          Environments.write_file(
+            context.environment,
+            @first,
+            CriterionScript.spex_naming(number, "First")
+          )
+
         Fixtures.deliver_manifest(context.scope)
 
         {:ok, context |> Map.put(:story, story) |> Map.put(:number, number)}

@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   attr :screen, :atom, required: true
   attr :open, :list, required: true
+  attr :stories_available, :boolean, default: true
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
@@ -117,6 +118,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
       >
         <.panel_body
           which={hd(@open)}
+          stories_available={@stories_available}
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
@@ -212,6 +214,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
           <div class="h-full overflow-y-auto py-2 text-sm">
             <.panel_body
               which={key}
+              stories_available={@stories_available}
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
@@ -291,6 +294,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
   end
 
   attr :which, :atom, required: true
+  attr :stories_available, :boolean, default: true
   attr :dynamic_view, :string, required: true
   attr :dynamic_stories, :list, required: true
   attr :dynamic_story, :any, required: true
@@ -331,8 +335,36 @@ defmodule CodeMySpecWeb.ConversationPanels do
   end
 
   defp panel_body(%{which: :dynamic} = assigns) do
+    assigns =
+      if assigns.stories_available,
+        do: assigns,
+        else: assign(assigns, :dynamic_view, "definition")
+
     ~H"""
     <div data-dynamic-view={@dynamic_view}>
+      <div :if={@scope} class="mb-3 flex gap-3 text-xs">
+        <button
+          type="button"
+          phx-click="dynamic_view"
+          phx-value-view="definition"
+          class="link"
+          aria-pressed={to_string(@dynamic_view == "definition")}
+        >Definition &amp; setup</button>
+        <button
+          :if={@stories_available}
+          type="button"
+          phx-click="dynamic_view"
+          phx-value-view="stories"
+          class="link"
+          aria-pressed={to_string(@dynamic_view == "stories")}
+        >Stories</button>
+      </div>
+      <.live_component
+        :if={@dynamic_view == "definition" and @scope}
+        module={CodeMySpecWeb.AgentConversationLive.ProjectDefinition}
+        id="project-definition"
+        scope={@scope}
+      />
       <%!-- One story, when the agent has put one in front of you. Its criteria
       rather than its prose: what the story promises is the part you are being
       asked about. --%>
@@ -393,7 +425,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
       <%!-- Otherwise the project's stories, most recent first. The list is the
       default because it is the one view that is useful before anybody has asked
       for anything in particular. --%>
-      <div :if={@dynamic_view not in ["story", "epics"]}>
+      <div :if={@dynamic_view not in ["story", "epics", "definition"]}>
         <p :if={@dynamic_stories == []} class="opacity-70">
           No stories yet. Ask the agent for one.
         </p>
@@ -425,14 +457,65 @@ defmodule CodeMySpecWeb.ConversationPanels do
   # them has a question waiting. Clicking an agent with a chat goes straight
   # to its transcript; that is the whole "fast way".
   defp panel_body(%{which: :activity} = assigns) do
+    scope = assigns.scope
+
+    detached =
+      if scope,
+        do: Enum.filter(CodeMySpec.Agents.list_agents(scope), &is_nil(&1.working_copy_id)),
+        else: []
+
+    conversations =
+      if scope,
+        do: CodeMySpec.Conversations.list_agent_conversations(scope, scope.active_project_id),
+        else: []
+
+    present = if scope, do: CodeMySpec.Agents.present_ids(scope), else: MapSet.new()
+
+    detached =
+      Enum.map(detached, fn agent ->
+        chat = Enum.find(conversations, &(&1.conversation.agent_id == agent.id))
+
+        %{
+          agent: agent,
+          conversation: chat && chat.conversation,
+          status: CodeMySpec.Agents.lifecycle(agent, present)
+        }
+      end)
+
     assigns =
       assigns
+      |> assign(:detached, detached)
+      |> assign(:devices, activity_devices(scope))
       |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
       |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
       |> assign(:devices, device_groups(assigns.copies))
 
     ~H"""
     <div class="space-y-3">
+      <div
+        :for={device <- @devices}
+        data-test="team-device"
+        data-device-id={device.id}
+        class="text-xs opacity-70"
+      >
+        <.icon name="hero-computer-desktop" class="size-3 inline" />
+        {CodeMySpec.Devices.Device.display_name(device)}
+      </div>
+      <div
+        :for={entry <- @detached}
+        data-test="team-detached-agent"
+        data-agent-id={entry.agent.id}
+        class="flex items-center gap-2 text-sm"
+      >
+        <.link
+          :if={entry.conversation}
+          patch={conversation_path(@project_id, entry.conversation.id)}
+          class="link link-hover"
+          aria-current={entry.conversation.id == @conversation_id && "true"}
+        >{entry.agent.role}</.link>
+        <span :if={!entry.conversation}>{entry.agent.role}</span>
+        <span class="text-xs opacity-60">{entry.status}</span>
+      </div>
       <p :if={@copies == []} data-test="team-empty" class="opacity-70">
         No working copies on this project yet.
       </p>
@@ -781,11 +864,13 @@ defmodule CodeMySpecWeb.ConversationPanels do
       <.icon name="hero-hand-raised" class="size-3.5" />
     </span>
     <span
-      :if={@a.agent.current_tool}
+      :if={turn_running?(@a) and (@a.agent.turn_tool_count || 0) > 0}
       data-test="team-agent-tool"
-      title="Running a tool"
-      class="min-w-0 truncate font-mono text-[10px] opacity-60"
-    >{@a.agent.current_tool}</span>
+      data-tool={@a.agent.current_tool}
+      data-count={@a.agent.turn_tool_count}
+      title={"#{@a.agent.turn_tool_count} tool calls this turn, last: #{@a.agent.current_tool}"}
+      class="flex shrink-0 items-center gap-0.5 opacity-70"
+    ><.icon name="hero-wrench-screwdriver" class="size-3.5" /><span class="badge badge-ghost badge-xs font-mono tabular-nums">{@a.agent.turn_tool_count}</span></span>
     """
   end
 
@@ -880,6 +965,23 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   defp current_agent?(%{chat: %{conversation: %{id: id}}}, id) when is_binary(id), do: true
   defp current_agent?(_agent, _conversation_id), do: false
+
+  defp activity_devices(nil), do: []
+
+  defp activity_devices(scope) do
+    local =
+      if Application.get_env(:code_my_spec, :env) == :desktop do
+        case CmsHarness.Device.recorded_id() do
+          id when is_binary(id) -> CodeMySpec.Devices.get_harness_device(scope, id)
+          _ -> nil
+        end
+      end
+
+    Enum.uniq_by(
+      Enum.reject([local | CodeMySpec.Devices.list_devices(scope)], &is_nil/1),
+      & &1.id
+    )
+  end
 
   # Mirrors the story dot's done/not-yet split, widened to the epic's four
   # states: dispatched is done, proposed is waiting on a person (the same

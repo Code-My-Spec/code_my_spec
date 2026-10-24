@@ -9,6 +9,6 @@ defmodule CodeMySpec.FileEdits.FileEdit do
     field :agent_id, :string
     field :file_path, :string
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 end

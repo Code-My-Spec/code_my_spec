@@ -6,8 +6,12 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ListSitemapsEnhanced do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :site_url, :string, required: true, description: "Exact GSC property URL from list_properties"
-    field :sitemap_index, :string, description: "Optional sitemap index URL to list child sitemaps"
+    field :site_url, :string,
+      required: true,
+      description: "Exact GSC property URL from list_properties"
+
+    field :sitemap_index, :string,
+      description: "Optional sitemap index URL to list child sitemaps"
   end
 
   @impl true
@@ -16,8 +20,11 @@ defmodule CodeMySpec.McpServers.Gsc.Tools.ListSitemapsEnhanced do
          {:ok, data} <- Gsc.list_sitemaps_enhanced(token, params.site_url, params[:sitemap_index]) do
       {:reply, GoogleTools.ok("#{data.count} sitemaps for #{params.site_url}.", data), frame}
     else
-      {:error, {:gsc_error, 404, _}} -> {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
-      {:error, reason} -> {:reply, GoogleTools.error(reason), frame}
+      {:error, {:gsc_error, 404, _}} ->
+        {:reply, GoogleTools.text(GoogleTools.site_not_found(params.site_url)), frame}
+
+      {:error, reason} ->
+        {:reply, GoogleTools.error(reason), frame}
     end
   end
 end

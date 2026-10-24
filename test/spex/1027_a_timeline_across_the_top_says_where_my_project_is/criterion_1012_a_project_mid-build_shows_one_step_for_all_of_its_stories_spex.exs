@@ -45,7 +45,8 @@ defmodule CodeMySpecSpex.Story965.Criterion2924Spex do
     :ok
   end
 
-  spex "The steps are the project's own requirements, and all of the story work is one of them", criterion: 1012 do
+  spex "The steps are the project's own requirements, and all of the story work is one of them",
+    criterion: 1012 do
     scenario "A project mid-build shows one step for all of its stories" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_timeline")}

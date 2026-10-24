@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance", criterion: 464 do
+  spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance",
+    criterion: 464 do
     scenario "Phoenix project shape in cwd is rendered as Done on the per-step page" do
       given_ "the working directory contains mix.exs, lib/, and config/",
              context do

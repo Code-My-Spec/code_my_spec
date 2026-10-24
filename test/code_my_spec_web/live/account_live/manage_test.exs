@@ -233,4 +233,20 @@ defmodule CodeMySpecWeb.AccountLive.ManageTest do
       assert has_element?(manage_live, "input[value='']")
     end
   end
+
+  describe "the removed account-scoped agents page" do
+    # CodeMySpec.Agents.ModelSetting is scoped to the user, not the account
+    # (story 984); /app/agent-models is the one place that changes it (issue
+    # df1556c1). This route must not come back.
+    test "/app/accounts/:id/agents no longer renders the model settings form", %{
+      conn: conn,
+      user: user
+    } do
+      account = account_with_owner_fixture(user)
+
+      conn = get(conn, ~p"/app/accounts/#{account.id}/agents")
+
+      assert conn.status == 404
+    end
+  end
 end

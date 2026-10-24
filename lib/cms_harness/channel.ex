@@ -358,6 +358,15 @@ defmodule CmsHarness.Channel do
     end
   end
 
+  @doc "Called from `CmsHarness.RunLink` with an event of a run as it happens."
+  @spec deliver_analysis_event(String.t(), map()) :: :ok
+  def deliver_analysis_event(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:analysis_event, payload})
+      [] -> :ok
+    end
+  end
+
   @doc "Called from the analysis queue with a finished (or failed) run."
   @spec deliver_analysis_result(String.t(), map()) :: :ok
   def deliver_analysis_result(root, payload) do

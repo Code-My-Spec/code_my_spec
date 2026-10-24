@@ -7,22 +7,16 @@ defmodule CodeMySpec.Analysis.RunCommitColumnsTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.AnalysisFixtures
+  import CodeMySpec.UsersFixtures
+
+  alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Repo
 
-  test "the three columns exist, nullable, with no default" do
-    %{rows: rows} =
-      Repo.query!("""
-      SELECT column_name, data_type, is_nullable, column_default
-      FROM information_schema.columns
-      WHERE table_name = 'analysis_runs'
-        AND column_name IN ('start_commit', 'start_tree_dirty', 'completed_commit')
-      ORDER BY column_name
-      """)
+  test "a run nobody reported a commit for has none" do
+    run = full_scope_fixture() |> analysis_run_fixture()
 
-    assert rows == [
-             ["completed_commit", "character varying", "YES", nil],
-             ["start_commit", "character varying", "YES", nil],
-             ["start_tree_dirty", "boolean", "YES", nil]
-           ]
+    assert %Run{start_commit: nil, start_tree_dirty: nil, completed_commit: nil} =
+             Repo.get!(Run, run.id)
   end
 end

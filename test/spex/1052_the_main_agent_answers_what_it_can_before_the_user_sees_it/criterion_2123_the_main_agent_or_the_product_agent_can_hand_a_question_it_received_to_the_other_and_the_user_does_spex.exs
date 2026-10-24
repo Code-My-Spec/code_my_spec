@@ -38,7 +38,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion2123Spex do
 
         params = %{
           questions: [
-            %{"question" => "Does this behavior match what the story asked for?", "options" => []}
+            %{
+              "question" => "Does this behavior match what the story asked for?",
+              "options" => [
+                %{"label" => "Keep current behavior"},
+                %{"label" => "Change behavior"}
+              ]
+            }
           ]
         }
 

@@ -17,7 +17,18 @@ defmodule CodeMySpecSpex.Story1062.Criterion2090Spex do
 
       when_ "the engineer opens the verification page", context do
         :ok = GraphVerificationFixtures.change_waiting(context.scope)
-        {:ok, _view, html} = live(context.conn, "/dev/graph")
+        {:ok, view, _html} = live(context.conn, "/dev/graph")
+
+        # DevGraphLive defaults its picker to `List.first(projects)` across
+        # every account (it's a cross-account dev tool) -- selecting this
+        # test's own project explicitly is what an engineer checking a
+        # specific project would actually do, and makes this assertion
+        # independent of how many other projects happen to exist.
+        html =
+          view
+          |> element("#dev-graph-project-form")
+          |> render_change(%{"project" => context.scope.active_project_id})
+
         {:ok, Map.put(context, :verification_html, html)}
       end
 

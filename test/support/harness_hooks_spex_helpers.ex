@@ -363,11 +363,16 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   @doc """
   The harness's analysis queue begins `run`: reported over its socket as
-  `analysis_started`, as the queue reports it when a run gets its slot.
-  Returns once the cloud's channel has recorded the start.
+  `analysis_started`, as the queue reports it when a run gets its slot, on
+  `commit` with a clean tree. Returns once the cloud's channel has recorded
+  the start.
   """
-  @spec start_analysis(map(), map()) :: :ok
-  def start_analysis(%{harness: %{root: root, working_copy_id: id}}, %{id: run_id, source: source}) do
+  @spec start_analysis(map(), map(), String.t()) :: :ok
+  def start_analysis(
+        %{harness: %{root: root, working_copy_id: id}},
+        %{id: run_id, source: source},
+        commit \\ String.duplicate("a", 40)
+      ) do
     ref = {__MODULE__, :started, make_ref()}
 
     :ok =
@@ -378,7 +383,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
         %{id: id, run_id: run_id, test: self(), ref: ref}
       )
 
-    :ok = LiveHarness.deliver_analysis_started(root, run_id, source, String.duplicate("a", 40))
+    :ok = LiveHarness.deliver_analysis_started(root, run_id, source, commit)
 
     try do
       await_step(ref, :handled, root, "the harness never reported run #{run_id} starting")
@@ -497,6 +502,19 @@ defmodule CodeMySpecSpex.HarnessHooks do
   # This test's connection, as `Phoenix.Ecto.SQL.Sandbox` encodes it for a
   # client to send back. Not trapping exits: the process it is applied to is
   # the socket's transport, whose exit handling is Phoenix's.
+  @doc """
+  The live harness goes away and comes back: it stops serving the checkout,
+  then serves it again and rejoins the cloud, as a restart does.
+  """
+  @spec restart_live_harness(map()) :: map()
+  def restart_live_harness(%{harness: %{root: root, working_copy_id: id, topic: topic}} = context) do
+    :ok = LiveHarness.stop_serving(root)
+    handler = watch_channel(topic, id)
+    :ok = LiveHarness.serve(root, sandbox_user_agent())
+    await_joined(id, root, handler)
+    context
+  end
+
   defp sandbox_user_agent do
     CodeMySpec.Repo
     |> SQLSandbox.metadata_for(self(), trap_exit: false)

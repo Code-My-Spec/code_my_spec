@@ -15,6 +15,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
 
   import Ecto.Changeset
 
+  alias CodeMySpec.Repo.References
+
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Projects.Project
 
@@ -101,6 +103,10 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # hot reload moves this one and leaves `app_commit` on the launch.
     field :app_serving_commit, :string
 
+    # Desired published revision and device application receipt. Publication
+    # remains successful while this device is offline or blocked by local edits.
+    field :promotion_sync, :map, default: %{}
+
     # The machine this checkout is on. Nullable for rows never seen (the
     # `seen_copies_are_on_a_machine` constraint requires it once `last_seen_at`
     # is set); new mints always carry one.
@@ -139,7 +145,8 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
       :app_checked_at,
       :app_url,
       :app_commit,
-      :app_serving_commit
+      :app_serving_commit,
+      :promotion_sync
     ])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
@@ -149,6 +156,7 @@ defmodule CodeMySpec.WorkingCopies.WorkingCopy do
     # a 500 on the public onboarding endpoint instead of a recoverable 4xx
     # (71d28513).
     |> foreign_key_constraint(:device_id, message: "does not name a known device")
+    |> References.check()
     |> unique_constraint(:main,
       name: :working_copies_one_main_per_project_index,
       message: "this project already has a main working copy"

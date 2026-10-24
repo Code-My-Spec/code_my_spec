@@ -21,7 +21,10 @@ defmodule CodeMySpecSpex.Story1081.Criterion1709Spex do
     scenario "the step stops naming the missing server instead of proceeding" do
       given_ "Sam's project has no UAT server yet", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/console/resources/telemetry?env=uat"
+          )
 
         {:ok, Map.put(context, :view, view)}
       end

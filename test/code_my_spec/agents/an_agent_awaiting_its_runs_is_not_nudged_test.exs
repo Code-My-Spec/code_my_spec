@@ -103,11 +103,12 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
     |> run_requested_by(ctx.agent.id, :running)
     |> Reconciler.fail(:analyzer_crashed)
 
-    _told_it_failed = dispatched()
-
     StopDecision.deliver(ctx.scope, ctx.agent, [])
 
-    assert continuations() == 1
+    # Not held back as awaiting: it is told the run failed — the answer to the
+    # run it started — and the continuation waits behind that turn.
+    assert_receive {:agent_dispatch, _id, _ref, "" <> told}, 5_000
+    assert told =~ "failed without a result"
   end
 
   test "with nothing of its own in flight it is prompted as before", ctx do
@@ -116,6 +117,10 @@ defmodule CodeMySpec.Agents.AnAgentAwaitingItsRunsIsNotNudgedTest do
 
     StopDecision.deliver(ctx.scope, ctx.agent, [])
 
-    assert continuations() == 1
+    # Waited for, not drained in a quiet window: under load the dispatch can
+    # land after 200ms (ejected 3cc937b0b's gate).
+    assert_receive {:agent_dispatch, _id, _ref, "" <> prompt}, 5_000
+    assert prompt =~ "loop is still running"
+    assert continuations() == 0
   end
 end

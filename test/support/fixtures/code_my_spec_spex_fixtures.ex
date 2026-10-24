@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CmsHarness,
       CmsHarness.Agents,
       CmsHarness.Project,
+      # criterion 2351 (story 1132) reads the harness's own HTTP route list.
+      CmsHarness.Web,
       # The connected desktop assistance fixture uses the real harness websocket rig.
       CmsHarnessTest,
       CodeMySpec,
@@ -1172,6 +1174,40 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
+
+  defdelegate without_setup_postgres(context),
+    to: CmsHarnessTest.SetupFixture,
+    as: :without_postgres
+
+  def configure_agent_models_for_email(email) do
+    email
+    |> CodeMySpec.Users.get_user_by_email()
+    |> UserPreferences.scope_for()
+    |> configure_agent_models()
+  end
+
+  def connect_setup_project(context) do
+    CmsHarnessTest.FakeServer.start()
+
+    CmsHarness.Setup.connect_project(
+      context.project_dir,
+      %{
+        project_id: Ecto.UUID.generate(),
+        working_copy_id: Ecto.UUID.generate(),
+        app: "dev_setup_app"
+      },
+      []
+    )
+  end
+
+  @doc "Complete model selection before account/project onboarding scenarios."
+  def configure_agent_models(scope) do
+    {:ok, _} = connect_provider(scope, "anthropic")
+    {:ok, _} = CodeMySpec.Agents.put_model_setting(scope, :main, "anthropic", "claude-opus-5-5")
+    :ok
+  end
+
   @doc "Remove a provider connection, for the revoked-credential cases."
   @spec disconnect_provider(Scope.t(), atom()) :: :ok
   def disconnect_provider(scope, provider) do
@@ -1387,7 +1423,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec age_story(Scope.t(), term(), number()) :: :ok
   def age_story(%Scope{} = scope, story_id, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
-    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+    naive = at |> DateTime.to_naive()
 
     from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
     |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
@@ -1502,6 +1538,12 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
     reply
+  end
+
+  @doc "A publication stamp delivered by the server, for downstream graph-cache scenarios."
+  def record_story_publication(scope, story_id, version, opts \\ []) do
+    story = CodeMySpec.Stories.get_story(scope, story_id)
+    CodeMySpec.Stories.mark_story_promoted(scope, story, version, opts)
   end
 
   @doc """
@@ -2422,7 +2464,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def age_question(%Scope{user: %{id: user_id}}, question_id, seconds)
       when is_integer(seconds) and seconds > 0 do
     timestamp =
-      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+      DateTime.utc_now() |> DateTime.add(-seconds, :second)
 
     {1, _} =
       from(q in Notifications.QuestionRequest,
@@ -2443,7 +2485,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def age_permission(%Scope{user: %{id: user_id}}, permission_id, seconds)
       when is_integer(seconds) and seconds > 0 do
     timestamp =
-      DateTime.utc_now() |> DateTime.add(-seconds, :second) |> DateTime.truncate(:second)
+      DateTime.utc_now() |> DateTime.add(-seconds, :second)
 
     {1, _} =
       from(p in Notifications.PermissionRequest,
@@ -2637,7 +2679,6 @@ defmodule CodeMySpecSpex.Fixtures do
     past =
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
-      |> NaiveDateTime.truncate(:second)
 
     {_, _} =
       CodeMySpec.Repo.update_all(
@@ -3876,6 +3917,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Stand the fake in for Docker as a dev box provider, with the app's own
+  instance runner left as `Runner.Local` (what every dev app has) so a Docker box
+  that wrongly went through the instance runner cannot pass.
+  """
+  @spec install_docker_dev_box_runner(keyword()) :: :ok
+  def install_docker_dev_box_runner(opts \\ [healthy?: true, serving: :serving]) do
+    install_workspace_runner(opts,
+      runner: CodeMySpec.Workspaces.Runner.Local,
+      dev_box_runners: %{docker: FakeWorkspaceRunner}
+    )
+  end
+
+  @doc """
   What the instance was told about itself when it was started.
 
   The environment the runner was handed, which is everything a container knows
@@ -3894,6 +3948,17 @@ defmodule CodeMySpecSpex.Fixtures do
       [] -> %{}
     end
   end
+
+  @doc "Every `start` the context made on the fake workspace, oldest first."
+  @spec workspace_start_calls() :: [tuple()]
+  defdelegate workspace_start_calls(), to: FakeWorkspaceRunner, as: :calls
+
+  @doc """
+  The files the fake workspace was started with, `%{path_in_container => contents}`:
+  where a secret that must stay out of the container's environment is put instead.
+  """
+  @spec workspace_mounted_files() :: %{String.t() => String.t()}
+  defdelegate workspace_mounted_files(), to: FakeWorkspaceRunner, as: :mounted_files
 
   defp start_runner_with_ordered_teardown(opts) do
     started_before = WorkspaceWatchers.running()
@@ -4552,6 +4617,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Switch an agent on, the way the continuous control does -- the counterpart of
+  `pause_agent/2`.
+
+  A scenario that needs an agent to hold a task before it can be woken creates
+  it not continuous (nothing offers it work), has it claim, and switches it on
+  here; an agent holding a task is not offered another (a3354bfc).
+  """
+  @spec continue_agent(Scope.t(), Ecto.UUID.t()) :: {:ok, map(), atom()} | {:error, term()}
+  def continue_agent(%Scope{} = scope, agent_id) do
+    CodeMySpec.Agents.set_agent_continuous(scope, agent_id, true)
+  end
+
+  @doc """
   Put this session into continuous mode, the way `start_implementation` does.
 
   The stop hook's menu-on-turn-end path is gated on the *session's* own
@@ -4685,8 +4763,8 @@ defmodule CodeMySpecSpex.Fixtures do
       where: o.agent_id == type(^agent_id, :binary_id),
       update: [
         set: [
-          turn_requested_at: fragment("? - make_interval(secs => ?)", o.turn_requested_at, ^secs),
-          outcome_at: fragment("? - make_interval(secs => ?)", o.outcome_at, ^secs)
+          turn_requested_at: datetime_add(o.turn_requested_at, ^(-secs), "second"),
+          outcome_at: datetime_add(o.outcome_at, ^(-secs), "second")
         ]
       ]
     )
@@ -4711,7 +4789,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec age_agent_messages(Scope.t(), map(), number()) :: :ok
   def age_agent_messages(%Scope{} = _scope, %{id: agent_id}, seconds) do
     at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
-    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+    naive = at |> DateTime.to_naive()
 
     conversation_ids =
       from(c in CodeMySpec.Conversations.Conversation,
@@ -4985,6 +5063,98 @@ defmodule CodeMySpecSpex.Fixtures do
     project
   end
 
+  @doc """
+  A project, with its own account and owning user, committed for real —
+  outside the Ecto Sandbox — so a spex's own subprocess (a separate OS
+  process with its own fresh Postgres connection) can see it exactly as
+  production would (story 1013, criterion 916; product's decision on the
+  question it raised, after the sandbox user-agent seam was found not to
+  reach this read: `ensure_local_credential/1`'s own database lookup is a
+  plain query from that subprocess's own connection, not an HTTP request,
+  so no header can carry sandbox metadata into it).
+
+  `deploy_key` goes through the real `Projects.update_project/3` changeset,
+  so it is encrypted and `deploy_key_hash` is set exactly as in production
+  -- never written by hand.
+
+  Deleted in `on_exit`, also outside the sandbox — a spex that leaves a
+  committed row behind is a defect.
+  """
+  @spec committed_project_with_deploy_key!(String.t()) :: CodeMySpec.Projects.Project.t()
+  def committed_project_with_deploy_key!(deploy_key) do
+    {user, account, project} =
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(CodeMySpec.Repo, fn ->
+        user = user_fixture()
+        account = account_with_owner_fixture(user)
+        scope = user_scope_fixture(user, account)
+        project = project_fixture(scope, %{})
+
+        {:ok, project} =
+          CodeMySpec.Projects.update_project(scope, project, %{deploy_key: deploy_key})
+
+        {user, account, project}
+      end)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(CodeMySpec.Repo, fn ->
+        CodeMySpec.Repo.delete!(project)
+        CodeMySpec.Repo.delete!(account)
+        CodeMySpec.Repo.delete!(user)
+      end)
+    end)
+
+    project
+  end
+
+  @doc """
+  The partition suffix naming the live process's own `CodeMySpec.Repo`
+  database right now -- e.g. `"hb057ea73"` for `code_my_spec_testhb057ea73`.
+
+  A `scratch_worktree!/0` subprocess does not inherit this: `mix cms.spex`
+  assigns each shard its own database by overriding `Application.get_env`
+  at runtime, never by changing the OS-level `MIX_TEST_PARTITION` variable,
+  so a spawned subprocess -- which only ever sees the real OS environment --
+  resolves to whatever ambient partition this whole session started with,
+  not this test's own shard (story 1013, criterion 916; found by comparing
+  `Application.get_env(:code_my_spec, CodeMySpec.Repo)[:database]` read
+  from this process against the same expression run inside a subprocess
+  with no override: the two did not match). A spex that needs its own
+  committed row visible to a real subprocess must pass this back in
+  explicitly as `MIX_TEST_PARTITION`, via `scratch_worktree_env/1`.
+  """
+  @spec live_test_partition!() :: String.t()
+  def live_test_partition! do
+    Application.get_env(:code_my_spec, CodeMySpec.Repo)[:database]
+    |> String.replace_prefix("code_my_spec_test", "")
+  end
+
+  @doc """
+  A real Bandit listener for `CodeMySpecWeb.Endpoint`, on a free loopback
+  port — the public twin of `HarnessHooksSpexHelpers`' private `listen/0`,
+  for a spex that needs a reachable server URL without the rest of that
+  helper's working-copy/channel machinery (story 1013, criterion 916).
+
+  Not linked, and not stopped in `on_exit`, for the reason `listen/0`
+  already documents: a listener linked to the test process closes
+  mid-flight if something still serving through it outlives the test.
+  Loopback-only, ephemeral, and reclaimed by the OS once this VM exits.
+  """
+  @spec start_live_listener!() :: {pid(), String.t()}
+  def start_live_listener! do
+    {:ok, listener} =
+      Bandit.start_link(
+        plug: CodeMySpecWeb.Endpoint,
+        scheme: :http,
+        ip: {127, 0, 0, 1},
+        port: 0,
+        startup_log: false
+      )
+
+    Process.unlink(listener)
+    {:ok, {_ip, port}} = ThousandIsland.listener_info(listener)
+    {listener, "http://127.0.0.1:#{port}"}
+  end
+
   @doc "A project's deploy key, minting one if it has none yet."
   def ensure_project_deploy_key(scope, project) do
     {:ok, project} = CodeMySpec.Projects.ensure_deploy_key(scope, project)
@@ -4993,7 +5163,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = DateTime.utc_now()
 
     project
     |> Ecto.Changeset.change(domain: domain, domain_verified_at: now)
@@ -5071,6 +5241,478 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} = ProjectSecrets.put_value(scope, key, value)
 
     :ok
+  end
+
+  @doc "Whether the harness's in-memory keyring (story 1132) holds this specific key."
+  @spec harness_holding_key?(String.t()) :: boolean()
+  def harness_holding_key?(key), do: key in CmsHarness.SopsKeyring.keys()
+
+  @doc "The path the sops key socket (story 1132) listens on."
+  @spec sops_key_socket_path() :: Path.t()
+  def sops_key_socket_path, do: CmsHarness.SopsKeySocket.path()
+
+  @doc """
+  A shell command that runs this checkout's own `cms sops-key` through
+  `mix run --no-start`, standing in for the packaged `cms` binary a real
+  dev box runs: the `cms` already installed on this dev machine's own
+  PATH is an unrelated release of this project and never reflects an
+  uncommitted source change. `mix run`'s own final step execs into the
+  BEOM VM without forking (confirmed empirically), so this process's
+  reported parent is whatever actually launched the shim — `sops` itself,
+  when `SOPS_AGE_KEY_CMD` points here.
+  """
+  @spec sops_key_shim_path!() :: Path.t()
+  def sops_key_shim_path! do
+    dir = spex_tmp_dir!("sops-key-shim")
+    path = Path.join(dir, "cms-sops-key-shim")
+    root = File.cwd!()
+
+    spex_write_file!(path, """
+    #!/bin/sh
+    cd #{root} || exit 1
+    exec env MIX_ENV=test mix run --no-start --no-compile -e 'CmsHarness.Cli.SopsKey.start([])'
+    """)
+
+    File.chmod!(path, 0o700)
+    path
+  end
+
+  @doc "Every path the harness's own local HTTP router answers, for a criterion about what it does not."
+  @spec harness_web_route_paths() :: [String.t()]
+  def harness_web_route_paths do
+    CmsHarness.Web.Router.__routes__() |> Enum.map(& &1.path)
+  end
+
+  @doc """
+  The one escape hatch for `System.cmd/3` in a spec, for a criterion whose
+  subject is inherently an OS-level program (`sops`, `age-keygen`) rather
+  than anything the app's own LiveView/hook/MCP surface could run or
+  observe. See `.code_my_spec/knowledge/bdd/spex/boundaries.md`.
+
+  Also the one way a spec drives a `mix` task as product directed for
+  story 1013's criteria 916-918: as a separate OS process, not `apply/3`
+  and not a direct call into the module under test, asserting only what
+  can be seen from outside (exit status, output, files, database rows).
+  """
+  @spec run_cmd(String.t(), [String.t()], keyword()) :: {String.t(), non_neg_integer()}
+  def run_cmd(cmd, args, opts \\ []) do
+    opts = Keyword.put_new(opts, :stderr_to_stdout, true)
+    System.cmd(cmd, args, opts)
+  end
+
+  @doc """
+  Like `run_cmd/3`, but for a `mix` subprocess that must not outlive this
+  test -- story 1013's criteria 916-918 learned why the hard way.
+
+  `System.cmd/3` blocks this process until the external program exits, and
+  an ExUnit test timeout kills this process outright rather than letting it
+  unwind: the port closes, but the `erl` VM `mix` execs into is a real OS
+  process on the other side of it, and nothing reaps it. Orphaned (`ppid`
+  1), it kept running at ~190% CPU, and every run like it slowed the whole
+  machine enough to produce another one -- a 6-problem spex run compounded
+  to 11 before the cause was found.
+
+  Spawns via `Port.open/2` so the OS pid is known immediately, registers
+  its kill with `on_exit/1` (which ExUnit runs on every path out of a
+  test -- pass, fail, or its own timeout), and races the command against
+  `timeout_ms`, strictly shorter than the test's own `spex_timeout/0`, so a
+  genuinely stuck command fails here and is killed here, long before ExUnit
+  would ever have to kill the test process itself.
+  """
+  @spec run_cmd_bounded(String.t(), [String.t()], keyword(), pos_integer()) ::
+          {String.t(), non_neg_integer() | :timeout}
+  def run_cmd_bounded(cmd, args, opts \\ [], timeout_ms \\ 120_000) do
+    executable = System.find_executable(cmd) || raise "#{cmd} not found on PATH"
+
+    port_opts =
+      [:binary, :exit_status, :use_stdio, :stderr_to_stdout, args: args]
+      |> put_port_opt(:cd, opts[:cd])
+      |> put_port_opt(:env, env_charlists(opts[:env]))
+
+    port = Port.open({:spawn_executable, String.to_charlist(executable)}, port_opts)
+    {:os_pid, os_pid} = Port.info(port, :os_pid)
+
+    ExUnit.Callbacks.on_exit(fn -> kill_os_pid(os_pid) end)
+
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    collect_bounded(port, os_pid, deadline, "")
+  end
+
+  defp put_port_opt(opts, _key, nil), do: opts
+  defp put_port_opt(opts, key, value), do: Keyword.put(opts, key, value)
+
+  defp env_charlists(nil), do: nil
+
+  defp env_charlists(env),
+    do: Enum.map(env, fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+
+  # `after` on a bare `receive` is an inactivity timer, not a deadline -- it
+  # resets on every message, and a real `mix compile` sends one every few ms.
+  # `remaining/1` turns that into an absolute bound: total elapsed matters,
+  # not the gap since the last line of compiler output.
+  defp collect_bounded(port, os_pid, deadline, acc) do
+    receive do
+      {^port, {:data, data}} -> collect_bounded(port, os_pid, deadline, acc <> data)
+      {^port, {:exit_status, status}} -> {acc, status}
+    after
+      remaining(deadline) ->
+        kill_os_pid(os_pid)
+        {acc <> "\n[run_cmd_bounded] killed after exceeding its deadline", :timeout}
+    end
+  end
+
+  defp remaining(deadline), do: max(deadline - System.monotonic_time(:millisecond), 0)
+
+  defp kill_os_pid(os_pid) do
+    System.cmd("kill", ["-TERM", to_string(os_pid)], stderr_to_stdout: true)
+    Process.sleep(200)
+    System.cmd("kill", ["-KILL", to_string(os_pid)], stderr_to_stdout: true)
+    :ok
+  end
+
+  @doc """
+  Runs `fun` with `CodeMySpec.Repo` redirected to `database`, a name nothing
+  has used, for story 1013's criteria 916-918: driving the real
+  onboarding/migration code in-process against a genuinely fresh database,
+  instead of a real `mix` subprocess whose own full recompile proved too
+  heavy for this shared machine (main, 2026-10-22).
+
+  Two redirects, both required: `Application.put_env/3` so `Repo.config/0`
+  (and anything that reads it, like `creatable/1`) names `database`; a
+  second, unpooled connection via `put_dynamic_repo/1` so queries *through*
+  `Repo` -- `Ecto.Migrator`, `SQL.query/3` -- reach it too. `Repo.config/0`
+  does not consult the dynamic repo's own startup options, so the first
+  redirect alone would leave every config read naming `database` while
+  every query still ran against whatever this process was already
+  connected to.
+
+  Drops `database` on exit, whether `fun` created it or not -- the
+  pending-migrations check this exists to drive always ends by creating
+  one, so that is not an edge case here, but a run that answers earlier
+  (an unreachable postgres, say) should not leave a scratch database for
+  the next one to collide with.
+
+  On exit, not inline `after`: a scenario's `then_` steps run *after*
+  `fun` returns, in the same test, and still need `database` to exist --
+  an inline `after` tore it down the instant `fun` returned, before any
+  `then_` could see it created at all (story 1013, criterion 917).
+  `on_exit/1` runs once, at the true end of the test, after everything
+  the scenario itself does.
+  """
+  @spec with_throwaway_database(String.t(), (-> result)) :: result when result: term()
+  def with_throwaway_database(database, fun) do
+    original_config = Application.get_env(:code_my_spec, CodeMySpec.Repo)
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Repo,
+      Keyword.put(original_config, :database, database)
+    )
+
+    dyn_config =
+      CodeMySpec.Repo.config()
+      |> Keyword.put(:name, nil)
+      |> Keyword.put(:pool, DBConnection.ConnectionPool)
+      |> Keyword.put(:pool_size, 2)
+
+    {:ok, pid} = CodeMySpec.Repo.start_link(dyn_config)
+    previous = CodeMySpec.Repo.get_dynamic_repo()
+    CodeMySpec.Repo.put_dynamic_repo(pid)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      CodeMySpec.Repo.put_dynamic_repo(previous)
+      stop_dynamic_repo(pid)
+      Application.put_env(:code_my_spec, CodeMySpec.Repo, original_config)
+
+      run_cmd("psql", [
+        "postgres://postgres:postgres@localhost/postgres",
+        "-tAc",
+        "drop database if exists #{database}"
+      ])
+    end)
+
+    fun.()
+  end
+
+  # By the time `on_exit` runs, the test process that `start_link`ed this
+  # repo has already exited; a non-:normal exit (ExUnit does not always use
+  # :normal) propagates to this linked, non-trapping child too. That is a
+  # race against the `GenServer.stop/1` below it, not a reason to skip the
+  # stop: `Process.alive?/1` can see the pid as alive and then have it start
+  # dying before `GenServer.stop/1`'s own call lands, which that call
+  # reports as an EXIT rather than swallowing. The database is already
+  # dropped right after this regardless of how the pid went down.
+  defp stop_dynamic_repo(pid) do
+    if Process.alive?(pid), do: GenServer.stop(pid)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @doc """
+  `CodeMySpec.Repo.config/0`, naming a different database -- for a spex that
+  has to ask whether a config naming some other partition would be allowed
+  to create it (story 1013, criterion 918), without calling into
+  `CodeMySpec.Repo` from the spex file itself.
+  """
+  @spec repo_config_naming(String.t()) :: keyword()
+  def repo_config_naming(database), do: Keyword.put(CodeMySpec.Repo.config(), :database, database)
+
+  @doc """
+  `CmsHarness.Onboarding.mint/2`, for a spex driving onboarding's own
+  credential resolution in-process (story 1013, criterion 916).
+  """
+  @spec onboard_mint(Path.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
+  def onboard_mint(root, project_id), do: CmsHarness.Onboarding.mint(root, project_id)
+
+  @doc """
+  `CodeMySpec.TestMigrations.refuse_if_behind!/0`, for a spex driving the
+  real first-run migration check in-process (story 1013, criterion 917).
+  """
+  @spec check_test_migrations_refuse_if_behind!() :: :ok
+  def check_test_migrations_refuse_if_behind!, do: CodeMySpec.TestMigrations.refuse_if_behind!()
+
+  @doc """
+  `CodeMySpec.TestMigrations.creatable/1`, for a spex asking whether a
+  config naming some partition may be created (story 1013, criterion 918).
+  """
+  @spec check_test_migrations_creatable(keyword()) :: :ok | {:error, String.t()}
+  def check_test_migrations_creatable(config), do: CodeMySpec.TestMigrations.creatable(config)
+
+  @doc """
+  Sets an OS env var for the rest of the test, restored (or unset, if it
+  was never set) on exit -- so a spex asserting about `CMS_DEPLOY_KEY` or
+  similar never calls `System.put_env/2` itself.
+  """
+  @spec set_env_var!(String.t(), String.t()) :: :ok
+  def set_env_var!(name, value) do
+    previous = System.get_env(name)
+    System.put_env(name, value)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        nil -> System.delete_env(name)
+        value -> System.put_env(name, value)
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Unsets an OS env var for the rest of the test, restored on exit -- the
+  "ensure it is absent" counterpart to `set_env_var!/2`.
+  """
+  @spec ensure_env_var_unset!(String.t()) :: :ok
+  def ensure_env_var_unset!(name) do
+    previous = System.get_env(name)
+    System.delete_env(name)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        nil -> :ok
+        value -> System.put_env(name, value)
+      end
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Lets `mod`'s `Req.Test` stub answer a request made from a persistent named
+  process (story 1013, criterion 916: `CmsHarness.Token`'s GenServer, already
+  started by the app supervisor, not spawned per test) rather than only from
+  the calling test process itself. A no-op when nothing is registered under
+  `mod`; multi-clause, not a `case`, so a spex's own `setup` can call it
+  without tripping `NoControlFlowInTests`.
+  """
+  @spec allow_stub(module()) :: :ok
+  def allow_stub(mod), do: mod |> Process.whereis() |> allow_stub_pid(mod, self())
+
+  defp allow_stub_pid(nil, _mod, _owner), do: :ok
+  defp allow_stub_pid(pid, mod, owner), do: Req.Test.allow(mod, owner, pid)
+
+  @doc "A fresh tmp directory for a spec's own scratch files, removed on exit."
+  @spec spex_tmp_dir!(String.t()) :: Path.t()
+  def spex_tmp_dir!(prefix) do
+    dir = Path.join(System.tmp_dir!(), "#{prefix}-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
+    dir
+  end
+
+  @doc "Writes a file for a spec's own setup (e.g. feeding `sops` a plaintext input)."
+  @spec spex_write_file!(Path.t(), String.t()) :: :ok
+  def spex_write_file!(path, contents) do
+    path |> Path.dirname() |> File.mkdir_p!()
+    File.write!(path, contents)
+  end
+
+  @doc "Reads a file a spec's own setup or an external command wrote, or \"\" if absent."
+  @spec spex_read_file_or_blank(Path.t()) :: String.t()
+  def spex_read_file_or_blank(path) do
+    case File.read(path) do
+      {:ok, contents} -> contents
+      {:error, _reason} -> ""
+    end
+  end
+
+  @doc "Whether a file exists, for a spec checking something an external command or the harness wrote outside any app surface."
+  @spec spex_file_exists?(Path.t()) :: boolean()
+  def spex_file_exists?(path), do: File.exists?(path)
+
+  @doc "A file's stat, for a spec checking permission bits an app surface cannot report."
+  @spec spex_file_stat(Path.t()) :: {:ok, File.Stat.t()} | {:error, term()}
+  def spex_file_stat(path), do: File.stat(path)
+
+  @doc "Whether `path` exists and its mode denies every bit to group and other (0700/0600-style)."
+  @spec spex_user_only?(Path.t()) :: boolean()
+  def spex_user_only?(path) do
+    case File.stat(path) do
+      {:ok, %{mode: mode}} -> Bitwise.band(mode, 0o077) == 0
+      {:error, _reason} -> false
+    end
+  end
+
+  @doc "Generates an age keypair under `dir`, returning `{public_recipient, private_key}`."
+  @spec age_keypair!(Path.t()) :: {String.t(), String.t()}
+  def age_keypair!(dir) do
+    keyfile = Path.join(dir, "age-#{System.unique_integer([:positive])}.txt")
+    {_out, 0} = run_cmd("age-keygen", ["-o", keyfile])
+    {pub, 0} = run_cmd("age-keygen", ["-y", keyfile])
+
+    priv =
+      keyfile
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.find(&String.starts_with?(&1, "AGE-SECRET-KEY-"))
+
+    {String.trim(pub), priv}
+  end
+
+  @doc """
+  A real, well-formed age private key nobody's data is actually encrypted
+  to -- for a scenario that only needs *a* key `CmsHarness.SopsKeyring`
+  will hold, not one that has to decrypt anything.
+
+  `SopsKeyring` is one process shared by the whole spex run; whatever any
+  scenario installs into it stays there for every scenario that runs
+  after it in the same `mix spex` invocation. A string like
+  `"AGE-SECRET-KEY-1DEV"` reads as a plausible key but is not one --
+  `age` fails to parse it as an identity at all, and a *malformed*
+  identity poisons the whole blob `cms sops-key` hands back to `sops`,
+  not just the one entry (confirmed: age refuses the lot rather than
+  skipping it), breaking a *different*, real-key-dependent scenario
+  elsewhere in the same run. A real key age can always parse is safe to
+  mix in: unrelated to any given file's recipient, it is simply tried and
+  passed over.
+  """
+  @spec unique_age_private_key!() :: String.t()
+  def unique_age_private_key! do
+    dir = spex_tmp_dir!("unique-age-key")
+    {_pub, priv} = age_keypair!(dir)
+    priv
+  end
+
+  @doc """
+  Encrypts `plaintext` (dotenv format) to `recipient` under `dir`, writing
+  it to `name`, and returns the path to the encrypted file.
+
+  `--config /dev/null` keeps this project's own `.sops.yaml` (its real
+  recipients) from being consulted for a spec's own throwaway keypair.
+  """
+  @spec sops_encrypt_dotenv!(Path.t(), String.t(), String.t(), String.t()) :: Path.t()
+  def sops_encrypt_dotenv!(dir, name, plaintext, recipient) do
+    plain_path = Path.join(dir, "plain-#{name}")
+    enc_path = Path.join(dir, name)
+    spex_write_file!(plain_path, plaintext)
+
+    {out, 0} =
+      run_cmd("sops", [
+        "--config",
+        "/dev/null",
+        "--age",
+        recipient,
+        "-e",
+        "--input-type",
+        "dotenv",
+        "--output-type",
+        "dotenv",
+        plain_path
+      ])
+
+    spex_write_file!(enc_path, out)
+    enc_path
+  end
+
+  @doc "Decrypts a dotenv-format sops file, with optional `:env` (e.g. `SOPS_AGE_KEY`, `SOPS_AGE_KEY_CMD`)."
+  @spec sops_decrypt_dotenv(Path.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def sops_decrypt_dotenv(enc_path, opts \\ []) do
+    env = Keyword.get(opts, :env, [])
+
+    case run_cmd(
+           "sops",
+           [
+             "--config",
+             "/dev/null",
+             "-d",
+             "--input-type",
+             "dotenv",
+             "--output-type",
+             "dotenv",
+             enc_path
+           ],
+           env: env
+         ) do
+      {out, 0} -> {:ok, out}
+      {out, _status} -> {:error, out}
+    end
+  end
+
+  @doc """
+  This project's own `justfile`'s `recipe`'s body, as text, for criterion
+  2348 (story 1132) -- there being no project a spec generates here, the
+  real justfile on disk is the only one to check.
+  """
+  @spec justfile_recipe_body(String.t()) :: String.t()
+  def justfile_recipe_body(recipe) do
+    justfile = spex_read_file_or_blank(Path.join(File.cwd!(), "justfile"))
+
+    case String.split(justfile, ~r/\n#{recipe} \*args:\n/, parts: 2) do
+      [_before, after_recipe] ->
+        [body | _rest] = String.split(after_recipe, ~r/\n\S/, parts: 2)
+        body
+
+      [_only] ->
+        ""
+    end
+  end
+
+  @doc """
+  Point `CmsHarness.SopsKeyring.path/0` at a fresh, empty tmp path for the
+  rest of this test, restored on exit.
+
+  A "no keyring file was written" assertion against the real default path
+  (the dev machine's own `~/.config/sops/age/keys.txt` or OS equivalent)
+  would pass or fail on whatever that engineer's own machine happens to
+  hold, never on what this test did. Isolating `SOPS_AGE_KEY_FILE` is what
+  makes the assertion about this test's own run.
+  """
+  @spec isolated_sops_keyring_path!() :: Path.t()
+  def isolated_sops_keyring_path! do
+    previous = System.get_env("SOPS_AGE_KEY_FILE")
+    path = Path.join(System.tmp_dir!(), "sops-keyring-spex-#{System.unique_integer([:positive])}")
+    System.put_env("SOPS_AGE_KEY_FILE", path)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      File.rm(path)
+
+      case previous do
+        nil -> System.delete_env("SOPS_AGE_KEY_FILE")
+        value -> System.put_env("SOPS_AGE_KEY_FILE", value)
+      end
+    end)
+
+    path
   end
 
   @doc """

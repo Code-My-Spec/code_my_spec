@@ -15,6 +15,10 @@ defmodule CodeMySpecSpex.Story606.Criterion5518Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "Returning user with an active account skips the create-account step", criterion: 294 do
     scenario "Returning user with an active account skips directly to the next step" do
       given_ "the user is on /app with an active account", context do

@@ -119,7 +119,8 @@
     idx: "03",
     name: "the_stack",
     title: "Which MCP servers make up the marketing stack",
-    intro: "Three servers, each doing one thing. Plus one SEO plugin that earned its keep on day one.",
+    intro:
+      "Three servers, each doing one thing. Plus one SEO plugin that earned its keep on day one.",
     mcps: [
       %{
         role: "// reddit",
@@ -200,12 +201,42 @@
       head_left: "// snapshot · 2026-04-28",
       head_right: "source · ga4 + gsc + prod",
       stats: [
-        %{value: "311", unit: "users", label: "// peak day", ctx: "All-time record. 4/27 wave drove the harness's biggest day so far."},
-        %{value: "944", unit: "sessions", label: "// 7d traffic", ctx: "+73% week-over-week. The loop compounding."},
-        %{value: "44", unit: "%", label: "// blog engagement", ctx: "On this post, 4/28. Top page on the site by users."},
-        %{value: "25", unit: "users", label: "// registered (april)", ctx: "Real signups in April, prod-verified. Slow but durable."},
-        %{value: "17", unit: "min", label: "// deepest cohort", ctx: "Empathy reply on a \"month 3 wall\" thread. 13.8 pages avg."},
-        %{value: "87", unit: "↑", label: "// top comment", ctx: "No link. Reputation comment. Compounds quietly."}
+        %{
+          value: "311",
+          unit: "users",
+          label: "// peak day",
+          ctx: "All-time record. 4/27 wave drove the harness's biggest day so far."
+        },
+        %{
+          value: "944",
+          unit: "sessions",
+          label: "// 7d traffic",
+          ctx: "+73% week-over-week. The loop compounding."
+        },
+        %{
+          value: "44",
+          unit: "%",
+          label: "// blog engagement",
+          ctx: "On this post, 4/28. Top page on the site by users."
+        },
+        %{
+          value: "25",
+          unit: "users",
+          label: "// registered (april)",
+          ctx: "Real signups in April, prod-verified. Slow but durable."
+        },
+        %{
+          value: "17",
+          unit: "min",
+          label: "// deepest cohort",
+          ctx: "Empathy reply on a \"month 3 wall\" thread. 13.8 pages avg."
+        },
+        %{
+          value: "87",
+          unit: "↑",
+          label: "// top comment",
+          ctx: "No link. Reputation comment. Compounds quietly."
+        }
       ]
     },
     findings_sub: "// what the funnel taught me",
@@ -224,7 +255,8 @@
       %{
         label: "finding_03",
         lead: "Tool comparison comments produce volume.",
-        body: "Best-by-volume comment drove 67 sessions from 42 users. Different shape, different goal."
+        body:
+          "Best-by-volume comment drove 67 sessions from 42 users. Different shape, different goal."
       },
       %{
         label: "finding_04",
@@ -247,7 +279,8 @@
   cta: %{
     eyebrow: "// next_step",
     title: "Run /marketing-strategy.",
-    body: "30 minutes. A real strategy. A daily plan you'll actually follow. Free during early access.",
+    body:
+      "30 minutes. A real strategy. A daily plan you'll actually follow. Free during early access.",
     primary: %{
       label: "▸ Run /marketing-strategy",
       href:

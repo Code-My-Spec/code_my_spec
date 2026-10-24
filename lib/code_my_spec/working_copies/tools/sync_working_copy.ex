@@ -15,6 +15,11 @@ defmodule CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy do
     """
     Bring a working copy's checkout up to date with its remote's main.
 
+    On a main copy with pending or failed publication synchronization, retries
+    that exact published revision and its app lifecycle on the destination's
+    harness. It does not promote or publish the candidate again. Offline work
+    remains pending until the harness reconnects; list_working_copies shows its status.
+
     8f5ebfb2: asked to staff a working copy reported days behind main, there
     was no reachable way to catch it up first -- `list_working_copies`,
     `create_working_copy`, `offboard_working_copy`, `set_working_copy_loop` and
@@ -53,6 +58,23 @@ defmodule CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy do
     case WorkingCopies.fetch(id) do
       {:ok, copy} -> sync_copy(scope, copy)
       _ -> {:error, "No working copy has the id #{id}."}
+    end
+  end
+
+  defp sync_copy(
+         %{active_project_id: project_id} = scope,
+         %{project_id: project_id, main: true, promotion_sync: %{"status" => status}} = copy
+       )
+       when is_binary(project_id) and status in ["pending", "failed"] do
+    case CodeMySpec.Promotion.DeviceSync.retry(scope, copy.id) do
+      {:ok, state} ->
+        {:ok,
+         "Device synchronization retry requested for published revision #{state["head"]}. " <>
+           "Status: #{state["status"]}. Offline work resumes on reconnect. " <>
+           "Use list_working_copies to check completion; do not promote again."}
+
+      {:error, reason} ->
+        {:error, failure(copy, reason)}
     end
   end
 

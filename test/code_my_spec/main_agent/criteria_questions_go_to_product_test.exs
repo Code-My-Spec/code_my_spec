@@ -73,7 +73,21 @@ defmodule CodeMySpec.Agents.Main.CriteriaQuestionsGoToProductTest do
       Map.merge(
         %{
           task_id: ctx.task.id,
-          questions: [%{question: "Revert the fix or rewrite criterion 944?", options: []}]
+          questions: [
+            %{
+              question: "Revert the fix or rewrite criterion 944?",
+              options: [
+                %{
+                  label: "Keep current criteria",
+                  description: "Implement the current acceptance criteria"
+                },
+                %{
+                  label: "Revise criteria",
+                  description: "Ask Product to revise the acceptance criteria"
+                }
+              ]
+            }
+          ]
         },
         extra
       )

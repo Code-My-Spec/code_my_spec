@@ -108,7 +108,9 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
         burst = servers |> Enum.filter(&burst_box?/1) |> Enum.map(&safe_check(scope, &1, opts))
 
         bootstrap =
-          servers |> Enum.filter(&bootstrap_box?/1) |> Enum.map(&safe_reap_bootstrap(scope, &1, opts))
+          servers
+          |> Enum.filter(&bootstrap_box?/1)
+          |> Enum.map(&safe_reap_bootstrap(scope, &1, opts))
 
         burst ++ bootstrap
 

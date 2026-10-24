@@ -82,6 +82,36 @@ defmodule CodeMySpec.Devices do
     end
   end
 
+  @doc """
+  Associates an accountless local device with an authorized account.
+
+  Only for trusted desktop callers that have already verified the desktop
+  singleton and matched `device_id` against the server's recorded local identity.
+  A client-supplied UUID alone is not proof of machine ownership. This does not
+  move existing ownership, and must not be exposed as a generic claim API.
+  """
+  def associate_trusted_local_device(
+        %Scope{user: %{id: _}, active_account_id: account_id} = scope,
+        device_id
+      )
+      when is_binary(account_id) and is_binary(device_id) do
+    with true <- Authorization.authorize(:read_account, scope, account_id),
+         {:ok, id} <- Ecto.UUID.cast(device_id) do
+      Repo.update_all(
+        from(d in Device,
+          where: d.id == ^id and is_nil(d.account_id) and d.kind == :local
+        ),
+        set: [account_id: account_id, updated_at: DateTime.utc_now()]
+      )
+
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  def associate_trusted_local_device(_scope, _device_id), do: {:error, :forbidden}
+
   # One machine carries copies from every account its user belongs to, but the
   # row sits in whichever announced first. A token scoped to the user's other
   # account must still recognise it, or each heartbeat mints a fresh device with
@@ -223,7 +253,9 @@ defmodule CodeMySpec.Devices do
   """
   @spec sign_in_with_token(String.t() | nil) :: Device.t() | nil
   def sign_in_with_token(token) when is_binary(token) and token != "" do
-    case Repo.get_by(Device, token_hash: hash_token(token)) do
+    hash = hash_token(token)
+
+    case Repo.one(from(d in Device, where: d.token_hash == ^hash and is_nil(d.token_revoked_at))) do
       nil ->
         nil
 
@@ -235,6 +267,91 @@ defmodule CodeMySpec.Devices do
   end
 
   def sign_in_with_token(_token), do: nil
+
+  @doc """
+  Revoke a dev box's token (story 1131). Owners and admins only; the box's token
+  stops signing in, and nothing else on the account is touched.
+  """
+  @spec revoke_dev_box(Scope.t(), String.t()) ::
+          {:ok, Device.t()} | {:error, :forbidden | :not_found | Ecto.Changeset.t()}
+  def revoke_dev_box(%Scope{active_account_id: account_id} = scope, id)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = box <- get_device(scope, id),
+         true <- Device.dev_box?(box) do
+      case box |> Device.revoked_changeset(DateTime.utc_now()) |> Repo.update() do
+        {:ok, box} ->
+          broadcast(box, {:dev_box_revoked, box.id})
+          {:ok, box}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def revoke_dev_box(%Scope{}, _id), do: {:error, :forbidden}
+
+  @doc """
+  The dev box with this id whose token has not been revoked, or nil. For an
+  access token issued to a box: it holds for as long as its box does.
+  """
+  @spec active_dev_box(String.t() | nil) :: Device.t() | nil
+  def active_dev_box(id) when is_binary(id) do
+    case Repo.get(Device, id) do
+      %Device{token_revoked_at: nil} = box -> if Device.dev_box?(box), do: box
+      _ -> nil
+    end
+  end
+
+  def active_dev_box(_id), do: nil
+
+  @doc """
+  A box's harness joined a project channel: tell the account's page, so what it
+  reported (a preview address) shows without a reload.
+  """
+  @spec box_joined(String.t() | nil) :: :ok
+  def box_joined(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{} = box -> broadcast(box, {:dev_box_connected, box.id})
+      nil -> :ok
+    end
+  end
+
+  def box_joined(_device_id), do: :ok
+
+  @doc """
+  Give a cloud box the routine that starts it (story 1136). Owners and admins
+  only. The token is stored encrypted and never shown again.
+  """
+  @spec set_fire_token(Scope.t(), String.t(), map()) ::
+          {:ok, Device.t()} | {:error, :forbidden | :not_found | Ecto.Changeset.t()}
+  def set_fire_token(%Scope{active_account_id: account_id} = scope, id, params)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = box <- get_device(scope, id),
+         true <- Device.dev_box?(box) do
+      box
+      |> Device.fire_changeset(%{
+        fire_routine_id: String.trim(to_string(params["routine_id"] || "")),
+        fire_token: String.trim(to_string(params["token"] || ""))
+      })
+      |> Repo.update()
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  def set_fire_token(%Scope{}, _id, _params), do: {:error, :forbidden}
+
+  @doc "Whether this box can be started by firing its routine."
+  @spec startable?(Device.t()) :: boolean()
+  def startable?(%Device{fire_routine_id: routine, fire_token: token}),
+    do: is_binary(routine) and routine != "" and is_binary(token) and token != ""
 
   @doc "Subscribe to changes to this account's dev boxes."
   @spec subscribe(String.t()) :: :ok | {:error, term()}
@@ -280,6 +397,19 @@ defmodule CodeMySpec.Devices do
   end
 
   def list_devices(%Scope{}), do: []
+
+  @doc "Devices accessible to a user's harness across their account memberships."
+  def list_harness_devices(%Scope{user_id: user_id}) when is_integer(user_id) do
+    accounts = from(m in Member, where: m.user_id == ^user_id, select: m.account_id)
+
+    from(d in Device,
+      where: d.account_id in subquery(accounts),
+      order_by: [desc_nulls_last: d.last_seen_at]
+    )
+    |> Repo.all()
+  end
+
+  def list_harness_devices(%Scope{} = scope), do: list_devices(scope)
 
   @doc "One device on this account, or nil. Never an unscoped lookup by id."
   @spec get_device(Scope.t(), String.t()) :: Device.t() | nil
@@ -361,6 +491,30 @@ defmodule CodeMySpec.Devices do
     case Ecto.UUID.cast(device_id) do
       :error -> :ok
       {:ok, id} -> id |> then(&Repo.get(Device, &1)) |> mark_alive()
+    end
+  end
+
+  @doc """
+  Record that this device's harness just disconnected for the last of its
+  working copies -- the moment it went down, not merely a recent activity
+  timestamp (story 1138).
+
+  Best-effort, like `mark_alive/1`: a device that cannot be marked down is
+  not a reason to fail a channel's own shutdown.
+  """
+  @spec mark_down(Device.t() | Ecto.UUID.t()) :: :ok
+  def mark_down(%Device{} = device) do
+    device
+    |> Device.went_down_changeset(DateTime.utc_now())
+    |> Repo.update()
+
+    :ok
+  end
+
+  def mark_down(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      nil -> :ok
+      device -> mark_down(device)
     end
   end
 

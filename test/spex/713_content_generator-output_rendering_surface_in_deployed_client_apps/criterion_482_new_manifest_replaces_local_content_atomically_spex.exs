@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
   # makes the atomic persist log :error as it rolls back — an expected,
   # handled condition here, so don't fail the spex on those logs.
   spex "A clean replace lands whole; a failing replace preserves the prior state",
-    fail_on_error_logs: false, criterion: 482 do
+    fail_on_error_logs: false,
+    criterion: 482 do
     scenario "New manifest replaces local content atomically" do
       given_ "a first sync persisted five posts", context do
         Fixtures.stub_content_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")))

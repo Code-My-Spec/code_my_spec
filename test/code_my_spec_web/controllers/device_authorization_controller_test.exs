@@ -32,7 +32,10 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
       assert is_binary(device_code)
       assert user_code =~ ~r/^[A-Z2-9]{4}-[A-Z2-9]{4}$/
       assert verification_uri == CodeMySpecWeb.Endpoint.url() <> "/oauth/device"
-      assert verification_uri_complete == verification_uri <> "?user_code=" <> URI.encode(user_code)
+
+      assert verification_uri_complete ==
+               verification_uri <> "?user_code=" <> URI.encode(user_code)
+
       assert expires_in > 0
     end
 
@@ -220,7 +223,10 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
       assert %{"error" => "authorization_pending"} = json_response(poll_conn, 400)
     end
 
-    test "an unknown user_code shows an error rather than someone else's grant", %{conn: conn, user: user} do
+    test "an unknown user_code shows an error rather than someone else's grant", %{
+      conn: conn,
+      user: user
+    } do
       conn =
         conn
         |> log_in_user(user)

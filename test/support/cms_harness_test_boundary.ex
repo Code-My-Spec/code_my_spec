@@ -29,6 +29,7 @@ defmodule CmsHarnessTest do
       CodeMySpec.TempFile
     ],
     exports: [
+      SetupFixture,
       Machine,
       LiveHarness,
       ConnectHeaders,
@@ -38,6 +39,7 @@ defmodule CmsHarnessTest do
       FakeServer,
       HarnessOAuthFixture,
       BlockingProject,
+      ClusteredProject,
       SlotHolder,
       AppInstanceHelpers,
       FakeAppInstanceRunner,

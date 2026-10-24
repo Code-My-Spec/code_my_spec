@@ -111,6 +111,45 @@ defmodule CodeMySpec.IntegrationsTest do
     end
   end
 
+  describe "connect_api_key/3" do
+    test "stores the key once the provider accepts it", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        Req.Test.json(conn, %{"ok" => true})
+      end)
+
+      assert {:ok, integration} = Integrations.connect_api_key(scope, :zai, "zai-live-key")
+      assert integration.access_token == "zai-live-key"
+    end
+
+    test "a valid key on an account with no balance is stored, not refused", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        conn
+        |> Plug.Conn.put_status(429)
+        |> Req.Test.json(%{
+          "error" => %{
+            "code" => "1113",
+            "message" => "Insufficient balance or no resource package."
+          }
+        })
+      end)
+
+      assert {:ok, integration, :no_balance} =
+               Integrations.connect_api_key(scope, :zai, "zai-live-key")
+
+      assert integration.access_token == "zai-live-key"
+      assert Integrations.connected?(scope, :zai)
+    end
+
+    test "a refused key stores nothing", %{scope: scope} do
+      Req.Test.stub(CodeMySpec.Integrations.Providers.ApiKey, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{})
+      end)
+
+      assert {:error, :rejected} = Integrations.connect_api_key(scope, :zai, "zai-bad-key")
+      refute Integrations.connected?(scope, :zai)
+    end
+  end
+
   describe "refresh_token/2" do
     @cassette_name "google_refresh_success"
 
@@ -151,14 +190,14 @@ defmodule CodeMySpec.IntegrationsTest do
           expires_at: DateTime.utc_now() |> DateTime.add(-3600, :second)
         )
 
-      with_cassette @cassette_name, cassette_opts(), fn plug ->
+      with_cassette(@cassette_name, cassette_opts(), fn plug ->
         with_assent_plug(plug, fn ->
           assert {:ok, refreshed} = Integrations.refresh_token(scope, :google)
 
           assert is_binary(refreshed.access_token) and refreshed.access_token != ""
           assert DateTime.compare(refreshed.expires_at, DateTime.utc_now()) == :gt
         end)
-      end
+      end)
     end
 
     test "returns :no_refresh_token when the integration was stored without one",
@@ -435,9 +474,10 @@ defmodule CodeMySpec.IntegrationsTest do
       client_id = Application.fetch_env!(:code_my_spec, :google_client_id)
       client_secret = Application.fetch_env!(:code_my_spec, :google_client_secret)
 
-      with_cassette "google_login_shape", shape_cassette_opts(), fn plug ->
+      with_cassette("google_login_shape", shape_cassette_opts(), fn plug ->
         # 1. openid-configuration discovery
-        {:ok, _} = Req.get(plug: plug, url: "https://accounts.google.com/.well-known/openid-configuration")
+        {:ok, _} =
+          Req.get(plug: plug, url: "https://accounts.google.com/.well-known/openid-configuration")
 
         # 2. Token endpoint — using grant_type=refresh_token gives us the
         # same response shape Google returns for grant_type=authorization_code
@@ -462,7 +502,7 @@ defmodule CodeMySpec.IntegrationsTest do
 
         # 3. JWKS
         {:ok, _} = Req.get(plug: plug, url: "https://www.googleapis.com/oauth2/v3/certs")
-      end
+      end)
 
       shape_path = Path.join(@cassette_dir, "google_login_shape.json")
       assert File.exists?(shape_path), "shape cassette must be written"
@@ -495,12 +535,12 @@ defmodule CodeMySpec.IntegrationsTest do
 
       auth = [{"authorization", "Bearer #{access_token}"}, {"accept", "application/json"}]
 
-      with_cassette "github_login_shape", github_shape_cassette_opts(), fn plug ->
+      with_cassette("github_login_shape", github_shape_cassette_opts(), fn plug ->
         # GET /user
         {:ok, _} = Req.get(plug: plug, url: "https://api.github.com/user", headers: auth)
         # GET /user/emails
         {:ok, _} = Req.get(plug: plug, url: "https://api.github.com/user/emails", headers: auth)
-      end
+      end)
 
       shape_path = Path.join(@cassette_dir, "github_login_shape.json")
       shape = shape_path |> File.read!() |> Jason.decode!()
@@ -532,7 +572,9 @@ defmodule CodeMySpec.IntegrationsTest do
       }
 
       shape =
-        update_in(shape, ["interactions"], fn interactions -> [token_interaction | interactions] end)
+        update_in(shape, ["interactions"], fn interactions ->
+          [token_interaction | interactions]
+        end)
 
       File.write!(shape_path, Jason.encode!(shape, pretty: true))
 
@@ -638,7 +680,7 @@ defmodule CodeMySpec.IntegrationsTest do
       System.get_env("TEST_OPENAI_REFRESH_TOKEN") ||
         flunk("TEST_OPENAI_REFRESH_TOKEN required to record the OpenAI refresh shape")
 
-    with_cassette "openai_refresh_shape", openai_shape_cassette_opts(), fn plug ->
+    with_cassette("openai_refresh_shape", openai_shape_cassette_opts(), fn plug ->
       {:ok, _} =
         Req.post(
           plug: plug,
@@ -649,7 +691,7 @@ defmodule CodeMySpec.IntegrationsTest do
             client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
           ]
         )
-    end
+    end)
   end
 
   defp openai_shape_cassette_opts do

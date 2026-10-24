@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story964.Criterion3086Spex do
     :ok
   end
 
-  spex "The main agent chooses whether an epic goes to a working copy that already exists or to a new one", criterion: 1149 do
+  spex "The main agent chooses whether an epic goes to a working copy that already exists or to a new one",
+    criterion: 1149 do
     scenario "A fresh copy when nothing fits" do
       given_ :synced_context_component
 

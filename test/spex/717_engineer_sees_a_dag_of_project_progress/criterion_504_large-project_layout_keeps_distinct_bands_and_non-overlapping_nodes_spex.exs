@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6425Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Layout dimensions scale with the project's node count where feasible; bands remain distinguishable and nodes don't overlap", criterion: 504 do
+  spex "Layout dimensions scale with the project's node count where feasible; bands remain distinguishable and nodes don't overlap",
+    criterion: 504 do
     scenario "Large-project layout keeps distinct bands and non-overlapping nodes" do
       given_ :context_with_three_children
       given_ :cross_context_dependency

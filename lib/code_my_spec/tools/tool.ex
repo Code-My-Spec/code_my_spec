@@ -22,5 +22,16 @@ defmodule CodeMySpec.Tools.Tool do
   @callback script_result(params :: map(), Tools.context()) ::
               {:ok, term()} | {:error, String.t()}
 
-  @optional_callbacks script_result: 2
+  @doc """
+  A tool that was removed and stays only to say where its job went: a client
+  fetches its tool list once, at session start, so a stale list can still name
+  it. It answers when called, and is left out of every list written afresh
+  (the tool index, an agent's prompt). Absent means false.
+  """
+  @callback tombstone?() :: boolean()
+
+  @doc "Validate raw arguments before schema casting can drop unsupported fields."
+  @callback validate_input(map()) :: :ok | {:error, String.t()}
+
+  @optional_callbacks script_result: 2, tombstone?: 0, validate_input: 1
 end

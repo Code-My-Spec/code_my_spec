@@ -74,8 +74,8 @@ defmodule CodeMySpec.Agents.AnUnlandedStoryKeepsItsTeamTest do
              fn _ -> false end,
              {:bound, ctx.story.id, nil}
            ).status ==
-             :complete,
-           "the premise failed: the story does not read complete for the team, so the pull would not fire"
+             :blocked,
+           "a QA-passed story still awaits remote publication before it is complete"
 
     answer = Slice.next(ctx, %{agent_id: ctx.coding.id})
 

@@ -40,7 +40,8 @@ defmodule CodeMySpecSpex.Story967.Criterion2957Spex do
     :ok
   end
 
-  spex "On a wide screen the agent's change appears without Sam doing anything", criterion: 1042 do
+  spex "On a wide screen the agent's change appears without Sam doing anything",
+    criterion: 1042 do
     scenario "On a desk the change just appears" do
       given_ "a project with its own agent", context do
         {:ok, given_a_main_checkout(context, "spex_967")}

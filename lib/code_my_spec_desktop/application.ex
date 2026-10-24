@@ -1,11 +1,5 @@
 defmodule CodeMySpecDesktop.Application do
-  @moduledoc """
-  Starts the desktop setup window before database-dependent services.
-
-  The shell serves prerequisite results and installation guidance without
-  Postgres. Once checks pass, the user can start the web application and
-  harness; startup failures leave the setup window available for recovery.
-  """
+  @moduledoc "Starts the desktop runtime and opens model onboarding under /app."
 
   use Boundary,
     top_level?: true,

@@ -40,6 +40,7 @@ defmodule CmsHarnessTest.WorkingCopies.SyncToMainTest do
 
     assert {:ok, %{from: ^before, to: after_sha, updated: true}} = SyncToMain.run(clone, %{})
     assert after_sha == head(other_clone)
+
     assert File.exists?(Path.join(clone, "second.md")),
            "the fast-forward did not update the working tree"
   end
@@ -56,6 +57,7 @@ defmodule CmsHarnessTest.WorkingCopies.SyncToMainTest do
     File.write!(Path.join(clone, "README.md"), "uncommitted change\n")
 
     assert {:error, %{tag: :dirty_tree}} = SyncToMain.run(clone, %{})
+
     assert File.read!(Path.join(clone, "README.md")) == "uncommitted change\n",
            "the refusal must not have touched the dirty file"
   end

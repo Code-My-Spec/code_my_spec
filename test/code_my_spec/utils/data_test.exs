@@ -15,6 +15,9 @@ defmodule CodeMySpec.Utils.DataTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  # The server's project import: Postgres only.
+  @moduletag :postgres
+
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures

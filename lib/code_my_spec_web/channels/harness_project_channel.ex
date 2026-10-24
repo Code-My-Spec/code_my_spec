@@ -82,6 +82,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
            ),
          {:ok, harness} <- report_root(scope, harness, payload["root"]),
          {:ok, harness} <- report_preview_url(harness, payload["preview_url"]),
+         :ok <- Devices.box_joined(socket.assigns[:device_id]),
          {:ok, harness} <- WorkingCopies.attach_device(harness, device),
          :ok <-
            record_machine_tools(harness, payload["machine_tools"], payload["machine_tool_docs"]),
@@ -104,6 +105,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns.
       Analysis.resume_orphaned(scope, claimed_runs(payload))
       PromotionQueue.copy_joined(scope, harness)
+      CodeMySpec.Promotion.DeviceSync.copy_joined(scope, harness)
 
       # The id goes back whether minted or recognised; a first join writes it
       # down so its next restart is the same harness.
@@ -323,7 +325,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # holding a different application would otherwise rename the project.
   def handle_in("module_name", %{"module_name" => name}, socket)
       when is_binary(name) and name != "" do
-    project = socket.assigns.scope.active_project
+    project = current_project(socket)
 
     if project && project.module_name != name && main_copy?(socket) do
       case Projects.update_project(socket.assigns.scope, project, %{module_name: name}) do
@@ -351,7 +353,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # answer (it records existence, never a body).
   def handle_in("health_route_status", %{"status" => status}, socket)
       when status in ~w(ok no_health_route health_route_piped) do
-    project = socket.assigns.scope.active_project
+    project = current_project(socket)
 
     if project && project.health_route_status != status do
       # `Repo.update/1` raises Ecto.StaleEntryError rather than returning
@@ -553,6 +555,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     ref = socket_ref(socket)
     scope = socket.assigns.scope
     port = msg["port"]
+    payload = with_budget(payload, msg["deadline_ms"])
 
     {:noreply,
      reply_async(socket, ref, {"decision", hook}, fn ->
@@ -590,6 +593,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The commit an analyzer started on, and whether the tree was clean, from the
   # machine holding the checkout. Inline: one row update, and it must land
   # before this run's `analysis_result`, which is deferred.
+  # Each event of a run as it happens (story 1141). An event for a run that is
+  # not running here is dropped: a late event of a run already closed.
+  def handle_in("analysis_event", %{"run_id" => run_id, "event" => %{} = event}, socket)
+      when is_integer(run_id) do
+    _ = Analysis.record_live_event(socket.assigns.scope, run_id, event)
+    {:reply, :ok, socket}
+  end
+
   def handle_in("analysis_started", payload, socket) do
     case Analysis.record_remote_start(socket.assigns.scope, payload) do
       {:ok, _run} ->
@@ -826,6 +837,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The DB write behind every app verb's reply, never gating the reply: the
   # far side did act either way.
+
+  # The row as it stands, not the copy the join took: a correction made since
+  # would otherwise read as stale and be written again.
+  defp current_project(socket) do
+    case socket.assigns.scope.active_project do
+      %{id: id} -> Projects.get_project_by_id(id)
+      nil -> nil
+    end
+  end
+
   defp record_app_result(socket, {:ok, %{status: _status} = info}) do
     case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
       {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
@@ -1208,6 +1229,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp describe({handler, detail}), do: "#{handler} (#{detail})"
   defp describe(handler), do: handler
 
+  # How long the harness will wait for this answer (c93e5fdc): `Hooks.Stop`
+  # bounds its own work against it so the harness is answered, not timed out.
+  defp with_budget(payload, ms) when is_integer(ms) and ms > 0,
+    do: Map.put(payload, "harness_budget_ms", ms)
+
+  defp with_budget(payload, _unnamed), do: payload
+
   defp decision_reply(hook, scope, payload, port) do
     case decide_hook(hook, scope, payload, port) do
       {:error, reason} -> {:error, %{"reason" => reason}}
@@ -1343,6 +1371,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # A message sent now to a busy agent: the machine stops its turn.
   def handle_info({:interrupt_turn, agent_id}, socket) do
     push(socket, "interrupt_turn", %{"agent_id" => agent_id})
+    {:noreply, socket}
+  end
+
+  # One run, by id: somebody cancelled it (story 1142).
+  def handle_info({:cancel_run, run_id}, socket) do
+    push(socket, "cancel_analysis", %{"run_id" => run_id, "reason" => "cancelled"})
     {:noreply, socket}
   end
 
@@ -1666,12 +1700,40 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
         Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+        mark_device_down_if_last_copy(socket)
 
       _ ->
         :ok
     end
 
     :ok
+  end
+
+  # A device is up while any of its working copies holds a channel
+  # (`CodeMySpecWeb.DeviceLive.Index.reachable?/1` reads the same registry for
+  # the same claim). This copy's own channel is the one actually closing, so
+  # it is excluded from "any other copy still connected" rather than trusted
+  # to have already left the registry -- `terminate/2` runs before this
+  # process's own registry entry is torn down by its exit.
+  defp mark_device_down_if_last_copy(socket) do
+    with %Scope{active_working_copy_id: working_copy_id} when is_binary(working_copy_id) <-
+           socket.assigns.scope,
+         {:ok, %{device_id: device_id}} when is_binary(device_id) <-
+           WorkingCopies.fetch(working_copy_id) do
+      unless other_copy_connected?(device_id, working_copy_id) do
+        Devices.mark_down(device_id)
+      end
+    end
+
+    :ok
+  end
+
+  defp other_copy_connected?(device_id, excluded_copy_id) do
+    [device_id]
+    |> WorkingCopies.ids_by_device()
+    |> Map.get(device_id, [])
+    |> Enum.reject(&(&1 == excluded_copy_id))
+    |> Enum.any?(&match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(&1)))
   end
 
   # The reconcile dies with the channel that started it. `async_nolink` does not
@@ -1901,9 +1963,29 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # names exactly one project, and a user reaches the projects in accounts they
   # belong to. Never the user's UI-selected project.
   defp authorize(socket, project_id) do
-    case socket.assigns[:deploy_key_project_id] do
-      nil -> authorize_member(socket.assigns[:scope], project_id)
-      key_project_id -> authorize_deploy_key(socket.assigns[:scope], key_project_id, project_id)
+    case {socket.assigns[:deploy_key_project_id], socket.assigns[:device_id]} do
+      {nil, nil} ->
+        authorize_member(socket.assigns[:scope], project_id)
+
+      {nil, device_id} ->
+        authorize_dev_box(device_id, project_id)
+
+      {key_project_id, _} ->
+        authorize_deploy_key(socket.assigns[:scope], key_project_id, project_id)
+    end
+  end
+
+  # A dev box (story 1131) reaches the projects of the account it belongs to and
+  # no others. The socket itself carries no user; the project's account owner
+  # acts for it here, as for a deploy key, and only on this channel. A box
+  # revoked since the socket connected is refused.
+  defp authorize_dev_box(device_id, project_id) do
+    with %{account_id: account_id} <- Devices.active_dev_box(device_id),
+         %Project{account_id: ^account_id} <- Projects.get_project_by_id(project_id),
+         %{} = owner <- Accounts.get_account_owner(account_id) do
+      pin_to_project(CodeMySpec.UserPreferences.scope_for(owner), project_id)
+    else
+      _ -> {:error, :unauthorized}
     end
   end
 

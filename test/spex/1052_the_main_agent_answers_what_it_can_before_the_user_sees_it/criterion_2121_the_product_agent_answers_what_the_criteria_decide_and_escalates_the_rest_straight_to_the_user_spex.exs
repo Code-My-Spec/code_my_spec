@@ -35,7 +35,13 @@ defmodule CodeMySpecSpex.Story1052.Criterion2121Spex do
         params = %{
           about: "criteria",
           questions: [
-            %{"question" => "Does criterion 944 cover international refunds?", "options" => []}
+            %{
+              "question" => "Does criterion 944 cover international refunds?",
+              "options" => [
+                %{"label" => "Keep current behavior"},
+                %{"label" => "Change behavior"}
+              ]
+            }
           ]
         }
 

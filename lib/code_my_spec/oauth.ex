@@ -16,6 +16,8 @@ defmodule CodeMySpec.Oauth do
 
   import Ecto.Query, only: [from: 2]
 
+  alias CodeMySpec.Devices
+  alias CodeMySpec.Oauth.AccessToken
   alias CodeMySpec.Oauth.Application
   alias CodeMySpec.Oauth.DeviceGrant
   alias CodeMySpec.Repo
@@ -90,6 +92,43 @@ defmodule CodeMySpec.Oauth do
   end
 
   def grant_token(params), do: ExOauth2Provider.Token.grant(params, otp_app: :code_my_spec)
+
+  @doc """
+  An access token for a dev box (story 1131), good for `expires_in` seconds.
+
+  Issued against the account owner, which `ExOauth2Provider` needs for a
+  resource owner, but tied to the box by `device_id`: whatever it opens, it opens
+  as that box and never as the owner (`box_token/1`).
+  """
+  @spec issue_box_token(Devices.Device.t(), User.t(), pos_integer()) ::
+          {:ok, AccessToken.t()} | {:error, Ecto.Changeset.t()}
+  def issue_box_token(%Devices.Device{id: device_id}, %User{} = owner, expires_in) do
+    with {:ok, token} <-
+           AccessTokens.create_token(owner, %{expires_in: expires_in}, otp_app: :code_my_spec) do
+      {_count, _} =
+        Repo.update_all(from(t in AccessToken, where: t.id == ^token.id),
+          set: [device_id: device_id]
+        )
+
+      {:ok, %{token | device_id: device_id}}
+    end
+  end
+
+  @doc "The id of the box an access token was issued to, or nil."
+  @spec box_token(AccessToken.t()) :: String.t() | nil
+  def box_token(%AccessToken{device_id: device_id}), do: device_id
+
+  @doc "Revoke every access token issued to this box and no other."
+  @spec revoke_box_tokens(String.t()) :: non_neg_integer()
+  def revoke_box_tokens(device_id) when is_binary(device_id) do
+    {count, _} =
+      Repo.update_all(
+        from(t in AccessToken, where: t.device_id == ^device_id and is_nil(t.revoked_at)),
+        set: [revoked_at: DateTime.utc_now()]
+      )
+
+    count
+  end
 
   @doc "Revokes the caller's OAuth authorizations for a device on the current account."
   def revoke_device_authorization(%CodeMySpec.Users.Scope{user_id: user_id} = scope, device_id)
@@ -335,7 +374,7 @@ defmodule CodeMySpec.Oauth do
     query = from(g in DeviceGrant, where: g.id == ^grant.id and is_nil(g.consumed_at))
 
     case Repo.update_all(query,
-           set: [consumed_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+           set: [consumed_at: DateTime.utc_now()]
          ) do
       {1, _} -> fetch_claimed_token(grant)
       {0, _} -> {:error, :invalid_grant}

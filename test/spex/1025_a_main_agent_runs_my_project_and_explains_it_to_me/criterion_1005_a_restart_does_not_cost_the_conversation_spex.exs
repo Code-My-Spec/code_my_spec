@@ -40,7 +40,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2917Spex do
     :ok
   end
 
-  spex "The main agent picks up the same conversation every time, however long it has been", criterion: 1005 do
+  spex "The main agent picks up the same conversation every time, however long it has been",
+    criterion: 1005 do
     scenario "A restart does not cost the conversation" do
       given_ "a conversation with the main agent", context do
         context = given_a_main_checkout(context, "spex_2917")

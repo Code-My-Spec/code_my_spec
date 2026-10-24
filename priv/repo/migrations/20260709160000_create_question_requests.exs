@@ -6,6 +6,7 @@ defmodule CodeMySpec.Repo.Migrations.CreateQuestionRequests do
       add :id, :binary_id, primary_key: true
       add :user_id, references(:users, on_delete: :delete_all), null: false
       add :title, :string
+
       # A list of question maps: %{"question", "header", "options" => [%{"label","description"}], "multiSelect"}.
       add :questions, :jsonb, null: false, default: "[]"
       add :status, :string, null: false, default: "pending"

@@ -15,7 +15,7 @@ defmodule CodeMySpec.Content.ContentTag do
     belongs_to :content, CodeMySpec.Content.Content
     belongs_to :tag, CodeMySpec.Content.Tag
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false

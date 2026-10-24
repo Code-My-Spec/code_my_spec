@@ -78,7 +78,8 @@ defmodule CmsHarness.Agents.Shell do
       {:ok, output, exit_code} ->
         case write_redirect(target, output, mode) do
           :ok ->
-            {:ok, "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"}
+            {:ok,
+             "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"}
 
           {:error, reason} ->
             {:error,
@@ -128,7 +129,7 @@ defmodule CmsHarness.Agents.Shell do
 
       case Task.yield(task, timeout) do
         nil ->
-          cleanup = Execution.stop(task.pid)
+          cleanup = Execution.stop_and_release(task.pid)
           Task.shutdown(task, :brutal_kill)
           {_, output} = StringIO.contents(capture)
           {:timeout, output, cleanup}

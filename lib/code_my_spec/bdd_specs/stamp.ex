@@ -36,7 +36,12 @@ defmodule CodeMySpec.BddSpecs.Stamp do
   """
   @spec plan([{String.t(), String.t()}], [map()], %{integer() => map()}) :: [action()]
   def plan(files, criteria, stories) do
-    by_path = for c <- criteria, is_binary(c.spec_path) and c.spec_path != "", into: %{}, do: {c.spec_path, c}
+    by_path =
+      for c <- criteria,
+          is_binary(c.spec_path) and c.spec_path != "",
+          into: %{},
+          do: {c.spec_path, c}
+
     by_id = Map.new(criteria, &{&1.id, &1})
 
     {actions, _taken} =
@@ -72,10 +77,24 @@ defmodule CodeMySpec.BddSpecs.Stamp do
          {:ok, stamped} <- stamp(content, criterion.number) do
       story = Map.fetch!(stories, criterion.story_id)
       to = BddSpecs.spec_file_path(story, %{criterion | spec_path: nil})
-      %{path: path, action: :stamp, number: criterion.number, to: to, content: stamped, criterion: criterion}
+
+      %{
+        path: path,
+        action: :stamp,
+        number: criterion.number,
+        to: to,
+        content: stamped,
+        criterion: criterion
+      }
     else
-      true -> unmatched(path, "criterion #{criterion.number} is already covered by another file")
-      :error -> unmatched(path, "no `spex \"…\" do` call found; add `criterion: #{criterion.number}` by hand")
+      true ->
+        unmatched(path, "criterion #{criterion.number} is already covered by another file")
+
+      :error ->
+        unmatched(
+          path,
+          "no `spex \"…\" do` call found; add `criterion: #{criterion.number}` by hand"
+        )
     end
   end
 
@@ -105,7 +124,9 @@ defmodule CodeMySpec.BddSpecs.Stamp do
     end
   end
 
-  defp mark_taken(taken, %{action: :stamp, criterion: criterion}), do: MapSet.put(taken, criterion.id)
+  defp mark_taken(taken, %{action: :stamp, criterion: criterion}),
+    do: MapSet.put(taken, criterion.id)
+
   defp mark_taken(taken, _action), do: taken
 
   defp unmatched(path, why), do: %{path: path, action: :unmatched, why: why}

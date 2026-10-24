@@ -70,8 +70,7 @@ defmodule CodeMySpec.Provisioning.PublicResolverTest do
     # would be silent in every case it exists to speak up for.
     test "asks Cloudflare for the format it will actually answer in" do
       refute Dns.resolves_publicly?("nowhere.example.com", :a,
-               resolver:
-                 recording_headers(%{@google => silent(), @cloudflare => silent()})
+               resolver: recording_headers(%{@google => silent(), @cloudflare => silent()})
              )
 
       assert_received {:headers, @cloudflare, headers}

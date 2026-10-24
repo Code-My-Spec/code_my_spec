@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2062Spex do
               questions: [
                 %{
                   question: "Which Ecto adapter does this project's test config actually use?",
-                  options: []
+                  options: [%{label: "Keep current behavior"}, %{label: "Change behavior"}]
                 }
               ]
             },

@@ -65,7 +65,11 @@ defmodule CmsHarness.AppInstance.AnAfterPromoteHookOutlivesTheHarnessTest do
       end)
 
       assert Local.await_status(status, "log", 2_000, 10) == :ok
-      assert_received :written
+
+      # await_status only needs to observe the file write; the spawned
+      # process's own send/2 right after it is a separate, later step that
+      # can still be in flight on a loaded scheduler.
+      assert_receive :written, 500
     end
 
     test "no status in time is an error, not a hang", %{tmp_dir: dir} do

@@ -261,7 +261,7 @@ defmodule CodeMySpec.Agents.Mailbox do
       Repo.all(
         from e in Entry,
           where: e.state in [:queued, :claimed],
-          distinct: e.agent_id,
+          distinct: true,
           select: e.agent_id,
           limit: 100
       )

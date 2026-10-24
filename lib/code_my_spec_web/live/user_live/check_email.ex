@@ -7,7 +7,11 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
 
   def render(assigns) do
     ~H"""
-    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing
+      current_path={assigns[:current_path]}
+      flash={@flash}
+      current_scope={@current_scope}
+    >
       <div
         id="check-email-page"
         class="mx-auto max-w-xl py-12 flex flex-col gap-5"
@@ -62,7 +66,6 @@ defmodule CodeMySpecWeb.UserLive.CheckEmail do
           <.next_step n="05" label="Open the local workspace" />
         </div>
       </div>
-
     </Layouts.marketing>
     """
   end

@@ -7,10 +7,15 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.UpdateCampaignStatus do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string,
+      required: true,
+      description: "Customer ID (e.g. \"123-456-7890\")"
+
     field :campaign_id, :string, required: true, description: "Campaign ID"
     field :status, :string, required: true, description: "ENABLED, PAUSED, or REMOVED"
-    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
+
+    field :login_customer_id, :string,
+      description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

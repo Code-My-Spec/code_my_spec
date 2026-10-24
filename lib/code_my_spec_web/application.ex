@@ -55,6 +55,8 @@ defmodule CodeMySpecWeb.Application do
            name: CodeMySpec.EmbedPool, min: 0, max: 4, backend: embed_pool_backend(env)},
         # Backstop for the live mix.lock trigger in `Files.FileSync`. Not gated on
         # embeddings: `project_dependencies` is bookkeeping on its own.
+        # Test and spex runs launched here never outlive what started them.
+        when_serving(serving?, CodeMySpec.RunGuard),
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
         # One reconcile per boot; a `:temporary`, non-raising Task, so it never
@@ -114,6 +116,8 @@ defmodule CodeMySpecWeb.Application do
         # Which projects a light harness holds (so where their analyzers run).
         # Not in `Analysis.Supervisor`, which starts only where analyzers run locally.
         CodeMySpec.Analysis.HarnessRegistry,
+        # What runs report as they go, for the run page (story 1141).
+        CodeMySpec.Analysis.LiveRuns,
         # Working copies mid-reconcile; server-held state for remote harnesses.
         CodeMySpec.Files.ReconcileRegistry,
         # One setup run per project; provisioning calls providers from here.
@@ -264,7 +268,7 @@ defmodule CodeMySpecWeb.Application do
         enabled: serving? and main_copy?() and not tunnel_held_by_harness?()
       )
 
-    children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]
+    children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}] ++ copy_analysis(main_copy?())
   end
 
   def children(children, :test, _serving?) do
@@ -278,6 +282,22 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, _env, _serving?), do: children
+
+  # A copy's own app has no harness, so it runs analysis itself: what QA drives
+  # through `/dev/qa-agents` before a change lands. Main's sends it to its harness.
+  defp copy_analysis(true), do: []
+
+  defp copy_analysis(false) do
+    # Owns the environments `/dev/qa-agents` registers: a registry entry dies
+    # with the process that made it, and a request's process ends with it.
+    qa_environments = %{
+      id: CodeMySpecWeb.QaEnvironments,
+      start: {Agent, :start_link, [fn -> :ok end, [name: CodeMySpecWeb.QaEnvironments]]}
+    }
+
+    # Where the runs it executes report their events as they happen (story 1141).
+    [CodeMySpec.Analysis.Supervisor, CodeMySpec.Analysis.LocalRunLink, qa_environments]
+  end
 
   # `tunnel_config` is main's tunnel; only main may run its connector. Set by
   # `AppInstance.Runner.Local`; unset (a plain `mix phx.server`) reads as main.

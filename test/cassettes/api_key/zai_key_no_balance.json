@@ -1,0 +1,80 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-10-22T01:54:19.253124Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 1,
+          "messages": [
+            {
+              "content": "hi",
+              "role": "user"
+            }
+          ],
+          "model": "glm-5.3"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.5"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.z.ai/api/paas/v4/chat/completions"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "1113",
+            "message": "Insufficient balance or no resource package. Please recharge."
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "alt-svc": [
+            "h3=\":443\"; ma=3600"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json; charset=UTF-8"
+          ],
+          "date": [
+            "Thu, 22 Oct 2026 01:54:19 GMT"
+          ],
+          "ga-traceid": [
+            "0988b5ad2f706e4b576557685a5dcf97"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers",
+            "Origin"
+          ],
+          "x-log-id": [
+            "202610220954187973d601cc1d4645"
+          ],
+          "x-request-id": [
+            "b11247c3-3005-486b-8056-a9a30f2db9cb"
+          ]
+        },
+        "status": 429
+      }
+    }
+  ],
+  "version": "2.0"
+}

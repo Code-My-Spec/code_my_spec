@@ -20,7 +20,9 @@ defmodule CodeMySpecSpex.Story1077.Criterion4668Spex do
   spex "A spec names the criterion it covers", criterion: 1544 do
     scenario "a spec whose spex call names the criterion covers it" do
       given_ "the story has a criterion", context do
-        story = CriterionScript.create_story(context.scope, "Capture a task", ["A task is captured"])
+        story =
+          CriterionScript.create_story(context.scope, "Capture a task", ["A task is captured"])
+
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         {:ok, context |> Map.put(:story, story) |> Map.put(:number, number)}

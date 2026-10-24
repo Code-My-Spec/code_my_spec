@@ -246,7 +246,13 @@ defmodule CodeMySpec.BootVersionTest do
 
       other = clone(origin)
       commit(other, "two")
-      {_, 0} = System.cmd("git", ["push", "-q", "origin", "HEAD:main"], cd: other, stderr_to_stdout: true)
+
+      {_, 0} =
+        System.cmd("git", ["push", "-q", "origin", "HEAD:main"],
+          cd: other,
+          stderr_to_stdout: true
+        )
+
       {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
 
       assert {:drifted, _booted, _current} = BootVersion.drift(),

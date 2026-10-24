@@ -29,7 +29,8 @@ defmodule CodeMySpecSpex.Story562.Criterion5604Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "Missing child implementation renders as locally unsatisfied without cascading", criterion: 208 do
+  spex "Missing child implementation renders as locally unsatisfied without cascading",
+    criterion: 208 do
     scenario "deleted child impl shows up as unsatisfied in the rendered graph" do
       given_ :context_with_three_children
 

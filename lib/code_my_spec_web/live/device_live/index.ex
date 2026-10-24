@@ -46,7 +46,10 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
+  alias CodeMySpec.Devices.RoutineFire
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Runner
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.WorkingCopyLive.Liveness
@@ -63,14 +66,24 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     {:ok,
      assign(socket,
        page_title: "Dev boxes",
+       local_setup_device_id: local_setup_device_id(scope),
        project_id: params["project_id"],
        adding?: false,
        selected_provider: nil,
        dev_box_name: "",
+       fire_form_for: nil,
+       sessions: %{},
        new_box: nil,
        providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
      )}
+  end
+
+  defp local_setup_device_id(scope) do
+    case CodeMySpec.Projects.LocalSetup.run(scope, "status") do
+      {:ok, %{device_id: id}} -> id
+      _ -> nil
+    end
   end
 
   # Owners and admins add boxes; everyone else on the account only sees them.
@@ -101,29 +114,39 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   def handle_event("add_dev_box", %{"dev_box" => params}, socket) do
     case add_box(socket.assigns.current_scope, params) do
       {:ok, box, token} ->
-        provider = Runner.dev_box(box.provider)
+        server_url = CodeMySpecWeb.Endpoint.url()
 
-        context = %{
-          token: token,
-          server_url: CodeMySpecWeb.Endpoint.url(),
-          project_id: socket.assigns.project_id,
-          device_id: box.id,
-          target: params["target"] || "phoenix"
-        }
+        case launch(box, token, server_url) do
+          :ok ->
+            provider = Runner.dev_box(box.provider)
 
-        {:noreply,
-         socket
-         |> assign(
-           adding?: false,
-           new_box: %{
-             device: box,
-             name: Device.display_name(box),
-             token: token,
-             show_token?: box.provider != :codex_cloud,
-             sections: provider.instructions(context)
-           }
-         )
-         |> load()}
+            {:noreply,
+             socket
+             |> assign(
+               adding?: false,
+               new_box: %{
+                 device: box,
+                 name: Device.display_name(box),
+                 token: token,
+                 show_token?: box.provider != :codex_cloud,
+                 sections:
+                   provider.instructions(%{
+                     token: token,
+                     server_url: server_url,
+                     project_id: socket.assigns.project_id,
+                     device_id: box.id,
+                     target: params["target"] || "phoenix"
+                   })
+               }
+             )
+             |> load()}
+
+          {:error, reason} ->
+            # No half-made box: a container that did not start leaves no device
+            # and no token behind.
+            Devices.destroy(socket.assigns.current_scope, box)
+            {:noreply, socket |> put_flash(:error, launch_error(reason)) |> load()}
+        end
 
       {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "Only an account owner or admin can add a dev box.")}
@@ -137,6 +160,51 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
       {:error, %Ecto.Changeset{}} ->
         {:noreply, put_flash(socket, :error, "Name the dev box.")}
+    end
+  end
+
+  # Revoking cuts off exactly one box: its token stops signing in, the access
+  # tokens already issued to it die, and its open connections are closed.
+  def handle_event("revoke_dev_box", %{"id" => id}, socket) do
+    case Devices.revoke_dev_box(socket.assigns.current_scope, id) do
+      {:ok, box} ->
+        CodeMySpec.Oauth.revoke_box_tokens(box.id)
+        CodeMySpecWeb.Endpoint.broadcast("dev_box:#{box.id}", "disconnect", %{})
+
+        {:noreply,
+         socket |> put_flash(:info, "#{Device.display_name(box)} was revoked.") |> load()}
+
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can revoke a dev box.")}
+    end
+  end
+
+  def handle_event("new_fire_token", %{"id" => id}, socket),
+    do: {:noreply, assign(socket, fire_form_for: id)}
+
+  def handle_event("save_fire_token", %{"device_id" => id, "fire_token" => params}, socket) do
+    case Devices.set_fire_token(socket.assigns.current_scope, id, params) do
+      {:ok, _box} ->
+        {:noreply, socket |> assign(fire_form_for: nil) |> load()}
+
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can set a fire token.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Give the routine id (trig_…) and its fire token.")}
+    end
+  end
+
+  # Fires the box's routine. One attempt: a refusal is shown, never retried.
+  def handle_event("start_box", %{"id" => id}, socket) do
+    case Devices.get_device(socket.assigns.current_scope, id) do
+      %Device{} = box ->
+        {:noreply, start_async(socket, {:fire, box.id}, fn -> RoutineFire.fire(box) end)}
+
+      nil ->
+        {:noreply, socket}
     end
   end
 
@@ -175,12 +243,49 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   end
 
   @impl true
+  def handle_async({:fire, id}, {:ok, {:ok, %{session_url: url}}}, socket),
+    do: {:noreply, assign(socket, sessions: Map.put(socket.assigns.sessions, id, url))}
+
+  def handle_async({:fire, _id}, {:ok, {:error, {:rate_limited, seconds}}}, socket),
+    do: {:noreply, put_flash(socket, :error, rate_limited_message(seconds))}
+
+  def handle_async({:fire, _id}, {:ok, {:error, _reason}}, socket),
+    do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
+
+  def handle_async({:fire, _id}, {:exit, _reason}, socket),
+    do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
+
+  @impl true
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
+  def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 
   def handle_info(:refresh_devices, socket) do
     Process.send_after(self(), :refresh_devices, 5_000)
     {:noreply, load(socket)}
   end
+
+  # A Docker box runs on a machine that has a daemon, so adding it starts its
+  # container; the others are brought up by the person from the instructions.
+  defp launch(%Device{provider: :docker} = box, token, server_url),
+    do: Workspaces.start_dev_box(box, token, server_url)
+
+  defp launch(_box, _token, _server_url), do: :ok
+
+  defp rate_limited_message(seconds) when is_integer(seconds) do
+    minutes = max(div(seconds + 59, 60), 1)
+
+    "Claude refused the start: the routine is rate-limited. Try again in about " <>
+      "#{minutes} #{if minutes == 1, do: "minute", else: "minutes"}. Nothing will retry by itself."
+  end
+
+  defp rate_limited_message(_unknown),
+    do:
+      "Claude refused the start: the routine is rate-limited. Try again later. Nothing will retry by itself."
+
+  defp launch_error(:docker_unreachable),
+    do: "Docker is not reachable. Start Docker and add the box again."
+
+  defp launch_error(_reason), do: "The dev box could not be started."
 
   defp destroy(nil, _scope), do: :ok
   defp destroy(device, scope), do: Devices.destroy(scope, device)
@@ -190,25 +295,49 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     scope = socket.assigns.current_scope
 
     devices = Devices.list_devices(scope)
-    copies = devices |> Enum.map(& &1.id) |> WorkingCopies.ids_by_device()
+    device_ids = Enum.map(devices, & &1.id)
+    copies = WorkingCopies.ids_by_device(device_ids)
+    serving = WorkingCopies.serving_projects_by_device(device_ids)
+
+    rows =
+      for device <- devices do
+        previews =
+          for project_id <- Map.get(serving, device.id, []), do: PreviewAddress.url(project_id)
+
+        row(device, Map.get(copies, device.id, []), previews, now)
+      end
 
     assign(socket,
-      devices: Enum.map(devices, &row(&1, Map.get(copies, &1.id, []), now)),
+      devices: rows,
+      server_host: URI.parse(CodeMySpecWeb.Endpoint.url()).host,
       now: now
     )
   end
 
-  defp row(device, copy_ids, now) do
-    reachable = reachable?(copy_ids)
+  defp row(device, copy_ids, previews, now) do
+    up? = reachable?(copy_ids)
 
     %{
       device: device,
-      status: box_status(device, reachable),
+      previews: previews,
+      startable?: Devices.startable?(device),
+      status: box_status(device, up?),
       provider: Runner.dev_box(device.provider),
       name: Device.display_name(device),
-      presence: presence(reachable, device, now)
+      presence: presence(up?, device, now),
+      up?: up?,
+      last_up: last_up_display(device)
     }
   end
+
+  # "Up" is this story's own claim, distinct from `presence/3`'s existing
+  # Present/Last seen wording (never conflate one liveness signal with
+  # another -- this page's own moduledoc rule) and from `box_status/1`
+  # (whether the box's token has ever signed in at all). It reuses the same
+  # connection signal `reachable?/1` already reads, per this story's own
+  # notes against building a second liveness system.
+  defp last_up_display(%Device{last_up_at: nil}), do: nil
+  defp last_up_display(%Device{last_up_at: at}), do: Calendar.strftime(at, "%H:%M")
 
   # Is any of this machine's working copies holding a channel right now?
   #
@@ -242,6 +371,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: %{label: "Last seen", since: Liveness.since(at, now)}
 
   # A dev box says whether anything has ever signed in with its token.
+  defp box_status(%Device{token_revoked_at: %DateTime{}}, _reachable), do: "Revoked"
   defp box_status(%Device{provider: :codex_cloud}, true), do: "Connected"
   defp box_status(%Device{provider: :codex_cloud}, false), do: "Waiting for connection"
   defp box_status(%Device{token_last_used_at: nil}, _reachable), do: "Never connected"
@@ -352,7 +482,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   <button
                     type="button"
                     class="copy-btn btn btn-sm btn-primary"
-                    data-copy={section.body}
+                    data-copy={Map.get(section, :value, section.body)}
                     data-test={section.copy}
                   >
                     Copy
@@ -393,15 +523,120 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   >
                     <span data-test="dev-box-provider">{row.provider && row.provider.label()}</span>
                     <span data-test="dev-box-status">{row.status}</span>
+                    <a
+                      :for={url <- row.previews}
+                      data-test="dev-box-preview"
+                      href={url}
+                      target="_blank"
+                      class="link"
+                    >
+                      {url}
+                    </a>
+                    <p
+                      :if={
+                        is_nil(row.device.token_last_used_at) and is_nil(row.device.token_revoked_at)
+                      }
+                      data-test="never-connected-help"
+                      class="text-xs opacity-70"
+                    >
+                      This box has never connected. If its session started, check the
+                      environment's allowlist includes {@server_host} (and the other hosts shown
+                      when it was added), and that the network secret is set for {@server_host}.
+                    </p>
+                    <a
+                      :if={@sessions[row.device.id]}
+                      data-test="session-url"
+                      href={@sessions[row.device.id]}
+                      target="_blank"
+                      class="link"
+                    >
+                      Open the session
+                    </a>
+                    <.button
+                      :if={
+                        @can_add? and row.device.provider == :claude_code_cloud and row.startable? and
+                          row.presence.label != "Present"
+                      }
+                      phx-click="start_box"
+                      phx-value-id={row.device.id}
+                      data-test="start-box"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-primary"
+                    >
+                      Start
+                    </.button>
+                    <.button
+                      :if={
+                        @can_add? and row.device.provider == :claude_code_cloud and not row.startable?
+                      }
+                      phx-click="new_fire_token"
+                      phx-value-id={row.device.id}
+                      data-test="add-fire-token"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-ghost"
+                    >
+                      Add a fire token
+                    </.button>
+                    <form
+                      :if={@fire_form_for == row.device.id}
+                      data-test="fire-token-form"
+                      data-device-id={row.device.id}
+                      phx-submit="save_fire_token"
+                      class="mt-2 flex flex-col gap-1 text-left"
+                    >
+                      <input type="hidden" name="device_id" value={row.device.id} />
+                      <input
+                        type="text"
+                        name="fire_token[routine_id]"
+                        placeholder="trig_…"
+                        class="input input-bordered input-sm"
+                      />
+                      <input
+                        type="password"
+                        name="fire_token[token]"
+                        placeholder="fire token"
+                        class="input input-bordered input-sm"
+                      />
+                      <.button type="submit" class="btn btn-xs">Save</.button>
+                    </form>
+                    <.button
+                      :if={@can_add? and is_nil(row.device.token_revoked_at)}
+                      phx-click="revoke_dev_box"
+                      phx-value-id={row.device.id}
+                      data-test="revoke-dev-box"
+                      data-device-id={row.device.id}
+                      class="btn btn-xs btn-ghost"
+                    >
+                      Revoke
+                    </.button>
                   </div>
 
                   <div data-test="device-presence" class="shrink-0 text-right text-sm">
                     {row.presence.label}
                     <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
                   </div>
+
+                  <div data-test="dev-box-up" class="shrink-0 text-right text-sm">
+                    <%= if row.up? do %>
+                      Up
+                    <% else %>
+                      Down
+                      <span :if={row.last_up} data-test="last-up" class="opacity-70">
+                        Last up {row.last_up}
+                      </span>
+                    <% end %>
+                  </div>
                 </div>
 
                 <div class="flex items-center gap-2">
+                  <.link
+                    :if={row.device.id == @local_setup_device_id}
+                    navigate={
+                      ~p"/app/projects/#{@project_id}/console/dev-boxes/#{row.device.id}/setup"
+                    }
+                    class="btn btn-sm"
+                    data-test="device-setup"
+                  >Setup</.link>
                   <.button
                     phx-click="revoke_authorization"
                     phx-value-id={row.device.id}

@@ -223,8 +223,19 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     case File.read(status_file) do
       {:ok, text} ->
         case String.trim(text) do
-          "0" -> :ok
-          status -> {:error, "`just after-promote` failed (#{status}); see #{log}"}
+          # The writer's `open` (making the file exist, zero-length) and its
+          # `echo $? > file` write are separate syscalls; a poll landing in
+          # that gap sees an empty, not-yet-written file. Retrying here the
+          # same way a missing file retries is what closes that race.
+          "" ->
+            Process.sleep(interval_ms)
+            await_status(status_file, log, remaining_ms - interval_ms, interval_ms)
+
+          "0" ->
+            :ok
+
+          status ->
+            {:error, "`just after-promote` failed (#{status}); see #{log}"}
         end
 
       {:error, _not_yet} ->

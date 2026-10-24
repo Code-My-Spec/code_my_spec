@@ -367,8 +367,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         class="progress progress-primary w-full"
         value={Workspaces.progress(@workspace)}
         max="100"
-      >
-      </progress>
+      ></progress>
     </div>
     """
   end

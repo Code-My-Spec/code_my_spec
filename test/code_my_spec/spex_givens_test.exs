@@ -57,6 +57,10 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
+  # `LiveRun.start(` (story 1141) starts a live harness on Sam's checkout and
+  # has his agent start the suite through `start_analysis`: the run is the
+  # premise, and it holds it open for the scenario to watch.
+  #
   # `Req.Test.stub` is a provider seam, listed by the same precedent as `stage_`
   # and `with_provider_cassette`. A block saying "Z.ai will accept this key" and
   # calling it has made its precondition true in the only way available: the
@@ -285,7 +289,7 @@ defmodule CodeMySpec.SpexGivensTest do
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
     .execute( ToolLibrary.run( ToolLibrary.data(
-    a_terminal_agent( cockpit( start_codex_session( codex_submit_prompt( codex_hook( a_codex_coder( open_dev_boxes( add_dev_box(
+    a_terminal_agent( cockpit( start_codex_session( codex_submit_prompt( codex_hook( a_codex_coder( open_dev_boxes( add_dev_box( add_box( short_lived_access_tokens( exchanged(
     mount_provisioning
     run_steps choose_setup_options all_setup_options own_domain built_deploy_run
     stage_servers
@@ -297,7 +301,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
-    join_working_copy report_agents
+    join_working_copy report_agents LiveRun.start(
     H.start( EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
     given_a_live_harness HarnessHooks.
@@ -305,6 +309,7 @@ defmodule CodeMySpec.SpexGivensTest do
     main_answers user_answers
     Req.Test.stub
     a_promotable_project analyzers_are_current
+    remote_project verified_candidate
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
     ensure_harness_supervisor_started FakeServer. BlockingProject.

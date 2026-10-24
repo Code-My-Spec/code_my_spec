@@ -25,7 +25,8 @@ defmodule CodeMySpecSpex.Story717.Criterion6421Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "The DAG renders as five horizontal bands top-to-bottom; bands with zero nodes collapse without breaking the order of the bands that do", criterion: 500 do
+  spex "The DAG renders as five horizontal bands top-to-bottom; bands with zero nodes collapse without breaking the order of the bands that do",
+    criterion: 500 do
     scenario "All five bands populated stack in pre-story-project → pre-component-story → components → post-component-story → post-story-project order" do
       given_ :cross_context_dependency
 

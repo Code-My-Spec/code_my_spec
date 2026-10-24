@@ -13,6 +13,10 @@ defmodule CodeMySpec.McpServers.ToolRegistry do
 
   @spec registry() :: ToolIndex.registry()
   def registry do
-    %{direct: LocalServer.registrations(), scriptable: ScriptableTools.registrations()}
+    %{
+      direct: LocalServer.registrations(),
+      scriptable: ScriptableTools.registrations(),
+      tombstoned: CodeMySpec.ToolLibrary.tombstoned()
+    }
   end
 end

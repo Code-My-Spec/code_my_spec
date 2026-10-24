@@ -1,28 +1,18 @@
 defmodule CodeMySpec.PromotionQueue.Worker do
   @moduledoc """
-  One project's promotion queue, run one batch at a time.
+  One serialized promotion queue per project. The source device supplies an
+  isolated gate checkout, and origin's configured development branch supplies
+  the base. The main desktop and its filesystem need not be online.
 
-      idle ─▶ build ─▶ gate ─┬─ green ─▶ land ─▶ idle
-                             ├─ pending (analysis running) ─▶ gate again when it lands
-                             └─ red ─▶ the candidate is ejected
+  A clean exact candidate is certified, then its base, head, gate and immutable
+  publication identity are persisted before publishing. A moved remote base
+  rebuilds and recertifies; a lost reply replays the same publication identity
+  so the remote receipt can reconcile it. Destination synchronization happens
+  independently after publication. QA invalidation still blocks new publication.
 
-  A batch is built in the project's gate copy: reset to main's HEAD, the
-  candidates merged on in queue order. A candidate that conflicts is ejected at
-  once, told as a conflict rather than a gate failure. The
-  gate is `Promotion.gate/3`, the same clean run of every analyzer at one exact
-  commit a direct promotion needs, and a green batch lands through
-  `Promotion.land/6`: main is fast-forwarded to the batch commit and tagged.
-
-  Nothing is retried. A candidate is taken only once main and the gate copy
-  can both be read; until then it stays queued and a copy joining wakes the
-  queue. Once taken, anything that stops it landing ejects it with the reason,
-  so one candidate cannot hold the queue by failing the same way forever. Only
-  main moving under a batch rebuilds it, since that is no failure of its own.
-
-  Waits on `analysis:<project>` for the gate copy's runs rather than polling,
-  with a slow timer behind it in case a message is missed. Every outcome is
-  told to the agent that enqueued the candidate as a `[:code_my_spec, :promotion,
-  :report]` event.
+  Analyzer completion events wake gating, with timers for missed events and
+  temporarily disconnected source devices. Final outcomes are persisted and
+  delivered to the requesting agent.
   """
 
   use GenServer, restart: :transient
@@ -32,6 +22,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.ValidationHolds
+  alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
@@ -66,6 +57,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   @doc "The label the project's gate copy carries."
   def gate_label, do: @gate_label
+
+  def gate_label(source_id), do: @gate_label <> ":" <> source_id
+
+  def local_only?(scope),
+    do:
+      scope.active_project_id in Application.get_env(:code_my_spec, :local_promotion_projects, [])
 
   @impl true
   def init({project_id, scope, owners}) do
@@ -159,25 +156,32 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp reserve_next(state) do
-    with [entry] <- Repository.queued(state.project_id, @batch_cap),
-         {:ok, base} <- ready(state.scope) do
-      reserve_and_build(state, entry, base)
+    with [entry] <- Repository.queued(state.project_id, @batch_cap) do
+      scope = %{state.scope | active_working_copy_id: entry.working_copy_id}
+      state = %{state | scope: scope}
+
+      case entry.result do
+        %{"publication" => publication} ->
+          recover_publication(state, entry, publication)
+
+        _ ->
+          case ready(scope) do
+            {:ok, base} ->
+              reserve_and_build(state, entry, base)
+
+            {:error, reason} ->
+              Logger.warning("[PromotionQueue] source unavailable: #{describe(reason)}")
+              {:noreply, recheck_later(idle(state), :next)}
+          end
+      end
     else
       [] ->
-        {:noreply, idle(state)}
-
-      {:error, reason} ->
-        Logger.warning(
-          "[PromotionQueue] not taking a candidate: #{describe(reason)}. " <>
-            "It stays queued until a copy joins."
-        )
-
         {:noreply, idle(state)}
     end
   end
 
-  # What has to be reachable before a candidate is taken: main, to build on and
-  # land, and the gate copy's checkout. A failure here is nobody's candidate.
+  # Origin is fetched on the source device; its isolated gate must be reachable.
+  # Destination availability is independent of admission and publication.
   defp ready(scope) do
     with {:ok, base} <- main_head(scope),
          {:ok, gate} <- gate_copy(scope),
@@ -206,7 +210,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp idle(state), do: %{state | phase: :idle, batch: nil, reserved_entries: []}
 
   defp build_on(state, entries, base) do
-    case on_main(state.scope, entries, base) do
+    case if(local_only?(state.scope), do: on_main(state.scope, entries, base), else: []) do
       [] -> build(state, entries, base, level_with_main(state.scope, entries, base))
       on_main -> already_on_main(state, on_main, base)
     end
@@ -233,7 +237,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp build(state, entries, base, {:ok, copy}),
-    do: gating(state, entries, copy, base, hd(entries).commit)
+    do: gating(state, entries, copy, base, hd(entries).commit, nil)
 
   defp build(state, entries, base, :no), do: build_in_gate_copy(state, entries, base)
 
@@ -251,7 +255,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
          {:ok, %{head: head}} <-
            Runner.precheck(WorkingCopies.environment(own), root, copy.id, base),
          true <- head == entry.commit,
-         true <- Promotion.certified_at?(own, entry.commit) do
+         true <- Promotion.certified_at?(own, entry.commit),
+         # Read-only: a requester's copy is not ours to commit in. Unformatted,
+         # it goes through the gate copy, which formats it.
+         {:ok, %{unformatted: []}} <-
+           Runner.format(WorkingCopies.environment(own), root, copy.id, check: true) do
       {:ok, copy}
     else
       _ -> :no
@@ -288,12 +296,32 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           next_or_unaccounted(state, unaccounted, conflicted, built)
 
         {in_batch, _out} ->
-          gating(state, in_batch, gate, base, built.head)
+          format_then_gate(state, in_batch, {gate, environment}, base, built.head)
       end
     else
       {:error, :gate_busy} -> wait_for_gate(state)
       {:error, %{unreachable: true} = reason} -> wait_for_gate_harness(state, entries, reason)
       {:error, reason} -> could_not_gate(state, entries, reason)
+    end
+  end
+
+  # The batch is formatted in the gate copy and the result committed on top of
+  # it as its own commit, so the gate certifies, and main receives, a formatted
+  # tree. The format commit is named in what the agent is told. A batch already
+  # on main (`head == base`) has nothing to format.
+  defp format_then_gate(state, entries, {gate, environment}, base, head) do
+    case Runner.format(environment, gate.root, gate.id) do
+      {:ok, %{commit: nil}} ->
+        gating(state, entries, gate, base, head, nil)
+
+      {:ok, %{commit: commit, formatted: files, head: formatted_head}} ->
+        gating(state, entries, gate, base, formatted_head, %{commit: commit, files: files})
+
+      {:error, %{unreachable: true} = reason} ->
+        wait_for_gate_harness(state, entries, reason)
+
+      {:error, reason} ->
+        could_not_gate(state, entries, reason)
     end
   end
 
@@ -364,7 +392,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # A batch that leaves the gate copy, for any reason, leaves no runs there. A
   # batch on a candidate's own copy started none, and that copy's runs are its
   # agent's.
-  defp release_gate(%{batch: %{gate: %WorkingCopy{label: @gate_label}} = batch}) do
+  defp release_gate(%{batch: %{gate: %WorkingCopy{label: "promotion-gate" <> _}} = batch}) do
     Analysis.cancel_on(batch.scope, "the batch at #{batch.head} left the gate")
     :ok
   end
@@ -375,9 +403,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # the gate copy, or a lone level candidate's own copy.
   # A batch whose commit is main's HEAD adds nothing and is not gated: main's
   # own findings there are no finding against any candidate. Each lands as it is.
-  defp gating(state, entries, _gate, base, base), do: already_on_main(state, entries, base)
+  defp gating(state, entries, gate, base, head, format) do
+    if base == head and local_only?(state.scope) do
+      already_on_main(state, entries, base)
+    else
+      begin_gating(state, entries, gate, base, head, format)
+    end
+  end
 
-  defp gating(state, entries, gate, base, head) do
+  defp begin_gating(state, entries, gate, base, head, format) do
     batch_id = Ecto.UUID.generate()
     in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
 
@@ -388,6 +422,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       scope: scope_for(state.scope, gate),
       base: base,
       head: head,
+      branch: development_branch(state.scope),
+      # The commit the promotion's own `mix format` added, or nil.
+      format: format,
       # When gating began: a run that failed before it could say which commit
       # it started on counts against this batch only if it is this batch's.
       since: DateTime.add(DateTime.utc_now(), -1, :second)
@@ -431,10 +468,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # error was real, but the candidate and the commit it conflicted with were
   # never said, so nothing pointed at what to actually do. Names both.
   defp conflict_reason(commit, base, files) do
-    "#{String.slice(commit, 0, 12)} conflicts merging onto main (#{String.slice(base, 0, 12)}) " <>
+    "#{String.slice(commit, 0, 12)} conflicts merging onto the development branch (#{String.slice(base, 0, 12)}) " <>
       "or a candidate ahead of it in the queue" <>
       if(files == [], do: ".", else: ", in #{Enum.join(files, ", ")}.") <>
-      " Merge main into your branch, resolve it, and promote again."
+      " Merge the current development branch into your branch, resolve it, and promote again."
   end
 
   # -- Gate -------------------------------------------------------------------
@@ -511,8 +548,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     case failing do
       [] ->
+        batch = Map.put(batch, :swept, swept)
+        batch = persist_publication(state.scope, batch)
         send(self(), :land)
-        {:noreply, %{state | phase: :landing, batch: Map.put(batch, :swept, swept)}}
+        {:noreply, %{state | phase: :landing, batch: batch}}
 
       failing ->
         release_gate(state)
@@ -537,9 +576,17 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # A red batch is its one candidate's.
   defp eject_batch(%{batch: batch} = state, reason) do
     release_gate(state)
-    Enum.each(batch.entries, &eject(state.scope, &1, reason))
+    Enum.each(batch.entries, &eject(state.scope, &1, reason <> format_note(batch)))
     next(idle(state))
   end
+
+  defp format_note(%{format: %{commit: commit, files: files}}),
+    do:
+      "\n\nThe promotion ran mix format before gating and committed it as #{commit} " <>
+        "(#{length(files)} file(s): #{Enum.join(files, ", ")}). Look there first and carry on " <>
+        "from it."
+
+  defp format_note(_batch), do: ""
 
   defp already_on_main(state, entries, head) do
     Logger.info(
@@ -596,7 +643,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # A green batch lands at once, without waiting for runs on other copies: a
   # landing restarts the harness only when its own code moved (`after-promote`).
-  defp land(state), do: on_current_main(state, &do_land/1)
+  defp land(state) do
+    if local_only?(state.scope), do: on_current_main(state, &do_land/1), else: do_land(state)
+  end
 
   # The batch was certified on `base`. If main moved on while it gated —
   # anything committed to main another way — it cannot land as certified: it
@@ -626,13 +675,26 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     restart = Enum.any?(batch.entries, & &1.restart)
     notify = batch.entries |> Enum.map(& &1.requested_by_agent_id) |> Enum.reject(&is_nil/1)
 
-    case Promotion.land(batch.scope, batch.gate, batch.head, stories, Map.get(batch, :swept, []),
-           restart: restart,
-           notify: notify
-         ) do
+    landing = if local_only?(state.scope), do: :land, else: :land_remote
+
+    case apply(Promotion, landing, [
+           batch.scope,
+           batch.gate,
+           batch.head,
+           stories,
+           Map.get(batch, :swept, []),
+           [
+             restart: restart,
+             notify: notify,
+             base: batch.base,
+             branch: Map.get(batch, :branch, development_branch(state.scope)),
+             promotion_id: batch.id,
+             publication_sequence: Map.get(batch, :publication_sequence, 0)
+           ]
+         ]) do
       {:ok, report} = result ->
         for entry <- batch.entries do
-          moved(entry, :landed, %{result: %{"version" => report[:version], "head" => batch.head}})
+          moved(entry, :landed, %{result: landed_result(batch, report)})
           issue_landed(state.scope, entry, batch.head)
 
           # The landing report itself, in memory, for a caller waiting on this
@@ -647,6 +709,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           tell_landed(state.scope, entry, landed_text(entry, batch, result))
         end
 
+        next(idle(state))
+
+      {:error, %{published: true} = reason} ->
+        hold_landed(state, batch.entries, batch.head, Map.put(reason, :landed, true))
+
+      {:error, %{retryable: true}} ->
+        {:noreply, recheck_later(state, :land)}
+
+      {:error, %{base_moved: true}} ->
+        for entry <- batch.entries, do: moved(entry, :queued, %{batch_id: nil, result: %{}})
         next(idle(state))
 
       {:error, %{landed: true} = reason} ->
@@ -674,10 +746,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         # the new main.
         # Main moving in the moment between the check above and the merge is
         # the same race, and rebuilds at once; anything else is ejected.
-        on_current_main(state, fn state ->
+        fail = fn state ->
           Logger.error("[PromotionQueue] landing #{batch.head} failed: #{describe(reason)}")
           could_not_gate(state, batch.entries, %{reason: "landing failed: #{describe(reason)}"})
-        end)
+        end
+
+        if local_only?(state.scope), do: on_current_main(state, fail), else: fail.(state)
     end
   end
 
@@ -685,11 +759,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     for entry <- entries do
       moved(entry, :landed, %{
         batch_id: nil,
-        result: %{
-          "head" => head,
-          "assignment_held" => true,
-          "reason" => reason.reason
-        }
+        result:
+          Map.merge(Repository.get(entry.id).result || %{}, %{
+            "head" => head,
+            "assignment_held" => true,
+            "reason" => reason.reason
+          })
       })
 
       Phoenix.PubSub.broadcast(
@@ -704,13 +779,44 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     next(%{state | phase: :idle, batch: nil})
   end
 
-  defp landed_text(entry, %{entries: entries}, result) do
+  defp landed_result(batch, report) do
+    base = %{
+      "version" => report[:version],
+      "head" => batch.head,
+      "promotion_id" => batch.id,
+      "base" => batch.base,
+      "branch" => Map.get(batch, :branch),
+      "published" => report[:published]
+    }
+
+    case batch.format do
+      %{commit: commit, files: files} ->
+        Map.merge(base, %{"format_commit" => commit, "formatted" => files})
+
+      _ ->
+        base
+    end
+  end
+
+  defp landed_text(entry, %{entries: entries} = batch, result) do
     others = length(entries) - 1
 
-    "Your promotion of #{subject(entry)} landed on main" <>
+    destination =
+      if match?({:ok, %{published: true}}, result),
+        do: "published to origin/#{Map.get(batch, :branch, "main")}",
+        else: "landed on main"
+
+    "Your promotion of #{subject(entry)} #{destination}" <>
       if(others > 0, do: " in a batch with #{others} other candidate(s)", else: "") <>
-      ". " <> Promotion.outcome_text(result)
+      ". " <> Promotion.outcome_text(result) <> landed_format_note(batch)
   end
+
+  defp landed_format_note(%{format: %{commit: commit, files: files}}),
+    do:
+      " The promotion also ran mix format and committed #{length(files)} file(s) as " <>
+        "#{commit}: #{Enum.join(files, ", ")}. Your copy is behind the published candidate by that commit."
+
+  defp landed_format_note(_batch), do: ""
 
   # -- Helpers ----------------------------------------------------------------
 
@@ -818,7 +924,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       nil ->
         :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_needed], %{}, %{
           scope: scope,
-          label: @gate_label
+          label: gate_label_for(scope),
+          source_copy_id: if(local_only?(scope), do: nil, else: scope.active_working_copy_id)
         })
 
         case find_gate_copy(scope) do
@@ -831,10 +938,28 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp find_gate_copy(scope) do
     scope
     |> WorkingCopies.list_harnesses()
-    |> Enum.find(&(&1.label == @gate_label and is_binary(&1.root) and &1.root != ""))
+    |> Enum.find(
+      &(gate_on_source?(scope, &1) and &1.label == gate_label_for(scope) and is_binary(&1.root) and
+          &1.root != "")
+    )
+  end
+
+  defp gate_on_source?(scope, gate) do
+    if local_only?(scope) do
+      true
+    else
+      case WorkingCopies.fetch(scope.active_working_copy_id) do
+        {:ok, source} -> not is_nil(source.device_id) and source.device_id == gate.device_id
+        _ -> false
+      end
+    end
   end
 
   defp main_version(scope) do
+    if local_only?(scope), do: local_main_version(scope), else: nil
+  end
+
+  defp local_main_version(scope) do
     with %WorkingCopy{root: root} = main when is_binary(root) <- WorkingCopies.main(scope),
          {:ok, %{version: version}} <-
            Runner.current(WorkingCopies.environment(scope_for(scope, main)), root, main.id) do
@@ -846,9 +971,83 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # Main's HEAD, read through main's own copy.
   defp main_head(scope) do
+    if local_only?(scope) do
+      local_main_head(scope)
+    else
+      with {:ok, source} <- WorkingCopies.fetch(scope.active_working_copy_id),
+           {:ok, %{head: head}} <-
+             Runner.remote_head(
+               WorkingCopies.environment(scope_for(scope, source)),
+               source.root,
+               development_branch(scope),
+               source.id
+             ) do
+        {:ok, head}
+      end
+    end
+  end
+
+  defp local_main_head(scope) do
     case WorkingCopies.main(scope) do
       %WorkingCopy{root: root} = main when is_binary(root) -> head_of(scope, main, "main")
       _ -> {:error, %{reason: "the project has no main working copy"}}
+    end
+  end
+
+  defp gate_label_for(scope),
+    do: if(local_only?(scope), do: @gate_label, else: gate_label(scope.active_working_copy_id))
+
+  defp development_branch(scope) do
+    case Projects.get_project(scope, scope.active_project_id) do
+      {:ok, project} -> Map.get(project, :development_branch) || "main"
+      _ -> "main"
+    end
+  end
+
+  # Persist before the first side effect against origin. A restarted worker
+  # replays publication with the same receipt identity, never rebuilds it.
+  defp persist_publication(scope, batch) do
+    if local_only?(scope) do
+      batch
+    else
+      {:ok, sequence} = CodeMySpec.Promotion.DeviceSync.reserve_sequence(scope)
+
+      publication = %{
+        "id" => batch.id,
+        "base" => batch.base,
+        "head" => batch.head,
+        "gate_id" => batch.gate.id,
+        "branch" => batch.branch,
+        "sequence" => sequence
+      }
+
+      for entry <- batch.entries,
+          do: moved(entry, :gating, %{result: %{"publication" => publication}})
+
+      Map.put(batch, :publication_sequence, sequence)
+    end
+  end
+
+  defp recover_publication(state, entry, publication) do
+    case WorkingCopies.fetch(publication["gate_id"]) do
+      {:ok, gate} ->
+        batch = %{
+          id: publication["id"],
+          base: publication["base"],
+          head: publication["head"],
+          branch: publication["branch"],
+          publication_sequence: publication["sequence"] || 0,
+          gate: gate,
+          entries: [entry],
+          scope: scope_for(state.scope, gate),
+          swept: [],
+          format: nil
+        }
+
+        land(%{state | phase: :landing, batch: batch})
+
+      {:error, _} ->
+        {:noreply, recheck_later(idle(state), :next)}
     end
   end
 

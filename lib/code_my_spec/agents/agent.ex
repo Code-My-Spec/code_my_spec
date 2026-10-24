@@ -24,12 +24,14 @@ defmodule CodeMySpec.Agents.Agent do
   # and match agent rows without depending on Agents.
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Agents.RoleProfile],
+    deps: [CodeMySpec.Agents.RoleProfile, CodeMySpec.Repo],
     exports: [Task, TaskType]
 
   use Ecto.Schema
 
   import Ecto.Changeset
+
+  alias CodeMySpec.Repo.References
 
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Projects.Project
@@ -62,6 +64,7 @@ defmodule CodeMySpec.Agents.Agent do
           stopped_reason: atom() | nil,
           git_rewrite_at: DateTime.t() | nil,
           current_tool: String.t() | nil,
+          turn_tool_count: non_neg_integer() | nil,
           waiting_since: DateTime.t() | nil,
           off_at: DateTime.t() | nil,
           off_by: String.t() | nil,
@@ -88,6 +91,7 @@ defmodule CodeMySpec.Agents.Agent do
   @foreign_key_type :binary_id
   schema "agents" do
     field :engine, Ecto.Enum, values: @engines, default: :alloy
+    field(:execution_mode, Ecto.Enum, values: [:working_copy, :detached], default: :working_copy)
     # A terminal Claude Code session's own session id (story 1122): how a
     # resumed session finds its agent again, and how its tool calls name it.
     field :engine_session_id, :string
@@ -101,6 +105,7 @@ defmodule CodeMySpec.Agents.Agent do
     # The tool the agent is running now, as one line, or nil. Set by a tool call
     # starting and cleared by it ending or the turn ending.
     field :current_tool, :string
+    field :turn_tool_count, :integer
     # Since when a terminal session has been waiting on its person (a permission
     # prompt), or nil. It cannot take work while it is.
     field :waiting_since, :utc_datetime_usec
@@ -196,7 +201,7 @@ defmodule CodeMySpec.Agents.Agent do
 
     belongs_to :project, Project
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec statuses() :: [atom()]
@@ -325,6 +330,7 @@ defmodule CodeMySpec.Agents.Agent do
       :transcript_path,
       :git_rewrite_at,
       :current_tool,
+      :turn_tool_count,
       :waiting_since,
       :provider,
       :model,
@@ -351,6 +357,7 @@ defmodule CodeMySpec.Agents.Agent do
       :provider_refused_at,
       :provider_retry_at,
       :working_copy_id,
+      :execution_mode,
       :story_id,
       :epic_id,
       :issue_id,
@@ -368,6 +375,7 @@ defmodule CodeMySpec.Agents.Agent do
     ])
     |> maybe_require_working_copy_id(agent)
     |> foreign_key_constraint(:working_copy_id)
+    |> References.check()
     |> foreign_key_constraint(:story_id)
     |> validate_story_holder()
     |> foreign_key_constraint(:epic_id)
@@ -375,12 +383,25 @@ defmodule CodeMySpec.Agents.Agent do
     |> validate_config_dir_outside_working_copy()
     |> assoc_constraint(:project)
     |> unique_constraint([:project_id, :engine_session_id])
+    |> unique_constraint(:project_id, name: :agents_one_detached_product_per_project)
   end
 
   # Required on creation only: the FK nilifies on checkout delete, and a row
   # left that way must still be writable (a stop, say).
-  defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}),
-    do: validate_required(changeset, [:working_copy_id])
+  defp maybe_require_working_copy_id(changeset, %__MODULE__{id: nil}) do
+    case {get_field(changeset, :execution_mode), get_field(changeset, :role)} do
+      {:detached, role} when role in [:product, :main] ->
+        if get_field(changeset, :working_copy_id),
+          do: add_error(changeset, :working_copy_id, "must be empty for a detached agent"),
+          else: changeset
+
+      {:detached, _} ->
+        add_error(changeset, :execution_mode, "is only available for product and main")
+
+      _ ->
+        validate_required(changeset, [:working_copy_id])
+    end
+  end
 
   defp maybe_require_working_copy_id(changeset, %__MODULE__{}), do: changeset
 

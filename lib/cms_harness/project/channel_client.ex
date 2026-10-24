@@ -775,6 +775,13 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # One run, by id (story 1142); without one, everything on the copy.
+  def handle_message(_topic, "cancel_analysis", %{"run_id" => run_id}, socket)
+      when is_integer(run_id) do
+    AnalysisServer.cancel_run(socket.assigns.project.root, run_id)
+    {:ok, socket}
+  end
+
   def handle_message(_topic, "cancel_analysis", payload, socket) do
     root = socket.assigns.project.root
     reason = Map.get(payload, "reason") || "cancelled by the server"
@@ -1056,6 +1063,69 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # One clause per named operation, and deliberately no general `cmd`: analysis
   # owns command execution here. App restarts go through the app verbs.
+  defp apply_promotion("promotion_publication_status", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publication_status(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_remote_head", %{"root" => root, "branch" => branch}),
+    do:
+      with_served_root(
+        root,
+        &CodeMySpec.Promotion.RemoteSteps.remote_head(Environment.new(:local, &1), &1, branch)
+      )
+
+  defp apply_promotion("promotion_publish", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publish(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_sync_remote", %{
+         "root" => root,
+         "branch" => branch,
+         "head" => head
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.sync_remote(
+             Environment.new(:local, &1),
+             &1,
+             branch,
+             head
+           )
+         )
+
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1, payload["main"]))
 
@@ -1091,6 +1161,11 @@ defmodule CmsHarness.Project.ChannelClient do
   # gate's `deps/` stale, and mix refuses every command until something fetches.
   defp apply_promotion("promotion_reset_test_databases", %{"root" => root}),
     do: with_served_root(root, &reset_test_databases/1)
+
+  # Formatting needs the project's deps for `import_deps`, so it is healed the
+  # same way.
+  defp apply_promotion("promotion_format", %{"root" => root} = payload),
+    do: with_served_root(root, &format(&1, payload["check"] == true))
 
   # The gate's asset build, healed for stale deps the same way.
   defp apply_promotion("promotion_build_assets", %{"root" => root}),
@@ -1134,6 +1209,14 @@ defmodule CmsHarness.Project.ChannelClient do
 
     env
     |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.build_assets(env, root)) end)
+    |> reset_as_map()
+  end
+
+  defp format(root, check) do
+    env = Environment.new(:local, root)
+
+    env
+    |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.format(env, root, check: check)) end)
     |> reset_as_map()
   end
 
@@ -1995,7 +2078,13 @@ defmodule CmsHarness.Project.ChannelClient do
            socket,
            socket.assigns.topic,
            "hook_decision",
-           %{"hook" => hook, "payload" => payload, "port" => Config.local_port()},
+           %{
+             "hook" => hook,
+             "payload" => payload,
+             "port" => Config.local_port(),
+             # What this harness will wait, so the server can answer inside it.
+             "deadline_ms" => Channel.decision_timeout()
+           },
            Channel.decision_timeout()
          ) do
       {:ok, ref} ->
@@ -2327,6 +2416,30 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:analysis_started, _payload}, socket), do: {:noreply, socket}
+
+  # A run's events as it happens (story 1141). Dropped when disconnected, like
+  # its start: the server closes a departed harness's runs.
+  def handle_cast({:analysis_event, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "analysis_event",
+           payload,
+           Channel.decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[CmsHarness] could not send an event of run #{payload["run_id"]}: #{inspect(reason)}"
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_cast({:analysis_event, _payload}, socket), do: {:noreply, socket}
 
   def handle_cast({:head_commit, sha}, %{assigns: %{joined: true}} = socket) do
     case transport().push(

@@ -18,7 +18,10 @@ Source: .code_my_spec/stories/stone_age.md §1.1, trimmed to the pre-city substr
       %{description: "Fresh spawn shows 50 gold", verified: false},
       %{description: "A fourth world join is refused at the cap", verified: false},
       %{description: "Abandoning wipes the civilization and reopens the region", verified: false},
-      %{description: "An abandoned region is a fresh start for its next claimant", verified: false}
+      %{
+        description: "An abandoned region is a fresh start for its next claimant",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
@@ -37,7 +40,8 @@ Then they are spawned into that world and taken to the board"
             %{
               kind: "failure path",
               title: "Picking a world that just filled up fails gracefully",
-              body: "Given a world picker showing a world with one open region
+              body:
+                "Given a world picker showing a world with one open region
 When another player claims that last region before this player clicks join
 Then the join is refused with a clear message and the picker reflects the world as full — the player is never half-spawned"
             }
@@ -56,7 +60,8 @@ Then they see their existing units and gold — no second Lord, Settler, or regi
           ]
         },
         %{
-          statement: "A returning player lands back in their world with the camera on their civilization.",
+          statement:
+            "A returning player lands back in their world with the camera on their civilization.",
           scenarios: [
             %{
               kind: "happy path",
@@ -68,7 +73,8 @@ Then they land on that world's board with the camera centered on their units"
           ]
         },
         %{
-          statement: "A player may hold multiple concurrent world memberships and switch between them from the main menu.",
+          statement:
+            "A player may hold multiple concurrent world memberships and switch between them from the main menu.",
           scenarios: [
             %{
               kind: "happy path",
@@ -80,12 +86,14 @@ Then they spawn fresh in the second world, and both memberships remain resumable
           ]
         },
         %{
-          statement: "A new player spawns with exactly one Lord and one Settler on workable land in their claimed region.",
+          statement:
+            "A new player spawns with exactly one Lord and one Settler on workable land in their claimed region.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Spawn delivers a Lord and a Settler on workable land",
-              body: "Given a new player joining a world
+              body:
+                "Given a new player joining a world
 When their spawn completes
 Then they own exactly one Lord (crown icon) and one Settler, placed together on workable land (grassland or plains — never ocean, mountains, or marsh) inside their claimed region"
             }
@@ -109,26 +117,30 @@ Then their gold reads exactly 50"
             %{
               kind: "failure path",
               title: "A fourth world join is refused at the cap",
-              body: "Given a player already playing in three worlds
+              body:
+                "Given a player already playing in three worlds
 When they try to join a fourth from the picker
 Then the join is refused with a clear message about the three-world limit, and their three existing memberships are untouched"
             }
           ]
         },
         %{
-          statement: "A player may abandon a world; abandoning demolishes everything they own and reopens their region.",
+          statement:
+            "A player may abandon a world; abandoning demolishes everything they own and reopens their region.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Abandoning wipes the civilization and reopens the region",
-              body: "Given a player with units and holdings in a world
+              body:
+                "Given a player with units and holdings in a world
 When they abandon the world and confirm the warning
 Then everything they owned is removed from the board, their region becomes claimable by new players, and one of their three membership slots is freed"
             },
             %{
               kind: "happy path",
               title: "An abandoned region is a fresh start for its next claimant",
-              body: "Given a region reopened by an abandonment
+              body:
+                "Given a region reopened by an abandonment
 When a new player claims it
 Then they spawn into it exactly like any fresh region — no leftover units, holdings, or ownership traces from the previous player"
             }
@@ -136,9 +148,24 @@ Then they spawn into it exactly like any fresh region — no leftover units, hol
         }
       ],
       questions: [
-        %{body: "Exact cap on concurrent world memberships — PM floated \"about three\". Pin the number (and what the player sees at the cap) before implementing the picker.", status: :resolved, resolution: nil},
-        %{body: "Join-with-a-friend placement (spawn in adjacent regions?) — PM wants the door left open. What does the picker need now so friend co-placement can land later without rework?", status: :open, resolution: nil},
-        %{body: "Abandon mechanic details PM hasn't decided: does it resolve immediately or at the turn boundary? Any cooldown before rejoining the same world (grief/re-roll prevention)? And once vassalization exists, can a vassal abandon — and what does their lord get? Demolish-and-reopen is the placeholder.", status: :open, resolution: nil}
+        %{
+          body:
+            "Exact cap on concurrent world memberships — PM floated \"about three\". Pin the number (and what the player sees at the cap) before implementing the picker.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Join-with-a-friend placement (spawn in adjacent regions?) — PM wants the door left open. What does the picker need now so friend co-placement can land later without rework?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Abandon mechanic details PM hasn't decided: does it resolve immediately or at the turn boundary? Any cooldown before rejoining the same world (grief/re-roll prevention)? And once vassalization exists, can a vassal abandon — and what does their lord get? Demolish-and-reopen is the placeholder.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -156,7 +183,10 @@ Source: .code_my_spec/stories/stone_age.md §5.1. The substrate version: a per-w
       %{description: "The countdown runs down and the turn advances by itself", verified: false},
       %{description: "The world lives while everyone sleeps", verified: false},
       %{description: "A server restart never loses or double-runs a turn", verified: false},
-      %{description: "Orders execute immediately and the boundary recharges movement", verified: false},
+      %{
+        description: "Orders execute immediately and the boundary recharges movement",
+        verified: false
+      },
       %{description: "Two connected players tick over together", verified: false}
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
@@ -164,7 +194,8 @@ Source: .code_my_spec/stories/stone_age.md §5.1. The substrate version: a per-w
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "The world's turn advances automatically every 60 seconds; no player ends a turn.",
+          statement:
+            "The world's turn advances automatically every 60 seconds; no player ends a turn.",
           scenarios: [
             %{
               kind: "happy path",
@@ -188,26 +219,30 @@ Then the world is on turn 110 and everything that was queued resolved on schedul
             %{
               kind: "failure path",
               title: "A server restart never loses or double-runs a turn",
-              body: "Given a world mid-turn when the server restarts
+              body:
+                "Given a world mid-turn when the server restarts
 When the world comes back up
 Then the turn count catches up to wall-clock correctly, and no queued order executes twice or disappears"
             }
           ]
         },
         %{
-          statement: "Orders execute immediately with available movement; the turn boundary recharges movement and continues remaining paths.",
+          statement:
+            "Orders execute immediately with available movement; the turn boundary recharges movement and continues remaining paths.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Orders execute immediately and the boundary recharges movement",
-              body: "Given a player who queues a move for a unit with movement points available
+              body:
+                "Given a player who queues a move for a unit with movement points available
 When the order lands
 Then the unit moves immediately, spending its points — and at the turn boundary movement recharges and any remaining path continues"
             }
           ]
         },
         %{
-          statement: "Every player in a world sees the same turn number and countdown in real time.",
+          statement:
+            "Every player in a world sees the same turn number and countdown in real time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -219,8 +254,7 @@ Then both see the new turn number without refreshing, at effectively the same mo
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -235,21 +269,40 @@ Source: .code_my_spec/stories/stone_age.md §5.2 plus the selection substrate fr
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "Clicking your lord shows the unit panel", verified: false},
-      %{description: "A settler walks a three-hex path: two hexes now, the third after the recharge", verified: false},
-      %{description: "A path blocked mid-journey halts the unit without losing it", verified: false},
+      %{
+        description:
+          "A settler walks a three-hex path: two hexes now, the third after the recharge",
+        verified: false
+      },
+      %{
+        description: "A path blocked mid-journey halts the unit without losing it",
+        verified: false
+      },
       %{description: "Only the latest remaining path executes", verified: false},
       %{description: "Ocean and mountains refuse a land unit", verified: false},
-      %{description: "Two units racing for the same hex resolve to one occupant", verified: false},
+      %{
+        description: "Two units racing for the same hex resolve to one occupant",
+        verified: false
+      },
       %{description: "You cannot path onto your own unit", verified: false},
-      %{description: "An order into the fog of war is legal: right-clicking an unexplored spot on the globe queues a move there (the client sends the clicked sphere point; the server resolves the tile, since the fog-filtered client can't name tiles it has never seen), and the unit travels through unexplored terrain to reach it.", verified: false},
-      %{description: "A queued order's remaining path renders from the unit to its destination and shrinks as the unit walks", verified: false}
+      %{
+        description:
+          "An order into the fog of war is legal: right-clicking an unexplored spot on the globe queues a move there (the client sends the clicked sphere point; the server resolves the tile, since the fog-filtered client can't name tiles it has never seen), and the unit travels through unexplored terrain to reach it.",
+        verified: false
+      },
+      %{
+        description:
+          "A queued order's remaining path renders from the unit to its destination and shrinks as the unit walks",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Selecting your unit shows its details: type, hit points, and movement remaining.",
+          statement:
+            "Selecting your unit shows its details: type, hit points, and movement remaining.",
           scenarios: [
             %{
               kind: "happy path",
@@ -261,19 +314,23 @@ Then the unit panel shows Lord, its hit points, and its movement remaining this 
           ]
         },
         %{
-          statement: "A player queues a multi-hex path to a destination; the unit follows it across turns at its movement rate.",
+          statement:
+            "A player queues a multi-hex path to a destination; the unit follows it across turns at its movement rate.",
           scenarios: [
             %{
               kind: "happy path",
-              title: "A settler walks a three-hex path: two hexes now, the third after the recharge",
-              body: "Given a selected Settler (movement 2) and a passable destination three hexes away
+              title:
+                "A settler walks a three-hex path: two hexes now, the third after the recharge",
+              body:
+                "Given a selected Settler (movement 2) and a passable destination three hexes away
 When the player queues the path
 Then the settler advances two hexes immediately (points spent), and completes the final hex when the boundary recharges its movement"
             },
             %{
               kind: "failure path",
               title: "A path blocked mid-journey halts the unit without losing it",
-              body: "Given a unit resting mid-path with no movement left, whose next step another unit then occupies
+              body:
+                "Given a unit resting mid-path with no movement left, whose next step another unit then occupies
 When the boundary recharges and the unit tries that step
 Then the unit stops where it is, its order flips to interrupted with the remaining path kept, and the player is informed — the unit is never lost or teleported"
             }
@@ -292,7 +349,8 @@ Then after the recharge the unit follows only the replacement — the earlier or
           ]
         },
         %{
-          statement: "Only valid destinations are accepted: passable terrain reachable by the unit.",
+          statement:
+            "Only valid destinations are accepted: passable terrain reachable by the unit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -309,7 +367,8 @@ Then no order is queued and the player sees why the destination is invalid"
             %{
               kind: "failure path",
               title: "Two units racing for the same hex resolve to one occupant",
-              body: "Given two units whose queued paths enter the same hex on the same turn
+              body:
+                "Given two units whose queued paths enter the same hex on the same turn
 When the turn boundary resolves
 Then exactly one unit occupies the hex and the other halts on its previous tile — deterministically, never both stacked"
             },
@@ -323,11 +382,13 @@ Then the order is rejected at queue time — occupied destinations are invalid"
           ]
         },
         %{
-          statement: "When an order is queued, the board renders the pathway from the unit's current position to its destination — the remaining route stays visible (for the owning player only) whenever that unit is selected, updating as movement consumes steps, until the unit arrives or the order is replaced.",
+          statement:
+            "When an order is queued, the board renders the pathway from the unit's current position to its destination — the remaining route stays visible (for the owning player only) whenever that unit is selected, updating as movement consumes steps, until the unit arrives or the order is replaced.",
           scenarios: [
             %{
               kind: "happy path",
-              title: "A queued order's remaining path renders from the unit to its destination and shrinks as the unit walks",
+              title:
+                "A queued order's remaining path renders from the unit to its destination and shrinks as the unit walks",
               body: "Given a player with a selected settler on the board
 When the player queues a move to a tile several hexes away
 Then the board pushes the remaining path from the settler's current tile to the destination
@@ -337,8 +398,7 @@ And when the settler arrives, no path renders for it"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -352,7 +412,10 @@ And when the settler arrives, no path renders for it"
 Source: .code_my_spec/stories/stone_age.md §7.1. Three per-player visibility states on the hex globe: unexplored (hidden), explored-but-out-of-vision (terrain remembered, greyed, no live units shown), and currently visible (vision radius around own units — Lord sees farther). The exploration mask is server-owned per player and never leaks hidden tiles to the client; each player sees a different world. Cities extend vision when they arrive in a later batch.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "A fresh spawn sees a cloud-wrapped planet with one clear bubble", verified: false},
+      %{
+        description: "A fresh spawn sees a cloud-wrapped planet with one clear bubble",
+        verified: false
+      },
       %{description: "The Lord out-scouts the Settler", verified: false},
       %{description: "Terrain stays on the map after the scout moves on", verified: false},
       %{description: "A stranger in remembered territory is invisible", verified: false},
@@ -365,31 +428,36 @@ Source: .code_my_spec/stories/stone_age.md §7.1. Three per-player visibility st
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Unexplored territory is hidden under opaque cloud cover at every zoom level.",
+          statement:
+            "Unexplored territory is hidden under opaque cloud cover at every zoom level.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A fresh spawn sees a cloud-wrapped planet with one clear bubble",
-              body: "Given a player who just spawned
+              body:
+                "Given a player who just spawned
 When they look at the globe at any zoom — including fully zoomed out
 Then the planet reads as a whole sphere under opaque cloud cover, with terrain visible only in the vision bubble around their units"
             },
             %{
               kind: "happy path",
               title: "Fog cloud and weather cloud read as different things",
-              body: "Given a view containing unexplored fog and weather clouds over explored land
+              body:
+                "Given a view containing unexplored fog and weather clouds over explored land
 When the player looks at both
 Then fog reads as a flat, opaque, colorless shroud while weather clouds stay translucent and day/night-lit — visually distinct at a glance"
             }
           ]
         },
         %{
-          statement: "Tiles within vision range of a player's units are fully visible; the Lord sees farther than other units.",
+          statement:
+            "Tiles within vision range of a player's units are fully visible; the Lord sees farther than other units.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The Lord out-scouts the Settler",
-              body: "Given a Lord (vision 3) and a Settler (vision 2) standing apart
+              body:
+                "Given a Lord (vision 3) and a Settler (vision 2) standing apart
 When the player inspects what is visible
 Then tiles within 3 of the Lord and within 2 of the Settler are clear, and the Lord's bubble is visibly larger"
             }
@@ -408,19 +476,22 @@ Then its terrain is still shown, dimmed, and it no longer counts as currently vi
           ]
         },
         %{
-          statement: "Units are only shown on tiles currently within vision — remembered terrain shows no live entities.",
+          statement:
+            "Units are only shown on tiles currently within vision — remembered terrain shows no live entities.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A stranger in remembered territory is invisible",
-              body: "Given another player's unit standing in territory this player explored but no longer watches
+              body:
+                "Given another player's unit standing in territory this player explored but no longer watches
 When this player views that area
 Then they see dimmed terrain and no unit — the stranger only appears if it enters current vision"
             }
           ]
         },
         %{
-          statement: "Exploration is per player, and hidden information never reaches a player's client.",
+          statement:
+            "Exploration is per player, and hidden information never reaches a player's client.",
           scenarios: [
             %{
               kind: "happy path",
@@ -432,7 +503,8 @@ Then each sees only their own explored area clear, and the other's homeland sits
             %{
               kind: "failure path",
               title: "Hidden tiles never travel over the wire",
-              body: "Given a player with most of the world unexplored
+              body:
+                "Given a player with most of the world unexplored
 When their client receives board data (tile windows, textures, pushed payloads)
 Then unexplored tiles' terrain and other players' units are absent from every payload — not merely painted over — so no client-side inspection can reveal them"
             }
@@ -440,7 +512,12 @@ Then unexplored tiles' terrain and other players' units are absent from every pa
         }
       ],
       questions: [
-        %{body: "Fog clouds vs weather clouds: unexplored area is opaque cloud, but the airspace weather layer also draws (translucent, hex) clouds over explored land. How do players tell them apart visually — different tone/opacity, or does weather simply not render over unexplored area?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Fog clouds vs weather clouds: unexplored area is opaque cloud, but the airspace weather layer also draws (translucent, hex) clouds over explored land. How do players tell them apart visually — different tone/opacity, or does weather simply not render over unexplored area?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -456,7 +533,11 @@ The globe is divided into player regions — bounded territories a player can sp
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "Same seed always produces the same region partition", verified: false},
-      %{description: "Every land and coastal tile belongs to exactly one region; deep ocean belongs to none", verified: false},
+      %{
+        description:
+          "Every land and coastal tile belongs to exactly one region; deep ocean belongs to none",
+        verified: false
+      },
       %{description: "Two new players land in different regions", verified: false},
       %{description: "Simultaneous joins never double-claim a region", verified: false},
       %{description: "Undersized island regions are never offered for spawning", verified: false},
@@ -469,7 +550,8 @@ The globe is divided into player regions — bounded territories a player can sp
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Every world is divided into a fixed set of regions determined entirely by its seed.",
+          statement:
+            "Every world is divided into a fixed set of regions determined entirely by its seed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -480,8 +562,10 @@ Then both computations produce identical regions — same tile membership, same 
             },
             %{
               kind: "happy path",
-              title: "Every land and coastal tile belongs to exactly one region; deep ocean belongs to none",
-              body: "Given a world's region partition
+              title:
+                "Every land and coastal tile belongs to exactly one region; deep ocean belongs to none",
+              body:
+                "Given a world's region partition
 When the regions' tile sets are combined
 Then every land tile (including mountains) and every coast-adjacent water tile appears in exactly one region, and deep-ocean tiles belong to no region (unclaimed naval frontier)"
             }
@@ -500,19 +584,22 @@ Then each player's claimed region is different, and each sees room to expand aro
             %{
               kind: "failure path",
               title: "Simultaneous joins never double-claim a region",
-              body: "Given a world with exactly one especially desirable unclaimed region
+              body:
+                "Given a world with exactly one especially desirable unclaimed region
 When two players join at the same moment
 Then exactly one of them claims that region and the other is placed in a different region — never both in the same one"
             }
           ]
         },
         %{
-          statement: "New players are only placed in regions with enough habitable land to support expansion.",
+          statement:
+            "New players are only placed in regions with enough habitable land to support expansion.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Undersized island regions are never offered for spawning",
-              body: "Given a world whose landmasses include a small island region too small to support expansion
+              body:
+                "Given a world whose landmasses include a small island region too small to support expansion
 When a new player joins
 Then they are placed in a full-sized region, and the undersized island region remains unclaimed"
             }
@@ -524,31 +611,36 @@ Then they are placed in a full-sized region, and the undersized island region re
             %{
               kind: "happy path",
               title: "A full world turns new players away",
-              body: "Given a world where every habitable region is already claimed
+              body:
+                "Given a world where every habitable region is already claimed
 When a new player tries to join that world
 Then they are not placed in it, and the join flow moves on to a world with capacity (or creates one)"
             }
           ]
         },
         %{
-          statement: "A region consists of land (including mountains) plus coast-adjacent water; deep ocean belongs to no region.",
+          statement:
+            "A region consists of land (including mountains) plus coast-adjacent water; deep ocean belongs to no region.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Mountains and coastal water count as country space",
-              body: "Given a claimed region containing mountain tiles and water tiles adjacent to its coast
+              body:
+                "Given a claimed region containing mountain tiles and water tiles adjacent to its coast
 When the player inspects their region's extent
 Then the mountains and coastal water are inside their region, while open-ocean tiles beyond the coast belong to no one"
             }
           ]
         },
         %{
-          statement: "A region is sized to support about seven Civilization-scale cities (roughly 250 hexes).",
+          statement:
+            "A region is sized to support about seven Civilization-scale cities (roughly 250 hexes).",
           scenarios: [
             %{
               kind: "happy path",
               title: "A claimed region has room for about seven cities",
-              body: "Given a new player's claimed region
+              body:
+                "Given a new player's claimed region
 When its claimable hexes are counted
 Then the total is roughly 250 — enough distinct city sites (Civ-scale, ~3-hex working radius each) for about seven cities"
             }
@@ -556,8 +648,18 @@ Then the total is roughly 250 — enough distinct city sites (Civ-scale, ~3-hex 
         }
       ],
       questions: [
-        %{body: "What are unclaimable (ocean/mountain-dominated) regions FOR long-term — barbarian territory, naval frontier, future expansion space? Affects whether the partition marks them specially now.", status: :resolved, resolution: nil},
-        %{body: "Are region boundaries ever visible to players on the globe (subtle borders at spawn, or fully invisible plumbing)? Affects whether the renderer needs region data at all in batch 1.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "What are unclaimable (ocean/mountain-dominated) regions FOR long-term — barbarian territory, naval frontier, future expansion space? Affects whether the partition marks them specially now.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Are region boundaries ever visible to players on the globe (subtle borders at spawn, or fully invisible plumbing)? Affects whether the renderer needs region data at all in batch 1.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -573,10 +675,19 @@ Source: .code_my_spec/stories/stone_age.md §2.1 plus more_stories.md §4.2: sel
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "A settler founds a city on the grassland it stands on", verified: false},
-      %{description: "Founding too close to an existing city is refused with a reason", verified: false},
-      %{description: "Founding trades the settler for a working size-1 city on the spot", verified: false},
+      %{
+        description: "Founding too close to an existing city is refused with a reason",
+        verified: false
+      },
+      %{
+        description: "Founding trades the settler for a working size-1 city on the spot",
+        verified: false
+      },
       %{description: "A fresh city in open land claims exactly seven tiles", verified: false},
-      %{description: "A neighbor founded at minimum spacing never steals claimed tiles", verified: false},
+      %{
+        description: "A neighbor founded at minimum spacing never steals claimed tiles",
+        verified: false
+      },
       %{description: "A new city is named by default and renameable", verified: false}
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
@@ -584,7 +695,8 @@ Source: .code_my_spec/stories/stone_age.md §2.1 plus more_stories.md §4.2: sel
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A city is founded on the tile the settler is standing on — walkable land by construction, and the server refuses any non-land tile as a backstop.",
+          statement:
+            "A city is founded on the tile the settler is standing on — walkable land by construction, and the server refuses any non-land tile as a backstop.",
           scenarios: [
             %{
               kind: "happy path",
@@ -596,7 +708,8 @@ Then a city appears on exactly that tile"
           ]
         },
         %{
-          statement: "Founding is refused within 4 hexes of any existing city, regardless of who owns it.",
+          statement:
+            "Founding is refused within 4 hexes of any existing city, regardless of who owns it.",
           scenarios: [
             %{
               kind: "failure path",
@@ -609,7 +722,8 @@ And the player sees why: too close to an existing city"
           ]
         },
         %{
-          statement: "Founding consumes the settler and creates a size-1 city on that tile, immediately (no turn-boundary wait) and immediately able to set production.",
+          statement:
+            "Founding consumes the settler and creates a size-1 city on that tile, immediately (no turn-boundary wait) and immediately able to set production.",
           scenarios: [
             %{
               kind: "happy path",
@@ -623,7 +737,8 @@ And the player can open it and set production right away"
           ]
         },
         %{
-          statement: "A new city claims exactly its own tile plus the six adjacent hexes as territory — expansion beyond that comes from city growth, never from founding (PM decision 2026-07-14: start 1-hex, grow).",
+          statement:
+            "A new city claims exactly its own tile plus the six adjacent hexes as territory — expansion beyond that comes from city growth, never from founding (PM decision 2026-07-14: start 1-hex, grow).",
           scenarios: [
             %{
               kind: "happy path",
@@ -636,7 +751,8 @@ And no tile beyond that ring is claimed"
           ]
         },
         %{
-          statement: "Tiles already claimed by an existing city stay with that city — a newly founded neighbor never takes them (first-come keeps it).",
+          statement:
+            "Tiles already claimed by an existing city stay with that city — a newly founded neighbor never takes them (first-come keeps it).",
           scenarios: [
             %{
               kind: "happy path",
@@ -664,8 +780,7 @@ And the new name persists after leaving and returning to the world"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -679,20 +794,30 @@ And the new name persists after leaving and returning to the world"
 Source: .code_my_spec/stories/stone_age.md §2.2 plus more_stories.md §5.1: open a city to see current production with a progress bar; choose from Settler (100), Worker (60), Warrior (40), Monument (60); the city accumulates production each turn based on size and worked tiles (size-1 base 5/turn); completed units spawn at the city (or an adjacent hex if occupied); buildings grant bonuses (Monument +2 culture/turn); multiple items can be queued.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "The city panel offers exactly Settler, Worker, and Warrior with costs", verified: false},
+      %{
+        description: "The city panel offers exactly Settler, Worker, and Warrior with costs",
+        verified: false
+      },
       %{description: "A warrior completes after eight turns of flat banking", verified: false},
       %{description: "Progress reads as banked-over-cost mid-build", verified: false},
       %{description: "The queue rolls into the next item and keeps the change", verified: false},
       %{description: "A finished unit lands beside a occupied city tile", verified: false},
-      %{description: "A completely blocked city holds the finished unit without losing it", verified: false},
-      %{description: "Reordering is free but abandoning mid-build costs the investment", verified: false}
+      %{
+        description: "A completely blocked city holds the finished unit without losing it",
+        verified: false
+      },
+      %{
+        description: "Reordering is free but abandoning mid-build costs the investment",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 2, history: [:partial, :pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "The Stone Age production catalog is Settler (100), Worker (60), and Warrior (40) — Monument is deferred until culture has a purpose (PM decision 2026-07-14).",
+          statement:
+            "The Stone Age production catalog is Settler (100), Worker (60), and Warrior (40) — Monument is deferred until culture has a purpose (PM decision 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
@@ -705,7 +830,8 @@ And no Monument is offered"
           ]
         },
         %{
-          statement: "Every city banks a flat 5 production at each turn boundary; worked-tile production (story 880) stacks on top when it arrives.",
+          statement:
+            "Every city banks a flat 5 production at each turn boundary; worked-tile production (story 880) stacks on top when it arrives.",
           scenarios: [
             %{
               kind: "happy path",
@@ -718,7 +844,8 @@ And a ninth boundary was not needed"
           ]
         },
         %{
-          statement: "The city panel always shows the current production item with its banked progress against its cost (e.g. Warrior 25/40).",
+          statement:
+            "The city panel always shows the current production item with its banked progress against its cost (e.g. Warrior 25/40).",
           scenarios: [
             %{
               kind: "happy path",
@@ -730,7 +857,8 @@ Then the current production reads Warrior 25/40 with a progress bar"
           ]
         },
         %{
-          statement: "Multiple items can be queued; when the current item completes, the next begins automatically and surplus production carries over into it.",
+          statement:
+            "Multiple items can be queued; when the current item completes, the next begins automatically and surplus production carries over into it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -743,7 +871,8 @@ And any production banked past the warrior's cost counts toward the worker"
           ]
         },
         %{
-          statement: "A completed unit spawns on the city tile, or an adjacent free land tile if the city tile is occupied; if no tile is free the finished item waits at the head of the queue until space opens — nothing is lost.",
+          statement:
+            "A completed unit spawns on the city tile, or an adjacent free land tile if the city tile is occupied; if no tile is free the finished item waits at the head of the queue until space opens — nothing is lost.",
           scenarios: [
             %{
               kind: "happy path",
@@ -764,7 +893,8 @@ And no production is lost in the meantime"
           ]
         },
         %{
-          statement: "Queue edits are free — queued items can be reordered or removed anytime; canceling the in-progress item forfeits its invested production (PM decision 2026-07-14: progress sticks to the item).",
+          statement:
+            "Queue edits are free — queued items can be reordered or removed anytime; canceling the in-progress item forfeits its invested production (PM decision 2026-07-14: progress sticks to the item).",
           scenarios: [
             %{
               kind: "happy path",
@@ -777,8 +907,7 @@ And the 60 invested production is forfeited"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -796,14 +925,18 @@ Source: .code_my_spec/stories/stone_age.md §2.3 plus more_stories.md §5.2: cit
       %{description: "Twenty banked food turns a hamlet into a town", verified: false},
       %{description: "Each citizen works one tile beyond the free center", verified: false},
       %{description: "A size-4 city stops growing until the age turns", verified: false},
-      %{description: "Yields stack: forested grassland hills feed and build at once", verified: false}
+      %{
+        description: "Yields stack: forested grassland hills feed and build at once",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Each population point gained claims exactly one adjacent unclaimed workable tile (mountains/ice never claimed), auto-picked deterministically: highest total yield, then higher food, then smaller ring distance, then fixed compass order — same map always claims the same tiles (PM decision + Civ research 2026-07-14).",
+          statement:
+            "Each population point gained claims exactly one adjacent unclaimed workable tile (mountains/ice never claimed), auto-picked deterministically: highest total yield, then higher food, then smaller ring distance, then fixed compass order — same map always claims the same tiles (PM decision + Civ research 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
@@ -816,7 +949,8 @@ And no other tiles change hands"
           ]
         },
         %{
-          statement: "Cities accumulate gross food from worked tiles at each turn boundary (no population food consumption); growth thresholds are 20 / 30 / 40 for sizes 2 / 3 / 4, overflow food carries into the next basket, and at most one growth happens per turn (Civ research 2026-07-14).",
+          statement:
+            "Cities accumulate gross food from worked tiles at each turn boundary (no population food consumption); growth thresholds are 20 / 30 / 40 for sizes 2 / 3 / 4, overflow food carries into the next basket, and at most one growth happens per turn (Civ research 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
@@ -829,7 +963,8 @@ And the growth is visible in the city panel"
           ]
         },
         %{
-          statement: "The city center is worked free; each population point works one additional owned workable tile, auto-assigned greedily by 2·food + 1·production (compass tiebreak, deterministic) with a manual override per pop in the city panel.",
+          statement:
+            "The city center is worked free; each population point works one additional owned workable tile, auto-assigned greedily by 2·food + 1·production (compass tiebreak, deterministic) with a manual override per pop in the city panel.",
           scenarios: [
             %{
               kind: "happy path",
@@ -843,7 +978,8 @@ And the player can reassign which tiles those are"
           ]
         },
         %{
-          statement: "Stone Age cities cap at size 4 — food still accumulates but no further growth occurs until a later age raises the cap.",
+          statement:
+            "Stone Age cities cap at size 4 — food still accumulates but no further growth occurs until a later age raises the cap.",
           scenarios: [
             %{
               kind: "happy path",
@@ -856,7 +992,8 @@ And no error or loss occurs — the cap is quiet"
           ]
         },
         %{
-          statement: "Worked-tile yields compose as base + relief + feature (stacking, Civ VI model): grassland 2F, plains 1F1P, tundra/coast/ocean 1F, desert and snow 0; hills and woods each add +1P; rainforest and marsh each add +1F; mountains and ice are unworkable; the free-worked city center always yields at least 2F1P. Canonical table: .code_my_spec/knowledge/stone_age_yields.md.",
+          statement:
+            "Worked-tile yields compose as base + relief + feature (stacking, Civ VI model): grassland 2F, plains 1F1P, tundra/coast/ocean 1F, desert and snow 0; hills and woods each add +1P; rainforest and marsh each add +1F; mountains and ice are unworkable; the free-worked city center always yields at least 2F1P. Canonical table: .code_my_spec/knowledge/stone_age_yields.md.",
           scenarios: [
             %{
               kind: "happy path",
@@ -871,7 +1008,12 @@ And the city center on snow still contributes its 2 food 1 production floor"
         }
       ],
       questions: [
-        %{body: "Exact Stone Age yield table (food/production/gold per base × relief × feature) — PM requested Civ VI research before locking numbers; civ-research agent running. Resolve with the researched table, then add the yield rule + scenario to this story.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Exact Stone Age yield table (food/production/gold per base × relief × feature) — PM requested Civ VI research before locking numbers; civ-research agent running. Resolve with the researched table, then add the yield rule + scenario to this story.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -887,15 +1029,22 @@ Source: .code_my_spec/stories/stone_age.md §4.2 plus more_stories.md §4.4: cit
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "A city turns 40 production into a warrior on the map", verified: false},
-      %{description: "A warrior walks one hex per turn while a settler walks two", verified: false},
-      %{description: "Resting at home heals; garrison heals faster; the road heals nothing", verified: false}
+      %{
+        description: "A warrior walks one hex per turn while a settler walks two",
+        verified: false
+      },
+      %{
+        description: "Resting at home heals; garrison heals faster; the road heals nothing",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Warriors cost 40 production and enter play with Strength 10, Defense 10, HP 100 — and the whole game adopts the 100-point HP scale: existing Lords rescale to 150 HP and Settlers to 50 HP (PM decision 2026-07-14).",
+          statement:
+            "Warriors cost 40 production and enter play with Strength 10, Defense 10, HP 100 — and the whole game adopts the 100-point HP scale: existing Lords rescale to 150 HP and Settlers to 50 HP (PM decision 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
@@ -908,7 +1057,8 @@ And existing lords and settlers show 150 and 50 max HP respectively"
           ]
         },
         %{
-          statement: "Warriors move one hex per turn on the existing movement substrate — same ordering, pathing, and fog rules as every other unit.",
+          statement:
+            "Warriors move one hex per turn on the existing movement substrate — same ordering, pathing, and fog rules as every other unit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -921,12 +1071,14 @@ And the settler advances two"
           ]
         },
         %{
-          statement: "A damaged unit standing in its owner's territory heals 10 HP at the boundary if it spent no movement that turn; garrisoned on its own city's tile it heals 15 instead. Outside friendly territory nothing heals.",
+          statement:
+            "A damaged unit standing in its owner's territory heals 10 HP at the boundary if it spent no movement that turn; garrisoned on its own city's tile it heals 15 instead. Outside friendly territory nothing heals.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Resting at home heals; garrison heals faster; the road heals nothing",
-              body: "Given three damaged warriors: one resting in home territory, one garrisoned in its city, one resting outside any territory
+              body:
+                "Given three damaged warriors: one resting in home territory, one garrisoned in its city, one resting outside any territory
 When a turn boundary passes with none of them moving
 Then the one at home gains 10 HP
 And the garrisoned one gains 15 HP
@@ -935,8 +1087,7 @@ And the one abroad gains nothing"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -956,7 +1107,10 @@ Playtest update (issue 1caa87e9 — worker charges): workers have a limited numb
       %{description: "Three turns of digging turns grassland into a farm", verified: false},
       %{description: "A worker helps a friend by farming their land", verified: false},
       %{description: "An abandoned dig waits patiently for the next shovel", verified: false},
-      %{description: "A finished mine pays its city and refuses a second improvement", verified: false},
+      %{
+        description: "A finished mine pays its city and refuses a second improvement",
+        verified: false
+      },
       %{description: "A fresh worker comes with three charges", verified: false},
       %{description: "Three farms and the worker is spent", verified: false},
       %{description: "An abandoned dig costs no charge", verified: false},
@@ -968,7 +1122,8 @@ Playtest update (issue 1caa87e9 — worker charges): workers have a limited numb
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Workers cost 60 production, move on the standard substrate, and cannot fight — 10 HP on the 100-scale; combat consequences for them arrive with the barbarian/combat stories.",
+          statement:
+            "Workers cost 60 production, move on the standard substrate, and cannot fight — 10 HP on the 100-scale; combat consequences for them arrive with the barbarian/combat stories.",
           scenarios: [
             %{
               kind: "happy path",
@@ -981,7 +1136,8 @@ And it offers Build Improvement actions instead of any combat action"
           ]
         },
         %{
-          statement: "A selected worker can start a Farm on flat, featureless grassland or plains (3 turns, +2 food) or a Mine on hills (5 turns, +2 production); Roads are deferred to their own story and will reduce movement cost when movement costs exist (PM decision 2026-07-14).",
+          statement:
+            "A selected worker can start a Farm on flat, featureless grassland or plains (3 turns, +2 food) or a Mine on hills (5 turns, +2 production); Roads are deferred to their own story and will reduce movement cost when movement costs exist (PM decision 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
@@ -994,12 +1150,14 @@ And starting a Farm on a hills or forested tile is not offered"
           ]
         },
         %{
-          statement: "Improvements can be built anywhere passable — wilderness and other players' territory included (no open-borders system restricts it yet); water and mountains refuse (PM decision 2026-07-14).",
+          statement:
+            "Improvements can be built anywhere passable — wilderness and other players' territory included (no open-borders system restricts it yet); water and mountains refuse (PM decision 2026-07-14).",
           scenarios: [
             %{
               kind: "happy path",
               title: "A worker helps a friend by farming their land",
-              body: "Given a worker standing on valid farmland inside a friendly player's territory
+              body:
+                "Given a worker standing on valid farmland inside a friendly player's territory
 When the worker's owner starts a Farm and it completes
 Then the farm exists on that tile
 And it feeds whichever city works the tile — the friend's city, in this case
@@ -1008,7 +1166,8 @@ And nothing prevents building on any player's territory (no open-borders system 
           ]
         },
         %{
-          statement: "Build progress accrues one step per turn boundary while a worker stands on the tile, and sticks to the tile — an interrupted build resumes where it left off when any of the owner's workers returns.",
+          statement:
+            "Build progress accrues one step per turn boundary while a worker stands on the tile, and sticks to the tile — an interrupted build resumes where it left off when any of the owner's workers returns.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1021,7 +1180,8 @@ And no progress was lost"
           ]
         },
         %{
-          statement: "A tile holds at most one improvement; a completed farm or mine feeds whichever city works that tile (+2 food / +2 production through the yield system), and building over an existing improvement is refused.",
+          statement:
+            "A tile holds at most one improvement; a completed farm or mine feeds whichever city works that tile (+2 food / +2 production through the yield system), and building over an existing improvement is refused.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1046,7 +1206,8 @@ Then it has 3 build charges available"
           ]
         },
         %{
-          statement: "A worker spends one build charge for each Farm or Mine it completes, and is expended and removed from the map when it spends its last charge.",
+          statement:
+            "A worker spends one build charge for each Farm or Mine it completes, and is expended and removed from the map when it spends its last charge.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1094,8 +1255,18 @@ And the worker is not expended and can still build a Farm or Mine"
         }
       ],
       questions: [
-        %{body: "Roads: in Civ 6, Builders never spend charges on roads (Traders/auto-roads build them). Here Road is a worker improvement but is deferred. Default proposal is that building a Road does NOT consume a build charge (charge-exempt). Confirm roads are charge-exempt, or decide roads should cost a charge like Farm/Mine, when roads are eventually implemented.", status: :resolved, resolution: nil},
-        %{body: "Is 3 build charges the right number for Broken Oaths (Civ 6 Builder base is 3)? At 60 production for ~3 improvements, confirm the production-per-improvement economics feel right, or tune the charge count / worker cost in playtest.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Roads: in Civ 6, Builders never spend charges on roads (Traders/auto-roads build them). Here Road is a worker improvement but is deferred. Default proposal is that building a Road does NOT consume a build charge (charge-exempt). Confirm roads are charge-exempt, or decide roads should cost a charge like Farm/Mine, when roads are eventually implemented.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is 3 build charges the right number for Broken Oaths (Civ 6 Builder base is 3)? At 60 production for ~3 improvements, confirm the production-per-improvement economics feel right, or tune the charge count / worker cost in playtest.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1113,14 +1284,18 @@ Source: .code_my_spec/stories/stone_age.md §4.4: cities produce Settlers for 10
       %{description: "A settler is paid for in people", verified: false},
       %{description: "A hamlet may not empty itself onto the road", verified: false},
       %{description: "The map remembers what the census forgets", verified: false},
-      %{description: "The second city is founded like the first, minus the drama", verified: false}
+      %{
+        description: "The second city is founded like the first, minus the drama",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Settlers cost 100 production, and completing one costs the producing city one population point at the moment it spawns.",
+          statement:
+            "Settlers cost 100 production, and completing one costs the producing city one population point at the moment it spawns.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1133,7 +1308,8 @@ And the settler stands ready with 2 movement"
           ]
         },
         %{
-          statement: "A size-1 city cannot select Settler as production — the choice is disabled with the reason (completing it would destroy the city).",
+          statement:
+            "A size-1 city cannot select Settler as production — the choice is disabled with the reason (completing it would destroy the city).",
           scenarios: [
             %{
               kind: "failure path",
@@ -1146,7 +1322,8 @@ And it becomes selectable once the city grows to size 2"
           ]
         },
         %{
-          statement: "Losing population to a settler un-works a tile but never un-claims territory — once claimed, a city's tiles are permanent.",
+          statement:
+            "Losing population to a settler un-works a tile but never un-claims territory — once claimed, a city's tiles are permanent.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1159,7 +1336,8 @@ And only one worked tile remains beyond the free center"
           ]
         },
         %{
-          statement: "A produced settler founds cities under the story-878 rules (walkable land, 4-hex spacing), and founding additional cities never triggers extra barbarian consequences — the first-city trigger is one-time and belongs to the barbarian stories.",
+          statement:
+            "A produced settler founds cities under the story-878 rules (walkable land, 4-hex spacing), and founding additional cities never triggers extra barbarian consequences — the first-city trigger is one-time and belongs to the barbarian stories.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1172,8 +1350,7 @@ And nothing else changes in the world because of it"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1204,7 +1381,8 @@ Source: .code_my_spec/stories/stone_age.md §10.1 plus combat clauses of §4.2: 
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A military unit or lord can attack a hostile unit only on an adjacent tile.",
+          statement:
+            "A military unit or lord can attack a hostile unit only on an adjacent tile.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1223,7 +1401,8 @@ Then the attack is refused with a human-readable reason and neither unit loses H
           ]
         },
         %{
-          statement: "An attack resolves immediately when ordered and consumes all of the attacker's remaining movement.",
+          statement:
+            "An attack resolves immediately when ordered and consumes all of the attacker's remaining movement.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1244,7 +1423,8 @@ And after the next turn boundary recharges movement the same attack succeeds"
           ]
         },
         %{
-          statement: "Combat damage follows the Civ VI curve: 30 base damage at equal strength, scaled about 4 percent per point of strength difference, with a plus-or-minus 25 percent random roll.",
+          statement:
+            "Combat damage follows the Civ VI curve: 30 base damage at equal strength, scaled about 4 percent per point of strength difference, with a plus-or-minus 25 percent random roll.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1257,7 +1437,8 @@ And my warrior loses damage in the stronger band (roughly 27 to 46)"
           ]
         },
         %{
-          statement: "Attacker and defender damage each other simultaneously, both computed from pre-combat state, so a dying defender still lands its counter-blow.",
+          statement:
+            "Attacker and defender damage each other simultaneously, both computed from pre-combat state, so a dying defender still lands its counter-blow.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1282,7 +1463,8 @@ And its tile becomes free for movement"
           ]
         },
         %{
-          statement: "The attacking player sees the combat result: damage dealt and damage taken.",
+          statement:
+            "The attacking player sees the combat result: damage dealt and damage taken.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1306,7 +1488,8 @@ Then the damage dealt comes from the strength-12 band, not the strength-10 band"
           ]
         },
         %{
-          statement: "Attacks against another player's units are refused in the Stone Age; only barbarians are attackable.",
+          statement:
+            "Attacks against another player's units are refused in the Stone Age; only barbarians are attackable.",
           scenarios: [
             %{
               kind: "failure path",
@@ -1318,12 +1501,14 @@ Then the attack is refused with a reason explaining Stone Age players cannot fig
           ]
         },
         %{
-          statement: "A wounded unit fights at reduced effective strength, falling linearly from 100 percent at full HP to 50 percent near death, and all combat math consumes effective strength.",
+          statement:
+            "A wounded unit fights at reduced effective strength, falling linearly from 100 percent at full HP to 50 percent near death, and all combat math consumes effective strength.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A dying warrior swings soft",
-              body: "Given one warrior at full HP and another at 20 of 100 HP, each attacking an identical barbarian
+              body:
+                "Given one warrior at full HP and another at 20 of 100 HP, each attacking an identical barbarian
 When both combats resolve
 Then the wounded warrior's damage comes from a visibly lower band than the fresh warrior's (roughly strength 6 versus strength 10)"
             }
@@ -1331,8 +1516,18 @@ Then the wounded warrior's damage comes from a visibly lower band than the fresh
         }
       ],
       questions: [
-        %{body: "Do wounded units deal reduced damage (Civ VI wounded penalty)? Proposed default: no penalty in the Stone Age; damage depends only on strength.", status: :resolved, resolution: nil},
-        %{body: "891 specs need a hostile unit to exist. Sequence unit-combat specs after story 892 (camps spawn barbarians), or add a test-only hostile spawner fixture?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Do wounded units deal reduced damage (Civ VI wounded penalty)? Proposed default: no penalty in the Stone Age; damage depends only on strength.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "891 specs need a hostile unit to exist. Sequence unit-combat specs after story 892 (camps spawn barbarians), or add a test-only hostile spawner fixture?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1361,7 +1556,8 @@ Source: .code_my_spec/stories/stone_age.md §3.1: founding a player's FIRST city
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Founding a player's first city spawns 4 to 6 barbarian camps in unexplored tiles 8 to 15 hexes away, biased toward region boundaries, plus 1 to 2 inside the player's region.",
+          statement:
+            "Founding a player's first city spawns 4 to 6 barbarian camps in unexplored tiles 8 to 15 hexes away, biased toward region boundaries, plus 1 to 2 inside the player's region.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1386,7 +1582,8 @@ Then the world's camp count is unchanged"
           ]
         },
         %{
-          statement: "A camp has 100 HP and appears as a distinct camp marker only once a player has explored its tile.",
+          statement:
+            "A camp has 100 HP and appears as a distinct camp marker only once a player has explored its tile.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1405,7 +1602,8 @@ Then no camp data for that tile travels to my client at all"
           ]
         },
         %{
-          statement: "A camp keeps at most 2 of its warriors alive at once, re-spawning one every 3 turns only while below that cap.",
+          statement:
+            "A camp keeps at most 2 of its warriors alive at once, re-spawning one every 3 turns only while below that cap.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1450,7 +1648,12 @@ Then I see a message that my city has attracted attention and camps are forming 
         }
       ],
       questions: [
-        %{body: "Two players share a region boundary: does each first-city founding spawn its own full camp set (possible pile-up in the shared borderland), or should placement skip tiles already within 8 hexes of an existing camp?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Two players share a region boundary: does each first-city founding spawn its own full camp set (possible pile-up in the shared borderland), or should placement skip tiles already within 8 hexes of an existing camp?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1478,7 +1681,8 @@ Source: .code_my_spec/stories/stone_age.md §3.2: each turn boundary, barbarian 
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "At each turn boundary a barbarian moves 1 hex toward the nearest player unit or city within 5 hexes.",
+          statement:
+            "At each turn boundary a barbarian moves 1 hex toward the nearest player unit or city within 5 hexes.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1490,7 +1694,8 @@ Then the barbarian is 2 hexes from my warrior"
           ]
         },
         %{
-          statement: "A barbarian with no target within 5 hexes roams near its home camp instead of marching.",
+          statement:
+            "A barbarian with no target within 5 hexes roams near its home camp instead of marching.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1502,7 +1707,8 @@ Then the barbarian stays in the neighborhood of its camp and never closes on my 
           ]
         },
         %{
-          statement: "A barbarian adjacent to a player unit at the boundary attacks it; no diplomacy is possible.",
+          statement:
+            "A barbarian adjacent to a player unit at the boundary attacks it; no diplomacy is possible.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1514,12 +1720,14 @@ Then the barbarian has attacked and my worker has lost HP or died"
           ]
         },
         %{
-          statement: "When both an undefended city and a unit are in range, the barbarian goes for the city.",
+          statement:
+            "When both an undefended city and a unit are in range, the barbarian goes for the city.",
           scenarios: [
             %{
               kind: "happy path",
               title: "They smell the undefended city",
-              body: "Given my ungarrisoned city and my warrior are both within 5 hexes of a barbarian
+              body:
+                "Given my ungarrisoned city and my warrior are both within 5 hexes of a barbarian
 When turn boundaries pass
 Then the barbarian's path heads for the city, not the warrior"
             }
@@ -1538,7 +1746,8 @@ Then neither loses HP"
           ]
         },
         %{
-          statement: "A barbarian entering a tile with a completed improvement pillages it: yields stop until a worker repairs it in 1 turn.",
+          statement:
+            "A barbarian entering a tile with a completed improvement pillages it: yields stop until a worker repairs it in 1 turn.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1563,8 +1772,7 @@ Then my gold increases by 10"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1588,7 +1796,8 @@ Source: .code_my_spec/stories/stone_age.md §10.2: a military unit adjacent to a
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A military unit adjacent to a camp can attack it, and the camp never counter-attacks.",
+          statement:
+            "A military unit adjacent to a camp can attack it, and the camp never counter-attacks.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1600,7 +1809,8 @@ Then the camp loses HP and my warrior loses none"
           ]
         },
         %{
-          statement: "An attack on a camp deals flat damage equal to the attacker's strength, with no random roll.",
+          statement:
+            "An attack on a camp deals flat damage equal to the attacker's strength, with no random roll.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1612,7 +1822,8 @@ Then the camp sits at exactly 78 HP"
           ]
         },
         %{
-          statement: "A camp at 0 HP is destroyed: the destroyer's owner earns 30 gold, spawning stops, and the tile reverts to normal terrain open to founding and improvements.",
+          statement:
+            "A camp at 0 HP is destroyed: the destroyer's owner earns 30 gold, spawning stops, and the tile reverts to normal terrain open to founding and improvements.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1637,8 +1848,7 @@ Then both warriors remain on the board and still behave as barbarians"
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1667,7 +1877,8 @@ Source: .code_my_spec/stories/stone_age.md §3.3 + §10.3 (one story, two angles
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A city has 100 max HP and defensive strength of 20 plus 5 per population plus the defense of its garrison.",
+          statement:
+            "A city has 100 max HP and defensive strength of 20 plus 5 per population plus the defense of its garrison.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1679,7 +1890,8 @@ Then its HP shows 100 and its defensive strength shows 40"
           ]
         },
         %{
-          statement: "Up to 3 friendly military units may stand on a city tile as garrison — the game's only stacking exception.",
+          statement:
+            "Up to 3 friendly military units may stand on a city tile as garrison — the game's only stacking exception.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1698,7 +1910,8 @@ Then the move is refused with a human-readable reason and the unit stays put"
           ]
         },
         %{
-          statement: "A garrisoned unit fights with a +50 percent defensive bonus and can attack adjacent barbarians without leaving the city.",
+          statement:
+            "A garrisoned unit fights with a +50 percent defensive bonus and can attack adjacent barbarians without leaving the city.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1711,7 +1924,8 @@ And any counter-damage comes from the barbarian's roll against defense 15 (10 pl
           ]
         },
         %{
-          statement: "A barbarian attacking a garrisoned city takes counter-attack damage from the garrison.",
+          statement:
+            "A barbarian attacking a garrisoned city takes counter-attack damage from the garrison.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1723,7 +1937,8 @@ Then the city loses HP and the barbarian also loses HP"
           ]
         },
         %{
-          statement: "A city not attacked since the last boundary regenerates 5 HP per turn, up to its maximum.",
+          statement:
+            "A city not attacked since the last boundary regenerates 5 HP per turn, up to its maximum.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1735,12 +1950,14 @@ Then the city sits at 90 HP"
           ]
         },
         %{
-          statement: "A city at 0 HP is pillaged, never captured: it loses 1 population, production halts for 3 turns, and HP resets to 50.",
+          statement:
+            "A city at 0 HP is pillaged, never captured: it loses 1 population, production halts for 3 turns, and HP resets to 50.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Sacked but still mine",
-              body: "Given my size-2 city falls to 0 HP under barbarian attack
+              body:
+                "Given my size-2 city falls to 0 HP under barbarian attack
 When the pillage resolves
 Then the city is size 1, still mine, at 50 HP
 And its production accumulates nothing for the next 3 boundaries, then resumes with banked progress intact"
@@ -1748,7 +1965,8 @@ And its production accumulates nothing for the next 3 boundaries, then resumes w
           ]
         },
         %{
-          statement: "The player is alerted when barbarians close within 3 hexes of their city and again when the city is attacked.",
+          statement:
+            "The player is alerted when barbarians close within 3 hexes of their city and again when the city is attacked.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1761,12 +1979,14 @@ And when it attacks I see an under-attack alert"
           ]
         },
         %{
-          statement: "Civilian units may shelter on a friendly city tile; they add no defense and do not count against the 3-unit garrison cap.",
+          statement:
+            "Civilian units may shelter on a friendly city tile; they add no defense and do not count against the 3-unit garrison cap.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Room in the walls for the meek",
-              body: "Given my city tile holds 3 garrisoned warriors
+              body:
+                "Given my city tile holds 3 garrisoned warriors
 When I move my worker onto the city tile
 Then the worker arrives, the city's defensive strength is unchanged, and the garrison still counts 3"
             }
@@ -1774,7 +1994,12 @@ Then the worker arrives, the city's defensive strength is unchanged, and the gar
         }
       ],
       questions: [
-        %{body: "Can civilian units (worker, settler) also shelter on the city tile, and do they count against the 3-unit garrison cap? Proposed: they may shelter, don't add defense, don't count against the cap.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Can civilian units (worker, settler) also shelter on the city tile, and do they count against the 3-unit garrison cap? Proposed: they may shelter, don't add defense, don't count against the cap.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1800,7 +2025,8 @@ Source: .code_my_spec/stories/stone_age.md §4.1, combat-facing slice: the lord'
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "The lord grants +2 strength to adjacent friendly units in every combat, attacking or defending.",
+          statement:
+            "The lord grants +2 strength to adjacent friendly units in every combat, attacking or defending.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1819,7 +2045,8 @@ Then no +2 bonus applies"
           ]
         },
         %{
-          statement: "Each player has exactly one lord lineage: the lord can never be disbanded and never appears in any production catalog.",
+          statement:
+            "Each player has exactly one lord lineage: the lord can never be disbanded and never appears in any production catalog.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1831,7 +2058,8 @@ Then no Lord entry exists at any price"
           ]
         },
         %{
-          statement: "When the lord dies, his heir arrives at the player's capital 10 turns later as the new lord; leveling penalties arrive with the future leveling system.",
+          statement:
+            "When the lord dies, his heir arrives at the player's capital 10 turns later as the new lord; leveling penalties arrive with the future leveling system.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1843,7 +2071,8 @@ Then a new lord stands on my capital's tile and I was notified the lineage conti
           ]
         },
         %{
-          statement: "The lord is visually distinguished on the board and in the unit panel by its crown.",
+          statement:
+            "The lord is visually distinguished on the board and in the unit panel by its crown.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1856,7 +2085,12 @@ Then its board sprite and unit panel both carry the crown identity"
         }
       ],
       questions: [
-        %{body: "Where does the heir arrive if the player has no cities when the lord dies? Proposed: the player's original spawn tile; revisit when world-exit rules exist.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Where does the heir arrive if the player has no cities when the lord dies? Proposed: the player's original spawn tile; revisit when world-exit rules exist.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -1879,19 +2113,22 @@ PM directive 2026-07-16 (raised during batch-3 Three Amigos): turn_seconds is a 
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Each world carries its own turn length in seconds, set at creation, defaulting to 60, and immutable afterward.",
+          statement:
+            "Each world carries its own turn length in seconds, set at creation, defaulting to 60, and immutable afterward.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A fast world and a slow world coexist",
-              body: "Given one world created with 5-second turns and another created with the default
+              body:
+                "Given one world created with 5-second turns and another created with the default
 When both run side by side
 Then the fast world advances roughly 12 turns while the default world advances 1"
             }
           ]
         },
         %{
-          statement: "All turn-boundary mechanics and the on-screen countdown follow the world's own turn length.",
+          statement:
+            "All turn-boundary mechanics and the on-screen countdown follow the world's own turn length.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1903,8 +2140,7 @@ Then the countdown restarts from 5, and food and production tick on that same ca
           ]
         }
       ],
-      questions: [
-      ],
+      questions: [],
       note: nil
     }
   },
@@ -1933,7 +2169,8 @@ Source: .code_my_spec/stories/stone_age.md §8.1. When a player's unit or city v
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Discovery fires the first time a player's own vision reveals another player's unit or city.",
+          statement:
+            "Discovery fires the first time a player's own vision reveals another player's unit or city.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1954,7 +2191,8 @@ And Wes's Known Players list stays empty"
           ]
         },
         %{
-          statement: "Discovery is mutual and simultaneous: both players are notified and added to each other's Known Players at the same moment.",
+          statement:
+            "Discovery is mutual and simultaneous: both players are notified and added to each other's Known Players at the same moment.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1967,7 +2205,8 @@ And each player appears in the other's Known Players"
           ]
         },
         %{
-          statement: "Once discovered, a player remains in Known Players permanently, even after leaving vision.",
+          statement:
+            "Once discovered, a player remains in Known Players permanently, even after leaving vision.",
           scenarios: [
             %{
               kind: "happy path",
@@ -1991,7 +2230,8 @@ Then a chat conversation with Rival becomes available to Wes"
           ]
         },
         %{
-          statement: "A discovered player's units and cities are shown only where the viewer currently has vision; discovery does not grant global sight.",
+          statement:
+            "A discovered player's units and cities are shown only where the viewer currently has vision; discovery does not grant global sight.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2004,12 +2244,14 @@ And Rival still appears in Wes's Known Players"
           ]
         },
         %{
-          statement: "Discovery never enables combat between players; Stone Age friendly fire stays disabled.",
+          statement:
+            "Discovery never enables combat between players; Stone Age friendly fire stays disabled.",
           scenarios: [
             %{
               kind: "failure path",
               title: "No attacking a discovered player",
-              body: "Given Wes has discovered Rival and Wes's warrior is adjacent to Rival's warrior
+              body:
+                "Given Wes has discovered Rival and Wes's warrior is adjacent to Rival's warrior
 When Wes selects his warrior and attempts to target Rival's warrior
 Then no attack is permitted
 And only barbarians remain valid attack targets"
@@ -2017,7 +2259,8 @@ And only barbarians remain valid attack targets"
           ]
         },
         %{
-          statement: "The discovery notification appears as a transient toast and is also recorded in a persistent events feed.",
+          statement:
+            "The discovery notification appears as a transient toast and is also recorded in a persistent events feed.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2030,7 +2273,8 @@ And an entry for the discovery is added to Wes's events feed"
           ]
         },
         %{
-          statement: "A player has a Known Players panel listing every civilization they have discovered.",
+          statement:
+            "A player has a Known Players panel listing every civilization they have discovered.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2043,9 +2287,24 @@ Then both Rival and Yuki are listed"
         }
       ],
       questions: [
-        %{body: "Discovery trigger scope: does seeing a rival's claimed territory/border or an improvement (e.g. a farm) count as discovery, or only seeing their unit or city?", status: :resolved, resolution: nil},
-        %{body: "How should the discovery notification surface — a transient toast/flash, a dismissible modal, and/or an entry in a persistent events feed?", status: :resolved, resolution: nil},
-        %{body: "Does this story ship a visible \"Known Players\" panel, or is the known-players list just data that the Player-to-Player Chat story surfaces?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Discovery trigger scope: does seeing a rival's claimed territory/border or an improvement (e.g. a farm) count as discovery, or only seeing their unit or city?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "How should the discovery notification surface — a transient toast/flash, a dismissible modal, and/or an entry in a persistent events feed?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Does this story ship a visible \"Known Players\" panel, or is the known-players list just data that the Player-to-Player Chat story surfaces?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2077,7 +2336,8 @@ Source: .code_my_spec/stories/stone_age.md §11.1, merged with more_stories.md �
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A player can chat with another player only after the two have discovered each other.",
+          statement:
+            "A player can chat with another player only after the two have discovered each other.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2096,7 +2356,8 @@ Then Rival does not appear and no conversation with him can be opened"
           ]
         },
         %{
-          statement: "The chat panel lists the player's known players, and selecting one opens that conversation thread.",
+          statement:
+            "The chat panel lists the player's known players, and selecting one opens that conversation thread.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2108,7 +2369,8 @@ Then Rival's conversation thread opens"
           ]
         },
         %{
-          statement: "A message sends on enter and appears in the recipient's open conversation in real time.",
+          statement:
+            "A message sends on enter and appears in the recipient's open conversation in real time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2120,7 +2382,8 @@ Then the message appears in Rival's thread without a reload"
           ]
         },
         %{
-          statement: "Opening a conversation loads its most recent 50 messages (each with sender and timestamp); older messages load on demand via a \"load older\" control.",
+          statement:
+            "Opening a conversation loads its most recent 50 messages (each with sender and timestamp); older messages load on demand via a \"load older\" control.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2152,7 +2415,8 @@ And Wes is held within the 500-character limit"
           ]
         },
         %{
-          statement: "Unread incoming messages raise a badge with a total and per-conversation count, cleared when the conversation is opened.",
+          statement:
+            "Unread incoming messages raise a badge with a total and per-conversation count, cleared when the conversation is opened.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2170,7 +2434,8 @@ And opening Rival's conversation clears it"
             %{
               kind: "happy path",
               title: "Chat is per-world",
-              body: "Given Wes and Rival discovered each other in world A and share no discovery in world B
+              body:
+                "Given Wes and Rival discovered each other in world A and share no discovery in world B
 When Wes opens chat in world B
 Then Rival does not appear there, and their world-A conversation is unaffected"
             }
@@ -2203,9 +2468,24 @@ And Wes cannot send to Rival while the block stands"
         }
       ],
       questions: [
-        %{body: "Message history: is 50 a hard cap (older messages drop from the UI) or the first page with \"load older\" paging like the support widget?", status: :resolved, resolution: nil},
-        %{body: "Conversation scope: is chat scoped per-world (you only talk to players you met in that world) or global to a player's account across worlds?", status: :resolved, resolution: nil},
-        %{body: "Moderation for the Stone Age MVP: any profanity filter, rate limiting, or block/mute — or trust-based plain text with none of that for now?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Message history: is 50 a hard cap (older messages drop from the UI) or the first page with \"load older\" paging like the support widget?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Conversation scope: is chat scoped per-world (you only talk to players you met in that world) or global to a player's account across worlds?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Moderation for the Stone Age MVP: any profanity filter, rate limiting, or block/mute — or trust-based plain text with none of that for now?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2234,19 +2514,22 @@ Source: .code_my_spec/stories/stone_age.md §8.2. Two players who have discovere
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Any players can attack the same barbarian camp or unit, and every attacker's damage counts toward it (no mutual discovery required).",
+          statement:
+            "Any players can attack the same barbarian camp or unit, and every attacker's damage counts toward it (no mutual discovery required).",
           scenarios: [
             %{
               kind: "happy path",
               title: "Two allies strike one camp",
-              body: "Given Wes and Rival have discovered each other and both stand adjacent to the same barbarian camp
+              body:
+                "Given Wes and Rival have discovered each other and both stand adjacent to the same barbarian camp
 When each attacks the camp on the same turn
 Then both attacks land on that camp's HP"
             }
           ]
         },
         %{
-          statement: "Damage from multiple players against one barbarian target accumulates across turns toward its HP.",
+          statement:
+            "Damage from multiple players against one barbarian target accumulates across turns toward its HP.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2258,19 +2541,22 @@ Then the camp is destroyed"
           ]
         },
         %{
-          statement: "A barbarian's counter-attack falls only on the unit currently attacking it, never on the other cooperating player.",
+          statement:
+            "A barbarian's counter-attack falls only on the unit currently attacking it, never on the other cooperating player.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A barbarian counters only its attacker",
-              body: "Given a barbarian warrior is adjacent to both Wes's warrior and Rival's warrior
+              body:
+                "Given a barbarian warrior is adjacent to both Wes's warrior and Rival's warrior
 When Wes attacks the barbarian
 Then the barbarian's counter-attack damages Wes's warrior only, not Rival's"
             }
           ]
         },
         %{
-          statement: "The gold bounty for a felled barbarian or destroyed camp is divided among the players who damaged it, in proportion to the damage each dealt.",
+          statement:
+            "The gold bounty for a felled barbarian or destroyed camp is divided among the players who damaged it, in proportion to the damage each dealt.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2297,7 +2583,8 @@ Then each receives a bounty share proportional to the damage they dealt"
           ]
         },
         %{
-          statement: "Clearing the barbarians on a shared border opens the reclaimed land for either player to settle or improve.",
+          statement:
+            "Clearing the barbarians on a shared border opens the reclaimed land for either player to settle or improve.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2309,7 +2596,8 @@ Then either player may found a city or build an improvement there"
           ]
         },
         %{
-          statement: "Players can form an explicit alliance to coordinate their campaigns against barbarians.",
+          statement:
+            "Players can form an explicit alliance to coordinate their campaigns against barbarians.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2322,9 +2610,24 @@ Then the two are allied and can coordinate their barbarian campaigns"
         }
       ],
       questions: [
-        %{body: "Bounty split rule when multiple players damage the same target: even split among all who dealt damage, proportional to damage dealt, or last-hit-takes-all?", status: :resolved, resolution: nil},
-        %{body: "Is cooperation explicit (a formal alliance/party the players opt into) or purely emergent from independently attacking the same barbarian target?", status: :resolved, resolution: nil},
-        %{body: "Does bounty-sharing require the two players to have discovered each other, or do any two players who both damage the same camp split it even as strangers?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Bounty split rule when multiple players damage the same target: even split among all who dealt damage, proportional to damage dealt, or last-hit-takes-all?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is cooperation explicit (a formal alliance/party the players opt into) or purely emergent from independently attacking the same barbarian target?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Does bounty-sharing require the two players to have discovered each other, or do any two players who both damage the same camp split it even as strangers?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2398,7 +2701,8 @@ Then 6 science (2 x 3 population) is banked toward that technology"
           ]
         },
         %{
-          statement: "Only one technology is researched at a time; each turn's science banks toward it until it completes.",
+          statement:
+            "Only one technology is researched at a time; each turn's science banks toward it until it completes.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2410,12 +2714,14 @@ Then Pottery completes and its science no longer accrues"
           ]
         },
         %{
-          statement: "The Ancient-era tech tree offers eleven technologies: Pottery (50), Animal Husbandry (50), Mining (75), Sailing (90), and Astrology (90) with no prerequisite; Writing (90) and Irrigation (90) after Pottery; Archery (90) after Animal Husbandry; and Masonry (100), The Wheel (100), and Bronze Working (100) after Mining.",
+          statement:
+            "The Ancient-era tech tree offers eleven technologies: Pottery (50), Animal Husbandry (50), Mining (75), Sailing (90), and Astrology (90) with no prerequisite; Writing (90) and Irrigation (90) after Pottery; Archery (90) after Animal Husbandry; and Masonry (100), The Wheel (100), and Bronze Working (100) after Mining.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The tree lists the Ancient-era techs with their costs",
-              body: "Given the player opens the tech tree
+              body:
+                "Given the player opens the tech tree
 Then it lists the eleven Ancient-era technologies with their science costs
 And Pottery (50), Animal Husbandry (50), Mining (75), Sailing (90), and Astrology (90) appear with no prerequisite
 And Writing (90) and Irrigation (90) appear after Pottery, Archery (90) after Animal Husbandry, and Masonry (100), The Wheel (100), and Bronze Working (100) after Mining"
@@ -2442,14 +2748,16 @@ Then a Granary (+2 food storage) is available to build"
             %{
               kind: "happy path",
               title: "Animal Husbandry unlocks pastures on animal resources",
-              body: "Given Wes has completed Animal Husbandry and has an animal-resource tile (from the Tile Resources story)
+              body:
+                "Given Wes has completed Animal Husbandry and has an animal-resource tile (from the Tile Resources story)
 When a worker builds a Pasture on that tile
 Then the tile yields +2 food"
             }
           ]
         },
         %{
-          statement: "Choosing to research Bronze Working prompts a confirmation, because completing it advances the player to the Bronze Age.",
+          statement:
+            "Choosing to research Bronze Working prompts a confirmation, because completing it advances the player to the Bronze Age.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2461,7 +2769,8 @@ And research begins only if he confirms"
           ]
         },
         %{
-          statement: "The technology being researched shows a progress bar of banked-over-required science, reachable from the main game UI.",
+          statement:
+            "The technology being researched shows a progress bar of banked-over-required science, reachable from the main game UI.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2473,19 +2782,22 @@ Then a progress bar shows 30 of 75"
           ]
         },
         %{
-          statement: "Switching research keeps each technology's banked science; a player can change research and return later with no progress lost.",
+          statement:
+            "Switching research keeps each technology's banked science; a player can change research and return later with no progress lost.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Switching research and returning loses nothing",
-              body: "Given Wes has banked 30 science toward Mining and switches to research Pottery
+              body:
+                "Given Wes has banked 30 science toward Mining and switches to research Pottery
 When he later switches back to Mining
 Then Mining still has its 30 banked science"
             }
           ]
         },
         %{
-          statement: "A technology whose prerequisite is not yet complete is locked and cannot be selected for research until that prerequisite is researched.",
+          statement:
+            "A technology whose prerequisite is not yet complete is locked and cannot be selected for research until that prerequisite is researched.",
           scenarios: [
             %{
               kind: "failure path",
@@ -2506,7 +2818,8 @@ And Mining-gated techs like Bronze Working remain locked until Mining is also co
           ]
         },
         %{
-          statement: "The tech tree shows each technology's prerequisite links and its locked, available, or completed state.",
+          statement:
+            "The tech tree shows each technology's prerequisite links and its locked, available, or completed state.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2521,11 +2834,36 @@ And techs whose prerequisites are unmet are shown dimmed/locked"
         }
       ],
       questions: [
-        %{body: "Animal Husbandry's source benefit is \"pastures (+2 food on animal resources)\", but the game currently has no animal-resource tiles. What does Animal Husbandry unlock instead — add animal-resource tiles, give it a different flat benefit, or defer it and ship only 3 techs for now?", status: :resolved, resolution: nil},
-        %{body: "If a player switches research before a tech completes, is banked progress kept per-tech (Civ-style: switch away and back later with no loss) or lost on switch? Defaulting to Civ-style retained-per-tech unless decided otherwise.", status: :resolved, resolution: nil},
-        %{body: "Tech prerequisites (playtest issue 133b4893 — \"if there are tech prerequisites they aren't obvious\"). The four Stone Age techs are currently independently researchable with no prereqs. Assessment: the immediate problem is UI legibility (the tree should show prereq lines / lock state per civ6_tech_tree.md §6), which is a code/design-phase fix, NOT a new requirement. Separate DESIGN question for the product owner: in Civ 6, Bronze Working requires Mining. Should Broken Oaths add a Mining -> Bronze Working prerequisite (Civ-authentic, makes the tree legibly ordered) or keep all four independent so players can beeline Bronze Working (current design, per civ6_tech_tree.md decision 4)? Do NOT change the story until the PM decides.", status: :resolved, resolution: nil},
-        %{body: "Tech-set cutoff: the far-future techs whose subsystems don't exist yet (Sailing -> naval/water, Astrology -> faith, Writing -> science buildings, Irrigation -> plantations) are included now as LOCKED STRUCTURE so the tree reads as Civ-6-complete, with their content deferred to later stories. Confirm keeping them as structure, or trim any until their content stories are scheduled (recommended: keep; trim only if empty/future unlocks confuse players).", status: :open, resolution: nil},
-        %{body: "Cost tuning: new techs are priced at 90 (Sailing/Astrology/Writing/Irrigation/Archery) and 100 (Masonry/The Wheel/Bronze Working), keeping existing Pottery/AH 50 and Mining 75. Confirm against the 2-science-per-pop economy (size-4 cap = 8 sci/turn max) or retune — civ6_tech_tree.md suggested flattening Mining and a snappier Bronze Working beeline.", status: :open, resolution: nil}
+        %{
+          body:
+            "Animal Husbandry's source benefit is \"pastures (+2 food on animal resources)\", but the game currently has no animal-resource tiles. What does Animal Husbandry unlock instead — add animal-resource tiles, give it a different flat benefit, or defer it and ship only 3 techs for now?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "If a player switches research before a tech completes, is banked progress kept per-tech (Civ-style: switch away and back later with no loss) or lost on switch? Defaulting to Civ-style retained-per-tech unless decided otherwise.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Tech prerequisites (playtest issue 133b4893 — \"if there are tech prerequisites they aren't obvious\"). The four Stone Age techs are currently independently researchable with no prereqs. Assessment: the immediate problem is UI legibility (the tree should show prereq lines / lock state per civ6_tech_tree.md §6), which is a code/design-phase fix, NOT a new requirement. Separate DESIGN question for the product owner: in Civ 6, Bronze Working requires Mining. Should Broken Oaths add a Mining -> Bronze Working prerequisite (Civ-authentic, makes the tree legibly ordered) or keep all four independent so players can beeline Bronze Working (current design, per civ6_tech_tree.md decision 4)? Do NOT change the story until the PM decides.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Tech-set cutoff: the far-future techs whose subsystems don't exist yet (Sailing -> naval/water, Astrology -> faith, Writing -> science buildings, Irrigation -> plantations) are included now as LOCKED STRUCTURE so the tree reads as Civ-6-complete, with their content deferred to later stories. Confirm keeping them as structure, or trim any until their content stories are scheduled (recommended: keep; trim only if empty/future unlocks confuse players).",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Cost tuning: new techs are priced at 90 (Sailing/Astrology/Writing/Irrigation/Archery) and 100 (Masonry/The Wheel/Bronze Working), keeping existing Pottery/AH 50 and Mining 75. Confirm against the 2-science-per-pop economy (size-4 cap = 8 sci/turn max) or retune — civ6_tech_tree.md suggested flattening Mining and a snappier Bronze Working beeline.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2552,50 +2890,58 @@ Source: .code_my_spec/stories/stone_age.md §6.2. Completing Bronze Working rese
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Completing Bronze Working research advances the player to the Bronze Age, with a notification (\"You have entered the Bronze Age! New units and buildings unlocked.\").",
+          statement:
+            "Completing Bronze Working research advances the player to the Bronze Age, with a notification (\"You have entered the Bronze Age! New units and buildings unlocked.\").",
           scenarios: [
             %{
               kind: "happy path",
               title: "Bronze Working flips the age",
-              body: "Given Wes confirmed and is researching Bronze Working
+              body:
+                "Given Wes confirmed and is researching Bronze Working
 When it completes
 Then he enters the Bronze Age and sees \"You have entered the Bronze Age! New units and buildings unlocked.\""
             }
           ]
         },
         %{
-          statement: "The Bronze Age unlocks the Bronze Spearman (strength 16, HP 120, 60 production), a defensive unit that beats a Barbarian Warrior one-on-one.",
+          statement:
+            "The Bronze Age unlocks the Bronze Spearman (strength 16, HP 120, 60 production), a defensive unit that beats a Barbarian Warrior one-on-one.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The Spearman outfights a barbarian",
-              body: "Given Wes is in the Bronze Age and has produced a Bronze Spearman (60 production)
+              body:
+                "Given Wes is in the Bronze Age and has produced a Bronze Spearman (60 production)
 When it fights a Barbarian Warrior (strength 15) one-on-one
 Then the Spearman wins the exchange"
             }
           ]
         },
         %{
-          statement: "In the Bronze Age a player's cities can grow to size 6, up from the Stone Age cap of 4.",
+          statement:
+            "In the Bronze Age a player's cities can grow to size 6, up from the Stone Age cap of 4.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Cities grow past the Stone Age cap",
-              body: "Given Wes is in the Bronze Age with a size-4 city that has banked enough food to grow
+              body:
+                "Given Wes is in the Bronze Age with a size-4 city that has banked enough food to grow
 When the city grows
 Then it reaches size 5, and may continue growing up to size 6"
             },
             %{
               kind: "failure path",
               title: "A Stone Age city still caps at 4",
-              body: "Given Wes has not yet reached the Bronze Age and has a size-4 city with surplus food
+              body:
+                "Given Wes has not yet reached the Bronze Age and has a size-4 city with surplus food
 When the age has not advanced
 Then the city does not grow past size 4"
             }
           ]
         },
         %{
-          statement: "Barbarians keep their Stone Age strength when a player reaches the Bronze Age; the tech advantage belongs to the player alone.",
+          statement:
+            "Barbarians keep their Stone Age strength when a player reaches the Bronze Age; the tech advantage belongs to the player alone.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2620,7 +2966,12 @@ Then it shows his age as Bronze Age"
         }
       ],
       questions: [
-        %{body: "Ship both Bronze melee units or just one? With no cavalry in the game, the Spearman's anti-cavalry identity is empty, so the Spearman (defensive, str 16 / HP 120 / 60 prod) and Swordsman (offensive, str 20 / HP 110 / 70 prod) mostly overlap. Keep both differentiated by strength-vs-HP/cost, or cut to a single Bronze unit for the MVP?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Ship both Bronze melee units or just one? With no cavalry in the game, the Spearman's anti-cavalry identity is empty, so the Spearman (defensive, str 16 / HP 120 / 60 prod) and Swordsman (offensive, str 20 / HP 110 / 70 prod) mostly overlap. Keep both differentiated by strength-vs-HP/cost, or cut to a single Bronze unit for the MVP?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2644,36 +2995,42 @@ Source: .code_my_spec/stories/stone_age.md §12.1. A progress panel showing the 
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "The progress panel shows the player's current age and progress toward the Bronze Age — science per turn and estimated turns to Bronze Working.",
+          statement:
+            "The progress panel shows the player's current age and progress toward the Bronze Age — science per turn and estimated turns to Bronze Working.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Bronze Age progress at a glance",
-              body: "Given Wes is in the Stone Age researching Bronze Working at 8 science per turn with 40 of 100 banked
+              body:
+                "Given Wes is in the Stone Age researching Bronze Working at 8 science per turn with 40 of 100 banked
 When he opens the progress panel
 Then it shows current age Stone Age, 8 science/turn, and about 8 turns to Bronze Working"
             }
           ]
         },
         %{
-          statement: "The progress panel shows running totals: cities founded, barbarian camps destroyed, and barbarians killed.",
+          statement:
+            "The progress panel shows running totals: cities founded, barbarian camps destroyed, and barbarians killed.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Career totals so far",
-              body: "Given Wes has founded 2 cities, destroyed 1 barbarian camp, and killed 3 barbarians
+              body:
+                "Given Wes has founded 2 cities, destroyed 1 barbarian camp, and killed 3 barbarians
 When he opens the progress panel
 Then it shows those three totals: 2 cities, 1 camp, 3 barbarians"
             }
           ]
         },
         %{
-          statement: "The progress panel marks first-time milestones: first city founded, first barbarian killed, first camp destroyed, and first player discovered.",
+          statement:
+            "The progress panel marks first-time milestones: first city founded, first barbarian killed, first camp destroyed, and first player discovered.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Milestones mark on first achievement",
-              body: "Given Wes has founded his first city and killed his first barbarian, but has not destroyed a camp or discovered a player
+              body:
+                "Given Wes has founded his first city and killed his first barbarian, but has not destroyed a camp or discovered a player
 When he opens the progress panel
 Then the first-city and first-kill milestones are marked achieved, and the first-camp and first-discovery milestones are not"
             }
@@ -2681,7 +3038,12 @@ Then the first-city and first-kill milestones are marked achieved, and the first
         }
       ],
       questions: [
-        %{body: "Are the optional achievements (Barbarian Hunter = 10 barbarians killed, City Builder = 3 cities founded, Explorer = discover another player) in scope for this story, or deferred? The source lists them as optional.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Are the optional achievements (Barbarian Hunter = 10 barbarians killed, City Builder = 3 cities founded, Explorer = discover another player) in scope for this story, or deferred? The source lists them as optional.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2708,14 +3070,18 @@ Playtest update (issue 3e1159d1 — resource density too high): the current defa
       %{description: "A resource-rich world has more than a sparse one", verified: false},
       %{description: "A standard world is sparsely sprinkled, not carpeted", verified: false},
       %{description: "The default no longer feels like resources everywhere", verified: false},
-      %{description: "The slider still reaches richer worlds from a sparse default", verified: false}
+      %{
+        description: "The slider still reaches richer worlds from a sparse default",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Bonus resources are placed deterministically from the world seed and the world's resource-density setting on eligible terrain — the same seed and density always yield the same resource map, with no RNG.",
+          statement:
+            "Bonus resources are placed deterministically from the world seed and the world's resource-density setting on eligible terrain — the same seed and density always yield the same resource map, with no RNG.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2727,36 +3093,42 @@ Then the same resources sit on the same tiles in both"
           ]
         },
         %{
-          statement: "The Stone Age resource set is Cattle (flat grassland), Sheep (hills), Wheat (flat plains), and Stone (hills).",
+          statement:
+            "The Stone Age resource set is Cattle (flat grassland), Sheep (hills), Wheat (flat plains), and Stone (hills).",
           scenarios: [
             %{
               kind: "happy path",
               title: "Resources land on their eligible terrain",
-              body: "Given a generated world
+              body:
+                "Given a generated world
 When Wes inspects its resource tiles
 Then Cattle sit only on flat grassland, Sheep and Stone only on hills, and Wheat only on flat plains"
             }
           ]
         },
         %{
-          statement: "An unworked resource tile grants a small base bonus on top of its terrain yield: +1 food for Cattle, Sheep, and Wheat; +1 production for Stone.",
+          statement:
+            "An unworked resource tile grants a small base bonus on top of its terrain yield: +1 food for Cattle, Sheep, and Wheat; +1 production for Stone.",
           scenarios: [
             %{
               kind: "happy path",
               title: "An unworked Cattle tile already yields extra",
-              body: "Given a Cattle resource on flat grassland (2 food from terrain) with no improvement
+              body:
+                "Given a Cattle resource on flat grassland (2 food from terrain) with no improvement
 When the tile is worked
 Then it yields 3 food (2 terrain + 1 resource)"
             }
           ]
         },
         %{
-          statement: "A resource's improvement adds its full bonus: Pasture (+2 food, gated by Animal Husbandry) on Cattle and Sheep; Farm (+2 food) on Wheat; Mine (+2 production, gated by Mining) on Stone.",
+          statement:
+            "A resource's improvement adds its full bonus: Pasture (+2 food, gated by Animal Husbandry) on Cattle and Sheep; Farm (+2 food) on Wheat; Mine (+2 production, gated by Mining) on Stone.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A Pasture on Cattle stacks to five food",
-              body: "Given Wes has completed Animal Husbandry and a worker builds a Pasture on a Cattle grassland tile
+              body:
+                "Given Wes has completed Animal Husbandry and a worker builds a Pasture on a Cattle grassland tile
 When the tile is worked
 Then it yields 5 food (2 terrain + 1 resource + 2 Pasture)"
             },
@@ -2770,7 +3142,8 @@ Then Pasture is not an available improvement"
           ]
         },
         %{
-          statement: "Resources are visible on the board from the start — no reveal technology is required to see them.",
+          statement:
+            "Resources are visible on the board from the start — no reveal technology is required to see them.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2782,31 +3155,36 @@ Then the resource icons are shown on those tiles"
           ]
         },
         %{
-          statement: "A city prefers to work its resource tiles, since a resource tile scores higher than a plain one of the same terrain.",
+          statement:
+            "A city prefers to work its resource tiles, since a resource tile scores higher than a plain one of the same terrain.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A city works its resource tile first",
-              body: "Given a city with a Cattle grassland tile and a plain grassland tile both available to work
+              body:
+                "Given a city with a Cattle grassland tile and a plain grassland tile both available to work
 When it auto-assigns a citizen
 Then it works the Cattle tile before the plain one"
             }
           ]
         },
         %{
-          statement: "Resource density is a per-world setting chosen at world creation (a slider); it scales how many eligible tiles receive a resource, defaulting to about 1 per 12 land tiles.",
+          statement:
+            "Resource density is a per-world setting chosen at world creation (a slider); it scales how many eligible tiles receive a resource, defaulting to about 1 per 12 land tiles.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A resource-rich world has more than a sparse one",
-              body: "Given two worlds created from the same seed, one with a high resource-density setting and one with a low one
+              body:
+                "Given two worlds created from the same seed, one with a high resource-density setting and one with a low one
 When their resource tiles are counted
 Then the high-density world has proportionally more resource tiles than the low-density one"
             }
           ]
         },
         %{
-          statement: "At the standard (default) density, resources occupy about 7% of land tiles — roughly one resource per 12 to 15 land tiles.",
+          statement:
+            "At the standard (default) density, resources occupy about 7% of land tiles — roughly one resource per 12 to 15 land tiles.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2819,7 +3197,8 @@ And the large majority of land tiles carry no resource at all"
             %{
               kind: "happy path",
               title: "The default no longer feels like resources everywhere",
-              body: "Given a world generated at the standard default density
+              body:
+                "Given a world generated at the standard default density
 When Wes scans the board around his starting city
 Then he sees only a few resource tiles nearby rather than a resource on almost every workable tile
 And which tiles get resources is unchanged for the same seed (deterministic placement is preserved)"
@@ -2827,7 +3206,8 @@ And which tiles get resources is unchanged for the same seed (deterministic plac
           ]
         },
         %{
-          statement: "The per-world density slider still spans sparser-to-richer worlds, but its default sits at the sparse Civ-like setting rather than the old resource-heavy default.",
+          statement:
+            "The per-world density slider still spans sparser-to-richer worlds, but its default sits at the sparse Civ-like setting rather than the old resource-heavy default.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2842,9 +3222,24 @@ And lowering the slider toward its minimum produces an even sparser world"
         }
       ],
       questions: [
-        %{body: "Exact resource set: animal-only (Cattle + Sheep, the minimum for Animal Husbandry), the four-resource default (Cattle/Sheep/Wheat/Stone — Wheat/Stone reuse Farm/Mine for free), or also add Deer? Note: our tech tree has Pasture but no Camp, so Deer either defers or diverges from Civ by using a Pasture.", status: :resolved, resolution: nil},
-        %{body: "Placement density — the research suggests ~1 resource per 12 land tiles (roughly 55% food / 45% production). Confirm that target, and decide whether a resource may sit on a tile that later becomes a city center (recommended: allow it; the city-center yield floor still applies).", status: :resolved, resolution: nil},
-        %{body: "Density re-tuning is a build-phase follow-up: this lower default (~7% of land, one resource per 12-15 tiles) requires changing the density constants in code AND updating the existing 905 density spex, which currently encode the old higher default. Confirm the exact default target within the 12-15 band and the per-resource split (recommended ~55% food: Cattle/Sheep/Wheat, ~45% production: Stone).", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Exact resource set: animal-only (Cattle + Sheep, the minimum for Animal Husbandry), the four-resource default (Cattle/Sheep/Wheat/Stone — Wheat/Stone reuse Farm/Mine for free), or also add Deer? Note: our tech tree has Pasture but no Camp, so Deer either defers or diverges from Civ by using a Pasture.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Placement density — the research suggests ~1 resource per 12 land tiles (roughly 55% food / 45% production). Confirm that target, and decide whether a resource may sit on a tile that later becomes a city center (recommended: allow it; the city-center yield floor still applies).",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Density re-tuning is a build-phase follow-up: this lower default (~7% of land, one resource per 12-15 tiles) requires changing the density constants in code AND updating the existing 905 density spex, which currently encode the old higher default. Confirm the exact default target within the 12-15 band and the per-resource split (recommended ~55% food: Cattle/Sheep/Wheat, ~45% production: Stone).",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -2873,27 +3268,41 @@ Builds on Unit Combat (891), City Defense and Garrison (895), turn/movement (874
       %{description: "A civilian unit cannot besiege a city", verified: false},
       %{description: "Size-4 city computes defense 40 and counter-attacks", verified: false},
       %{description: "Garrison bonus raises the size-4 city's defense above 40", verified: false},
-      %{description: "Repeated assaults grind a city down to broken over several turns", verified: false},
+      %{
+        description: "Repeated assaults grind a city down to broken over several turns",
+        verified: false
+      },
       %{description: "Owner relief heals the siege before HP hits zero", verified: false},
       %{description: "Moving a unit onto a broken city occupies it", verified: false},
-      %{description: "Broken city left un-entered is not captured and can be regarrisoned", verified: false},
+      %{
+        description: "Broken city left un-entered is not captured and can be regarrisoned",
+        verified: false
+      },
       %{description: "Merciful conqueror releases the garrison", verified: false},
       %{description: "Conqueror executes the garrison and loses Honor", verified: false},
-      %{description: "Occupied city keeps being run by its original owner in peacetime", verified: false},
+      %{
+        description: "Occupied city keeps being run by its original owner in peacetime",
+        verified: false
+      },
       %{description: "Occupying a non-last city leaves the owner free", verified: false},
-      %{description: "Occupying the owner's last free city fires the vassalization trigger", verified: false}
+      %{
+        description: "Occupying the owner's last free city fires the vassalization trigger",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 3, history: [:fail, :partial, :pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Only a military unit or lord adjacent to a hostile player-owned city may attack that city.",
+          statement:
+            "Only a military unit or lord adjacent to a hostile player-owned city may attack that city.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Adjacent warrior attacks a rival player's city",
-              body: "Given Wes owns a warrior on a hex directly adjacent to rival player Mara's city
+              body:
+                "Given Wes owns a warrior on a hex directly adjacent to rival player Mara's city
 And Mara's city is hostile to Wes
 When Wes orders the warrior to attack the city
 Then the assault is allowed and the siege begins"
@@ -2916,7 +3325,8 @@ Then the attack option is unavailable because the settler is not a military unit
           ]
         },
         %{
-          statement: "A besieged city defends with strength = base (20 + 5·size) + garrison bonus, and counter-attacks the besieging unit each turn.",
+          statement:
+            "A besieged city defends with strength = base (20 + 5·size) + garrison bonus, and counter-attacks the besieging unit each turn.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2936,7 +3346,8 @@ Then the city defends with strength 50 (base 40 + garrison 10)"
           ]
         },
         %{
-          statement: "A city has hit points that assaults chip away over multiple turns; the city is broken only when its HP reaches zero.",
+          statement:
+            "A city has hit points that assaults chip away over multiple turns; the city is broken only when its HP reaches zero.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2956,7 +3367,8 @@ Then the city is not broken and its HP recovers over subsequent turns"
           ]
         },
         %{
-          statement: "A broken city is not captured until the attacker moves a unit onto the city tile; there is no range-flip.",
+          statement:
+            "A broken city is not captured until the attacker moves a unit onto the city tile; there is no range-flip.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2977,7 +3389,8 @@ And Mara can move a unit in to regarrison and begin recovering the city"
           ]
         },
         %{
-          statement: "On occupying a city the conqueror chooses to execute or release the fallen garrison; executing costs a small Honor delta while releasing is neutral-to-positive.",
+          statement:
+            "On occupying a city the conqueror chooses to execute or release the fallen garrison; executing costs a small Honor delta while releasing is neutral-to-positive.",
           scenarios: [
             %{
               kind: "happy path",
@@ -2998,7 +3411,8 @@ And Wes's Honor drops by a small amount"
           ]
         },
         %{
-          statement: "An occupied city stays on its original owner's roster and, in peacetime, the owner keeps running it while the captor draws tribute and levies.",
+          statement:
+            "An occupied city stays on its original owner's roster and, in peacetime, the owner keeps running it while the captor draws tribute and levies.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3011,7 +3425,8 @@ And Wes draws tribute and levies from it rather than controlling it directly"
           ]
         },
         %{
-          statement: "Occupying a city fires the last-free-city check that can trigger automatic vassalization.",
+          statement:
+            "Occupying a city fires the last-free-city check that can trigger automatic vassalization.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3033,11 +3448,36 @@ And it hands off to the automatic vassalization flow (907)"
         }
       ],
       questions: [
-        %{body: "What happens to a captured city's in-progress production (the current build order and accumulated production) at the moment of occupation — is it preserved, cancelled, or refunded?", status: :open, resolution: nil},
-        %{body: "Is razing (destroying) a captured city an allowed option, or is occupation the only outcome? If razing exists, what are its Honor and vassalization consequences?", status: :open, resolution: nil},
-        %{body: "What are the exact numeric Honor deltas for executing versus releasing the fallen garrison?", status: :open, resolution: nil},
-        %{body: "How does an \"occupied\" city render on the globe (owner colour vs captor colour, an occupation marker, siege state) so both players can read the situation?", status: :open, resolution: nil},
-        %{body: "During wartime or active revolt, how does control of an occupied city differ from the peacetime \"owner runs it, lord skims\" rule (e.g. lord draws production/levies, or the city becomes contested)?", status: :open, resolution: nil}
+        %{
+          body:
+            "What happens to a captured city's in-progress production (the current build order and accumulated production) at the moment of occupation — is it preserved, cancelled, or refunded?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is razing (destroying) a captured city an allowed option, or is occupation the only outcome? If razing exists, what are its Honor and vassalization consequences?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What are the exact numeric Honor deltas for executing versus releasing the fallen garrison?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "How does an \"occupied\" city render on the globe (owner colour vs captor colour, an occupation marker, siege state) so both players can read the situation?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "During wartime or active revolt, how does control of an occupied city differ from the peacetime \"owner runs it, lord skims\" rule (e.g. lord draws production/levies, or the city becomes contested)?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3062,18 +3502,32 @@ Engine-enforced with Honor stakes: the oath is a real contract; breaking it is a
     criteria: [
       %{description: "Losing the last free city triggers vassalization", verified: false},
       %{description: "Losing one of several cities does not create vassalage", verified: false},
-      %{description: "Vassal secretly chooses a Hidden Agenda on the Oath screen", verified: false},
-      %{description: "New vassalage record is created with default forward-looking fields", verified: false},
-      %{description: "Both players are notified and the relationship surfaces in each UI", verified: false},
+      %{
+        description: "Vassal secretly chooses a Hidden Agenda on the Oath screen",
+        verified: false
+      },
+      %{
+        description: "New vassalage record is created with default forward-looking fields",
+        verified: false
+      },
+      %{
+        description: "Both players are notified and the relationship surfaces in each UI",
+        verified: false
+      },
       %{description: "Vassal keeps playing normally after subjugation", verified: false},
-      %{description: "A player already holding an occupied city becomes a vassal when their last free city falls", verified: false}
+      %{
+        description:
+          "A player already holding an occupied city becomes a vassal when their last free city falls",
+        verified: false
+      }
     ],
     qa: %{final: :pass, attempts: 3, history: [:partial, :partial, :pass]},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A capture that leaves the defeated player with zero free (non-occupied) cities makes them the captor's vassal.",
+          statement:
+            "A capture that leaves the defeated player with zero free (non-occupied) cities makes them the captor's vassal.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3085,7 +3539,8 @@ And Mara becomes Wes's vassal"
             },
             %{
               kind: "happy path",
-              title: "A player already holding an occupied city becomes a vassal when their last free city falls",
+              title:
+                "A player already holding an occupied city becomes a vassal when their last free city falls",
               body: "Given Mara has two cities: one already occupied by Wes and one still free
 When Wes occupies the remaining free city
 Then Mara has zero free cities (the occupied one does not count as free)
@@ -3094,7 +3549,8 @@ And Mara becomes Wes's vassal"
           ]
         },
         %{
-          statement: "A capture that leaves the defeated player with at least one free city does not create vassalage.",
+          statement:
+            "A capture that leaves the defeated player with at least one free city does not create vassalage.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3107,12 +3563,14 @@ And no vassalage relationship is created"
           ]
         },
         %{
-          statement: "At subjugation the vassal secretly picks one Hidden Agenda from the four options (Restore, Usurp, Kingmaker, Merchant Prince) on the Terms of Oath screen.",
+          statement:
+            "At subjugation the vassal secretly picks one Hidden Agenda from the four options (Restore, Usurp, Kingmaker, Merchant Prince) on the Terms of Oath screen.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Vassal secretly chooses a Hidden Agenda on the Oath screen",
-              body: "Given Mara has just lost her last free city and the Terms of Oath screen appears
+              body:
+                "Given Mara has just lost her last free city and the Terms of Oath screen appears
 When Mara selects \"Usurp\" from the four agendas (Restore, Usurp, Kingmaker, Merchant Prince)
 Then the agenda is stored on Mara's vassalage relationship
 And Wes (the lord) is not shown which agenda Mara chose"
@@ -3120,12 +3578,14 @@ And Wes (the lord) is not shown which agenda Mara chose"
           ]
         },
         %{
-          statement: "Vassalization creates a Vassalage relationship (player→player) carrying from day one: tribute rate (default 25%), Oath Strain (0-100), Honor ledger hooks, the hidden agenda, and reciprocal contract terms.",
+          statement:
+            "Vassalization creates a Vassalage relationship (player→player) carrying from day one: tribute rate (default 25%), Oath Strain (0-100), Honor ledger hooks, the hidden agenda, and reciprocal contract terms.",
           scenarios: [
             %{
               kind: "happy path",
               title: "New vassalage record is created with default forward-looking fields",
-              body: "Given Mara becomes Wes's vassal
+              body:
+                "Given Mara becomes Wes's vassal
 When the vassalage relationship is created
 Then it records lord Wes and vassal Mara
 And tribute rate defaults to 25%
@@ -3135,7 +3595,8 @@ And it carries Honor ledger hooks, the chosen hidden agenda, and reciprocal cont
           ]
         },
         %{
-          statement: "On vassalization both players are notified; the vassal's UI shows \"Sworn to X\" and the lord gains a Vassals list entry.",
+          statement:
+            "On vassalization both players are notified; the vassal's UI shows \"Sworn to X\" and the lord gains a Vassals list entry.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3148,7 +3609,8 @@ And Wes's Vassals list gains an entry for Mara"
           ]
         },
         %{
-          statement: "A vassal keeps playing fully (move, build, grow, research) — the world is persistent and endless with no game-victory or elimination.",
+          statement:
+            "A vassal keeps playing fully (move, build, grow, research) — the world is persistent and endless with no game-victory or elimination.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3162,10 +3624,30 @@ And Mara is not eliminated and the game does not end for anyone"
         }
       ],
       questions: [
-        %{body: "What exactly counts as a \"free city\" for the last-free-city test — does a city under active siege but not yet occupied count as free, and do edge states like a starving/size-0 city or a city mid-founding count?", status: :open, resolution: nil},
-        %{body: "How is simultaneous multi-capture handled — if a single turn-boundary resolution occupies a player's last two free cities at once, or takes the last free cities of two different players in the same tick, how is the trigger ordered and attributed?", status: :open, resolution: nil},
-        %{body: "What is the exact Vassalage relationship schema shape — field names, types, defaults, and how the reciprocal contract terms (protection, spoils, autonomy) and the hidden agenda are represented?", status: :open, resolution: nil},
-        %{body: "What are the Vassals-list and \"Sworn to X\" UI specifics — where each surfaces, what fields are shown, and confirmation that the lord never sees the vassal's chosen hidden agenda?", status: :open, resolution: nil}
+        %{
+          body:
+            "What exactly counts as a \"free city\" for the last-free-city test — does a city under active siege but not yet occupied count as free, and do edge states like a starving/size-0 city or a city mid-founding count?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "How is simultaneous multi-capture handled — if a single turn-boundary resolution occupies a player's last two free cities at once, or takes the last free cities of two different players in the same tick, how is the trigger ordered and attributed?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What is the exact Vassalage relationship schema shape — field names, types, defaults, and how the reciprocal contract terms (protection, spoils, autonomy) and the hidden agenda are represented?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What are the Vassals-list and \"Sworn to X\" UI specifics — where each surfaces, what fields are shown, and confirmation that the lord never sees the vassal's chosen hidden agenda?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3188,12 +3670,24 @@ Locked design (see .code_my_spec/knowledge/feudal_vassalage_design.md):
 Depends on Automatic Vassalization (907). Three Amigos to decide: the exact gross-income basis, debt handling/consequences, how a call to arms is issued/answered/refused and what \"must send units\" concretely requires, and the Vassals-panel rate control + gold-log + levy-call UI.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "Lord raises a vassal's tribute rate from the Vassals panel", verified: false},
+      %{
+        description: "Lord raises a vassal's tribute rate from the Vassals panel",
+        verified: false
+      },
       %{description: "Vassal earning 12 gold/turn at 25% pays 3 gold tribute", verified: false},
       %{description: "A raised rate is applied on the next turn's tribute", verified: false},
-      %{description: "Vassal with an empty treasury goes into debt paying tribute", verified: false},
-      %{description: "Vassal answers a call to arms and keeps command of the units sent", verified: false},
-      %{description: "Vassal refuses the call to arms and takes strain and Honor hits", verified: false},
+      %{
+        description: "Vassal with an empty treasury goes into debt paying tribute",
+        verified: false
+      },
+      %{
+        description: "Vassal answers a call to arms and keeps command of the units sent",
+        verified: false
+      },
+      %{
+        description: "Vassal refuses the call to arms and takes strain and Honor hits",
+        verified: false
+      },
       %{description: "Many vassal tributes resolve in one turn tick", verified: false}
     ],
     qa: %{final: :pass, attempts: 3, history: [:fail, :partial, :pass]},
@@ -3201,7 +3695,8 @@ Depends on Automatic Vassalization (907). Three Amigos to decide: the exact gros
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Each vassal's tribute rate is a lord-set, per-vassal, adjustable lever (default ~25%) that the lord changes from the Vassals panel and the vassal can see.",
+          statement:
+            "Each vassal's tribute rate is a lord-set, per-vassal, adjustable lever (default ~25%) that the lord changes from the Vassals panel and the vassal can see.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3214,7 +3709,8 @@ And Mara can see her current rate is 40%"
           ]
         },
         %{
-          statement: "Each turn boundary, gold tribute = vassal gross per-turn gold income × the rate, transferred vassal→lord, with a gold-log entry for both.",
+          statement:
+            "Each turn boundary, gold tribute = vassal gross per-turn gold income × the rate, transferred vassal→lord, with a gold-log entry for both.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3235,7 +3731,8 @@ And the gold log records 6 gold at the 50% rate"
           ]
         },
         %{
-          statement: "When the vassal cannot cover the tribute, the shortfall becomes debt and a negative gold balance is allowed.",
+          statement:
+            "When the vassal cannot cover the tribute, the shortfall becomes debt and a negative gold balance is allowed.",
           scenarios: [
             %{
               kind: "failure path",
@@ -3248,7 +3745,8 @@ And Wes still receives the 3 gold and the log records the transfer"
           ]
         },
         %{
-          statement: "The lord can issue a call to arms to a war; the vassal must send units or refuse, and keeps command of any units sent.",
+          statement:
+            "The lord can issue a call to arms to a war; the vassal must send units or refuse, and keeps command of any units sent.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3261,7 +3759,8 @@ And Mara still commands those 2 warriors rather than handing control to Wes"
           ]
         },
         %{
-          statement: "Refusing a call to arms spikes the vassal's Oath Strain and dings their Honor ledger as a publicly-legible broken obligation.",
+          statement:
+            "Refusing a call to arms spikes the vassal's Oath Strain and dings their Honor ledger as a publicly-legible broken obligation.",
           scenarios: [
             %{
               kind: "failure path",
@@ -3274,7 +3773,8 @@ And Mara's Honor ledger takes a hit recorded as a broken obligation visible to o
           ]
         },
         %{
-          statement: "Tribute collection and levy calls run inside the per-world turn pipeline and scale to many concurrent vassal relationships.",
+          statement:
+            "Tribute collection and levy calls run inside the per-world turn pipeline and scale to many concurrent vassal relationships.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3288,10 +3788,30 @@ And the turn pipeline completes without special-casing any one relationship"
         }
       ],
       questions: [
-        %{body: "What exactly is the \"gross per-turn gold income\" basis the rate applies to — city gold yield only, or also trade/other sources, and is it measured before or after the vassal's own upkeep/expenses?", status: :open, resolution: nil},
-        %{body: "What are the consequences of sustained debt (a persistent negative balance) — interest, extra Oath Strain, capped growth, asset seizure, or none for now?", status: :open, resolution: nil},
-        %{body: "What does \"must send units\" concretely require on a call to arms — how many units and which types, where they must go, for how long, and what deadline the vassal has to answer before it counts as a refusal?", status: :open, resolution: nil},
-        %{body: "What are the UI specifics for the Vassals-panel rate control, the shared gold log, and the call-to-arms issue/answer/refuse flow?", status: :open, resolution: nil}
+        %{
+          body:
+            "What exactly is the \"gross per-turn gold income\" basis the rate applies to — city gold yield only, or also trade/other sources, and is it measured before or after the vassal's own upkeep/expenses?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What are the consequences of sustained debt (a persistent negative balance) — interest, extra Oath Strain, capped growth, asset seizure, or none for now?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What does \"must send units\" concretely require on a call to arms — how many units and which types, where they must go, for how long, and what deadline the vassal has to answer before it counts as a refusal?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What are the UI specifics for the Vassals-panel rate control, the shared gold log, and the call-to-arms issue/answer/refuse flow?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3326,7 +3846,8 @@ Extends the existing gold/economy and city-yield systems. Three Amigos to decide
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Each player has a gold bank with a capacity cap equal to the bank's size, and while the player is offline their earned gold accrues into the bank up to that cap.",
+          statement:
+            "Each player has a gold bank with a capacity cap equal to the bank's size, and while the player is offline their earned gold accrues into the bank up to that cap.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3340,7 +3861,8 @@ And his usable treasury is unchanged"
           ]
         },
         %{
-          statement: "Once the offline bank reaches its cap, accrual stops — no gold is lost, but further idle earnings are wasted until the bank is collected.",
+          statement:
+            "Once the offline bank reaches its cap, accrual stops — no gold is lost, but further idle earnings are wasted until the bank is collected.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3355,7 +3877,8 @@ And no gold already in the bank is lost"
           ]
         },
         %{
-          statement: "While the player is logged in, earned gold flows directly to their usable treasury rather than into the bank.",
+          statement:
+            "While the player is logged in, earned gold flows directly to their usable treasury rather than into the bank.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3368,7 +3891,8 @@ And his bank is still empty"
           ]
         },
         %{
-          statement: "Collect is a single action that sweeps the bank's entire balance into the treasury and leaves the bank empty.",
+          statement:
+            "Collect is a single action that sweeps the bank's entire balance into the treasury and leaves the bank empty.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3382,7 +3906,8 @@ And accrual for the current session now flows to the treasury"
           ]
         },
         %{
-          statement: "A player can upgrade the bank to raise its cap for a cost, and a larger cap retains more offline earnings.",
+          statement:
+            "A player can upgrade the bank to raise its cap for a cost, and a larger cap retains more offline earnings.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3406,10 +3931,30 @@ And his bank cap stays at 50"
         }
       ],
       questions: [
-        %{body: "What are the bank size tiers and the upgrade cost curve (starting cap, per-tier cap increments, and cost per tier)?", status: :open, resolution: nil},
-        %{body: "Exactly which gold sources accrue to the bank while offline — gross city yields only, or does it include tribute received and other one-off gold?", status: :open, resolution: nil},
-        %{body: "Do we ship the online-treasury-direct model or the always-bank/collect-every-session variant? This changes whether a logged-in player also has a collect tap.", status: :open, resolution: nil},
-        %{body: "What is the collect UI — where does the bank/collect button live, and does it show fill percentage and a full/capped warning?", status: :open, resolution: nil}
+        %{
+          body:
+            "What are the bank size tiers and the upgrade cost curve (starting cap, per-tier cap increments, and cost per tier)?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Exactly which gold sources accrue to the bank while offline — gross city yields only, or does it include tribute received and other one-off gold?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Do we ship the online-treasury-direct model or the always-bank/collect-every-session variant? This changes whether a logged-in player also has a collect tap.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What is the collect UI — where does the bank/collect button live, and does it show fill percentage and a full/capped warning?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3433,15 +3978,30 @@ Locked design:
 Depends on Automatic Vassalization (907), the alliance relationship (899/901), Gold Bank (909), and the production-queue (879) / unit-combat (891) systems. Three Amigos to decide: the production whitelist, the exact \"under attack\" trigger and bounds of emergency defensive control, symmetric-vs-asymmetric edge cases, the steward-action log/undo UI, and Honor deltas for sabotage.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "Lord and fellow vassal can steward an offline household member", verified: false},
+      %{
+        description: "Lord and fellow vassal can steward an offline household member",
+        verified: false
+      },
       %{description: "A vassal cannot steward their own lord", verified: false},
       %{description: "Allied peers can steward each other symmetrically", verified: false},
       %{description: "Steward sweeps the offline bank entirely to the owner", verified: false},
       %{description: "Steward queues a whitelisted constructive build", verified: false},
-      %{description: "Steward cannot disband a unit or cancel an in-progress build", verified: false},
-      %{description: "Steward cannot move units when the owner is not under attack", verified: false},
-      %{description: "Ally issues a defensive order while the offline owner is under attack", verified: false},
-      %{description: "Steward cannot use the emergency window to march the army off or attack", verified: false},
+      %{
+        description: "Steward cannot disband a unit or cancel an in-progress build",
+        verified: false
+      },
+      %{
+        description: "Steward cannot move units when the owner is not under attack",
+        verified: false
+      },
+      %{
+        description: "Ally issues a defensive order while the offline owner is under attack",
+        verified: false
+      },
+      %{
+        description: "Steward cannot use the emergency window to march the army off or attack",
+        verified: false
+      },
       %{description: "Owner reviews a full steward-action log on return", verified: false},
       %{description: "Provable sabotage dings the steward's Honor", verified: false}
     ],
@@ -3450,12 +4010,14 @@ Depends on Automatic Vassalization (907), the alliance relationship (899/901), G
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "While a player is offline they may be stewarded by their lord and by their fellow vassals of the same lord.",
+          statement:
+            "While a player is offline they may be stewarded by their lord and by their fellow vassals of the same lord.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Lord and fellow vassal can steward an offline household member",
-              body: "Given Wes is a vassal sworn to Lord Ada, and Bo is another vassal also sworn to Ada
+              body:
+                "Given Wes is a vassal sworn to Lord Ada, and Bo is another vassal also sworn to Ada
 And Wes is offline
 When Lord Ada opens Wes's realm, and separately fellow-vassal Bo opens Wes's realm
 Then both are offered the steward controls over Wes's realm
@@ -3464,7 +4026,8 @@ And a player with no household tie to Wes is offered nothing"
           ]
         },
         %{
-          statement: "A lord is never stewarded by their own vassals — feudal stewardship flows down the household, not up.",
+          statement:
+            "A lord is never stewarded by their own vassals — feudal stewardship flows down the household, not up.",
           scenarios: [
             %{
               kind: "failure path",
@@ -3478,12 +4041,14 @@ And the attempt is refused because protection flows down the household, not up"
           ]
         },
         %{
-          statement: "An ally may steward an offline ally, and alliance stewardship is symmetric — each allied peer can steward the other with the same powers a household steward has.",
+          statement:
+            "An ally may steward an offline ally, and alliance stewardship is symmetric — each allied peer can steward the other with the same powers a household steward has.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Allied peers can steward each other symmetrically",
-              body: "Given Wes and Kai are in an alliance (relationship from stories 899/901) with no lord/vassal tie between them
+              body:
+                "Given Wes and Kai are in an alliance (relationship from stories 899/901) with no lord/vassal tie between them
 When Kai goes offline, Wes is offered the full steward controls over Kai's realm
 And later when Wes goes offline, Kai is offered the full steward controls over Wes's realm
 Then alliance stewardship works in both directions with the same powers a household steward has"
@@ -3491,7 +4056,8 @@ Then alliance stewardship works in both directions with the same powers a househ
           ]
         },
         %{
-          statement: "A steward collecting the offline player's Gold Bank sweeps all of it into the owner's treasury; the steward receives nothing and tribute still skims separately.",
+          statement:
+            "A steward collecting the offline player's Gold Bank sweeps all of it into the owner's treasury; the steward receives nothing and tribute still skims separately.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3506,7 +4072,8 @@ And Bo receives nothing from the sweep, while the lord's per-turn tribute still 
           ]
         },
         %{
-          statement: "A steward may set the offline player's production queue only from a constructive whitelist of economic and defensive builds — no disbanding, cancelling, or griefing.",
+          statement:
+            "A steward may set the offline player's production queue only from a constructive whitelist of economic and defensive builds — no disbanding, cancelling, or griefing.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3543,7 +4110,8 @@ And Wes's units stay where they are"
           ]
         },
         %{
-          statement: "While the offline player is under attack, a steward may issue defensive-only orders to that player's units — active only while under attack, never to launch aggression or march the army off.",
+          statement:
+            "While the offline player is under attack, a steward may issue defensive-only orders to that player's units — active only while under attack, never to launch aggression or march the army off.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3567,12 +4135,14 @@ And once the attack ends the emergency unit control lapses"
           ]
         },
         %{
-          statement: "Every steward action is logged for the owner to review on return, and provable sabotage dings the steward's Honor.",
+          statement:
+            "Every steward action is logged for the owner to review on return, and provable sabotage dings the steward's Honor.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Owner reviews a full steward-action log on return",
-              body: "Given while Wes was offline his stewards collected his bank, queued a granary, and issued a defensive order during an attack
+              body:
+                "Given while Wes was offline his stewards collected his bank, queued a granary, and issued a defensive order during an attack
 When Wes logs back in
 Then his steward-action log lists each action with who did it and when
 And nothing a steward did is hidden from the owner"
@@ -3580,7 +4150,8 @@ And nothing a steward did is hidden from the owner"
             %{
               kind: "failure path",
               title: "Provable sabotage dings the steward's Honor",
-              body: "Given fellow-vassal Bo took a steward action against Wes that is provable sabotage
+              body:
+                "Given fellow-vassal Bo took a steward action against Wes that is provable sabotage
 When the sabotage is established from the logged action
 Then Bo's Honor is dinged by the engine
 And the event is visible to Wes in his steward-action log"
@@ -3589,11 +4160,36 @@ And the event is visible to Wes in his steward-action log"
         }
       ],
       questions: [
-        %{body: "What exactly is on the constructive production whitelist a steward may queue (which economic/defensive builds are in, and are any units allowed)?", status: :open, resolution: nil},
-        %{body: "What is the precise \"under attack\" trigger that opens the emergency defensive window, and what are the bounds of defensive control (which order types count as defensive, how far units may move, and when exactly the window closes)?", status: :open, resolution: nil},
-        %{body: "What is the steward-action log/undo UI — where it lives, and whether the owner can undo or roll back a steward action on return.", status: :open, resolution: nil},
-        %{body: "What are the Honor deltas for provable sabotage, and how is \"provable sabotage\" adjudicated (automatic engine detection vs. owner report)?", status: :open, resolution: nil},
-        %{body: "When multiple eligible stewards (lord, fellow vassals, allies) act on the same offline player concurrently, how are conflicting production/defensive orders resolved?", status: :open, resolution: nil}
+        %{
+          body:
+            "What exactly is on the constructive production whitelist a steward may queue (which economic/defensive builds are in, and are any units allowed)?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What is the precise \"under attack\" trigger that opens the emergency defensive window, and what are the bounds of defensive control (which order types count as defensive, how far units may move, and when exactly the window closes)?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What is the steward-action log/undo UI — where it lives, and whether the owner can undo or roll back a steward action on return.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What are the Honor deltas for provable sabotage, and how is \"provable sabotage\" adjudicated (automatic engine detection vs. owner report)?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "When multiple eligible stewards (lord, fellow vassals, allies) act on the same offline player concurrently, how are conflicting production/defensive orders resolved?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3623,7 +4219,8 @@ Depends on Tile Resources (story 905, the resource substrate and deterministic p
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A city can train the Bronze Spearman only if it has access to the bronze strategic resource (proposed: Copper).",
+          statement:
+            "A city can train the Bronze Spearman only if it has access to the bronze strategic resource (proposed: Copper).",
           scenarios: [
             %{
               kind: "happy path",
@@ -3645,7 +4242,8 @@ And the entry shows a clear reason such as \"Requires Copper\""
           ]
         },
         %{
-          statement: "A city has access to the resource when a Copper tile lies within that city's owned territory, whether or not the tile is currently worked.",
+          statement:
+            "A city has access to the resource when a Copper tile lies within that city's owned territory, whether or not the tile is currently worked.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3658,12 +4256,14 @@ And the Bronze Spearman is available to that city"
           ]
         },
         %{
-          statement: "The bronze strategic resource is revealed on the map by researching Bronze Working.",
+          statement:
+            "The bronze strategic resource is revealed on the map by researching Bronze Working.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Copper appears once Bronze Working lands",
-              body: "Given Copper tiles exist on the map but the player has not researched Bronze Working
+              body:
+                "Given Copper tiles exist on the map but the player has not researched Bronze Working
 Then those Copper tiles are not shown as Copper to the player
 When the player completes Bronze Working research
 Then Copper tiles the player can see are revealed on the board
@@ -3672,7 +4272,8 @@ And the player can now tell which of their cities have bronze access"
           ]
         },
         %{
-          statement: "The Bronze Spearman's production entry shows its resource requirement and whether the city currently meets it.",
+          statement:
+            "The Bronze Spearman's production entry shows its resource requirement and whether the city currently meets it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3687,10 +4288,30 @@ Then the entry shows the Copper requirement marked as unmet and the unit is disa
         }
       ],
       questions: [
-        %{body: "Resource name: what is the raw map resource called? Bronze is an alloy (copper + tin), so the mined resource reads better as Copper (recommended) or Tin. Confirm the name; the unit stays \"Bronze Spearman\".", status: :resolved, resolution: nil},
-        %{body: "Reveal timing: is the resource hidden until Bronze Working is researched (Civ 6 convention, recommended, since the Spearman unlocks at the same tech) or always visible from the start like bonus resources? If hidden, does it reveal only inside explored/owned area or everywhere at once?", status: :resolved, resolution: nil},
-        %{body: "Access definition: recommended MVP rule is \"a Copper tile within the city's owned territory, worked or not.\" Open forks: (a) must the Copper be improved (e.g. a Mine) to count, as Civ 6 requires? (b) can access be shared across all of a player's cities or via a road/trade connection, or is it strictly per-city? Confirm the exact rule.", status: :resolved, resolution: nil},
-        %{body: "Consumed vs access-gated: MVP proposes a pure ACCESS GATE — having Copper lets a city train Bronze Spearmen freely with no per-unit stockpile consumption (Civ 6's stockpile model is deferred). Confirm no consumption for MVP, or decide each Spearman consumes a unit of a Copper stockpile.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Resource name: what is the raw map resource called? Bronze is an alloy (copper + tin), so the mined resource reads better as Copper (recommended) or Tin. Confirm the name; the unit stays \"Bronze Spearman\".",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Reveal timing: is the resource hidden until Bronze Working is researched (Civ 6 convention, recommended, since the Spearman unlocks at the same tech) or always visible from the start like bonus resources? If hidden, does it reveal only inside explored/owned area or everywhere at once?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Access definition: recommended MVP rule is \"a Copper tile within the city's owned territory, worked or not.\" Open forks: (a) must the Copper be improved (e.g. a Mine) to count, as Civ 6 requires? (b) can access be shared across all of a player's cities or via a road/trade connection, or is it strictly per-city? Confirm the exact rule.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Consumed vs access-gated: MVP proposes a pure ACCESS GATE — having Copper lets a city train Bronze Spearmen freely with no per-unit stockpile consumption (Civ 6's stockpile model is deferred). Confirm no consumption for MVP, or decide each Spearman consumes a unit of a Copper stockpile.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3719,9 +4340,18 @@ Three Amigos to decide: the exact base-gold formula, which tiles/resources yield
       %{description: "Size-4 landlocked city earns 3 base gold a turn", verified: false},
       %{description: "A freshly founded size-1 city earns 1 base gold a turn", verified: false},
       %{description: "A coastal size-4 city adds tile gold to its base", verified: false},
-      %{description: "Growing to size 4 raises the city's gold income next turn", verified: false},
-      %{description: "Online player's cities deposit their combined gold into the treasury", verified: false},
-      %{description: "Offline player's gold income accrues into the capped bank", verified: false},
+      %{
+        description: "Growing to size 4 raises the city's gold income next turn",
+        verified: false
+      },
+      %{
+        description: "Online player's cities deposit their combined gold into the treasury",
+        verified: false
+      },
+      %{
+        description: "Offline player's gold income accrues into the capped bank",
+        verified: false
+      },
       %{description: "Tribute taxes the real city-derived gold income", verified: false}
     ],
     qa: %{final: :pass, attempts: 1, history: [:pass]},
@@ -3729,7 +4359,8 @@ Three Amigos to decide: the exact base-gold formula, which tiles/resources yield
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Each city generates a base gold amount every turn that scales with its size (proposed: 1 + floor(size/2) gold/turn).",
+          statement:
+            "Each city generates a base gold amount every turn that scales with its size (proposed: 1 + floor(size/2) gold/turn).",
           scenarios: [
             %{
               kind: "happy path",
@@ -3748,7 +4379,8 @@ Then the city produces 1 gold that turn (base = 1 + floor(1/2))"
           ]
         },
         %{
-          statement: "Worked gold-yielding tiles add their gold on top of the city base (proposed: each worked Coast tile yields +1 gold).",
+          statement:
+            "Worked gold-yielding tiles add their gold on top of the city base (proposed: each worked Coast tile yields +1 gold).",
           scenarios: [
             %{
               kind: "happy path",
@@ -3760,19 +4392,22 @@ Then the city produces 6 gold that turn (3 base + 3 x 1 Coast)"
           ]
         },
         %{
-          statement: "A city's per-turn gold income equals its base plus its summed worked-tile gold, recomputed each turn from current size and worked tiles.",
+          statement:
+            "A city's per-turn gold income equals its base plus its summed worked-tile gold, recomputed each turn from current size and worked tiles.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Growing to size 4 raises the city's gold income next turn",
-              body: "Given a size-3 city producing 2 base gold a turn
+              body:
+                "Given a size-3 city producing 2 base gold a turn
 When it grows to size 4 and works one additional Coast tile
 Then the following turn it produces 4 gold (3 base + 1 Coast), recomputed from its new size and worked tiles"
             }
           ]
         },
         %{
-          statement: "At each turn boundary a player's gold income (summed across their cities) is added to their treasury while online, and accrues into the capped gold bank while offline.",
+          statement:
+            "At each turn boundary a player's gold income (summed across their cities) is added to their treasury while online, and accrues into the capped gold bank while offline.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3784,19 +4419,22 @@ Then his treasury increases by 12 gold this turn"
             %{
               kind: "happy path",
               title: "Offline player's gold income accrues into the capped bank",
-              body: "Given Wes is offline and his cities earn 12 gold a turn, with room under his bank cap
+              body:
+                "Given Wes is offline and his cities earn 12 gold a turn, with room under his bank cap
 When the turn boundary resolves
 Then the 12 gold accrues into his gold bank (story 909) instead of his treasury"
             }
           ]
         },
         %{
-          statement: "This city-derived per-turn gold income is the real basis for tribute, replacing the test-only set_player_gold_income_for_test seam.",
+          statement:
+            "This city-derived per-turn gold income is the real basis for tribute, replacing the test-only set_player_gold_income_for_test seam.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Tribute taxes the real city-derived gold income",
-              body: "Given a vassal whose cities produce 12 gold a turn and a lord tribute rate of 25%
+              body:
+                "Given a vassal whose cities produce 12 gold a turn and a lord tribute rate of 25%
 When the turn boundary resolves tribute
 Then the lord skims 3 gold, computed from the real city gold income and not from set_player_gold_income_for_test"
             }
@@ -3804,10 +4442,30 @@ Then the lord skims 3 gold, computed from the real city gold income and not from
         }
       ],
       questions: [
-        %{body: "Exact city base-gold formula? Proposed default is 1 + floor(size/2) gold/turn (size 4 -> 3). Alternatives: ~0.5 gold per pop rounded, or a steeper flat-per-size such as 2 x size (size 4 -> 8) if we want gold to feel closer to the ~5 base production. PO to confirm the curve.", status: :open, resolution: nil},
-        %{body: "Which tiles/resources yield gold, and how much? Proposed default: worked Coast tiles +1 gold each. Open forks: do we also add a Copper-style gold bonus resource (+2 gold), which extends story 905's currently food/production-only resource set? Do rivers or any land terrain yield gold? Keeping it Coast-only avoids touching 905.", status: :open, resolution: nil},
-        %{body: "Do buildings add gold (e.g. a future Market or Palace)? Recommendation: DEFER buildings to a later economy story; the foundation is base-by-size + gold tiles only. PO to confirm the defer.", status: :open, resolution: nil},
-        %{body: "Reconcile tribute basis: this story makes per-turn GOLD income the tribute basis (matching QA issue 589386f2 and story 908 criterion 7674), but the Round-5 design note in feudal_vassalage_design.md says tribute is \"a % of the vassal's city YIELDS, before upkeep.\" Are these the same thing now that cities emit gold each turn, or does tribute tax gold-income specifically? PO to lock which basis 908 uses.", status: :open, resolution: nil}
+        %{
+          body:
+            "Exact city base-gold formula? Proposed default is 1 + floor(size/2) gold/turn (size 4 -> 3). Alternatives: ~0.5 gold per pop rounded, or a steeper flat-per-size such as 2 x size (size 4 -> 8) if we want gold to feel closer to the ~5 base production. PO to confirm the curve.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Which tiles/resources yield gold, and how much? Proposed default: worked Coast tiles +1 gold each. Open forks: do we also add a Copper-style gold bonus resource (+2 gold), which extends story 905's currently food/production-only resource set? Do rivers or any land terrain yield gold? Keeping it Coast-only avoids touching 905.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Do buildings add gold (e.g. a future Market or Palace)? Recommendation: DEFER buildings to a later economy story; the foundation is base-by-size + gold tiles only. PO to confirm the defer.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Reconcile tribute basis: this story makes per-turn GOLD income the tribute basis (matching QA issue 589386f2 and story 908 criterion 7674), but the Round-5 design note in feudal_vassalage_design.md says tribute is \"a % of the vassal's city YIELDS, before upkeep.\" Are these the same thing now that cities emit gold each turn, or does tribute tax gold-income specifically? PO to lock which basis 908 uses.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3843,7 +4501,8 @@ Three Amigos: the exact accrual/decay rates per driver, the strain→army-size c
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Every Vassalage carries an Oath Strain gauge from 0 to 100, visible to both the lord and the vassal.",
+          statement:
+            "Every Vassalage carries an Oath Strain gauge from 0 to 100, visible to both the lord and the vassal.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3856,12 +4515,14 @@ And the value is clamped to the 0-100 range at all times"
           ]
         },
         %{
-          statement: "Oath Strain rises from extraction and neglect: a high tribute rate, an unhonored Protection Pact (a large spike), and a refused or withdrawn call to arms.",
+          statement:
+            "Oath Strain rises from extraction and neglect: a high tribute rate, an unhonored Protection Pact (a large spike), and a refused or withdrawn call to arms.",
           scenarios: [
             %{
               kind: "happy path",
               title: "High tribute rate drifts strain upward over time",
-              body: "Given Wes pays a 50% tribute rate, well above the 25% default, with no offsetting lord obligations
+              body:
+                "Given Wes pays a 50% tribute rate, well above the 25% default, with no offsetting lord obligations
 And his current Oath Strain is 30
 When several hours of turns pass with the rate unchanged
 Then his Oath Strain drifts upward toward a ceiling implied by the imbalance (illustratively +1 to +2 per hour)
@@ -3870,7 +4531,8 @@ And the gauge shows the rate as the driving contributor"
             %{
               kind: "happy path",
               title: "An unhonored Protection Pact spikes strain",
-              body: "Given Wes is under attack and his lord fails to respond within the protection window (story 914)
+              body:
+                "Given Wes is under attack and his lord fails to respond within the protection window (story 914)
 And his Oath Strain is 45
 When the pact is marked unhonored
 Then his Oath Strain takes a large one-time spike (illustratively +25, to 70)
@@ -3879,7 +4541,8 @@ And a refused or withdrawn call to arms applies a smaller rise (illustratively +
           ]
         },
         %{
-          statement: "Oath Strain falls from investment: lord gifts, a granted autonomy or lowered tribute rate, and a shared enemy against a common foe.",
+          statement:
+            "Oath Strain falls from investment: lord gifts, a granted autonomy or lowered tribute rate, and a shared enemy against a common foe.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3892,12 +4555,14 @@ And if Mira and Wes share a common enemy, strain eases further toward that lower
           ]
         },
         %{
-          statement: "Oath Strain is slow and sticky: it moves on the scale of hours rather than per-turn, so the social and chat layer has time to operate before it shifts.",
+          statement:
+            "Oath Strain is slow and sticky: it moves on the scale of hours rather than per-turn, so the social and chat layer has time to operate before it shifts.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Strain does not swing within a single turn",
-              body: "Given Wes has an Oath Strain of 70 after a spike
+              body:
+                "Given Wes has an Oath Strain of 70 after a spike
 When a single 60-second turn processes with no new events
 Then his strain moves by at most a small sticky increment, not a full reset
 And it holds near 70 across many turns until a real change (a concession or fresh grievance) shifts it over hours"
@@ -3905,12 +4570,14 @@ And it holds near 70 across many turns until a real change (a concession or fres
           ]
         },
         %{
-          statement: "Oath Strain never auto-fires a rebellion and never gates the ability to declare independence — declaring is always available. Its one mechanical job is to SIZE the temporary rebellion army when the vassal revolts: higher strain means a bigger uprising. Which of the vassal's cities rise is decided separately, by the lord's Honor and tribute rate.",
+          statement:
+            "Oath Strain never auto-fires a rebellion and never gates the ability to declare independence — declaring is always available. Its one mechanical job is to SIZE the temporary rebellion army when the vassal revolts: higher strain means a bigger uprising. Which of the vassal's cities rise is decided separately, by the lord's Honor and tribute rate.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Max strain never auto-rebels",
-              body: "Given Wes has an Oath Strain of 95 (\"the powder is dry\")
+              body:
+                "Given Wes has an Oath Strain of 95 (\"the powder is dry\")
 When many turns process and Wes never clicks Declare Independence
 Then no rebellion fires automatically and Wes remains a vassal
 And the high strain only sets the size of the temporary rebellion army he could raise should he choose to declare (story 915) — it does not decide which cities rise, and it never acts on its own"
@@ -3919,11 +4586,36 @@ And the high strain only sets the size of the temporary rebellion army he could 
         }
       ],
       questions: [
-        %{body: "Exact strain rise/fall rates: what per-hour drift does each source contribute, and what is the unhonored-Protection-Pact spike magnitude (illustratively +25) vs. a refused call to arms (+10)? Are rises a drift toward an imbalance-implied ceiling, or flat additive events?", status: :open, resolution: nil},
-        %{body: "The slow-sticky time constant: over what real-world duration (hours? a day?) should strain traverse a meaningful span, and what is the max per-turn delta cap that enforces stickiness?", status: :open, resolution: nil},
-        %{body: "Is strain modeled as a value chasing a computed target (tribute imbalance sets a ceiling the gauge drifts toward) or as an accumulator of discrete +/- events? This determines whether concessions lower a ceiling vs. subtract a fixed amount.", status: :open, resolution: nil},
-        %{body: "UI surfacing: does the gauge show a breakdown of contributing factors (which grievances/investments drive the current value) to both parties, or only the single 0-100 number? A breakdown invites negotiation but exposes the lord's neglect explicitly.", status: :open, resolution: nil},
-        %{body: "Tuning (deferred to build/architecture): the exact accrual and decay rates per driver (tribute rate, broken pact spike, refused levy; gifts, autonomy, shared enemy), and the strain→rebellion-army-size curve (linear? stepped? what army does strain 100 vs strain 30 raise?).", status: :open, resolution: nil}
+        %{
+          body:
+            "Exact strain rise/fall rates: what per-hour drift does each source contribute, and what is the unhonored-Protection-Pact spike magnitude (illustratively +25) vs. a refused call to arms (+10)? Are rises a drift toward an imbalance-implied ceiling, or flat additive events?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "The slow-sticky time constant: over what real-world duration (hours? a day?) should strain traverse a meaningful span, and what is the max per-turn delta cap that enforces stickiness?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is strain modeled as a value chasing a computed target (tribute imbalance sets a ceiling the gauge drifts toward) or as an accumulator of discrete +/- events? This determines whether concessions lower a ceiling vs. subtract a fixed amount.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "UI surfacing: does the gauge show a breakdown of contributing factors (which grievances/investments drive the current value) to both parties, or only the single 0-100 number? A breakdown invites negotiation but exposes the lord's neglect explicitly.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Tuning (deferred to build/architecture): the exact accrual and decay rates per driver (tribute rate, broken pact spike, refused levy; gifts, autonomy, shared enemy), and the strain→rebellion-army-size curve (linear? stepped? what army does strain 100 vs strain 30 raise?).",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -3948,22 +4640,30 @@ Three Amigos: what counts as \"under attack\" (the hp<max_hp proxy vs a first-cl
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "A player siege on a vassal city triggers the pact", verified: false},
-      %{description: "Protection call is visible to lord and vassal with a countdown", verified: false},
+      %{
+        description: "Protection call is visible to lord and vassal with a countdown",
+        verified: false
+      },
       %{description: "Lord relieves the siege in time", verified: false},
       %{description: "Lord ignores the call and breaks the oath", verified: false},
-      %{description: "Repeated honored protection makes vassalage a net-positive", verified: false}
+      %{
+        description: "Repeated honored protection makes vassalage a net-positive",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A lord bears a binding Protection Pact duty to defend any vassal that comes under attack, whether by barbarians or by another player.",
+          statement:
+            "A lord bears a binding Protection Pact duty to defend any vassal that comes under attack, whether by barbarians or by another player.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A player siege on a vassal city triggers the pact",
-              body: "Given Wes is a vassal of Lord Mira and a rival player begins besieging Wes's city
+              body:
+                "Given Wes is a vassal of Lord Mira and a rival player begins besieging Wes's city
 When the attack is registered
 Then a Protection Pact obligation is created against Lord Mira for that attack
 And the same obligation arises if the attacker is a barbarian warband rather than a player"
@@ -3971,7 +4671,8 @@ And the same obligation arises if the attacker is a barbarian warband rather tha
           ]
         },
         %{
-          statement: "When a vassal comes under attack, a protection call is raised that the lord can see, with a response window that counts down.",
+          statement:
+            "When a vassal comes under attack, a protection call is raised that the lord can see, with a response window that counts down.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3984,7 +4685,8 @@ And a response window counts down (illustratively 3 turns) toward the honored/br
           ]
         },
         %{
-          statement: "Honoring a protection call by relieving the vassal within the window lowers that vassal's Oath Strain and builds the lord's Honor.",
+          statement:
+            "Honoring a protection call by relieving the vassal within the window lowers that vassal's Oath Strain and builds the lord's Honor.",
           scenarios: [
             %{
               kind: "happy path",
@@ -3997,7 +4699,8 @@ And Mira's Honor rises (illustratively +3)"
             %{
               kind: "happy path",
               title: "Repeated honored protection makes vassalage a net-positive",
-              body: "Given Lord Mira has honored three protection calls for Wes over many turns
+              body:
+                "Given Lord Mira has honored three protection calls for Wes over many turns
 When Wes weighs his position
 Then his Oath Strain sits low despite paying tribute, because protection has been reliably delivered
 And this is the \"vassalage isn't always negative\" upside — Wes gains defense he could not muster alone"
@@ -4005,12 +4708,14 @@ And this is the \"vassalage isn't always negative\" upside — Wes gains defense
           ]
         },
         %{
-          statement: "Letting a protection call expire unanswered is a broken oath: the lord takes a public Honor hit and every vassal in the lord's realm takes an Oath Strain spike.",
+          statement:
+            "Letting a protection call expire unanswered is a broken oath: the lord takes a public Honor hit and every vassal in the lord's realm takes an Oath Strain spike.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Lord ignores the call and breaks the oath",
-              body: "Given a protection call on Wes with a 3-turn window and Lord Mira also holds vassals Ada and Bo
+              body:
+                "Given a protection call on Wes with a 3-turn window and Lord Mira also holds vassals Ada and Bo
 When the window expires with no relieving action from Mira
 Then the call resolves as broken: Mira's Honor takes a public hit (illustratively -8)
 And Wes takes the large unhonored-pact strain spike (per 913, illustratively +25)
@@ -4020,11 +4725,36 @@ And Ada and Bo each take a smaller realm-wide contagion spike (illustratively +8
         }
       ],
       questions: [
-        %{body: "What counts as \"failing to protect\"? Is the trigger a full siege (city taking HP damage) or any adjacent hostile? Define the response window (illustratively 3 turns) and what constitutes a valid response — must the lord's unit engage/defeat the attacker, or merely arrive within proximity of the besieged city?", status: :open, resolution: nil},
-        %{body: "Exact Honor and strain deltas: honored call (vassal strain -? , lord Honor +?) vs. broken call (lord Honor -?, attacked-vassal strain +?, realm-wide contagion spike +? per other vassal). Should the broken-oath penalty scale with realm size (more vassals = bigger reputational cost)?", status: :open, resolution: nil},
-        %{body: "Grief guardrail: a vassal could bait a weak attack (or invite a friendly rival) to force a no-win protection call and farm the lord's Honor loss. Do we need a cooldown, an attacker-strength threshold, or a distance/relief-feasibility check so only genuine, answerable attacks count?", status: :open, resolution: nil},
-        %{body: "Is the pact always-on for every vassal, or an explicit contract term the lord can grant/withhold (per the reciprocal contract in the design)? If withheld, is there still a milder strain consequence for leaving a vassal undefended?", status: :resolved, resolution: nil},
-        %{body: "What counts as \"under attack\" that raises a protection call — the existing hp<max_hp proxy, or a first-class \"under attack\" flag? And how long is the response window before an unanswered call is scored as a broken oath?", status: :open, resolution: nil}
+        %{
+          body:
+            "What counts as \"failing to protect\"? Is the trigger a full siege (city taking HP damage) or any adjacent hostile? Define the response window (illustratively 3 turns) and what constitutes a valid response — must the lord's unit engage/defeat the attacker, or merely arrive within proximity of the besieged city?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Exact Honor and strain deltas: honored call (vassal strain -? , lord Honor +?) vs. broken call (lord Honor -?, attacked-vassal strain +?, realm-wide contagion spike +? per other vassal). Should the broken-oath penalty scale with realm size (more vassals = bigger reputational cost)?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Grief guardrail: a vassal could bait a weak attack (or invite a friendly rival) to force a no-win protection call and farm the lord's Honor loss. Do we need a cooldown, an attacker-strength threshold, or a distance/relief-feasibility check so only genuine, answerable attacks count?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is the pact always-on for every vassal, or an explicit contract term the lord can grant/withhold (per the reciprocal contract in the design)? If withheld, is there still a milder strain consequence for leaving a vassal undefended?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "What counts as \"under attack\" that raises a protection call — the existing hp<max_hp proxy, or a first-class \"under attack\" flag? And how long is the response window before an unanswered call is scored as a broken oath?",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4053,7 +4783,10 @@ Three Amigos: the city-rise threshold formula (Honor + tribute), the temp-army s
       %{description: "A risen city de-occupies and its garrison defects", verified: false},
       %{description: "A tyrant's cities rise and a grievance army rallies", verified: false},
       %{description: "A just lord's cities stay loyal and little rises", verified: false},
-      %{description: "Cities that stay loyal must be taken by siege, and the lord is notified", verified: false},
+      %{
+        description: "Cities that stay loyal must be taken by siege, and the lord is notified",
+        verified: false
+      },
       %{description: "Declaring independence opens a tracked rebellion", verified: false}
     ],
     qa: %{final: :untested, attempts: 0, history: []},
@@ -4061,7 +4794,8 @@ Three Amigos: the city-rise threshold formula (Honor + tribute), the temp-army s
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Clicking Declare Independence, after a confirming warning, immediately severs the Vassalage, stops tribute, and declares war with the former lord.",
+          statement:
+            "Clicking Declare Independence, after a confirming warning, immediately severs the Vassalage, stops tribute, and declares war with the former lord.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4074,7 +4808,8 @@ And a state of war exists between Wes and Mira"
           ]
         },
         %{
-          statement: "When a vassal declares independence, each occupied city rises back to the vassal based on the LORD'S REPUTATION — the lord's world-visible Honor and the tribute rate the vassal was paying. A dishonorable or greedy lord's cities flock back; a just, light-handed lord's cities may stay loyal. Reputation decides — no per-city dice roll, and the outcome is inspectable before the vassal commits.",
+          statement:
+            "When a vassal declares independence, each occupied city rises back to the vassal based on the LORD'S REPUTATION — the lord's world-visible Honor and the tribute rate the vassal was paying. A dishonorable or greedy lord's cities flock back; a just, light-handed lord's cities may stay loyal. Reputation decides — no per-city dice roll, and the outcome is inspectable before the vassal commits.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4088,12 +4823,14 @@ And the outcome is shown before he commits, so there is no hidden dice roll to s
           ]
         },
         %{
-          statement: "A city that rises has its occupation removed, its garrison defects to the returning owner, and the owner controls it again.",
+          statement:
+            "A city that rises has its occupation removed, its garrison defects to the returning owner, and the owner controls it again.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A risen city de-occupies and its garrison defects",
-              body: "Given one of Wes's occupied cities qualifies to rise under Mira's low Honor and high tribute rate
+              body:
+                "Given one of Wes's occupied cities qualifies to rise under Mira's low Honor and high tribute rate
 When the uprising resolves
 Then that city's occupied status is removed and Wes controls it fully again
 And the lord's garrison stationed there defects to Wes"
@@ -4101,12 +4838,14 @@ And the lord's garrison stationed there defects to Wes"
           ]
         },
         %{
-          statement: "Declaring independence spawns a TEMPORARY rebellion army whose size scales with Oath Strain (the grievance against this lord) — a hated lord faces a bigger uprising. These units fight the war of independence and then DISBAND once independence is secured or after a fixed number of turns. They are a surge, not a permanent army.",
+          statement:
+            "Declaring independence spawns a TEMPORARY rebellion army whose size scales with Oath Strain (the grievance against this lord) — a hated lord faces a bigger uprising. These units fight the war of independence and then DISBAND once independence is secured or after a fixed number of turns. They are a surge, not a permanent army.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A tyrant's cities rise and a grievance army rallies",
-              body: "Given Wes has 5 occupied cities under Lord Mira, who has low Honor and levied 40% tribute, and Wes's Oath Strain is 80
+              body:
+                "Given Wes has 5 occupied cities under Lord Mira, who has low Honor and levied 40% tribute, and Wes's Oath Strain is 80
 When Wes declares independence
 Then Mira's dishonor and heavy tribute make most of the five cities rise back to Wes
 And a temporary rebellion army sized by Wes's strain-80 grievance spawns to fight the war
@@ -4116,7 +4855,8 @@ And a results banner reads \"Your cities rise — a rebellion rallies to your ca
             %{
               kind: "failure path",
               title: "A just lord's cities stay loyal and little rises",
-              body: "Given Wes declares independence against Lord Ada, who has high Honor, levied only light tribute, and against whom Wes's Oath Strain is low
+              body:
+                "Given Wes declares independence against Lord Ada, who has high Honor, levied only light tribute, and against whom Wes's Oath Strain is low
 When the uprising resolves
 Then few or none of Ada's occupied cities rise — a just lord keeps his subjects' loyalty
 And only a small temporary force, or none at all, spawns, because low grievance raises little
@@ -4125,7 +4865,8 @@ And Wes remains at war with Ada with those cities still to be taken by force"
           ]
         },
         %{
-          statement: "Cities that do not rise stay loyal to the lord and can only be retaken by normal siege (story 906) — there is no separate reconquest mechanic. The former lord is notified of the declaration and of which cities rose.",
+          statement:
+            "Cities that do not rise stay loyal to the lord and can only be retaken by normal siege (story 906) — there is no separate reconquest mechanic. The former lord is notified of the declaration and of which cities rose.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4138,7 +4879,8 @@ And Mira receives a notification \"Wes has declared independence!\" listing whic
           ]
         },
         %{
-          statement: "Declaring independence creates a first-class Rebellion record with status \"active\" that persists the conflict — the rebel, the former lord, the contested and risen cities, the temporary army, and the start turn. The war is a real tracked entity, not a transient event, and everything downstream (win/lose/peace, disband, heir) keys off it.",
+          statement:
+            "Declaring independence creates a first-class Rebellion record with status \"active\" that persists the conflict — the rebel, the former lord, the contested and risen cities, the temporary army, and the start turn. The war is a real tracked entity, not a transient event, and everything downstream (win/lose/peace, disband, heir) keys off it.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4153,11 +4895,36 @@ And later resolution, disband, and heir logic all read from that one record"
         }
       ],
       questions: [
-        %{body: "Exact flip formula and weights: is the base still §8.1's simple \"tribute rate + years×5\", or the richer design formula (strain + committed strength ratio + surprise + grudges - lord Honor)? Give each term's weight/scale, the min/max clamp on final flip chance, and how Oath Strain maps to base % (e.g. strain 80 → 55%).", status: :open, resolution: nil},
-        %{body: "Army-spawn counts: confirm 2 warriors per flipped city and 1 consolation warrior on total failure. Do garrison-defector units count on top of the 2/city spawn, or are they the same units? Any cap on total spawned warriors for a large realm?", status: :open, resolution: nil},
-        %{body: "What defines \"committed strength\" and \"surprise\" for a lone declaration (no coordination)? Is surprise a flat bonus when the lord is at war elsewhere / distracted, and how is the vassal's own army strength folded in versus the lord's local garrison strength?", status: :open, resolution: nil},
-        %{body: "Declare/results UI: does the preview show per-city odds with the itemized contributor breakdown, and does the vassal roll all cities at once on declaration or can they be staged? Where does the results banner and the lord's notification surface?", status: :open, resolution: nil},
-        %{body: "Two numbers to pin in build: the city-rise threshold formula (how the lord's Honor + the tribute rate combine to decide whether a given occupied city rises vs stays loyal), and the disband condition for the temporary army (war-end detection vs a fixed N turns — and what N).", status: :open, resolution: nil}
+        %{
+          body:
+            "Exact flip formula and weights: is the base still §8.1's simple \"tribute rate + years×5\", or the richer design formula (strain + committed strength ratio + surprise + grudges - lord Honor)? Give each term's weight/scale, the min/max clamp on final flip chance, and how Oath Strain maps to base % (e.g. strain 80 → 55%).",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Army-spawn counts: confirm 2 warriors per flipped city and 1 consolation warrior on total failure. Do garrison-defector units count on top of the 2/city spawn, or are they the same units? Any cap on total spawned warriors for a large realm?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What defines \"committed strength\" and \"surprise\" for a lone declaration (no coordination)? Is surprise a flat bonus when the lord is at war elsewhere / distracted, and how is the vassal's own army strength folded in versus the lord's local garrison strength?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Declare/results UI: does the preview show per-city odds with the itemized contributor breakdown, and does the vassal roll all cities at once on declaration or can they be staged? Where does the results banner and the lord's notification surface?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Two numbers to pin in build: the city-rise threshold formula (how the lord's Honor + the tribute rate combine to decide whether a given occupied city rises vs stays loyal), and the disband condition for the temporary army (war-end detection vs a fixed N turns — and what N).",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4181,7 +4948,10 @@ Locked design (PURELY SOCIAL, chat-bound):
 Three Amigos: the pact-chat object (how invites/commit/strike are tracked on it), how betrayal is surfaced and rewarded, and how the lord perceives heat.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "Wes opens a pact chat and invites two fellow vassals into it", verified: false},
+      %{
+        description: "Wes opens a pact chat and invites two fellow vassals into it",
+        verified: false
+      },
       %{description: "The roster stays secret until the strike", verified: false},
       %{description: "Strike turn reveals and fires all revolts at once", verified: false},
       %{description: "An invitee informs the lord and betrays the plot", verified: false},
@@ -4192,7 +4962,8 @@ Three Amigos: the pact-chat object (how invites/commit/strike are tracked on it)
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A vassal opens a Pact of Broken Oaths as a private chat and invites fellow vassals of the same lord into it — membership of the pact chat IS the conspiracy roster. Members agree a strike turn hours out, and each commits or declines in secret.",
+          statement:
+            "A vassal opens a Pact of Broken Oaths as a private chat and invites fellow vassals of the same lord into it — membership of the pact chat IS the conspiracy roster. Members agree a strike turn hours out, and each commits or declines in secret.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4205,7 +4976,8 @@ And only fellow vassals of the same lord (Mira) are eligible to be invited into 
           ]
         },
         %{
-          statement: "Committed strength is hidden from the lord and from the other conspirators until the strike — no one sees the full roster before the reveal.",
+          statement:
+            "Committed strength is hidden from the lord and from the other conspirators until the strike — no one sees the full roster before the reveal.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4218,12 +4990,14 @@ And Lord Mira cannot see the roster or committed strength at all"
           ]
         },
         %{
-          statement: "At the strike turn all commitments reveal simultaneously and every committed conspirator declares independence together, each resolving its own city uprising and its own strain-sized rebellion army via story 915. Their power is numbers and the shared war breaking many oaths at once — there is no mechanical coordination bonus.",
+          statement:
+            "At the strike turn all commitments reveal simultaneously and every committed conspirator declares independence together, each resolving its own city uprising and its own strain-sized rebellion army via story 915. Their power is numbers and the shared war breaking many oaths at once — there is no mechanical coordination bonus.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Strike turn reveals and fires all revolts at once",
-              body: "Given Wes and Ada committed and Bo did not, with strike turn 50
+              body:
+                "Given Wes and Ada committed and Bo did not, with strike turn 50
 When turn 50 processes
 Then Wes's and Ada's commitments reveal simultaneously and both declare independence in the same tick
 And each resolves its own occupied-city uprising and its own strain-sized army via story 915, with no coordination bonus — their strength is simply two oaths breaking at once"
@@ -4231,7 +5005,8 @@ And each resolves its own occupied-city uprising and its own strain-sized army v
           ]
         },
         %{
-          statement: "Any member of the pact chat can secretly inform the lord of the plot for a personal reward. Informing changes no odds (there are none) — it warns the lord, who can then pre-empt: brace defenses, reposition the Lord unit, or buy off conspirators before the strike turn. The informer's identity stays hidden from the other chat members.",
+          statement:
+            "Any member of the pact chat can secretly inform the lord of the plot for a personal reward. Informing changes no odds (there are none) — it warns the lord, who can then pre-empt: brace defenses, reposition the Lord unit, or buy off conspirators before the strike turn. The informer's identity stays hidden from the other chat members.",
           scenarios: [
             %{
               kind: "failure path",
@@ -4245,12 +5020,14 @@ And Bo's identity as the informer stays hidden from the other conspirators"
           ]
         },
         %{
-          statement: "The lord sees conspiracy heat — whisper volume and temperature — not its content, and can make pre-emptive concessions to cool strain before the strike turn.",
+          statement:
+            "The lord sees conspiracy heat — whisper volume and temperature — not its content, and can make pre-emptive concessions to cool strain before the strike turn.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Lord reads rising heat and buys off the plot",
-              body: "Given whisper volume among Mira's vassals rises, showing Mira a hot unrest needle but not the messages
+              body:
+                "Given whisper volume among Mira's vassals rises, showing Mira a hot unrest needle but not the messages
 When Mira lowers tribute rates and honors an overdue protection call before turn 50
 Then the conspirators' Oath Strain cools, shrinking the temporary armies their revolts would raise
 And some conspirators may drop out rather than strike, turning the plotting window into a negotiation"
@@ -4259,12 +5036,42 @@ And some conspirators may drop out rather than strike, turning the plotting wind
         }
       ],
       questions: [
-        %{body: "Commit/reveal mechanism and timing window: how far out can a strike turn be set (min/max hours), can invitees be added after opening, is a commitment revocable before the strike, and what happens to a committed vassal who goes offline through the strike turn — auto-fire or auto-drop?", status: :open, resolution: nil},
-        %{body: "Coordination-bonus curve: what is the exact superlinear function of the number of synchronized rebels (e.g. quadratic, +15%×N plus a squared term), and is it capped? §8.3 baseline was linear +15% per additional rebel (max +45%) — how far above linear do we go and where does it saturate?", status: :resolved, resolution: nil},
-        %{body: "Informer payoff and penalty: what exactly does an informer receive (tribute forgiveness amount, land, station rise), and how large is the informer_penalty to the remaining conspiracy's odds? Balance so informing is tempting but does not make every conspiracy collapse — where is that line?", status: :open, resolution: nil},
-        %{body: "What exactly does \"heat\" show the lord? A single realm-wide unrest needle, or per-vassal temperature? Does it reveal that a pact exists, a rough conspirator count, or the strike-turn proximity? And is generating heat tied to whisper volume specifically, or to strain level?", status: :open, resolution: nil},
-        %{body: "Concurrency floor: coordinated conspiracy needs several vassals under one lord at once. On small worlds a lord may rarely hold 3+ vassals — do we degrade gracefully to 1-on-1 duels, or gate this story's UI/bonus behind a minimum vassal count?", status: :open, resolution: nil},
-        %{body: "Is the Pact of Broken Oaths a chat-only social convention (players just agree in chat and each hits Declare Independence), or a lightweight first-class \"pact\" object that tracks a strike turn + secret commitments and fires them together? The informer and hidden-roster rules assume the latter — confirm we want that object.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Commit/reveal mechanism and timing window: how far out can a strike turn be set (min/max hours), can invitees be added after opening, is a commitment revocable before the strike, and what happens to a committed vassal who goes offline through the strike turn — auto-fire or auto-drop?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Coordination-bonus curve: what is the exact superlinear function of the number of synchronized rebels (e.g. quadratic, +15%×N plus a squared term), and is it capped? §8.3 baseline was linear +15% per additional rebel (max +45%) — how far above linear do we go and where does it saturate?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Informer payoff and penalty: what exactly does an informer receive (tribute forgiveness amount, land, station rise), and how large is the informer_penalty to the remaining conspiracy's odds? Balance so informing is tempting but does not make every conspiracy collapse — where is that line?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "What exactly does \"heat\" show the lord? A single realm-wide unrest needle, or per-vassal temperature? Does it reveal that a pact exists, a rough conspirator count, or the strike-turn proximity? And is generating heat tied to whisper volume specifically, or to strain level?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Concurrency floor: coordinated conspiracy needs several vassals under one lord at once. On small worlds a lord may rarely hold 3+ vassals — do we degrade gracefully to 1-on-1 duels, or gate this story's UI/bonus behind a minimum vassal count?",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Is the Pact of Broken Oaths a chat-only social convention (players just agree in chat and each hits Declare Independence), or a lightweight first-class \"pact\" object that tracks a strike turn + secret commitments and fires them together? The informer and hidden-roster rules assume the latter — confirm we want that object.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4300,7 +5107,8 @@ Three Amigos: the notification/modal copy and dwell, exactly when \"the war is o
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "When a lord's Lord unit is killed in combat by anyone, every vassal of that lord is immediately notified with a prominent prompt: \"Your lord has fallen — seize the moment.\"",
+          statement:
+            "When a lord's Lord unit is killed in combat by anyone, every vassal of that lord is immediately notified with a prominent prompt: \"Your lord has fallen — seize the moment.\"",
           scenarios: [
             %{
               kind: "happy path",
@@ -4314,12 +5122,14 @@ And the prompt links directly to the Declare Independence action"
           ]
         },
         %{
-          statement: "A lord's death forces nothing: no oath auto-breaks and no vassal gains any mechanical buff. Each vassal independently CHOOSES whether to declare independence — those who prefer the arrangement, or fear the war, may stay vassals of the fallen lord's realm.",
+          statement:
+            "A lord's death forces nothing: no oath auto-breaks and no vassal gains any mechanical buff. Each vassal independently CHOOSES whether to declare independence — those who prefer the arrangement, or fear the war, may stay vassals of the fallen lord's realm.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The death breaks no oath on its own",
-              body: "Given a lord with two vassals is killed in combat
+              body:
+                "Given a lord with two vassals is killed in combat
 When the death is processed on the turn tick
 Then neither vassal's Vassalage is severed automatically
 And neither vassal gains any combat or economic buff from the death
@@ -4328,12 +5138,14 @@ And on the next turn one vassal declares independence while the other chooses to
           ]
         },
         %{
-          statement: "A vassal who seizes the moment declares independence through the normal story-915 path — cities rise on the fallen lord's Honor and tribute record, and a strain-sized temporary rebellion army spawns. The death is only the opening; the liberation mechanics are unchanged.",
+          statement:
+            "A vassal who seizes the moment declares independence through the normal story-915 path — cities rise on the fallen lord's Honor and tribute record, and a strain-sized temporary rebellion army spawns. The death is only the opening; the liberation mechanics are unchanged.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Seizing the moment liberates through the normal path",
-              body: "Given a vassal whose lord has just fallen, whose Oath Strain is high, and whose fallen lord had low Honor
+              body:
+                "Given a vassal whose lord has just fallen, whose Oath Strain is high, and whose fallen lord had low Honor
 When the vassal chooses Declare Independence from the seize-the-moment prompt
 Then their occupied cities rise according to the fallen lord's Honor and tribute record
 And a temporary rebellion army sized by their Oath Strain spawns to fight the war
@@ -4342,12 +5154,14 @@ And the outcome matches what a story-915 declaration would have produced against
           ]
         },
         %{
-          statement: "A realm whose Lord unit has fallen has no lord present to answer a Protection Pact or retaliate, so a rising vassal faces no lordly counterattack unless and until the lordship is re-established. Breaking away from a leaderless realm is simply easier — by absence, not by any bonus.",
+          statement:
+            "A realm whose Lord unit has fallen has no lord present to answer a Protection Pact or retaliate, so a rising vassal faces no lordly counterattack unless and until the lordship is re-established. Breaking away from a leaderless realm is simply easier — by absence, not by any bonus.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A leaderless realm cannot answer or retaliate",
-              body: "Given a vassal declares independence after the lord's Lord unit has fallen and has not been replaced
+              body:
+                "Given a vassal declares independence after the lord's Lord unit has fallen and has not been replaced
 When the rebellion resolves over the following turns
 Then no Protection Pact response is raised on the vassal's behalf and no lordly counterattack marches on the risen cities
 And the ease of breaking away comes purely from the lord's absence, with no buff applied to the vassal"
@@ -4355,12 +5169,14 @@ And the ease of breaking away comes purely from the lord's absence, with no buff
           ]
         },
         %{
-          statement: "When the war touched off by a lord's death ends — the last active rebellion against the leaderless realm resolves (story 919) — an heir respawns at the realm's capital and lordship is re-established.",
+          statement:
+            "When the war touched off by a lord's death ends — the last active rebellion against the leaderless realm resolves (story 919) — an heir respawns at the realm's capital and lordship is re-established.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The heir returns to the capital when the war is over",
-              body: "Given Lord Mira's Lord unit was killed and her vassal Wes rose in rebellion, leaving the realm leaderless
+              body:
+                "Given Lord Mira's Lord unit was killed and her vassal Wes rose in rebellion, leaving the realm leaderless
 When Wes's rebellion reaches an ended status and no other rebellion against Mira's realm remains active
 Then an heir Lord unit respawns at Mira's realm capital
 And lordship over the realm is re-established under the heir"
@@ -4368,12 +5184,14 @@ And lordship over the realm is re-established under the heir"
           ]
         },
         %{
-          statement: "The respawned heir resumes lordship over every vassal who did NOT win independence during the leaderless window; vassals who secured their freedom stay free. The dynasty endures, minus whoever slipped away — a lord's death is a succession crisis, not a permanent erasure.",
+          statement:
+            "The respawned heir resumes lordship over every vassal who did NOT win independence during the leaderless window; vassals who secured their freedom stay free. The dynasty endures, minus whoever slipped away — a lord's death is a succession crisis, not a permanent erasure.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The heir keeps the vassals who never broke away",
-              body: "Given during the leaderless window Wes won independence while fellow vassals Ada and Bo never rebelled
+              body:
+                "Given during the leaderless window Wes won independence while fellow vassals Ada and Bo never rebelled
 When the heir respawns after the war ends
 Then Ada and Bo are again vassals under the heir
 And Wes remains free, so the dynasty continues having lost only Wes"
@@ -4381,12 +5199,14 @@ And Wes remains free, so the dynasty continues having lost only Wes"
           ]
         },
         %{
-          statement: "If a lord's Lord unit dies with no rebellion raised against the realm at all, the heir respawns after a short fixed delay rather than waiting on a war that never came.",
+          statement:
+            "If a lord's Lord unit dies with no rebellion raised against the realm at all, the heir respawns after a short fixed delay rather than waiting on a war that never came.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A quiet death still brings an heir, after a short delay",
-              body: "Given Lord Mira's Lord unit is killed but not a single vassal raises a rebellion
+              body:
+                "Given Lord Mira's Lord unit is killed but not a single vassal raises a rebellion
 When the short fixed delay passes
 Then the heir respawns at the capital with the realm fully intact
 And lordship resumes without ever having waited on a war"
@@ -4395,7 +5215,12 @@ And lordship resumes without ever having waited on a war"
         }
       ],
       questions: [
-        %{body: "What happens to the lordship itself when the Lord unit is killed — does the realm dissolve, does lordship pass to an heir/another unit, or does it linger leaderless until re-established? The \"no lord to defend or retaliate\" rule assumes it stays vacant until re-established; confirm there is no auto-succession.", status: :open, resolution: nil}
+        %{
+          body:
+            "What happens to the lordship itself when the Lord unit is killed — does the realm dissolve, does lordship pass to an heir/another unit, or does it linger leaderless until re-established? The \"no lord to defend or retaliate\" rule assumes it stays vacant until re-established; confirm there is no auto-succession.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4421,18 +5246,28 @@ Locked design (first-class Rebellion lifecycle: declared -> active -> ended):
 Three Amigos: the \"hold for N turns\" threshold, how peace is offered/accepted (+ reparations), the crushed re-vassalization target, and the on-end ordering of disband/settle/heir.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "A rebellion is a tracked entity with one end-state transition", verified: false},
+      %{
+        description: "A rebellion is a tracked entity with one end-state transition",
+        verified: false
+      },
       %{description: "Holding the freed cities wins independence", verified: false},
       %{description: "The lord retakes the cities and crushes the rebellion", verified: false},
-      %{description: "A negotiated peace grants independence without fighting to the end", verified: false},
-      %{description: "Ending the war disbands the army and settles the map, once", verified: false}
+      %{
+        description: "A negotiated peace grants independence without fighting to the end",
+        verified: false
+      },
+      %{
+        description: "Ending the war disbands the army and settles the map, once",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A Rebellion is a persisted first-class entity with a status of active, independence_won, crushed, or peace. It is created active by a declaration of independence (story 915) and transitions exactly once to one of the three ended statuses.",
+          statement:
+            "A Rebellion is a persisted first-class entity with a status of active, independence_won, crushed, or peace. It is created active by a declaration of independence (story 915) and transitions exactly once to one of the three ended statuses.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4445,7 +5280,8 @@ And it never flips back to active on a later turn"
           ]
         },
         %{
-          statement: "A rebellion ends in INDEPENDENCE WON when the rebel holds all of their risen cities for N consecutive turns with no city re-occupied by the lord. The severed oath becomes permanent and the rebel is free.",
+          statement:
+            "A rebellion ends in INDEPENDENCE WON when the rebel holds all of their risen cities for N consecutive turns with no city re-occupied by the lord. The severed oath becomes permanent and the rebel is free.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4458,12 +5294,14 @@ And the severed oath becomes permanent and Wes is free"
           ]
         },
         %{
-          statement: "A rebellion ends CRUSHED when the former lord retakes and holds the contested cities by normal siege (906), or the rebel is knocked out of the fight. The normal siege/vassalization rules apply to the losing rebel — including being re-vassalized on the loss of their last city.",
+          statement:
+            "A rebellion ends CRUSHED when the former lord retakes and holds the contested cities by normal siege (906), or the rebel is knocked out of the fight. The normal siege/vassalization rules apply to the losing rebel — including being re-vassalized on the loss of their last city.",
           scenarios: [
             %{
               kind: "failure path",
               title: "The lord retakes the cities and crushes the rebellion",
-              body: "Given Wes's rebellion is active but Lord Mira besieges and retakes and holds the contested cities
+              body:
+                "Given Wes's rebellion is active but Lord Mira besieges and retakes and holds the contested cities
 When Wes loses his last city in the fight
 Then the rebellion ends with status crushed
 And the normal siege and vassalization rules apply to Wes, re-vassalizing him on the loss of his last city"
@@ -4471,12 +5309,14 @@ And the normal siege and vassalization rules apply to Wes, re-vassalizing him on
           ]
         },
         %{
-          statement: "NEGOTIATED PEACE is a mutually-agreed end that BOTH sides must accept, and it resolves to one of the two clean outcomes only: the rebel is RESTORED as a vassal, or GRANTED full independence. Nobody loses cities in a peace — optional gold reparations (winner to loser) may sweeten the deal. If the sides cannot agree, the war simply continues to a military decision. (A partial outcome — holding some cities without full vassalization — is a separate, deferred mechanic.)",
+          statement:
+            "NEGOTIATED PEACE is a mutually-agreed end that BOTH sides must accept, and it resolves to one of the two clean outcomes only: the rebel is RESTORED as a vassal, or GRANTED full independence. Nobody loses cities in a peace — optional gold reparations (winner to loser) may sweeten the deal. If the sides cannot agree, the war simply continues to a military decision. (A partial outcome — holding some cities without full vassalization — is a separate, deferred mechanic.)",
           scenarios: [
             %{
               kind: "happy path",
               title: "A negotiated peace grants independence without fighting to the end",
-              body: "Given Wes's rebellion has stalemated, with Wes holding some of his cities and Mira still holding others
+              body:
+                "Given Wes's rebellion has stalemated, with Wes holding some of his cities and Mira still holding others
 When Mira offers Wes full independence in exchange for gold reparations, and Wes accepts
 Then the rebellion ends with status peace, Wes is fully independent, and all of his cities are his again
 And Wes pays the agreed reparations to Mira
@@ -4485,12 +5325,14 @@ And had Wes refused the terms, the war would simply have continued"
           ]
         },
         %{
-          statement: "The moment a rebellion reaches any ended status, exactly once: the temporary rebellion army disbands, the contested cities settle to their final owners, the war state clears, and dependent effects fire — including the heir respawn for a leaderless realm (story 917).",
+          statement:
+            "The moment a rebellion reaches any ended status, exactly once: the temporary rebellion army disbands, the contested cities settle to their final owners, the war state clears, and dependent effects fire — including the heir respawn for a leaderless realm (story 917).",
           scenarios: [
             %{
               kind: "happy path",
               title: "Ending the war disbands the army and settles the map, once",
-              body: "Given Wes's rebellion reaches an ended status with a temporary army of six warriors still fielded
+              body:
+                "Given Wes's rebellion reaches an ended status with a temporary army of six warriors still fielded
 When the end is processed
 Then the temporary rebellion army disbands, the contested cities settle to their final owners, and the war state clears
 And any heir respawn fires
@@ -4500,8 +5342,18 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
         }
       ],
       questions: [
-        %{body: "Numbers/rules to pin in build: the \"hold for N consecutive turns\" independence threshold (what N, and what counts as \"holding\" a risen city); how a peace offer is expressed and what terms are negotiable beyond \"keep what you hold\"; the crushed re-vassalization path (does the rebel swear to the original lord/heir, or to whoever took the last city?); and the exact ordering of disband → settle → clear → heir on end.", status: :resolved, resolution: nil},
-        %{body: "SETTLED: peace is binary — the rebel ends either restored as a vassal or fully independent; both sides must accept; nobody loses cities; optional gold reparations (winner to loser). Partial/tributary subjugation (holding some cities without full vassalization) is a separate DEFERRED mechanic, not this batch. STILL OPEN for build: the \"hold for N turns\" independence threshold (N, and what counts as holding); the crushed re-vassalization target (beaten rebel swears to the heir, the original lord, or whoever took the last city?); and the exact on-end ordering of disband -> settle -> clear -> heir.", status: :open, resolution: nil}
+        %{
+          body:
+            "Numbers/rules to pin in build: the \"hold for N consecutive turns\" independence threshold (what N, and what counts as \"holding\" a risen city); how a peace offer is expressed and what terms are negotiable beyond \"keep what you hold\"; the crushed re-vassalization path (does the rebel swear to the original lord/heir, or to whoever took the last city?); and the exact ordering of disband → settle → clear → heir on end.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "SETTLED: peace is binary — the rebel ends either restored as a vassal or fully independent; both sides must accept; nobody loses cities; optional gold reparations (winner to loser). Partial/tributary subjugation (holding some cities without full vassalization) is a separate DEFERRED mechanic, not this batch. STILL OPEN for build: the \"hold for N turns\" independence threshold (N, and what counts as holding); the crushed re-vassalization target (beaten rebel swears to the heir, the original lord, or whoever took the last city?); and the exact on-end ordering of disband -> settle -> clear -> heir.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4513,17 +5365,30 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
     description:
       "As a player, I want to put a unit into a fortified stance that grants a defensive combat bonus until it acts, so that holding ground is a meaningful tactical choice — the defensive counterpart to the archer's ranged Shoot action. Fortify is a first-class Units.Actions capability (the :defend catalog slot already reserved for it), with its teeth as a defensive modifier in Combat.Resolver (sitting beside the lord's adjacency aura), a persistent `fortified` stance field on the unit that clears when it acts, a Game.fortify command, and a UnitPanel button gated on :defend in the unit's actions — the same shape the archer Shoot action shipped in.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
+      rules: [],
       questions: [
-        %{body: "Bonus shape/size: is the fortify defensive bonus a flat additive to strength (like the lord's +2 adjacency aura) or proportional (e.g. +50% of base strength)? Recommended: +50% of base strength, applied on defense only, folded into effective_strength/2 before the wounded penalty (same ordering as the aura).", status: :resolved, resolution: nil},
-        %{body: "Timing: does fortify apply immediately when chosen, or take one turn to \"dig in\" (Civ-style, bonus lands next turn)? Recommended: immediately — a \"defend now\" stance is more legible for new players.", status: :resolved, resolution: nil},
-        %{body: "Clear condition: what drops the fortified stance — moving only, or moving OR attacking (including a ranged shot)? Recommended: moving or attacking — a unit that strikes out is no longer hunkered down. (Being attacked while fortified keeps the stance.)", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Bonus shape/size: is the fortify defensive bonus a flat additive to strength (like the lord's +2 adjacency aura) or proportional (e.g. +50% of base strength)? Recommended: +50% of base strength, applied on defense only, folded into effective_strength/2 before the wounded penalty (same ordering as the aura).",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Timing: does fortify apply immediately when chosen, or take one turn to \"dig in\" (Civ-style, bonus lands next turn)? Recommended: immediately — a \"defend now\" stance is more legible for new players.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Clear condition: what drops the fortified stance — moving only, or moving OR attacking (including a ranged shot)? Recommended: moving or attacking — a unit that strikes out is no longer hunkered down. (Being attacked while fortified keeps the stance.)",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4535,18 +5400,36 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
     description:
       "As a player, once I have researched Sailing, I want to build a Galley in a coastal city and sail it on the water, so that I can explore coastlines, reach island regions, and fight at sea. The Galley is the exemplar of the unit-tracking convention: the UNIT is its own story that OWNS its tech gate (buildable in a coastal city iff Sailing is complete) and its terrain domain (moves on water, never land) — so the research and the unit it unlocks ship together and neither can half-ship. This closes the gap where Sailing was researchable but its Galley never existed.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
+      rules: [],
       questions: [
-        %{body: "Embark vs water-only: does the Galley carry land units (embark/disembark), or is it a water-only unit for V1? Recommended: water-only for V1 — it moves, explores, and fights on water; transporting land units is a separate later story.", status: :resolved, resolution: nil},
-        %{body: "Water domain: which water tiles can a Galley traverse — coastal water only, or deep ocean too? Recommended: coastal water for V1 (matches Sailing's \"coastal exploration\"); deep-ocean sailing waits for a later tech.", status: :resolved, resolution: nil},
-        %{body: "Coastal city + spawn tile: what makes a city able to build a Galley (a city with at least one adjacent coastal-water tile?), and where does a finished Galley spawn (the nearest adjacent water tile)? Recommended: buildable in any city with an adjacent coastal-water tile; spawn on the lowest-id adjacent coastal-water tile.", status: :resolved, resolution: nil},
-        %{body: "Naval combat scope for V1: what can a Galley fight — other players' galleys (PvP, feudal-gated like land PvP), coastal barbarians (none exist yet), bombard coastal cities? Recommended V1: galley-vs-galley melee through the existing Combat.Resolver (same rules as land PvP); no naval barbarians and no city bombardment yet.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Embark vs water-only: does the Galley carry land units (embark/disembark), or is it a water-only unit for V1? Recommended: water-only for V1 — it moves, explores, and fights on water; transporting land units is a separate later story.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Water domain: which water tiles can a Galley traverse — coastal water only, or deep ocean too? Recommended: coastal water for V1 (matches Sailing's \"coastal exploration\"); deep-ocean sailing waits for a later tech.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Coastal city + spawn tile: what makes a city able to build a Galley (a city with at least one adjacent coastal-water tile?), and where does a finished Galley spawn (the nearest adjacent water tile)? Recommended: buildable in any city with an adjacent coastal-water tile; spawn on the lowest-id adjacent coastal-water tile.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Naval combat scope for V1: what can a Galley fight — other players' galleys (PvP, feudal-gated like land PvP), coastal barbarians (none exist yet), bombard coastal cities? Recommended V1: galley-vs-galley melee through the existing Combat.Resolver (same rules as land PvP); no naval barbarians and no city bombardment yet.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4558,15 +5441,12 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
     description:
       "As the game world, I want every player unit to cost gold upkeep each turn so that armies have a real economic cost and the gold economy has a sink (it is currently income-only and inflates). Per-type upkeep is owned by a new BrokenOaths.Units.Maintenance component (the same catalog pattern as Units.Actions): Lord/Settler/Worker/Warrior = 0 (leader, civilians, and the free starter, per Civ 6), Archer/Bronze Spearman/Galley = 1 (Ancient-era military ≈ 1 gold, per Civ 6). At the turn boundary, net income = city gold income − total unit upkeep − total building upkeep; when a player's treasury hits 0 and upkeep still outruns income, the game disbands their newest/cheapest military unit each turn (Civ-faithful) with a notification, until solvent. Numbers are tunable; the DISBAND-WHEN-BROKE consequence is confirmed.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
-      questions: [
-      ],
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -4577,15 +5457,12 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
     description:
       "As the game world, I want each city building to cost gold upkeep each turn, and I want buildings tracked with a clear story convention like units have. Establishes the BUILDING CONVENTION (companion to the unit/unlock convention): a building is its own story that owns its production cost, its effect, its tech gate, AND its gold maintenance — declared in one place (a BrokenOaths.Cities.Buildings catalog), never as scattered flags. Guardrail: a building may not ship without declaring its maintenance. Exemplar/retrofit: the Granary (currently a bare has_granary boolean, Pottery-gated) becomes the first catalog entry with upkeep 1 gold/turn. Building upkeep feeds the same net-income + disband-when-broke turn settlement as unit maintenance (story 922).",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
-      questions: [
-      ],
+      rules: [],
+      questions: [],
       note: nil
     }
   },
@@ -4596,16 +5473,24 @@ And all of these effects happen exactly once, not repeatedly on later ticks"
     description:
       "As a player, I want unit movement to recharge on a SLOWER cadence than the economy so the game stops feeling frantic (\"the turns are crack\"), while cities/resources/build queue keep their pace. Today a single turn tick (turn_seconds, default 60s) recharges unit movement AND advances everything else every minute. Split them into two tunable cadences: the economy/turn tick stays (resources, build queue, income, maintenance, combat resolution timing), and unit movement recharge fires on its own slower cadence — default 2 minutes vs the economy's 1 minute. Extracted as a per-world tunable (a balance lever), the same way turn_seconds already is. Recommended model: keep the single turn tick as the economy cadence and gate the movement-recharge phase to run every Nth turn via a tunable world field (default 2 = recharge every 2 minutes) — one timer, one tunable, functionally the \"two ticks\". Behavior-preserving when the field is 1 (recharge every turn, as today).",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
+      rules: [],
       questions: [
-        %{body: "Model: one timer with a tunable \"recharge every N turns\" multiplier (recommended — N=2 gives 2-min recharge on a 60s economy tick; N=1 is today's behavior), OR two fully-independent timers/second-values (recharge_seconds + turn_seconds, allows non-multiple cadences like 90s vs 60s but needs a second timer in WorldServer)? Recommended: the multiplier for V1; independent timers a later follow-up if a non-multiple cadence is ever wanted.", status: :resolved, resolution: nil},
-        %{body: "Split boundary: \"unit recharge\" = the movement-point reset only (Turn.Movement.reset_movement), and \"everything else\" (runs every economy tick) = resources/food, build queue/production, gold income + maintenance, research/science, barbarian AI + camp spawns, weather, combat resolution timing. Confirm barbarian movement/AI stays on the fast economy tick (only PLAYER-and-barbarian movement RECHARGE slows), or should barbarian actions also slow with the recharge cadence? Recommended: only the movement-point recharge slows; every other phase (including barbarian AI) stays on the economy tick.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Model: one timer with a tunable \"recharge every N turns\" multiplier (recommended — N=2 gives 2-min recharge on a 60s economy tick; N=1 is today's behavior), OR two fully-independent timers/second-values (recharge_seconds + turn_seconds, allows non-multiple cadences like 90s vs 60s but needs a second timer in WorldServer)? Recommended: the multiplier for V1; independent timers a later follow-up if a non-multiple cadence is ever wanted.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Split boundary: \"unit recharge\" = the movement-point reset only (Turn.Movement.reset_movement), and \"everything else\" (runs every economy tick) = resources/food, build queue/production, gold income + maintenance, research/science, barbarian AI + camp spawns, weather, combat resolution timing. Confirm barbarian movement/AI stays on the fast economy tick (only PLAYER-and-barbarian movement RECHARGE slows), or should barbarian actions also slow with the recharge cadence? Recommended: only the movement-point recharge slows; every other phase (including barbarian AI) stays on the economy tick.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4625,15 +5510,18 @@ Two model options to decide:
 
 Either way this is a movement-model change (weighted pathfinding + a road-aware cost), not a small tweak. Deferred build pending the model decision; numbers to be Civ-grounded.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
+      rules: [],
       questions: [
-        %{body: "Movement model: (A) Civ-faithful — add terrain movement costs (forest/hills/marsh cost more) and roads negate them to 1, so units route along roads through difficult terrain; or (B) simpler — a flat road discount (road-to-road moves cost less or grant a bonus step) for immediate \"roads = fast travel\". Both require replacing the plain BFS with a weighted shortest-path (Dijkstra) that knows per-tile cost. Recommendation: start with B for an immediate, legible benefit, and grow into A when terrain movement costs land as their own story. Which model?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "Movement model: (A) Civ-faithful — add terrain movement costs (forest/hills/marsh cost more) and roads negate them to 1, so units route along roads through difficult terrain; or (B) simpler — a flat road discount (road-to-road moves cost less or grant a bonus step) for immediate \"roads = fast travel\". Both require replacing the plain BFS with a weighted shortest-path (Dijkstra) that knows per-tile cost. Recommendation: start with B for an immediate, legible benefit, and grow into A when terrain movement costs land as their own story. Which model?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4667,28 +5555,59 @@ OPEN QUESTION for PM: offline-detection mechanism for offline-only grants — Pr
       %{description: "Granting control to an accepted ally succeeds", verified: false},
       %{description: "Granting control to a non-ally is rejected", verified: false},
       %{description: "No order feed exists for a delegate's orders", verified: false},
-      %{description: "Full-control ally cannot start a war I could not start myself", verified: false},
+      %{
+        description: "Full-control ally cannot start a war I could not start myself",
+        verified: false
+      },
       %{description: "Defensive-only ally repels an attacker on my city", verified: false},
-      %{description: "Defensive-only delegate cannot move my units outside my territory", verified: false},
+      %{
+        description: "Defensive-only delegate cannot move my units outside my territory",
+        verified: false
+      },
       %{description: "Revoked ally's next order is refused", verified: false},
-      %{description: "Defensive-only delegate strikes a raider that just entered my borders", verified: false},
-      %{description: "Offline-only Full grant: delegate acts while I am disconnected", verified: false},
-      %{description: "Offline-only Full grant: delegate blocked while I am online", verified: false},
-      %{description: "Always-on Full grant: delegate acts even while I am online", verified: false},
+      %{
+        description: "Defensive-only delegate strikes a raider that just entered my borders",
+        verified: false
+      },
+      %{
+        description: "Offline-only Full grant: delegate acts while I am disconnected",
+        verified: false
+      },
+      %{
+        description: "Offline-only Full grant: delegate blocked while I am online",
+        verified: false
+      },
+      %{
+        description: "Always-on Full grant: delegate acts even while I am online",
+        verified: false
+      },
       %{description: "Full-control delegate cannot disband my unit", verified: false},
       %{description: "My grant to an ally does not grant me control of theirs", verified: false},
       %{description: "Lord-vassal bond qualifies for a control grant", verified: false},
-      %{description: "Lord commands an offline vassal's units under offline-only Full control", verified: false},
-      %{description: "Vassal's grant to lord is independent of lord's grant to vassal", verified: false},
-      %{description: "Granting steward production applies to every city at once", verified: false},
-      %{description: "Without the grant, a steward cannot set production in any city", verified: false}
+      %{
+        description: "Lord commands an offline vassal's units under offline-only Full control",
+        verified: false
+      },
+      %{
+        description: "Vassal's grant to lord is independent of lord's grant to vassal",
+        verified: false
+      },
+      %{
+        description: "Granting steward production applies to every city at once",
+        verified: false
+      },
+      %{
+        description: "Without the grant, a steward cannot set production in any city",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Delegated control offers exactly three levels — None (the default), Defensive-only, and Full.",
+          statement:
+            "Delegated control offers exactly three levels — None (the default), Defensive-only, and Full.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4710,7 +5629,8 @@ And no fourth level is selectable"
           ]
         },
         %{
-          statement: "A control level may be granted only within an established relationship — an accepted alliance or a lord-vassal bond; a stranger can never be granted control.",
+          statement:
+            "A control level may be granted only within an established relationship — an accepted alliance or a lord-vassal bond; a stranger can never be granted control.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4722,7 +5642,8 @@ Then the grant is saved and Mara may issue orders per the Full level"
             %{
               kind: "failure path",
               title: "Granting control to a non-ally is rejected",
-              body: "Given I have merely discovered a player but have no accepted alliance with them
+              body:
+                "Given I have merely discovered a player but have no accepted alliance with them
 When I attempt to grant them Defensive-only control
 Then the grant is rejected because they are not an accepted ally"
             },
@@ -4736,7 +5657,8 @@ Then the grant is saved because the lord-vassal bond is an established relations
           ]
         },
         %{
-          statement: "Delegation is trust-based — orders a delegate issues to my units are not logged, there is no order feed, and I cannot undo them.",
+          statement:
+            "Delegation is trust-based — orders a delegate issues to my units are not logged, there is no order feed, and I cannot undo them.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4751,12 +5673,14 @@ And the game relies on my having granted control only to a trusted ally"
           ]
         },
         %{
-          statement: "A delegate may act only within the combat rights I myself hold — delegation never bypasses the no-PvP-in-Stone-Age rule.",
+          statement:
+            "A delegate may act only within the combat rights I myself hold — delegation never bypasses the no-PvP-in-Stone-Age rule.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Full-control ally cannot start a war I could not start myself",
-              body: "Given Mara holds Full control of my units
+              body:
+                "Given Mara holds Full control of my units
 And I have no active war or combat exception against player Z
 When Mara orders my unit to attack player Z's unit
 Then the attack is rejected with the same not-hostile refusal I would receive if I issued it myself"
@@ -4764,7 +5688,8 @@ Then the attack is rejected with the same not-hostile refusal I would receive if
           ]
         },
         %{
-          statement: "Under Defensive-only, a delegate may attack any hostile unit inside my borders and may fortify or garrison my units, but may never move my units outside my territory.",
+          statement:
+            "Under Defensive-only, a delegate may attack any hostile unit inside my borders and may fortify or garrison my units, but may never move my units outside my territory.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4805,7 +5730,8 @@ Then the order is rejected immediately because her level is now None"
           ]
         },
         %{
-          statement: "Under Full control, each grant is configured as either offline-only (the delegate may act only while I am disconnected) or always-on.",
+          statement:
+            "Under Full control, each grant is configured as either offline-only (the delegate may act only while I am disconnected) or always-on.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4842,7 +5768,8 @@ Then her orders are allowed because I am offline and my lord holds Full control"
           ]
         },
         %{
-          statement: "A delegate may never disband my units under any control level — delegated control permits only move, attack, and fortify.",
+          statement:
+            "A delegate may never disband my units under any control level — delegated control permits only move, attack, and fortify.",
           scenarios: [
             %{
               kind: "failure path",
@@ -4854,12 +5781,14 @@ Then the order is rejected because disband is never a delegated action, whatever
           ]
         },
         %{
-          statement: "Each control grant is per-relationship and one-directional — my grant over my own units is independent of the grant the other player sets over theirs, and is configured separately for each ally and each lord-vassal direction.",
+          statement:
+            "Each control grant is per-relationship and one-directional — my grant over my own units is independent of the grant the other player sets over theirs, and is configured separately for each ally and each lord-vassal direction.",
           scenarios: [
             %{
               kind: "happy path",
               title: "My grant to an ally does not grant me control of theirs",
-              body: "Given I grant Mara Full control of my units
+              body:
+                "Given I grant Mara Full control of my units
 And Mara has not granted me any control of her units
 When I attempt to move one of Mara's units
 Then my order is rejected because the grant is one-directional and she set my level to None over her units"
@@ -4867,7 +5796,8 @@ Then my order is rejected because the grant is one-directional and she set my le
             %{
               kind: "happy path",
               title: "Vassal's grant to lord is independent of lord's grant to vassal",
-              body: "Given I am a vassal who granted my lord Full control of my units
+              body:
+                "Given I am a vassal who granted my lord Full control of my units
 And my lord has separately granted me only Defensive-only control of her units
 When each of us issues orders to the other's units
 Then my lord may command my units at Full level while I may only defend with hers, because each direction is configured independently"
@@ -4875,7 +5805,8 @@ Then my lord may command my units at Full level while I may only defend with her
           ]
         },
         %{
-          statement: "The permission that lets a steward/ally set my cities' PRODUCTION is a single empire-wide toggle (all my cities at once), not a per-city setting — granting it applies to every city I own; the delegate cannot be allowed on some cities but not others.",
+          statement:
+            "The permission that lets a steward/ally set my cities' PRODUCTION is a single empire-wide toggle (all my cities at once), not a per-city setting — granting it applies to every city I own; the delegate cannot be allowed on some cities but not others.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4898,16 +5829,66 @@ And there is no per-city override that would let them do it in some of my cities
         }
       ],
       questions: [
-        %{body: "Defensive-only: is it TERRITORY-BOUND? Decide whether a Defensive-only ally may command my units only while those units stand on (or move within) my own territory, or anywhere on the map so long as the action is defensive. Options: (A) strictly inside my borders; (B) my borders plus adjacent tiles (matches the existing Stewardship emergency-defend rule, which only allows a move to a strictly-adjacent tile); (C) anywhere, as long as the target is actively attacking me or my ally. No clean Civ 6 analog — Civ has no offline territory-scoped delegated defense; the nearest reference is our own Stewardship (story 910), whose emergency `defend` is capped at a single adjacent-tile move. Recommend (B) for consistency with Stewardship unless the PM wants a broader mobile defense.", status: :resolved, resolution: nil},
-        %{body: "Defensive-only: what ACTIONS does it permit beyond striking an active attacker? Three sub-decisions: (1) Counter-attack only (unit may strike a hostile that is currently attacking me/my ally) vs. may strike ANY hostile unit that has entered my land even before it attacks. (2) May the ally reposition/move my units defensively (pull a unit back to a threatened city) or only fight in place? (3) May the ally fortify/garrison my units? Civ 6 analog is thin — fortify is a standard defensive posture, so allowing fortify/garrison but forbidding offensive movement is the natural line. Codebase anchor: Stewardship's `defend` today allows only a single adjacent defensive move while the owner is `under_attack?`; it does NOT allow standalone fortify. Recommend: allow reactive strike + defensive repositioning + fortify/garrison; forbid moving a unit onto a tile to initiate combat with a non-attacker.", status: :resolved, resolution: nil},
-        %{body: "Full control: is it OFFLINE-GATED or always-on delegation? Decide whether a Full-control ally may command my units only while I am offline (so my civ isn't defenceless while I sleep — the story's stated intent) or at all times once granted. And if offline-gated: how is \"offline\" defined? Our Presence module (`Players.Presence`) is an ephemeral live-connection registry with NO last_seen / heartbeat timestamp — `online?` is simply \"holds a LiveView connection right now.\" That means a player who briefly drops connection would flip to offline instantly. Sub-decisions: (A) offline-gated vs always-on; (B) if offline-gated, do we add a grace period / last_seen timestamp so a 30-second disconnect doesn't hand control to an ally mid-battle; (C) what happens if I come back online mid-turn while my ally is issuing orders — does control cut immediately? Codebase anchor: existing Stewardship is strictly offline-gated (`fetch_context` returns `{:error, :owner_online}`). No Civ analog (Civ has no offline concept); this is the core persistent-MMO-specific mechanic. Recommend offline-gated to match Stewardship, but flag that a last_seen grace window is likely needed.", status: :resolved, resolution: nil},
-        %{body: "Attribution & safety — UNDO, CAP, and PENALTY. Three safety levers to decide: (1) UNDO — when I come back online, can I reverse orders an ally issued on my behalf? Movement generally can't be un-moved (a unit that walked into an ambush is dead), so \"undo\" may realistically mean only \"cancel still-queued orders\" rather than rewind resolved ones — confirm the PM's expectation. (2) CAP — is there a limit on how many of my units an ally may move (per turn, or total), to bound griefing? Options: no cap / N units per turn / a fraction of my army. (3) PENALTY — should abusing delegated control (e.g. marching my army off a cliff) carry an Honor/sabotage penalty for the ally, mirroring Stewardship's existing `sabotage: true` StewardLog flag and Honor hit (`sabotage_honor_penalty`)? No Civ analog (Civ co-op players can't grief each other's units). Recommend: reuse the StewardLog + sabotage-penalty machinery; cap at a per-turn unit count; \"undo\" = cancel unresolved queued orders only.", status: :resolved, resolution: nil},
-        %{body: "Interaction with existing PvP-exception paths — may delegation EVER let an ally exceed my own combat rights? Rule already says delegation can't bypass no-PvP-in-Stone-Age (all cross-player combat funnels through `Resolver.pvp_target_allowed?/3`, which only permits Protection-Pact besieger strikes and active Rebellion war). Two edge decisions: (1) If I have an active Protection Pact call (a besieger I'm entitled to strike) or an active Rebellion war, may my Full-control ally use MY units to prosecute that fight on my behalf while I'm offline? This is the closest thing to a Civ 6 \"joint war\" analog — but here it's an ally fighting THROUGH my units, not alongside their own. (2) Conversely, should a Full-control ally be able to commit my units to help defend THEM (e.g. strike a unit besieging my ally's city)? That would be a NEW PvP exception that I could not invoke for myself unless the target were also attacking me. Decide whether delegated defense of an ally opens combat rights I don't personally hold, or stays strictly bounded by my own `pvp_target_allowed?` result. Recommend: strictly bounded to my own combat rights in v1 (no new exceptions); revisit joint-war-through-my-units later.", status: :resolved, resolution: nil},
-        %{body: "Setting shape: PER-ALLY or GLOBAL, and SYMMETRIC or ONE-DIRECTIONAL? (1) Do I set one control level per individual ally (I trust Mara with Full but Wes with None), or one global level applied to all allies? The story leans per-ally; recommend per-ally. (2) Is the grant one-directional (I grant Mara control of MY units; that says nothing about her granting me control of hers) or symmetric/mutual (accepting an alliance-config sets the same level both ways)? Note the substrate mismatch: our Alliance record is SYMMETRIC (one canonical row per pair, `player_a/player_b`), whereas delegated control is inherently DIRECTIONAL (it's about whose units are being commanded). So even if the alliance is symmetric, the control grant almost certainly needs its own directional record. Civ 6 team/hotseat control is symmetric-by-team; but that's a lobby setting, not a per-relationship in-game grant. Recommend: per-ally AND one-directional, each side configures their own units independently.", status: :resolved, resolution: nil},
-        %{body: "Revocation: what happens to orders ALREADY QUEUED when I revoke? Rule says revocation is immediate for any NEW order. But orders in our engine can be queued (`persist_order!` / `bfs_path` multi-tile moves resolve over turns via `Turn.move_now`). Decide: when I lower or revoke an ally's control, do orders they already queued but that haven't fully resolved (a) get cancelled immediately, (b) finish their current step then stop, or (c) play out to completion? This matters most for a multi-turn march the ally started — revoking mid-march could strand my army. No Civ analog. Recommend: cancel unresolved queued orders on revocation (safest against a departing ally who queued a bad move), but confirm — the PM may prefer \"finish current step\" to avoid stranding units on a hostile tile.", status: :resolved, resolution: nil},
-        %{body: "Can a controlling ally DISBAND my units, or only move/attack/fortify? The existing Stewardship path structurally FORBIDS disband (`:steward_disband_unit` returns `{:error, :not_constructive}`) — deleting someone's units is treated as destructive/sabotage-shaped. Decide whether Full control keeps that prohibition or opens a narrow exception. The one arguable case: an offline owner is hemorrhaging gold to unit maintenance and heading for bankruptcy (Mara's ledger concern), and a Full-control ally disbanding a unit could save the treasury. But disband is irreversible and a prime griefing vector. No Civ analog. Recommend: NO disband under any delegated level in v1, matching Stewardship; if maintenance-relief is desired, handle it through the economy path (already partly covered by Stewardship's bank/production powers) rather than unit deletion.", status: :resolved, resolution: nil},
-        %{body: "Scope vs. existing Stewardship (story 910): is 926 the UNIT-COMMAND widening of Stewardship, or a parallel system? Stewardship already lets an offline owner's lord / fellow-vassal / accepted-ally act for them, but is deliberately default-closed on units (only emergency adjacent defensive moves; ordinary move and attack are hard `{:error, :not_allowed}`; bank sweep and constructive production are allowed). Two scoping decisions: (1) Should 926 be implemented by widening Stewardship's eligibility/permission lattice (add per-ally control level that unlocks `:steward_queue_move` / `:steward_attack`) rather than a separate subsystem? Recommend yes — reuse `steward_role`, `StewardLog`, presence gating, and the public `Unit.persist_order!` / `Turn.move_now` seams already built for acting-on-behalf. (2) Does Full delegated control ALSO cover economy (bank collection, production) as Stewardship does, or is 926 strictly units and the economy powers remain governed by Stewardship's own rules? Decide whether \"Full control\" means full military only, or full civ. Recommend: 926 governs the military/unit surface; keep economy delegation under Stewardship's existing constructive-only rules unless the PM wants a single unified \"Full = full civ\" grant.", status: :resolved, resolution: nil},
-        %{body: "OPEN (PM to decide) — Offline detection for offline-only Full grants. The offline-only mode is decided, but HOW do we detect that the owner is offline? Our Presence module (`Players.Presence`) is an ephemeral Registry keyed on a live LiveView connection — `online?` is literally \"holds a socket right now,\" with NO last_seen / heartbeat timestamp. Consequences to resolve: (1) A brief network blip flips the owner to offline instantly, which would hand control to the delegate mid-session and yank it back seconds later — do we add a last_seen timestamp + a grace window (e.g. offline only after N minutes with no connection)? (2) If the owner reconnects while the delegate is mid-order, does control cut immediately at the next order, or is there a settling period? (3) Do we surface \"you are acting because X is offline\" to the delegate so they know their window is live? Existing Stewardship already gates on this same `online?/2` and inherits the same blip problem, so the answer likely applies to both. Recommend adding a `last_seen` timestamp with a grace window; needs PM sign-off on the exact threshold.", status: :open, resolution: nil}
+        %{
+          body:
+            "Defensive-only: is it TERRITORY-BOUND? Decide whether a Defensive-only ally may command my units only while those units stand on (or move within) my own territory, or anywhere on the map so long as the action is defensive. Options: (A) strictly inside my borders; (B) my borders plus adjacent tiles (matches the existing Stewardship emergency-defend rule, which only allows a move to a strictly-adjacent tile); (C) anywhere, as long as the target is actively attacking me or my ally. No clean Civ 6 analog — Civ has no offline territory-scoped delegated defense; the nearest reference is our own Stewardship (story 910), whose emergency `defend` is capped at a single adjacent-tile move. Recommend (B) for consistency with Stewardship unless the PM wants a broader mobile defense.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Defensive-only: what ACTIONS does it permit beyond striking an active attacker? Three sub-decisions: (1) Counter-attack only (unit may strike a hostile that is currently attacking me/my ally) vs. may strike ANY hostile unit that has entered my land even before it attacks. (2) May the ally reposition/move my units defensively (pull a unit back to a threatened city) or only fight in place? (3) May the ally fortify/garrison my units? Civ 6 analog is thin — fortify is a standard defensive posture, so allowing fortify/garrison but forbidding offensive movement is the natural line. Codebase anchor: Stewardship's `defend` today allows only a single adjacent defensive move while the owner is `under_attack?`; it does NOT allow standalone fortify. Recommend: allow reactive strike + defensive repositioning + fortify/garrison; forbid moving a unit onto a tile to initiate combat with a non-attacker.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Full control: is it OFFLINE-GATED or always-on delegation? Decide whether a Full-control ally may command my units only while I am offline (so my civ isn't defenceless while I sleep — the story's stated intent) or at all times once granted. And if offline-gated: how is \"offline\" defined? Our Presence module (`Players.Presence`) is an ephemeral live-connection registry with NO last_seen / heartbeat timestamp — `online?` is simply \"holds a LiveView connection right now.\" That means a player who briefly drops connection would flip to offline instantly. Sub-decisions: (A) offline-gated vs always-on; (B) if offline-gated, do we add a grace period / last_seen timestamp so a 30-second disconnect doesn't hand control to an ally mid-battle; (C) what happens if I come back online mid-turn while my ally is issuing orders — does control cut immediately? Codebase anchor: existing Stewardship is strictly offline-gated (`fetch_context` returns `{:error, :owner_online}`). No Civ analog (Civ has no offline concept); this is the core persistent-MMO-specific mechanic. Recommend offline-gated to match Stewardship, but flag that a last_seen grace window is likely needed.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Attribution & safety — UNDO, CAP, and PENALTY. Three safety levers to decide: (1) UNDO — when I come back online, can I reverse orders an ally issued on my behalf? Movement generally can't be un-moved (a unit that walked into an ambush is dead), so \"undo\" may realistically mean only \"cancel still-queued orders\" rather than rewind resolved ones — confirm the PM's expectation. (2) CAP — is there a limit on how many of my units an ally may move (per turn, or total), to bound griefing? Options: no cap / N units per turn / a fraction of my army. (3) PENALTY — should abusing delegated control (e.g. marching my army off a cliff) carry an Honor/sabotage penalty for the ally, mirroring Stewardship's existing `sabotage: true` StewardLog flag and Honor hit (`sabotage_honor_penalty`)? No Civ analog (Civ co-op players can't grief each other's units). Recommend: reuse the StewardLog + sabotage-penalty machinery; cap at a per-turn unit count; \"undo\" = cancel unresolved queued orders only.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Interaction with existing PvP-exception paths — may delegation EVER let an ally exceed my own combat rights? Rule already says delegation can't bypass no-PvP-in-Stone-Age (all cross-player combat funnels through `Resolver.pvp_target_allowed?/3`, which only permits Protection-Pact besieger strikes and active Rebellion war). Two edge decisions: (1) If I have an active Protection Pact call (a besieger I'm entitled to strike) or an active Rebellion war, may my Full-control ally use MY units to prosecute that fight on my behalf while I'm offline? This is the closest thing to a Civ 6 \"joint war\" analog — but here it's an ally fighting THROUGH my units, not alongside their own. (2) Conversely, should a Full-control ally be able to commit my units to help defend THEM (e.g. strike a unit besieging my ally's city)? That would be a NEW PvP exception that I could not invoke for myself unless the target were also attacking me. Decide whether delegated defense of an ally opens combat rights I don't personally hold, or stays strictly bounded by my own `pvp_target_allowed?` result. Recommend: strictly bounded to my own combat rights in v1 (no new exceptions); revisit joint-war-through-my-units later.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Setting shape: PER-ALLY or GLOBAL, and SYMMETRIC or ONE-DIRECTIONAL? (1) Do I set one control level per individual ally (I trust Mara with Full but Wes with None), or one global level applied to all allies? The story leans per-ally; recommend per-ally. (2) Is the grant one-directional (I grant Mara control of MY units; that says nothing about her granting me control of hers) or symmetric/mutual (accepting an alliance-config sets the same level both ways)? Note the substrate mismatch: our Alliance record is SYMMETRIC (one canonical row per pair, `player_a/player_b`), whereas delegated control is inherently DIRECTIONAL (it's about whose units are being commanded). So even if the alliance is symmetric, the control grant almost certainly needs its own directional record. Civ 6 team/hotseat control is symmetric-by-team; but that's a lobby setting, not a per-relationship in-game grant. Recommend: per-ally AND one-directional, each side configures their own units independently.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Revocation: what happens to orders ALREADY QUEUED when I revoke? Rule says revocation is immediate for any NEW order. But orders in our engine can be queued (`persist_order!` / `bfs_path` multi-tile moves resolve over turns via `Turn.move_now`). Decide: when I lower or revoke an ally's control, do orders they already queued but that haven't fully resolved (a) get cancelled immediately, (b) finish their current step then stop, or (c) play out to completion? This matters most for a multi-turn march the ally started — revoking mid-march could strand my army. No Civ analog. Recommend: cancel unresolved queued orders on revocation (safest against a departing ally who queued a bad move), but confirm — the PM may prefer \"finish current step\" to avoid stranding units on a hostile tile.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Can a controlling ally DISBAND my units, or only move/attack/fortify? The existing Stewardship path structurally FORBIDS disband (`:steward_disband_unit` returns `{:error, :not_constructive}`) — deleting someone's units is treated as destructive/sabotage-shaped. Decide whether Full control keeps that prohibition or opens a narrow exception. The one arguable case: an offline owner is hemorrhaging gold to unit maintenance and heading for bankruptcy (Mara's ledger concern), and a Full-control ally disbanding a unit could save the treasury. But disband is irreversible and a prime griefing vector. No Civ analog. Recommend: NO disband under any delegated level in v1, matching Stewardship; if maintenance-relief is desired, handle it through the economy path (already partly covered by Stewardship's bank/production powers) rather than unit deletion.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "Scope vs. existing Stewardship (story 910): is 926 the UNIT-COMMAND widening of Stewardship, or a parallel system? Stewardship already lets an offline owner's lord / fellow-vassal / accepted-ally act for them, but is deliberately default-closed on units (only emergency adjacent defensive moves; ordinary move and attack are hard `{:error, :not_allowed}`; bank sweep and constructive production are allowed). Two scoping decisions: (1) Should 926 be implemented by widening Stewardship's eligibility/permission lattice (add per-ally control level that unlocks `:steward_queue_move` / `:steward_attack`) rather than a separate subsystem? Recommend yes — reuse `steward_role`, `StewardLog`, presence gating, and the public `Unit.persist_order!` / `Turn.move_now` seams already built for acting-on-behalf. (2) Does Full delegated control ALSO cover economy (bank collection, production) as Stewardship does, or is 926 strictly units and the economy powers remain governed by Stewardship's own rules? Decide whether \"Full control\" means full military only, or full civ. Recommend: 926 governs the military/unit surface; keep economy delegation under Stewardship's existing constructive-only rules unless the PM wants a single unified \"Full = full civ\" grant.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "OPEN (PM to decide) — Offline detection for offline-only Full grants. The offline-only mode is decided, but HOW do we detect that the owner is offline? Our Presence module (`Players.Presence`) is an ephemeral Registry keyed on a live LiveView connection — `online?` is literally \"holds a socket right now,\" with NO last_seen / heartbeat timestamp. Consequences to resolve: (1) A brief network blip flips the owner to offline instantly, which would hand control to the delegate mid-session and yank it back seconds later — do we add a last_seen timestamp + a grace window (e.g. offline only after N minutes with no connection)? (2) If the owner reconnects while the delegate is mid-order, does control cut immediately at the next order, or is there a settling period? (3) Do we surface \"you are acting because X is offline\" to the delegate so they know their window is live? Existing Stewardship already gates on this same `online?/2` and inherits the same blip problem, so the answer likely applies to both. Recommend adding a `last_seen` timestamp with a grace window; needs PM sign-off on the exact threshold.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -4922,20 +5903,36 @@ And there is no per-city override that would let them do it in some of my cities
 Civ 6 grounding: removing a Woods/Rainforest feature via a Builder yields a one-time production lump to the city that owns/works the tile; the yield scales over the game; chopping consumes a Builder charge and removes the feature (Rainforest chop historically also leaves the tile and can affect appeal). Tech gating in Civ 6: chopping Woods needs Mining; Rainforest needs Bronze Working. Update the Worker story/rules and the unit-and-unlock + charges conventions. Open design (Three Amigos): exact production yield + whether it scales, which city receives it (nearest owned? must be within borders?), tech gate, whether it costs a worker charge like Farm/Mine, and interaction with the road/terrain-cost model (removing woods lowers movement cost).",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "Worker chops a woods tile and a nearby city gains a production lump", verified: false},
-      %{description: "Chop lump advances the city's active build immediately, once", verified: false},
-      %{description: "Chop is offered once the feature-removal tech is researched", verified: false},
+      %{
+        description: "Worker chops a woods tile and a nearby city gains a production lump",
+        verified: false
+      },
+      %{
+        description: "Chop lump advances the city's active build immediately, once",
+        verified: false
+      },
+      %{
+        description: "Chop is offered once the feature-removal tech is researched",
+        verified: false
+      },
       %{description: "Chop is blocked before the required tech is researched", verified: false},
       %{description: "Chop only appears on woods/rainforest tiles", verified: false},
       %{description: "No chop on a featureless tile", verified: false},
-      %{description: "Chopping woods drops the tile's movement cost and removes the woods yield modifier", verified: false},
+      %{
+        description:
+          "Chopping woods drops the tile's movement cost and removes the woods yield modifier",
+        verified: false
+      },
       %{description: "Cleared tile becomes eligible for a Farm", verified: false},
       %{description: "Feature on unowned land cannot be chopped", verified: false},
       %{description: "Chop allowed on a feature inside the player's borders", verified: false},
       %{description: "A chop spends one worker charge", verified: false},
       %{description: "A worker with no charges left cannot chop", verified: false},
       %{description: "A later-game chop yields a larger lump than an early one", verified: false},
-      %{description: "Chopping a tile the city is working reassigns its citizens next turn", verified: false},
+      %{
+        description: "Chopping a tile the city is working reassigns its citizens next turn",
+        verified: false
+      },
       %{description: "Cannot chop a tile an enemy unit holds", verified: false}
     ],
     qa: %{final: :untested, attempts: 0, history: []},
@@ -4943,7 +5940,8 @@ Civ 6 grounding: removing a Woods/Rainforest feature via a Builder yields a one-
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Chopping a Woods or Rainforest feature removes the feature from the tile and grants a one-time production lump to the city that owns the tile.",
+          statement:
+            "Chopping a Woods or Rainforest feature removes the feature from the tile and grants a one-time production lump to the city that owns the tile.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4957,12 +5955,14 @@ And a one-time production lump is credited to the city that owns the tile"
           ]
         },
         %{
-          statement: "The chop lump is added to the receiving city's production immediately, advancing and possibly completing its active build; any surplus beyond the current build carries into the next queued item. It is a one-time lump, never a recurring per-turn yield.",
+          statement:
+            "The chop lump is added to the receiving city's production immediately, advancing and possibly completing its active build; any surplus beyond the current build carries into the next queued item. It is a one-time lump, never a recurring per-turn yield.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Chop lump advances the city's active build immediately, once",
-              body: "Given a receiving city part-way through building a Warrior that costs 40 production
+              body:
+                "Given a receiving city part-way through building a Warrior that costs 40 production
 When a chop credits a one-time lump larger than the Warrior's remaining cost
 Then the Warrior completes this turn
 And the surplus production carries into the city's next queued build
@@ -4971,7 +5971,8 @@ And no further production is credited from the chop on later turns"
           ]
         },
         %{
-          statement: "A worker can only chop a feature once its unlocking tech is researched: Mining unlocks chopping Woods, Bronze Working unlocks chopping Rainforest.",
+          statement:
+            "A worker can only chop a feature once its unlocking tech is researched: Mining unlocks chopping Woods, Bronze Working unlocks chopping Rainforest.",
           scenarios: [
             %{
               kind: "happy path",
@@ -4992,7 +5993,8 @@ Then no chop action is available on that tile"
           ]
         },
         %{
-          statement: "The chop action is only valid on a tile that actually carries a Woods or Rainforest feature; tiles without those features offer no chop.",
+          statement:
+            "The chop action is only valid on a tile that actually carries a Woods or Rainforest feature; tiles without those features offer no chop.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5011,11 +6013,13 @@ Then no chop action is available"
           ]
         },
         %{
-          statement: "After a chop the tile's worked yields and its movement cost are recomputed from the now-featureless terrain.",
+          statement:
+            "After a chop the tile's worked yields and its movement cost are recomputed from the now-featureless terrain.",
           scenarios: [
             %{
               kind: "happy path",
-              title: "Chopping woods drops the tile's movement cost and removes the woods yield modifier",
+              title:
+                "Chopping woods drops the tile's movement cost and removes the woods yield modifier",
               body: "Given a worked grassland+Woods tile yielding 2F 1P with movement cost 2
 When the worker chops the woods
 Then the tile reverts to bare grassland yielding 2F 0P
@@ -5034,7 +6038,8 @@ And the city's citizens are reassigned on the next turn boundary
           ]
         },
         %{
-          statement: "A chop clears the feature only; it places no improvement, but the cleared tile becomes eligible for a Farm or other improvement.",
+          statement:
+            "A chop clears the feature only; it places no improvement, but the cleared tile becomes eligible for a Farm or other improvement.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5047,12 +6052,14 @@ And a Farm can now be built on the cleared grassland tile"
           ]
         },
         %{
-          statement: "A tile can only be chopped if the player controls it: it must lie within the player's own borders and not be held by an enemy unit; features on unowned, neutral, or enemy-occupied tiles cannot be chopped. (Enemy-occupancy clause auto-defaulted from Civ 6; PM to confirm.)",
+          statement:
+            "A tile can only be chopped if the player controls it: it must lie within the player's own borders and not be held by an enemy unit; features on unowned, neutral, or enemy-occupied tiles cannot be chopped. (Enemy-occupancy clause auto-defaulted from Civ 6; PM to confirm.)",
           scenarios: [
             %{
               kind: "failure path",
               title: "Feature on unowned land cannot be chopped",
-              body: "Given a worker standing on a Woods tile that lies outside every city's borders
+              body:
+                "Given a worker standing on a Woods tile that lies outside every city's borders
 And the player has researched Mining
 When the player inspects the worker's actions
 Then no chop action is available, because the tile is not within the player's borders"
@@ -5060,7 +6067,8 @@ Then no chop action is available, because the tile is not within the player's bo
             %{
               kind: "happy path",
               title: "Chop allowed on a feature inside the player's borders",
-              body: "Given a worker on a Rainforest tile that lies within the borders of an owned city
+              body:
+                "Given a worker on a Rainforest tile that lies within the borders of an owned city
 And the player has researched Bronze Working
 When the player inspects the worker's actions
 Then a chop action is available on that tile"
@@ -5075,7 +6083,8 @@ Then the chop is not allowed, because the player does not control the tile"
           ]
         },
         %{
-          statement: "Chopping consumes one worker charge, the same as building a Farm or Mine; unlike a Road it is not charge-exempt.",
+          statement:
+            "Chopping consumes one worker charge, the same as building a Farm or Mine; unlike a Road it is not charge-exempt.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5095,7 +6104,8 @@ Then no chop action is available"
           ]
         },
         %{
-          statement: "The chop lump scales with the number of technologies researched: a Woods chop = 20 + 8 per tech (~20 at game start, ~52 at the full 4-tech Stone Age tree, about 2.5x); a Rainforest chop is worth ~75% of the Woods value. (Exact numbers auto-defaulted from Civ 6 proportions; PM to confirm.)",
+          statement:
+            "The chop lump scales with the number of technologies researched: a Woods chop = 20 + 8 per tech (~20 at game start, ~52 at the full 4-tech Stone Age tree, about 2.5x); a Rainforest chop is worth ~75% of the Woods value. (Exact numbers auto-defaulted from Civ 6 proportions; PM to confirm.)",
           scenarios: [
             %{
               kind: "happy path",
@@ -5109,13 +6119,48 @@ And a Rainforest chop at the same progress is worth about 75% of the Woods value
         }
       ],
       questions: [
-        %{body: "CHOP YIELD AMOUNT + SCALING. What is the one-time production lump, and does it scale over the game? Civ 6 baseline: the chop yield scales with game progress (number of techs + civics researched / era), starting ~20 production early and climbing past 100 late; Rainforest chops yield less than Woods. Our economy is far smaller and compressed: Stone Age builds cost Warrior 40 / Monument 60 / Worker 60 / Settler 100, and a worked woods tile makes only ~1P/turn (stone_age_yields.md), so a single 20 lump is already ~5-15 turns of production. We also have no era progression inside the Stone Age yet to scale against. Options: (A) flat lump, recommend ~15-20 P for Woods and less for Rainforest; (B) scale by techs-researched like Civ, but our tree is only 4 techs so the ramp is shallow; (C) flat now, reserve a scaling hook for later ages. Recommend A (flat, Woods > Rainforest) for the MVP with scaling deferred. Also decide: does overflow past the current build carry into the next item (Civ carries chop overflow), or is it capped at finishing the current build?", status: :resolved, resolution: nil},
-        %{body: "WHICH CITY RECEIVES THE LUMP + BORDER REQUIREMENT. The story says \"nearest city.\" Civ 6 baseline: a Builder can only remove a feature on a tile INSIDE your own borders, and the yield credits the city that owns that tile — there is no \"nearest city\" concept and you cannot chop neutral/unowned land at all. Decisions: (1) Must the chopped tile be within our borders (Civ-authentic), or can a worker chop any reachable tile and route the lump to the nearest owned city? (2) If we keep \"nearest owned city,\" how is nearest measured (hex ring distance to city center) and is there a max range? (3) What happens if there is NO owned city in range / the tile is outside all borders — is the chop disallowed (Civ), or allowed but the production is wasted? Recommend mirroring Civ: require the tile be in our borders and credit the owning city; treat \"nearest\" as shorthand for \"the owning city.\" Confirm.", status: :resolved, resolution: nil},
-        %{body: "TECH GATE — WHICH TECHS, OR UNGATED? Civ 6 baseline: chopping Woods requires Mining; chopping Rainforest requires Bronze Working (Marsh needs Masonry, but we have no marsh chop in scope). Both Mining and Bronze Working already ship in our Stone Age tree (civ6_tech_tree.md), so mirroring Civ costs us no new tech. Per unit_and_unlock_convention.md, a capability like this should own its tech-gate as an acceptance criterion rather than shipping ungated. Options: (A) mirror Civ exactly — Woods→Mining, Rainforest→Bronze Working; (B) single gate for both (e.g., Mining unlocks all chopping) for simplicity; (C) ungated. Recommend A since both gates already exist and it ties chopping into the tech tree cleanly. Confirm the mapping.", status: :resolved, resolution: nil},
-        %{body: "DOES A CHOP COST A WORKER CHARGE? Civ 6 baseline: chopping consumes a full Builder charge, exactly like building an improvement. In our model, Farm and Mine each consume a worker charge while Road is charge-exempt (per the story description / charges convention). Options: (A) chop costs one charge like Farm/Mine (Civ-authentic — a worker gets a finite number of chops); (B) chop is charge-exempt like Road (workers can chop indefinitely). Recommend A: a chop is a one-time terrain-altering action that yields a strong production lump, so it should cost a charge and compete with Farm/Mine for the worker's limited charges — otherwise Rushdown-Rhea-style infinite chopping trivializes production. Confirm.", status: :resolved, resolution: nil},
-        %{body: "MOVEMENT-COST DROP ON FEATURE REMOVAL — CONFIRM INTENDED. The new terrain/road movement-cost model (RoadModel work in flight) charges 2 movement to enter a Woods/Rainforest tile and 1 for open terrain, matching Civ 6 (Woods/Rainforest cost 2, cleared tiles cost 1). So chopping a feature drops that tile's entry cost from 2 to 1. Confirm this is intended (it is Civ-authentic and a real secondary reason to chop — clearing a path). Secondary: if a road is later built on the cleared tile, does the road's movement bonus stack on the now-1 cost, and should we coordinate the exact numbers with the RoadModel story so the two features agree?", status: :resolved, resolution: nil},
-        %{body: "CHOPPING AN IMPROVED OR CURRENTLY-WORKED TILE. Civ 6 baseline: features and most improvements cannot coexist (you chop the feature first, THEN improve — the Lumber Mill on Woods is the lone exception, which we do not have), and you CAN chop a tile a city is currently working; its citizens simply reassign afterward. In our model, Farm/Mine already require a featureless tile (stone_age_yields.md), so a woods tile can't also carry a Farm/Mine — meaning \"chop an improved tile\" may be structurally impossible today. Decisions: (1) Confirm features and improvements are mutually exclusive so this case can't arise (recommend yes). (2) Can a worker chop a tile a city is actively working right now — recommend yes, allowed, with the city's citizen auto-assign re-picking a tile on the next turn boundary. (3) Any restriction on chopping a tile that a unit (friendly/enemy) currently occupies?", status: :resolved, resolution: nil},
-        %{body: "FOLLOW-UP to the resolved \"yield scales, Civ 6-style\" decision — the concrete scaling metric + overflow. Civ 6 scales a chop by the running count of techs AND civics researched, which is why a late chop is worth several times an early one. Broken Oaths has NO civics and only 4 Stone Age techs, so a literal port barely scales (a 4-step ramp). Spec-writer needs two concrete calls: (1) What progress metric drives the scale in our game — techs researched (0-4 in the Stone Age), a future era index, total turns elapsed, or a hook that stays shallow now and steepens when later ages ship? Recommend scaling on a game-progress/era index (not raw tech count) with a documented early endpoint (~15-20 P for Woods, less for Rainforest, per our compressed economy where builds cost 40-100 P) and a defined late endpoint, so the curve is legible to Rushdown-Rhea-style planners. (2) Overflow: when the lump exceeds the city's remaining cost on its current build, does the surplus carry into the next queue item (Civ 6 carries chop overflow) or is it capped at completing the current build? Recommend carry-over for consistency with normal production overflow. This is the last open number blocking an implementation-ready spec.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "CHOP YIELD AMOUNT + SCALING. What is the one-time production lump, and does it scale over the game? Civ 6 baseline: the chop yield scales with game progress (number of techs + civics researched / era), starting ~20 production early and climbing past 100 late; Rainforest chops yield less than Woods. Our economy is far smaller and compressed: Stone Age builds cost Warrior 40 / Monument 60 / Worker 60 / Settler 100, and a worked woods tile makes only ~1P/turn (stone_age_yields.md), so a single 20 lump is already ~5-15 turns of production. We also have no era progression inside the Stone Age yet to scale against. Options: (A) flat lump, recommend ~15-20 P for Woods and less for Rainforest; (B) scale by techs-researched like Civ, but our tree is only 4 techs so the ramp is shallow; (C) flat now, reserve a scaling hook for later ages. Recommend A (flat, Woods > Rainforest) for the MVP with scaling deferred. Also decide: does overflow past the current build carry into the next item (Civ carries chop overflow), or is it capped at finishing the current build?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "WHICH CITY RECEIVES THE LUMP + BORDER REQUIREMENT. The story says \"nearest city.\" Civ 6 baseline: a Builder can only remove a feature on a tile INSIDE your own borders, and the yield credits the city that owns that tile — there is no \"nearest city\" concept and you cannot chop neutral/unowned land at all. Decisions: (1) Must the chopped tile be within our borders (Civ-authentic), or can a worker chop any reachable tile and route the lump to the nearest owned city? (2) If we keep \"nearest owned city,\" how is nearest measured (hex ring distance to city center) and is there a max range? (3) What happens if there is NO owned city in range / the tile is outside all borders — is the chop disallowed (Civ), or allowed but the production is wasted? Recommend mirroring Civ: require the tile be in our borders and credit the owning city; treat \"nearest\" as shorthand for \"the owning city.\" Confirm.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "TECH GATE — WHICH TECHS, OR UNGATED? Civ 6 baseline: chopping Woods requires Mining; chopping Rainforest requires Bronze Working (Marsh needs Masonry, but we have no marsh chop in scope). Both Mining and Bronze Working already ship in our Stone Age tree (civ6_tech_tree.md), so mirroring Civ costs us no new tech. Per unit_and_unlock_convention.md, a capability like this should own its tech-gate as an acceptance criterion rather than shipping ungated. Options: (A) mirror Civ exactly — Woods→Mining, Rainforest→Bronze Working; (B) single gate for both (e.g., Mining unlocks all chopping) for simplicity; (C) ungated. Recommend A since both gates already exist and it ties chopping into the tech tree cleanly. Confirm the mapping.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "DOES A CHOP COST A WORKER CHARGE? Civ 6 baseline: chopping consumes a full Builder charge, exactly like building an improvement. In our model, Farm and Mine each consume a worker charge while Road is charge-exempt (per the story description / charges convention). Options: (A) chop costs one charge like Farm/Mine (Civ-authentic — a worker gets a finite number of chops); (B) chop is charge-exempt like Road (workers can chop indefinitely). Recommend A: a chop is a one-time terrain-altering action that yields a strong production lump, so it should cost a charge and compete with Farm/Mine for the worker's limited charges — otherwise Rushdown-Rhea-style infinite chopping trivializes production. Confirm.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "MOVEMENT-COST DROP ON FEATURE REMOVAL — CONFIRM INTENDED. The new terrain/road movement-cost model (RoadModel work in flight) charges 2 movement to enter a Woods/Rainforest tile and 1 for open terrain, matching Civ 6 (Woods/Rainforest cost 2, cleared tiles cost 1). So chopping a feature drops that tile's entry cost from 2 to 1. Confirm this is intended (it is Civ-authentic and a real secondary reason to chop — clearing a path). Secondary: if a road is later built on the cleared tile, does the road's movement bonus stack on the now-1 cost, and should we coordinate the exact numbers with the RoadModel story so the two features agree?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "CHOPPING AN IMPROVED OR CURRENTLY-WORKED TILE. Civ 6 baseline: features and most improvements cannot coexist (you chop the feature first, THEN improve — the Lumber Mill on Woods is the lone exception, which we do not have), and you CAN chop a tile a city is currently working; its citizens simply reassign afterward. In our model, Farm/Mine already require a featureless tile (stone_age_yields.md), so a woods tile can't also carry a Farm/Mine — meaning \"chop an improved tile\" may be structurally impossible today. Decisions: (1) Confirm features and improvements are mutually exclusive so this case can't arise (recommend yes). (2) Can a worker chop a tile a city is actively working right now — recommend yes, allowed, with the city's citizen auto-assign re-picking a tile on the next turn boundary. (3) Any restriction on chopping a tile that a unit (friendly/enemy) currently occupies?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "FOLLOW-UP to the resolved \"yield scales, Civ 6-style\" decision — the concrete scaling metric + overflow. Civ 6 scales a chop by the running count of techs AND civics researched, which is why a late chop is worth several times an early one. Broken Oaths has NO civics and only 4 Stone Age techs, so a literal port barely scales (a 4-step ramp). Spec-writer needs two concrete calls: (1) What progress metric drives the scale in our game — techs researched (0-4 in the Stone Age), a future era index, total turns elapsed, or a hook that stays shallow now and steepens when later ages ship? Recommend scaling on a game-progress/era index (not raw tech count) with a documented early endpoint (~15-20 P for Woods, less for Rainforest, per our compressed economy where builds cost 40-100 P) and a defined late endpoint, so the curve is legible to Rushdown-Rhea-style planners. (2) Overflow: when the lump exceeds the city's remaining cost on its current build, does the surplus carry into the next queue item (Civ 6 carries chop overflow) or is it capped at completing the current build? Recommend carry-over for consistency with normal production overflow. This is the last open number blocking an implementation-ready spec.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -5133,28 +6178,39 @@ Civ 6 grounding: \"Build Wealth\" is a permanent production project converting h
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
       %{description: "Idle production becomes gold instead of a build", verified: false},
-      %{description: "Produce Wealth appears as a selectable option in the city panel", verified: false},
+      %{
+        description: "Produce Wealth appears as a selectable option in the city panel",
+        verified: false
+      },
       %{description: "Switching to Produce Wealth stops the current build", verified: false},
       %{description: "Produce Wealth funds a maintenance deficit", verified: false},
       %{description: "Produce Wealth keeps paying and never completes", verified: false},
       %{description: "Pottery unlocks Produce Wealth", verified: false},
       %{description: "Produce Wealth is hidden before Pottery", verified: false},
       %{description: "A pillaged city cannot produce wealth", verified: false},
-      %{description: "Card shows gold-per-turn and deselects by picking another item", verified: false},
+      %{
+        description: "Card shows gold-per-turn and deselects by picking another item",
+        verified: false
+      },
       %{description: "Fractional gold carries over instead of being lost", verified: false},
-      %{description: "Paused build keeps its progress across a Produce Wealth stint", verified: false}
+      %{
+        description: "Paused build keeps its progress across a Produce Wealth stint",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A city set to Produce Wealth converts that city's production output into gold for the player's treasury at a 4:1 ratio (4 production yields 1 gold), instead of advancing any unit or building.",
+          statement:
+            "A city set to Produce Wealth converts that city's production output into gold for the player's treasury at a 4:1 ratio (4 production yields 1 gold), instead of advancing any unit or building.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Idle production becomes gold instead of a build",
-              body: "Given Wes has a city producing 8 production per turn with nothing worth building
+              body:
+                "Given Wes has a city producing 8 production per turn with nothing worth building
 And he has researched Pottery
 When he sets that city to Produce Wealth
 Then on the next economy tick his treasury increases by 2 gold (8 production at the 4:1 ratio)
@@ -5163,7 +6219,8 @@ And no unit or building advances in that city"
           ]
         },
         %{
-          statement: "Produce Wealth is offered in the city production panel, the same place the player chooses units and buildings to produce.",
+          statement:
+            "Produce Wealth is offered in the city production panel, the same place the player chooses units and buildings to produce.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5176,7 +6233,8 @@ And he can select it as the city's current production"
           ]
         },
         %{
-          statement: "A city produces wealth OR builds one item at a time, never both in the same turn.",
+          statement:
+            "A city produces wealth OR builds one item at a time, never both in the same turn.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5189,12 +6247,14 @@ And from the next turn its production is converted to gold instead"
           ]
         },
         %{
-          statement: "Gold from producing wealth is deposited into the player's treasury on each economy tick, stacking with normal income and spent down by existing gold-maintenance costs like any other income.",
+          statement:
+            "Gold from producing wealth is deposited into the player's treasury on each economy tick, stacking with normal income and spent down by existing gold-maintenance costs like any other income.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Produce Wealth funds a maintenance deficit",
-              body: "Given Mara's empire is running a net gold loss from unit and building maintenance
+              body:
+                "Given Mara's empire is running a net gold loss from unit and building maintenance
 When she sets two Pottery-unlocked cities to Produce Wealth
 Then on each economy tick the gold they generate stacks with her normal per-turn income
 And her net treasury change per tick improves by that combined gold amount"
@@ -5202,7 +6262,8 @@ And her net treasury change per tick improves by that combined gold amount"
           ]
         },
         %{
-          statement: "Produce Wealth is a repeatable, never-completing project: it stays selected and pays gold every economy tick until the player changes the city's production.",
+          statement:
+            "Produce Wealth is a repeatable, never-completing project: it stays selected and pays gold every economy tick until the player changes the city's production.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5216,7 +6277,8 @@ And it remains the city's selected production until the player chooses something
           ]
         },
         %{
-          statement: "Produce Wealth is gated behind the Pottery tech (our early granary/economy tech): a city cannot select it until Pottery is researched. Fallback: if the PM prefers, Build Wealth can instead be always-available from turn one. (auto-defaulted to Pottery gate pending Currency, PM to confirm)",
+          statement:
+            "Produce Wealth is gated behind the Pottery tech (our early granary/economy tech): a city cannot select it until Pottery is researched. Fallback: if the PM prefers, Build Wealth can instead be always-available from turn one. (auto-defaulted to Pottery gate pending Currency, PM to confirm)",
           scenarios: [
             %{
               kind: "happy path",
@@ -5235,7 +6297,8 @@ Then Produce Wealth is not offered as a selectable option"
           ]
         },
         %{
-          statement: "A pillaged or production-halted city cannot Produce Wealth; the production halt blocks selecting or running it.",
+          statement:
+            "A pillaged or production-halted city cannot Produce Wealth; the production halt blocks selecting or running it.",
           scenarios: [
             %{
               kind: "failure path",
@@ -5247,12 +6310,14 @@ Then the city produces no gold from Produce Wealth while the halt is in effect"
           ]
         },
         %{
-          statement: "Produce Wealth appears as a project card showing its estimated gold-per-turn, and the player deselects it by choosing another production item — there is no separate stop button. (auto-defaulted, PM to confirm)",
+          statement:
+            "Produce Wealth appears as a project card showing its estimated gold-per-turn, and the player deselects it by choosing another production item — there is no separate stop button. (auto-defaulted, PM to confirm)",
           scenarios: [
             %{
               kind: "happy path",
               title: "Card shows gold-per-turn and deselects by picking another item",
-              body: "Given a city's production panel shows the Produce Wealth card with its estimated gold-per-turn
+              body:
+                "Given a city's production panel shows the Produce Wealth card with its estimated gold-per-turn
 When the player selects a unit or building to produce instead
 Then Produce Wealth is deselected without needing a separate stop button
 And the city switches to producing the chosen item"
@@ -5260,12 +6325,14 @@ And the city switches to producing the chosen item"
           ]
         },
         %{
-          statement: "Fractional gold from the 4:1 conversion accumulates across economy ticks instead of truncating; a whole gold is paid out each time the accumulated remainder crosses 1, so no production is silently lost. (auto-defaulted, PM to confirm)",
+          statement:
+            "Fractional gold from the 4:1 conversion accumulates across economy ticks instead of truncating; a whole gold is paid out each time the accumulated remainder crosses 1, so no production is silently lost. (auto-defaulted, PM to confirm)",
           scenarios: [
             %{
               kind: "happy path",
               title: "Fractional gold carries over instead of being lost",
-              body: "Given a city producing 10 production per tick set to Produce Wealth (2.5 gold per tick at 4:1)
+              body:
+                "Given a city producing 10 production per tick set to Produce Wealth (2.5 gold per tick at 4:1)
 When two economy ticks pass
 Then the accumulated conversion is 5 gold and all 5 gold is paid out across those ticks
 And the fractional remainder is carried forward rather than truncated away"
@@ -5273,7 +6340,8 @@ And the fractional remainder is carried forward rather than truncated away"
           ]
         },
         %{
-          statement: "Switching a city to Produce Wealth preserves the paused item's stored production; switching back later does not forfeit that progress. (auto-defaulted, PM to confirm)",
+          statement:
+            "Switching a city to Produce Wealth preserves the paused item's stored production; switching back later does not forfeit that progress. (auto-defaulted, PM to confirm)",
           scenarios: [
             %{
               kind: "happy path",
@@ -5287,14 +6355,54 @@ And none of the earlier progress is forfeited"
         }
       ],
       questions: [
-        %{body: "RATIO: What is the production-to-gold conversion ratio? Civ 6 baseline: \"Build Wealth\" converts hammers to gold at roughly 4 production : 1 gold (the exact ratio is our open design lever). Do we adopt ~4:1, or tune it against the already-shipped gold-maintenance economy so Produce Wealth is a meaningful-but-not-dominant income source? State the intended ratio and whether it is flat across the game or changes by era/tech.", status: :resolved, resolution: nil},
-        %{body: "REPEATABLE PROJECT vs ONE-SHOT: Is Produce Wealth a permanent, repeatable project that never completes (paying gold every turn while selected), or a one-shot item the city finishes and then falls idle? Civ 6 baseline: it is a permanent, repeatable PROJECT that never completes and keeps paying gold each turn until the player changes production. Do we match that, or model it as a queue item?", status: :resolved, resolution: nil},
-        %{body: "AVAILABILITY / GATING: Is Produce Wealth always available in every city from turn one, or is it gated behind a tech, civic, or building? Civ 6 baseline: the Build-Wealth-style project is generally always available with no tech or building prerequisite. Do we keep it ungated (simplest, casual-friendly for Wes), or gate it to give it a progression beat?", status: :resolved, resolution: nil},
-        %{body: "ECONOMY-TICK TIMING & STACKING: Does the gold arrive on each economy tick, stacked with normal per-turn income and net against maintenance in the same treasury update? Civ 6 baseline: gold accrues each turn while the project is selected and is added to normal treasury income alongside maintenance deductions. Confirm it flows through the existing economy tick (not a separate payout), and how it is netted against maintenance in the per-turn treasury calc.", status: :resolved, resolution: nil},
-        %{body: "UI / DISPLAY & SELECT/DESELECT: How does Produce Wealth appear in the city production panel, and how does the player select and deselect it? Civ 6 baseline: it shows as a project card in the production list with a gold icon and a per-turn gold estimate, selected like any other production item and replaced by simply choosing something else. Do we show the estimated gold-per-turn on the card? Is there an explicit \"stop producing wealth\" affordance, or does picking another item deselect it?", status: :resolved, resolution: nil},
-        %{body: "PILLAGED / PRODUCTION-HALTED CITY: Can a pillaged or production-halted city still Produce Wealth, and what does it yield? Civ 6 baseline: gold scales with the city's currently available production, so a pillaged city with reduced output makes proportionally less gold, and a city with zero effective production yields little or none while the project stays selectable. Do we mirror that (gold tracks live production, project remains selected through the halt), or block Produce Wealth entirely while a city is pillaged/halted?", status: :resolved, resolution: nil},
-        %{body: "ROUNDING / FRACTIONAL GOLD (QA): With a non-1:1 ratio, how do we handle fractional conversion? E.g. at ~4:1 a city making 10 production yields 2.5 gold. Civ 6 baseline: production accumulates and gold is paid out with fractional carryover rather than truncating every tick. Do we round down per tick (losing fractions), or accumulate the remainder across ticks so no production is silently lost? This directly affects whether small/low-production cities feel cheated.", status: :resolved, resolution: nil},
-        %{body: "PARTIAL-BUILD PROGRESS ON SWITCH (Developer): When a city switches an in-progress build to Produce Wealth (and later switches back), is the accumulated production on the paused item preserved, or forfeited? Civ 6 baseline: Civ 6 banks partial production toward a build and does not permanently destroy queued progress when you swap to a project. Do we preserve the paused item's stored production, or reset it to zero when the player picks Produce Wealth?", status: :resolved, resolution: nil}
+        %{
+          body:
+            "RATIO: What is the production-to-gold conversion ratio? Civ 6 baseline: \"Build Wealth\" converts hammers to gold at roughly 4 production : 1 gold (the exact ratio is our open design lever). Do we adopt ~4:1, or tune it against the already-shipped gold-maintenance economy so Produce Wealth is a meaningful-but-not-dominant income source? State the intended ratio and whether it is flat across the game or changes by era/tech.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "REPEATABLE PROJECT vs ONE-SHOT: Is Produce Wealth a permanent, repeatable project that never completes (paying gold every turn while selected), or a one-shot item the city finishes and then falls idle? Civ 6 baseline: it is a permanent, repeatable PROJECT that never completes and keeps paying gold each turn until the player changes production. Do we match that, or model it as a queue item?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "AVAILABILITY / GATING: Is Produce Wealth always available in every city from turn one, or is it gated behind a tech, civic, or building? Civ 6 baseline: the Build-Wealth-style project is generally always available with no tech or building prerequisite. Do we keep it ungated (simplest, casual-friendly for Wes), or gate it to give it a progression beat?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "ECONOMY-TICK TIMING & STACKING: Does the gold arrive on each economy tick, stacked with normal per-turn income and net against maintenance in the same treasury update? Civ 6 baseline: gold accrues each turn while the project is selected and is added to normal treasury income alongside maintenance deductions. Confirm it flows through the existing economy tick (not a separate payout), and how it is netted against maintenance in the per-turn treasury calc.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "UI / DISPLAY & SELECT/DESELECT: How does Produce Wealth appear in the city production panel, and how does the player select and deselect it? Civ 6 baseline: it shows as a project card in the production list with a gold icon and a per-turn gold estimate, selected like any other production item and replaced by simply choosing something else. Do we show the estimated gold-per-turn on the card? Is there an explicit \"stop producing wealth\" affordance, or does picking another item deselect it?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "PILLAGED / PRODUCTION-HALTED CITY: Can a pillaged or production-halted city still Produce Wealth, and what does it yield? Civ 6 baseline: gold scales with the city's currently available production, so a pillaged city with reduced output makes proportionally less gold, and a city with zero effective production yields little or none while the project stays selectable. Do we mirror that (gold tracks live production, project remains selected through the halt), or block Produce Wealth entirely while a city is pillaged/halted?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "ROUNDING / FRACTIONAL GOLD (QA): With a non-1:1 ratio, how do we handle fractional conversion? E.g. at ~4:1 a city making 10 production yields 2.5 gold. Civ 6 baseline: production accumulates and gold is paid out with fractional carryover rather than truncating every tick. Do we round down per tick (losing fractions), or accumulate the remainder across ticks so no production is silently lost? This directly affects whether small/low-production cities feel cheated.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "PARTIAL-BUILD PROGRESS ON SWITCH (Developer): When a city switches an in-progress build to Produce Wealth (and later switches back), is the accumulated production on the paused item preserved, or forfeited? Civ 6 baseline: Civ 6 banks partial production toward a build and does not permanently destroy queued progress when you swap to a project. Do we preserve the paused item's stored production, or reset it to zero when the player picks Produce Wealth?",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -5318,19 +6426,24 @@ Depends on the road/terrain movement model (story 925) and the Improvement road 
       %{description: "Long road order consumes no worker charges", verified: false},
       %{description: "Road-to targets a tile inside the player's borders", verified: false},
       %{description: "Targeting a tile outside borders is rejected", verified: false},
-      %{description: "Worker builds only the gaps and finishes at a roaded destination", verified: false}
+      %{
+        description: "Worker builds only the gaps and finishes at a roaded destination",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A worker can be ordered to build a road to a destination tile with a single command, instead of placing each road segment by hand.",
+          statement:
+            "A worker can be ordered to build a road to a destination tile with a single command, instead of placing each road segment by hand.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Single command connects two cities with road",
-              body: "Given Wes has a worker near City A and wants a road to City B eight tiles away
+              body:
+                "Given Wes has a worker near City A and wants a road to City B eight tiles away
 When he issues a single \"build road to\" order targeting City B
 Then the worker begins building a road along the route toward City B
 And Wes does not have to place any individual road segments by hand"
@@ -5338,12 +6451,14 @@ And Wes does not have to place any individual road segments by hand"
           ]
         },
         %{
-          statement: "The road follows the cheapest route between the worker and the destination, computed with the same weighted-path model units use for movement.",
+          statement:
+            "The road follows the cheapest route between the worker and the destination, computed with the same weighted-path model units use for movement.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Route auto-paths along the cheapest weighted route",
-              body: "Given a destination reachable by either a short path through difficult terrain or open terrain
+              body:
+                "Given a destination reachable by either a short path through difficult terrain or open terrain
 When Wes orders the worker to build a road to that destination
 Then the chosen route is the cheapest one under the same weighted-path model units use
 And the route prefers open terrain and existing roads over higher-cost tiles"
@@ -5351,7 +6466,8 @@ And the route prefers open terrain and existing roads over higher-cost tiles"
             %{
               kind: "failure path",
               title: "Destination with no valid path is rejected",
-              body: "Given a destination the worker cannot reach (e.g. across water with no land route)
+              body:
+                "Given a destination the worker cannot reach (e.g. across water with no land route)
 When Wes orders the worker to build a road to that destination
 Then no route is computed and the order is rejected
 And Wes is told the destination is unreachable"
@@ -5359,7 +6475,8 @@ And Wes is told the destination is unreachable"
           ]
         },
         %{
-          statement: "A single worker walks the cheapest path and lays road on each tile in sequence as it arrives, each segment taking the normal road build time.",
+          statement:
+            "A single worker walks the cheapest path and lays road on each tile in sequence as it arrives, each segment taking the normal road build time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5372,7 +6489,8 @@ And each segment takes the normal road build time before the next begins"
           ]
         },
         %{
-          statement: "The player picks the destination by clicking the target tile, and a highlighted ghost-road path is shown along the route with a per-tile progress cue while it builds. (Auto-defaulted to Civ 6 baseline, PM to confirm.)",
+          statement:
+            "The player picks the destination by clicking the target tile, and a highlighted ghost-road path is shown along the route with a per-tile progress cue while it builds. (Auto-defaulted to Civ 6 baseline, PM to confirm.)",
           scenarios: [
             %{
               kind: "happy path",
@@ -5385,7 +6503,8 @@ And each tile shows a per-tile progress cue as the road is built"
           ]
         },
         %{
-          statement: "If the route is blocked or the worker is attacked mid-build, the entire order is cancelled and the player must re-issue it; there is no auto-reroute.",
+          statement:
+            "If the route is blocked or the worker is attacked mid-build, the entire order is cancelled and the player must re-issue it; there is no auto-reroute.",
           scenarios: [
             %{
               kind: "failure path",
@@ -5399,7 +6518,8 @@ And Wes must re-issue the order to continue"
           ]
         },
         %{
-          statement: "Laying the road segments costs no worker charge; the only cost of the order is build time.",
+          statement:
+            "Laying the road segments costs no worker charge; the only cost of the order is build time.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5412,7 +6532,8 @@ And only build time was spent laying the road"
           ]
         },
         %{
-          statement: "The destination must lie within the player's own territory; tiles outside the player's borders cannot be targeted.",
+          statement:
+            "The destination must lie within the player's own territory; tiles outside the player's borders cannot be targeted.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5432,7 +6553,8 @@ And Wes is told the destination must be inside his own borders"
           ]
         },
         %{
-          statement: "The worker skips tiles that already have a complete road and builds only the gaps; the order completes when every tile on the route, including the destination, is roaded. (Auto-defaulted to Civ 6 baseline, PM to confirm.)",
+          statement:
+            "The worker skips tiles that already have a complete road and builds only the gaps; the order completes when every tile on the route, including the destination, is roaded. (Auto-defaulted to Civ 6 baseline, PM to confirm.)",
           scenarios: [
             %{
               kind: "happy path",
@@ -5447,14 +6569,54 @@ And the order completes once every tile on the route, including the destination,
         }
       ],
       questions: [
-        %{body: "EXECUTION MODEL: Does the worker auto-move one tile at a time laying road as it goes, or does issuing the order pre-mark the whole cheapest route as queued road jobs the worker then services one by one? Civ 6 baseline: the Military Engineer builds roads as it MOVES along its path (move-and-build, one action at a time, autonomously per turn) rather than pre-queuing the entire route as standing jobs. Recommend mirroring move-and-build for feel, but pre-marking makes the pending route persistent and easier to render/resume. Which model?", status: :resolved, resolution: nil},
-        %{body: "COST PER SEGMENT: Does laying each road segment cost a worker charge, or is it purely time-based (the road build-duration per tile) with no charge consumed? Civ 6 baseline: Military Engineer road-building consumes CHARGES (limited uses), and Builders spend a charge per improvement. In OUR current model road is charge-EXEMPT and time-based. If a multi-tile road order stays charge-exempt, one worker could road the whole map for free (only time-gated); if it consumes a charge per tile, long roads exhaust workers fast. Keep charge-exempt (time only), charge per tile, or a flat one-charge for the whole order?", status: :resolved, resolution: nil},
-        %{body: "ROUTING MODEL + PREFERENCE: Confirm the road route uses the SAME weighted cheapest-path model units use, and that it prefers existing roads and open terrain over difficult/high-cost tiles. Civ 6 baseline: roads negate terrain movement cost (in our model a road tile costs 1), so pathing naturally favors existing roads. DEPENDENCY RISK: story 925 (the road/terrain movement model this routing is built on) has NOT picked model A (terrain costs + roads negate) vs B (flat road discount) yet — 929's route weights are undefined until 925 lands. Is 929 blocked on 925's decision, and do we want the road-build router to reuse the unit router verbatim or its own tuned weights?", status: :resolved, resolution: nil},
-        %{body: "INTERRUPTION BEHAVIOR: When the path is blocked mid-route (an enemy or friendly unit occupies the next tile, a tile becomes impassable, or the worker is attacked/killed), does the order (1) pause and wait, (2) auto re-route to the destination, or (3) cancel and require re-issue? And separately, if the worker is ATTACKED but survives, does the build order keep going or drop? Civ 6 baseline: automated orders (auto-explore, auto-build, queued moves) typically INTERRUPT and cancel on enemy contact, forcing the player to re-issue — there is no auto re-route. Recommend halt-and-notify (matches our failure scenario) with manual resume; confirm which of pause / re-route / cancel the PM wants for each cause.", status: :resolved, resolution: nil},
-        %{body: "MULTIPLE WORKERS ON ONE ROUTE: Can two or more workers share/parallelize a single build-road-to route (e.g. split the tiles so it finishes faster), or is each order strictly one worker building sequentially? Civ 6 baseline: there is NO shared multi-unit build order — each Military Engineer/Builder works independently, and you would manually stagger multiple engineers along a path. Recommend one-worker-per-order for v1 (simplest, matches Civ); confirm whether parallel/shared routes are in scope or deferred.", status: :resolved, resolution: nil},
-        %{body: "UI — DESTINATION SELECTION + PENDING-ROUTE DISPLAY: Confirm the destination is chosen by clicking a target tile (vs click-drag, or clicking a city). And how is the pending route shown — a highlighted tile path, ghost road sprites on each queued tile, a line, and does it show remaining build time / progress? Civ 6 baseline: selecting a destination shows a movement-path preview with turn pips, and build actions show a progress indicator on the tile. Recommend click-target-tile plus a highlighted ghost-road path with a per-tile progress cue; confirm the interaction and how much progress detail the PM wants surfaced.", status: :resolved, resolution: nil},
-        %{body: "DESTINATION TERRITORY / VISIBILITY: Must the destination (and the route tiles) be within owned or already-explored territory, or can the player road into fog, neutral, or enemy land? Civ 6 baseline: automated pathing needs EXPLORED tiles to route through (you cannot auto-path through unrevealed fog), and Military Engineers can build roads in friendly/neutral territory but are restricted in enemy land. Recommend requiring the route to lie in explored tiles and disallowing enemy-owned tiles for v1; confirm the ownership/visibility constraints on both the destination and the intervening tiles.", status: :resolved, resolution: nil},
-        %{body: "SKIP ALREADY-ROADED TILES + ARRIVAL: If part of the cheapest route already has road, does the worker skip those tiles (move across without rebuilding) and only build the gaps, and does the order end when the destination tile itself is roaded or when the worker simply arrives? Civ 6 baseline: roads are never rebuilt on tiles that already have them; the engineer just traverses existing road and lays road only on unroaded tiles. Recommend skip-existing-road and treat the order as complete when every tile on the route (including the destination) has road. Confirm, and confirm whether the destination tile itself gets a road or is only the endpoint.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "EXECUTION MODEL: Does the worker auto-move one tile at a time laying road as it goes, or does issuing the order pre-mark the whole cheapest route as queued road jobs the worker then services one by one? Civ 6 baseline: the Military Engineer builds roads as it MOVES along its path (move-and-build, one action at a time, autonomously per turn) rather than pre-queuing the entire route as standing jobs. Recommend mirroring move-and-build for feel, but pre-marking makes the pending route persistent and easier to render/resume. Which model?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "COST PER SEGMENT: Does laying each road segment cost a worker charge, or is it purely time-based (the road build-duration per tile) with no charge consumed? Civ 6 baseline: Military Engineer road-building consumes CHARGES (limited uses), and Builders spend a charge per improvement. In OUR current model road is charge-EXEMPT and time-based. If a multi-tile road order stays charge-exempt, one worker could road the whole map for free (only time-gated); if it consumes a charge per tile, long roads exhaust workers fast. Keep charge-exempt (time only), charge per tile, or a flat one-charge for the whole order?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "ROUTING MODEL + PREFERENCE: Confirm the road route uses the SAME weighted cheapest-path model units use, and that it prefers existing roads and open terrain over difficult/high-cost tiles. Civ 6 baseline: roads negate terrain movement cost (in our model a road tile costs 1), so pathing naturally favors existing roads. DEPENDENCY RISK: story 925 (the road/terrain movement model this routing is built on) has NOT picked model A (terrain costs + roads negate) vs B (flat road discount) yet — 929's route weights are undefined until 925 lands. Is 929 blocked on 925's decision, and do we want the road-build router to reuse the unit router verbatim or its own tuned weights?",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "INTERRUPTION BEHAVIOR: When the path is blocked mid-route (an enemy or friendly unit occupies the next tile, a tile becomes impassable, or the worker is attacked/killed), does the order (1) pause and wait, (2) auto re-route to the destination, or (3) cancel and require re-issue? And separately, if the worker is ATTACKED but survives, does the build order keep going or drop? Civ 6 baseline: automated orders (auto-explore, auto-build, queued moves) typically INTERRUPT and cancel on enemy contact, forcing the player to re-issue — there is no auto re-route. Recommend halt-and-notify (matches our failure scenario) with manual resume; confirm which of pause / re-route / cancel the PM wants for each cause.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "MULTIPLE WORKERS ON ONE ROUTE: Can two or more workers share/parallelize a single build-road-to route (e.g. split the tiles so it finishes faster), or is each order strictly one worker building sequentially? Civ 6 baseline: there is NO shared multi-unit build order — each Military Engineer/Builder works independently, and you would manually stagger multiple engineers along a path. Recommend one-worker-per-order for v1 (simplest, matches Civ); confirm whether parallel/shared routes are in scope or deferred.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "UI — DESTINATION SELECTION + PENDING-ROUTE DISPLAY: Confirm the destination is chosen by clicking a target tile (vs click-drag, or clicking a city). And how is the pending route shown — a highlighted tile path, ghost road sprites on each queued tile, a line, and does it show remaining build time / progress? Civ 6 baseline: selecting a destination shows a movement-path preview with turn pips, and build actions show a progress indicator on the tile. Recommend click-target-tile plus a highlighted ghost-road path with a per-tile progress cue; confirm the interaction and how much progress detail the PM wants surfaced.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "DESTINATION TERRITORY / VISIBILITY: Must the destination (and the route tiles) be within owned or already-explored territory, or can the player road into fog, neutral, or enemy land? Civ 6 baseline: automated pathing needs EXPLORED tiles to route through (you cannot auto-path through unrevealed fog), and Military Engineers can build roads in friendly/neutral territory but are restricted in enemy land. Recommend requiring the route to lie in explored tiles and disallowing enemy-owned tiles for v1; confirm the ownership/visibility constraints on both the destination and the intervening tiles.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "SKIP ALREADY-ROADED TILES + ARRIVAL: If part of the cheapest route already has road, does the worker skip those tiles (move across without rebuilding) and only build the gaps, and does the order end when the destination tile itself is roaded or when the worker simply arrives? Civ 6 baseline: roads are never rebuilt on tiles that already have them; the engineer just traverses existing road and lays road only on unroaded tiles. Recommend skip-existing-road and treat the order as complete when every tile on the route (including the destination) has road. Confirm, and confirm whether the destination tile itself gets a road or is only the endpoint.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -5469,30 +6631,62 @@ And the order completes once every tile on the route, including the destination,
 This is the building-convention work: audit every technology in the tree, and for each that should yield a building, ensure a building exists in the catalog and is buildable (cost, effect, tech-gate, maintenance — one catalog entry per building per the building convention). Add the missing buildings. Follow the unit-and-unlock convention's sibling (a building owns its tech gate as its own story). Open design (Three Amigos): which techs map to which buildings for our Stone/Bronze-age scope, each building's effect (yields/adjacency), cost and maintenance numbers (Civ 6-grounded), and whether any are wonders vs standard buildings. Compare Civ 6 building-per-tech coverage as the baseline.",
     tags: [%{name: "gem-weary-wes"}],
     criteria: [
-      %{description: "The tech-to-building coverage audit table (11 Ancient techs, code-grounded 2026-07-21)", verified: false},
+      %{
+        description:
+          "The tech-to-building coverage audit table (11 Ancient techs, code-grounded 2026-07-21)",
+        verified: false
+      },
       %{description: "A unit/improvement/ability tech is not a gap", verified: false},
-      %{description: "The Library ships as its own story that owns the Writing gate", verified: false},
-      %{description: "Library lands as one catalog entry with declared maintenance", verified: false},
+      %{
+        description: "The Library ships as its own story that owns the Writing gate",
+        verified: false
+      },
+      %{
+        description: "Library lands as one catalog entry with declared maintenance",
+        verified: false
+      },
       %{description: "A building with no declared maintenance is rejected", verified: false},
-      %{description: "Writing's unlock string is marked deferred until the Library ships", verified: false},
-      %{description: "Astrology's Shrine is blocked because faith has no economy here", verified: false},
+      %{
+        description: "Writing's unlock string is marked deferred until the Library ships",
+        verified: false
+      },
+      %{
+        description: "Astrology's Shrine is blocked because faith has no economy here",
+        verified: false
+      },
       %{description: "Library builds directly in the city, no Campus required", verified: false},
-      %{description: "Proposed cost/maintenance numbers, Civ 6-grounded off the Granary baseline", verified: false},
-      %{description: "RESOLVED — implementation-ready tech-to-building mapping (PM decisions 2026-07-21, Civ 6-grounded)", verified: false},
-      %{description: "The initial world-wonder set (Civ 6-grounded, mapped to economies we have)", verified: false},
-      %{description: "Currency tech is added to the tree and gates the Build Wealth project", verified: false}
+      %{
+        description: "Proposed cost/maintenance numbers, Civ 6-grounded off the Granary baseline",
+        verified: false
+      },
+      %{
+        description:
+          "RESOLVED — implementation-ready tech-to-building mapping (PM decisions 2026-07-21, Civ 6-grounded)",
+        verified: false
+      },
+      %{
+        description: "The initial world-wonder set (Civ 6-grounded, mapped to economies we have)",
+        verified: false
+      },
+      %{
+        description: "Currency tech is added to the tree and gates the Build Wealth project",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "Story 930 is an audit that enumerates, for every technology in the tree, whether it grants a buildable building today, and names each gap; it does not itself implement the missing buildings.",
+          statement:
+            "Story 930 is an audit that enumerates, for every technology in the tree, whether it grants a buildable building today, and names each gap; it does not itself implement the missing buildings.",
           scenarios: [
             %{
               kind: "happy path",
-              title: "The tech-to-building coverage audit table (11 Ancient techs, code-grounded 2026-07-21)",
-              body: "Given the eleven Ancient-era techs in BrokenOaths.Technology.Research and the sole building in BrokenOaths.Cities.Buildings (Granary, 1 gold upkeep)
+              title:
+                "The tech-to-building coverage audit table (11 Ancient techs, code-grounded 2026-07-21)",
+              body:
+                "Given the eleven Ancient-era techs in BrokenOaths.Technology.Research and the sole building in BrokenOaths.Cities.Buildings (Granary, 1 gold upkeep)
 When each tech is audited for \"does it grant a buildable BUILDING, and does that building exist in the catalog?\" using Civ 6 as the baseline
 Then the coverage is:
 
@@ -5513,8 +6707,10 @@ And the building GAPS to resolve are, in priority order: Library (writing), Wall
             },
             %{
               kind: "happy path",
-              title: "RESOLVED — implementation-ready tech-to-building mapping (PM decisions 2026-07-21, Civ 6-grounded)",
-              body: "Given the PM confirmed: fill in each mapping from Civ 6 defaults, don't force a building onto every tech, include a few wonders, and add a Currency tech gating Build Wealth
+              title:
+                "RESOLVED — implementation-ready tech-to-building mapping (PM decisions 2026-07-21, Civ 6-grounded)",
+              body:
+                "Given the PM confirmed: fill in each mapping from Civ 6 defaults, don't force a building onto every tech, include a few wonders, and add a Currency tech gating Build Wealth
 When the gaps from the audit table are resolved
 Then the buildings to ADD are these STANDARD per-city buildings (built once per city, directly in the city, no district), grounded in Civ 6:
 
@@ -5531,12 +6727,14 @@ And every unlock string that names one of these new buildings is corrected to na
           ]
         },
         %{
-          statement: "A technology is not intrinsically coupled to a building; it may grant a unit, an improvement, a passive ability, or nothing at all (a pure prerequisite tech). A building is added only where Civ 6 has a clear tech-to-building analog that pays out in an economy we already have.",
+          statement:
+            "A technology is not intrinsically coupled to a building; it may grant a unit, an improvement, a passive ability, or nothing at all (a pure prerequisite tech). A building is added only where Civ 6 has a clear tech-to-building analog that pays out in an economy we already have.",
           scenarios: [
             %{
               kind: "happy path",
               title: "A unit/improvement/ability tech is not a gap",
-              body: "Given Archery grants the Archer (a unit), Animal Husbandry grants the Pasture (an improvement), and Mining grants faster mines (a passive ability)
+              body:
+                "Given Archery grants the Archer (a unit), Animal Husbandry grants the Pasture (an improvement), and Mining grants faster mines (a passive ability)
 When the audit checks each for building coverage
 Then none is flagged as a gap, because a tech's unlock need not be a building
 And only techs that SHOULD grant a building but have none in the catalog (Writing, Masonry, and the optional Barracks/Water Mill) are carried forward as gaps."
@@ -5544,7 +6742,8 @@ And only techs that SHOULD grant a building but have none in the catalog (Writin
           ]
         },
         %{
-          statement: "Each missing building is delivered by its own story that owns its tech gate as an acceptance criterion (per the building convention), never as a line item under the tech tree.",
+          statement:
+            "Each missing building is delivered by its own story that owns its tech gate as an acceptance criterion (per the building convention), never as a line item under the tech tree.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5558,12 +6757,14 @@ And story 930 itself only enumerates the gap — it does not add the Library."
           ]
         },
         %{
-          statement: "Every building lives as a single Cities.Buildings catalog entry owning its cost, effect, tech gate, and gold maintenance, with maintenance stated explicitly (0 allowed but never omitted).",
+          statement:
+            "Every building lives as a single Cities.Buildings catalog entry owning its cost, effect, tech gate, and gold maintenance, with maintenance stated explicitly (0 allowed but never omitted).",
           scenarios: [
             %{
               kind: "happy path",
               title: "Library lands as one catalog entry with declared maintenance",
-              body: "Given the Library is added to BrokenOaths.Cities.Buildings
+              body:
+                "Given the Library is added to BrokenOaths.Cities.Buildings
 When its catalog entry is written
 Then that single entry carries its production cost, its effect, its Writing tech gate, and its gold maintenance per turn
 And no Library property is wired as a scattered boolean or flag elsewhere, exactly as the Granary exemplar does it."
@@ -5571,19 +6772,22 @@ And no Library property is wired as a scattered boolean or flag elsewhere, exact
             %{
               kind: "failure path",
               title: "A building with no declared maintenance is rejected",
-              body: "Given a proposed building whose catalog entry omits a maintenance figure
+              body:
+                "Given a proposed building whose catalog entry omits a maintenance figure
 When it is reviewed against the building convention guardrail
 Then it is rejected, because maintenance must be explicit (a free building is a declared 0, never an omission)."
             }
           ]
         },
         %{
-          statement: "A technology's unlock string must name only a delivered capability or be marked deferred with its delivering story; a structure-only tech that names a building it cannot yet deliver is a tracked gap, not a silent dead unlock.",
+          statement:
+            "A technology's unlock string must name only a delivered capability or be marked deferred with its delivering story; a structure-only tech that names a building it cannot yet deliver is a tracked gap, not a silent dead unlock.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Writing's unlock string is marked deferred until the Library ships",
-              body: "Given Writing's unlock string reads \"Enables the Library building\" but no Library exists in the catalog
+              body:
+                "Given Writing's unlock string reads \"Enables the Library building\" but no Library exists in the catalog
 When the audit applies the no-dead-unlocks guardrail
 Then Writing's unlock is flagged and must read \"Enables the Library building (deferred — story NNN)\" until the Library story delivers it
 And the same treatment applies to Masonry (Walls) and Astrology (Holy Site/Shrine)."
@@ -5591,7 +6795,8 @@ And the same treatment applies to Masonry (Walls) and Astrology (Holy Site/Shrin
             %{
               kind: "happy path",
               title: "Currency tech is added to the tree and gates the Build Wealth project",
-              body: "Given Build Wealth (story 928, converting production into gold) needs a tech gate, and the tree currently has no Currency tech
+              body:
+                "Given Build Wealth (story 928, converting production into gold) needs a tech gate, and the tree currently has no Currency tech
 When the tree is audited for the techs the economy needs
 Then a Currency tech is ADDED to the tree, Civ 6-grounded: prerequisite Writing (Civ 6 places Currency after Writing), a capstone-band science cost (~240), unlock string \"Enables the Build Wealth project (convert production to gold)\"
 And that unlock is delivered by story 928, so its string is honest, not a dead unlock
@@ -5600,12 +6805,14 @@ And Build Wealth is offered in a city's production options only once the city's 
           ]
         },
         %{
-          statement: "A building's effect must pay out in an economy Broken Oaths already has (food, production, science, gold, or combat/HP); a Civ 6 building whose sole effect is culture or faith does not map until that economy exists.",
+          statement:
+            "A building's effect must pay out in an economy Broken Oaths already has (food, production, science, gold, or combat/HP); a Civ 6 building whose sole effect is culture or faith does not map until that economy exists.",
           scenarios: [
             %{
               kind: "failure path",
               title: "Astrology's Shrine is blocked because faith has no economy here",
-              body: "Given Civ 6 puts the Shrine (+2 faith) on Astrology, and Broken Oaths has no faith economy
+              body:
+                "Given Civ 6 puts the Shrine (+2 faith) on Astrology, and Broken Oaths has no faith economy
 When the audit tries to map Astrology to a building
 Then no viable building effect exists, so Astrology stays structure-only (deferred) rather than shipping a building with a no-op effect
 And by contrast Library (science), Walls (combat/HP), Barracks (production/combat), and Water Mill (food/production) all pay out in economies we already have, so they are mappable."
@@ -5613,24 +6820,28 @@ And by contrast Library (science), Walls (combat/HP), Barracks (production/comba
           ]
         },
         %{
-          statement: "Broken Oaths has no districts in the Stone/Bronze MVP, so a building is buildable directly in the city like the Granary, with no district prerequisite standing between the tech and the build option.",
+          statement:
+            "Broken Oaths has no districts in the Stone/Bronze MVP, so a building is buildable directly in the city like the Granary, with no district prerequisite standing between the tech and the build option.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Library builds directly in the city, no Campus required",
-              body: "Given Civ 6 nests the Library inside a Campus district, the Shrine inside a Holy Site, and the Barracks inside an Encampment
+              body:
+                "Given Civ 6 nests the Library inside a Campus district, the Shrine inside a Holy Site, and the Barracks inside an Encampment
 When these buildings are mapped to Broken Oaths, which has no districts
 Then each is offered in the city build menu the moment its tech gate is met, with no intervening district to build first — exactly the Granary's flat model."
             }
           ]
         },
         %{
-          statement: "Each proposed building's production cost and gold maintenance are Civ 6-grounded and scaled to our economy, with the shipped Granary (60 production, 1 gold/turn) as the baseline reference.",
+          statement:
+            "Each proposed building's production cost and gold maintenance are Civ 6-grounded and scaled to our economy, with the shipped Granary (60 production, 1 gold/turn) as the baseline reference.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Proposed cost/maintenance numbers, Civ 6-grounded off the Granary baseline",
-              body: "Given the Granary shipped at 60 production / 1 gold (Civ 6: 65 prod / 1 gold)
+              body:
+                "Given the Granary shipped at 60 production / 1 gold (Civ 6: 65 prod / 1 gold)
 When each proposed building is priced against its Civ 6 counterpart on the same ratio
 Then the recommended starting numbers (for PM confirmation) are:
 
@@ -5645,12 +6856,14 @@ And these are starting points grounded in Civ 6, not final; each building's own 
           ]
         },
         %{
-          statement: "Alongside standard per-city buildings, the tree carries a few world wonders: each is built once per WORLD (not per city), is unique, carries a Civ 6-grounded one-time production cost with zero maintenance, and grants a global effect in an economy we already have.",
+          statement:
+            "Alongside standard per-city buildings, the tree carries a few world wonders: each is built once per WORLD (not per city), is unique, carries a Civ 6-grounded one-time production cost with zero maintenance, and grants a global effect in an economy we already have.",
           scenarios: [
             %{
               kind: "happy path",
               title: "The initial world-wonder set (Civ 6-grounded, mapped to economies we have)",
-              body: "Given the PM asked for a few world wonders alongside standard buildings
+              body:
+                "Given the PM asked for a few world wonders alongside standard buildings
 When wonders are chosen from Civ 6's early wonders, keeping only those whose effect maps to an economy we already have
 Then the initial wonder set is:
 
@@ -5666,16 +6879,66 @@ And Stonehenge (Astrology) and Great Bath (Pottery) are deliberately NOT include
         }
       ],
       questions: [
-        %{body: "MAPPING (a): Which structure-only techs should each get a building for our Stone/Bronze scope, and which stay unit/ability-only? Civ 6 baseline building-per-tech: Writing→Library (Campus), Masonry→Ancient Walls, Astrology→Shrine (Holy Site), Bronze Working→Barracks (Encampment), The Wheel→Water Mill. Recommendation from the audit: ship Library (Writing) and Walls (Masonry) as the core gaps; treat Barracks (Bronze Working) and Water Mill (The Wheel) as optional additions; keep Astrology structure-only until a faith economy exists. Confirm the list to build.", status: :resolved, resolution: nil},
-        %{body: "LIBRARY EFFECT (b): Civ 6 Library = +2 science + 1 Great Scientist point, sitting in a Campus. We have no districts and no great people, and science is a flat 2/pop (the pop lever rolls Civ's Palace+Campus+Library into one number). So what does OUR Library do — a flat +N science/turn per city, or +1 science per pop (which would raise the size-4 ceiling from 8 to 12)? Recommend a flat bonus (e.g. +2 or +4 science/turn) so it doesn't compound the only science lever. Pick the shape and magnitude.", status: :resolved, resolution: nil},
-        %{body: "WALLS EFFECT (b): Civ 6 Ancient Walls = +100 outer-defense HP, a wall ranged attack, and higher city combat strength. Our combat.ex uses a single base_strength per unit and the curve 30*e^(0.04*(atk-def)). Do our cities even have a defense strength / garrison HP for Walls to boost? If yes, Walls should add city combat strength and/or a defensive HP pool (Civ-like); if cities are not yet defensible, Walls may need a city-combat model first (bigger dependency — flag it). Confirm the effect and whether a city-defense model is a prerequisite.", status: :resolved, resolution: nil},
-        %{body: "BARRACKS EFFECT (b): Civ 6 Barracks (Bronze Working, in Encampment) = +1 production toward land units, +25% unit XP, +1 housing, +1 Great General point. We have no XP, housing, or great people. Bronze Working already delivers (age + Spearman/Swordsman + Copper), so a Barracks would be an ADDITIONAL building on an already-delivering tech. Should it exist, and if so does it give +production toward military units built in that city, or a flat strength bump to units trained there? Recommend +production toward military units (reuses production, no new system). Confirm whether to build it at all.", status: :resolved, resolution: nil},
-        %{body: "WATER MILL / THE WHEEL (a,b): Civ 6 Water Mill (The Wheel) = +1 food +1 production, extra food from adjacent rice/wheat, and MUST be built next to a river. The Wheel currently gates nothing (its roads/Heavy Chariot are deferred). Do we want a Water Mill building here at all, and if so do we require river/water adjacency (do we even model rivers?), or drop the adjacency and make it a flat +1F/+1P city building? Recommendation: only add it if we already model rivers/fresh water; otherwise leave The Wheel to the future roads story. Decide.", status: :resolved, resolution: nil},
-        %{body: "ASTROLOGY / FAITH GAP (a,b): Civ 6 Astrology = Holy Site district + Shrine (+2 faith). Broken Oaths has no faith or culture economy (see stone_age_yields: gold/culture/faith explicitly dropped). Options: (1) keep Astrology structure-only and mark its unlock deferred; (2) re-map Astrology to a non-faith building (e.g. a monument-style culture building — but we have no culture either); (3) re-purpose Astrology's unlock to something we DO have. Recommendation: option 1 — keep it deferred with an honest unlock string, revisit when/if a faith or culture economy is added. Confirm.", status: :resolved, resolution: nil},
-        %{body: "COST & MAINTENANCE (c): Civ 6 baselines (prod / gold-upkeep): Granary 65/1, Library 90/1, Ancient Walls 80/0, Barracks 90/1, Water Mill 90/1. Our shipped Granary is 60/1. Proposed off that ratio: Library 90/1, Walls 80/0, Barracks 90/1, Water Mill 90/1. Note Walls costs 0 upkeep in Civ 6 — confirm we want a deliberate 0-maintenance building (allowed by the convention). Sign off each building's production cost and gold/turn maintenance, or adjust.", status: :resolved, resolution: nil},
-        %{body: "WONDERS vs STANDARD (d): In Civ 6 the buildings on these techs (Granary, Library, Ancient Walls, Barracks, Water Mill) are all STANDARD per-city repeatable buildings, not wonders. The Stone/Bronze-age WONDERS (Stonehenge on Astrology, Pyramids on Masonry, Great Bath on Pottery) are a separate one-per-world category. Recommendation: build all of these as standard buildings (built once per city, like the Granary), and treat any wonder as out of scope for story 930 / its own future story. Confirm none of these are wonders, and confirm wonders are deferred.", status: :resolved, resolution: nil},
-        %{body: "MUST EVERY TECH GRANT A BUILDABLE? (e): The unit-and-unlock guardrail says every tech must deliver SOMETHING real (or mark it deferred), but not necessarily a BUILDING. Today Mining grants a passive ability (faster mines) and Irrigation grants irrigated farming — neither is a buildable thing. Civ 6 itself has techs that grant only abilities/improvements/units. Recommendation: confirm techs may legitimately grant a unit, an improvement, or a passive ability, and are NOT each required to grant a building — so the audit's job is only to close BUILDING gaps where a building is warranted, not to force one building per tech. Confirm.", status: :resolved, resolution: nil},
-        %{body: "BUILD-ONCE vs REPEATABLE + STORAGE (developer/QA): The Granary is built once per city and recorded as a has_granary boolean on City; Cities.Buildings reads that flag for upkeep. Each new standard building (Library, Walls, Barracks) is likewise built once per city. Do we keep adding per-building booleans (has_library, has_walls, ...) for now, or is this the moment to migrate City to a buildings list (the convention flags this as a future story)? Recommendation: keep per-building booleans for the first one or two additions to stay consistent with the Granary, and schedule the list migration once a third building lands. Confirm the storage approach for the building stories.", status: :resolved, resolution: nil}
+        %{
+          body:
+            "MAPPING (a): Which structure-only techs should each get a building for our Stone/Bronze scope, and which stay unit/ability-only? Civ 6 baseline building-per-tech: Writing→Library (Campus), Masonry→Ancient Walls, Astrology→Shrine (Holy Site), Bronze Working→Barracks (Encampment), The Wheel→Water Mill. Recommendation from the audit: ship Library (Writing) and Walls (Masonry) as the core gaps; treat Barracks (Bronze Working) and Water Mill (The Wheel) as optional additions; keep Astrology structure-only until a faith economy exists. Confirm the list to build.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "LIBRARY EFFECT (b): Civ 6 Library = +2 science + 1 Great Scientist point, sitting in a Campus. We have no districts and no great people, and science is a flat 2/pop (the pop lever rolls Civ's Palace+Campus+Library into one number). So what does OUR Library do — a flat +N science/turn per city, or +1 science per pop (which would raise the size-4 ceiling from 8 to 12)? Recommend a flat bonus (e.g. +2 or +4 science/turn) so it doesn't compound the only science lever. Pick the shape and magnitude.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "WALLS EFFECT (b): Civ 6 Ancient Walls = +100 outer-defense HP, a wall ranged attack, and higher city combat strength. Our combat.ex uses a single base_strength per unit and the curve 30*e^(0.04*(atk-def)). Do our cities even have a defense strength / garrison HP for Walls to boost? If yes, Walls should add city combat strength and/or a defensive HP pool (Civ-like); if cities are not yet defensible, Walls may need a city-combat model first (bigger dependency — flag it). Confirm the effect and whether a city-defense model is a prerequisite.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "BARRACKS EFFECT (b): Civ 6 Barracks (Bronze Working, in Encampment) = +1 production toward land units, +25% unit XP, +1 housing, +1 Great General point. We have no XP, housing, or great people. Bronze Working already delivers (age + Spearman/Swordsman + Copper), so a Barracks would be an ADDITIONAL building on an already-delivering tech. Should it exist, and if so does it give +production toward military units built in that city, or a flat strength bump to units trained there? Recommend +production toward military units (reuses production, no new system). Confirm whether to build it at all.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "WATER MILL / THE WHEEL (a,b): Civ 6 Water Mill (The Wheel) = +1 food +1 production, extra food from adjacent rice/wheat, and MUST be built next to a river. The Wheel currently gates nothing (its roads/Heavy Chariot are deferred). Do we want a Water Mill building here at all, and if so do we require river/water adjacency (do we even model rivers?), or drop the adjacency and make it a flat +1F/+1P city building? Recommendation: only add it if we already model rivers/fresh water; otherwise leave The Wheel to the future roads story. Decide.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "ASTROLOGY / FAITH GAP (a,b): Civ 6 Astrology = Holy Site district + Shrine (+2 faith). Broken Oaths has no faith or culture economy (see stone_age_yields: gold/culture/faith explicitly dropped). Options: (1) keep Astrology structure-only and mark its unlock deferred; (2) re-map Astrology to a non-faith building (e.g. a monument-style culture building — but we have no culture either); (3) re-purpose Astrology's unlock to something we DO have. Recommendation: option 1 — keep it deferred with an honest unlock string, revisit when/if a faith or culture economy is added. Confirm.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "COST & MAINTENANCE (c): Civ 6 baselines (prod / gold-upkeep): Granary 65/1, Library 90/1, Ancient Walls 80/0, Barracks 90/1, Water Mill 90/1. Our shipped Granary is 60/1. Proposed off that ratio: Library 90/1, Walls 80/0, Barracks 90/1, Water Mill 90/1. Note Walls costs 0 upkeep in Civ 6 — confirm we want a deliberate 0-maintenance building (allowed by the convention). Sign off each building's production cost and gold/turn maintenance, or adjust.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "WONDERS vs STANDARD (d): In Civ 6 the buildings on these techs (Granary, Library, Ancient Walls, Barracks, Water Mill) are all STANDARD per-city repeatable buildings, not wonders. The Stone/Bronze-age WONDERS (Stonehenge on Astrology, Pyramids on Masonry, Great Bath on Pottery) are a separate one-per-world category. Recommendation: build all of these as standard buildings (built once per city, like the Granary), and treat any wonder as out of scope for story 930 / its own future story. Confirm none of these are wonders, and confirm wonders are deferred.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "MUST EVERY TECH GRANT A BUILDABLE? (e): The unit-and-unlock guardrail says every tech must deliver SOMETHING real (or mark it deferred), but not necessarily a BUILDING. Today Mining grants a passive ability (faster mines) and Irrigation grants irrigated farming — neither is a buildable thing. Civ 6 itself has techs that grant only abilities/improvements/units. Recommendation: confirm techs may legitimately grant a unit, an improvement, or a passive ability, and are NOT each required to grant a building — so the audit's job is only to close BUILDING gaps where a building is warranted, not to force one building per tech. Confirm.",
+          status: :resolved,
+          resolution: nil
+        },
+        %{
+          body:
+            "BUILD-ONCE vs REPEATABLE + STORAGE (developer/QA): The Granary is built once per city and recorded as a has_granary boolean on City; Cities.Buildings reads that flag for upkeep. Each new standard building (Library, Walls, Barracks) is likewise built once per city. Do we keep adding per-building booleans (has_library, has_walls, ...) for now, or is this the moment to migrate City to a buildings list (the convention flags this as a future story)? Recommendation: keep per-building booleans for the first one or two additions to stay consistent with the Granary, and schedule the list migration once a third building lands. Confirm the storage approach for the building stories.",
+          status: :resolved,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -5701,19 +6964,24 @@ Follows the unit-and-unlock convention: the Scout owns its tech gate (or \"no ga
       %{description: "Scout attacks a barbarian camp at strength 5", verified: false},
       %{description: "Scout loses a 1v1 against a Warrior", verified: false},
       %{description: "Scout enters difficult terrain for 1 movement", verified: false},
-      %{description: "Scout and Warrior pay different costs for the same woods tile", verified: false}
+      %{
+        description: "Scout and Warrior pay different costs for the same woods tile",
+        verified: false
+      }
     ],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "The Scout has no tech prerequisite — it is buildable from turn 1, and owns \"no gate\" as its own acceptance criterion per the unit-and-unlock convention.",
+          statement:
+            "The Scout has no tech prerequisite — it is buildable from turn 1, and owns \"no gate\" as its own acceptance criterion per the unit-and-unlock convention.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Scout is buildable on turn 1 with zero techs researched",
-              body: "Given a new city on turn 1 whose owner has researched no technologies
+              body:
+                "Given a new city on turn 1 whose owner has researched no technologies
 When the player opens the city's build menu
 Then the Scout appears as a buildable option
 And it sits in the always-available set alongside Settler, Worker, and Warrior — no tech ever locks it"
@@ -5721,12 +6989,14 @@ And it sits in the always-available set alongside Settler, Worker, and Warrior �
           ]
         },
         %{
-          statement: "The Scout is the cheapest military build at 30 production, strictly below the Warrior's 40.",
+          statement:
+            "The Scout is the cheapest military build at 30 production, strictly below the Warrior's 40.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Scout costs 30 — the cheapest military build",
-              body: "Given the production catalog
+              body:
+                "Given the production catalog
 When the Scout's cost is read
 Then it is 30 production
 And that is strictly less than the Warrior's 40, making the Scout the cheapest military unit to build"
@@ -5741,7 +7011,8 @@ Then the Scout finishes in fewer turns, because 30 production clears before 40"
           ]
         },
         %{
-          statement: "The Scout moves 3 — the fastest unit in the game (Warrior 1; Lord, Settler, Worker, and Galley 2).",
+          statement:
+            "The Scout moves 3 — the fastest unit in the game (Warrior 1; Lord, Settler, Worker, and Galley 2).",
           scenarios: [
             %{
               kind: "happy path",
@@ -5753,7 +7024,8 @@ Then it can enter up to 3 tiles — outpacing the Warrior's 1 and every other un
           ]
         },
         %{
-          statement: "The Scout's sight radius is 2 (the default), and it does not exceed the Lord's 3 — the Scout's edge is speed and terrain, not raw sight.",
+          statement:
+            "The Scout's sight radius is 2 (the default), and it does not exceed the Lord's 3 — the Scout's edge is speed and terrain, not raw sight.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5765,14 +7037,16 @@ Then a 2-hop ball of tiles around the Scout becomes visible — the default visi
             %{
               kind: "happy path",
               title: "Lord out-sees the Scout by one hop",
-              body: "Given a Scout and a Lord standing on the same tile
+              body:
+                "Given a Scout and a Lord standing on the same tile
 When vision is computed
 Then the Lord reveals 3 hops and the Scout 2 — the Scout does not out-scout the Lord on raw sight; its advantage is reaching more tiles per turn and ignoring difficult terrain"
             }
           ]
         },
         %{
-          statement: "The Scout is a weak combatant — base strength 5, half the Warrior's 10; it can attack barbarians and camps and defend itself, but is not a front-line unit.",
+          statement:
+            "The Scout is a weak combatant — base strength 5, half the Warrior's 10; it can attack barbarians and camps and defend itself, but is not a front-line unit.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5785,26 +7059,30 @@ And it can also defend itself when attacked — it is a real, if weak, combatant
             %{
               kind: "failure path",
               title: "Scout loses a 1v1 against a Warrior",
-              body: "Given a Scout (strength 5) attacked by an enemy Warrior (strength 10)
+              body:
+                "Given a Scout (strength 5) attacked by an enemy Warrior (strength 10)
 When combat resolves
 Then the Scout takes disproportionately heavy damage and loses the exchange — confirming it is a scout, not a front-line unit, and should avoid standing in a fight"
             }
           ]
         },
         %{
-          statement: "The Scout ignores the difficult-terrain movement-cost penalty — every passable land tile costs it 1 (entry_cost always 1), the Civ 6 Ranger/Alpine recon trait.",
+          statement:
+            "The Scout ignores the difficult-terrain movement-cost penalty — every passable land tile costs it 1 (entry_cost always 1), the Civ 6 Ranger/Alpine recon trait.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Scout enters difficult terrain for 1 movement",
-              body: "Given a Scout about to enter a roadless hills, woods, rainforest, or marsh tile
+              body:
+                "Given a Scout about to enter a roadless hills, woods, rainforest, or marsh tile
 When its entry cost is priced
 Then the tile costs the Scout 1, not the difficult-terrain 2 — the penalty is waived for the Scout"
             },
             %{
               kind: "happy path",
               title: "Scout and Warrior pay different costs for the same woods tile",
-              body: "Given a Warrior and a Scout each about to enter the same roadless woods tile
+              body:
+                "Given a Warrior and a Scout each about to enter the same roadless woods tile
 When entry cost is priced for each
 Then the Warrior pays 2 (Terrain.movement_cost) but the Scout pays 1 — only the Scout waives the difficult-terrain penalty
 And impassable tiles (deep water for a land unit) remain impassable — the trait discounts cost, it does not grant new domains"
@@ -5813,8 +7091,18 @@ And impassable tiles (deep water for a land unit) remain impassable — the trai
         }
       ],
       questions: [
-        %{body: "Recon promotions: should the Scout gain Civ 6-style recon promotions over time (Spyglass +1 sight, Ranger/Alpine terrain traits)? Recommend deferring — ship a flat Scout now (no promotion system exists in Broken Oaths yet); the terrain-ignore trait is already baked in as a base ability rather than an earned promotion. (auto-defaulted, PM to confirm)", status: :open, resolution: nil},
-        %{body: "Scout HP: set to 100 (the standard unit pool shared by Warrior/Archer/Galley), with the Scout's weakness expressed purely through strength 5? Recommend yes — matches Civ 6, where all units share a 100-HP pool and the Scout's fragility lives in its low combat strength. (auto-defaulted, PM to confirm)", status: :open, resolution: nil}
+        %{
+          body:
+            "Recon promotions: should the Scout gain Civ 6-style recon promotions over time (Spyglass +1 sight, Ranger/Alpine terrain traits)? Recommend deferring — ship a flat Scout now (no promotion system exists in Broken Oaths yet); the terrain-ignore trait is already baked in as a base ability rather than an earned promotion. (auto-defaulted, PM to confirm)",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Scout HP: set to 100 (the standard unit pool shared by Warrior/Archer/Galley), with the Scout's weakness expressed purely through strength 5? Recommend yes — matches Civ 6, where all units share a 100-HP pool and the Scout's fragility lives in its low combat strength. (auto-defaulted, PM to confirm)",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -5849,27 +7137,48 @@ Ground balance/mechanic choices in Civ 6 first (project standing directive).",
       %{description: "Move rejected when the requester does not own the unit", verified: false},
       %{description: "Movement resets to full on every tick", verified: false},
       %{description: "Non-economy tick still recharges and resolves movement", verified: false},
-      %{description: "No every-other-turn stranding (timer-inversion regression guard)", verified: false},
+      %{
+        description: "No every-other-turn stranding (timer-inversion regression guard)",
+        verified: false
+      },
       %{description: "Open terrain costs 1", verified: false},
       %{description: "Difficult terrain costs 2", verified: false},
       %{description: "Completed road negates difficult terrain to 1", verified: false},
       %{description: "An unfinished road grants no discount yet", verified: false},
-      %{description: "Routes around difficult terrain when a cheaper way exists", verified: false},
+      %{
+        description: "Routes around difficult terrain when a cheaper way exists",
+        verified: false
+      },
       %{description: "Follows a road corridor over open ground", verified: false},
       %{description: "Equal-cost routes tie-break to the lowest tile id", verified: false},
-      %{description: "Occupied intermediate tiles are avoided; destination may be occupied", verified: false},
+      %{
+        description: "Occupied intermediate tiles are avoided; destination may be occupied",
+        verified: false
+      },
       %{description: "No passable route yields unreachable", verified: false},
       %{description: "Movement-1 unit enters a cost-2 tile and ends at 0", verified: false},
       %{description: "A unit at 0 movement takes no further step this tick", verified: false},
       %{description: "One step per round, movers ordered by ascending id", verified: false},
-      %{description: "Trailing unit follows into a tile the leader vacated this round", verified: false},
+      %{
+        description: "Trailing unit follows into a tile the leader vacated this round",
+        verified: false
+      },
       %{description: "Step into a stationary unit is blocked and interrupts", verified: false},
       %{description: "Tile claimed earlier the same round blocks a later mover", verified: false},
       %{description: "Step into a foreign-occupied tile is blocked", verified: false},
-      %{description: "Field stack: one civilian plus one combat escort share an open tile", verified: false},
+      %{
+        description: "Field stack: one civilian plus one combat escort share an open tile",
+        verified: false
+      },
       %{description: "Own-city garrison has room for a returning defender", verified: false},
-      %{description: "Broken enemy city allows a walk-in past the fallen garrison", verified: false},
-      %{description: "Field stack is full — second civilian or same-class is blocked", verified: false},
+      %{
+        description: "Broken enemy city allows a walk-in past the fallen garrison",
+        verified: false
+      },
+      %{
+        description: "Field stack is full — second civilian or same-class is blocked",
+        verified: false
+      },
       %{description: "Healthy garrisoned enemy city stays blocked", verified: false},
       %{description: "Fortifying spends no movement", verified: false},
       %{description: "Moving clears the fortify stance", verified: false},
@@ -5886,12 +7195,14 @@ Ground balance/mechanic choices in Civ 6 first (project standing directive).",
       persona: %{name: "Gem-Weary Wes", slug: "gem-weary-wes", type: "proto"},
       rules: [
         %{
-          statement: "A move order executes immediately when issued, spending whatever movement the unit has left; the turn boundary recharges movement and continues the remaining path.",
+          statement:
+            "A move order executes immediately when issued, spending whatever movement the unit has left; the turn boundary recharges movement and continues the remaining path.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Issuing a move spends current movement this instant",
-              body: "Given Rhea's warrior has movement 2 at tile A with a clear 3-tile open path to tile D
+              body:
+                "Given Rhea's warrior has movement 2 at tile A with a clear 3-tile open path to tile D
 When she queues a move to tile D
 Then the warrior advances two open tiles to tile C immediately (move_now), spending both points
 And the order is retained with the final step (C to D) as its remaining path"
@@ -5899,7 +7210,8 @@ And the order is retained with the final step (C to D) as its remaining path"
             %{
               kind: "happy path",
               title: "Turn boundary recharges and continues the remaining path",
-              body: "Given a unit sits mid-path at 0 movement with a remaining path still queued (status :pending)
+              body:
+                "Given a unit sits mid-path at 0 movement with a remaining path still queued (status :pending)
 When the next tick resolves
 Then its movement is reset to max_movement first
 And it continues stepping along the remaining path in the same tick"
@@ -5923,7 +7235,8 @@ And no order is persisted and nothing moves"
           ]
         },
         %{
-          statement: "Movement recharges to full every tick on the fast layer; the slow economy cadence never gates whether a unit can move.",
+          statement:
+            "Movement recharges to full every tick on the fast layer; the slow economy cadence never gates whether a unit can move.",
           scenarios: [
             %{
               kind: "happy path",
@@ -5935,7 +7248,8 @@ Then its movement is reset to max_movement at the top of the tick, unconditional
             %{
               kind: "happy path",
               title: "Non-economy tick still recharges and resolves movement",
-              body: "Given economy_turns is 10 and the current tick is not an economy tick (rem(turn, 10) != 0)
+              body:
+                "Given economy_turns is 10 and the current tick is not an economy tick (rem(turn, 10) != 0)
 When the tick resolves
 Then units still reset movement and resolve their pending orders
 And economy phases (improvement, production, food, science) are skipped that tick, but movement is not"
@@ -5951,19 +7265,22 @@ And the retired recharge_turns throttle is never consulted"
           ]
         },
         %{
-          statement: "Entering a tile costs 1 movement on open terrain and 2 on difficult terrain (hills, woods, rainforest, marsh); a completed road negates the cost back to 1.",
+          statement:
+            "Entering a tile costs 1 movement on open terrain and 2 on difficult terrain (hills, woods, rainforest, marsh); a completed road negates the cost back to 1.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Open terrain costs 1",
-              body: "Given a flat, feature-free tile (grassland/plains/desert/tundra/snow, no hills, no woods/rainforest/marsh)
+              body:
+                "Given a flat, feature-free tile (grassland/plains/desert/tundra/snow, no hills, no woods/rainforest/marsh)
 When a unit enters it
 Then the entry cost is 1 movement point"
             },
             %{
               kind: "happy path",
               title: "Difficult terrain costs 2",
-              body: "Given a tile with hills relief, or a woods, rainforest, or marsh feature, and no road
+              body:
+                "Given a tile with hills relief, or a woods, rainforest, or marsh feature, and no road
 When a unit enters it
 Then the entry cost is 2 movement points (Civ 6 difficult-terrain cost)"
             },
@@ -5984,33 +7301,38 @@ Then the entry cost is the full terrain cost of 2 — only a completed road nega
           ]
         },
         %{
-          statement: "Pathfinding picks the least-total-cost route over the mesh, favoring roads and cheap terrain and routing around difficult terrain, with a deterministic lowest-tile-id tie-break.",
+          statement:
+            "Pathfinding picks the least-total-cost route over the mesh, favoring roads and cheap terrain and routing around difficult terrain, with a deterministic lowest-tile-id tie-break.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Routes around difficult terrain when a cheaper way exists",
-              body: "Given a forest tile sits directly between origin and destination, with an open detour whose total cost is lower
+              body:
+                "Given a forest tile sits directly between origin and destination, with an open detour whose total cost is lower
 When the path is computed (Dijkstra)
 Then the chosen route goes around the forest rather than beelining through it"
             },
             %{
               kind: "happy path",
               title: "Follows a road corridor over open ground",
-              body: "Given a completed-road corridor and a parallel open-ground route to the same destination
+              body:
+                "Given a completed-road corridor and a parallel open-ground route to the same destination
 When the path is computed
 Then it prefers the road because each road tile costs 1 and the total cost is no higher"
             },
             %{
               kind: "happy path",
               title: "Equal-cost routes tie-break to the lowest tile id",
-              body: "Given two routes of identical total cost to the destination
+              body:
+                "Given two routes of identical total cost to the destination
 When the path is computed
 Then the frontier key {cost, tile_id} expands the lower tile id first, giving the same route every run regardless of map iteration order"
             },
             %{
               kind: "happy path",
               title: "Occupied intermediate tiles are avoided; destination may be occupied",
-              body: "Given an intermediate tile is occupied by another unit and an equally cheap free detour exists, and the destination tile itself is held by an enemy unit
+              body:
+                "Given an intermediate tile is occupied by another unit and an equally cheap free detour exists, and the destination tile itself is held by an enemy unit
 When the path is computed
 Then the route avoids the occupied intermediate tile
 And the enemy-held destination is still accepted as the target (collision at tick time stops the mover adjacent)"
@@ -6018,118 +7340,136 @@ And the enemy-held destination is still accepted as the target (collision at tic
             %{
               kind: "failure path",
               title: "No passable route yields unreachable",
-              body: "Given the destination is passable for the unit type but every route to it is blocked by impassable tiles or occupied intermediates
+              body:
+                "Given the destination is passable for the unit type but every route to it is blocked by impassable tiles or occupied intermediates
 When the path is computed
 Then it returns no path and the move is refused with {:error, :unreachable}"
             }
           ]
         },
         %{
-          statement: "A unit with any movement left may always take at least one step, even onto a cost-2 tile, ending at 0 rather than being refused.",
+          statement:
+            "A unit with any movement left may always take at least one step, even onto a cost-2 tile, ending at 0 rather than being refused.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Movement-1 unit enters a cost-2 tile and ends at 0",
-              body: "Given a warrior with movement 1 adjacent to a woods (cost-2) tile
+              body:
+                "Given a warrior with movement 1 adjacent to a woods (cost-2) tile
 When it takes the step
 Then it enters the woods and its movement is clamped to 0, not left negative (Civ 6 min-1-move rule)"
             },
             %{
               kind: "happy path",
               title: "A unit at 0 movement takes no further step this tick",
-              body: "Given a unit dropped to 0 movement after entering a cost-2 tile, with path still remaining
+              body:
+                "Given a unit dropped to 0 movement after entering a cost-2 tile, with path still remaining
 When the round's active-mover gate is applied (movement_left > 0)
 Then it is no longer an active mover and waits until the next tick recharges it"
             }
           ]
         },
         %{
-          statement: "Orders resolve in lockstep rounds, one step per active mover per round processed in ascending unit id; a step into a tile occupied at that instant is blocked and interrupts the order in place.",
+          statement:
+            "Orders resolve in lockstep rounds, one step per active mover per round processed in ascending unit id; a step into a tile occupied at that instant is blocked and interrupts the order in place.",
           scenarios: [
             %{
               kind: "happy path",
               title: "One step per round, movers ordered by ascending id",
-              body: "Given two units with movement 2 both have pending multi-step paths
+              body:
+                "Given two units with movement 2 both have pending multi-step paths
 When a resolution round runs
 Then each active mover advances exactly one step that round, processed in ascending unit id, and the round repeats until no active movers remain — deterministic every run"
             },
             %{
               kind: "happy path",
               title: "Trailing unit follows into a tile the leader vacated this round",
-              body: "Given unit A (lower id) is directly ahead of unit B (higher id), both moving the same direction
+              body:
+                "Given unit A (lower id) is directly ahead of unit B (higher id), both moving the same direction
 When the round runs, A steps first and vacates its tile before B is processed
 Then B may step into A's vacated tile that same round (no false collision against a tile the leader already left)"
             },
             %{
               kind: "failure path",
               title: "Step into a stationary unit is blocked and interrupts",
-              body: "Given a mover's next tile is held by a unit that does not move this round
+              body:
+                "Given a mover's next tile is held by a unit that does not move this round
 When the step is attempted
 Then the step is blocked, the order flips to :interrupted, and the full remaining path (including the blocked step) is preserved untouched for a later re-queue"
             },
             %{
               kind: "failure path",
               title: "Tile claimed earlier the same round blocks a later mover",
-              body: "Given two movers target the same empty tile the same round
+              body:
+                "Given two movers target the same empty tile the same round
 When the lower-id mover claims it first
 Then the higher-id mover's step into that now-occupied tile is blocked and its order flips to :interrupted"
             },
             %{
               kind: "failure path",
               title: "Step into a foreign-occupied tile is blocked",
-              body: "Given a mover's next tile is held by another player's unit (not a broken city, no field-stack/garrison exception)
+              body:
+                "Given a mover's next tile is held by another player's unit (not a broken city, no field-stack/garrison exception)
 When the step is attempted
 Then it is blocked, the order flips to :interrupted, and the mover halts adjacent (movement into an enemy tile is a combat action, not a walk-on)"
             }
           ]
         },
         %{
-          statement: "A tile that is normally one-unit-only accepts a mover under three exceptions: a same-owner field stack of one civilian plus one combat unit, room in the mover's own city garrison, or an enemy city whose walls are broken.",
+          statement:
+            "A tile that is normally one-unit-only accepts a mover under three exceptions: a same-owner field stack of one civilian plus one combat unit, room in the mover's own city garrison, or an enemy city whose walls are broken.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Field stack: one civilian plus one combat escort share an open tile",
-              body: "Given an open-field tile holds exactly one of Wes's combat units (warrior)
+              body:
+                "Given an open-field tile holds exactly one of Wes's combat units (warrior)
 When his worker of the same owner steps onto it
 Then the step succeeds — one civilian plus one combat unit of the same owner may share a field tile (either order)"
             },
             %{
               kind: "happy path",
               title: "Own-city garrison has room for a returning defender",
-              body: "Given the mover's own city tile holds fewer than the garrison cap of military units
+              body:
+                "Given the mover's own city tile holds fewer than the garrison cap of military units
 When one of the player's units steps onto the city tile
 Then the step succeeds (civilians always fit uncounted; military fit up to the garrison cap)"
             },
             %{
               kind: "happy path",
               title: "Broken enemy city allows a walk-in past the fallen garrison",
-              body: "Given an enemy city is broken (hp 0) and not yet captured (occupied_by_player_id is nil)
+              body:
+                "Given an enemy city is broken (hp 0) and not yet captured (occupied_by_player_id is nil)
 When another player's unit steps onto the city tile
 Then the step succeeds despite a still-present fallen garrison (story 906 broken-city walk-in)"
             },
             %{
               kind: "failure path",
               title: "Field stack is full — second civilian or same-class is blocked",
-              body: "Given an open tile already holds two units, or one unit of the SAME combat class as the mover, or a foreign-owned unit
+              body:
+                "Given an open tile already holds two units, or one unit of the SAME combat class as the mover, or a foreign-owned unit
 When the mover attempts to step on
 Then the step is blocked — the field-stack exception allows only exactly one civilian plus one combat unit of the same owner"
             },
             %{
               kind: "failure path",
               title: "Healthy garrisoned enemy city stays blocked",
-              body: "Given an enemy city still has hp above 0 (walls intact) and a garrison unit on its tile
+              body:
+                "Given an enemy city still has hp above 0 (walls intact) and a garrison unit on its tile
 When another player's unit attempts to step onto the city tile
 Then the step is blocked — the broken-city walk-in only applies once hp reaches 0"
             }
           ]
         },
         %{
-          statement: "Fortify costs no movement; a unit that displaces loses the stance, but a unit that stays put (including one whose step was blocked) or is merely attacked keeps it.",
+          statement:
+            "Fortify costs no movement; a unit that displaces loses the stance, but a unit that stays put (including one whose step was blocked) or is merely attacked keeps it.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Fortifying spends no movement",
-              body: "Given a defend-capable unit at full movement
+              body:
+                "Given a defend-capable unit at full movement
 When the player fortifies it
 Then it gains the stance immediately (fortified_turns 1, the partial bonus) and its movement is unchanged — fortify is not a move"
             },
@@ -6143,40 +7483,46 @@ Then its fortified_turns resets to 0 — the stance is lost the moment it actual
             %{
               kind: "happy path",
               title: "Stance ramps to full after a boundary held untouched",
-              body: "Given a unit fortified this turn (fortified_turns 1) that neither moves nor attacks
+              body:
+                "Given a unit fortified this turn (fortified_turns 1) that neither moves nor attacks
 When the turn boundary runs advance_fortify
 Then fortified_turns bumps to 2 (the full bonus, capped there); being attacked in between never clears it"
             },
             %{
               kind: "happy path",
               title: "A blocked step does not clear fortify",
-              body: "Given a fortified unit whose queued step is blocked so it never leaves its tile
+              body:
+                "Given a fortified unit whose queued step is blocked so it never leaves its tile
 When resolution applies positions
 Then because its tile is unchanged its fortified_turns is preserved — only actual displacement clears the stance"
             },
             %{
               kind: "failure path",
               title: "Fortify is rejected for a non-defend-capable unit",
-              body: "Given a unit whose type cannot defend-fortify (e.g. a barbarian, not player-commandable)
+              body:
+                "Given a unit whose type cannot defend-fortify (e.g. a barbarian, not player-commandable)
 When a fortify command is issued
 Then it is refused with {:error, :not_fortifiable} (or :not_owner if the caller does not own it)"
             }
           ]
         },
         %{
-          statement: "A unit may only path over tiles its type permits: land units over land, the galley over coastal water only, and the Scout ignores the difficult-terrain surcharge.",
+          statement:
+            "A unit may only path over tiles its type permits: land units over land, the galley over coastal water only, and the Scout ignores the difficult-terrain surcharge.",
           scenarios: [
             %{
               kind: "happy path",
               title: "Galley paths over coastal water",
-              body: "Given a galley on a coastal-water tile with a coastal-water route to the destination
+              body:
+                "Given a galley on a coastal-water tile with a coastal-water route to the destination
 When a move is queued
 Then it paths over coastal-water tiles only (V1 scope: no deep ocean, no land)"
             },
             %{
               kind: "happy path",
               title: "Scout ignores the difficult-terrain surcharge",
-              body: "Given a Scout (story 931) entering hills or woods with no road
+              body:
+                "Given a Scout (story 931) entering hills or woods with no road
 When the entry cost is priced
 Then it costs 1, not 2 — the Scout ignores the difficult-terrain surcharge (Civ 6 Scout ignore-terrain-cost trait), and its pathing reflects the cheaper cost too"
             },
@@ -6190,7 +7536,8 @@ Then it is refused with {:error, :impassable} — a galley may never enter land"
             %{
               kind: "failure path",
               title: "Land unit onto water is impassable",
-              body: "Given a land unit (warrior/worker/settler/lord) and a coastal-water or ocean destination tile
+              body:
+                "Given a land unit (warrior/worker/settler/lord) and a coastal-water or ocean destination tile
 When a move is queued
 Then it is refused with {:error, :impassable} — no land unit boards water in V1 scope"
             }
@@ -6198,9 +7545,24 @@ Then it is refused with {:error, :impassable} — no land unit boards water in V
         }
       ],
       questions: [
-        %{body: "Should an :interrupted (blocked) move order AUTO-RESUME next tick when the blocking tile clears, or stay stopped until the player re-issues it (current behavior)? Today a blocked step flips the order to :interrupted and it is never retried until re-queued — the root of the \"my Lord is a turn behind / won't move\" playtest reports. Civ 6 analog: a unit given a move-to order keeps pathing toward the target each turn until it arrives or is manually stopped, which argues for auto-resume (and possibly re-pathing around a now-persistent obstacle). PM decides: (a) keep stopped, (b) auto-resume same path when clear, or (c) auto-repath each tick.", status: :open, resolution: nil},
-        %{body: "Capture/vassalization/rebellion resolves on an immediate move but not on a tick-continued one. queue_move/4 runs Vassalization.apply_captures and War.process_rebellion_endings right after move_now, so an immediately-resolved arrival triggers capture and rebellion-ending fallout instantly. But Turn.tick's Movement.resolve_orders (the boundary continuation of a long remaining path) runs neither hook. So a unit that reaches a captureable tile via the turn-boundary continuation may not trigger capture the same way a unit that reached it on the issuing tick does. Is this intended (captures only on player-issued moves) or a gap that should also fire on tick-continued arrivals? PM/dev to decide.", status: :open, resolution: nil},
-        %{body: "Scout's \"ignore difficult-terrain cost\" (931) has no home in the cost model yet. entry_cost/3 today takes (world, roads, tile_id) with no unit-type parameter, and both Dijkstra pathfinding (bfs_path) and the per-step spend (attempt_step) read it as the single source of truth. Implementing the Scout discount means threading unit_type into entry_cost so BOTH the route choice and the step cost see cost 1 for the Scout — meaning a Scout would path straight THROUGH forests rather than around them, not just pay less. Is that the intended behavior (discount affects routing too), and does it stack cleanly with the already-1 road cost? PM/dev to confirm the intended cost-model shape before 931 is built.", status: :open, resolution: nil}
+        %{
+          body:
+            "Should an :interrupted (blocked) move order AUTO-RESUME next tick when the blocking tile clears, or stay stopped until the player re-issues it (current behavior)? Today a blocked step flips the order to :interrupted and it is never retried until re-queued — the root of the \"my Lord is a turn behind / won't move\" playtest reports. Civ 6 analog: a unit given a move-to order keeps pathing toward the target each turn until it arrives or is manually stopped, which argues for auto-resume (and possibly re-pathing around a now-persistent obstacle). PM decides: (a) keep stopped, (b) auto-resume same path when clear, or (c) auto-repath each tick.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Capture/vassalization/rebellion resolves on an immediate move but not on a tick-continued one. queue_move/4 runs Vassalization.apply_captures and War.process_rebellion_endings right after move_now, so an immediately-resolved arrival triggers capture and rebellion-ending fallout instantly. But Turn.tick's Movement.resolve_orders (the boundary continuation of a long remaining path) runs neither hook. So a unit that reaches a captureable tile via the turn-boundary continuation may not trigger capture the same way a unit that reached it on the issuing tick does. Is this intended (captures only on player-issued moves) or a gap that should also fire on tick-continued arrivals? PM/dev to decide.",
+          status: :open,
+          resolution: nil
+        },
+        %{
+          body:
+            "Scout's \"ignore difficult-terrain cost\" (931) has no home in the cost model yet. entry_cost/3 today takes (world, roads, tile_id) with no unit-type parameter, and both Dijkstra pathfinding (bfs_path) and the per-step spend (attempt_step) read it as the single source of truth. Implementing the Scout discount means threading unit_type into entry_cost so BOTH the route choice and the step cost see cost 1 for the Scout — meaning a Scout would path straight THROUGH forests rather than around them, not just pay less. Is that the intended behavior (discount affects routing too), and does it stack cleanly with the already-1 road cost? PM/dev to confirm the intended cost-model shape before 931 is built.",
+          status: :open,
+          resolution: nil
+        }
       ],
       note: nil
     }
@@ -6216,15 +7578,12 @@ Currently Broken Oaths does NOT model rivers at all (the Water Mill dropped Civ 
 
 Scope to work out in Three Amigos (Civ 6-grounded): river GENERATION on the sphere (rivers run along tile EDGES, not tiles — how to represent edges/adjacency on the Goldberg mesh; deterministic from the seed like the rest of terrain); which effects rivers grant (Civ 6: fresh water/housing — but we have no housing; combat penalty crossing a river; +gold or +yield adjacency; unlocks/boosts for river-adjacent buildings such as the Water Mill and, later, Mills/Aqueducts); movement cost to cross; rendering rivers on the canvas board; persistence (derived from seed, so no storage, per the game-state-persistence ADR). Depends on the globe mesh (925 movement model, terrain generator). Likely its own epic.",
     tags: [%{name: "unknown"}],
-    criteria: [
-    ],
+    criteria: [],
     qa: %{final: :untested, attempts: 0, history: []},
     three_amigos: %{
       persona: nil,
-      rules: [
-      ],
-      questions: [
-      ],
+      rules: [],
+      questions: [],
       note: nil
     }
   }

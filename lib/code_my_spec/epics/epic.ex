@@ -35,7 +35,7 @@ defmodule CodeMySpec.Epics.Epic do
     field :account_id, Ecto.UUID
     field :status, Ecto.Enum, values: @statuses, default: :draft
     field :failure_reason, :string
-    field :dispatched_at, :utc_datetime
+    field :dispatched_at, :utc_datetime_usec
 
     belongs_to :project, Project, type: :binary_id
 
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Epics.Epic do
     # copy onto these stories instead, and `progress/1` reads it back off them.
     has_many :stories, Story
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @spec statuses() :: [atom()]

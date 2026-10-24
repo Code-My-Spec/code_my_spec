@@ -46,10 +46,10 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetupResultsTest do
     assert DesktopSetupResults.load(context.project_id) == nil
   end
 
-  test "an incomplete connection does not supply cockpit results", context do
+  test "a failed connection remains visible in cockpit results", context do
     snapshot = put_in(context.snapshot, ["operations", "connect", "state"], "errored")
     :ok = Store.save(context.directory, snapshot)
-    assert DesktopSetupResults.load(context.project_id) == nil
+    assert DesktopSetupResults.load(context.project_id) == snapshot
   end
 
   defp restore_project_dir(nil), do: System.delete_env("CMS_PROJECT_DIR")

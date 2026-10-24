@@ -49,7 +49,8 @@ defmodule CodeMySpecSpex.Story963.Criterion2921Spex do
     :ok
   end
 
-  spex "The main agent shapes stories and epics; the detailed design of each story happens elsewhere", criterion: 1009 do
+  spex "The main agent shapes stories and epics; the detailed design of each story happens elsewhere",
+    criterion: 1009 do
     scenario "The main agent hands over rather than designing" do
       given_ "I have described what I want built", context do
         copy = CodeMySpec.TempFile.dir("spex_2921")

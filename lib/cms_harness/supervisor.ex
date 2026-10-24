@@ -35,7 +35,8 @@ defmodule CmsHarness.Supervisor do
     deps: [
       CmsHarness,
       CmsHarness.Web,
-      CodeMySpec.BootVersion
+      CodeMySpec.BootVersion,
+      CodeMySpec.RunGuard
     ]
 
   use Supervisor
@@ -65,6 +66,11 @@ defmodule CmsHarness.Supervisor do
       # and a dead process deregisters itself.
       {Registry, keys: :unique, name: CmsHarness.Registry},
 
+      # Test and spex runs this harness starts never outlive it: orphans are
+      # reaped, and the groups an earlier harness left are swept at boot
+      # (issue bee745a0).
+      CodeMySpec.RunGuard,
+
       # How many analyzer runs this machine will execute at once, across every
       # working copy. `Project.AnalysisServer` serializes within a copy and
       # nothing serialized across them, so six agents wanting to promote ran six
@@ -74,6 +80,10 @@ defmodule CmsHarness.Supervisor do
       # Above the project supervisor, because it is the one thing here that is
       # about the machine rather than about a project.
       CmsHarness.AnalysisSlots,
+
+      # The node a test run joins to report its events as they happen, and
+      # whose going away stops the run (story 1141).
+      CmsHarness.RunLink,
 
       # Watches every agent the engine starts, so a death is reported the
       # moment it happens (`CmsHarness.Agents.Liveness`). Before the copies,
@@ -108,6 +118,19 @@ defmodule CmsHarness.Supervisor do
       # it: several hooks and an MCP call arrive at once on a cold start, and N
       # simultaneous exchanges for one key is N-1 tokens nobody uses.
       CmsHarness.Token,
+
+      # The dev-only age key(s) a project's channel join hands over (story
+      # 1132), held only in this process's memory — never a file. Above the
+      # socket that serves it, which reads it on every request.
+      CmsHarness.SopsKeyring,
+
+      # Hands the key above to `cms sops-key` (run by `sops` itself via
+      # `SOPS_AGE_KEY_CMD`) over a Unix domain socket only this box's own
+      # user can reach — never HTTP, never a file. `:temporary`-restarted
+      # children above it mean a project disconnecting never takes this
+      # down; this is the one machine-wide thing in this tree below
+      # `AnalysisSlots`.
+      CmsHarness.SopsKeySocket,
 
       # Device approval and token renewal run independently of project hooks.
       {CmsHarness.Authorization,

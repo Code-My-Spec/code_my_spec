@@ -175,7 +175,9 @@ defmodule CodeMySpec.WorkingCopiesTest do
       refute first.id == second.id
     end
 
-    test "an id naming no harness is reissued rather than refused", %{scope: scope} do
+    test "an id naming no harness is recreated under that id rather than refused", %{
+      scope: scope
+    } do
       stale = Ecto.UUID.generate()
 
       assert {:ok, harness} =
@@ -184,9 +186,22 @@ defmodule CodeMySpec.WorkingCopiesTest do
                  device: device_fixture(scope)
                )
 
-      refute harness.id == stale,
-             "a row deleted under a working copy that still holds the file must not " <>
-               "leave that copy unable to serve until somebody finds and deletes it"
+      assert harness.id == stale,
+             "a row deleted under a working copy that still holds the file must come " <>
+               "back as that working copy, or the file and the server disagree about who it is"
+    end
+
+    test "an id another project holds is never taken over", %{scope: scope} do
+      other = full_scope_fixture()
+      {:ok, theirs} = WorkingCopies.issue(other, nil, device: device_fixture(other))
+
+      assert {:ok, harness} =
+               WorkingCopies.issue(scope, theirs.id,
+                 label: "the harness at /a",
+                 device: device_fixture(scope)
+               )
+
+      refute harness.id == theirs.id
     end
 
     test "a malformed id is reissued rather than crashing the join", %{scope: scope} do

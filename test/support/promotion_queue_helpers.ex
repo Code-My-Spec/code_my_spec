@@ -3,6 +3,14 @@ defmodule CodeMySpecTest.PromotionQueueHelpers do
 
   alias CodeMySpec.PromotionQueue
 
+  @doc "Explicit compatibility opt-in for fixtures without an origin repository."
+  def local_promotion_project(scope) do
+    key = :local_promotion_projects
+    original = Application.get_env(:code_my_spec, key, [])
+    Application.put_env(:code_my_spec, key, [scope.active_project_id | original])
+    ExUnit.Callbacks.on_exit(fn -> Application.put_env(:code_my_spec, key, original) end)
+  end
+
   @doc "Stop the project's worker, if it is running."
   def stop_worker(project_id),
     do: CodeMySpec.PromotionQueue.Registry |> Registry.lookup(project_id) |> terminate()

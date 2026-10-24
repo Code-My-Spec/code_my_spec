@@ -7,13 +7,19 @@ defmodule CodeMySpec.McpServers.GoogleAds.Tools.CreateAd do
   alias CodeMySpec.McpServers.GoogleTools
 
   schema do
-    field :customer_id, :string, required: true, description: "Customer ID (e.g. \"123-456-7890\")"
+    field :customer_id, :string,
+      required: true,
+      description: "Customer ID (e.g. \"123-456-7890\")"
+
     field :ad_group_resource_name, :string,
       required: true,
       description: "Full ad group resource name, e.g. customers/123/adGroups/456"
+
     field :headlines, {:list, :string}, required: true, description: "Headline texts (3–15)"
     field :descriptions, {:list, :string}, required: true, description: "Description texts (2–4)"
-    field :login_customer_id, :string, description: "Manager (MCC) account ID, when acting on a linked account"
+
+    field :login_customer_id, :string,
+      description: "Manager (MCC) account ID, when acting on a linked account"
   end
 
   @impl true

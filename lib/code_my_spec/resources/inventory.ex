@@ -80,8 +80,11 @@ defmodule CodeMySpec.Resources.Inventory do
     %{kind: "ssh_key", location: "hetzner/#{key["name"]}", identifier: key["fingerprint"]}
   end
 
-  defp named(kind, provider, %{"name" => name}), do: %{kind: kind, location: "#{provider}/#{name}", identifier: nil}
-  defp named(kind, provider, name) when is_binary(name), do: %{kind: kind, location: "#{provider}/#{name}", identifier: nil}
+  defp named(kind, provider, %{"name" => name}),
+    do: %{kind: kind, location: "#{provider}/#{name}", identifier: nil}
+
+  defp named(kind, provider, name) when is_binary(name),
+    do: %{kind: kind, location: "#{provider}/#{name}", identifier: nil}
 
   # Records, not just zones. A zone is one line and never the thing that is
   # wrong; the record pointing at a released address is.
@@ -112,8 +115,14 @@ defmodule CodeMySpec.Resources.Inventory do
     with {:ok, domains} <- Resend.list_domains(scope),
          {:ok, webhooks} <- Resend.list_webhooks(scope) do
       {:ok,
-       Enum.map(domains, &%{kind: "sending_domain", location: "resend/#{&1["name"]}", identifier: &1["status"]}) ++
-         Enum.map(webhooks, &%{kind: "webhook", location: &1["endpoint"], identifier: &1["status"]})}
+       Enum.map(
+         domains,
+         &%{kind: "sending_domain", location: "resend/#{&1["name"]}", identifier: &1["status"]}
+       ) ++
+         Enum.map(
+           webhooks,
+           &%{kind: "webhook", location: &1["endpoint"], identifier: &1["status"]}
+         )}
     end
   end
 

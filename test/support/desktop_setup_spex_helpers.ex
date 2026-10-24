@@ -26,8 +26,9 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
         {"asdf", "v0.16.0\nerlang 27.2\nelixir 1.18.1"},
         {"erl", "27"},
         {"elixir", "Erlang/OTP 27\nElixir 1.18.1"},
-        {"cms", "cms 2.0.0"},
-        {"vibium", "Vibium 1.0.0"}
+        {"mix", "mix cms.new"},
+        {"vibium", "Vibium 1.0.0"},
+        {"just", "just 1.40.0"}
       ],
       fn {name, output} ->
         script =
@@ -99,6 +100,8 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
      })}
   end
 
+  defdelegate connect_setup_project(context), to: Fixtures
+
   def with_project_generator(context) do
     previous_runner = Application.fetch_env(:code_my_spec, :generator_runner)
 
@@ -142,6 +145,81 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
       File.chmod!(path, 0o700)
     end)
 
+    context
+  end
+
+  @doc "Make the Postgres version check itself fail, leaving the pgvector check untouched."
+  defdelegate without_postgres(context), to: Fixtures, as: :without_setup_postgres
+
+  @doc """
+  Tell desktop setup which machine it is running on, for a criterion about a
+  platform this test process is not actually running on (Windows, Apple
+  Silicon).
+
+  Story 1133's own decision (product, on the question this answers): the
+  edge detects os/arch once (`:os.type/0`, the system architecture) and
+  passes it into `CmsHarness.Setup` as a parameter -- the OS branching
+  itself is what that story adds, not something already readable today.
+  This is the test-only injection seam for that parameter, in the same
+  `Application.put_env/3` + `on_exit` shape every other override in this
+  file already uses (`device_config_path`, `harness_server_url_override`):
+  nothing in `CmsHarness.Setup` reads `:setup_platform_override` yet, so a
+  spec using this stays red until that story's edge detection is built to
+  consult it instead of (or before) the real `:os.type/0`.
+  """
+  def as_platform(context, os, arch) when is_atom(os) and is_atom(arch) do
+    previous = Application.fetch_env(:code_my_spec, :setup_platform_override)
+    Application.put_env(:code_my_spec, :setup_platform_override, %{os: os, arch: arch})
+
+    ExUnit.Callbacks.on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:code_my_spec, :setup_platform_override, value)
+        :error -> Application.delete_env(:code_my_spec, :setup_platform_override)
+      end
+    end)
+
+    context
+  end
+
+  @doc """
+  Add a fake `just` to the machine's PATH, logging its invocation like every
+  other fake prerequisite binary here. Always succeeds: what it would really
+  do (fetch deps, create and migrate the database) is not part of what a
+  spec can observe through the desktop UI, which only shows that the
+  command ran.
+  """
+  def with_just(context) do
+    path = Path.join([context.machine_root, "bin", "just"])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf 'just 1.40.0\\n'
+    printf 'just' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    """)
+
+    File.chmod!(path, 0o700)
+    context
+  end
+
+  @doc """
+  Add a fake `name` to the machine's PATH that only logs its invocation and
+  exits 0, for a platform's installer (`winget`, `arch -arm64 brew`, ...).
+  What it would really install is not something a spec can observe through
+  the desktop UI -- only that it ran, like every other fake binary here.
+  """
+  def with_fake_installer(context, name) do
+    path = Path.join([context.machine_root, "bin", name])
+
+    File.write!(path, """
+    #!/bin/sh
+    printf '#{name}' >> '#{context.command_log}'
+    printf ' %s' "$@" >> '#{context.command_log}'
+    printf '\\n' >> '#{context.command_log}'
+    """)
+
+    File.chmod!(path, 0o700)
     context
   end
 

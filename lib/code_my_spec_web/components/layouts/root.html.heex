@@ -26,42 +26,77 @@
     <.live_title default="CodeMySpec">
       {assigns[:page_title] || assigns[:meta_title]}
     </.live_title>
-    
-<!-- SEO Meta Tags -->
+
+    <!-- SEO Meta Tags -->
     <meta
       :if={assigns[:meta_description]}
       name="description"
       content={assigns[:meta_description]}
     />
-    
-<!-- Open Graph Meta Tags -->
-    <meta property="og:title" content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"} />
+
+    <!-- Open Graph Meta Tags -->
+    <meta
+      property="og:title"
+      content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"}
+    />
     <meta
       property="og:description"
-      content={assigns[:og_description] || assigns[:meta_description] || "AI-assisted Phoenix development that actually ships"}
+      content={
+        assigns[:og_description] || assigns[:meta_description] ||
+          "AI-assisted Phoenix development that actually ships"
+      }
     />
-    <meta property="og:image" content={assigns[:og_image] || CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())} />
+    <meta
+      property="og:image"
+      content={
+        assigns[:og_image] ||
+          CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())
+      }
+    />
     <meta property="og:type" content={assigns[:og_type] || "website"} />
     <meta property="og:url" content={assigns[:canonical_url] || CodeMySpecWeb.Endpoint.url()} />
     <meta property="og:site_name" content="CodeMySpec" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta :if={assigns[:og_type] == "article" and assigns[:article_published_time]} property="article:published_time" content={assigns[:article_published_time]} />
+    <meta
+      :if={assigns[:og_type] == "article" and assigns[:article_published_time]}
+      property="article:published_time"
+      content={assigns[:article_published_time]}
+    />
     <meta :if={assigns[:og_type] == "article"} property="article:author" content="John Davenport" />
     <link :if={assigns[:canonical_url]} rel="canonical" href={assigns[:canonical_url]} />
-<!-- Twitter Card Meta Tags -->
+    <!-- Twitter Card Meta Tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@johns10d" />
-    <meta name="twitter:title" content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"} />
-    <meta name="twitter:description" content={assigns[:og_description] || assigns[:meta_description] || "AI-assisted Phoenix development that actually ships"} />
-    <meta name="twitter:image" content={assigns[:og_image] || CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())} />
+    <meta
+      name="twitter:title"
+      content={assigns[:og_title] || assigns[:page_title] || "CodeMySpec"}
+    />
+    <meta
+      name="twitter:description"
+      content={
+        assigns[:og_description] || assigns[:meta_description] ||
+          "AI-assisted Phoenix development that actually ships"
+      }
+    />
+    <meta
+      name="twitter:image"
+      content={
+        assigns[:og_image] ||
+          CodeMySpecWeb.ImageUrl.image_url("og-default.png", CodeMySpecWeb.Endpoint.url())
+      }
+    />
     <%= if assigns[:json_ld_list] do %>
       <%= for item <- assigns[:json_ld_list] do %>
-        <script type="application/ld+json" nonce={assigns[:csp_nonce]}><%= raw(item) %></script>
+        <script type="application/ld+json" nonce={assigns[:csp_nonce]}>
+          <%= raw(item) %>
+        </script>
       <% end %>
     <% else %>
       <%= if assigns[:json_ld] do %>
-        <script type="application/ld+json" nonce={assigns[:csp_nonce]}><%= raw(assigns[:json_ld]) %></script>
+        <script type="application/ld+json" nonce={assigns[:csp_nonce]}>
+          <%= raw(assigns[:json_ld]) %>
+        </script>
       <% end %>
     <% end %>
 
@@ -96,11 +131,9 @@
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
 
-    <%
-      ga_measurement_id =
-        Application.get_env(:code_my_spec, CodeMySpec.Analytics.GoogleAnalytics, [])
-        |> Keyword.get(:measurement_id)
-    %>
+    <% ga_measurement_id =
+      Application.get_env(:code_my_spec, CodeMySpec.Analytics.GoogleAnalytics, [])
+      |> Keyword.get(:measurement_id) %>
     <%= if ga_measurement_id do %>
       <%!-- gtag.js: browser pageviews, sessions, engagement, bot exclusion, referrer attribution.
            Deferred to first interaction (or 3.5s idle fallback) to keep GTM's ~180KB off the
@@ -140,9 +173,7 @@
       </script>
     <% end %>
 
-    <%
-      clarity_project_id = Application.get_env(:code_my_spec, :clarity_project_id)
-    %>
+    <% clarity_project_id = Application.get_env(:code_my_spec, :clarity_project_id) %>
     <%= if clarity_project_id do %>
       <%!-- Microsoft Clarity: session recording + heatmaps for qualitative CRO
            research (cro_tasks/15). Same deferred-load trade-off as gtag.js

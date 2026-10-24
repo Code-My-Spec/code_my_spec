@@ -87,10 +87,15 @@ defmodule CodeMySpec.Agents.Main do
   end
 
   defp report_failed_remedy(scope, entry, reason) do
-    raise_fault(
+    latest_restart = entry |> RestartRepository.unresolved(reason) |> List.last()
+    reason_key = :crypto.hash(:sha256, reason) |> Base.encode16(case: :lower)
+    fault_key = "restart:#{entry.agent_id}:#{reason_key}"
+
+    file_fault(
+      Issues.fault_reported?(scope, fault_key, latest_restart.inserted_at),
       scope,
       entry.working_copy_root,
-      titled("A restart changed nothing", reason),
+      {titled("A restart changed nothing", reason), fault_key},
       """
       The #{entry.role} agent #{entry.agent_id} was restarted for this and the fault is \
       still here:
@@ -324,12 +329,17 @@ defmodule CodeMySpec.Agents.Main do
     file_fault(Issues.open_issue_titled?(scope, title), scope, working_copy, title, description)
   end
 
-  defp file_fault(true, _scope, _working_copy, title, _description) do
+  defp file_fault(already_reported, scope, working_copy, title, description)
+       when is_binary(title) do
+    file_fault(already_reported, scope, working_copy, {title, title}, description)
+  end
+
+  defp file_fault(true, _scope, _working_copy, {title, _fault_key}, _description) do
     Logger.info("[MainAgent] fault already raised, not filing again: #{title}")
     {:ok, :already_raised}
   end
 
-  defp file_fault(false, scope, working_copy, title, description) do
+  defp file_fault(false, scope, working_copy, {title, fault_key}, description) do
     scope
     |> Issues.create_issue(%{
       title: title,
@@ -337,7 +347,7 @@ defmodule CodeMySpec.Agents.Main do
       scope: :framework,
       description: description,
       source_path: working_copy,
-      fault_key: title
+      fault_key: fault_key
     })
     |> already_raised_if_lost_the_race(title)
   end

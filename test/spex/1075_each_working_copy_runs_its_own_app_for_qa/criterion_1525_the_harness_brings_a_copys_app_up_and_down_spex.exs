@@ -35,7 +35,9 @@ defmodule CodeMySpecSpex.Story1108.Criterion4649Spex do
       end
 
       then_ "the app is reported serving, with its address and commit", context do
-        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "deadbeef"} = context.result
+        assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "deadbeef"} =
+                 context.result
+
         assert context.result["app_url"] =~ ~r{^http://127\.0\.0\.1:\d+$}
 
         {:ok, context}

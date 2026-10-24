@@ -53,6 +53,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # there fails until it does.
   setup ctx do
     scope = full_scope_fixture()
+    local_promotion_project(scope)
     main_root = CodeMySpec.TempFile.dir("queue-main")
     File.mkdir_p!(main_root)
     git!(main_root, ["init", "-q", "-b", "main"])
@@ -174,6 +175,76 @@ defmodule CodeMySpec.PromotionQueueTest do
     do:
       AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
 
+  test "a production queue without origin cannot fall back to the desktop", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    a = candidate(ctx, "missing-origin", "main", "a.ex", "a\n")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    # The call synchronizes with the worker's initial attempt.
+    state = :sys.get_state(GenServer.whereis(Worker.via(ctx.scope.active_project_id)))
+    assert state.phase == :idle
+    assert Repository.get(entry.id).status == :queued
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) != a.commit
+  end
+
+  test "remote publication uses the source gate while the desktop destination is offline", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    remote = CodeMySpec.TempFile.dir("queue-origin")
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--bare", "-q"])
+    on_exit(fn -> File.rm_rf(remote) end)
+    git!(ctx.main_root, ["remote", "add", "origin", remote])
+    git!(ctx.main_root, ["push", "-q", "origin", "main"])
+    a = candidate(ctx, "remote-a", "main", "a.ex", "a\n")
+
+    {:ok, _} =
+      ctx.gate
+      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Repo.update()
+
+    clean_runs_at(ctx, a.commit)
+    # Destination cannot be consulted; the gate shares only source objects.
+    {:ok, _} = WorkingCopies.report_root(ctx.main, "/missing/offline/desktop")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(remote, ["rev-parse", "refs/heads/main"]) == a.commit
+    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit
+  end
+
+  test "an already published remote head must acquire a certification receipt", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    remote = CodeMySpec.TempFile.dir("queue-origin")
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--bare", "-q"])
+    on_exit(fn -> File.rm_rf(remote) end)
+    git!(ctx.main_root, ["remote", "add", "origin", remote])
+    git!(ctx.main_root, ["push", "-q", "origin", "main"])
+    a = candidate(ctx, "remote-a", "main", "a.ex", "a\n")
+
+    {:ok, _} =
+      ctx.gate
+      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Repo.update()
+
+    git!(a.copy.root, ["push", "-q", "origin", "HEAD:main"])
+    clean_runs_at(ctx, a.commit)
+    # Destination cannot be consulted; the gate shares only source objects.
+    {:ok, _} = WorkingCopies.report_root(ctx.main, "/missing/offline/desktop")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :landed} = landed} = settle(entry)
+    assert is_binary(landed.result["promotion_id"])
+
+    assert git!(remote, [
+             "rev-parse",
+             "refs/codemyspec/promotions/" <> landed.result["promotion_id"]
+           ]) == a.commit
+
+    assert git!(remote, ["rev-parse", "refs/heads/main"]) == a.commit
+    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit
+  end
+
   test "a candidate lands on main as its exact commit", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     clean_runs_at(ctx, a.commit)
@@ -290,6 +361,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     origin = CodeMySpec.TempFile.dir("conflict-origin")
     File.mkdir_p!(seed)
     File.mkdir_p!(origin)
+
     on_exit(fn ->
       File.rm_rf(seed)
       File.rm_rf(origin)
@@ -322,7 +394,13 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     File.write!(Path.join(root, "app.ex"), "candidate's App\n")
     git!(root, ["add", "app.ex"])
-    git!(root, ["update-index", "--cacheinfo", "160000,#{String.duplicate("a", 40)},.code_my_spec"])
+
+    git!(root, [
+      "update-index",
+      "--cacheinfo",
+      "160000,#{String.duplicate("a", 40)},.code_my_spec"
+    ])
+
     git!(root, ["commit", "-q", "-m", "candidate"])
     candidate_commit = git!(root, ["rev-parse", "HEAD"])
 
@@ -362,7 +440,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["reason"] =~ ".code_my_spec"
     assert result["reason"] =~ String.slice(candidate_commit, 0, 12)
     assert result["reason"] =~ String.slice(main_commit, 0, 12)
-    assert result["reason"] =~ "Merge main"
+    assert result["reason"] =~ "Merge the current development branch"
 
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == main_commit
     assert git!(ctx.gate_root, ["status", "--porcelain", "--ignore-submodules"]) == ""
@@ -415,6 +493,47 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "assets"
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
+  end
+
+  # 0dc0f327: promotion formats the candidate and commits the result as its own
+  # commit before gating, and what the agent is told names that commit.
+  test "a candidate that is not formatted is formatted in its own commit before gating", ctx do
+    mix_exs = """
+    defmodule App.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :app, version: "0.1.0"]
+    end
+    """
+
+    a = candidate(ctx, "a", "main", "mix.exs", mix_exs)
+    {:ok, %{root: root}} = WorkingCopies.fetch(a.copy.id)
+    File.write!(Path.join(root, ".formatter.exs"), "[inputs: [\"*.ex\"]]\n")
+    File.write!(Path.join(root, "loose.ex"), "defmodule   Loose  do\nend\n")
+    git!(root, ["add", "-A"])
+    git!(root, ["commit", "-q", "--amend", "--no-edit"])
+    a = %{a | commit: git!(root, ["rev-parse", "HEAD"])}
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    # No runs exist at the batch commit, so the gate ejects it; what matters is
+    # the commit it was gated at and what the ejection says about it. The gate
+    # is asked again without waiting out the recheck interval.
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.get_state(worker)
+    send(worker, :gate)
+
+    assert {:ok, %{status: :ejected, result: %{"reason" => reason}}} = settle(entry)
+    assert reason =~ "ran mix format before gating"
+    assert reason =~ "loose.ex"
+
+    format_commit = git!(ctx.gate_root, ["log", "-1", "--format=%H", "--grep=Promotion format"])
+    assert reason =~ format_commit
+    assert git!(ctx.gate_root, ["show", "--stat", "--format=", format_commit]) =~ "loose.ex"
+    assert git!(ctx.main_root, ["rev-parse", "main"]) != format_commit
   end
 
   # 2026-10-12: a batch ejected on its first finding left its other analyzers

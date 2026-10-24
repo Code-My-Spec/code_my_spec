@@ -28,7 +28,12 @@ defmodule CodeMySpec.Agents.Tools.ProblemsAreShownOnlyWhereARoleCanActOnThemTest
     }
   end
 
-  @finding %{source: "compiler", file_path: "lib/my_app/refunds.ex", line: 12, message: "redefining @doc"}
+  @finding %{
+    source: "compiler",
+    file_path: "lib/my_app/refunds.ex",
+    line: 12,
+    message: "redefining @doc"
+  }
 
   test "a role that cannot act on problems does not get them attributed to it, and the copy's count still surfaces" do
     work = [agent("qa-id", :qa, working_copy_id: "copy-a", problems: [@finding])]
@@ -91,10 +96,19 @@ defmodule CodeMySpec.Agents.Tools.ProblemsAreShownOnlyWhereARoleCanActOnThemTest
   end
 
   test "two unstaffed copies are each named once, not merged or dropped" do
-    other_finding = %{@finding | file_path: "lib/my_app/orders.ex", line: 3, message: "unused alias"}
+    other_finding = %{
+      @finding
+      | file_path: "lib/my_app/orders.ex",
+        line: 3,
+        message: "unused alias"
+    }
 
     work = [
-      agent("qa-1", :qa, working_copy_id: "copy-e", working_copy_root: "/tmp/e", problems: [@finding]),
+      agent("qa-1", :qa,
+        working_copy_id: "copy-e",
+        working_copy_root: "/tmp/e",
+        problems: [@finding]
+      ),
       agent("qa-2", :qa, working_copy_id: "copy-f", problems: [@finding, other_finding])
     ]
 

@@ -15,7 +15,7 @@ defmodule CodeMySpec.MixProject do
       # compiles under :dev instead of :test, missing test/support paths.
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_cli_env: [spex: :test],
+      preferred_cli_env: [spex: :test, reset_onboarding: :desktop],
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       # _spex.exs files are a separate suite run by `mix spex` (which loads
       # them via Path.wildcard, not these filters). Declare them ignored so
@@ -103,6 +103,19 @@ defmodule CodeMySpec.MixProject do
     ErlangError -> nil
   end
 
+  # `client_utils` is checked out beside the main checkout on a dev machine.
+  # Every worktree shares that checkout's git dir, wherever the worktree itself
+  # lives. A machine without it (CI, a release build) takes it from GitHub.
+  defp client_utils do
+    args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
+    {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
+    path = Path.expand("../../client_utils", String.trim(common))
+
+    if File.dir?(path),
+      do: {:client_utils, path: path},
+      else: {:client_utils, github: "Code-My-Spec/client_utils", branch: "main"}
+  end
+
   defp from_describe(described) do
     case Regex.run(~r/^v(\d+\.\d+\.\d+)-(\d+)-(g[0-9a-f]+)$/, described) do
       [_, version, "0", _sha] -> version
@@ -144,7 +157,11 @@ defmodule CodeMySpec.MixProject do
       # process: an agent is a supervised GenServer, so sending it a message is
       # a call rather than a held stdin pipe, and stopping it is termination
       # rather than signalling a process group across a reboot.
-      {:alloy, "~> 0.13.0"},
+      # Our fork of 0.13.0: Codex tool arguments that do not decode go back to
+      # the model to resend instead of failing the turn. Overrides the Hex
+      # requirement alloy_claude_code declares.
+      {:alloy,
+       git: "https://github.com/Code-My-Spec/alloy.git", branch: "cms-0.13", override: true},
       # The "claude-code" provider (`CmsHarness.Agents.Provider`). Upstream
       # deferred it, so it is its own package.
       {:alloy_claude_code,
@@ -203,12 +220,12 @@ defmodule CodeMySpec.MixProject do
        git: "https://github.com/Code-My-Spec/spex.git",
        branch: "feature/reusable-givens",
        only: [:dev, :test]},
-      # git rather than hex, so the harness and the library it shares a contract
-      # with move together. `Onboarding.databases/2` lists the partitions and
-      # `TestDatabase.partition_for/2` uses them; a release boundary between the
-      # two means a window where the harness runs a suite against a database
-      # nothing told anyone to create.
-      {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "main"},
+      # A path rather than hex, so the harness and the library it shares a
+      # contract with move together. `Onboarding.databases/2` lists the
+      # partitions and `TestDatabase.partition_for/2` uses them; a release
+      # boundary between the two means a window where the harness runs a suite
+      # against a database nothing told anyone to create.
+      client_utils(),
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
@@ -417,7 +434,13 @@ defmodule CodeMySpec.MixProject do
     [
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test, "cms.spex": :test]
+      preferred_envs: [
+        spex: :test,
+        agent_test: :test,
+        "cms.eval": :test,
+        "cms.spex": :test,
+        reset_onboarding: :desktop
+      ]
     ]
   end
 

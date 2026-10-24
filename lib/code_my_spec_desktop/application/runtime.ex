@@ -1,5 +1,5 @@
 defmodule CodeMySpecDesktop.Application.Runtime do
-  @moduledoc "Starts database-dependent desktop services after prerequisite setup."
+  @moduledoc "Starts the SQLite database, web application and local harness."
 
   alias CodeMySpec.Integrations.DesktopClients
   alias CodeMySpecDesktop.FirstBoot
@@ -9,7 +9,7 @@ defmodule CodeMySpecDesktop.Application.Runtime do
       id: __MODULE__,
       start: {__MODULE__, :start_link, [opts]},
       type: :supervisor,
-      restart: :temporary,
+      restart: :permanent,
       shutdown: :infinity
     }
   end
@@ -31,8 +31,12 @@ defmodule CodeMySpecDesktop.Application.Runtime do
            Keyword.put(opts, :transport, {:streamable_http, start: true})}
         ]
 
+      # CmsHarness.Supervisor starts its own, and the name is global.
+      CodeMySpec.RunGuard ->
+        []
+
       child ->
         [child]
-    end) ++ [CmsHarness.Supervisor]
+    end) ++ [CmsHarness.Supervisor, CodeMySpecDesktop.ProjectSetup]
   end
 end

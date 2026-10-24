@@ -1,4 +1,8 @@
-<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
+<Layouts.marketing
+  current_path={assigns[:current_path]}
+  flash={@flash}
+  current_scope={@current_scope}
+>
   <article class="max-w-4xl mx-auto px-4 py-8">
     <%= if hero_image = blog_hero_image(@content) do %>
       <img
@@ -13,8 +17,14 @@
     <% end %>
     <header class="mb-8">
       <h1 class="text-4xl font-bold tracking-tight mb-4">{@content.title || @content.slug}</h1>
-      <div :if={@content.content_type == :blog} class="flex items-center gap-3 text-sm text-base-content/60 mb-4">
-        <a href="/author/john-davenport" class="link link-hover hover:text-primary transition-colors">By John Davenport</a>
+      <div
+        :if={@content.content_type == :blog}
+        class="flex items-center gap-3 text-sm text-base-content/60 mb-4"
+      >
+        <a
+          href="/author/john-davenport"
+          class="link link-hover hover:text-primary transition-colors"
+        >By John Davenport</a>
         <span>&middot;</span>
         <span>{format_publish_date(@content.publish_at)}</span>
       </div>
@@ -34,7 +44,6 @@
         </div>
       <% end %>
     </div>
-
   </article>
 
   <script>

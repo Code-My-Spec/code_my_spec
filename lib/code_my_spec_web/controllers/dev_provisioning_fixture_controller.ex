@@ -2,7 +2,17 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   @moduledoc "Development-only disposable setup fixtures and simulated provider controls."
   use CodeMySpecWeb, :controller
 
-  alias CodeMySpec.{Projects, Users, UserPreferences}
+  alias CodeMySpec.{
+    Agents,
+    Devices,
+    Environments,
+    Projects,
+    UserPreferences,
+    Users,
+    WorkingCopies
+  }
+
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.QaFixture
 
   def create(conn, params) do
@@ -121,6 +131,98 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   end
 
   defp authenticate(_), do: {:error, :unauthorized}
+
+  @doc """
+  Agents for QA to act as against this app's own checkout.
+
+  A copy's app has its own database and no harness, so its tools know no
+  project, copy or agent and every call answers "no working copy". This
+  records the checkout this app runs in as a project and working copy, with a
+  local environment so analysis runs here, and a terminal agent per role in
+  `roles`. Each agent's headers address `/mcp/harness` as that agent.
+  """
+  def qa_agents(conn, params) do
+    root = File.cwd!()
+    roles = List.wrap(params["roles"] || ["coding", "coding"])
+
+    with {:ok, scope} <- authenticate(params),
+         {:ok, scope} <- qa_copy(scope, root),
+         {:ok, agents} <- qa_terminals(scope, roles) do
+      json(conn, %{
+        project_id: scope.active_project_id,
+        working_copy_id: scope.active_working_copy_id,
+        root: root,
+        agents:
+          Enum.map(agents, fn agent ->
+            %{
+              agent_id: agent.id,
+              role: agent.role,
+              headers: %{"X-Project-ID" => scope.active_project_id, "X-Agent-Id" => agent.id}
+            }
+          end)
+      })
+    else
+      {:error, reason} when reason not in [:unauthorized, :select_account_first] ->
+        conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
+
+      _ ->
+        refuse(conn)
+    end
+  end
+
+  defp qa_copy(scope, root) do
+    with {:ok, project} <- qa_project(scope, root),
+         scope = %{scope | active_project: project, active_project_id: project.id},
+         {:ok, device} <-
+           Devices.announce(scope, nil, %{hostname: "qa-#{project.id}", kind: :local}),
+         {:ok, copy} <-
+           WorkingCopies.issue(scope, nil, device: device.id, root: root, label: "qa"),
+         {:ok, copy} <- WorkingCopies.report_root(copy, root) do
+      with :ok <- register_local(copy.id, root),
+           do: {:ok, %{scope | active_working_copy_id: copy.id, cwd: root}}
+    end
+  end
+
+  # Registered from the long-lived owner a copy's app starts, so the entry
+  # outlives this request. Main's app has none: it runs no analysis itself.
+  defp register_local(copy_id, root) do
+    case Process.whereis(CodeMySpecWeb.QaEnvironments) do
+      nil ->
+        {:error, :not_a_copy_app}
+
+      owner ->
+        Agent.get(owner, fn _ ->
+          Environments.register({:working_copy, copy_id}, Environment.new(:local, root))
+        end)
+    end
+  end
+
+  defp qa_project(scope, root) do
+    case Projects.get_project_by_local_path(root) do
+      {:ok, %{account_id: account_id} = project} when account_id == scope.active_account_id ->
+        {:ok, project}
+
+      _ ->
+        Projects.create_project(scope, %{
+          name: "QA #{Path.basename(root)}",
+          module_name: "CodeMySpec",
+          local_path: root
+        })
+    end
+  end
+
+  defp qa_terminals(scope, roles) do
+    Enum.reduce_while(roles, {:ok, []}, fn role, {:ok, agents} ->
+      case Agents.register_terminal(
+             scope,
+             "qa-#{Ecto.UUID.generate()}",
+             String.to_existing_atom(role)
+           ) do
+        {:ok, agent} -> {:cont, {:ok, agents ++ [agent]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
 
   defp refuse(conn) do
     conn

@@ -480,18 +480,37 @@ defmodule CodeMySpecWeb.UserLive.Settings do
   def handle_event("save_api_key", %{"provider" => name, "api_key" => %{"key" => key}}, socket) do
     scope = socket.assigns.current_scope
 
-    with {:ok, provider} <- api_key_provider(name),
-         {:ok, _integration} <- Integrations.connect_api_key(scope, provider, key) do
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{ApiKey.label(provider)} connected.")
-       |> assign(:services, services(scope))}
-    else
+    case api_key_provider(name) do
       {:error, reason} ->
         {:noreply,
          socket
          |> put_flash(:error, key_error(name, reason))
          |> assign(:services, services(scope))}
+
+      {:ok, provider} ->
+        case Integrations.connect_api_key(scope, provider, key) do
+          {:ok, _integration, :no_balance} ->
+            {:noreply,
+             socket
+             |> put_flash(
+               :info,
+               "#{ApiKey.label(provider)} connected, but the account has no balance. " <>
+                 "Agents on it will not run until it is funded."
+             )
+             |> assign(:services, services(scope))}
+
+          {:ok, _integration} ->
+            {:noreply,
+             socket
+             |> put_flash(:info, "#{ApiKey.label(provider)} connected.")
+             |> assign(:services, services(scope))}
+
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> put_flash(:error, key_error(name, reason))
+             |> assign(:services, services(scope))}
+        end
     end
   end
 

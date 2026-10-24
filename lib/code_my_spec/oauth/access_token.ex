@@ -7,7 +7,10 @@ defmodule CodeMySpec.Oauth.AccessToken do
   schema "oauth_access_tokens" do
     access_token_fields()
 
-    timestamps()
+    # Story 1131: the dev box this token was issued to, or nil.
+    field :device_id, :binary_id
+
+    timestamps(type: :naive_datetime_usec)
   end
 
   def changeset(access_token, attrs) do

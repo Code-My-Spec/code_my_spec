@@ -170,7 +170,7 @@ defmodule CodeMySpec.UsersTest do
     end
 
     test "does not update email if token expired", %{user: user, token: token} do
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00.000000]])
 
       assert Users.update_user_email(user, token) ==
                {:error, :transaction_aborted}
@@ -274,7 +274,7 @@ defmodule CodeMySpec.UsersTest do
     end
 
     test "duplicates the authenticated_at of given user in new token", %{user: user} do
-      user = %{user | authenticated_at: DateTime.add(DateTime.utc_now(:second), -3600)}
+      user = %{user | authenticated_at: DateTime.add(DateTime.utc_now(), -3600)}
       token = Users.generate_user_session_token(user)
       assert user_token = Repo.get_by(UserToken, token: token)
       assert user_token.authenticated_at == user.authenticated_at
@@ -301,7 +301,7 @@ defmodule CodeMySpec.UsersTest do
     end
 
     test "does not return user for expired token", %{token: token} do
-      dt = ~N[2020-01-01 00:00:00]
+      dt = ~N[2020-01-01 00:00:00.000000]
       {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt, authenticated_at: dt])
       refute Users.get_user_by_session_token(token)
     end
@@ -324,19 +324,19 @@ defmodule CodeMySpec.UsersTest do
     end
 
     test "does not return user for expired token", %{token: token} do
-      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00]])
+      {1, nil} = Repo.update_all(UserToken, set: [inserted_at: ~N[2020-01-01 00:00:00.000000]])
       refute Users.get_user_by_magic_link_token(token)
     end
 
     test "returns user for token that is less than 60 minutes old", %{user: user, token: token} do
-      dt = DateTime.utc_now(:second) |> DateTime.add(-50, :minute)
+      dt = DateTime.utc_now() |> DateTime.add(-50, :minute)
       {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
       assert session_user = Users.get_user_by_magic_link_token(token)
       assert session_user.id == user.id
     end
 
     test "does not return user for token older than 60 minutes", %{token: token} do
-      dt = DateTime.utc_now(:second) |> DateTime.add(-61, :minute)
+      dt = DateTime.utc_now() |> DateTime.add(-61, :minute)
       {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
       refute Users.get_user_by_magic_link_token(token)
     end
@@ -380,6 +380,7 @@ defmodule CodeMySpec.UsersTest do
           from(u in User, where: u.id == ^user.id),
           set: [hashed_password: "hashed"]
         )
+
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
       assert {:error, :unconfirmed_with_password} =

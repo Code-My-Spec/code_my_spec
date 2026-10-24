@@ -22,7 +22,8 @@ defmodule CodeMySpecSpex.Story990.Criterion3402Spex do
 
   @description "a booking tool for hair salons, so owners can see their week"
 
-  spex "A visitor gets a plan for what they described, and what to build first", criterion: 1350 do
+  spex "A visitor gets a plan for what they described, and what to build first",
+    criterion: 1350 do
     scenario "An anonymous visitor describes an idea and gets a plan back" do
       given_ "a visitor who has never signed in", context do
         {:ok, Map.put(context, :conn, build_conn())}

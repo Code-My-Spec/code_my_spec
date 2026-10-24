@@ -94,8 +94,10 @@ defmodule CodeMySpec.Qa.Verdict do
   resubmission already releases the wait (criterion 2100) without the issue
   resolving; only re-triage severs that link, so only a cross-story citation
   holds `qa_complete` here, the way `DevopsSetupChecker` holds `deploy`: the
-  node carries `waiting_on` so it is not offered again until the issue
-  resolves.
+  node carries `waiting_on` until the cited issue resolves, is dismissed, or
+  is accepted and submitted at or above the project's fix threshold. Issue
+  events refresh this verdict without requiring a new certification; the
+  ordinary readiness prerequisite still holds QA when HEAD has moved.
   """
   @spec verdict(boolean(), Scope.t(), map(), QaAttempt.t() | nil) :: {boolean(), map()}
   def verdict(true, _scope, _story, _attempt), do: verdict(true)
@@ -117,11 +119,19 @@ defmodule CodeMySpec.Qa.Verdict do
     end
   end
 
+  # An invalidated attempt no longer speaks for the story, so neither does
+  # what it cited.
+  defp blocking_issue(_scope, _story, %QaAttempt{invalidations: [_ | _]}), do: nil
+
   defp blocking_issue(scope, story, %QaAttempt{status: status, issue_ids: issue_ids})
        when status in [:partial, :fail] do
+    threshold = Configurations.fix_issues_min_severity(scope)
+
     issue_ids
     |> Enum.map(&Issues.get_issue(scope, &1))
-    |> Enum.find(&cross_story_blocker?(&1, story))
+    |> Enum.find(fn issue ->
+      cross_story_blocker?(issue, story) and not submitted_at_threshold?(issue, threshold)
+    end)
   end
 
   defp blocking_issue(_scope, _story, _attempt), do: nil
@@ -131,6 +141,13 @@ defmodule CodeMySpec.Qa.Verdict do
        do: issue_story_id != story_id
 
   defp cross_story_blocker?(_issue, _story), do: false
+
+  defp submitted_at_threshold?(%{status: :accepted} = issue, threshold) do
+    Issues.story_issue_submitted?(issue) and
+      issue.severity in CodeMySpec.Issues.Issue.severities_at_or_above(threshold)
+  end
+
+  defp submitted_at_threshold?(_issue, _threshold), do: false
 
   @doc """
   True iff the **most-recent** attempt on the story is `status: :pass` and

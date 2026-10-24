@@ -36,7 +36,9 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
       opts
       |> Keyword.fetch!(:base_url)
       |> Kernel.<>(Keyword.fetch!(opts, :mcp_path))
-      |> Http.open(headers, Keyword.get(opts, :protocol_version, @protocol_version))
+      |> Http.open(headers, Keyword.get(opts, :protocol_version, @protocol_version),
+        headers_provider: fn -> headers(opts) end
+      )
     end
   end
 
@@ -221,9 +223,11 @@ defmodule CmsHarness.Mcp.Transport.Anubis do
           {:ok,
            %{
              "authorization" => "Bearer " <> token,
-             "x-harness-id" => Keyword.get(opts, :working_copy_id)
+             "x-harness-id" => Keyword.get(opts, :working_copy_id),
+             "x-project-id" => Keyword.get(opts, :project_id)
            }
-           |> put_agent(Keyword.get(opts, :agent_id))}
+           |> put_agent(Keyword.get(opts, :agent_id))
+           |> Map.reject(fn {_key, value} -> is_nil(value) end)}
         end
     end
   end

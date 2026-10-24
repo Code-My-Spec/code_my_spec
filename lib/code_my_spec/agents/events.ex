@@ -11,8 +11,10 @@ defmodule CodeMySpec.Agents.Events do
   """
 
   require Logger
+  import Ecto.Query, warn: false
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.Main, as: MainAgent
@@ -20,6 +22,7 @@ defmodule CodeMySpec.Agents.Events do
   alias CodeMySpec.Agents.Wake
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
 
@@ -121,19 +124,25 @@ defmodule CodeMySpec.Agents.Events do
   # hours, main never told (2026-10-13). One that still needs promoting is
   # freed by its landing instead.
   def handle_event(@story_qa_passed, _measurements, %{scope: scope, story_id: id}, _config) do
-    with %{working_copy_id: copy_id} = story when is_binary(copy_id) <-
-           Stories.get_story(scope, id),
-         at_copy = %{scope | active_working_copy_id: copy_id},
-         true <-
-           Requirements.satisfied_now?(at_copy, %{
-             entity_type: "story",
-             entity_id: id,
-             name: "story_promoted"
-           }) do
-      Assignment.notify_team_free(scope, copy_id, story)
-    else
-      _ -> :ok
+    with %{working_copy_id: copy_id, number: number} = story when is_binary(copy_id) <-
+           Stories.get_story(scope, id) do
+      # qa_complete passing changes what story_promoted offers (criterion
+      # 2055, 90beae27): a coding agent that declined it while QA was still
+      # running must not stay held back from it once QA actually passes.
+      lift_story_promoted_declines(scope, copy_id, number)
+
+      at_copy = %{scope | active_working_copy_id: copy_id}
+
+      if Requirements.satisfied_now?(at_copy, %{
+           entity_type: "story",
+           entity_id: id,
+           name: "story_promoted"
+         }) do
+        Assignment.notify_team_free(scope, copy_id, story)
+      end
     end
+
+    :ok
   catch
     kind, reason -> log(:story_qa_passed, kind, reason)
   end
@@ -197,10 +206,13 @@ defmodule CodeMySpec.Agents.Events do
       {:ok, ref} when is_binary(ref) ->
         :ok
 
+      # a1c5e9a7 (criterion 2178): a denied tap-out is a notice, never an offer.
+      # Recording it as one made the agent's offers depend on whether its open
+      # work offer had already settled when the denial arrived; that open work
+      # offer is what asks the agent to act. (A denied task-scoped tap-out is
+      # the released task's own offer, `Work.wake_released/6`, criterion 1799.)
       _not_admissible ->
-        meta.agent
-        |> Conversations.record_sent_to_agent(meta.notice)
-        |> Offers.record(meta.agent, :denial, meta.subject)
+        Conversations.record_sent_to_agent(meta.agent, meta.notice)
 
         # Exclude this agent: it was just told directly above, on its own
         # thread. Without the exclusion, if the same not-admissible window
@@ -273,6 +285,22 @@ defmodule CodeMySpec.Agents.Events do
 
   # `catch`, not `rescue`: an exit (a sandbox owner gone, a call timing out)
   # would otherwise detach this handler for every later event.
+  # qa_complete passing changes what story_promoted offers (criterion 2055,
+  # 90beae27): a coding agent that declined it while QA was still running
+  # must not stay held back from it once QA actually passes.
+  defp lift_story_promoted_declines(scope, copy_id, number) do
+    key = "story:#{number}:story_promoted"
+
+    Agent
+    |> where(
+      [a],
+      a.project_id == ^scope.active_project_id and a.working_copy_id == ^copy_id and
+        a.role == :coding and is_nil(a.retired_at)
+    )
+    |> Repo.all()
+    |> Enum.each(&Offers.lift_decline(&1.id, key))
+  end
+
   defp awaiting_promotion?(scope, agent_id) do
     case Agents.fetch_agent(scope, agent_id) do
       {:ok, agent} ->

@@ -40,13 +40,28 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutput do
 
   @impl true
   def call(params, context) do
+    with {:ok, page} <- fetch(params, context), do: {:ok, Jason.encode!(page)}
+  end
+
+  # A script gets the page itself, a table: `r.output`, `r.next_offset`. Without
+  # this a script was handed the JSON text, `r.output` was nil at every offset,
+  # and an agent paging a failure read "no output" for a run that had it
+  # (issue ad6c7674).
+  @impl true
+  def script_result(params, context) do
+    with {:ok, page} <- fetch(params, context) do
+      {:ok, Map.new(page, fn {key, value} -> {to_string(key), value} end)}
+    end
+  end
+
+  defp fetch(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          :ok <- working_copy(scope),
          {:ok, selector} <- selector(params),
          {:ok, offset, limit} <- pagination(params),
          %Run{} = run <- Analysis.output_run(scope, selector),
          {:ok, page} <- output_page(run, offset, limit) do
-      {:ok, Jason.encode!(page)}
+      {:ok, page}
     else
       nil -> {:error, "No retained run matches in this working copy."}
       {:error, reason} -> {:error, to_string(reason)}

@@ -33,13 +33,19 @@ defmodule CodeMySpecSpex.Story1108.Criterion4665Spex do
       end
 
       then_ "launch was given a real port, https port and database name", context do
-        assert [{:launch, [root, port, https_port, database, _log_path, _main?, _tunnel_held?, _host]}] =
+        assert [
+                 {:launch,
+                  [root, port, https_port, database, _log_path, _main?, _tunnel_held?, _host]}
+               ] =
                  Enum.filter(FakeAppInstanceRunner.calls(), &match?({:launch, _}, &1))
 
         assert root == context.root
         assert is_integer(port) and port > 0
         assert is_integer(https_port) and https_port > 0
-        assert https_port != port, "the two need separate ports — one HTTPS_PORT bug already cost a real start"
+
+        assert https_port != port,
+               "the two need separate ports — one HTTPS_PORT bug already cost a real start"
+
         assert is_binary(database) and database != ""
 
         {:ok, context}

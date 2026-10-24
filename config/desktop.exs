@@ -7,29 +7,45 @@ import Config
 import_config "prod.exs"
 import_config "harness_base.exs"
 
-config :code_my_spec, env: :desktop
-
 config :code_my_spec,
-  api_base_url: "http://localhost:4000",
-  oauth_base_url: "http://localhost:4000",
-  base_url: "http://localhost:4000",
-  harness_default_server_url: "http://localhost:4000"
+  env: :desktop,
+  desktop_project_setup: {CodeMySpecDesktop.ProjectSetup, :run},
+  desktop_agent_transport: CodeMySpecDesktop.AgentTransport,
+  desktop_device_associator:
+    {CodeMySpecWeb.DeviceController.DesktopAssociation, :associate_current}
+
+# Ports of its own, so the desktop app runs beside a Phoenix app on 4000, a
+# dev harness on 4004 and a brew `cms` on 4003 — a developer's machine has all
+# three. 47400 is the app, 47403 its harness.
+# 127.0.0.1, not localhost: Windows resolves localhost to ::1 first, and the
+# endpoints listen on IPv4 only, so the harness never reached its server.
+config :code_my_spec,
+  api_base_url: "http://127.0.0.1:47400",
+  oauth_base_url: "http://127.0.0.1:47400",
+  base_url: "http://127.0.0.1:47400",
+  harness_default_server_url: "http://127.0.0.1:47400"
 
 # harness_base.exs turns the main endpoint off; here it is the product.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   server: true,
-  url: [host: "localhost", port: 4000, scheme: "http"],
-  http: [ip: {127, 0, 0, 1}, port: 4000],
+  url: [host: "127.0.0.1", port: 47_400, scheme: "http"],
+  http: [ip: {127, 0, 0, 1}, port: 47_400],
   check_origin: false
+
+# The harness's server is this BEAM, so its device grant is approved for the
+# desktop user without anyone typing a code.
+config :code_my_spec, harness_device_approver: {CodeMySpecDesktop.HarnessApproval, :approve}
 
 # config.exs leaves it `server: false`; desktop's harness serves hooks.
 config :code_my_spec, CmsHarness.Web.Endpoint,
   server: true,
-  http: [ip: {127, 0, 0, 1}, port: 4004]
+  http: [ip: {127, 0, 0, 1}, port: 47_403]
 
-# Postgres, not harness_base.exs's SQLite.
-config :code_my_spec, adapter: Ecto.Adapters.Postgres
-config :paper_trail, strict_mode: true
+# SQLite: nothing to install before the app runs. Its own migrations, from a
+# baseline of the Postgres schema (priv/sqlite).
+config :code_my_spec, adapter: Ecto.Adapters.SQLite3
+config :code_my_spec, CodeMySpec.Repo, priv: "priv/sqlite"
+config :paper_trail, strict_mode: false
 
 # Served over http://localhost. WebKit (the desktop window) drops a `secure`
 # cookie there, so LiveView never saw a session and reloaded ~50 times a second.

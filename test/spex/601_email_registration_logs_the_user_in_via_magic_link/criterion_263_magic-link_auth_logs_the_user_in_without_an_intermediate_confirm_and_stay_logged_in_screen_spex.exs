@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story601.Criterion5489Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  spex "Magic link click confirms + logs in directly without intermediate screen", criterion: 263 do
+  spex "Magic link click confirms + logs in directly without intermediate screen",
+    criterion: 263 do
     scenario "Unconfirmed user is logged in via magic link without an intermediate screen" do
       given_ :registered_user_with_magic_link
 

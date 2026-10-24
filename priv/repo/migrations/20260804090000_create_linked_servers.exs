@@ -13,6 +13,7 @@ defmodule CodeMySpec.Repo.Migrations.CreateLinkedServers do
   def change do
     create table(:linked_servers, primary_key: false) do
       add :id, :binary_id, primary_key: true
+
       add :account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
         null: false
 

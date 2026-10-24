@@ -21,6 +21,11 @@ defmodule CodeMySpecSpex.Story700.Criterion6052Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup context do
+    :ok = CodeMySpecSpex.Fixtures.configure_agent_models(context.scope)
+    :ok
+  end
+
   spex "Done, active, and pending step states render side by side", criterion: 415 do
     scenario "Mid-journey user sees done + active + pending states side by side" do
       given_ "the user has an active account and a project but never connected a CLI",
@@ -43,10 +48,9 @@ defmodule CodeMySpecSpex.Story700.Criterion6052Spex do
         {:ok, context}
       end
 
-      then_ "nothing is left active, because nothing is left to do here", context do
-        refute has_element?(context.view, "[data-state='active']"),
-               "a user with an account and a project has finished this ladder — " <>
-                 "an active step would be inventing work they cannot do here"
+      then_ "Define is the next active step", context do
+        assert has_element?(context.view, "[data-test='define-rung'][data-state='active']")
+        assert has_element?(context.view, "[data-test='define-rung'] a", "Define your project")
 
         {:ok, context}
       end

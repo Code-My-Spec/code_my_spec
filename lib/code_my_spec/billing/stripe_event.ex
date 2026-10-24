@@ -24,7 +24,7 @@ defmodule CodeMySpec.Billing.StripeEvent do
     field :event_id, :string
     field :type, :string
 
-    timestamps(type: :utc_datetime, updated_at: false)
+    timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
   def changeset(event, attrs) do

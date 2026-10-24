@@ -24,8 +24,13 @@ defmodule CodeMySpec.ProviderModulesCompleteTest do
   @plug_reader ~r/Application\.get_env\(:code_my_spec,\s*__MODULE__,\s*\[\]\)\[:plug\]/
 
   # Modules that read a plug but deliberately stay out of the list belong here,
-  # each with the reason. Empty today: every plug reader is recorded.
-  @deliberately_absent []
+  # each with the reason.
+  #
+  # `Devices.RoutineFire` (story 1136): firing a Claude Code routine starts a real
+  # session on someone's plan, and the endpoint is experimental. Its spex answer
+  # the call with a `Req.Test` stub of the documented 200 and 429; there is no
+  # cassette to record without firing a live routine.
+  @deliberately_absent [CodeMySpec.Devices.RoutineFire]
 
   test "every module reading a :plug is recorded by a cassette" do
     listed = MapSet.new(CodeMySpecSpex.Case.provider_modules())

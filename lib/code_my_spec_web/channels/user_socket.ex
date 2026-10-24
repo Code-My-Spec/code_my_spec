@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.UserSocket do
   require Logger
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Devices
   alias CodeMySpec.Projects
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
@@ -42,16 +43,7 @@ defmodule CodeMySpecWeb.UserSocket do
     case AccessTokens.get_by_token(token, otp_app: :code_my_spec) do
       %{resource_owner_id: user_id} = access_token ->
         if AccessTokens.is_accessible?(access_token) do
-          user = Users.get_user!(user_id)
-          scope = UserPreferences.scope_for(user)
-
-          Logger.info("[UserSocket] connect ok user_id=#{user.id}")
-
-          {:ok,
-           socket
-           |> assign(:user_id, user.id)
-           |> assign(:oauth_application_id, access_token.application_id)
-           |> assign(:scope, scope)}
+          connect_as(access_token, user_id, socket)
         else
           Logger.warning(
             "[UserSocket] connect refused — token expired/revoked #{caller(token, connect_info)}"
@@ -72,6 +64,36 @@ defmodule CodeMySpecWeb.UserSocket do
     )
 
     {:error, :missing_token}
+  end
+
+  # A token issued to a dev box connects as that box (story 1131): no user, and
+  # an id of its own so revoking it can end exactly this box's connections.
+  defp connect_as(%{device_id: device_id}, _user_id, socket) when is_binary(device_id) do
+    case Devices.active_dev_box(device_id) do
+      nil ->
+        {:error, :token_expired}
+
+      box ->
+        Logger.info("[UserSocket] connect ok dev box=#{box.id}")
+
+        {:ok,
+         socket
+         |> assign(:device_id, box.id)
+         |> assign(:scope, %CodeMySpec.Users.Scope{active_account_id: box.account_id})}
+    end
+  end
+
+  defp connect_as(access_token, user_id, socket) do
+    user = Users.get_user!(user_id)
+    scope = UserPreferences.scope_for(user)
+
+    Logger.info("[UserSocket] connect ok user_id=#{user.id}")
+
+    {:ok,
+     socket
+     |> assign(:user_id, user.id)
+     |> assign(:oauth_application_id, access_token.application_id)
+     |> assign(:scope, scope)}
   end
 
   # The test's own database connection, for a socket a test opened.
@@ -99,6 +121,8 @@ defmodule CodeMySpecWeb.UserSocket do
   #
   # Returning `nil` makes this socket anonymous.
   @impl true
+  def id(%{assigns: %{device_id: device_id}}), do: "dev_box:#{device_id}"
+
   def id(%{assigns: %{oauth_application_id: application_id, user_id: user_id}})
       when is_integer(application_id),
       do: "oauth_client:#{application_id}:#{user_id}"

@@ -54,7 +54,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4677Spex do
       end
 
       when_ "working copy A computes its graph", context do
-        {:ok, Map.put(context, :text, CriterionScript.specs_requirement(context.scope, context.story))}
+        {:ok,
+         Map.put(context, :text, CriterionScript.specs_requirement(context.scope, context.story))}
       end
 
       then_ "the criterion is uncovered on working copy A", context do

@@ -257,10 +257,24 @@ defmodule CodeMySpec.UserPreferences do
         {:error, :not_found} ->
           scope |> create_user_preferences(attrs) |> update_if_created_meanwhile(scope, attrs)
       end
+      |> associate_desktop_device(scope, account_id)
     else
       {:error, :not_a_member}
     end
   end
+
+  defp associate_desktop_device({:ok, _} = result, scope, account_id) do
+    if CodeMySpec.UserPreferences.DesktopUser.active?() do
+      case Application.get_env(:code_my_spec, :desktop_device_associator) do
+        {module, function} -> apply(module, function, [%{scope | active_account_id: account_id}])
+        nil -> :ok
+      end
+    end
+
+    result
+  end
+
+  defp associate_desktop_device(result, _scope, _account_id), do: result
 
   # A user's first two requests at once (the desktop window and anything else
   # on a fresh database) both found no row and both inserted; the loser raised

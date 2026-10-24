@@ -127,7 +127,10 @@ defmodule Mix.Tasks.ProdIssues.Pull do
         if String.printable?(blob) do
           String.trim(blob)
         else
-          Mix.shell().error("Token file is neither a Cloak-encrypted blob nor printable plaintext.")
+          Mix.shell().error(
+            "Token file is neither a Cloak-encrypted blob nor printable plaintext."
+          )
+
           System.halt(1)
         end
     end
@@ -175,7 +178,7 @@ defmodule Mix.Tasks.ProdIssues.Pull do
   end
 
   defp insert_issue(data) do
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    now = NaiveDateTime.utc_now()
 
     sql = """
     INSERT INTO issues (

@@ -25,10 +25,10 @@ defmodule CodeMySpec.Embeddings.DocPackage do
     field :status, :string
     field :chunk_count, :integer
     field :error, :string
-    field :embedded_at, :utc_datetime
+    field :embedded_at, :utc_datetime_usec
     field :attempts, :integer
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   def changeset(doc_package, attrs) do
