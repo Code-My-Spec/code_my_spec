@@ -1,0 +1,415 @@
+defmodule CodeMySpec.Support.InMemoryExecutionContext do
+  @moduledoc """
+  ExecutionContext implementation backed by an in-memory file store.
+
+  Intended for BDD specs that need the real code path (file sync, component
+  sync, compile diagnostics) to run without touching the real filesystem.
+
+  Each `create/1` call spawns an isolated Agent keyed by the returned env's
+  `ref`. State is `%{path => {content, mtime}}` where `path` is always canonical
+  and relative to `env.cwd`. `mtime` is set to the current time on every write
+  so that `stat/2` returns a monotonically-advancing timestamp — enough for
+  `FileSync.sync_changed/2` to detect updates within a spec run.
+
+  Not a substitute for `RecordingExecutionContext` — that records real CLI
+  commands, this isolates tests from the filesystem.
+  """
+
+  @behaviour CodeMySpec.ExecutionContexts.ExecutionContextsBehaviour
+
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.ExecutionContexts.Local
+
+  # `mix <task>` → analysis source. Never shelled out: replayed from a recording
+  # (attached here, or a cmd cassette) or refused.
+  @analyzer_tasks %{
+    "compile" => "compiler",
+    "credo" => "credo",
+    "test" => "exunit",
+    "spex" => "spex",
+    "sobelow" => "sobelow"
+  }
+
+  @impl true
+  def create(opts \\ []) do
+    {:ok, agent} = Agent.start_link(fn -> %{} end)
+    working_dir = Keyword.get(opts, :working_dir, "/memfs")
+
+    env = %ExecutionContext{
+      type: :memory,
+      cwd: working_dir,
+      ref: %{agent: agent, recorded: %{}, shell: Keyword.get(opts, :shell)},
+      metadata: Keyword.get(opts, :metadata, %{})
+    }
+
+    {:ok, maybe_wrap_shell_module(env, Keyword.get(opts, :shell_module))}
+  end
+
+  # `:shell_module` is `Fakes.Shell`'s shape -- `cmd(env, command, args, opts)`,
+  # needing the environment it is faking rather than being a bare 3-arity
+  # closure. `create/1` builds `env` first and wraps the module into exactly
+  # that closure shape afterward, closing over the now-complete struct; `shell/4`
+  # below only ever calls the closure with 3 args, so it does not need to know
+  # this one happens to carry a module behind it.
+  #
+  # The `:shell` option above is for a caller that already has a 3-arity
+  # function (an anonymous fake, or a spex's own stand-in); this is for one
+  # that has a *module*, which is what `Fakes.Shell` is.
+  defp maybe_wrap_shell_module(env, nil), do: env
+
+  defp maybe_wrap_shell_module(env, module) do
+    update_in(env.ref[:shell], fn _ ->
+      fn command, args, opts -> memory_cmd(env, command, args, opts, module) end
+    end)
+  end
+
+  # Stop it, and be satisfied if it was already stopping.
+  #
+  # `if Process.alive?(agent), do: Agent.stop(agent)` is check-then-act, and the
+  # gap is reachable here by construction: the agent is `start_link`ed from the
+  # test process, while `destroy/1` runs from `on_exit` in a *different* process
+  # after that one has exited — so the link is killing the agent exactly when
+  # destroy looks at it. Winning the check and losing the stop produced
+  #
+  #     ** (exit) exited in: GenServer.stop(#PID<0.11022.0>, :normal, :infinity)
+  #
+  # reported against whichever test was running. Forty isolated runs of that
+  # file stay clean; it takes a loaded box, which is where the analyzer lives.
+  #
+  # Two shapes that look simpler and are wrong, both tried:
+  #
+  #   * `Process.exit(agent, :shutdown)` — an abnormal signal travels back along
+  #     the link and takes the *caller* with it. `** (EXIT from #PID<...>)
+  #     shutdown`, which is a louder version of the bug being fixed.
+  #   * `Process.unlink/1` then `Process.exit(agent, :kill)` — unlink only
+  #     touches the caller's own link. Called from `on_exit`, or from any
+  #     process that did not create the agent, the owner's link survives and the
+  #     kill propagates to it instead.
+  #
+  # So: `Agent.stop/1`, which exits with `:normal` and therefore propagates to
+  # nobody. It raises on a process that is already gone, and that is not an
+  # error to report — it is the outcome this function exists to produce. There
+  # is no error-tuple form of `GenServer.stop/3` to prefer; an exit *is* the
+  # contract. The monitor afterwards is what makes the promise good: this
+  # returns only once the agent is actually down, whichever way it got there.
+  @impl true
+  def destroy(%ExecutionContext{ref: %{agent: agent}}) do
+    ref = Process.monitor(agent)
+
+    try do
+      Agent.stop(agent)
+    catch
+      :exit, _reason -> :ok
+    end
+
+    receive do
+      {:DOWN, ^ref, :process, ^agent, _reason} -> :ok
+    after
+      5_000 ->
+        Process.demonitor(ref, [:flush])
+        :ok
+    end
+  end
+
+  @doc """
+  Run a command for real, unless a spex has asked for a modelled shell.
+
+  This environment fakes the *filesystem*, not the shell — those are separate
+  seams and both already exist. Specs that must not shell out wrap the call in
+  `use_cmd_cassette`, which meck-patches `System.cmd/3` itself, so replay works
+  underneath this delegation exactly as it did when callers invoked System.cmd
+  directly.
+
+  The `:shell_module` option exists because a cassette cannot model a command's
+  *effect*. `ssh-keygen -f path` writes a key, and on replay the recorded
+  stdout comes back while no file appears — so a later step reading that path
+  diverges from the run that was recorded, which is why 963/7965 records green
+  and replays red. A modelled shell writes into this environment's own
+  filesystem, so the effect is there for the next command to find.
+
+  Off by default: nothing changes for anything that has not opted in.
+
+  Analyzer commands (`mix compile|credo|test|spex|sobelow`) are the exception:
+  never run for real. An attached recording (`record_output/3`) or an open cmd
+  cassette answers them; with neither, they are refused with a nonzero exit.
+  """
+  @impl true
+  def cmd(env, "mix", [task | _] = args, opts) when is_map_key(@analyzer_tasks, task) do
+    source = Map.fetch!(@analyzer_tasks, task)
+
+    cond do
+      path = recorded_output(env, source) -> replayed(source, path)
+      ExCliVcr.Recorder.active?() -> shell(env, "mix", args, opts)
+      true -> {refusal(source), 1}
+    end
+  end
+
+  def cmd(env, command, args, opts), do: shell(env, command, args, opts)
+
+  @doc """
+  Attach a recorded output file for analysis `source` ("compiler", "credo",
+  "exunit", "spex", "sobelow"). Runs against the returned environment replay it.
+
+  Kept on the struct, not the agent: a run a tool started can outlive the test
+  process, and with it the agent.
+  """
+  @spec record_output(ExecutionContext.t(), String.t(), String.t()) :: ExecutionContext.t()
+  def record_output(%ExecutionContext{ref: ref} = env, source, path) do
+    %{env | ref: Map.update(ref, :recorded, %{source => path}, &Map.put(&1, source, path))}
+  end
+
+  @impl true
+  def recorded_output(%ExecutionContext{ref: ref}, source), do: get_in(ref, [:recorded, source])
+
+  # Stands in for the subprocess; the runner reads the recorded file itself.
+  # exunit's exit status decides `execution_status`, so it follows the file.
+  defp replayed("exunit", path) do
+    failures =
+      with {:ok, raw} <- File.read(path),
+           {:ok, %{"stats" => %{"failures" => n}}} <- Jason.decode(raw) do
+        n
+      else
+        _ -> 0
+      end
+
+    {"", if(failures > 0, do: 2, else: 0)}
+  end
+
+  defp replayed(_source, _path), do: {"", 0}
+
+  defp refusal(source) do
+    "no recorded analyzer output for #{source}; attach one with " <>
+      "CodeMySpecSpex.RecordedAnalysis.attach_recorded_analysis/2 " <>
+      "(tests never start a real analyzer)"
+  end
+
+  # A `:shell` given to `create/1` scripts this one environment, so async tests need no global.
+  defp shell(%ExecutionContext{ref: %{shell: shell}} = env, command, args, opts)
+       when is_function(shell, 3),
+       do: shell.(command, args, Keyword.put_new(opts, :cd, env.cwd))
+
+  defp shell(env, command, args, opts), do: Local.cmd(env, command, args, opts)
+
+  # `chmod` is handled here rather than in the shell, because the executable
+  # bit is this filesystem's property and nothing else can see it. The
+  # generator chmods `bin/deploy` right after writing it and the deploy step
+  # refuses a script that is not executable — a real distinction, and one the
+  # product reports in its own words, so it is modelled rather than collapsed
+  # into "the file is there".
+  defp memory_cmd(env, "chmod", args, _opts, _module) do
+    for path <- Enum.filter(args, &(is_binary(&1) and not String.starts_with?(&1, "+"))) do
+      Agent.update(agent(env), &Map.put(&1, exec_key(path, env.cwd), true))
+    end
+
+    {"", 0}
+  end
+
+  defp memory_cmd(env, command, args, opts, module), do: module.cmd(env, command, args, opts)
+
+  # A binary key rather than a tuple. Everything else in this store treats a
+  # key as a path — `file_exists?/2` asks whether any key starts with the one
+  # it was given, to answer for directories — so a `{:exec, path}` key reached
+  # `String.starts_with?/2` as a tuple and took the whole environment down with
+  # a FunctionClauseError. A NUL byte cannot occur in a path, so this collides
+  # with nothing and reads as an ordinary key everywhere it is not wanted.
+  defp exec_key(path, cwd), do: "\0exec:" <> normalize(path, cwd)
+
+  # Against a modelled shell the execution filesystem is *this* one: commands
+  # write here, so asking Local whether a script is executable asks the real
+  # disk about a path that only exists in memory, and every generated script
+  # read as missing. Without one, execution really is Local's and the
+  # delegation is right — which is why this asks which shell is in play rather
+  # than picking one.
+  #
+  # Asks this environment's own shell, not a global: two tests' environments
+  # disagreeing about whether a shell is modelled is ordinary concurrency.
+  @impl true
+  def exec_file_exists?(%ExecutionContext{} = env, path) do
+    case env.ref[:shell] do
+      nil ->
+        Local.exec_file_exists?(env, path)
+
+      shell when is_function(shell, 3) ->
+        key = normalize(path, env.cwd)
+
+        Agent.get(
+          agent(env),
+          &(Map.has_key?(&1, key) and Map.get(&1, exec_key(path, env.cwd), false))
+        )
+    end
+  end
+
+  @impl true
+  def read_file(%ExecutionContext{} = env, path) do
+    key = normalize(path, env.cwd)
+
+    case Agent.get(agent(env), &Map.get(&1, key)) do
+      nil -> {:error, :enoent}
+      {content, _mtime} -> {:ok, content}
+    end
+  end
+
+  @impl true
+  def write_file(%ExecutionContext{} = env, path, content) do
+    key = normalize(path, env.cwd)
+    mtime = DateTime.utc_now()
+    Agent.update(agent(env), &Map.put(&1, key, {content, mtime}))
+    :ok
+  end
+
+  @impl true
+  def stat(%ExecutionContext{} = env, path) do
+    key = normalize(path, env.cwd)
+
+    case Agent.get(agent(env), &Map.get(&1, key)) do
+      nil -> {:error, :enoent}
+      {content, mtime} -> {:ok, %{mtime: mtime, size: byte_size(content)}}
+    end
+  end
+
+  @impl true
+  def delete_file(%ExecutionContext{} = env, path) do
+    key = normalize(path, env.cwd)
+    Agent.update(agent(env), &Map.delete(&1, key))
+    :ok
+  end
+
+  @impl true
+  def file_exists?(%ExecutionContext{} = env, path) do
+    key = normalize(path, env.cwd)
+    dir_prefix = if key == "", do: "", else: key <> "/"
+
+    Agent.get(agent(env), fn state ->
+      Map.has_key?(state, key) or
+        Enum.any?(state, fn {k, _} -> String.starts_with?(k, dir_prefix) end)
+    end)
+  end
+
+  @impl true
+  def list_directory(%ExecutionContext{} = env, path) do
+    # Strip trailing slash so callers using either `"test/journeys"` or
+    # `"test/journeys/"` (e.g. the requirement-calculator path_prefix)
+    # both resolve to the same key. Production File.ls handles either
+    # form natively; this matches.
+    key = path |> String.trim_trailing("/") |> normalize(env.cwd)
+    prefix = if key == "", do: "", else: key <> "/"
+
+    children =
+      agent(env)
+      |> Agent.get(& &1)
+      |> Map.keys()
+      |> Enum.flat_map(fn k ->
+        cond do
+          prefix == "" ->
+            [k |> String.split("/") |> hd()]
+
+          String.starts_with?(k, prefix) ->
+            [String.replace_prefix(k, prefix, "") |> String.split("/") |> hd()]
+
+          true ->
+            []
+        end
+      end)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    # `{:error, :enoent}` for a path with nothing under it, because that is what
+    # `File.ls` answers and callers branch on it. Returning `{:ok, []}` made
+    # every directory exist to a caller that checks
+    # `match?({:ok, _}, list_directory(...))`.
+    #
+    # A directory with no files cannot be told from one that was never created
+    # in a map keyed by file path, and that is the right trade: the analyzers
+    # this stands in for ask "is there anything here", never "does an empty
+    # directory exist".
+    case children do
+      [] -> {:error, :enoent}
+      _ -> {:ok, children}
+    end
+  end
+
+  @impl true
+  def glob(%ExecutionContext{} = env, pattern) do
+    normalized = normalize(pattern, env.cwd)
+    regex = compile_glob(normalized)
+
+    agent(env)
+    |> Agent.get(& &1)
+    |> Map.keys()
+    |> Enum.filter(&Regex.match?(regex, &1))
+    |> Enum.sort()
+  end
+
+  @impl true
+  def ensure_dir(_env, _path), do: :ok
+
+  @impl true
+  def stream_files(%ExecutionContext{} = env, roots, _opts \\ []) do
+    normalized_roots = Enum.map(roots, &normalize(&1, env.cwd))
+
+    agent(env)
+    |> Agent.get(& &1)
+    |> Map.keys()
+    |> Enum.filter(fn path ->
+      Enum.any?(normalized_roots, fn root ->
+        path == root or String.starts_with?(path, root <> "/")
+      end)
+    end)
+    |> Enum.sort()
+    |> Stream.map(& &1)
+  end
+
+  @impl true
+  def environment_setup_command(_env, _attrs), do: ""
+
+  @impl true
+  def docs_environment_teardown_command(_env, _attrs), do: ""
+
+  @impl true
+  def test_environment_teardown_command(_env, _attrs), do: ""
+
+  @impl true
+  def code_environment_teardown_command(_env, _attrs), do: ""
+
+  # -- Helpers --
+
+  defp agent(%ExecutionContext{ref: %{agent: pid}}), do: pid
+
+  defp normalize(path, nil), do: strip_dot_slash(path)
+
+  defp normalize(path, cwd) do
+    cond do
+      path == cwd -> ""
+      String.starts_with?(path, cwd <> "/") -> String.replace_prefix(path, cwd <> "/", "")
+      true -> strip_dot_slash(path)
+    end
+  end
+
+  # Only strip `./` prefixes. Leading `/` is preserved — callers should pass
+  # either a path relative to `cwd` or a path rooted at `cwd`. Stripping
+  # arbitrary absolute paths would silently alias `/other/foo.ex` into
+  # `other/foo.ex` in the store.
+  defp strip_dot_slash("./" <> rest), do: rest
+  defp strip_dot_slash(path), do: path
+
+  defp compile_glob(pattern) do
+    # Escape regex specials, then swap ** → .* and * → [^/]*.
+    # ** must be translated before * so we don't double-substitute.
+    #
+    # `**/` is its own case, and getting it wrong is silent. `Path.wildcard`
+    # matches *zero* or more segments there, so `lib/**/*.ex` finds
+    # `lib/foo.ex` as well as `lib/a/b.ex`. Translating it as `.*/` requires a
+    # subdirectory, so a package whose sources sit directly in `lib/` globs to
+    # nothing — the caller sees an empty list, which is indistinguishable from
+    # a directory that really is empty.
+    pattern
+    |> Regex.escape()
+    |> String.replace("\\*\\*/", "\x01")
+    |> String.replace("\\*\\*", "\x00")
+    |> String.replace("\\*", "[^/]*")
+    |> String.replace("\x01", "(?:.*/)?")
+    |> String.replace("\x00", ".*")
+    |> then(&"^#{&1}$")
+    |> Regex.compile!()
+  end
+end

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   alias CodeMySpec.ConfigurationsFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Integration.WorkflowHelpers
@@ -652,9 +652,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     # Graph-shape tests need the full spec -> review -> test -> implementation

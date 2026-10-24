@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
         # below is careful to get past for UAT.
         #
         # `only_environments/2` rather than `devops: :uat`: environments are
-        # rows, and `EnvironmentRepository.list/1` seeds both from a fixed list
+        # rows, and `Environments.list_deployment/1` seeds both from a fixed list
         # on first read whatever the devops level says.
         only_environments(context.scope, ["uat"])
 

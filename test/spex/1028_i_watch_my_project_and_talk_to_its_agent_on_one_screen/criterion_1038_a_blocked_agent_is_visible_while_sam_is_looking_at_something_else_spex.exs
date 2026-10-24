@@ -74,7 +74,14 @@ defmodule CodeMySpecSpex.Story966.Criterion2953Spex do
         response =
           ToolLibrary.run(
             "ask_question",
-            %{questions: [%{question: "Which deploy key should I use?", options: []}]},
+            %{
+              questions: [
+                %{
+                  question: "Which deploy key should I use?",
+                  options: [%{label: "Project key"}, %{label: "Account key"}]
+                }
+              ]
+            },
             Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
           )
 

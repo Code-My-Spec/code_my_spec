@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.TaskResponseHelpers
 
   @impl_path "lib/example_context.ex"
@@ -40,10 +40,10 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
 
       and_ "the implementation file is removed and a design review is written",
            context do
-        env = context.environment
+        env = context.execution_context
 
-        :ok = Environments.delete_file(env, @impl_path)
-        :ok = Environments.write_file(env, @review_path, review_file_content())
+        :ok = ExecutionContexts.delete_file(env, @impl_path)
+        :ok = ExecutionContexts.write_file(env, @review_path, review_file_content())
 
         {:ok, sync_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

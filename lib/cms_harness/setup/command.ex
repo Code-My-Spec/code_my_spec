@@ -1,15 +1,15 @@
 defmodule CmsHarness.Setup.Command do
   @moduledoc "Executes a machine prerequisite command and preserves its diagnostic result."
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CmsHarness.Setup.Step
 
   @spec run(String.t(), String.t(), [String.t()]) :: Step.command_result()
   def run(cwd, command, args)
       when is_binary(cwd) and is_binary(command) and is_list(args) do
     Enum.each(args, &validate_argument!/1)
-    execute(Environment.new(:local, cwd), command, args)
+    execute(ExecutionContext.new(:local, cwd), command, args)
   end
 
   @spec successful?(Step.command_result()) :: boolean()
@@ -18,7 +18,7 @@ defmodule CmsHarness.Setup.Command do
 
   defp execute(environment, command, args) do
     {output, status} =
-      Environments.cmd(environment, command, args, stderr_to_stdout: true)
+      ExecutionContexts.cmd(environment, command, args, stderr_to_stdout: true)
 
     %{
       command: command,

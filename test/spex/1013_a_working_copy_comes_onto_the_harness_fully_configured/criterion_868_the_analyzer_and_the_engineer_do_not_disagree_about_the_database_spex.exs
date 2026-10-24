@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2355Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,11 +34,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2355Spex do
   spex "One recorded set of databases, not one per mechanism", criterion: 868 do
     scenario "The analyzer and the engineer do not disagree about the database" do
       given_ "an onboarded working copy", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2355"}, pretty: true)
           )

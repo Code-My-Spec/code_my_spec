@@ -1,12 +1,8 @@
 defmodule CodeMySpec.Promotion.RunningCopy do
   @moduledoc """
-  Whether a story's code is on the running copy, and whether that copy is
-  serving — the `story_promoted` verdict.
-
-  A read of the main working copy and of each story's `promoted_version` stamp,
-  nothing more. Its own leaf boundary so that the requirement graph can read it
-  without depending on `Promotion`, which sits above the graph (it gates on it,
-  runs git and restarts servers). `Promotion` delegates here.
+  Reads durable story publication stamps for the `story_promoted` verdict.
+  Destination checkout synchronization and preview health are independent of
+  whether verified work reached the development branch.
   """
 
   use Boundary,
@@ -16,7 +12,6 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   alias CodeMySpec.Issues
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
   The requirement-graph checker: `{satisfied?, details}`.
@@ -62,43 +57,16 @@ defmodule CodeMySpec.Promotion.RunningCopy do
     {unpromoted, promoted}
   end
 
-  # No copy designated: passes, since no agent could clear a gate on it.
-  defp verdict(nil, _scope, _entity, _local), do: {true, %{status: "No running copy designated"}}
+  # Publication is independent of the destination's presence or health, including
+  # when the submitting checkout is itself the main device.
+  defp verdict(_running, %Scope{} = scope, entity, _local) do
+    case WorkingCopies.fetch(scope.active_working_copy_id) do
+      {:ok, copy} -> promoted(entity, copy)
+      _ -> promoted(entity, nil)
+    end
+  end
 
-  # Working directly on the running copy: the code is here by definition, so
-  # only whether the app is serving is asked.
-  defp verdict(
-         %WorkingCopy{id: id} = running,
-         %Scope{active_working_copy_id: id},
-         _entity,
-         _local
-       ),
-       do:
-         serving(running, %{
-           status: "Working on the running copy: the promotion stamp is not read here"
-         })
-
-  defp verdict(%WorkingCopy{}, %Scope{active_working_copy_id: nil}, _entity, _local),
-    do: {true, %{status: "No checkout on this scope"}}
-
-  # `:unread`: the local copy is read only when the clauses above did not
-  # answer, saving a read per story.
-  defp verdict(%WorkingCopy{} = running, %Scope{} = scope, entity, :unread),
-    do: verdict(running, scope, entity, local_copy(running, scope))
-
-  # The stamp alone, never whether main is serving: every restart of main
-  # would otherwise unsatisfy every promoted story at once.
-  defp verdict(%WorkingCopy{}, %Scope{}, entity, {:ok, copy}),
-    do: promoted(entity, copy)
-
-  defp verdict(%WorkingCopy{}, %Scope{}, _entity, _local),
-    do: {true, %{status: "This checkout is not on file"}}
-
-  defp local_copy(%WorkingCopy{id: id}, %Scope{active_working_copy_id: here})
-       when is_binary(here) and here != id,
-       do: WorkingCopies.fetch(here)
-
-  defp local_copy(_running, %Scope{}), do: :none
+  defp local_copy(_running, _scope), do: :unread
 
   # The story's own stamp, not a read of the checkout it was promoted from.
   defp promoted(entity, copy) do
@@ -183,7 +151,7 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   # Says what is read and how to satisfy it: an agent that checked git found
   # the code on main and concluded the gate lied.
-  defp not_yet_promoted(%WorkingCopy{}) do
+  defp not_yet_promoted(_copy) do
     {false,
      %{
        reason:
@@ -193,26 +161,6 @@ defmodule CodeMySpec.Promotion.RunningCopy do
            "is not a git check. Promote this story by completing its " <>
            "story_promoted task.",
        promoted: false
-     }}
-  end
-
-  # Whether the app is answering, asked only of an agent on the running copy.
-  # Never checked passes: no preview address, or a harness that has not
-  # reported, is not evidence of anything.
-  defp serving(%WorkingCopy{preview_status: nil}, details), do: {true, details}
-  defp serving(%WorkingCopy{preview_status: "serving"}, details), do: {true, details}
-
-  # A 500 is the app answering: a QA finding, not a reason to keep QA away.
-  defp serving(%WorkingCopy{preview_status: "erroring"}, details), do: {true, details}
-
-  defp serving(%WorkingCopy{preview_status: "down"} = running, _details) do
-    {false,
-     %{
-       reason:
-         "the application is not answering at #{running.preview_url || "its preview address"}, " <>
-           "so there is nothing for QA to test. Completing the story_promoted task " <>
-           "promotes again, which restarts it.",
-       preview_status: "down"
      }}
   end
 end

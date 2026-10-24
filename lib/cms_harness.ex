@@ -26,7 +26,7 @@ defmodule CmsHarness do
   this stayed separate.
 
   What is genuinely shared is shared: the scanner, the document parsers, the
-  analyzer executors and `Environments` all come from `CodeMySpec` directly. A
+  analyzer executors and `ExecutionContexts` all come from `CodeMySpec` directly. A
   harness and a server that classify files differently produce a requirement
   graph matching neither checkout, so there is one copy of that code and this
   calls it.
@@ -51,7 +51,7 @@ defmodule CmsHarness do
       CodeMySpec.BddSpecs,
       CodeMySpec.BootVersion,
       CodeMySpec.Compile,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Generators,
       # `cms migrate` (`CmsHarness.Migrate`) — a separate one-shot boot, not

@@ -4,12 +4,13 @@ defmodule CodeMySpec.Telemetry.SetupTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.TelemetryStep
 
   test "default setup reaches the installer and does not publish a failed installation" do
     scope = full_scope_fixture()
-    EnvironmentRepository.put(scope, "uat", %{ip: "203.0.113.10", host: "app.example.com"})
+    Environments.put(scope, "uat", %{ip: "203.0.113.10", host: "app.example.com"})
     previous = Application.fetch_env(:code_my_spec, Cloudflare)
 
     on_exit(fn -> restore_cloudflare_env(previous) end)

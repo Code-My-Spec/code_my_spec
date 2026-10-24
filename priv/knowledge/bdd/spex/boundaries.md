@@ -79,8 +79,8 @@ through the UI is a boundary violation disguised as a fixture.
 - **Rendered HTML** — `render(view)`, `has_element?/2`,
   `element/2 |> render()`.
 - **HTTP response body** — `json_response/2`, `response/2`, `redirected_to/2`.
-- **Memfs state** — `Environments.read_file/2`,
-  `Environments.file_exists?/2`, `Environments.list_directory/2`.
+- **Memfs state** — `ExecutionContexts.read_file/2`,
+  `ExecutionContexts.file_exists?/2`, `ExecutionContexts.list_directory/2`.
   (Only when the user-visible effect *is* a file on disk; e.g. "the
   spec generator wrote a spec file.")
 

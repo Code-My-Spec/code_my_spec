@@ -6,7 +6,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Servers.Server
 
   setup do
@@ -31,7 +31,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
       assert match?({:ok, _}, response)
       assert response_text(response) =~ "prod now points at fuellytics-prod"
 
-      environment = EnvironmentRepository.get(scope, "prod")
+      environment = Environments.get(scope, "prod")
       linked = Server.get_linked(scope, "fuellytics-prod")
       assert environment.server_id == linked.id
     end
@@ -51,7 +51,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
       assert match?({:error, _}, response)
       assert response_text(response) =~ "not linked to this account"
 
-      assert EnvironmentRepository.get(scope, "prod") == nil
+      assert Environments.get(scope, "prod") == nil
     end
   end
 

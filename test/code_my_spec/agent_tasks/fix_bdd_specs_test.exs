@@ -2,7 +2,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.AgentTasks.FixBddSpecs
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Stories
 
   import CodeMySpec.AnalysisFixtures
@@ -21,7 +21,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
 
   defp scope_with_env(tmp_dir) do
     scope = working_copy_scope_fixture()
-    put_fixture_environment(scope, Environment.new(:local, tmp_dir))
+    put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
   end
 
   defp task do

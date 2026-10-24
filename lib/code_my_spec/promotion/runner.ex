@@ -2,9 +2,9 @@ defmodule CodeMySpec.Promotion.Runner do
   @moduledoc """
   Where a promotion's disk operations actually run.
 
-  Disk operation APIs take an `Environment.t() | nil` directly. The copy ID is
+  Disk operation APIs take an `ExecutionContext.t() | nil` directly. The copy ID is
   a separate transport address: it selects which harness receives a remote
-  request and is never inferred from `Environment.ref`.
+  request and is never inferred from `ExecutionContext.ref`.
 
   Every disk operation splits on the environment:
 
@@ -18,18 +18,19 @@ defmodule CodeMySpec.Promotion.Runner do
   the server and the steps travel.
 
   `restart/3` and `reload/3` do not split: they call
-  `WorkingCopies.AppTransport.restart_app/2` / `reload_app/2` by working copy
+  `AppInstances.restart/3` / `reload/3` by working copy
   id, the same app lifecycle every copy uses. Project-specific follow-up (this
   repo refreshing its harness) is the far side's optional `after-promote`
   recipe, run by `CmsHarness.AppInstance`.
   """
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.Promotion.RemoteSteps
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
-  alias CodeMySpec.WorkingCopies.AppTransport
 
   # A restart fetches deps, migrates and waits for health on the far side:
   # analyzer-scale work, so the analyzer-scale ceiling.
@@ -39,11 +40,74 @@ defmodule CodeMySpec.Promotion.Runner do
   # has not built yet; its analyzers reuse that build.
   @reset_timeout 600_000
 
+  @doc "Fetch the authoritative origin branch on the addressed machine."
+  def remote_head(environment, root, branch, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_remote_head",
+        %{"root" => root, "branch" => branch},
+        @git_timeout,
+        fn env -> RemoteSteps.remote_head(env, root, branch) end
+      )
+
+  @doc "Reconcile a publication receipt without attempting a push."
+  def publication_status(environment, root, branch, base, head, promotion_id, copy_id),
+    do:
+      publication_request(
+        environment,
+        copy_id,
+        "promotion_publication_status",
+        %{
+          "root" => root,
+          "branch" => branch,
+          "base" => base,
+          "head" => head,
+          "promotion_id" => promotion_id
+        },
+        @git_timeout,
+        fn env -> RemoteSteps.publication_status(env, root, branch, base, head, promotion_id) end
+      )
+
+  @doc "Atomically publish the certified candidate with an immutable promotion receipt."
+  def publish(environment, root, branch, base, head, promotion_id, copy_id),
+    do:
+      publication_request(
+        environment,
+        copy_id,
+        "promotion_publish",
+        %{
+          "root" => root,
+          "branch" => branch,
+          "base" => base,
+          "head" => head,
+          "promotion_id" => promotion_id
+        },
+        @git_timeout,
+        fn env -> RemoteSteps.publish(env, root, branch, base, head, promotion_id) end
+      )
+
+  def remote_sync(environment, root, copy_id, branch, head),
+    do: sync_remote(environment, root, branch, head, copy_id)
+
+  @doc "Safely synchronize a clean destination checkout from origin."
+  def sync_remote(environment, root, branch, head, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_sync_remote",
+        %{"root" => root, "branch" => branch, "head" => head},
+        @git_timeout,
+        fn env -> RemoteSteps.sync_remote(env, root, branch, head) end
+      )
+
   @doc """
   What is on this checkout, and is it safe to move. `main` is main's HEAD,
   which the checkout must contain (`Steps.precheck/3`).
   """
-  @spec precheck(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil, String.t() | nil) ::
+  @spec precheck(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil, String.t() | nil) ::
           Steps.result()
   def precheck(environment, root, copy_id, main \\ nil) do
     payload = %{"root" => root, "main" => main}
@@ -55,7 +119,7 @@ defmodule CodeMySpec.Promotion.Runner do
 
   @doc "Build a promotion batch in the gate checkout at `root` (`Steps.build_batch/4`)."
   @spec build_batch(
-          Environment.t() | nil,
+          ExecutionContext.t() | nil,
           String.t(),
           String.t(),
           [String.t()],
@@ -77,7 +141,7 @@ defmodule CodeMySpec.Promotion.Runner do
   harness holding the copy names them; a local environment has none of the
   harness's partitions and drops nothing.
   """
-  @spec reset_test_databases(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) ::
+  @spec reset_test_databases(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil) ::
           Steps.result()
   def reset_test_databases(environment, root, copy_id),
     do:
@@ -91,7 +155,8 @@ defmodule CodeMySpec.Promotion.Runner do
       )
 
   @doc "Build the project's static assets in the gate checkout (`Steps.build_assets/2`)."
-  @spec build_assets(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  @spec build_assets(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil) ::
+          Steps.result()
   def build_assets(environment, root, copy_id),
     do:
       run(
@@ -107,7 +172,7 @@ defmodule CodeMySpec.Promotion.Runner do
   Format the checkout at `root` and commit the result, or with `check: true`
   only name the unformatted files (`Steps.format/3`).
   """
-  @spec format(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil, keyword()) ::
+  @spec format(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil, keyword()) ::
           Steps.result()
   def format(environment, root, copy_id, opts \\ []) do
     check = Keyword.get(opts, :check, false)
@@ -124,7 +189,7 @@ defmodule CodeMySpec.Promotion.Runner do
 
   @doc "Which of `commits` `base` already contains (`Steps.contained/4`)."
   @spec contained(
-          Environment.t() | nil,
+          ExecutionContext.t() | nil,
           String.t(),
           String.t(),
           [String.t()],
@@ -142,7 +207,7 @@ defmodule CodeMySpec.Promotion.Runner do
       )
 
   @doc "Merge `branch` into the checkout at `root`."
-  @spec merge(Environment.t() | nil, String.t(), String.t(), Ecto.UUID.t() | nil) ::
+  @spec merge(ExecutionContext.t() | nil, String.t(), String.t(), Ecto.UUID.t() | nil) ::
           Steps.result()
   def merge(environment, root, branch, copy_id),
     do:
@@ -156,7 +221,13 @@ defmodule CodeMySpec.Promotion.Runner do
       )
 
   @doc "The paths that differ between `from` and `to` at `root` (`Steps.changed/4`)."
-  @spec changed(Environment.t() | nil, String.t(), String.t(), String.t(), Ecto.UUID.t() | nil) ::
+  @spec changed(
+          ExecutionContext.t() | nil,
+          String.t(),
+          String.t(),
+          String.t(),
+          Ecto.UUID.t() | nil
+        ) ::
           Steps.result()
   def changed(environment, root, from, to, copy_id),
     do:
@@ -170,7 +241,7 @@ defmodule CodeMySpec.Promotion.Runner do
       )
 
   @doc "The checkout at `root`'s HEAD and current version, moving nothing."
-  @spec current(Environment.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
+  @spec current(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def current(environment, root, copy_id),
     do:
       run(environment, copy_id, "promotion_current", %{"root" => root}, @git_timeout, fn env ->
@@ -179,7 +250,7 @@ defmodule CodeMySpec.Promotion.Runner do
 
   @doc "Check out in `root`'s `.code_my_spec` the commit a merge pinned, fetched from `source`."
   @spec sync_submodule(
-          Environment.t() | nil,
+          ExecutionContext.t() | nil,
           String.t(),
           String.t(),
           map(),
@@ -219,9 +290,9 @@ defmodule CodeMySpec.Promotion.Runner do
      %{reason: "cannot restart #{root}: no working copy id was given to address its app with."}}
   end
 
-  def restart(_scope, _root, copy_id) do
-    copy_id
-    |> AppTransport.restart_app(@restart_timeout)
+  def restart(scope, _root, instance_id) do
+    instance_id
+    |> then(&AppInstances.restart(scope, &1, @restart_timeout))
     |> decode_app_result()
   end
 
@@ -240,34 +311,37 @@ defmodule CodeMySpec.Promotion.Runner do
      %{reason: "cannot reload #{root}: no working copy id was given to address its app with."}}
   end
 
-  def reload(_scope, _root, copy_id) do
-    copy_id
-    |> AppTransport.reload_app(@restart_timeout)
+  def reload(scope, _root, instance_id) do
+    instance_id
+    |> then(&AppInstances.reload(scope, &1, @restart_timeout))
     |> decode_app_result()
   end
 
-  # `AppTransport`'s shapes translated to `%{revision:}` / `%{reason:}`. The
+  # `AppInstances`'s shapes translated to `%{revision:}` / `%{reason:}`. The
   # wording is load-bearing: `Promotion.restart_acknowledgement_lost?/1` reads
   # it. `:harness_not_connected` is a real failure ("could not reach…");
   # `{:harness_gone, _}` is a restart that took its own channel down, worded
   # with "draining" so it reads as unconfirmed success. The revision is what
   # the app serves (after a reload, not the launch commit).
-  defp decode_app_result({:ok, %{status: "serving"} = info}) do
-    {:ok,
-     %{
-       revision: Map.get(info, :serving_commit) || Map.get(info, :commit),
-       action: Map.get(info, :action),
-       action_reason: Map.get(info, :action_reason)
-     }}
-  end
+  defp decode_app_result({:ok, info}) when is_map(info) do
+    status = value(info, :status)
+    revision = value(info, :serving_commit) || value(info, :commit)
 
-  defp decode_app_result({:ok, %{status: status} = info}) do
-    {:error,
-     %{
-       reason:
-         "the app answered #{status} after #{Map.get(info, :action) || "restarting"}" <>
-           commit_suffix(Map.get(info, :serving_commit) || Map.get(info, :commit))
-     }}
+    if status in ["serving", :serving] do
+      {:ok,
+       %{
+         revision: revision,
+         action: value(info, :action),
+         action_reason: value(info, :action_reason)
+       }}
+    else
+      {:error,
+       %{
+         reason:
+           "the app answered #{status} after #{value(info, :action) || "restarting"}" <>
+             commit_suffix(revision)
+       }}
+    end
   end
 
   defp decode_app_result({:error, :reload_not_supported}) do
@@ -299,12 +373,24 @@ defmodule CodeMySpec.Promotion.Runner do
 
   defp decode_app_result({:error, reason}), do: {:error, %{reason: inspect(reason)}}
 
+  defp value(map, key), do: Map.get(map, key) || Map.get(map, Atom.to_string(key))
+
   defp commit_suffix(nil), do: ""
   defp commit_suffix(commit), do: ", now on #{commit}"
 
+  # A lost publication response is not a rejected publication. Keep the
+  # certified batch until its immutable origin receipt can be inspected.
+  defp publication_request(environment, copy_id, op, payload, timeout, local) do
+    case run(environment, copy_id, op, payload, timeout, local) do
+      {:error, %{status: _}} = refusal -> refusal
+      {:error, reason} -> {:error, Map.merge(reason, %{retryable: true, uncertain: true})}
+      result -> result
+    end
+  end
+
   # The harness is addressed by working copy id, never by root: two checkouts
   # of one project are two copies.
-  defp run(%Environment{type: :harness}, nil, op, _payload, _timeout, _local) do
+  defp run(%ExecutionContext{type: :harness}, nil, op, _payload, _timeout, _local) do
     {:error,
      %{
        reason:
@@ -314,7 +400,7 @@ defmodule CodeMySpec.Promotion.Runner do
   end
 
   defp run(
-         %Environment{type: :harness},
+         %ExecutionContext{type: :harness},
          copy_id,
          op,
          payload,
@@ -329,7 +415,7 @@ defmodule CodeMySpec.Promotion.Runner do
   defp run(nil, _copy_id, op, _payload, _timeout, _local),
     do: {:error, %{reason: "cannot run #{op}: there is no environment."}}
 
-  defp run(%Environment{} = env, _copy_id, _op, _payload, _timeout, local), do: local.(env)
+  defp run(%ExecutionContext{} = env, _copy_id, _op, _payload, _timeout, local), do: local.(env)
 
   # The far side answers in JSON, so keys come back as strings. Atomized here,
   # nested too, so no caller has to know which side answered.

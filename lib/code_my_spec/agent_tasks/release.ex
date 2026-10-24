@@ -15,7 +15,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   """
 
   alias CodeMySpec.Deploys
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Paths
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -48,8 +48,8 @@ defmodule CodeMySpec.AgentTasks.Release do
   # Journey *results*, not the plan: a plan says the walkthrough was designed,
   # a result says somebody walked it.
   defp journeys_complete?(scope) do
-    env = CodeMySpec.AgentTasks.environment(scope)
-    match?({:ok, _}, Environments.read_file(env, Paths.qa_journey_result()))
+    env = CodeMySpec.AgentTasks.execution_context(scope)
+    match?({:ok, _}, ExecutionContexts.read_file(env, Paths.qa_journey_result()))
   end
 
   defp journeys_first do
@@ -149,9 +149,9 @@ defmodule CodeMySpec.AgentTasks.Release do
   # `opts[:cmd]`, a `(env, command, args) -> {output, status}` override, exists
   # only so a fast unit test can let real `git` run (a real repo, a real tag)
   # while faking `gh` — no network, no GitHub account, in an `async: true`
-  # test. Every real caller gets `Environments.cmd/4` for both.
+  # test. Every real caller gets `ExecutionContexts.cmd/4` for both.
   defp unreleased_story_numbers(%Scope{} = scope, opts) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     deployed = deployed_story_numbers(scope)
     released = published_release_manifest(env, opts)
 
@@ -194,7 +194,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   # two against the real repository before the record's content counts
   # toward coverage.
   defp published_release_manifest(env, opts) do
-    case Environments.list_directory(env, Paths.releases_dir()) do
+    case ExecutionContexts.list_directory(env, Paths.releases_dir()) do
       {:ok, entries} ->
         entries
         |> Enum.filter(&(String.ends_with?(&1, ".md") and published?(env, &1, opts)))
@@ -239,7 +239,7 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   defp run_cmd(opts, env, command, args) do
     case Keyword.get(opts, :cmd) do
-      nil -> Environments.cmd(env, command, args)
+      nil -> ExecutionContexts.cmd(env, command, args)
       fun -> fun.(env, command, args)
     end
   end
@@ -250,7 +250,7 @@ defmodule CodeMySpec.AgentTasks.Release do
   defp read_release(env, entry) do
     path = Path.join(Paths.releases_dir(), Path.basename(entry))
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> ""
     end

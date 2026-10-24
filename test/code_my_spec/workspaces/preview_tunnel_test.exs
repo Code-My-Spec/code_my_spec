@@ -42,12 +42,45 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Req.Test
 
   @tunnel_id "d3f1c0de-0000-4000-8000-000000000001"
+
+  defp issue_copy(scope, opts) do
+    {:ok, copy} = WorkingCopies.issue(scope, nil, opts)
+    WorkingCopies.report_root(copy, "/tmp/preview-tunnel-#{copy.id}")
+  end
+
+  defp instance_host(_scope, %AppInstances.AppInstance{id: id}), do: PreviewAddress.host(id)
+
+  defp instance_host(scope, copy) do
+    app_instance(scope, copy)
+    |> then(&PreviewAddress.host(&1.id))
+  end
+
+  defp instance_url(scope, copy), do: PreviewAddress.url(app_instance(scope, copy).id)
+
+  defp app_instance(scope, %AppInstances.AppInstance{id: id} = instance),
+    do: AppInstances.get(scope, id) || instance
+
+  defp app_instance(scope, copy),
+    do: ensure_app_instance(scope, copy, AppInstances.for_working_copy(scope, copy))
+
+  defp ensure_app_instance(_scope, _copy, %AppInstances.AppInstance{} = instance), do: instance
+
+  defp ensure_app_instance(scope, copy, nil) do
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+    instance
+  end
+
+  defp record_status(scope, copy, attrs) do
+    instance = app_instance(scope, copy)
+    AppInstances.record_status(scope, instance, attrs)
+  end
 
   setup do
     user = user_fixture()
@@ -56,7 +89,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     project = project_fixture(scope, %{name: "Tunnel project"})
     scope = %{scope | active_project_id: project.id, active_project: project}
 
-    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
+    {:ok, copy} = issue_copy(scope, label: "main", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/tunnel_main")
 
     %{scope: scope, copy: copy}
@@ -81,13 +114,13 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   defp cloudflare_json(conn, false),
     do: Test.json(conn, %{"success" => true, "errors" => [], "result" => %{"id" => "rec-1"}})
 
-  test "provisions a tunnel and points the address at it", %{copy: copy} do
+  test "provisions a tunnel and points the address at it", %{scope: scope, copy: copy} do
     stub_cloudflare(self())
 
     assert {:ok, creds} = PreviewTunnel.ensure(copy)
 
     assert creds.tunnel_id == @tunnel_id
-    assert creds.hostname == PreviewAddress.host(copy.id)
+    assert creds.hostname == instance_host(scope, copy)
     assert creds.account_tag == "test-account"
 
     assert_receive {:cloudflare, "/client/v4/accounts/test-account/cfd_tunnel", create}
@@ -123,24 +156,39 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
     assert {:ok, creds} = PreviewTunnel.ensure(copy)
 
-    assert {:ok, saved} = WorkingCopies.fetch(copy.id)
+    assert saved = app_instance(scope, copy)
 
-    assert saved.preview_url == PreviewAddress.url(copy.id)
+    assert saved.preview_url == PreviewAddress.url(saved.id)
+    assert creds.preview_url == saved.preview_url
     assert saved.preview_tunnel_id == @tunnel_id
     assert saved.preview_tunnel_secret == creds.tunnel_secret
 
-    assert WorkingCopies.preview_url(scope) == saved.preview_url,
+    assert app_instance(scope, copy).preview_url == saved.preview_url,
            "the panel reads it through this, so a value the panel cannot see is not recorded"
   end
 
-  test "a second call reuses the tunnel rather than stranding it", %{copy: copy} do
+  test "returns the preserved runtime address including its port", %{scope: scope, copy: copy} do
+    stub_cloudflare(self())
+    instance = app_instance(scope, copy)
+    legacy_url = "http://preview-legacy.codemyspec.test:4010"
+
+    assert {:ok, instance} =
+             AppInstances.update(scope, instance, %{preview_url: legacy_url})
+
+    assert {:ok, credentials} = PreviewTunnel.ensure(instance)
+    assert credentials.preview_url == legacy_url
+    assert credentials.hostname == "preview-legacy.codemyspec.test"
+    assert app_instance(scope, copy).preview_url == legacy_url
+  end
+
+  test "a second call reuses the tunnel rather than stranding it", %{scope: scope, copy: copy} do
     stub_cloudflare(self())
 
     assert {:ok, first} = PreviewTunnel.ensure(copy)
     assert_receive {:cloudflare, "/client/v4/accounts/" <> _, _}
     assert_receive {:cloudflare, "/client/v4/zones/" <> _, _}
 
-    {:ok, reloaded} = WorkingCopies.fetch(copy.id)
+    reloaded = app_instance(scope, copy)
     assert {:ok, second} = PreviewTunnel.ensure(reloaded)
 
     assert second.tunnel_id == first.tunnel_id
@@ -156,11 +204,11 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   # The record, though, is re-asserted. Deleting it by hand in the dashboard
   # should heal on the next call rather than leave a blank frame until somebody
   # works out why.
-  test "a second call still re-points the address", %{copy: copy} do
+  test "a second call still re-points the address", %{scope: scope, copy: copy} do
     stub_cloudflare(self())
 
     assert {:ok, _} = PreviewTunnel.ensure(copy)
-    {:ok, reloaded} = WorkingCopies.fetch(copy.id)
+    reloaded = app_instance(scope, copy)
 
     assert_receive {:cloudflare, "/client/v4/zones/" <> _, _}
 
@@ -242,7 +290,9 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   end
 
   describe "a machine's one tunnel (story 1117)" do
-    setup %{copy: main} do
+    setup %{scope: scope, copy: main} do
+      {:ok, main} = AppInstances.ensure_default(scope, main)
+
       {:ok, _device} =
         CodeMySpec.Devices.record_tunnel(main.device_id, %{
           tunnel_id: @tunnel_id,
@@ -250,8 +300,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
         })
 
       {:ok, main} =
-        WorkingCopies.record_preview_tunnel(main, %{
-          preview_url: PreviewAddress.url(main.id),
+        AppInstances.record_preview_tunnel(scope, app_instance(scope, main), %{
+          preview_url: PreviewAddress.url(app_instance(scope, main).id),
           preview_tunnel_id: @tunnel_id,
           preview_tunnel_secret: "main-secret"
         })
@@ -338,10 +388,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       stub_shared_cloudflare(self(), [])
 
       {:ok, sibling} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+        issue_copy(scope, label: "worktree", device: main.device_id)
 
       {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+        record_status(scope, sibling, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
@@ -350,14 +400,14 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert creds.tunnel_id == @tunnel_id
       assert creds.tunnel_secret == "main-secret"
-      assert creds.hostname == PreviewAddress.host(sibling.id)
+      assert creds.hostname == instance_host(scope, sibling)
 
       assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}
 
       assert %{"hostname" => host, "service" => "http://127.0.0.1:41234"} =
-               Enum.find(ingress, &(&1["hostname"] == PreviewAddress.host(sibling.id)))
+               Enum.find(ingress, &(&1["hostname"] == instance_host(scope, sibling)))
 
-      assert host == PreviewAddress.host(sibling.id)
+      assert host == instance_host(scope, sibling)
 
       assert List.last(ingress) == %{"service" => "http_status:404"},
              "cloudflared refuses a config whose last rule names a host"
@@ -365,10 +415,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert_receive {:dns_record, record}
       assert record["content"] == @tunnel_id <> ".cfargotunnel.com"
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = app_instance(scope, sibling)
       assert saved.preview_tunnel_id == @tunnel_id
       assert saved.preview_tunnel_secret == "main-secret"
-      assert saved.preview_url == PreviewAddress.url(sibling.id)
+      assert saved.preview_url == PreviewAddress.url(saved.id)
     end
 
     test "a copy on another machine is routed on its own machine's tunnel, never this one's", %{
@@ -377,10 +427,10 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       stub_shared_cloudflare(self(), [])
 
       {:ok, elsewhere} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+        issue_copy(scope, label: "worktree", device: device_fixture(scope))
 
       {:ok, elsewhere} =
-        WorkingCopies.record_app_status(elsewhere, %{
+        record_status(scope, elsewhere, %{
           status: "serving",
           url: "http://127.0.0.1:51234"
         })
@@ -401,7 +451,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       stub_shared_cloudflare(self(), [])
 
       {:ok, worktree} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+        issue_copy(scope, label: "worktree", device: main.device_id)
 
       assert {:error, :not_the_main_copy} = PreviewTunnel.ensure(worktree)
       refute_receive {:put_config, _}, @absence_timeout
@@ -412,15 +462,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       main: main
     } do
       {:ok, sibling} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+        issue_copy(scope, label: "worktree", device: main.device_id)
 
       {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+        record_status(scope, sibling, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
-      host = PreviewAddress.host(sibling.id)
+      host = instance_host(scope, sibling)
 
       stub_shared_cloudflare(self(), [
         %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
@@ -428,7 +478,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
       assert_receive {:put_config, _}, @arrival_timeout
-      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
+      sibling = app_instance(scope, sibling)
 
       stub_shared_cloudflare(
         self(),
@@ -447,7 +497,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert_receive {:dns_deleted, path}
       assert path =~ "rec-shared-1"
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = app_instance(scope, sibling)
       assert saved.preview_tunnel_id == nil
       assert saved.preview_tunnel_secret == nil
       assert saved.preview_url == nil
@@ -458,15 +508,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       main: main
     } do
       {:ok, sibling} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+        issue_copy(scope, label: "worktree", device: main.device_id)
 
       {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+        record_status(scope, sibling, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
-      host = PreviewAddress.host(sibling.id)
+      host = instance_host(scope, sibling)
 
       stub_shared_cloudflare(self(), [
         %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
@@ -474,8 +524,8 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
       assert_receive {:put_config, _}, @arrival_timeout
-      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
-      {:ok, sibling} = WorkingCopies.record_app_status(sibling, %{status: "down"})
+      sibling = app_instance(scope, sibling)
+      {:ok, sibling} = record_status(scope, sibling, %{status: "down"})
 
       stub_shared_cloudflare(
         self(),
@@ -488,7 +538,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert :ok = PreviewTunnel.release(sibling)
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = app_instance(scope, sibling)
       assert saved.preview_url == nil
       assert saved.preview_tunnel_id == nil
     end
@@ -498,15 +548,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       main: main
     } do
       {:ok, sibling} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: main.device_id)
+        issue_copy(scope, label: "worktree", device: main.device_id)
 
       {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+        record_status(scope, sibling, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
-      host = PreviewAddress.host(sibling.id)
+      host = instance_host(scope, sibling)
 
       stub_shared_cloudflare(self(), [
         %{"hostname" => host, "service" => "http://127.0.0.1:41234"}
@@ -514,18 +564,21 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
 
       assert {:ok, _} = PreviewTunnel.ensure(sibling)
       assert_receive {:put_config, _}, @arrival_timeout
-      {:ok, sibling} = WorkingCopies.fetch(sibling.id)
+      sibling = app_instance(scope, sibling)
 
       stub_shared_cloudflare(self(), [], [])
 
       assert :ok = PreviewTunnel.release(sibling)
       refute_receive {:dns_deleted, _}, @absence_timeout
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = app_instance(scope, sibling)
       assert saved.preview_tunnel_id == nil
     end
 
-    test "release/1 takes main's own address off too, leaving the machine's tunnel", %{main: main} do
+    test "release/1 takes main's own address off too, leaving the machine's tunnel", %{
+      scope: scope,
+      main: main
+    } do
       host = PreviewAddress.host(main.id)
 
       stub_shared_cloudflare(
@@ -542,7 +595,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert_receive {:put_config, %{"config" => %{"ingress" => ingress}}}, @arrival_timeout
       refute Enum.any?(ingress, &(&1["hostname"] == host))
 
-      {:ok, saved} = WorkingCopies.fetch(main.id)
+      saved = app_instance(scope, main)
       assert saved.preview_url == nil
       assert {:ok, %{tunnel_id: @tunnel_id}} = CodeMySpec.Devices.tunnel(main.device_id)
     end
@@ -552,7 +605,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     stub_cloudflare(self())
 
     {:ok, worktree} =
-      WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+      issue_copy(scope, label: "worktree", device: device_fixture(scope))
 
     {:ok, worktree} = WorkingCopies.report_root(worktree, "/tmp/tunnel_worktree")
 
@@ -570,12 +623,15 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
   end
 
   describe "stored_credentials/1" do
-    test "answers from the stored row alone, reaching Cloudflare for nothing", %{copy: copy} do
+    test "answers from the stored row alone, reaching Cloudflare for nothing", %{
+      scope: scope,
+      copy: copy
+    } do
       # No stub at all — a live call here would raise (Req.Test refuses an
       # unpinned request), so this is the test that nothing was made.
       {:ok, copy} =
-        WorkingCopies.record_preview_tunnel(copy, %{
-          preview_url: PreviewAddress.url(copy.id),
+        AppInstances.record_preview_tunnel(scope, app_instance(scope, copy), %{
+          preview_url: instance_url(scope, copy),
           preview_tunnel_id: @tunnel_id,
           preview_tunnel_secret: "s3cret"
         })
@@ -583,7 +639,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
       assert {:ok, creds} = PreviewTunnel.stored_credentials(copy)
       assert creds.tunnel_id == @tunnel_id
       assert creds.tunnel_secret == "s3cret"
-      assert creds.hostname == PreviewAddress.host(copy.id)
+      assert creds.hostname == instance_host(scope, copy)
       assert creds.account_tag == "test-account"
     end
 
@@ -598,24 +654,24 @@ defmodule CodeMySpec.Workspaces.PreviewTunnelTest do
     # returns is main's job alone; that decision belongs to its caller.
     test "answers for a sibling sharing another copy's tunnel too", %{scope: scope} do
       {:ok, sibling} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+        issue_copy(scope, label: "worktree", device: device_fixture(scope))
 
       {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+        record_status(scope, sibling, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
       {:ok, sibling} =
-        WorkingCopies.record_preview_tunnel(sibling, %{
-          preview_url: PreviewAddress.url(sibling.id),
+        AppInstances.record_preview_tunnel(scope, app_instance(scope, sibling), %{
+          preview_url: instance_url(scope, sibling),
           preview_tunnel_id: @tunnel_id,
           preview_tunnel_secret: "s3cret"
         })
 
       assert {:ok, creds} = PreviewTunnel.stored_credentials(sibling)
       assert creds.tunnel_id == @tunnel_id
-      assert creds.hostname == PreviewAddress.host(sibling.id)
+      assert creds.hostname == instance_host(scope, sibling)
     end
   end
 

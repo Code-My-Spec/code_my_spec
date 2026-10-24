@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -36,8 +36,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
     scenario "the published objects are recorded in Sam's own bucket" do
       given_ "Sam has published a post", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "content/posts/hello.md",
             "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )

@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/fingerprint_demo.ex"
 
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
   spex "Engineer sees File.fingerprint update when file content changes", criterion: 90 do
     scenario "editing a file changes its fingerprint after sync" do
       given_ "the agent has written content A and the engineer has synced", context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_a())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_a())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
 
       when_ "the agent edits the file to content B and the engineer re-syncs",
             context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_b())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_b())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

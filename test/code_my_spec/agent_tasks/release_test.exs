@@ -34,8 +34,8 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
 
   alias CodeMySpec.AgentTasks.Release
   alias CodeMySpec.Deploys
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Paths
   alias CodeMySpec.StoriesFixtures
 
@@ -43,25 +43,31 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      working_copy_scope_fixture() |> put_fixture_environment(Environment.new(:local, tmp_dir))
+      working_copy_scope_fixture()
+      |> put_fixture_execution_context(ExecutionContext.new(:local, tmp_dir))
 
-    :ok = register_working_copy_environment(scope, fixture_environment(scope))
+    :ok = register_working_copy_execution_context(scope, fixture_execution_context(scope))
 
     File.mkdir_p!(Path.join(tmp_dir, Paths.releases_dir()))
 
-    {_, 0} = Environments.cmd(fixture_environment(scope), "git", ["init", "-q"])
+    {_, 0} = ExecutionContexts.cmd(fixture_execution_context(scope), "git", ["init", "-q"])
 
     {_, 0} =
-      Environments.cmd(fixture_environment(scope), "git", [
+      ExecutionContexts.cmd(fixture_execution_context(scope), "git", [
         "config",
         "user.email",
         "test@example.com"
       ])
 
-    {_, 0} = Environments.cmd(fixture_environment(scope), "git", ["config", "user.name", "Test"])
+    {_, 0} =
+      ExecutionContexts.cmd(fixture_execution_context(scope), "git", [
+        "config",
+        "user.name",
+        "Test"
+      ])
 
     {_, 0} =
-      Environments.cmd(fixture_environment(scope), "git", [
+      ExecutionContexts.cmd(fixture_execution_context(scope), "git", [
         "commit",
         "--allow-empty",
         "-q",
@@ -86,7 +92,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   end
 
   defp tag(env, name) do
-    {_, 0} = Environments.cmd(env, "git", ["tag", "-a", name, "-m", name])
+    {_, 0} = ExecutionContexts.cmd(env, "git", ["tag", "-a", name, "-m", name])
   end
 
   # `gh` is never real here — the point of injecting `:cmd` is that a unit
@@ -96,7 +102,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   defp opts(gh_status) do
     [
       cmd: fn
-        env, "git", args -> Environments.cmd(env, "git", args)
+        env, "git", args -> ExecutionContexts.cmd(env, "git", args)
         _env, "gh", _args -> {"", gh_status}
       end
     ]
@@ -113,7 +119,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     # literal small ids.
     longer = "#{story.number}9"
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{longer}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
 
@@ -128,7 +134,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
@@ -139,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     assert story.id != story.number
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.id}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
     assert message =~ ~r/\bstory_#{story.number}\b/
@@ -163,7 +169,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(1))
     assert message =~ "story_#{story.number}"
@@ -175,7 +181,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
   } do
     story = deploy_story!(scope)
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(fixture_environment(scope), "v1.0.0")
+    tag(fixture_execution_context(scope), "v1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end
@@ -193,7 +199,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     shorter = String.slice(to_string(story.number), 0..-2//1)
 
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{shorter}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :invalid, message} = Release.evaluate(scope, %{}, opts(0))
     assert message =~ "story_#{story.number}"
@@ -210,7 +216,7 @@ defmodule CodeMySpec.AgentTasks.ReleaseTest do
     story = StoriesFixtures.story_fixture(scope)
     {:ok, _} = Deploys.record(scope, story.id, "uat")
     released(root, "1.0.0", "# 1.0.0\n\n## Stories\n\n- story_#{story.number}\n")
-    tag(fixture_environment(scope), "1.0.0")
+    tag(fixture_execution_context(scope), "1.0.0")
 
     assert {:ok, :valid} = Release.evaluate(scope, %{}, opts(0))
   end

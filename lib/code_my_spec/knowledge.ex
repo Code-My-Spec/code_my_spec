@@ -26,7 +26,7 @@ defmodule CodeMySpec.Knowledge do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.LocalScope,
       CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
@@ -34,8 +34,8 @@ defmodule CodeMySpec.Knowledge do
     ],
     exports: [Tools]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -84,10 +84,10 @@ defmodule CodeMySpec.Knowledge do
   # — so an existing knowledge dir read as missing over a harness environment.
   def resolve_root(scope, {:project, relative}) do
     case project_environment(scope) do
-      %Environment{cwd: cwd} = env when is_binary(cwd) ->
+      %ExecutionContext{cwd: cwd} = env when is_binary(cwd) ->
         root = Path.join(cwd, relative)
 
-        case Environments.list_directory(env, root) do
+        case ExecutionContexts.list_directory(env, root) do
           {:ok, _} -> {:ok, {:env, env, root}}
           {:error, _} -> {:error, "Directory not found: #{relative}"}
         end
@@ -98,11 +98,12 @@ defmodule CodeMySpec.Knowledge do
   end
 
   defp project_environment(%Scope{active_working_copy_id: nil, active_project: project}),
-    do: LocalScope.environment(project)
+    do: LocalScope.execution_context(project)
 
-  defp project_environment(%Scope{} = scope), do: WorkingCopies.environment(scope)
+  defp project_environment(%Scope{} = scope), do: WorkingCopies.execution_context(scope)
 
-  @typep root :: {:priv_path, String.t()} | {:env, Environments.Environment.t(), String.t()}
+  @typep root ::
+           {:priv_path, String.t()} | {:env, ExecutionContexts.ExecutionContext.t(), String.t()}
 
   @doc """
   Resolve a library + path-segments into either a rendered markdown
@@ -245,10 +246,10 @@ defmodule CodeMySpec.Knowledge do
       not safe_path?(root_path, full_path) ->
         :invalid_path
 
-      match?({:ok, _}, Environments.read_file(env, full_path)) ->
+      match?({:ok, _}, ExecutionContexts.read_file(env, full_path)) ->
         :file
 
-      match?({:ok, _}, Environments.list_directory(env, full_path)) ->
+      match?({:ok, _}, ExecutionContexts.list_directory(env, full_path)) ->
         :dir
 
       true ->
@@ -259,7 +260,7 @@ defmodule CodeMySpec.Knowledge do
   defp read_file({:priv_path, _}, full_path), do: {:ok, File.read!(full_path)}
 
   defp read_file({:env, env, _}, full_path) do
-    case Environments.read_file(env, full_path) do
+    case ExecutionContexts.read_file(env, full_path) do
       {:ok, content} -> {:ok, content}
       {:error, _} -> {:error, :not_found}
     end
@@ -297,7 +298,7 @@ defmodule CodeMySpec.Knowledge do
   end
 
   def list_entries({:env, env, dir_path}) do
-    {:ok, names} = Environments.list_directory(env, dir_path)
+    {:ok, names} = ExecutionContexts.list_directory(env, dir_path)
 
     names
     |> Enum.reject(&String.starts_with?(&1, "."))
@@ -305,7 +306,7 @@ defmodule CodeMySpec.Knowledge do
       full = Path.join(dir_path, name)
 
       type =
-        case Environments.read_file(env, full) do
+        case ExecutionContexts.read_file(env, full) do
           {:ok, _} -> :file
           {:error, _} -> :dir
         end

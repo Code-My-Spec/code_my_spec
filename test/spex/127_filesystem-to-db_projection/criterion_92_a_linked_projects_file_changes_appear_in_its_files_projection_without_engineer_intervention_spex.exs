@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story127.Criterion6085Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @impl_path "lib/auto_synced_module.ex"
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story127.Criterion6085Spex do
 
       when_ "the agent writes a file and the watcher fires its sync event",
             context do
-        :ok = Environments.write_file(context.environment, @impl_path, impl_content())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, impl_content())
         {:ok, _} = Fixtures.notify_file_changed(context.scope, @impl_path)
         {:ok, context}
       end

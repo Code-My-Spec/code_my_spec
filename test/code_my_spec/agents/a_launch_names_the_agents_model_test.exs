@@ -20,10 +20,10 @@ defmodule CodeMySpec.Agents.ALaunchNamesTheAgentsModelTest do
   end
 
   test "carries the role's model for its provider when the agent names none" do
-    assert launch(provider: "openai-codex", model: nil)["model"] == "gpt-6-astra"
+    assert launch(provider: "openai-codex", model: nil)["model"] == "gpt-6.1-sol"
   end
 
-  test "carries nothing when the role names no model for the provider" do
-    assert launch(provider: "claude-code", model: nil)["model"] == nil
+  test "carries the Claude Code coding default when the agent names none" do
+    assert launch(provider: "claude-code", model: nil)["model"] == "claude-sonnet-5"
   end
 end

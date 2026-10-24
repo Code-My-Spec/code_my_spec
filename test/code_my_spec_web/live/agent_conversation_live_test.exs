@@ -582,6 +582,18 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
+      {:ok, project} =
+        project
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_embed(:onboarding, %{
+          description: "Existing product",
+          starting_point: :new,
+          destination: :local,
+          setup_agent_id: Ecto.UUID.generate(),
+          setup_started_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
       conversation = agent_conversation(scope, project)
       scope = %{scope | active_project_id: project.id, active_project: project}
 
@@ -611,6 +623,18 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
+      {:ok, project} =
+        project
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_embed(:onboarding, %{
+          description: "Existing product",
+          starting_point: :new,
+          destination: :local,
+          setup_agent_id: Ecto.UUID.generate(),
+          setup_started_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
       conversation = agent_conversation(scope, project)
       scope = %{scope | active_project_id: project.id, active_project: project}
       {:ok, first} = CodeMySpec.Epics.create_epic(scope, %{name: "Already there"})
@@ -634,6 +658,18 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       scope: scope,
       project: project
     } do
+      {:ok, project} =
+        project
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_embed(:onboarding, %{
+          description: "Existing product",
+          starting_point: :new,
+          destination: :local,
+          setup_agent_id: Ecto.UUID.generate(),
+          setup_started_at: DateTime.utc_now()
+        })
+        |> Repo.update()
+
       conversation = agent_conversation(scope, project)
       scope = %{scope | active_project_id: project.id, active_project: project}
 

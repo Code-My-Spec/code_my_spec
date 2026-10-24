@@ -15,9 +15,10 @@ defmodule CodeMySpec.Workspaces do
     top_level?: true,
     deps: [
       CodeMySpec.Analytics,
+      CodeMySpec.AppInstances,
       CodeMySpec.Content,
       CodeMySpec.Devices,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Events,
       CodeMySpec.Paths,
       CodeMySpec.Projects,

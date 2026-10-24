@@ -13,12 +13,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   require Logger
 
-  alias CodeMySpec.{Components, Environments, Files, Issues, Paths, Stories}
+  alias CodeMySpec.{Components, ExecutionContexts, Files, Issues, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Utils
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.AppTransport
 
   @required_plan_sections ["app overview", "tools registry", "seed strategy"]
 
@@ -48,7 +48,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     # The review is captured where the task is started (`StartAgentTask`,
     # `start_task`), which hold its owner; building the prompt records nothing.
     with {:ok, story_id} <- get_story_id(scope, task) do
-      env = CodeMySpec.AgentTasks.environment(scope)
+      env = CodeMySpec.AgentTasks.execution_context(scope)
       story = Stories.get_story!(scope, story_id)
       ensure_qa_dirs(env, story.number)
       {:ok, build_prompt(scope, story)}
@@ -69,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   """
   def evaluate(scope, task) do
     with {:ok, story_id} <- get_story_id(scope, task) do
-      env = CodeMySpec.AgentTasks.environment(scope)
+      env = CodeMySpec.AgentTasks.execution_context(scope)
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
       # Most-recent first, `:invalidations` preloaded — see QaAttempts.list/2.
@@ -193,7 +193,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp result_exists?(env, story_number) do
-    case Environments.read_file(env, result_path(story_number)) do
+    case ExecutionContexts.read_file(env, result_path(story_number)) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 -> true
       _ -> false
     end
@@ -226,7 +226,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   defp check_plan(scope, env) do
-    case Environments.read_file(env, Paths.qa_plan()) do
+    case ExecutionContexts.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         validate_plan_sections(content)
 
@@ -282,7 +282,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp check_brief(env, story_number) do
     path = brief_path(story_number)
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         case Documents.create_dynamic_document(content, "qa_story_brief") do
           {:ok, _document} ->
@@ -319,7 +319,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     path = result_path(story_number)
     result_spec = DocumentSpecProjector.project_spec("qa_result")
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         case Documents.create_dynamic_document(content, "qa_result") do
           {:ok, document} ->
@@ -347,7 +347,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   defp build_prompt(scope, story) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     endpoint_module = endpoint_module_name(scope)
     criteria_text = format_criteria(Map.get(story, :criteria, []))
     spec_paths = collect_spec_file_paths(scope, story.id)
@@ -449,9 +449,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # a copy id that does not resolve.
   #
   # The harness replies `starting` after a short inline window and keeps
-  # building in the background -- `AppTransport.first_start_inline_window_ms/0`,
+  # building in the background -- `AppInstances.first_start_inline_window_ms/0`,
   # not a guess: a hardcoded 35s here once meant to sit "just above" a 30s
-  # window, but nothing enforced that relationship, and `AppTransport.call/4`
+  # window, but nothing enforced that relationship, and the channel call
   # adds its own grace on top of whatever timeout it is given -- so the
   # effective slack was thinner than it looked and would silently vanish if
   # either the window or the grace ever changed (cf006764).
@@ -461,16 +461,16 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @spec app_start_timeout() :: pos_integer()
   def app_start_timeout do
     max(
-      AppTransport.first_start_inline_window_ms() + @app_start_safety_margin_ms -
-        AppTransport.call_grace_ms(),
+      AppInstances.first_start_inline_window_ms() + @app_start_safety_margin_ms -
+        AppInstances.call_grace_ms(),
       to_timeout(second: 5)
     )
   end
 
-  defp app_url_line(%{active_working_copy_id: id}, endpoint_module)
+  defp app_url_line(%{active_working_copy_id: id} = scope, endpoint_module)
        when is_binary(id) do
     case WorkingCopies.fetch(id) do
-      {:ok, copy} -> own_copy_app_url_line(copy)
+      {:ok, copy} -> own_copy_app_url_line(scope, copy)
       {:error, _} -> main_app_url_line(endpoint_module)
     end
   end
@@ -487,10 +487,19 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       "blocks on the compile lock a running release holds and hangs."
   end
 
-  defp own_copy_app_url_line(copy) do
-    case AppTransport.ensure_app_running(copy.id, app_start_timeout()) do
+  defp own_copy_app_url_line(scope, copy) do
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      ensure_instance_url(scope, instance)
+    else
+      {:error, reason} ->
+        "**App URL:** this copy's app instance could not be resolved (#{inspect(reason)})."
+    end
+  end
+
+  defp ensure_instance_url(scope, instance) do
+    case AppInstances.ensure_running(scope, instance.id, app_start_timeout()) do
       {:ok, %{status: "serving", url: url, commit: commit} = info} ->
-        case AppTransport.qa_revision_check(info) do
+        case AppInstances.qa_revision_check(info) do
           :ok ->
             serving = Map.get(info, :serving_commit) || commit
 
@@ -652,9 +661,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     - Attribution follows automatically: every `scope: app` issue you file
       from this task carries this story unless you pass a `story_number`.
       `qa`, `docs` and `framework` findings are about the tooling, so they
-      stay off the story unless you name one. Until each story issue is triaged and every accepted one at the
-      project's threshold is submitted and readiness is recertified, this story is not re-offered for QA —
-      a `partial` or `fail` result resumes by itself once they are. If an
+      stay off the story unless you name one. Each story issue must be triaged and
+      every accepted one at the project's threshold submitted. A `partial` or
+      `fail` resumes automatically once its cited blockers are resolved, dismissed,
+      or submitted at the required threshold and the copy is certified at HEAD.
+      An unchanged certified commit can be reviewed again without recertification;
+      if HEAD has moved, readiness must be certified at the new commit first. If an
       issue belongs to a *different* story, pass that `story_number` on the
       `create_issue` call — an explicit attribution is never overwritten.
     - Don't write findings into a result.md file. The harness doesn't read it.
@@ -729,7 +741,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   @scripts_dir Path.join(Paths.qa_dir(), "scripts")
 
   defp list_scripts(env) do
-    case Environments.glob(env, Path.join(@scripts_dir, "*")) do
+    case ExecutionContexts.glob(env, Path.join(@scripts_dir, "*")) do
       files when is_list(files) and files != [] -> files
       _ -> []
     end
@@ -770,7 +782,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   end
 
   defp ensure_qa_dirs(env, story_number) do
-    Environments.ensure_dir(env, screenshot_dir(story_number))
+    ExecutionContexts.ensure_dir(env, screenshot_dir(story_number))
     :ok
   end
 

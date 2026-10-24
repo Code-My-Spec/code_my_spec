@@ -12,12 +12,13 @@ defmodule CodeMySpec.AgentTasks do
       CodeMySpec.TaskOwner,
       CodeMySpec.Architecture,
       CodeMySpec.Auth,
+      CodeMySpec.AppInstances,
       CodeMySpec.BddSpecs,
       CodeMySpec.Components,
       CodeMySpec.Configurations,
       CodeMySpec.Deploys,
       CodeMySpec.Documents,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Issues,
       CodeMySpec.LocalScope,
@@ -44,10 +45,10 @@ defmodule CodeMySpec.AgentTasks do
   A selected copy is authoritative: if it is invalid or unavailable, this
   returns nil rather than falling back to the project's local environment.
   """
-  def environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
-    do: CodeMySpec.WorkingCopies.environment(scope)
+  def execution_context(%{active_working_copy_id: id} = scope) when not is_nil(id),
+    do: CodeMySpec.WorkingCopies.execution_context(scope)
 
-  def environment(scope), do: CodeMySpec.LocalScope.environment(scope.active_project)
+  def execution_context(scope), do: CodeMySpec.LocalScope.execution_context(scope.active_project)
 
   @doc """
   Validate an explicitly requested artifact without adding it to the work graph.

@@ -34,8 +34,8 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpecSpex.Case, only: [fake_providers: 1, zone_exists: 2]
 
-  alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Steps
 
   @domain "inbound-default-drill.example.com"
@@ -44,9 +44,9 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, project} =
@@ -99,7 +99,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
         |> Enum.filter(&(&1[:kind] == "secret"))
         |> Enum.map(& &1[:location])
 
-      environments = EnvironmentRepository.names(ctx.scope)
+      environments = Environments.deployment_names(ctx.scope)
       assert environments != [], "this test is meaningless with no environments to seed"
 
       for environment <- environments do

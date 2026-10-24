@@ -66,6 +66,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     {:ok,
      assign(socket,
        page_title: "Dev boxes",
+       local_setup_device_id: local_setup_device_id(scope),
        project_id: params["project_id"],
        adding?: false,
        fire_form_for: nil,
@@ -76,6 +77,13 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
        providers: Runner.dev_boxes(),
        can_add?: can_add?(scope)
      )}
+  end
+
+  defp local_setup_device_id(scope) do
+    case CodeMySpec.Projects.LocalSetup.run(scope, "status") do
+      {:ok, %{device_id: id}} -> id
+      _ -> nil
+    end
   end
 
   # Owners and admins add boxes; everyone else on the account only sees them.
@@ -248,6 +256,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     do: {:noreply, put_flash(socket, :error, "Claude did not start a session. Try again.")}
 
   @impl true
+  def handle_info({:device_runtime_changed, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_connected, _id}, socket), do: {:noreply, load(socket)}
   def handle_info({:dev_box_revoked, _id}, socket), do: {:noreply, load(socket)}
 
@@ -621,6 +630,14 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                 </div>
 
                 <div class="flex items-center gap-2">
+                  <.link
+                    :if={row.device.id == @local_setup_device_id}
+                    navigate={
+                      ~p"/app/projects/#{@project_id}/console/dev-boxes/#{row.device.id}/setup"
+                    }
+                    class="btn btn-sm"
+                    data-test="device-setup"
+                  >Setup</.link>
                   <.button
                     phx-click="revoke_authorization"
                     phx-value-id={row.device.id}

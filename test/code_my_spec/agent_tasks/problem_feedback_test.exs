@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedbackTest do
   import CodeMySpec.ComponentsFixtures
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Utils
 
   @moduletag :tmp_dir
@@ -17,8 +17,14 @@ defmodule CodeMySpec.AgentTasks.ProblemFeedbackTest do
 
   defp create_scope(context) do
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, context.tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, context.tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, context.tmp_dir))
+
+    :ok =
+      register_working_copy_execution_context(
+        scope,
+        ExecutionContext.new(:local, context.tmp_dir)
+      )
+
     %{scope: scope}
   end
 

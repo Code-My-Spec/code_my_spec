@@ -4,7 +4,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   """
 
   alias CodeMySpec.Documents.DocumentSpecProjector
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{ExecutionContexts, Paths}
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
 
@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   document spec from the registry. Returns `{:ok, prompt}`.
   """
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     routers = list_routers(env)
     existing_plan = read_existing_plan(env)
@@ -143,10 +143,10 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
   defp list_routers(env) do
     env
-    |> Environments.glob(@router_glob)
+    |> ExecutionContexts.glob(@router_glob)
     |> Enum.sort()
     |> Enum.map(fn path ->
-      case Environments.read_file(env, path) do
+      case ExecutionContexts.read_file(env, path) do
         {:ok, content} -> {path, content}
         _ -> nil
       end
@@ -155,14 +155,14 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   end
 
   defp read_existing_plan(env) do
-    case Environments.read_file(env, Paths.qa_plan()) do
+    case ExecutionContexts.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 -> content
       _ -> nil
     end
   end
 
   defp list_paths(env, glob) do
-    case Environments.glob(env, glob) do
+    case ExecutionContexts.glob(env, glob) do
       paths when is_list(paths) -> Enum.sort(paths)
       _ -> []
     end

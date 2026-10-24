@@ -32,6 +32,7 @@ defmodule CodeMySpec.Analysis.Runners do
   It lands in the run's `stats`, not on each problem; an older harness omits it.
   """
 
+  alias CodeMySpec.Analysis.LocalRunLink
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter
@@ -53,20 +54,22 @@ defmodule CodeMySpec.Analysis.Runners do
           {:ok, result()} | {:error, term()}
   def run(source, %Scope{} = scope, args, opts) do
     cwd = opts[:cwd] || scope.cwd
-    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+    environment = StaticAnalysis.resolve_execution_context(opts, scope, cwd)
 
     if is_nil(environment) do
       {:error, :no_environment}
     else
       cwd = opts[:cwd] || environment.cwd
       environment = %{environment | cwd: cwd}
-      opts = opts |> Keyword.put(:environment, environment) |> Keyword.put(:cwd, cwd)
+      opts = opts |> Keyword.put(:execution_context, environment) |> Keyword.put(:cwd, cwd)
       run_resolved(source, scope, args, opts)
     end
   end
 
   defp run_resolved("compiler", %Scope{} = _scope, _args, opts) do
-    execute_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
+    execute_opts =
+      [execution_context: opts[:execution_context], cwd: opts[:cwd]] |> maybe_output_file(opts)
+
     result = Compile.execute(execute_opts)
 
     from_raw("compiler", %{
@@ -127,8 +130,14 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  defp run_resolved("exunit", %Scope{} = _scope, args, opts) do
-    exec_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
+  defp run_resolved("exunit", %Scope{} = scope, args, opts) do
+    exec_opts =
+      [
+        execution_context: opts[:execution_context],
+        cwd: opts[:cwd],
+        extra_env: LocalRunLink.env(scope, opts[:run_id])
+      ]
+      |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
       {:ok, test_run} ->
@@ -153,7 +162,8 @@ defmodule CodeMySpec.Analysis.Runners do
   end
 
   defp run_resolved("spex", %Scope{} = _scope, args, opts) do
-    exec_opts = [environment: opts[:environment], cwd: opts[:cwd]] |> maybe_output_file(opts)
+    exec_opts =
+      [execution_context: opts[:execution_context], cwd: opts[:cwd]] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
       {:ok, failures, exit_code, output} ->

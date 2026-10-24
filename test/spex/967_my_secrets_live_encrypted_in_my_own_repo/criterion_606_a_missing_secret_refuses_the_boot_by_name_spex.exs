@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
         # criterion is about.
         #
         # `only_environments/2` rather than `devops: :uat`: environments are
-        # rows, and `EnvironmentRepository.list/1` seeds both from a fixed list
+        # rows, and `Environments.list_deployment/1` seeds both from a fixed list
         # on first read regardless of the devops level. Removing the row is
         # what turning production off actually means.
         only_environments(context.scope, ["uat"])

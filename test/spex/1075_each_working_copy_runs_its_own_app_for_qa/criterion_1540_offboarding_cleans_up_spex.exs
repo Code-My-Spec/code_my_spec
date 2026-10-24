@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4664Spex do
       end
 
       when_ "the server offboards the copy", context do
-        :ok = FakeServer.push_event("offboard")
+        :ok = FakeServer.push_event("offboard", %{"instance_disposition" => "discard"})
         {:ok, context}
       end
 

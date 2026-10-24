@@ -10,7 +10,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallersTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Bootstrap.Tools.Installers
   alias CodeMySpec.Paths
@@ -27,7 +27,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallersTest do
     end
     """)
 
-    {:ok, tmp: tmp, env: Environment.new(:local, tmp)}
+    {:ok, tmp: tmp, env: ExecutionContext.new(:local, tmp)}
   end
 
   defp validation_errors(tmp, env, path) do

@@ -46,11 +46,11 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
 
   defp run_sync(scope, context) do
     environment =
-      CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+      CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
-    with {:ok, file_result} <- FileSync.sync(scope, environment: environment),
+    with {:ok, file_result} <- FileSync.sync(scope, execution_context: environment),
          {:ok, comp_result} <-
-           FileComponentSync.sync_from_files(scope, environment: environment),
+           FileComponentSync.sync_from_files(scope, execution_context: environment),
          {:ok, requirements} <- recompute(scope) do
       text = format_result(file_result, comp_result, requirements)
       {:ok, text}
@@ -58,7 +58,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
       # `cwd` is set for any resolved scope and is not the claim "there is a
       # working copy here" — the light harness has one and holds no checkout. So
       # the clause above cannot catch every remote case, and this is where the
-      # rest arrive: the scan reached `Environments.Harness.stream_files/3`,
+      # rest arrive: the scan reached `ExecutionContexts.Harness.stream_files/3`,
       # which refuses on purpose.
       #
       # It surfaced as `Sync failed: {:cannot_scan, :not_supported_on_harness}`,

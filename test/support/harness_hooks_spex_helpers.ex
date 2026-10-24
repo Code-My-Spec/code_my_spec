@@ -72,8 +72,8 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   alias CmsHarnessTest.LiveHarness
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessReports
   alias Phoenix.ConnTest
@@ -106,9 +106,9 @@ defmodule CodeMySpecSpex.HarnessHooks do
       scanner tracks: a harness whose scan finds nothing refuses to send it.
     * `:feature` — `true` makes this checkout a feature copy, with the scope's
       fixture copy designated main (see "Two working copies").
-    * `:environment` — what the server reads for this copy. `:checkout` (the
+    * `:execution_context` — what the server reads for this copy. `:checkout` (the
       default) reads the checkout through the harness, as production does.
-      `:in_memory` reads `context.environment`, for a spex whose files live in
+      `:in_memory` reads `context.execution_context`, for a spex whose files live in
       the fixture's in-memory runtime rather than on the checkout.
   """
   @spec given_a_live_harness(map(), keyword()) :: map()
@@ -156,7 +156,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
     scope = %{scope | active_working_copy_id: working_copy_id}
 
-    :ok = serve_from(Keyword.get(opts, :environment, :checkout), working_copy_id, context)
+    :ok = serve_from(Keyword.get(opts, :execution_context, :checkout), working_copy_id, context)
 
     context
     |> Map.put(:harness, %{
@@ -171,8 +171,8 @@ defmodule CodeMySpecSpex.HarnessHooks do
   end
 
   @doc """
-  From here on the harness's copy reads `context.environment`, the fixture's
-  in-memory runtime, instead of the checkout — what `environment: :in_memory`
+  From here on the harness's copy reads `context.execution_context`, the fixture's
+  in-memory runtime, instead of the checkout — what `execution_context: :in_memory`
   does at start, for a harness a shared given already started.
   """
   @spec serve_in_memory(map()) :: map()
@@ -183,15 +183,17 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
   defp serve_from(:checkout, _working_copy_id, _context), do: :ok
 
-  defp serve_from(:in_memory, working_copy_id, %{environment: %Environment{type: :memory} = env}) do
-    :ok = Environments.unregister({:working_copy, working_copy_id})
-    Environments.register({:working_copy, working_copy_id}, env)
+  defp serve_from(:in_memory, working_copy_id, %{
+         execution_context: %ExecutionContext{type: :memory} = env
+       }) do
+    :ok = ExecutionContexts.unregister({:working_copy, working_copy_id})
+    ExecutionContexts.register({:working_copy, working_copy_id}, env)
   end
 
   @doc """
   `context` with a live harness: the one it already has, or one started now.
 
-  A new checkout holds what `context.environment` holds, so the files earlier
+  A new checkout holds what `context.execution_context` holds, so the files earlier
   givens seeded in memory (and synced) are on the disk the hook path reads, and
   in the manifest its File rows come from. Files written to the environment
   after this are the caller's to put on disk, with `write_file/3`.
@@ -201,15 +203,15 @@ defmodule CodeMySpecSpex.HarnessHooks do
   def ensure_live_harness(%{harness: %{}} = context, _opts), do: context
 
   def ensure_live_harness(context, opts) do
-    files = checkout_files(Map.get(context, :environment))
+    files = checkout_files(Map.get(context, :execution_context))
     given_a_live_harness(context, Keyword.put(opts, :files, files))
   end
 
   # A mix.exs, as every checkout has: the scan has to find something, and a
   # project whose environment is still empty would otherwise give it nothing.
-  defp checkout_files(%Environment{type: :memory} = env) do
+  defp checkout_files(%ExecutionContext{type: :memory} = env) do
     env
-    |> Environments.glob("**/*")
+    |> ExecutionContexts.glob("**/*")
     |> Enum.reject(&(String.starts_with?(&1, "/") or String.starts_with?(&1, "\0")))
     |> Map.new(fn path -> {path, read!(env, path)} end)
     |> Map.put_new("mix.exs", @mix_exs)
@@ -218,7 +220,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
   defp checkout_files(_environment), do: %{"mix.exs" => @mix_exs}
 
   defp read!(env, path) do
-    {:ok, content} = Environments.read_file(env, path)
+    {:ok, content} = ExecutionContexts.read_file(env, path)
     content
   end
 

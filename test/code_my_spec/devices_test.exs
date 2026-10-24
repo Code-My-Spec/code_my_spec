@@ -26,6 +26,8 @@ defmodule CodeMySpec.DevicesTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.AppInstances.AppInstance
   alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Users.Scope
@@ -217,7 +219,21 @@ defmodule CodeMySpec.DevicesTest do
 
     test "attaching nothing leaves the copy on the machine it already had", %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
+
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil,
+          label: "a checkout",
+          device: device,
+          root: "/workspace/app"
+        )
+
+      {:ok, instance} = AppInstances.ensure_default(scope, copy)
+      {:ok, other_device} = Devices.announce(scope, nil, %{hostname: "other", kind: :local})
+
+      {:ok, other_copy} =
+        WorkingCopies.issue(scope, nil, device: other_device, root: "/workspace/app")
+
+      {:ok, other_instance} = AppInstances.ensure_default(scope, other_copy)
 
       assert {:ok, same} = WorkingCopies.attach_device(copy, nil)
 
@@ -244,6 +260,7 @@ defmodule CodeMySpec.DevicesTest do
   describe "staying alive" do
     test "a copy proving it is alive proves its machine alive too", %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
+
       {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
 
       # Back-date the machine so a touch is observable. Announcing stamped it a
@@ -328,9 +345,26 @@ defmodule CodeMySpec.DevicesTest do
     test "its working copies go with it, not to the nil-device state (2dd9a959)",
          %{scope: scope} do
       {:ok, device} = Devices.announce(scope, nil, %{hostname: "a-laptop", kind: :local})
-      {:ok, copy} = WorkingCopies.issue(scope, nil, label: "a checkout", device: device)
+
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil,
+          label: "a checkout",
+          device: device,
+          root: "/workspace/app"
+        )
+
+      {:ok, instance} = AppInstances.ensure_default(scope, copy)
+      {:ok, other_device} = Devices.announce(scope, nil, %{hostname: "other", kind: :local})
+
+      {:ok, other_copy} =
+        WorkingCopies.issue(scope, nil, device: other_device, root: "/workspace/app")
+
+      {:ok, other_instance} = AppInstances.ensure_default(scope, other_copy)
 
       assert {:ok, _} = Devices.destroy(scope, device)
+      refute CodeMySpec.Repo.get(AppInstance, instance.id)
+      assert CodeMySpec.Repo.get(AppInstance, other_instance.id)
+      assert CodeMySpec.Repo.get(CodeMySpec.WorkingCopies.WorkingCopy, other_copy.id)
 
       refute CodeMySpec.Repo.get(CodeMySpec.WorkingCopies.WorkingCopy, copy.id),
              "migration 20260830120000 made this cascade deliberately (John's call, " <>

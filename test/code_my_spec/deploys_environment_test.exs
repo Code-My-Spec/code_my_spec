@@ -14,11 +14,11 @@ defmodule CodeMySpec.DeploysEnvironmentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Deploys
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
 
   setup do
     scope = full_scope_fixture()
-    EnvironmentRepository.list(scope)
+    Environments.list_deployment(scope)
 
     {:ok, scope: scope}
   end
@@ -70,8 +70,8 @@ defmodule CodeMySpec.DeploysEnvironmentTest do
     test "true when every environment on the box is deployed", ctx do
       story = released_story(ctx.scope)
 
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "uat", %{server_name: "box-1"})
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{server_name: "box-1"})
+      {:ok, _} = Environments.put(ctx.scope, "uat", %{server_name: "box-1"})
+      {:ok, _} = Environments.put(ctx.scope, "prod", %{server_name: "box-1"})
 
       deploy(ctx.scope, story, "uat")
 

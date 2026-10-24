@@ -26,8 +26,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5286Spex do
   spex "Validation gates on the integration index plus per-spec verification", criterion: 239 do
     scenario "Spec missing the verified status yields needs-work naming the spec" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
@@ -38,9 +38,9 @@ defmodule CodeMySpecSpex.Story597.Criterion5286Spex do
       end
 
       given_ "a pending twilio spec, its verify script, and the index are in place", context do
-        Fixtures.with_pending_integration_spec(context.environment, "twilio")
-        Fixtures.with_verify_script(context.environment, "twilio")
-        Fixtures.with_integration_index(context.environment, ["twilio"])
+        Fixtures.with_pending_integration_spec(context.execution_context, "twilio")
+        Fixtures.with_verify_script(context.execution_context, "twilio")
+        Fixtures.with_integration_index(context.execution_context, ["twilio"])
         {:ok, context}
       end
 

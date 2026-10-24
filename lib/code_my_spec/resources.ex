@@ -361,7 +361,7 @@ defmodule CodeMySpec.Resources do
   defp matching_working_copy(_copy_id, _project_id), do: :error
 
   defp local_cwd(project) do
-    case LocalScope.environment(project) do
+    case LocalScope.execution_context(project) do
       %{cwd: cwd} -> cwd
       _ -> nil
     end

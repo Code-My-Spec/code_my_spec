@@ -16,7 +16,8 @@ defmodule CodeMySpec.Agents.Tools.AskQuestion do
     """
     Ask the user a question with the answers written out for them.
 
-    One to four questions with choices, or one free-text question with options: [].
+    One to four structured questions, each with non-empty answer options.
+    For open-ended questions, ask in ordinary chat instead of calling this tool.
     A linked task is blocked atomically; omitted task_id uses your active task.
     You may continue unrelated work. Collect answers with check_answer, then
     explicitly resume the blocked task after its blocker has been resolved.
@@ -36,7 +37,20 @@ defmodule CodeMySpec.Agents.Tools.AskQuestion do
       session_id: {:meta, :string, [description: "Injected by hook — do not set manually"]},
       questions:
         {:required,
-         {:meta, {:list, :map},
+         {:meta,
+          {:list,
+           %{
+             question: {:required, :string},
+             header: :string,
+             multiSelect: :boolean,
+             options:
+               {:required,
+                {:list,
+                 %{
+                   label: {:required, :string},
+                   description: :string
+                 }}}
+           }},
           [
             description:
               "1-4 objects: question (required), options (required, [{label, description}]), header, multiSelect."
@@ -128,17 +142,17 @@ defmodule CodeMySpec.Agents.Tools.AskQuestion do
        "once. Ask the ones that block you now; the rest can follow."}
   end
 
-  # The renderer accepts a single free-text question or a group of choices.
+  # Only structured questions with choices create a separate answer form.
   defp normalize(questions) do
     Enum.reduce_while(questions, {:ok, []}, fn question, {:ok, acc} ->
-      case normalize_one(question, length(questions) == 1) do
+      case normalize_one(question) do
         {:ok, normalized} -> {:cont, {:ok, acc ++ [normalized]}}
         {:error, _reason} = error -> {:halt, error}
       end
     end)
   end
 
-  defp normalize_one(question, allow_free_text?) do
+  defp normalize_one(question) do
     text = get(question, "question")
     options = question |> get("options") |> List.wrap() |> Enum.map(&normalize_option/1)
 
@@ -146,8 +160,8 @@ defmodule CodeMySpec.Agents.Tools.AskQuestion do
       not is_binary(text) or text == "" ->
         {:error, "every question needs a `question`"}
 
-      options == [] and not allow_free_text? ->
-        {:error, "Ask a free-text question on its own, or provide choices for each question."}
+      options == [] ->
+        {:error, "Each question needs answer options. Ask open-ended questions in ordinary chat."}
 
       true ->
         {:ok,

@@ -7,7 +7,7 @@ defmodule CodeMySpec.Promotion.AConflictReportedByTheHarnessIsReadTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Runner
 
   test "a conflicted candidate comes back with atom keys" do
@@ -34,7 +34,8 @@ defmodule CodeMySpec.Promotion.AConflictReportedByTheHarnessIsReadTest do
 
     assert_receive :up
 
-    environment = Environment.new(:harness, "/gate", ref: %{"harness_id" => Ecto.UUID.generate()})
+    environment =
+      ExecutionContext.new(:harness, "/gate", ref: %{"harness_id" => Ecto.UUID.generate()})
 
     assert {:ok, %{merged: [], conflicted: [%{commit: "c1", files: []}]}} =
              Runner.build_batch(environment, "/gate", "base", ["c1"], copy_id)

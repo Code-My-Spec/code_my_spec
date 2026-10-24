@@ -22,9 +22,9 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaIntegrationPlan
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   # The index is a file beside the directory, not inside it — anything inside is
   # globbed as a spec and checked for its own Verify Script.
@@ -33,11 +33,11 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   @script "bin/verify_acme.sh"
 
   setup do
-    {:ok, env} = InMemoryEnvironment.create()
-    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
+    {:ok, env} = InMemoryExecutionContext.create()
+    on_exit(fn -> InMemoryExecutionContext.destroy(env) end)
 
-    scope = put_fixture_environment(working_copy_scope_fixture(), env)
-    :ok = register_working_copy_environment(scope, env)
+    scope = put_fixture_execution_context(working_copy_scope_fixture(), env)
+    :ok = register_working_copy_execution_context(scope, env)
     %{scope: scope, env: env}
   end
 
@@ -51,9 +51,9 @@ defmodule CodeMySpec.AgentTasks.IntegrationVerifiedStatusTest do
   # So the sync is not setup here, it is half the path under test: the same
   # regex reached through the surface that actually runs it.
   defp seed!(scope, env, spec_body) do
-    :ok = Environments.write_file(env, @index, "# Integrations\n\n- acme\n")
-    :ok = Environments.write_file(env, @script, "#!/bin/sh\n")
-    :ok = Environments.write_file(env, @spec_path, spec_body)
+    :ok = ExecutionContexts.write_file(env, @index, "# Integrations\n\n- acme\n")
+    :ok = ExecutionContexts.write_file(env, @script, "#!/bin/sh\n")
+    :ok = ExecutionContexts.write_file(env, @spec_path, spec_body)
 
     {:ok, _} = FileSync.sync(scope)
   end

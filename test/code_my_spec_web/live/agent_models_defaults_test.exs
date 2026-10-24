@@ -83,9 +83,55 @@ defmodule CodeMySpecWeb.AgentModelsDefaultsTest do
 
     live |> element("[data-test=agent-models-form]") |> render_submit(params)
 
+    assert has_element?(live, "select[name='qa[provider]'] option[selected][value='anthropic']")
+
     assert pinned(scope) == [:qa],
            "guarding the untouched rows must not stop a deliberate choice being written, " <>
              "which is the whole point of the page."
+  end
+
+  test "switching providers fills the corresponding default and preserves subsequent edits", %{
+    conn: conn
+  } do
+    {:ok, view, _} = live(conn, ~p"/app/agent-models")
+
+    view
+    |> form("[data-test=agent-models-form]", %{
+      "qa" => %{"provider" => "claude-code", "model" => "old-model"}
+    })
+    |> render_change()
+
+    assert has_element?(view, "input[name='qa[model]'][value='claude-sonnet-5']")
+
+    view
+    |> form("[data-test=agent-models-form]", %{
+      "qa" => %{"provider" => "claude-code", "model" => "my-model"}
+    })
+    |> render_change()
+
+    assert has_element?(view, "input[name='qa[model]'][value='my-model']")
+  end
+
+  test "provider defaults agree between onboarding and runtime resolution" do
+    expected = %{
+      "openai-codex" => %{
+        main: "gpt-6-astra",
+        product: "gpt-6-astra",
+        coding: "gpt-6.1-sol",
+        qa: "gpt-6-luna"
+      },
+      "claude-code" => %{
+        main: "claude-opus-5-5",
+        product: "claude-opus-5-5",
+        coding: "claude-sonnet-5",
+        qa: "claude-sonnet-5"
+      }
+    }
+
+    for {provider, roles} <- expected, {role, model} <- roles do
+      assert Agents.default_model(role, provider) == model
+      assert {:ok, {^provider, ^model}} = Agents.Defaults.resolve(role, [provider])
+    end
   end
 
   test "the form offers the default as a choice", %{conn: conn, scope: scope} do

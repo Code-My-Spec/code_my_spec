@@ -4,7 +4,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.GitHub
   alias CodeMySpec.Provisioning.Repository
 
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     # is stubbed — so a change to how the token is resolved surfaces here.
     _ = github_integration_fixture(scope.user)
 
-    %{env: Environment.new(:local, tmp), scope: scope}
+    %{env: ExecutionContext.new(:local, tmp), scope: scope}
   end
 
   # Process-scoped, so this file and `git_hub_test` can drive the same client

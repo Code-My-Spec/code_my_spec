@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -33,11 +33,11 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
   spex "Publish writes the content blob and an integrity manifest to S3", criterion: 477 do
     scenario "Publish writes manifest + blob to user's content bucket" do
       given_ "a clean snapshot of three blog rows and one page row", context do
-        env = context.environment
+        env = context.execution_context
 
         for slug <- ~w(one two three) do
           :ok =
-            Environments.write_file(env, "#{@source}/blog/#{slug}.md", """
+            ExecutionContexts.write_file(env, "#{@source}/blog/#{slug}.md", """
             ---
             title: #{slug}
             slug: #{slug}
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
         end
 
         :ok =
-          Environments.write_file(env, "#{@source}/pages/about.md", """
+          ExecutionContexts.write_file(env, "#{@source}/pages/about.md", """
           ---
           title: About
           slug: about

@@ -58,7 +58,7 @@ defmodule CmsHarness.Config do
   space under `local_state_dir/0`, outside any checkout.
   """
   @spec projects_root() :: String.t()
-  def projects_root, do: Path.join(local_state_dir(), "projects")
+  defdelegate projects_root, to: CodeMySpec.Paths
 
   @doc """
   The credential the socket authenticates with, for a given project.

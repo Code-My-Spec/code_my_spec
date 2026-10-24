@@ -39,8 +39,8 @@ defmodule CodeMySpec.WorkingCopies.Tools.AppToolBudgetTest do
 
   alias CodeMySpec.CodeMode.Sandbox
   alias CodeMySpec.McpServers.CodeMode, as: Layer
-  alias CodeMySpec.WorkingCopies.Tools.{EnsureAppRunning, RestartApp}
-  alias CodeMySpec.WorkingCopies.AppTransport
+  alias CodeMySpec.AppInstances.Tools.{EnsureAppRunning, RestartApp}
+  alias CodeMySpec.AppInstances, as: AppTransport
 
   # What a script can actually wait for: the sandbox clock less the grace
   # `AppTransport.call/4` adds on top of whatever timeout it is given — the

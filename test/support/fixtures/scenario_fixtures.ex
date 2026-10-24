@@ -20,7 +20,7 @@ defmodule CodeMySpec.ScenarioFixtures do
   import CodeMySpec.AcceptanceCriteriaFixtures
 
   alias CodeMySpec.ClientUsers.ClientUser
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @math_project_repo Path.expand(
                        "../math_test_project",
@@ -203,7 +203,7 @@ defmodule CodeMySpec.ScenarioFixtures do
   def put_scenario_environment(scope, project_dir) do
     scope
     |> Map.put(:cwd, project_dir)
-    |> put_fixture_environment(Environment.new(:local, project_dir))
+    |> put_fixture_execution_context(ExecutionContext.new(:local, project_dir))
   end
 
   # ============================================================================

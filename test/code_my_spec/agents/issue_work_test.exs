@@ -27,7 +27,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.Agents.Agent.Task
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence
 
@@ -57,9 +57,9 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     :ok = HarnessRegistry.register_executor(copy.id, "copy-harness", @copy)
-    {:ok, env} = InMemoryEnvironment.create(shell: clean_shell())
-    :ok = CodeMySpec.Environments.unregister({:working_copy, copy.id})
-    :ok = CodeMySpec.Environments.register({:working_copy, copy.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: clean_shell())
+    :ok = CodeMySpec.ExecutionContexts.unregister({:working_copy, copy.id})
+    :ok = CodeMySpec.ExecutionContexts.register({:working_copy, copy.id}, env)
     scope = %{scope | active_working_copy_id: copy.id}
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: @head)
     %{scope: scope, copy_id: copy.id}
@@ -69,9 +69,9 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   # analysis stamped there, so the second certification is a distinct pass
   # rather than a replay of the first.
   defp recertify_at(scope, copy_id, head) do
-    {:ok, env} = InMemoryEnvironment.create(shell: clean_shell(head))
-    :ok = CodeMySpec.Environments.unregister({:working_copy, copy_id})
-    :ok = CodeMySpec.Environments.register({:working_copy, copy_id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: clean_shell(head))
+    :ok = CodeMySpec.ExecutionContexts.unregister({:working_copy, copy_id})
+    :ok = CodeMySpec.ExecutionContexts.register({:working_copy, copy_id}, env)
     AnalysisFixtures.fresh_analysis_runs_fixture(scope, Run.sources(), commit: head)
   end
 

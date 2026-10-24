@@ -63,7 +63,7 @@ log "Linking to CodeMySpec project ${PROJECT_ID}"
 PROJECT_ID="$PROJECT_ID" APP_DIR="$APP_DIR" /opt/cms/bin/cms_harness eval '
   alias CodeMySpec.{Repo, Projects.Project}
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.McpServers.Bootstrap.Installers
 
   project_id = System.fetch_env!("PROJECT_ID")
@@ -100,7 +100,7 @@ PROJECT_ID="$PROJECT_ID" APP_DIR="$APP_DIR" /opt/cms/bin/cms_harness eval '
       conflict_target: :id, returning: true
     )
 
-  {installed, failures} = Installers.install_all(Environment.new(:local, app_dir))
+  {installed, failures} = Installers.install_all(ExecutionContext.new(:local, app_dir))
   IO.puts("linked: #{project.name}")
   IO.puts("installed: #{Enum.join(installed, ", ")}")
   for {label, reason} <- failures, do: IO.puts("FAILED #{label}: #{inspect(reason)}")

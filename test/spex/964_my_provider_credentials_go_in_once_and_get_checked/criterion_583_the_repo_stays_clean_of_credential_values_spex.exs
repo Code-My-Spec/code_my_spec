@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -66,13 +66,13 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
       end
 
       then_ "none of the values appears in the repo", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         offenders =
           entries
           |> Enum.filter(fn path ->
-            context.environment
-            |> Environments.read_file(path)
+            context.execution_context
+            |> ExecutionContexts.read_file(path)
             |> carries_secret?()
           end)
 

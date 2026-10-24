@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3426Spex do
       when_ "one component's implementation file goes away and the project scans", context do
         :ok =
           Fixtures.delete_env_file(
-            context.environment,
+            context.execution_context,
             Content.impl_path(context.users_child.module_name)
           )
 

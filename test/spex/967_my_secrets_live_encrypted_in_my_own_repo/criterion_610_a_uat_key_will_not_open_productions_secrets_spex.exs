@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -91,7 +91,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
       end
 
       then_ "production's file does not name UAT's key as a recipient", context do
-        {:ok, prod_file} = Environments.read_file(context.environment, "envs/prod.enc.env")
+        {:ok, prod_file} =
+          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
 
         for uat_key <- context.recipients["uat"] do
           refute prod_file =~ uat_key,

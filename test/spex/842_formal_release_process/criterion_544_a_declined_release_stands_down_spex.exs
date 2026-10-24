@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @cassette "842_1975_release_declined"
@@ -33,8 +33,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
       given_ "a story on UAT waiting to be released, and an empty releases directory",
              context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/devops/deploys/story_9004.md",
             "# Deploy\n\nstory 9004 to uat — verified\n"
           )
@@ -44,7 +44,12 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
         # two acceptable ones — a missing directory and an empty directory
         # would otherwise both have to be tolerated, and a test that tolerates
         # two answers is not checking which one it got.
-        :ok = Environments.write_file(context.environment, ".code_my_spec/releases/.keep", "")
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            ".code_my_spec/releases/.keep",
+            ""
+          )
 
         {:ok, context}
       end
@@ -64,7 +69,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
 
       then_ "no release record is written", context do
         assert {:ok, entries} =
-                 Environments.list_directory(context.environment, ".code_my_spec/releases")
+                 ExecutionContexts.list_directory(
+                   context.execution_context,
+                   ".code_my_spec/releases"
+                 )
 
         assert entries == [".keep"],
                "a declined release left a record behind, so the tool believes it shipped: " <>
@@ -74,7 +82,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
       end
 
       then_ "nothing is tagged", context do
-        {tags, _status} = Environments.cmd(context.environment, "git", ["tag", "--list"])
+        {tags, _status} =
+          ExecutionContexts.cmd(context.execution_context, "git", ["tag", "--list"])
 
         refute tags =~ ~r/v?\d+\.\d+\.\d+/,
                "a declined release left a tag behind, got: #{inspect(tags)}"

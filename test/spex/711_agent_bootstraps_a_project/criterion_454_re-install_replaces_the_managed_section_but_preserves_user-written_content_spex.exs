@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
 
   Surface: `InstallClaudeMd` MCP tool. The tool reads and writes through
   `scope.environment`, so the spec seeds and observes CLAUDE.md via
-  `CodeMySpec.Environments`.
+  `CodeMySpec.ExecutionContexts`.
   """
 
   use CodeMySpecSpex.Case
@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Content
 
   setup :register_log_in_setup_account
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
           @user_above <>
             start_marker <> "\n" <> @stale_managed <> "\n" <> end_marker <> @user_below
 
-        :ok = Environments.write_file(context.environment, "CLAUDE.md", existing)
+        :ok = ExecutionContexts.write_file(context.execution_context, "CLAUDE.md", existing)
 
         {:ok, context}
       end
@@ -59,7 +59,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6240Spex do
       end
 
       then_ "the user-written content above and below the markers is unchanged", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, "CLAUDE.md")
+        assert {:ok, contents} =
+                 ExecutionContexts.read_file(context.execution_context, "CLAUDE.md")
 
         assert String.contains?(contents, @user_above),
                "expected user-written content above the managed section to survive, got:\n#{contents}"

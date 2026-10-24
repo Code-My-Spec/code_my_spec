@@ -11,11 +11,11 @@ defmodule CodeMySpec.Provisioning.MarkFirstDeployedTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
 
   setup do
     scope = full_scope_fixture()
-    [environment] = EnvironmentRepository.list(scope) |> Enum.filter(&(&1.name == "uat"))
+    [environment] = Environments.list_deployment(scope) |> Enum.filter(&(&1.name == "uat"))
     %{scope: scope, environment: environment}
   end
 
@@ -26,24 +26,24 @@ defmodule CodeMySpec.Provisioning.MarkFirstDeployedTest do
   end
 
   test "records the first deploy", %{scope: scope} do
-    :ok = EnvironmentRepository.mark_first_deployed(scope, "uat")
+    :ok = Environments.mark_first_deployed(scope, "uat")
 
-    assert %DateTime{} = EnvironmentRepository.get(scope, "uat").first_deployed_at
+    assert %DateTime{} = Environments.get(scope, "uat").first_deployed_at
   end
 
   test "a second call does not move the timestamp", %{scope: scope} do
-    :ok = EnvironmentRepository.mark_first_deployed(scope, "uat")
-    first = EnvironmentRepository.get(scope, "uat").first_deployed_at
+    :ok = Environments.mark_first_deployed(scope, "uat")
+    first = Environments.get(scope, "uat").first_deployed_at
 
-    :ok = EnvironmentRepository.mark_first_deployed(scope, "uat")
-    second = EnvironmentRepository.get(scope, "uat").first_deployed_at
+    :ok = Environments.mark_first_deployed(scope, "uat")
+    second = Environments.get(scope, "uat").first_deployed_at
 
     assert DateTime.compare(first, second) == :eq
   end
 
   test "marking one environment leaves a sibling untouched", %{scope: scope} do
-    :ok = EnvironmentRepository.mark_first_deployed(scope, "uat")
+    :ok = Environments.mark_first_deployed(scope, "uat")
 
-    assert EnvironmentRepository.get(scope, "prod").first_deployed_at == nil
+    assert Environments.get(scope, "prod").first_deployed_at == nil
   end
 end

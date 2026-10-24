@@ -500,7 +500,7 @@ defmodule CodeMySpecSpex.Drill do
         {:ok, public} = Sops.public_key(private)
 
         discard_env_encrypted_to_another_key(
-          CodeMySpec.UsersFixtures.fixture_environment(scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(scope),
           environment,
           public
         )
@@ -508,7 +508,7 @@ defmodule CodeMySpecSpex.Drill do
         {environment, public}
       end)
 
-    :ok = Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), recipients)
+    :ok = Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(scope), recipients)
 
     context
   end
@@ -536,7 +536,7 @@ defmodule CodeMySpecSpex.Drill do
   end
 
   defp remove_env_file(env, environment) do
-    CodeMySpec.Environments.delete_file(env, "envs/#{environment}.enc.env")
+    CodeMySpec.ExecutionContexts.delete_file(env, "envs/#{environment}.enc.env")
   end
 
   # The domain, the environments and the devops level — the three facts the plan

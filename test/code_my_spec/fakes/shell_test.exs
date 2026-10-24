@@ -14,15 +14,15 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # tests that finish in a tenth of a second is the cheap side of that trade.
   use ExUnit.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Builder.Remote
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpecSpex.Fakes
 
   setup do
-    {:ok, env} = InMemoryEnvironment.create(working_dir: "/memfs", shell_module: Fakes.Shell)
+    {:ok, env} = InMemoryExecutionContext.create(working_dir: "/memfs", shell_module: Fakes.Shell)
 
-    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
+    on_exit(fn -> InMemoryExecutionContext.destroy(env) end)
 
     %{env: env}
   end
@@ -32,21 +32,28 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # does not exist.
   test "ssh-keygen leaves a key behind", %{env: env} do
     {_out, 0} =
-      Environments.cmd(env, "ssh-keygen", ["-t", "ed25519", "-N", "", "-f", "/memfs/id_ed25519"])
+      ExecutionContexts.cmd(env, "ssh-keygen", [
+        "-t",
+        "ed25519",
+        "-N",
+        "",
+        "-f",
+        "/memfs/id_ed25519"
+      ])
 
-    assert {:ok, private} = Environments.read_file(env, "/memfs/id_ed25519")
+    assert {:ok, private} = ExecutionContexts.read_file(env, "/memfs/id_ed25519")
     assert private =~ "PRIVATE KEY"
 
-    assert {:ok, public} = Environments.read_file(env, "/memfs/id_ed25519.pub")
+    assert {:ok, public} = ExecutionContexts.read_file(env, "/memfs/id_ed25519.pub")
     assert public =~ "ssh-ed25519"
   end
 
   test "the same path twice gives the same key, so a re-run finds what it made", %{env: env} do
-    Environments.cmd(env, "ssh-keygen", ["-f", "/memfs/id_ed25519"])
-    {:ok, first} = Environments.read_file(env, "/memfs/id_ed25519.pub")
+    ExecutionContexts.cmd(env, "ssh-keygen", ["-f", "/memfs/id_ed25519"])
+    {:ok, first} = ExecutionContexts.read_file(env, "/memfs/id_ed25519.pub")
 
-    Environments.cmd(env, "ssh-keygen", ["-f", "/memfs/id_ed25519"])
-    {:ok, second} = Environments.read_file(env, "/memfs/id_ed25519.pub")
+    ExecutionContexts.cmd(env, "ssh-keygen", ["-f", "/memfs/id_ed25519"])
+    {:ok, second} = ExecutionContexts.read_file(env, "/memfs/id_ed25519.pub")
 
     assert first == second
   end
@@ -56,20 +63,20 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # that is not there.
   test "sops refuses a file that does not exist", %{env: env} do
     assert {output, 128} =
-             Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+             ExecutionContexts.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
 
     assert output =~ "non-existent file"
   end
 
   test "sops succeeds once the file is there", %{env: env} do
-    :ok = Environments.write_file(env, "envs/prod.enc.env", "SECRET=1")
+    :ok = ExecutionContexts.write_file(env, "envs/prod.enc.env", "SECRET=1")
 
     assert {_out, 0} =
-             Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+             ExecutionContexts.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
   end
 
   test "age-keygen prints a public key the caller can read back", %{env: env} do
-    assert {output, 0} = Environments.cmd(env, "age-keygen", [])
+    assert {output, 0} = ExecutionContexts.cmd(env, "age-keygen", [])
     assert output =~ "public key: age1"
   end
 
@@ -78,29 +85,29 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # "everything is missing" — which is how a fully provisioned run reported
   # "prod is missing SECRET_KEY_BASE, DATABASE_URL" one step from the end.
   test "a secret set is a secret read back", %{env: env} do
-    :ok = Environments.write_file(env, "envs/prod.enc.env", "SOPS_INITIALIZED=true\n")
+    :ok = ExecutionContexts.write_file(env, "envs/prod.enc.env", "SOPS_INITIALIZED=true\n")
 
     {_out, 0} =
-      Environments.cmd(env, "sops", [
+      ExecutionContexts.cmd(env, "sops", [
         "set",
         "envs/prod.enc.env",
         ~s(["SECRET_KEY_BASE"]),
         ~s("abc")
       ])
 
-    assert {output, 0} = Environments.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
+    assert {output, 0} = ExecutionContexts.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
     assert output =~ "SECRET_KEY_BASE=abc"
   end
 
   test "setting a key twice leaves one of it", %{env: env} do
-    :ok = Environments.write_file(env, "envs/prod.enc.env", "")
+    :ok = ExecutionContexts.write_file(env, "envs/prod.enc.env", "")
 
     for value <- ~w(first second) do
       {_out, 0} =
-        Environments.cmd(env, "sops", ["set", "envs/prod.enc.env", ~s(["K"]), ~s("#{value}")])
+        ExecutionContexts.cmd(env, "sops", ["set", "envs/prod.enc.env", ~s(["K"]), ~s("#{value}")])
     end
 
-    assert {output, 0} = Environments.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
+    assert {output, 0} = ExecutionContexts.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
     assert output =~ "K=second"
     refute output =~ "K=first"
   end
@@ -110,11 +117,11 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # as a genuine failure and the secrets step reports `{:sops_failed, 1, …}`
   # over a file that is perfectly fine.
   test "encrypting twice refuses in sops' own words", %{env: env} do
-    :ok = Environments.write_file(env, "envs/prod.enc.env", "K=1\n")
-    {_out, 0} = Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+    :ok = ExecutionContexts.write_file(env, "envs/prod.enc.env", "K=1\n")
+    {_out, 0} = ExecutionContexts.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
 
     assert {output, 1} =
-             Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+             ExecutionContexts.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
 
     assert output =~ "already being encrypted"
   end
@@ -123,16 +130,16 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # there — and the memory environment used to answer that from the real disk,
   # so every generated script read as missing.
   test "a script is executable only after chmod", %{env: env} do
-    :ok = Environments.write_file(env, "bin/deploy", "#!/bin/sh\n")
-    refute Environments.exec_file_exists?(env, "bin/deploy")
+    :ok = ExecutionContexts.write_file(env, "bin/deploy", "#!/bin/sh\n")
+    refute ExecutionContexts.exec_file_exists?(env, "bin/deploy")
 
-    {_out, 0} = Environments.cmd(env, "chmod", ["+x", "bin/deploy"])
-    assert Environments.exec_file_exists?(env, "bin/deploy")
+    {_out, 0} = ExecutionContexts.cmd(env, "chmod", ["+x", "bin/deploy"])
+    assert ExecutionContexts.exec_file_exists?(env, "bin/deploy")
   end
 
   test "the box answers what architecture its image is", %{env: env} do
     assert {output, 0} =
-             Environments.cmd(env, "ssh", [
+             ExecutionContexts.cmd(env, "ssh", [
                "root@box",
                "docker image inspect --format '{{.Architecture}}' app:abc"
              ])
@@ -158,7 +165,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
         1800
       )
 
-    assert {output, 0} = Environments.cmd(env, "ssh", ["root@box", wrapped])
+    assert {output, 0} = ExecutionContexts.cmd(env, "ssh", ["root@box", wrapped])
     assert String.trim(output) == "amd64"
   end
 
@@ -176,7 +183,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     command =
       Remote.wrap_with_timeout("cd /opt/app && BACKUP_BUCKET='b' bin/backup dump uat", 1800)
 
-    assert {output, 0} = Environments.cmd(env, "ssh", ["root@box", command])
+    assert {output, 0} = ExecutionContexts.cmd(env, "ssh", ["root@box", command])
     assert [_, key] = Regex.run(~r/key=(\S+)/, output)
 
     assert key =~ ~r{^dumps/uat/}
@@ -184,7 +191,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   end
 
   test "git rev-parse answers a sha", %{env: env} do
-    assert {output, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"])
+    assert {output, 0} = ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD"])
     assert String.trim(output) =~ ~r/^[0-9a-f]{16}$/
   end
 
@@ -200,12 +207,12 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     Application.put_env(:code_my_spec, :memory_shell_push, :rejected)
     on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_push, previous) end)
 
-    assert {output, 1} = Environments.cmd(env, "git", ["push", "-u", "origin", "main"])
+    assert {output, 1} = ExecutionContexts.cmd(env, "git", ["push", "-u", "origin", "main"])
     assert output =~ "non-fast-forward"
   end
 
   test "and lands otherwise", %{env: env} do
-    assert {_out, 0} = Environments.cmd(env, "git", ["push", "-u", "origin", "main"])
+    assert {_out, 0} = ExecutionContexts.cmd(env, "git", ["push", "-u", "origin", "main"])
   end
 
   # 966/8008: a failed migration leaves the old version serving. The deploy
@@ -215,25 +222,29 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     Application.put_env(:code_my_spec, :memory_shell_migration, :fails)
     on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_migration, previous) end)
 
-    assert {output, 1} = Environments.cmd(env, "/memfs/bin/deploy", ["migrate", "prod"])
+    assert {output, 1} = ExecutionContexts.cmd(env, "/memfs/bin/deploy", ["migrate", "prod"])
     assert output =~ "Postgrex"
 
     # Only the migration. A deploy whose migration fails must still be able to
     # report what else it did.
-    assert {_out, 0} = Environments.cmd(env, "/memfs/bin/deploy", ["deploy", "prod"])
+    assert {_out, 0} = ExecutionContexts.cmd(env, "/memfs/bin/deploy", ["deploy", "prod"])
   end
 
   # 973's premise: the widget step skips the generator when the file is already
   # there, so writing it is both the effect and what makes a re-run a no-op.
   test "the widget generator leaves the file installed?/2 looks for", %{env: env} do
     :ok =
-      Environments.write_file(env, "lib/app_web/router.ex", "defmodule AppWeb.Router do\nend\n")
+      ExecutionContexts.write_file(
+        env,
+        "lib/app_web/router.ex",
+        "defmodule AppWeb.Router do\nend\n"
+      )
 
-    assert {output, 0} = Environments.cmd(env, "mix", ["cms_gen.support_widget"])
+    assert {output, 0} = ExecutionContexts.cmd(env, "mix", ["cms_gen.support_widget"])
     assert output =~ "support_widget_live"
 
     assert {:ok, contents} =
-             Environments.read_file(env, "lib/app_web/live/support_widget_live.ex")
+             ExecutionContexts.read_file(env, "lib/app_web/live/support_widget_live.ex")
 
     assert contents =~ "data-cms-widget"
   end
@@ -241,7 +252,7 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   # A shell that silently succeeds at everything makes every step pass and
   # proves nothing — worse than the cassettes it replaces.
   test "an unmodelled command fails loudly and names itself", %{env: env} do
-    assert {output, 127} = Environments.cmd(env, "kubectl", ["apply", "-f", "-"])
+    assert {output, 127} = ExecutionContexts.cmd(env, "kubectl", ["apply", "-f", "-"])
     assert output =~ "kubectl apply"
     assert output =~ "not modelled"
   end

@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.IssueFixTest do
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Issues
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
 
   @copy "/issue-fix/copy"
@@ -67,9 +67,9 @@ defmodule CodeMySpec.AgentTasks.IssueFixTest do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
-    {:ok, env} = InMemoryEnvironment.create(shell: script(status))
-    :ok = CodeMySpec.Environments.unregister({:working_copy, copy.id})
-    :ok = CodeMySpec.Environments.register({:working_copy, copy.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(status))
+    :ok = CodeMySpec.ExecutionContexts.unregister({:working_copy, copy.id})
+    :ok = CodeMySpec.ExecutionContexts.register({:working_copy, copy.id}, env)
     scope = %{scope | active_working_copy_id: copy.id}
     %{scope: scope, issue: issue_fixture(scope, %{status: :accepted})}
   end

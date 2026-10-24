@@ -16,6 +16,10 @@ defmodule CodeMySpecSpex.Story603.Criterion5503Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "Valid submission creates the project, sets it active, and advances to the primary app view",
     criterion: 277 do
     scenario "Valid submission creates the project, sets it active, and advances to the primary app view" do

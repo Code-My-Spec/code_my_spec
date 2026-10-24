@@ -54,11 +54,11 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       scope = %{scope | cwd: nil}
 
       assert {:error, :no_environment} =
-               Runners.run("compiler", scope, [], environment: nil)
+               Runners.run("compiler", scope, [], execution_context: nil)
     end
 
     test "a direct runner call without any runtime refuses to execute", %{scope: scope} do
-      scope = put_fixture_environment(scope, nil)
+      scope = put_fixture_execution_context(scope, nil)
 
       assert {:error, :no_environment} = Runners.run("compiler", scope, [], [])
     end

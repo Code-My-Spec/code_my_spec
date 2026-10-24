@@ -29,7 +29,7 @@ defmodule CodeMySpec.Analysis do
     deps: [
       CodeMySpec.BddSpecs,
       CodeMySpec.Compile,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
@@ -41,8 +41,8 @@ defmodule CodeMySpec.Analysis do
     ],
     exports: :all
 
-  # Declared in `Environments` (a leaf) and implemented here, to avoid a cycle.
-  @behaviour CodeMySpec.Environments.HarnessTransport
+  # Declared in `ExecutionContexts` (a leaf) and implemented here, to avoid a cycle.
+  @behaviour CodeMySpec.ExecutionContexts.HarnessTransport
 
   require Logger
 
@@ -51,6 +51,7 @@ defmodule CodeMySpec.Analysis do
     FleetHold,
     FleetHolds,
     HarnessRegistry,
+    LiveRuns,
     ProjectServer,
     Reconciler,
     Run,
@@ -311,6 +312,85 @@ defmodule CodeMySpec.Analysis do
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
 
   @doc """
+  Fold one event of a running run into what can be seen of it (story 1141),
+  and publish the new state on `"analysis_run:<run_id>"`. A failing test is a
+  problem as soon as it fails; the run's reconcile replaces it when it ends.
+  """
+  @spec record_live_event(Scope.t(), integer(), map()) :: :ok | {:error, :unknown_run}
+  def record_live_event(%Scope{} = scope, run_id, %{} = event) when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil ->
+        {:error, :unknown_run}
+
+      %Run{} = run ->
+        live = LiveRuns.fold(run.id, event)
+        record_failure(scope, event)
+
+        Phoenix.PubSub.broadcast(
+          CodeMySpec.PubSub,
+          "analysis_run:#{run.id}",
+          {:run_live, run.id, live}
+        )
+
+        :ok
+    end
+  end
+
+  def record_live_event(_scope, _run_id, _event), do: {:error, :unknown_run}
+
+  @doc """
+  Cancel a running run (story 1142): on the harness that holds it, or here
+  when this server executes it. Its `mix test` halts when its owner is killed.
+
+  Any running run of the project, as the run page shows it: the canceller's
+  own copy need not be the run's, so it is cancelled on the run's.
+  """
+  @spec cancel_run(Scope.t(), integer()) :: :ok | {:error, :not_running}
+  def cancel_run(%Scope{} = scope, run_id) when is_integer(run_id) do
+    case RunsRepository.get_run_in_project(scope, run_id) do
+      %Run{status: :running} = run ->
+        cancel_where_it_runs(%{scope | active_working_copy_id: run.working_copy_id}, run)
+
+      _not_running ->
+        {:error, :not_running}
+    end
+  end
+
+  defp cancel_where_it_runs(scope, run) do
+    case remote_executor(scope) do
+      {:ok, channel} ->
+        send(channel, {:cancel_run, run.id})
+        :ok
+
+      :none ->
+        with {:ok, server} <- ensure_server(scope), do: ProjectServer.cancel(server, run.id)
+    end
+  end
+
+  @doc "What `run_id` has reported as it ran, or nil."
+  @spec live_state(integer()) :: LiveRuns.t() | nil
+  defdelegate live_state(run_id), to: LiveRuns, as: :get
+
+  defp record_failure(scope, %{"event" => "test", "state" => "failed"} = test) do
+    {:ok, _} =
+      CodeMySpec.Problems.create_problems(scope, [
+        %{
+          source: "exunit",
+          source_type: :test,
+          category: "test_failure",
+          severity: :error,
+          file_path: test["file"],
+          line: test["failure_line"] || test["line"],
+          message: test["message"] || "#{test["name"]} failed"
+        }
+      ])
+
+    :ok
+  end
+
+  defp record_failure(_scope, _event), do: :ok
+
+  @doc """
   Record the commit a harness's analyzer started on, whether the tree was
   clean, and when it began. The run may have sat in the harness's queue since
   dispatch, so this is when it actually ran.
@@ -418,6 +498,10 @@ defmodule CodeMySpec.Analysis do
     Reconciler.supersede(run, reason)
     {:error, {:superseded, reason}}
   end
+
+  # Somebody cancelled it: closed as that, and accepted, since it is the
+  # answer the harness was asked for.
+  defp apply_remote_result(_scope, run, %{"status" => "cancelled"}), do: Reconciler.cancel(run)
 
   defp apply_remote_result(_scope, run, %{"status" => "error"} = payload) do
     reason = payload["error"] || "the harness reported a failure with no reason"
@@ -556,7 +640,7 @@ defmodule CodeMySpec.Analysis do
   @doc """
   Ask a harness to perform a filesystem operation on its own working copy.
 
-  The transport behind `Environments.Harness`, reads and writes both: the
+  The transport behind `ExecutionContexts.Harness`, reads and writes both: the
   server holds no checkout. Addressed by working copy id through the same
   registry `remote_executor/1` uses.
 
@@ -578,7 +662,7 @@ defmodule CodeMySpec.Analysis do
 
   See knowledge/analysis, "Harness filesystem requests".
   """
-  @impl CodeMySpec.Environments.HarnessTransport
+  @impl CodeMySpec.ExecutionContexts.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
           {:ok, term()} | :ok | {:error, term()}
   def harness_fs_request(working_copy_id, op, payload, timeout) do
@@ -752,10 +836,6 @@ defmodule CodeMySpec.Analysis do
     {:ok, length(failed)}
   end
 
-  # A run killed on every attempt is killing its harness or riding a restart
-  # storm; running it again will not help.
-  @max_redispatches 3
-
   @doc """
   Settle the runs this copy's harness took with it when it went, now that one
   has joined again.
@@ -768,12 +848,11 @@ defmodule CodeMySpec.Analysis do
 
     * claimed by the harness in `claimed` — it is still executing it, so the
       row goes back to `:running` and its result is accepted when it lands;
-    * requested through `start_analysis`, whose answer is still owed —
-      started again at the current tree, carrying the same requester, so the
-      answer reaches whoever asked;
-    * killed #{@max_redispatches} times over — reported to its requester as
-      failed instead;
-    * anything else — left closed. Nothing starts analysis on its own.
+    * owed to somebody (requested through `start_analysis`, or waited on) —
+      settled and its requester and waiters told that its harness went away.
+      It is not run again (story 1142): whoever asked decides whether to ask
+      again, rather than a run starting behind their back;
+    * anything else — left closed.
 
   A run that failed on its own is never an orphan: only the two sweeps above
   mark one, so an analyzer error is not re-run.
@@ -782,15 +861,26 @@ defmodule CodeMySpec.Analysis do
   def resume_orphaned(%Scope{} = scope, claimed) do
     scope
     |> RunsRepository.unsettled_orphans()
-    |> Enum.each(&resume_orphan(scope, &1, claimed))
+    |> Enum.each(&resume_orphan(&1, claimed))
   end
 
-  defp resume_orphan(scope, run, claimed) do
+  @doc """
+  Where runs execute here (`Analysis.Supervisor`), at boot: close the runs the
+  last server took with it, and settle them as `resume_orphaned/2` does. No
+  harness rejoins to do it, so whoever was waiting would otherwise never hear.
+  """
+  @spec settle_stranded_runs() :: {:ok, non_neg_integer()}
+  def settle_stranded_runs do
+    {:ok, failed} = RunsRepository.fail_stranded_runs()
+    Enum.each(failed, &resume_orphan(&1, []))
+    {:ok, length(failed)}
+  end
+
+  defp resume_orphan(run, claimed) do
     cond do
       run.id in claimed -> reopen_orphan(run)
       not answer_owed?(run) -> RunsRepository.settle_orphan(run, "nobody waiting")
-      redispatches(run) >= @max_redispatches -> give_up_on_orphan(run)
-      true -> rerun_orphan(scope, run)
+      true -> report_orphan(run)
     end
   end
 
@@ -802,38 +892,13 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp rerun_orphan(scope, run) do
-    with :ok <- RunsRepository.settle_orphan(run, "run again") do
-      requested_by =
-        Map.merge(run.requested_by, %{
-          "rerun_of" => run.id,
-          "redispatches" => redispatches(run) + 1
-        })
-
-      case start_run(scope, run.source, orphan_args(run), requested_by: requested_by) do
-        {:ok, outcome, id} ->
-          RunsRepository.copy_waiters(run.id, id)
-
-          Logger.info(
-            "[Analysis] run #{run.id} (#{run.source}) was killed by its harness going away; " <>
-              "#{outcome} as run #{id} for #{inspect(run.requested_by)}"
-          )
-
-        {:error, reason} ->
-          Reconciler.announce_failed(
-            run,
-            "#{orphan_error(run)} — and running it again failed: #{inspect(reason)}"
-          )
-      end
-    end
-  end
-
-  defp give_up_on_orphan(run) do
-    with :ok <- RunsRepository.settle_orphan(run, "gave up") do
+  defp report_orphan(run) do
+    with :ok <- RunsRepository.settle_orphan(run, "harness went away") do
       Reconciler.announce_failed(
         run,
-        "#{orphan_error(run)} — its harness went away on each of " <>
-          "#{redispatches(run) + 1} attempts, so it is not being run again automatically"
+        "#{orphan_error(run)} — its harness went away while it ran, so it ended " <>
+          "there and is not being run again automatically. Start it again if you " <>
+          "still need it."
       )
     end
   end
@@ -845,12 +910,6 @@ defmodule CodeMySpec.Analysis do
     do: Map.has_key?(by, "agent_id") or RunsRepository.waiter_ids(run) != []
 
   defp answer_owed?(run), do: RunsRepository.waiter_ids(run) != []
-
-  defp redispatches(%Run{requested_by: %{"redispatches" => n}}) when is_integer(n), do: n
-  defp redispatches(_run), do: 0
-
-  defp orphan_args(%Run{args: %{"args" => args}}) when is_list(args), do: args
-  defp orphan_args(_run), do: []
 
   defp orphan_error(%Run{stats: %{"error" => error}}) when is_binary(error), do: error
   defp orphan_error(_run), do: "its harness went away"

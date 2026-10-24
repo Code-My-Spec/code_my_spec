@@ -11,7 +11,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   devops-drill (402f9439) is exactly this: a `prod` row from before `devops`
   was set to `:uat`, and no `uat` row was ever seeded to replace it —
-  `EnvironmentRepository.list/1` only seeds when the existing row set is
+  `Environments.list_deployment/1` only seeds when the existing row set is
   completely empty, so a project that already had one environment row never
   gets the other. `permitted_environment_rows/1` then filters `prod` out for
   `devops: :uat` and comes back with nothing, and every step below reported
@@ -23,7 +23,8 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Resend, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Cloudflare, Resend, Steps}
 
   setup do
     {:ok, scope: provisioning_scope_fixture()}
@@ -75,7 +76,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
     # devops-drill row. `permitted_hosts/2` filters `prod` out and is left
     # with nothing to publish a record for.
     test "run refuses instead of publishing nothing and calling it done", ctx do
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = Environments.put(ctx.scope, "prod", %{})
       {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
 
       assert {:error, reason} = Steps.run(:dns, ctx.scope, [])
@@ -108,7 +109,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
       {:ok, _} =
         Projects.update_project(ctx.scope, ctx.scope.active_project, %{domain: "astralbi.com"})
 
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = Environments.put(ctx.scope, "prod", %{})
       {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
 
       %{

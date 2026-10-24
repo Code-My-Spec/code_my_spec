@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -124,8 +124,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
         context = Map.put(context, :session_id, session_id)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @impl_path,
             "defmodule ExampleContext do\n  @moduledoc false\nend\n"
           )
@@ -133,8 +133,8 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
         :ok = record_edit(context, @impl_path)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @test_path,
             @failing_test
           )

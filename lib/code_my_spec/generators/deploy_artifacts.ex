@@ -22,7 +22,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   plaintext `.env` trusted to `.gitignore` leaks on the first mistake.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Projects.Project
 
   @type result :: {:ok, [String.t()]} | {:error, term()}
@@ -48,7 +48,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   that has customised its Dockerfile has done so for a reason, and generation
   is not the moment to discover that.
   """
-  @spec generate(Environments.Environment.t(), keyword()) :: result()
+  @spec generate(ExecutionContexts.ExecutionContext.t(), keyword()) :: result()
   def generate(env, opts \\ []) do
     app = Keyword.get(opts, :app, "app")
     host = Keyword.get(opts, :host, "example.com")
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     artifacts
     |> Enum.reject(fn {path, _} -> present?(env, path) end)
     |> Enum.reduce_while({:ok, []}, fn {path, content}, {:ok, written} ->
-      case Environments.write_file(env, path, content) do
+      case ExecutionContexts.write_file(env, path, content) do
         :ok ->
           {:cont, {:ok, [path | written]}}
 
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         # written".
         for path <- written,
             String.starts_with?(path, "bin/") or String.contains?(path, "overlays/bin/") do
-          Environments.cmd(env, "chmod", ["+x", path])
+          ExecutionContexts.cmd(env, "chmod", ["+x", path])
         end
 
         {:ok, written}
@@ -150,7 +150,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   end
 
   defp present?(env, path) do
-    match?({:ok, _}, Environments.read_file(env, path))
+    match?({:ok, _}, ExecutionContexts.read_file(env, path))
   end
 
   # Multi-stage, because the release does not need Elixir at runtime and a

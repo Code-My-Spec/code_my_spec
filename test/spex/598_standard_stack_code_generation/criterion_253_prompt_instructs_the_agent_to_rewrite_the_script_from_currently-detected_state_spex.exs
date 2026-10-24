@@ -23,8 +23,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5304Spex do
   spex "Retrofit script is rewritten from the currently-detected state", criterion: 253 do
     scenario "Prompt instructs the agent to rewrite the script from currently-detected state" do
       given_ "the project has a baseline mix.exs and no existing script", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

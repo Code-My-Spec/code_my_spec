@@ -82,7 +82,10 @@ defmodule CodeMySpecSpex.Story1052.Criterion1608Spex do
               task_id: context.task_id,
               about: "criteria",
               questions: [
-                %{question: "Does criterion 944 still mean a full refund?", options: []}
+                %{
+                  question: "Does criterion 944 still mean a full refund?",
+                  options: [%{label: "Keep current behavior"}, %{label: "Change behavior"}]
+                }
               ]
             },
             Map.put(

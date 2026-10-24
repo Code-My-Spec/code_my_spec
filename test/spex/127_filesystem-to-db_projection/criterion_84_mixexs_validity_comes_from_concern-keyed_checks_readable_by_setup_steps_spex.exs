@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5927Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @mix_exs_path "mix.exs"
 
@@ -22,7 +22,13 @@ defmodule CodeMySpecSpex.Story127.Criterion5927Spex do
     scenario "mix.exs missing required deps is marked invalid after sync" do
       given_ "the agent has written a minimal mix.exs missing CodeMySpec deps",
              context do
-        :ok = Environments.write_file(context.environment, @mix_exs_path, mix_exs_missing_deps())
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            @mix_exs_path,
+            mix_exs_missing_deps()
+          )
+
         {:ok, context}
       end
 

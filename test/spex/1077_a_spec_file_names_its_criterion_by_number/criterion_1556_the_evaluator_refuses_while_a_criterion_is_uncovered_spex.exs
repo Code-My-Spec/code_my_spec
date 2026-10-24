@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4680Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4680Spex do
         [first, second] = context.story.criteria
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/two_things/criterion_#{first.id}_spex.exs",
             CriterionScript.spex_naming(first.id)
           )

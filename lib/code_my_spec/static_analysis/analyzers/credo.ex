@@ -10,7 +10,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
@@ -29,10 +29,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     # the `mix` that would actually run, and on a remote environment that is not
     # this machine's disk. Raw File calls would inspect the wrong host and answer
     # false, which skips the analyzer silently instead of failing.
-    env = StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+    env =
+      StaticAnalysis.resolve_execution_context(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
 
-    not is_nil(env) and Environments.exec_file_exists?(env, "mix.exs") and
-      Environments.exec_file_exists?(env, "deps/credo")
+    not is_nil(env) and ExecutionContexts.exec_file_exists?(env, "mix.exs") and
+      ExecutionContexts.exec_file_exists?(env, "deps/credo")
   end
 
   @impl true
@@ -62,7 +63,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
           {:ok, [Problems.Problem.t()], String.t()} | {:error, String.t() | :no_environment}
   def run_with_output(%Scope{} = scope, opts \\ []) do
     environment =
-      StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+      StaticAnalysis.resolve_execution_context(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
 
     cwd = opts[:cwd] || (environment && environment.cwd)
 
@@ -83,7 +84,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
         read_from_output_file(opts[:output_file], scope)
 
       true ->
-        opts = Keyword.put(opts, :environment, environment)
+        opts = Keyword.put(opts, :execution_context, environment)
         temp_file = CodeMySpec.TempFile.path("credo_output", ".json")
         result = execute_and_parse(cwd, temp_file, scope, opts)
         CodeMySpec.TempFile.cleanup(temp_file)
@@ -126,14 +127,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   defp execute_credo(code_repo, temp_file, opts, scope) do
     args = build_credo_args(opts, code_repo)
-    environment = StaticAnalysis.resolve_environment(opts, scope, code_repo)
+    environment = StaticAnalysis.resolve_execution_context(opts, scope, code_repo)
 
     # `cd:` stays explicit rather than riding on the environment's cwd: opts
     # may carry a :cwd override that points somewhere other than the project
     # root, and that override predates this call going through the abstraction.
     #
     # clean_otp_env is applied by the environment (see Local.cmd/4).
-    case CodeMySpec.Environments.cmd(environment, "mix", args,
+    case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args,
            cd: code_repo,
            stderr_to_stdout: true
          ) do

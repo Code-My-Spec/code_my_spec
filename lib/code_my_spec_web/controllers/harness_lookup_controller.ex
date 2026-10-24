@@ -23,7 +23,6 @@ defmodule CodeMySpecWeb.HarnessLookupController do
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   @doc """
@@ -171,11 +170,9 @@ defmodule CodeMySpecWeb.HarnessLookupController do
          :ok <- reachable(conn, Projects.get_project_by_id(copy.project_id)),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
       json(conn, %{
-        # Derived the same way `ensure/1` records it rather than read back off
-        # the row we fetched a moment ago, which still holds whatever was there
-        # before this call provisioned anything. Scheme and port come from the
-        # same configuration, so dev's `:4010` is not lost on the way out.
-        preview_url: PreviewAddress.url(copy.id),
+        # Return the persisted runtime address, including any preserved legacy
+        # hostname and configured development port.
+        preview_url: credentials.preview_url,
         hostname: credentials.hostname,
         tunnel_id: credentials.tunnel_id,
         account_tag: credentials.account_tag,

@@ -14,7 +14,7 @@ defmodule CodeMySpec.ProvisioningPlan do
     deps: [
       CodeMySpec.Configurations,
       CodeMySpec.Projects,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils
@@ -23,9 +23,9 @@ defmodule CodeMySpec.ProvisioningPlan do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Provisioning.Environment
-  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.ProvisioningPlan.{Sequence, StepRepository}
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
@@ -79,7 +79,7 @@ defmodule CodeMySpec.ProvisioningPlan do
   """
   @spec permitted_environment_rows(Scope.t()) :: [Environment.t()]
   def permitted_environment_rows(scope),
-    do: scope |> EnvironmentRepository.list() |> permitted(scope)
+    do: scope |> Environments.list_deployment() |> permitted(scope)
 
   @doc "Names of `permitted_environment_rows/1`."
   @spec permitted_environments(Scope.t()) :: [String.t()]
@@ -93,7 +93,7 @@ defmodule CodeMySpec.ProvisioningPlan do
   @spec permitted_existing_environments(Scope.t()) :: [String.t()]
   def permitted_existing_environments(scope) do
     scope
-    |> EnvironmentRepository.list_existing()
+    |> Environments.list_existing_deployment()
     |> permitted(scope)
     |> Enum.map(& &1.name)
   end

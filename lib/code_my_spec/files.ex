@@ -12,7 +12,7 @@ defmodule CodeMySpec.Files do
       CodeMySpec.Dependencies,
       CodeMySpec.Documents,
       CodeMySpec.Embeddings,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Paths,
       CodeMySpec.Problems,
       CodeMySpec.Projects,

@@ -541,6 +541,7 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :assign_project}
       ] do
       # Static segments first so they win over `:id`.
+      live "/projects/:project_id/console/dev-boxes/:device_id/setup", AppLive.LocalSetup
       live "/projects/:project_id/init", InitLive, :index
       live "/projects/:project_id/init/:step", InitLive, :show
 
@@ -573,6 +574,7 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/content", ContentLive
       live "/projects/:project_id/content/:id", ContentLive.Show
       live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/runs/:run_id", RunLive
 
       live "/projects/:project_id/files", FilesLive
       live "/projects/:project_id/next-task", Tasks.NextTaskLive

@@ -58,7 +58,11 @@ defmodule CodeMySpecSpex.StoryBoundHelpers do
   @doc "The project's QA plan is gone, so project-level `qa_setup` is unsatisfied again."
   @spec qa_plan_missing(map()) :: map()
   def qa_plan_missing(context) do
-    :ok = CodeMySpec.Environments.delete_file(context.environment, ".code_my_spec/qa/plan.md")
+    :ok =
+      CodeMySpec.ExecutionContexts.delete_file(
+        context.execution_context,
+        ".code_my_spec/qa/plan.md"
+      )
 
     reply =
       ToolLibrary.run(

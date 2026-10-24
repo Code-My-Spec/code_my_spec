@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
 
   import Ecto.Query, only: [from: 2]
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.{IncrementalGraph, Projection}
 
@@ -86,7 +86,7 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
     do: from(n in query, where: n.working_copy_id == type(^copy, :binary_id))
 
   describe "a file that was there and is not any more" do
-    test "stops being reported as present", %{scope: scope, environment: env} do
+    test "stops being reported as present", %{scope: scope, execution_context: env} do
       component =
         CodeMySpec.ComponentsFixtures.component_fixture(scope, %{
           name: "ExampleContext",
@@ -97,14 +97,14 @@ defmodule CodeMySpec.Requirements.ARemovedFileIsReportedMissingTest do
       # Through the environment and a real sync, which is the path that
       # announces. `Files.delete_removed/2` alone writes no mark, so a test
       # built on it measures a projector with nothing to drain.
-      :ok = Environments.write_file(env, @impl_path, "defmodule ExampleContext do\nend\n")
+      :ok = ExecutionContexts.write_file(env, @impl_path, "defmodule ExampleContext do\nend\n")
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 
       assert served_verdict(scope, component.id) == true,
              "the file was synced and the event path does not report it present"
 
-      :ok = Environments.delete_file(env, @impl_path)
+      :ok = ExecutionContexts.delete_file(env, @impl_path)
       {:ok, _} = FileSync.sync(scope)
       settle(scope)
 

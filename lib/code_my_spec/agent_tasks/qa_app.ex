@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   require Logger
 
   alias CodeMySpec.AgentTasks.QaStory
-  alias CodeMySpec.{BddSpecs, Environments, Issues, Paths, Stories}
+  alias CodeMySpec.{BddSpecs, ExecutionContexts, Issues, Paths, Stories}
   alias CodeMySpec.BddSpecs.SpecProjector
 
   @doc """
@@ -34,7 +34,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   Returns {:ok, prompt_text}
   """
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     project = scope.active_project
 
     app_name = derive_app_name(env)
@@ -69,7 +69,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   - {:ok, :invalid, feedback} if stories are incomplete or summary missing
   """
   def evaluate(scope, session, _opts \\ []) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     stories = list_stories(scope)
     summary_exists = summary_exists?(env)
@@ -88,7 +88,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   # ============================================================================
 
   defp derive_app_name(env) do
-    case Environments.read_file(env, "mix.exs") do
+    case ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} ->
         case Regex.run(~r/app:\s*:(\w+)/, content) do
           [_, app_name] -> app_name
@@ -103,7 +103,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   defp read_router(env, app_name) do
     path = "lib/#{app_name}_web/router.ex"
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end
@@ -135,7 +135,7 @@ defmodule CodeMySpec.AgentTasks.QaApp do
   end
 
   defp summary_exists?(env) do
-    Environments.file_exists?(env, Paths.qa_summary()) == true
+    ExecutionContexts.file_exists?(env, Paths.qa_summary()) == true
   end
 
   defp format_bdd_coverage(env, stories) do

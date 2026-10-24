@@ -18,11 +18,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  import CodeMySpecSpex.MachineTunnelHelpers,
+    only: [configure_persistent_main: 2, report_serving: 3]
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
@@ -36,15 +40,16 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
   spex "Unsharing takes the copy's preview address away", criterion: 1592 do
     scenario "a copy that shared its preview asks to stop sharing it" do
       given_ "main is onboarded and holds a tunnel of its own", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         reply = join_working_copy(context, "/workspace/main", "main")
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
+        :ok = configure_persistent_main(context.scope, reply.working_copy_id)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -61,7 +66,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
         assert_receive {:cloudflare, "dns_records"}
 
         {:ok, main} = WorkingCopies.fetch(reply.working_copy_id)
-        assert main.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, main.id).preview_tunnel_id ==
+                 @tunnel_id
 
         {:ok, Map.put(context, :main, main)}
       end
@@ -72,15 +79,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
             device_id: context.main.device_id
           )
 
-        ref =
-          Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
-            "ref" => "spex-1592-share",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => "http://127.0.0.1:41592"
-          })
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = report_serving(socket, instance.id, "http://127.0.0.1:41592")
 
         frame = %Frame{
           assigns: %{
@@ -104,7 +105,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
         assert_receive {:cloudflare, "put_config", _share_ingress}
 
         {:ok, sibling} = WorkingCopies.fetch(reply.working_copy_id)
-        assert sibling.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, sibling.id).preview_tunnel_id ==
+                 @tunnel_id
 
         {:ok, context |> Map.put(:sibling_id, sibling.id) |> Map.put(:frame, frame)}
       end
@@ -131,10 +134,10 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
       then_ "the copy's own row no longer holds an address or a tunnel", context do
         {:ok, saved} = WorkingCopies.fetch(context.sibling_id)
 
-        assert saved.preview_tunnel_id == nil,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_tunnel_id == nil,
                "the copy still holds a tunnel id after asking to stop sharing"
 
-        assert saved.preview_url == nil,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_url == nil,
                "the copy still holds an address after asking to stop sharing"
 
         {:ok, context}
@@ -143,7 +146,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion1592Spex do
       then_ "its hostname is no longer in the shared tunnel's ingress", context do
         assert_receive {:cloudflare, "put_config", ingress}
 
-        host = PreviewAddress.host(context.sibling_id)
+        host =
+          PreviewAddress.host(AppInstances.for_working_copy(context.scope, context.sibling_id).id)
 
         refute Enum.any?(ingress, &(&1["hostname"] == host)),
                "the copy's own hostname was still in the tunnel's ingress after unsharing"

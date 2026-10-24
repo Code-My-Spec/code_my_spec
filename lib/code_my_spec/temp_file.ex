@@ -25,7 +25,7 @@ defmodule CodeMySpec.TempFile do
   definition, plus random bytes so a pid recycled after a crash cannot collide
   with its predecessor's leftovers.
 
-  A leaf boundary of its own, like `Environments` and `Repo`, because the
+  A leaf boundary of its own, like `ExecutionContexts` and `Repo`, because the
   callers that most need it are outside `CodeMySpec`: the spex suite and the
   harness's test support both build temp paths, and both are top-level
   boundaries that cannot reach in here. The alternative was each of them

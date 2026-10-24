@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.StoryHelpers
 
@@ -78,8 +78,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
       given_ "'founder' is missing summary.md (sources.md present)", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "# Sources\n\n- https://example.com — Source — 2026-04-23\n"
           )
@@ -89,8 +89,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
 
       given_ "'agency_pm' is missing sources.md (summary.md present)", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.second_slug}/summary.md",
             minimal_persona_summary()
           )

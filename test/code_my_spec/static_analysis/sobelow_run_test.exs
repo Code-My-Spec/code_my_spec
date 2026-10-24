@@ -68,7 +68,7 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRunTest do
 
   describe "available?/1" do
     test "false when the environment has no mix.exs" do
-      {:ok, env} = CodeMySpec.Environments.create(:memory, working_dir: "/memfs/no-project")
+      {:ok, env} = CodeMySpec.ExecutionContexts.create(:memory, working_dir: "/memfs/no-project")
       refute SobelowRun.available?(env)
     end
   end

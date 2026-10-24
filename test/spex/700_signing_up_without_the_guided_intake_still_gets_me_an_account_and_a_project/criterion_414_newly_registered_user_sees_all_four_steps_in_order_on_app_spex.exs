@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
       end
 
       then_ "both step rungs are present", context do
-        for rung <- ~w(account-rung project-rung) do
+        for rung <- ~w(model-onboarding account-rung project-rung) do
           assert has_element?(context.view, "[data-test='#{rung}']"),
                  "expected [data-test='#{rung}'] to be present on /app"
         end
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
 
       then_ "the steps appear in document order", context do
         order =
-          ~w(account-rung project-rung)
+          ~w(model-onboarding account-rung project-rung)
           |> Enum.map(fn rung ->
             {rung, :binary.match(context.html, ~s|data-test="#{rung}"|)}
           end)
@@ -51,13 +51,13 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
         positions = Enum.map(order, fn {_, m} -> m end)
 
         refute :nomatch in positions,
-               "all four rungs must appear in the initial render; got: #{inspect(order)}"
+               "all three rungs must appear in the initial render; got: #{inspect(order)}"
 
         sorted = Enum.sort_by(order, fn {_, {at, _}} -> at end)
 
         assert Enum.map(sorted, fn {rung, _} -> rung end) ==
-                 ~w(account-rung project-rung),
-               "expected document order account → project → plugin → application; got: #{inspect(sorted)}"
+                 ~w(model-onboarding account-rung project-rung),
+               "expected document order models → account → project; got: #{inspect(sorted)}"
 
         {:ok, context}
       end
@@ -66,8 +66,9 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
         # Post-redesign eyebrow format: "Step N · Name" (daisyUI badge), no
         # zero padding, no "//" prefix.
         eyebrows = %{
-          "account-rung" => {1, "Account"},
-          "project-rung" => {2, "Project"}
+          "model-onboarding" => {1, "Agent models"},
+          "account-rung" => {2, "Account"},
+          "project-rung" => {3, "Project"}
         }
 
         for {rung, {n, name}} <- eyebrows do

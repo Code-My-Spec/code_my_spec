@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6269Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,11 +27,11 @@ defmodule CodeMySpecSpex.Story712.Criterion6269Spex do
   spex "A single malformed file degrades to an error row, not an abort", criterion: 471 do
     scenario "One malformed frontmatter doesn't abort the sync" do
       given_ "two valid posts and one with broken YAML frontmatter", context do
-        env = context.environment
+        env = context.execution_context
 
         for slug <- ~w(good-one good-two) do
           :ok =
-            Environments.write_file(env, "#{@source}/blog/#{slug}.md", """
+            ExecutionContexts.write_file(env, "#{@source}/blog/#{slug}.md", """
             ---
             title: #{slug}
             slug: #{slug}
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6269Spex do
         end
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/broken.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/broken.md", """
           ---
           title: broken
           slug: broken

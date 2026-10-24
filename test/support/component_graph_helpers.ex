@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   alias CodeMySpec.ToolLibrary
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
 
@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
       end
 
     :ok =
-      Environments.write_file(context.environment, spec_path(module), """
+      ExecutionContexts.write_file(context.execution_context, spec_path(module), """
       # #{module}
 
       #{Keyword.get(opts, :description, "#{module}, written as a spec.")}
@@ -149,13 +149,13 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "Removes the spec file `spec!/4` wrote for `module`."
   def remove_spec!(context, module),
-    do: :ok = Environments.delete_file(context.environment, spec_path(module))
+    do: :ok = ExecutionContexts.delete_file(context.execution_context, spec_path(module))
 
   @doc "An implementation file declaring `module`, with no spec beside it."
   def implementation!(context, module) do
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         "lib/#{Macro.underscore(module)}.ex",
         "defmodule #{module} do\n  @moduledoc false\nend\n"
       )
@@ -163,7 +163,12 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "Removes the implementation file `implementation!/2` wrote for `module`."
   def remove_implementation!(context, module),
-    do: :ok = Environments.delete_file(context.environment, "lib/#{Macro.underscore(module)}.ex")
+    do:
+      :ok =
+        ExecutionContexts.delete_file(
+          context.execution_context,
+          "lib/#{Macro.underscore(module)}.ex"
+        )
 
   @doc "A full sync, through `sync_project`."
   def sync!(context) do
@@ -179,7 +184,8 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "Writes `markdown` as the proposal and runs `execute_proposal` on it."
   def execute_proposal!(context, markdown) do
-    :ok = Environments.write_file(context.environment, Fixtures.proposal_path(), markdown)
+    :ok =
+      ExecutionContexts.write_file(context.execution_context, Fixtures.proposal_path(), markdown)
 
     reply =
       ToolLibrary.run(
@@ -340,7 +346,7 @@ defmodule CodeMySpecSpex.ComponentGraphHelpers do
 
   @doc "Whether a spec file sits at `module`'s conventional path."
   def spec_written?(context, module),
-    do: Environments.file_exists?(context.environment, spec_path(module))
+    do: ExecutionContexts.file_exists?(context.execution_context, spec_path(module))
 
   defp spec_path(module), do: Fixtures.spec_file(Macro.underscore(module))
 end

@@ -1,6 +1,6 @@
 defmodule CodeMySpec.LiveContainerTest do
   @moduledoc """
-  Proves `Environments.Container` against a real Docker daemon.
+  Proves `ExecutionContexts.Container` against a real Docker daemon.
 
   Excluded by default (`:live`). Needs `docker` on the host — which is the
   point: every operation here is a `docker` invocation, and a stubbed daemon
@@ -15,8 +15,8 @@ defmodule CodeMySpec.LiveContainerTest do
   @moduletag :live
   @moduletag timeout: 600_000
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Container
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.Container
 
   @image "alpine:3"
 
@@ -30,7 +30,7 @@ defmodule CodeMySpec.LiveContainerTest do
   end
 
   test "a command runs inside the container, not on the host", %{env: env} do
-    {output, 0} = Environments.cmd(env, "sh", ["-c", "cat /etc/os-release | head -1"])
+    {output, 0} = ExecutionContexts.cmd(env, "sh", ["-c", "cat /etc/os-release | head -1"])
 
     assert output =~ "Alpine", "the command ran on the host, not in the container"
 
@@ -38,13 +38,13 @@ defmodule CodeMySpec.LiveContainerTest do
   end
 
   test "the working directory is the workspace every step assumes", %{env: env} do
-    {output, 0} = Environments.cmd(env, "pwd", [])
+    {output, 0} = ExecutionContexts.cmd(env, "pwd", [])
 
     assert String.trim(output) == "/workspace"
   end
 
   test "environment variables reach the container", %{env: env} do
-    {output, 0} = Environments.cmd(env, "sh", ["-c", "echo $PROVISIONING"])
+    {output, 0} = ExecutionContexts.cmd(env, "sh", ["-c", "echo $PROVISIONING"])
 
     assert String.trim(output) == "1"
   end
@@ -52,11 +52,11 @@ defmodule CodeMySpec.LiveContainerTest do
   test "a file written is a file read back", %{env: env} do
     content = ".sops.yaml round trip\nwith a second line\n"
 
-    assert :ok = Environments.write_file(env, ".sops.yaml", content)
-    assert {:ok, ^content} = Environments.read_file(env, ".sops.yaml")
+    assert :ok = ExecutionContexts.write_file(env, ".sops.yaml", content)
+    assert {:ok, ^content} = ExecutionContexts.read_file(env, ".sops.yaml")
 
     # And it is genuinely on the container's filesystem, not ours.
-    {output, 0} = Environments.cmd(env, "cat", [".sops.yaml"])
+    {output, 0} = ExecutionContexts.cmd(env, "cat", [".sops.yaml"])
     assert output =~ "round trip"
 
     refute File.exists?(Path.join(System.tmp_dir!(), ".sops.yaml"))
@@ -65,8 +65,8 @@ defmodule CodeMySpec.LiveContainerTest do
   end
 
   test "writing into a directory that does not exist yet creates it", %{env: env} do
-    assert :ok = Environments.write_file(env, "envs/prod.enc.env", "SOPS=1\n")
-    assert {:ok, "SOPS=1\n"} = Environments.read_file(env, "envs/prod.enc.env")
+    assert :ok = ExecutionContexts.write_file(env, "envs/prod.enc.env", "SOPS=1\n")
+    assert {:ok, "SOPS=1\n"} = ExecutionContexts.read_file(env, "envs/prod.enc.env")
   end
 
   test "binary content survives the round trip", %{env: env} do
@@ -74,42 +74,42 @@ defmodule CodeMySpec.LiveContainerTest do
     # this holds; the argument-length ceiling would be the other failure.
     content = :crypto.strong_rand_bytes(64_000)
 
-    assert :ok = Environments.write_file(env, "blob.bin", content)
-    assert {:ok, ^content} = Environments.read_file(env, "blob.bin")
+    assert :ok = ExecutionContexts.write_file(env, "blob.bin", content)
+    assert {:ok, ^content} = ExecutionContexts.read_file(env, "blob.bin")
 
     IO.puts("  binary     -> 64KB round trip intact")
   end
 
   test "existence, listing and globbing see the container's filesystem", %{env: env} do
-    :ok = Environments.write_file(env, "lib/a.ex", "defmodule A do end\n")
-    :ok = Environments.write_file(env, "lib/nested/b.ex", "defmodule B do end\n")
+    :ok = ExecutionContexts.write_file(env, "lib/a.ex", "defmodule A do end\n")
+    :ok = ExecutionContexts.write_file(env, "lib/nested/b.ex", "defmodule B do end\n")
 
-    assert Environments.file_exists?(env, "lib/a.ex")
-    refute Environments.file_exists?(env, "lib/missing.ex")
+    assert ExecutionContexts.file_exists?(env, "lib/a.ex")
+    refute ExecutionContexts.file_exists?(env, "lib/missing.ex")
 
-    {:ok, entries} = Environments.list_directory(env, "lib")
+    {:ok, entries} = ExecutionContexts.list_directory(env, "lib")
     assert "a.ex" in entries
 
-    found = Environments.glob(env, "lib/**/*.ex")
+    found = ExecutionContexts.glob(env, "lib/**/*.ex")
     assert Enum.any?(found, &String.ends_with?(&1, "b.ex")), "glob missed the nested file"
 
     IO.puts("  glob       -> #{length(found)} file(s) under lib")
   end
 
   test "an executable is distinguished from a file that merely exists", %{env: env} do
-    :ok = Environments.write_file(env, "bin/deploy", "#!/bin/sh\necho hi\n")
+    :ok = ExecutionContexts.write_file(env, "bin/deploy", "#!/bin/sh\necho hi\n")
 
-    refute Environments.exec_file_exists?(env, "bin/deploy"),
+    refute ExecutionContexts.exec_file_exists?(env, "bin/deploy"),
            "a freshly copied file should not be executable yet"
 
-    {_, 0} = Environments.cmd(env, "chmod", ["+x", "bin/deploy"])
+    {_, 0} = ExecutionContexts.cmd(env, "chmod", ["+x", "bin/deploy"])
 
-    assert Environments.exec_file_exists?(env, "bin/deploy"),
+    assert ExecutionContexts.exec_file_exists?(env, "bin/deploy"),
            "the deploy step gates on this, so it has to track the mode bit"
   end
 
   test "a failing command reports its exit status rather than raising", %{env: env} do
-    {output, status} = Environments.cmd(env, "sh", ["-c", "echo nope >&2; exit 3"])
+    {output, status} = ExecutionContexts.cmd(env, "sh", ["-c", "echo nope >&2; exit 3"])
 
     assert status == 3
     assert output =~ "nope"

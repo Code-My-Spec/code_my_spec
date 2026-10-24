@@ -7,7 +7,7 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Steps
 
   setup do
@@ -37,7 +37,7 @@ defmodule CodeMySpec.Promotion.ABatchIsBuiltInTheGateCopyTest do
     end
 
     main = head.()
-    %{root: root, gate: gate, main: main, branch: branch, env: Environment.new(:local, gate)}
+    %{root: root, gate: gate, main: main, branch: branch, env: ExecutionContext.new(:local, gate)}
   end
 
   test "a lone candidate level with main is the batch commit itself", ctx do

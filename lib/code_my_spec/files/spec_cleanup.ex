@@ -30,7 +30,7 @@ defmodule CodeMySpec.Files.SpecCleanup do
 
   import Ecto.Query
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -112,9 +112,9 @@ defmodule CodeMySpec.Files.SpecCleanup do
   defp remove(%File{working_copy_id: nil}, _scope), do: {:pending, :no_working_copy}
 
   defp remove(%File{} = file, scope) do
-    env = WorkingCopies.environment(%{scope | active_working_copy_id: file.working_copy_id})
+    env = WorkingCopies.execution_context(%{scope | active_working_copy_id: file.working_copy_id})
 
-    case Environments.delete_file(env, file.path) do
+    case ExecutionContexts.delete_file(env, file.path) do
       result when result in [:ok, {:error, :enoent}] ->
         Repo.delete(file)
         :deleted

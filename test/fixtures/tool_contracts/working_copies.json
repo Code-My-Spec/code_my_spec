@@ -1,7 +1,7 @@
 [
   {
     "name": "create_working_copy",
-    "description": "Make a working copy for this project and staff it.\n\nOne call. The harness makes the checkout on its own disk and writes the\nidentity into it; the server records the copy and starts the agents that will\nwork in it. An agent asking for somewhere to work does not sequence a disk\noperation against a database write \u2014 the moment it does, every caller has to\nget the ordering and the failure handling right, and they each get it wrong\ndifferently.\n\nStory 891 grew this scope on 2026-09-04. Its question `2ec33878` had asked\nwhether onboarding creates the worktree or runs inside one that already\nexists, and answered the second way \u2014 so making the copy belonged to nobody.\nStory 956's title says \"a minted working copy\" and none of its thirteen\ncriteria mint anything; 964 hands an epic to a copy and assumes one. A\nproject's first epic therefore had nowhere to go but the main checkout, where\na roster is refused because the main copy holds one agent and it is the\nproject's own.\n\n## Refused rather than half-made\n\nA project with no harness connected has no machine to make a checkout on, and\nthe answer is a refusal. Writing the row anyway would leave something every\nconsumer downstream believes in \u2014 the failure `EpicDispatch` had to grow a\nguard against, where the page said \"Being built on your project's checkout\"\nabout a directory that does not exist.\n\nThat is the opposite of what `EpicDispatch.approve/2` does with an epic that\nhas nowhere to go, and deliberately: agreeing to build something is a decision\nthat survives having nowhere to build it. Asking for a checkout is a request\nfor a thing.\n",
+    "description": "Make a working copy for this project and staff it.\n\nOne call. The harness makes the checkout on its own disk and writes the\nidentity into it; the server records the copy and starts the agents that will\nwork in it. An agent asking for somewhere to work does not sequence a disk\noperation against a database write — the moment it does, every caller has to\nget the ordering and the failure handling right, and they each get it wrong\ndifferently.\n\nStory 891 grew this scope on 2026-09-04. Its question `2ec33878` had asked\nwhether onboarding creates the worktree or runs inside one that already\nexists, and answered the second way — so making the copy belonged to nobody.\nStory 956's title says \"a minted working copy\" and none of its thirteen\ncriteria mint anything; 964 hands an epic to a copy and assumes one. A\nproject's first epic therefore had nowhere to go but the main checkout, where\na roster is refused because the main copy holds one agent and it is the\nproject's own.\n\n## Refused rather than half-made\n\nA project with no harness connected has no machine to make a checkout on, and\nthe answer is a refusal. Writing the row anyway would leave something every\nconsumer downstream believes in — the failure `EpicDispatch` had to grow a\nguard against, where the page said \"Being built on your project's checkout\"\nabout a directory that does not exist.\n\nThat is the opposite of what `EpicDispatch.approve/2` does with an epic that\nhas nowhere to go, and deliberately: agreeing to build something is a decision\nthat survives having nowhere to build it. Asking for a checkout is a request\nfor a thing.\n",
     "input_schema": {
       "properties": {
         "label": {
@@ -9,7 +9,7 @@
           "type": "string"
         },
         "roles": {
-          "description": "Who to staff it with, comma-separated: main, product, coding, qa. Defaults to product,coding,qa \u2014 the three that build something. Name your own when you need a particular shape, e.g. `main` alone.",
+          "description": "Who to staff it with, comma-separated: main, product, coding, qa. Defaults to product,coding,qa — the three that build something. Name your own when you need a particular shape, e.g. `main` alone.",
           "type": "string"
         },
         "root": {
@@ -22,15 +22,20 @@
   },
   {
     "name": "ensure_app_running",
-    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nStory 1108's rule: an agent on a copy can start, restart and stop its own\ncopy's app. Always the caller's own copy -- resolved from the connection's\nscope, never a parameter a caller could point at a different one. That is\nwhat makes \"an agent cannot reach another copy's app\" structural rather\nthan a check that could be bypassed: there is nothing on this schema to\nname another copy with.\n\n## Returns when the run starts, not when it finishes\n\nA first boot compiles, which can run well past the code-mode sandbox's\n30s wall clock (issue f2977826, batch 2 of 4f7929e4) -- this used to\nshrink its own wait to fit that budget instead, racing it with a margin.\nThe spawned task claims this working copy's own lock -- shared with\n`restart_app` and `stop_app`, since all three touch the same app process\n-- and only then acks: the reply is \"started\" or \"already running\"; an\nagent that started it is messaged the outcome, any other caller calls\nthis tool again to check.\n",
+    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified against the caller's project and active\nworking copy before the runtime is contacted.\n\n## Returns when the run starts, not when it finishes\n\nA first boot compiles, which can run well past the code-mode sandbox's\n30s wall clock (issue f2977826, batch 2 of 4f7929e4) -- this used to\nshrink its own wait to fit that budget instead, racing it with a margin.\nThe spawned task claims this working copy's own lock -- shared with\n`restart_app` and `stop_app`, since all three touch the same app process\n-- and only then acks: the reply is \"started\" or \"already running\"; an\nagent that started it is messaged the outcome, any other caller calls\nthis tool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
   {
     "name": "list_working_copies",
-    "description": "The checkouts this project has, and what is running on each.\n\nSo that deciding where an epic goes can be a decision. John: *\"if there's an\nappropriate working copy and agent then it should get assigned that, or maybe\nthe agent wants a fresh working copy ... the user should be able to decide\nwhere to assign it or the agent should be able to decide.\"*\n\nNeither could, before this: there was no agent-facing way to see a project's\ncheckouts at all, so \"an appropriate one\" was not a judgement anything could\nmake.\n\n## What to look at\n\n`root` is the only thing that makes a row a checkout \u2014 a row with none has no\ndisk behind it and nothing can be built there. `agents` is what is already\nrunning, which is the difference between assigning to a copy that can pick the\nwork up and assigning to an idle one that needs an agent started first.\n\n`main` is the project's own checkout, the one story 963's agent runs in. It is\na fine destination and not automatically the right one; a copy already holding\na related epic often is.\n",
+    "description": "The checkouts this project has, and what is running on each.\n\nSo that deciding where an epic goes can be a decision. John: *\"if there's an\nappropriate working copy and agent then it should get assigned that, or maybe\nthe agent wants a fresh working copy ... the user should be able to decide\nwhere to assign it or the agent should be able to decide.\"*\n\nNeither could, before this: there was no agent-facing way to see a project's\ncheckouts at all, so \"an appropriate one\" was not a judgement anything could\nmake.\n\n## What to look at\n\n`root` is the only thing that makes a row a checkout — a row with none has no\ndisk behind it and nothing can be built there. `agents` is what is already\nrunning, which is the difference between assigning to a copy that can pick the\nwork up and assigning to an idle one that needs an agent started first.\n\n`main` is the project's own checkout, the one story 963's agent runs in. It is\na fine destination and not automatically the right one; a copy already holding\na related epic often is.\n",
     "input_schema": {
       "properties": {},
       "type": "object"
@@ -38,11 +43,15 @@
   },
   {
     "name": "offboard_working_copy",
-    "description": "Discard a working copy, ending the agents on it.\n\nThe other end of `create_working_copy`. Story 964's rule: *a working copy is\nthe boundary of the work, and discarding it ends its agents and its\nconversation*. John, 2026-09-04: *\"I can keep them through that whole epic and\nthen I can discard the working copy and then come up with another one \u2014 that's\nhow I need to control these boundaries.\"*\n\nA boundary is only usable if both ends are reachable by whoever is doing the\nwork. Until this existed, `offboard` was a control on the working-copies page\nand nothing else, so an agent could be given a copy and never let go of one.\n\n## What it does not do\n\nRemove the directory. The copy stops being this project's and its agents stop\nrunning; the checkout on disk is left for a person. Deleting a worktree\nsomebody may have put uncommitted work in is not a thing to do on an agent's\nsay-so, and the row going is what makes everything downstream stop pointing at\nit.\n\n## An agent that would not stop is reported, not swallowed\n\nThe copy this is most often used on is one whose machine has gone \u2014 that is\nstory 892's premise \u2014 so failing to reach an agent cannot block the offboard.\nIt is said instead: the process may still be running, and ending it is the\noperator's, because the server could not reach it to try.\n",
+    "description": "Discard a working copy, ending the agents on it.\n\nThe other end of `create_working_copy`. Story 964's rule: *a working copy is\nthe boundary of the work, and discarding it ends its agents and its\nconversation*. John, 2026-09-04: *\"I can keep them through that whole epic and\nthen I can discard the working copy and then come up with another one — that's\nhow I need to control these boundaries.\"*\n\nA boundary is only usable if both ends are reachable by whoever is doing the\nwork. Until this existed, `offboard` was a control on the working-copies page\nand nothing else, so an agent could be given a copy and never let go of one.\n\n## What it does not do\n\nRemove the directory. The copy stops being this project's and its agents stop\nrunning; the checkout on disk is left for a person. Deleting a worktree\nsomebody may have put uncommitted work in is not a thing to do on an agent's\nsay-so, and the row going is what makes everything downstream stop pointing at\nit.\n\n## An agent that would not stop is reported, not swallowed\n\nThe copy this is most often used on is one whose machine has gone — that is\nstory 892's premise. Unreachable agents are reported while the source can\nstill be removed, but an unreachable running app instance is refused because\nits runtime cannot safely be disposed from here.\n\n## Persistent app instances\n\nA source checkout with a persistent app instance cannot be discarded until\nthat instance is explicitly disposed. Pass `instance_disposition: \"discard\"`\nto stop and dispose the instance first. An unreachable running instance is\nleft in place with its checkout so its runtime is not abandoned silently.\n",
     "input_schema": {
       "properties": {
         "working_copy_id": {
           "description": "Id of the working copy to discard. `list_working_copies` names them.",
+          "type": "string"
+        },
+        "instance_disposition": {
+          "description": "For a persistent app instance, pass `discard` to stop and dispose it before removing its source checkout.",
           "type": "string"
         }
       },
@@ -54,19 +63,24 @@
   },
   {
     "name": "restart_app",
-    "description": "Restart the caller's own copy of the app, on its current commit.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here.\n\n## Returns when the run starts, not when it finishes\n\nA restart waits for a recompile and a boot, which can run well past the\ncode-mode sandbox's 30s wall clock (issue f2977826, batch 2 of 4f7929e4)\n-- this used to shrink its own wait to fit that budget instead, racing it\nwith a margin. The spawned task claims this working copy's own lock --\nshared with `stop_app` and `ensure_app_running`, since all three touch\nthe same app process, and a restart racing another restart's own\n`_build` directory is exactly the hazard this closes -- and only then\nacks: the reply is \"started\" or \"already running\". A second restart_app\ncall while one is in flight never starts a second one; it is told the\none already running is still going. An agent that started it is messaged\nthe outcome; any other caller calls this tool again to check.\n",
+    "description": "Restart the caller's own copy of the app, on its current commit.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before the runtime is contacted.\n\n## Returns when the run starts, not when it finishes\n\nA restart waits for a recompile and a boot, which can run well past the\ncode-mode sandbox's 30s wall clock (issue f2977826, batch 2 of 4f7929e4)\n-- this used to shrink its own wait to fit that budget instead, racing it\nwith a margin. The spawned task claims this working copy's own lock --\nshared with `stop_app` and `ensure_app_running`, since all three touch\nthe same app process, and a restart racing another restart's own\n`_build` directory is exactly the hazard this closes -- and only then\nacks: the reply is \"started\" or \"already running\". A second restart_app\ncall while one is in flight never starts a second one; it is told the\none already running is still going. An agent that started it is messaged\nthe outcome; any other caller calls this tool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
   {
     "name": "set_working_copy_loop",
-    "description": "Put a working copy's agents to work, or let them stop.\n\nStory 538's R13. Continuous mode governs whether an agent keeps working when\nits turn ends, and until this it had no front door: the only way in was an\nagent happening to work the `start_implementation` task, and the only way out\nwas `tap_out`, which asks a human. Every agent in the database sat at `false`\nbecause nothing had ever put one anywhere else.\n\n## What \"working\" means here\n\nNot that anything is assigned. The loop hands back the menu \u2014 a class of\navailable work and the tool call that opens it \u2014 and the agent chooses. John,\n2026-09-05: *\"I'm dubious our orchestrator will make better decisions than the\nmodel with the upcoming requirements and some reasoning.\"* So this switches on\nthe thing that keeps an agent going, not a thing that tells it what to do.\n\n## Per copy, because that is the unit somebody decides about\n\nA checkout is working or it is not. The roles staffed on it each carry their\nown mode, so a later change can let the coding agent go home when coding work\nruns out while QA carries on (R6) \u2014 but nobody wants to switch agents on one\nat a time.\n\n## Stopping is not killing\n\nTurning it off lets the agents stop at the end of their current turn. It does\nnot end them: they stay on the copy, keep their conversations, and can be put\nback to work. `offboard_working_copy` is the one that ends things.\n",
+    "description": "Put a working copy's agents to work, or let them stop.\n\nStory 538's R13. Continuous mode governs whether an agent keeps working when\nits turn ends, and until this it had no front door: the only way in was an\nagent happening to work the `start_implementation` task, and the only way out\nwas `tap_out`, which asks a human. Every agent in the database sat at `false`\nbecause nothing had ever put one anywhere else.\n\n## What \"working\" means here\n\nNot that anything is assigned. The loop hands back the menu — a class of\navailable work and the tool call that opens it — and the agent chooses. John,\n2026-09-05: *\"I'm dubious our orchestrator will make better decisions than the\nmodel with the upcoming requirements and some reasoning.\"* So this switches on\nthe thing that keeps an agent going, not a thing that tells it what to do.\n\n## Per copy, because that is the unit somebody decides about\n\nA checkout is working or it is not. The roles staffed on it each carry their\nown mode, so a later change can let the coding agent go home when coding work\nruns out while QA carries on (R6) — but nobody wants to switch agents on one\nat a time.\n\n## Stopping is not killing\n\nTurning it off lets the agents stop at the end of their current turn. It does\nnot end them: they stay on the copy, keep their conversations, and can be put\nback to work. `offboard_working_copy` is the one that ends things.\n",
     "input_schema": {
       "properties": {
         "working": {
-          "description": "true puts its agents in the loop \u2014 each keeps working, choosing from the menu, until nothing of its kind is left. false lets them stop after the turn they are on.",
+          "description": "true puts its agents in the loop — each keeps working, choosing from the menu, until nothing of its kind is left. false lets them stop after the turn they are on.",
           "type": "boolean"
         },
         "working_copy_id": {
@@ -83,23 +97,33 @@
   },
   {
     "name": "share_copy_app",
-    "description": "Give the caller's own copy a public preview address.\n\nShares its device's tunnel rather than provisioning one of its own \u2014\ncriteria 1586/1587: a same-device sibling's connector can already reach\nthis copy's local port, so its hostname is added to that tunnel's ingress\ninstead of standing up a second connector nothing needs.\n\nAlways the caller's own copy, never a parameter \u2014 same \"an agent cannot\nreach another copy\" reasoning as `EnsureAppRunning`/`StopApp`. Refused\nwhile the copy's own app is not serving: sharing points a public hostname\nat a local port, and a port nothing is listening on yet is exactly the gap\nbetween \"reported\" and \"actually up\" story 1108's `app_url` exists to\nclose.\n",
+    "description": "Give the caller's own copy a public preview address.\n\nShares its device's tunnel rather than provisioning one of its own —\ncriteria 1586/1587: a same-device sibling's connector can already reach\nthis copy's local port, so its hostname is added to that tunnel's ingress\ninstead of standing up a second connector nothing needs.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before sharing. Refused\nwhile the copy's own app is not serving: sharing points a public hostname\nat a local port, and a port nothing is listening on yet is exactly the gap\nbetween \"reported\" and \"actually up\" story 1108's `app_url` exists to\nclose.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
   {
     "name": "stop_app",
-    "description": "Stop the caller's own copy of the app.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here. A copy with nothing running answers\nsuccess too, same as `AppTransport.stop_app/2` itself.\n\n## Returns when the run starts, not when it finishes\n\nStopping is normally fast, but this used to hold the code-mode sandbox's\nentire 30s budget inline with no margin to even return an answer\nafterward (issue f2977826, batch 2 of 4f7929e4). The spawned task claims\nthis working copy's own lock -- shared with `restart_app` and\n`ensure_app_running`, since all three touch the same app process -- and\nonly then acks: the reply is \"started\" or \"already running\"; an agent\nthat started it is messaged the outcome, any other caller calls this\ntool again to check.\n",
+    "description": "Stop the caller's own copy of the app.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before the runtime is contacted. A copy\nwith nothing running answers success too, same as `AppTransport.stop_app/2`.\n\n## Returns when the run starts, not when it finishes\n\nStopping is normally fast, but this used to hold the code-mode sandbox's\nentire 30s budget inline with no margin to even return an answer\nafterward (issue f2977826, batch 2 of 4f7929e4). The spawned task claims\nthis working copy's own lock -- shared with `restart_app` and\n`ensure_app_running`, since all three touch the same app process -- and\nonly then acks: the reply is \"started\" or \"already running\"; an agent\nthat started it is messaged the outcome, any other caller calls this\ntool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
   {
     "name": "sync_working_copy",
-    "description": "Bring a working copy's checkout up to date with its remote's main.\n\n8f5ebfb2: asked to staff a working copy reported days behind main, there\nwas no reachable way to catch it up first -- `list_working_copies`,\n`create_working_copy`, `offboard_working_copy`, `set_working_copy_loop` and\n`assign_epic_to_working_copy` all leave the checkout on disk untouched, and\n`sync_project` reconciles the CALLING copy's own files against its\ndatabase row rather than fetching or merging anything. This reaches the\nnamed copy's own harness over the same channel `offboard_working_copy`\nalready addresses it through.\n\nFast-forward only, and refused on a dirty tree -- never a merge commit or a\nmerge into someone's uncommitted work made on this call's own say-so. Both\nfailure shapes are reported with the git output that explains them, so the\ndecision of what to do next stays with whoever is staffing the copy.\n",
+    "description": "Bring a working copy's checkout up to date with its remote's main.\n\nOn a main copy with pending or failed publication synchronization, retries\nthat exact published revision and its app lifecycle on the destination's\nharness. It does not promote or publish the candidate again. Offline work\nremains pending until the harness reconnects; list_working_copies shows its status.\n\n8f5ebfb2: asked to staff a working copy reported days behind main, there\nwas no reachable way to catch it up first -- `list_working_copies`,\n`create_working_copy`, `offboard_working_copy`, `set_working_copy_loop` and\n`assign_epic_to_working_copy` all leave the checkout on disk untouched, and\n`sync_project` reconciles the CALLING copy's own files against its\ndatabase row rather than fetching or merging anything. This reaches the\nnamed copy's own harness over the same channel `offboard_working_copy`\nalready addresses it through.\n\nFast-forward only, and refused on a dirty tree -- never a merge commit or a\nmerge into someone's uncommitted work made on this call's own say-so. Both\nfailure shapes are reported with the git output that explains them, so the\ndecision of what to do next stays with whoever is staffing the copy.\n",
     "input_schema": {
       "properties": {
         "working_copy_id": {
@@ -115,9 +139,14 @@
   },
   {
     "name": "unshare_copy_app",
-    "description": "Drop the caller's own copy's shared preview.\n\nRemoves the ingress rule that pointed its hostname at this copy's app and\nthe DNS record behind it, and clears the copy's own recorded address. See\n`ShareCopyApp`.\n\nA no-op on main, whose tunnel is the project's rather than this call's to\nremove, and on a copy that was never shared \u2014 see `PreviewTunnel.release/1`.\n",
+    "description": "Drop the caller's own copy's shared preview.\n\nRemoves the ingress rule that pointed its hostname at this copy's app and\nthe DNS record behind it, and clears the copy's own recorded address. See\n`ShareCopyApp`.\n\nA no-op on main, whose tunnel is the project's rather than this call's to\nremove, and on a copy that was never shared — see `PreviewTunnel.release/1`.\n\nBy default this resolves the caller's active source checkout's default app\ninstance. `instance_id` can select another instance from that same source;\nownership is checked before the preview is released.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   }

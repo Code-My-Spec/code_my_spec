@@ -6,11 +6,11 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
   Reported live against MarketMySpec: `run(:deploy, ...)` errored with
   `cannot run "git": this environment has no working directory, and running
   it wherever the caller happens to be would analyse the wrong project` — an
-  unhandled `ArgumentError` from `Environments.cmd/4`, which raises rather
+  unhandled `ArgumentError` from `ExecutionContexts.cmd/4`, which raises rather
   than returning an error for a selected copy whose runtime cannot be
   resolved, the same reachability gap `app_path/1` and `missing_required_secrets/3` already
   had with `mix.exs` and `envs/<env>.enc.env`. `head_commit/1` now checks
-  reachability before calling `Environments.cmd/4` at all, falling back to
+  reachability before calling `ExecutionContexts.cmd/4` at all, falling back to
   the harness-reported `project.head_commit` (`CmsHarness.Sync.
   report_head_commit/2`, delivered on every sync) instead of crashing.
   """
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Provisioning.ImageTagUnreachableEnvironmentTest do
   describe "the environment is reachable" do
     test "reads the real git HEAD rather than any reported value" do
       scope = provisioning_scope_fixture(%{head_commit: String.duplicate("a", 40)})
-      tmp = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
+      tmp = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
 
       System.cmd("git", ["init"], cd: tmp)
       System.cmd("git", ["commit", "--allow-empty", "-m", "x"], cd: tmp)

@@ -56,7 +56,7 @@ defmodule Mix.Tasks.Cms.MigrateTestPartitions do
 
   Each sibling is migrated through its own dynamically-configured connection to
   `Repo`, never by exporting `MIX_TEST_PARTITION` and shelling out to `mix`:
-  `Environments.clean_otp_env/0` scrubs `MIX_ENV` from a child's environment,
+  `ExecutionContexts.clean_otp_env/0` scrubs `MIX_ENV` from a child's environment,
   so a shelled-out migrate runs against **dev** (see `CmsHarness.TestDatabase`).
   A dynamic repo connection is named in this process — there is no child and
   no environment variable to misdirect.

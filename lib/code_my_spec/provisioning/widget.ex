@@ -3,7 +3,7 @@ defmodule CodeMySpec.Provisioning.Widget do
   Installs the support widget on the deployed site and proves it works.
 
   Installation runs the existing generator (`cms_gen.support_widget`) through
-  `CodeMySpec.Environments.cmd/4`. This module does not reimplement the widget.
+  `CodeMySpec.ExecutionContexts.cmd/4`. This module does not reimplement the widget.
 
   - **The generator is `cms_gen.support_widget`**, the one new projects ship
     (WebSocket transport, deploy-key auth) — not the deprecated
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Provisioning.Widget do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Provisioning.Widget do
   Returns the generator's output so a failure can be reported with what it
   actually said rather than "install failed".
   """
-  @spec install(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec install(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def install(env, deploy_key, opts \\ []) when is_binary(deploy_key) do
     args = [@generator | Keyword.get(opts, :extra_args, [])]
@@ -72,7 +72,7 @@ defmodule CodeMySpec.Provisioning.Widget do
     # `stderr_to_stdout`: Mix reports a missing task on stderr.
     case already_installed(env, opts) do
       nil ->
-        case Environments.cmd(env, mix, args, stderr_to_stdout: true) do
+        case ExecutionContexts.cmd(env, mix, args, stderr_to_stdout: true) do
           {output, 0} -> {:ok, %{output: output}}
           {output, status} -> {:error, "Widget generator failed (exit #{status}): #{output}"}
         end
@@ -89,15 +89,15 @@ defmodule CodeMySpec.Provisioning.Widget do
   defp already_installed(env, opts) do
     case Keyword.get(opts, :installed_markers) do
       markers when is_list(markers) and markers != [] ->
-        Enum.find(markers, &Environments.file_exists?(env, &1))
+        Enum.find(markers, &ExecutionContexts.file_exists?(env, &1))
 
       _ ->
-        Enum.find(widget_files(env), &Environments.file_exists?(env, &1))
+        Enum.find(widget_files(env), &ExecutionContexts.file_exists?(env, &1))
     end
   end
 
   defp widget_files(env) do
-    case Environments.list_directory(env, "lib") do
+    case ExecutionContexts.list_directory(env, "lib") do
       {:ok, entries} ->
         for entry <- entries,
             String.ends_with?(entry, "_web"),
@@ -212,7 +212,7 @@ defmodule CodeMySpec.Provisioning.Widget do
   keeps what the ones before it learned, so a not-proven result still carries
   `install` and `presence`.
   """
-  @spec run(Scope.t(), Environments.Environment.t(), keyword()) :: result()
+  @spec run(Scope.t(), ExecutionContexts.ExecutionContext.t(), keyword()) :: result()
   def run(%Scope{} = scope, env, opts \\ []) do
     site_url = Keyword.fetch!(opts, :site_url)
     deploy_key = Keyword.fetch!(opts, :deploy_key)

@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
   import CodeMySpecSpex.ReadyForQaHelpers
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
@@ -67,22 +67,26 @@ defmodule CodeMySpecSpex.Story983.Criterion2022Spex do
         ComponentGraphHelpers.design!(context, module_name)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Content.impl_path(module_name),
             Content.impl_file(module_name)
           )
 
         :ok =
-          Environments.write_file(context.environment, "test/#{module_path}_test.exs", """
-          defmodule #{module_name}Test do
-            use ExUnit.Case, async: true
+          ExecutionContexts.write_file(
+            context.execution_context,
+            "test/#{module_path}_test.exs",
+            """
+            defmodule #{module_name}Test do
+              use ExUnit.Case, async: true
 
-            test "placeholder" do
-              assert true
+              test "placeholder" do
+                assert true
+              end
             end
-          end
-          """)
+            """
+          )
 
         ProjectStateFixtures.synced(context)
         story = StoryHelpers.set_component(context.scope, story.id, module_name)

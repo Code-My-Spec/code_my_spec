@@ -16,7 +16,7 @@ defmodule CodeMySpec.Provisioning.DeployHostTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
 
   @domain "deploy-host.example.com"
 
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Provisioning.DeployHostTest do
 
     # Seeds `prod` on the apex and `uat` on a subdomain of it, which is the
     # rule this is about.
-    EnvironmentRepository.list(scope)
+    Environments.list_deployment(scope)
 
     {:ok, scope: scope}
   end
@@ -41,7 +41,7 @@ defmodule CodeMySpec.Provisioning.DeployHostTest do
   test "each environment carries its own host, and only production takes the apex", ctx do
     hosts =
       ctx.scope
-      |> EnvironmentRepository.list()
+      |> Environments.list_deployment()
       |> Map.new(&{&1.name, &1.host})
 
     assert hosts["prod"] == @domain
@@ -61,13 +61,13 @@ defmodule CodeMySpec.Provisioning.DeployHostTest do
 
     assert bare.active_project.domain in [nil, ""]
 
-    hosts = bare |> EnvironmentRepository.list() |> Enum.map(& &1.host)
+    hosts = bare |> Environments.list_deployment() |> Enum.map(& &1.host)
 
     assert Enum.all?(hosts, &is_nil/1),
            "hosts were invented for a project with no domain: #{inspect(hosts)}"
 
     # And the project that does have one is unaffected by its neighbour.
-    assert ctx.scope |> EnvironmentRepository.get("uat") |> Map.fetch!(:host) ==
+    assert ctx.scope |> Environments.get("uat") |> Map.fetch!(:host) ==
              "uat.#{@domain}"
   end
 end

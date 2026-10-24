@@ -466,9 +466,9 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
     task =
       Task.Supervisor.async_nolink(supervisor, fn ->
         :ok = acquire_fixture_slot(hold_slot)
-        env = CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        env = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, File.cwd!())
 
-        CodeMySpec.Environments.cmd(
+        CodeMySpec.ExecutionContexts.cmd(
           env,
           System.find_executable("python3"),
           [

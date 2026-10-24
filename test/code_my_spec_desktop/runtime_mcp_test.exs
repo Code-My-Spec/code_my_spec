@@ -30,7 +30,13 @@ defmodule CodeMySpecDesktop.RuntimeMcpTest do
         CodeMySpecWeb.Endpoint
       ])
 
-    assert [{LocalServer, opts}, CodeMySpecWeb.Endpoint, CmsHarness.Supervisor] = children
+    assert [
+             {LocalServer, opts},
+             CodeMySpecWeb.Endpoint,
+             CmsHarness.Supervisor,
+             CodeMySpecDesktop.ProjectSetup
+           ] = children
+
     assert opts[:session_idle_timeout] == 14_400_000
 
     # Use a separate server identity so the test cannot restart the application's MCP server.

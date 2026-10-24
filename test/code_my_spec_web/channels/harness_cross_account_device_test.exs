@@ -6,6 +6,7 @@ defmodule CodeMySpecWeb.HarnessCrossAccountDeviceTest do
   import CodeMySpec.AccountsFixtures
 
   alias CodeMySpec.Devices
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Repo
   alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -31,6 +32,9 @@ defmodule CodeMySpecWeb.HarnessCrossAccountDeviceTest do
     assert copy.device_id == device.id
     assert copy.project_id == ctx.target.active_project_id
     assert copy.root == "/workspace/cross-account"
+    instance = AppInstances.for_working_copy(ctx.target, copy.id)
+    assert instance.device_id == device.id
+    assert instance.source_root == copy.root
     assert channel.assigns.scope.active_account_id == ctx.target.active_account_id
     assert Devices.get_device(ctx.scope, device.id).account_id == ctx.scope.active_account_id
     refute Devices.get_device(ctx.target, device.id)

@@ -23,8 +23,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5278Spex do
   spex "Integration specs are derived from technical decisions", criterion: 231 do
     scenario "Project with no decision records points the agent back at technical_strategy and offers an empty index" do
       given_ "the project has no decision records on disk", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

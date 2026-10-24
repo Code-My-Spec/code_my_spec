@@ -63,9 +63,9 @@ defmodule CodeMySpec.Provisioning.Tools.GenerateDeployFiles do
 
   defp project_environment(%{active_working_copy_id: copy_id} = scope, _project)
        when is_binary(copy_id),
-       do: WorkingCopies.environment(scope)
+       do: WorkingCopies.execution_context(scope)
 
-  defp project_environment(_scope, project), do: LocalScope.environment(project)
+  defp project_environment(_scope, project), do: LocalScope.execution_context(project)
 
   # The registry `:server` actually provisions, not ghcr.io — a generated
   # `image:` composed from `owner`/`app` names a path this registry never

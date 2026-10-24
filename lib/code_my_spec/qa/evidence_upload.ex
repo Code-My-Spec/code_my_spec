@@ -13,8 +13,8 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
   1847's local-dev case).
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Paths
   alias CodeMySpec.Uploads
 
@@ -38,7 +38,12 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
   Never raises and never returns an error — an empty list means nothing
   was uploaded, for whatever reason.
   """
-  @spec collect(Environment.t() | nil, Ecto.UUID.t() | nil, Ecto.UUID.t(), integer() | String.t()) ::
+  @spec collect(
+          ExecutionContext.t() | nil,
+          Ecto.UUID.t() | nil,
+          Ecto.UUID.t(),
+          integer() | String.t()
+        ) ::
           [map()]
   def collect(env, project_id, attempt_id, story_number)
 
@@ -48,7 +53,7 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
   def collect(env, project_id, attempt_id, story_number) do
     if Uploads.configured?() do
       env
-      |> Environments.list_directory(screenshot_dir(story_number))
+      |> ExecutionContexts.list_directory(screenshot_dir(story_number))
       |> case do
         {:ok, names} -> names
         {:error, _reason} -> []
@@ -65,7 +70,7 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
     content_type = content_type(name)
     key = "qa/#{project_id}/#{attempt_id}/#{name}"
 
-    with {:ok, bytes} <- Environments.read_file(env, path),
+    with {:ok, bytes} <- ExecutionContexts.read_file(env, path),
          {:ok, url} <- Uploads.presigned_upload_url(key, content_type),
          :ok <- Uploads.upload(url, bytes, content_type) do
       %{name: name, s3_key: key, content_type: content_type, bytes: byte_size(bytes)}

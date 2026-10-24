@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5299Spex do
   spex "Integration providers come from the integrations directory", criterion: 248 do
     scenario "Project with no integration specs omits the Integration Providers section" do
       given_ "the project has no integration specs on disk", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

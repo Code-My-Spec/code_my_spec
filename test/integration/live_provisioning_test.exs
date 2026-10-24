@@ -24,7 +24,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
@@ -61,7 +61,12 @@ defmodule CodeMySpec.LiveProvisioningTest do
     File.write!(Path.join(tmp, "README.md"), "# cms-live-proof\n")
 
     scope = full_scope_fixture()
-    scope = CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, tmp))
+
+    scope =
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
+        scope,
+        ExecutionContext.new(:local, tmp)
+      )
 
     %Integration{}
     |> Integration.changeset(%{
@@ -327,7 +332,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
     refute prod == uat, "both environments got the same key — the whole point is that they differ"
 
     # And the isolation actually holds against real sops, not just in theory.
-    env = CodeMySpec.UsersFixtures.fixture_environment(scope)
+    env = CodeMySpec.UsersFixtures.fixture_execution_context(scope)
     assert :ok = Sops.put_secret(env, "prod", "PROBE", "prod-only", prod)
 
     assert {:ok, %{"PROBE" => "prod-only"}} = Sops.decrypt(env, "prod", prod)
@@ -353,10 +358,10 @@ defmodule CodeMySpec.LiveProvisioningTest do
     {:ok, key} = ProjectSecrets.fetch_value(scope, "age_private_key_prod")
 
     assert {:ok, %{"CMS_REFRESH_SECRET" => ^secret}} =
-             Sops.decrypt(CodeMySpec.UsersFixtures.fixture_environment(scope), "prod", key)
+             Sops.decrypt(CodeMySpec.UsersFixtures.fixture_execution_context(scope), "prod", key)
 
     plaintext =
-      CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
+      CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
       |> Path.join("**/*")
       |> Path.wildcard()
       |> Enum.filter(&(File.regular?(&1) && File.read!(&1) =~ secret))

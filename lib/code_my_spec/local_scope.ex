@@ -6,10 +6,10 @@ defmodule CodeMySpec.LocalScope do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Users.Scope, CodeMySpec.Environments]
+    deps: [CodeMySpec.Users.Scope, CodeMySpec.ExecutionContexts]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -20,21 +20,21 @@ defmodule CodeMySpec.LocalScope do
   resolution falls back to `root || project.local_path`. Missing paths return
   `nil`; this operation never guesses a process working directory.
   """
-  @spec environment(struct() | nil, String.t() | nil) :: Environment.t() | nil
-  def environment(project, root \\ nil)
+  @spec execution_context(struct() | nil, String.t() | nil) :: ExecutionContext.t() | nil
+  def execution_context(project, root \\ nil)
 
-  def environment(nil, _root), do: nil
+  def execution_context(nil, _root), do: nil
 
-  def environment(%_{} = project, root) do
+  def execution_context(%_{} = project, root) do
     env =
-      registered_for(root) || Environments.lookup_registered(project.id) ||
-        Environment.new(:local, root || project.local_path)
+      registered_for(root) || ExecutionContexts.lookup_registered(project.id) ||
+        ExecutionContext.new(:local, root || project.local_path)
 
     case env do
-      %Environment{cwd: nil} ->
+      %ExecutionContext{cwd: nil} ->
         nil
 
-      %Environment{} = env ->
+      %ExecutionContext{} = env ->
         env
     end
   end
@@ -53,11 +53,11 @@ defmodule CodeMySpec.LocalScope do
   def for_local_project(nil, _root), do: {:error, :no_local_path}
 
   def for_local_project(%_{} = project, root) do
-    case environment(project, root) do
+    case execution_context(project, root) do
       nil ->
         {:error, :no_local_path}
 
-      %Environment{} = env ->
+      %ExecutionContext{} = env ->
         {:ok,
          %Scope{
            active_account: nil,
@@ -70,5 +70,5 @@ defmodule CodeMySpec.LocalScope do
   end
 
   defp registered_for(nil), do: nil
-  defp registered_for(root), do: Environments.lookup_registered({:root, root})
+  defp registered_for(root), do: ExecutionContexts.lookup_registered({:root, root})
 end

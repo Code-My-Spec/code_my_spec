@@ -22,9 +22,9 @@ defmodule CodeMySpec.Files.PersonaSourcesRuleTest do
 
   use ExUnit.Case, async: true
 
-  import CodeMySpec.EnvironmentFixtures
+  import CodeMySpec.ExecutionContextFixtures
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.Scanner
 
   @path ".code_my_spec/personas/x/sources.md"
@@ -33,8 +33,8 @@ defmodule CodeMySpec.Files.PersonaSourcesRuleTest do
   # validator itself is private, and a test that reached around it would be
   # asserting on a function production does not use.
   defp validate(content) do
-    env = memory_environment_fixture()
-    :ok = Environments.write_file(env, @path, content)
+    env = memory_execution_context_fixture()
+    :ok = ExecutionContexts.write_file(env, @path, content)
 
     Scanner.validate_entry(%{role: :persona_sources, path: @path}, env, %{})
   end

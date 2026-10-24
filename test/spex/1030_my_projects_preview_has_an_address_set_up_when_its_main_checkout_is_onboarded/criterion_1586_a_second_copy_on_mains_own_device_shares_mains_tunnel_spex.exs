@@ -35,9 +35,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.AppInstances
+
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Environments
+  import CodeMySpecSpex.MachineTunnelHelpers,
+    only: [configure_persistent_main: 2, report_serving: 3]
+
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
@@ -51,15 +56,16 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
   spex "A second copy on main's own device shares main's tunnel", criterion: 1586 do
     scenario "a copy on main's device onboards once its own app is serving" do
       given_ "main is onboarded and holds a tunnel of its own", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         reply = join_working_copy(context, "/workspace/main", "main")
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
+        :ok = configure_persistent_main(context.scope, reply.working_copy_id)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -75,7 +81,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
         assert_receive {:cloudflare, "cfd_tunnel", _}
 
         {:ok, main} = WorkingCopies.fetch(reply.working_copy_id)
-        assert main.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, main.id).preview_tunnel_id ==
+                 @tunnel_id
 
         {:ok, Map.put(context, :main, main)}
       end
@@ -87,15 +95,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
             device_id: context.main.device_id
           )
 
-        ref =
-          Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
-            "ref" => "spex-1586",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => "http://127.0.0.1:41234"
-          })
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = report_serving(socket, instance.id, "http://127.0.0.1:41234")
 
         {:ok, sibling} = WorkingCopies.fetch(reply.working_copy_id)
         result = PreviewTunnel.ensure(sibling)
@@ -112,8 +114,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
                  "this criterion exists to avoid creating."
 
         {:ok, saved} = WorkingCopies.fetch(context.sibling_id)
-        assert saved.preview_tunnel_id == @tunnel_id
-        assert saved.preview_url, "the sibling recorded no address of its own"
+
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_tunnel_id ==
+                 @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_url,
+               "the sibling recorded no address of its own"
 
         {:ok, context}
       end
@@ -121,7 +127,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1586Spex do
       then_ "its own hostname was added to the shared tunnel's ingress", context do
         assert_receive {:cloudflare, "put_config", ingress}
 
-        host = PreviewAddress.host(context.sibling_id)
+        host =
+          PreviewAddress.host(AppInstances.for_working_copy(context.scope, context.sibling_id).id)
+
         rule = Enum.find(ingress, &(&1["hostname"] == host))
 
         assert rule,

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
 
   alias CodeMySpec.ToolLibrary
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Issues
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.Fixtures
@@ -236,7 +236,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1595Spex do
   # automatically (`working_copies.ex:444`).
   defp designate_a_separate_main_copy(context) do
     running_root = CodeMySpec.TempFile.dir("spex-wedge-check-running")
-    {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "mkdir", ["-p", running_root])
 
     _running =
       PromotionHelpers.join_main_working_copy(

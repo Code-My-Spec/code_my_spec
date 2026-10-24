@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8191Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8191Spex do
     scenario "a file matching no role is named as unsynced" do
       given_ "a file under a sync root that matches no role", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/support/some_helper.ex",
             "defmodule SomeHelper do\nend\n"
           )
@@ -55,8 +55,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8191Spex do
     scenario "a file that does classify is not reported as skipped" do
       given_ "an implementation file the classifier recognises", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/my_app/tasks.ex",
             "defmodule MyApp.Tasks do\nend\n"
           )
@@ -70,8 +70,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8191Spex do
       # classified.
       given_ "a file the classifier does not recognise", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/support/unrecognised_helper.ex",
             "defmodule UnrecognisedHelper do\nend\n"
           )

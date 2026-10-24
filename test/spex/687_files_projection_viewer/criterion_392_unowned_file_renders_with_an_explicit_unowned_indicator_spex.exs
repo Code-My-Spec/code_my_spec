@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,8 +28,8 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
 
       given_ "a CLAUDE.md is added and synced", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @orphan_path,
             """
             # Project Context

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3603Spex do
   spex "Completion is local to the active story", criterion: 1501 do
     scenario "Completion is local to the active story" do
       given_ "an active story that is finished, and another story waiting", context do
-        context = context |> Slice.complete() |> Slice.waiting()
+        context = context |> Slice.complete() |> Slice.land() |> Slice.waiting()
         {:ok, context}
       end
 

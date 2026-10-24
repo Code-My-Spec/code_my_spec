@@ -26,11 +26,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  import CodeMySpecSpex.MachineTunnelHelpers,
+    only: [configure_persistent_main: 2, report_serving: 3]
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -44,15 +48,16 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
     criterion: 1590 do
     scenario "a copy on main's device asks for its own preview once it is serving" do
       given_ "main is onboarded and holds a tunnel of its own", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         reply = join_working_copy(context, "/workspace/main", "main")
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
+        :ok = configure_persistent_main(context.scope, reply.working_copy_id)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -69,7 +74,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
         assert_receive {:cloudflare, "dns_records"}
 
         {:ok, main} = WorkingCopies.fetch(reply.working_copy_id)
-        assert main.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, main.id).preview_tunnel_id ==
+                 @tunnel_id
 
         {:ok, Map.put(context, :main, main)}
       end
@@ -80,15 +87,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
             device_id: context.main.device_id
           )
 
-        ref =
-          Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
-            "ref" => "spex-1590",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => "http://127.0.0.1:41590"
-          })
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = report_serving(socket, instance.id, "http://127.0.0.1:41590")
 
         {:ok, Map.put(context, :sibling_id, reply.working_copy_id)}
       end
@@ -122,11 +123,12 @@ defmodule CodeMySpecSpex.Story1030.Criterion1590Spex do
       then_ "the copy's own row records the address it was given", context do
         {:ok, saved} = WorkingCopies.fetch(context.sibling_id)
 
-        assert saved.preview_tunnel_id == @tunnel_id,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_tunnel_id ==
+                 @tunnel_id,
                "the copy shares main's tunnel — a tunnel of its own would mean it was " <>
                  "provisioned one instead of being handed the existing one"
 
-        assert saved.preview_url,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_url,
                "the tool answered success but recorded no address for this copy"
 
         {:ok, context}

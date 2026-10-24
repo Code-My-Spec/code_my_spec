@@ -29,8 +29,9 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
   @allowed %{
     # The environment adapters' own primitive. `Local.create/1` is how a caller
     # asks for "an environment here", which is meaningful when someone asked.
-    "lib/code_my_spec/environments/local.ex" => "adapter primitive: explicit :working_dir opt",
-    "lib/code_my_spec/environments/cli.ex" => "adapter primitive, same as local",
+    "lib/code_my_spec/execution_contexts/local.ex" =>
+      "adapter primitive: explicit :working_dir opt",
+    "lib/code_my_spec/execution_contexts/cli.ex" => "adapter primitive, same as local",
 
     # The dev endpoint's plug, mounted only where the app runs from the checkout
     # it serves (code reloading is on): the marker a landing leaves is in that

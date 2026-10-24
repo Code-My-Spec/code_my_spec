@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4681Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -42,8 +42,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4681Spex do
       given_ "every active criterion has a valid spec on this working copy", context do
         for criterion <- context.story.criteria do
           :ok =
-            Environments.write_file(
-              context.environment,
+            ExecutionContexts.write_file(
+              context.execution_context,
               "test/spex/two_things/criterion_#{criterion.id}_spex.exs",
               CriterionScript.spex_naming(criterion.id, "Criterion#{criterion.id}")
             )

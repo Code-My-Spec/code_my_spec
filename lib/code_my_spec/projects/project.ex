@@ -38,6 +38,9 @@ defmodule CodeMySpec.Projects.Project do
         }
 
   schema "projects" do
+    embeds_one(:onboarding, CodeMySpec.Projects.OnboardingState, on_replace: :update)
+    embeds_many(:sources, CodeMySpec.Projects.Source, on_replace: :delete)
+
     field :name, :string
     field :module_name, :string
     # Harness-reported, like `module_name`: a content check the server cannot
@@ -50,6 +53,9 @@ defmodule CodeMySpec.Projects.Project do
     # `Files.Scanner`'s fingerprint of `mix.lock` when last recorded into
     # `project_dependencies`. `nil` is never reconciled, not "unchanged".
     field :mix_lock_fingerprint, :string
+    field :development_branch, :string, default: "main"
+    field :promotion_sync, :map, default: %{}
+    field :publication_sequence, :integer, default: 0
     field :code_repo, :string
     field :docs_repo, :string
     field :client_api_url, :string
@@ -158,6 +164,7 @@ defmodule CodeMySpec.Projects.Project do
       :health_route_status,
       :head_commit,
       :mix_lock_fingerprint,
+      :development_branch,
       :code_repo,
       :docs_repo,
       :client_api_url,
@@ -183,7 +190,9 @@ defmodule CodeMySpec.Projects.Project do
       :setup_options,
       :default_working_copy_id
     ])
-    |> validate_required([:name])
+    |> cast(attrs, [:development_branch], empty_values: [])
+    |> validate_required([:name, :development_branch])
+    |> validate_development_branch()
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,
       message: "must be a valid Elixir module name"
     )
@@ -216,6 +225,21 @@ defmodule CodeMySpec.Projects.Project do
   end
 
   def hash_deploy_key(_), do: nil
+
+  defp validate_development_branch(changeset) do
+    validate_change(changeset, :development_branch, fn :development_branch, branch ->
+      invalid =
+        branch == "@" or String.starts_with?(branch, "-") or
+          String.contains?(branch, ["..", "@{", "\\", " ", "~", "^", ":", "?", "*", "["]) or
+          Regex.match?(~r/[\x00-\x1f\x7f]/, branch) or
+          Enum.any?(String.split(branch, "/"), fn part ->
+            part == "" or String.starts_with?(part, ".") or
+              String.ends_with?(part, [".", ".lock"])
+          end)
+
+      if invalid, do: [development_branch: "must be a valid Git branch name"], else: []
+    end)
+  end
 
   @doc "True once the project's sending domain has been verified."
   def domain_verified?(%__MODULE__{domain_verified_at: nil}), do: false

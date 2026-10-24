@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
   """
   use CodeMySpecSpex.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.DesktopSetupHelpers
 
   setup :fresh_machine
@@ -20,9 +20,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
   spex "A box with yesterday's setup on record is not set up again today", criterion: 2319 do
     scenario "The harness starts a day after setup finished" do
       given_ "Sam's box finished setup yesterday", context do
-        {:ok, view, _} = live(context.conn, "/app")
-        view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(view, 10_000)
+        {:ok, _snapshot} = CodeMySpecSpex.Fixtures.check_machine_prerequisites()
 
         {:ok,
          Map.merge(context, %{
@@ -44,23 +42,17 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
       end
 
       then_ "the record of yesterday's setup is still readable", context do
-        assert has_element?(context.reopened, "[data-test='setup-results-file'][data-path]")
+        assert {:ok, snapshot} = CmsHarness.Setup.status()
+        path = snapshot["results_path"]
 
-        [path] =
-          context.reopened
-          |> element("[data-test='setup-results-file']")
-          |> render()
-          |> Floki.parse_fragment!()
-          |> Floki.attribute("data-path")
-
-        assert {:ok, _results} = Environments.read_file(context.machine_environment, path)
+        assert {:ok, _results} = ExecutionContexts.read_file(context.machine_environment, path)
         {:ok, context}
       end
     end
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

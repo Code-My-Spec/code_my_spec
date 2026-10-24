@@ -14,7 +14,7 @@ defmodule CodeMySpec.ContentPublishingTest do
 
   alias CodeMySpec.ContentPublishing
   alias CodeMySpec.ContentPublishing.Snapshot
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Repo
 
   defp put_snapshot(scope, attrs) do
@@ -79,10 +79,10 @@ defmodule CodeMySpec.ContentPublishingTest do
       )
 
       scope = full_scope_fixture(%{content_source_path: tmp_dir})
-      scope = put_fixture_environment(scope, nil)
+      scope = put_fixture_execution_context(scope, nil)
 
       assert {:ok, %{success: 1, error: 0}} =
-               ContentPublishing.sync(scope, Environment.new(:local, tmp_dir))
+               ContentPublishing.sync(scope, ExecutionContext.new(:local, tmp_dir))
 
       assert [%Snapshot{metadata: %{"slug" => "hello"}}] = ContentPublishing.list_snapshot(scope)
     end

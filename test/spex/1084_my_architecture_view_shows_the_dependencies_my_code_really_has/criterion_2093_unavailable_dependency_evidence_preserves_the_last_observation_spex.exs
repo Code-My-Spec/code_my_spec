@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentGraphHelpers
 
   setup :register_log_in_setup_account
@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
         ComponentGraphHelpers.depend!(context, billing, accounts)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/#{Macro.underscore("#{app}.Billing")}.ex",
             """
             defmodule #{app}.Billing do
@@ -53,8 +53,8 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
         app = ComponentGraphHelpers.app(context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/#{Macro.underscore("#{app}.Billing")}.ex",
             """
             defmodule #{app}.Billing do
@@ -87,8 +87,8 @@ defmodule CodeMySpecSpex.Story1084.Criterion2093Spex do
         app = ComponentGraphHelpers.app(context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/#{Macro.underscore("#{app}.Billing")}.ex",
             """
             defmodule #{app}.Billing do

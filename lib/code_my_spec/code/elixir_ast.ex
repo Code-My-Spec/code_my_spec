@@ -52,7 +52,7 @@ defmodule CodeMySpec.Code.ElixirAst do
   Same as `get_public_functions/1`, on source already in hand.
 
   Parsing is pure; reading is not. Callers that get their bytes from an
-  `Environments` environment — anything that might run against a working copy
+  `ExecutionContexts` environment — anything that might run against a working copy
   on another machine — need the parse without the `File.read`.
   """
   @spec public_functions_from_source(String.t()) ::

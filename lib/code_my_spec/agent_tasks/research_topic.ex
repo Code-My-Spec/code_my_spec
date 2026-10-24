@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   Cleans up `.code_my_spec/tasks/research/{topic}.md` on successful validation.
   """
 
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{ExecutionContexts, Paths}
 
   @doc """
   Generate the self-contained research prompt for a single topic.
@@ -33,7 +33,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, task) do
     topic = get_topic(task)
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     research_brief = read_research_brief(env, topic)
     mix_exs = read_mix_exs(env)
@@ -58,7 +58,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, task) do
     topic = get_topic(task)
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     knowledge_files = check_existing_knowledge(env, topic)
 
@@ -84,14 +84,14 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   defp read_research_brief(env, topic) do
     path = "#{Paths.research_dir()}/#{topic}.md"
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   defp read_mix_exs(env) do
-    case Environments.read_file(env, "mix.exs") do
+    case ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} -> content
       _ -> nil
     end
@@ -100,7 +100,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   defp read_adr(env, topic) do
     path = "#{Paths.decisions_dir()}/#{topic}.md"
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end
@@ -109,7 +109,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
   defp check_existing_knowledge(env, topic) do
     pattern = Paths.knowledge_topic_glob(topic)
 
-    case Environments.glob(env, pattern) do
+    case ExecutionContexts.glob(env, pattern) do
       files when is_list(files) and files != [] -> files
       _ -> []
     end
@@ -117,7 +117,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopic do
 
   defp cleanup_research_prompt(env, topic) do
     path = "#{Paths.research_dir()}/#{topic}.md"
-    Environments.delete_file(env, path)
+    ExecutionContexts.delete_file(env, path)
     :ok
   end
 

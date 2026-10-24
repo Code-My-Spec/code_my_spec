@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7978Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7978Spex do
       end
 
       when_ "the proxy would probe the health path over plain HTTP", context do
-        entries = project_tree(context.environment)
+        entries = project_tree(context.execution_context)
 
         configs =
           Enum.filter(entries, fn path ->
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7978Spex do
 
         bodies =
           Map.new(configs, fn path ->
-            {:ok, body} = Environments.read_file(context.environment, path)
+            {:ok, body} = ExecutionContexts.read_file(context.execution_context, path)
             {path, body}
           end)
 

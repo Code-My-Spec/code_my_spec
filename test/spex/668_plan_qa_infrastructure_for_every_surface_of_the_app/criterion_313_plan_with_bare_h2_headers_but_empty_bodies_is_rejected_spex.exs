@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5484Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5484Spex do
 
       given_ "an outline-only plan with all required H2 headers but no bodies exists", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/qa/plan.md",
             outline_only_plan()
           )

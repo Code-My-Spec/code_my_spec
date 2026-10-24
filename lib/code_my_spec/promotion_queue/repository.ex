@@ -8,6 +8,8 @@ defmodule CodeMySpec.PromotionQueue.Repository do
 
   import Ecto.Query
 
+  alias CodeMySpec.Analysis.ValidationHolds
+  alias CodeMySpec.Promotion.HandoffGate
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.Repo
 
@@ -29,6 +31,41 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     end
   end
 
+  @doc "Retry only completion for an already-published, held candidate."
+  def reopen_held(%{project_id: project, working_copy_id: copy, commit: commit} = attrs) do
+    {:ok, result} =
+      Repo.transaction(fn ->
+        ValidationHolds.lock(project)
+
+        subject =
+          case attrs[:subject_type] do
+            nil -> dynamic([e], is_nil(e.subject_type) and is_nil(e.subject_id))
+            type -> dynamic([e], e.subject_type == ^type and e.subject_id == ^attrs.subject_id)
+          end
+
+        candidate =
+          Repo.one(
+            from(e in Entry,
+              where:
+                e.project_id == ^project and e.working_copy_id == ^copy and e.commit == ^commit and
+                  e.status == :landed and e.result["assignment_held"] == true and
+                  not is_nil(e.result["publication"]),
+              where: ^subject,
+              order_by: [desc: e.inserted_at],
+              limit: 1,
+              lock: "FOR UPDATE"
+            )
+          )
+
+        case candidate do
+          nil -> :none
+          entry -> move(entry, :queued, %{})
+        end
+      end)
+
+    result
+  end
+
   # Transactional, and the match re-checked under its own lock: a plain
   # read-then-write here raced the worker reserving the very row this found
   # -- `move/3` holds a `FOR UPDATE` lock across the whole reservation, so an
@@ -44,6 +81,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     Repo.transaction(fn ->
       case waiting_for_copy(project_id, copy_id) do
         nil -> insert_entry(attrs)
+        %Entry{result: %{"publication" => _}} -> insert_entry(attrs)
         %Entry{} = waiting -> retarget_waiting(waiting, attrs)
       end
     end)
@@ -151,7 +189,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   def move(%Entry{} = entry, status, attrs \\ %{}) do
     result =
       Repo.transaction(fn ->
-        CodeMySpec.Analysis.ValidationHolds.lock(entry.project_id)
+        ValidationHolds.lock(entry.project_id)
 
         # Re-fetched and locked rather than trusting the struct the caller is
         # holding: `enqueue_new/1`'s `waiting_for_copy/2` retargets a still
@@ -169,7 +207,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         locked = Repo.one!(from(e in Entry, where: e.id == ^entry.id, lock: "FOR UPDATE"))
 
         if status == :gating and locked.status != :gating and
-             not CodeMySpec.Analysis.ValidationHolds.promotion_allowed?(locked.project_id),
+             not ValidationHolds.promotion_allowed?(locked.project_id),
            do: Repo.rollback(:validation_held)
 
         if status == :gating, do: require_handoff_clear(locked)
@@ -184,7 +222,7 @@ defmodule CodeMySpec.PromotionQueue.Repository do
   end
 
   defp require_handoff_clear(locked) do
-    case CodeMySpec.Promotion.HandoffGate.check(locked.project_id, locked.working_copy_id) do
+    case HandoffGate.check(locked.project_id, locked.working_copy_id) do
       :ok -> :ok
       {:error, _} -> Repo.rollback(:completion_handoff_pending)
     end

@@ -21,9 +21,9 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Promotion
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
 
   @main "/analysis-gate/main"
@@ -124,9 +124,9 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
     {:ok, agent} = WorkingCopies.report_root(agent, @agent)
     a_harness(agent.id)
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script(git))
-    :ok = Environments.register({:working_copy, running.id}, env)
-    :ok = Environments.register({:working_copy, agent.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(git))
+    :ok = ExecutionContexts.register({:working_copy, running.id}, env)
+    :ok = ExecutionContexts.register({:working_copy, agent.id}, env)
     %{scope: %{scope | active_working_copy_id: agent.id}}
   end
 

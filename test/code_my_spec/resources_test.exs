@@ -6,7 +6,7 @@ defmodule CodeMySpec.ResourcesTest do
   import CodeMySpec.ProjectsFixtures
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.ProvisioningPlan.StepRepository
@@ -145,7 +145,7 @@ defmodule CodeMySpec.ResourcesTest do
       {:ok, project} =
         Projects.update_project(scope, scope.active_project, %{local_path: checkout})
 
-      :ok = CodeMySpec.Environments.unregister(project.id)
+      :ok = CodeMySpec.ExecutionContexts.unregister(project.id)
 
       # A browser-session scope selects no working copy.
       web_scope = %{scope | active_working_copy_id: nil}
@@ -160,7 +160,7 @@ defmodule CodeMySpec.ResourcesTest do
     test "leaves the environment nil for a project with no reachable checkout anywhere, rather than guessing one",
          %{scope: scope} do
       {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: nil})
-      :ok = CodeMySpec.Environments.unregister(project.id)
+      :ok = CodeMySpec.ExecutionContexts.unregister(project.id)
 
       web_scope = %{scope | active_working_copy_id: nil}
 
@@ -207,7 +207,7 @@ defmodule CodeMySpec.ResourcesTest do
 
       assert resolved.active_working_copy_id == copy.id
       assert resolved.cwd == nil
-      assert WorkingCopies.environment(resolved) == nil
+      assert WorkingCopies.execution_context(resolved) == nil
     end
 
     # Found live: a project onboarded outside the usual local_path-setting
@@ -224,9 +224,12 @@ defmodule CodeMySpec.ResourcesTest do
         Projects.update_project(scope, scope.active_project, %{local_path: nil})
 
       # full_scope_fixture registered its own runtime under the project id.
-      :ok = CodeMySpec.Environments.unregister(project.id)
-      :ok = CodeMySpec.Environments.register(project.id, Environment.new(:local, checkout))
-      on_exit(fn -> CodeMySpec.Environments.unregister(project.id) end)
+      :ok = CodeMySpec.ExecutionContexts.unregister(project.id)
+
+      :ok =
+        CodeMySpec.ExecutionContexts.register(project.id, ExecutionContext.new(:local, checkout))
+
+      on_exit(fn -> CodeMySpec.ExecutionContexts.unregister(project.id) end)
 
       resolved = Resources.project_scope(%{scope | active_working_copy_id: nil}, project)
 
@@ -235,7 +238,7 @@ defmodule CodeMySpec.ResourcesTest do
 
     # Found live against Broken Oaths' real project: never onboarded through
     # any local_path-setting flow, no spex-style registry entry (that
-    # mechanism is test-only — CodeMySpec.Environments.register/2's own doc
+    # mechanism is test-only — CodeMySpec.ExecutionContexts.register/2's own doc
     # says so), but a harness joined moments earlier with a real, known root.
     # `adopt_repository` died on "this environment has no working directory"
     # for a checkout that was live and connected the whole time.

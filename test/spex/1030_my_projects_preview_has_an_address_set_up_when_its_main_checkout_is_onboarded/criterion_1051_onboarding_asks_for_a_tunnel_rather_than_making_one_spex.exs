@@ -29,7 +29,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   setup :register_log_in_setup_account
@@ -42,7 +43,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
     scenario "Onboarding asks for a tunnel rather than making one" do
       given_ "a checkout holding no credential of ours, and Cloudflare answering",
              context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         # A real working copy, minted the way one actually is - a harness joining
         # for it. Onboarding looks the copy up to decide whether it is the
@@ -52,9 +53,19 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
+
+        {:ok, _instance} =
+          AppInstances.update(context.scope, instance, %{
+            persistent: true,
+            after_promote: true,
+            port_mode: :configured,
+            database_mode: :configured
+          })
+
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -69,7 +80,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
           cloudflare_response(conn)
         end)
 
-        {:ok, context}
+        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
       end
 
       when_ "the engineer onboards it", context do
@@ -81,7 +92,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
       end
 
       then_ "the checkout comes away able to carry a preview", context do
-        {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        {:ok, contents} = ExecutionContexts.read_file(context.execution_context, @harness_config)
         config = Jason.decode!(contents)
 
         assert config["preview_url"],
@@ -93,11 +104,14 @@ defmodule CodeMySpecSpex.Story1030.Criterion2966Spex do
                  "would resolve to an edge holding no connection to this app, and the " <>
                  "frame would sit blank with nothing saying why."
 
+        instance = AppInstances.for_working_copy(context.scope, context.working_copy_id)
+        assert config["preview_url"] == instance.preview_url
+
         {:ok, context}
       end
 
       then_ "the checkout was never given anything that could provision one", context do
-        {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        {:ok, contents} = ExecutionContexts.read_file(context.execution_context, @harness_config)
 
         refute contents =~ "CLOUDFLARE",
                "our Cloudflare credential was written into the checkout. It would " <>

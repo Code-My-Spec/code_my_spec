@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
@@ -67,8 +67,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
       given_ "the user journeys have been walked", context do
         # The release refuses until a journey result exists.
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/qa/journey_result.md",
             "# Journey result\n\nwalked end to end — passed\n"
           )
@@ -78,8 +78,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
       given_ "a story on UAT that has not been released", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/devops/deploys/story_9002.md",
             "# Deploy\n\nstory 9002 to uat — verified\n"
           )
@@ -91,13 +91,15 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         # `setup_active_project` builds a directory, not a checkout, so `git
         # tag` had nothing to tag — the assertion below was reading "fatal: not
         # a git repository" rather than an absent tag.
-        env = context.environment
+        env = context.execution_context
 
-        {_, 0} = Environments.cmd(env, "git", ["init", "-q"])
-        {_, 0} = Environments.cmd(env, "git", ["config", "user.email", "spex@example.com"])
-        {_, 0} = Environments.cmd(env, "git", ["config", "user.name", "Spex"])
-        {_, 0} = Environments.cmd(env, "git", ["add", "-A"])
-        {_, 0} = Environments.cmd(env, "git", ["commit", "-q", "-m", "the code being released"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["init", "-q"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["config", "user.email", "spex@example.com"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["config", "user.name", "Spex"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["add", "-A"])
+
+        {_, 0} =
+          ExecutionContexts.cmd(env, "git", ["commit", "-q", "-m", "the code being released"])
 
         {:ok, context}
       end
@@ -121,7 +123,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         # repository in the throwaway org, and recorded. Not stubbed: a faked
         # GitHub call would leave this asserting that the spex can write a
         # file, which is the self-attestation the criterion exists to refuse.
-        env = context.environment
+        env = context.execution_context
         version = "v1.0.0"
 
         notes = """
@@ -139,9 +141,9 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         # `scope.cwd`, and in this fixture those are not the same place. So the
         # record is not committed before tagging; the tag names the commit that
         # holds the code, which is what a tag is for.
-        :ok = Environments.write_file(env, ".code_my_spec/releases/#{version}.md", notes)
+        :ok = ExecutionContexts.write_file(env, ".code_my_spec/releases/#{version}.md", notes)
 
-        {_, 0} = Environments.cmd(env, "git", ["tag", "-a", version, "-m", notes])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["tag", "-a", version, "-m", notes])
 
         {:ok, Map.put(context, :version, version)}
       end
@@ -152,7 +154,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         # spex's throwaway working copy.
         {output, status} =
           with_full_cassette @cassette do
-            Environments.cmd(context.environment, "gh", [
+            ExecutionContexts.cmd(context.execution_context, "gh", [
               "release",
               "create",
               @release_tag,
@@ -172,7 +174,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
       then_ "there is a record under .code_my_spec/releases", context do
         assert {:ok, entries} =
-                 Environments.list_directory(context.environment, ".code_my_spec/releases"),
+                 ExecutionContexts.list_directory(
+                   context.execution_context,
+                   ".code_my_spec/releases"
+                 ),
                "expected a releases directory holding the record of what shipped"
 
         assert entries != [],
@@ -182,7 +187,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
       end
 
       then_ "the release is tagged in the repository", context do
-        {tags, _status} = Environments.cmd(context.environment, "git", ["tag", "--list"])
+        {tags, _status} =
+          ExecutionContexts.cmd(context.execution_context, "git", ["tag", "--list"])
 
         assert tags =~ ~r/v?\d+\.\d+\.\d+/,
                "expected an annotated semver tag so the code that shipped is identifiable, got: #{inspect(tags)}"

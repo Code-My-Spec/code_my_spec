@@ -101,22 +101,77 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
          |> push_navigate(to: ~p"/app/projects")}
 
       project ->
-        {:noreply, mount_conversation(socket, project, params["conversation"])}
+        {:noreply, mount_conversation(socket, project, params["conversation"], params["role"])}
     end
   end
 
-  defp mount_conversation(socket, project, conversation_id) do
+  defp mount_conversation(socket, project, conversation_id, role) do
     scope = with_active_project(socket.assigns.current_scope, project)
+    role = entry_role(scope, conversation_id, role)
 
-    # The project's main agent, resolved once per project (`ensure/1` can start
-    # one). Keyed per project, not per socket: this LiveView survives navigating
-    # between projects.
-    socket = assign_main(socket, project, scope)
+    socket = assign(socket, :default_main?, is_nil(conversation_id) and role != "product")
 
-    conversation = resolve_conversation(scope, conversation_id, socket.assigns.main)
+    socket =
+      if socket.assigns.default_main?,
+        do: assign_main(socket, project, scope),
+        else: assign(socket, :main, {:error, :not_requested})
+
+    {socket, conversation} =
+      if role == "product" and is_nil(conversation_id) do
+        case ensure_product_conversation(scope) do
+          {:ok, conversation} -> {socket, conversation}
+          {:error, reason} -> {assign(socket, :main, {:error, {:product, reason}}), nil}
+        end
+      else
+        {socket, resolve_conversation(scope, conversation_id, socket.assigns.main)}
+      end
+
+    if role == "product" and is_nil(ScreenState.get(scope).id) do
+      ScreenState.put(scope, %{dynamic_view: "definition", open_panels: ["dynamic"]})
+    end
+
+    socket =
+      case conversation do
+        %{agent_id: id} when is_binary(id) ->
+          case Agents.fetch_agent(scope, id) do
+            {:ok, %{role: :main, execution_mode: :detached, retired_at: nil}} ->
+              case Agents.ensure_main_agent(scope) do
+                {:ok, agent} -> assign(socket, :main, {:ok, agent, conversation})
+                {:error, reason} -> assign(socket, :main, {:error, reason})
+              end
+
+            {:ok, %{role: :main} = agent} ->
+              assign(socket, :main, {:ok, agent, conversation})
+
+            {:ok, %{role: :product, execution_mode: :detached, retired_at: nil}} ->
+              case Agents.ensure_product_agent(scope) do
+                {:ok, _} -> socket
+                {:error, reason} -> assign(socket, :main, {:error, {:product, reason}})
+              end
+
+            _ ->
+              socket
+          end
+
+        _ ->
+          socket
+      end
+
     messages = messages_for(conversation)
 
     socket = follow_conversation(socket, conversation)
+
+    socket =
+      if connected?(socket) and socket.assigns[:onboarding_project_id] != project.id do
+        if previous = socket.assigns[:onboarding_project_id] do
+          Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "project:#{previous}:onboarding")
+        end
+
+        CodeMySpec.Projects.Onboarding.subscribe(scope)
+        assign(socket, :onboarding_project_id, project.id)
+      else
+        socket
+      end
 
     # Project-wide subscriptions, taken once per connected mount (this runs on
     # every patch).
@@ -212,22 +267,44 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     |> assign_more_above(messages, @page)
     |> assign_turns(messages)
     |> assign_dynamic()
+    |> canonical_product_url(role, conversation_id, conversation)
   end
 
-  # Keyed on the project it was resolved for, so navigating to another asks again.
-  defp assign_main(socket, project, scope) do
-    socket
-    |> assign_new(:main_for, fn -> project.id end)
-    |> then(&main_for_this_project(&1, project, scope))
+  # Returning through the sidebar keeps an already-started definition conversation.
+  # A project with no product still follows the ordinary main-agent path.
+  defp entry_role(scope, nil, nil) do
+    if is_nil(WorkingCopies.main(scope)) and
+         Enum.any?(
+           Agents.list_agents(scope),
+           &(&1.role == :product and &1.execution_mode == :detached and is_nil(&1.retired_at))
+         ) do
+      "product"
+    end
   end
 
-  defp main_for_this_project(%{assigns: %{main_for: id}} = socket, %{id: id}, scope),
-    do: assign_new(socket, :main, fn -> MainAgentConversation.ensure(scope) end)
+  defp entry_role(_scope, _conversation_id, role), do: role
 
-  defp main_for_this_project(socket, project, scope) do
-    socket
-    |> assign(:main_for, project.id)
-    |> assign(:main, MainAgentConversation.ensure(scope))
+  defp canonical_product_url(socket, "product", nil, %{id: id}) do
+    push_patch(socket,
+      to: ~p"/app/projects/#{socket.assigns.project.id}/agent-conversation?#{[conversation: id]}",
+      replace: true
+    )
+  end
+
+  defp canonical_product_url(socket, _, _, _), do: socket
+
+  defp ensure_product_conversation(scope) do
+    with {:ok, agent} <- Agents.ensure_product_agent(scope) do
+      Conversations.find_or_create_agent_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        agent.id
+      )
+    end
+  end
+
+  defp assign_main(socket, _project, scope) do
+    assign(socket, :main, MainAgentConversation.ensure(scope))
   end
 
   # No `?conversation=` opens the main agent's. A named one that does not
@@ -577,6 +654,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
   # is not one). A run is one row; each notice in it can still be taken back.
   defp pending_runs(pending) do
     pending
+    |> Enum.reject(&(&1.sender_id == "setup"))
     |> Enum.chunk_by(&ChatComponents.routine_notice?/1)
     |> Enum.flat_map(fn [first | _] = run ->
       if ChatComponents.routine_notice?(first),
@@ -603,8 +681,6 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   attr :message, :any, required: true
 
-  # One line until asked: a brief can run to a screen, and the queue sits above
-  # the composer. Toggled client-side so a patch does not fold it back up.
   defp queued_text(assigns) do
     assigns =
       assign(assigns,
@@ -1831,6 +1907,36 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
     {:noreply, socket}
   end
 
+  # Agent tools save through the same context. Refresh the panel without sending
+  # a second message back to the agent that just made the change.
+  def handle_info({:project_onboarding_updated, project}, socket) do
+    if project.id == socket.assigns.project.id do
+      send_update(CodeMySpecWeb.AgentConversationLive.ProjectDefinition,
+        id: "project-definition",
+        saved_project: project
+      )
+
+      {:noreply, assign(socket, :project, project)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:project_definition_saved, project}, socket) do
+    with %{agent_id: id} when is_binary(id) <- socket.assigns.conversation,
+         {:ok, %{role: :product}} <- Agents.fetch_agent(socket.assigns.current_scope, id) do
+      Agents.send_to_agent(
+        id,
+        CodeMySpec.Agents.DefinitionContext.update_message(project),
+        :operator_message,
+        sender_id: "setup",
+        async: true
+      )
+    end
+
+    {:noreply, assign(socket, :project, project)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   defp refresh_team_status(socket) do
@@ -1846,6 +1952,8 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
   # Re-resolves `@main` on agent news, so "Getting ready" turns into the running
   # header without a reload. `ensure/1` is idempotent and cheap.
+  defp refresh_main(%{assigns: %{default_main?: false}} = socket, _scope), do: socket
+
   defp refresh_main(socket, scope) do
     case MainAgentConversation.ensure(scope) do
       {:ok, _agent, _conversation} = main -> assign(socket, :main, main)
@@ -2202,6 +2310,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
           scope={@current_scope}
           screen={@screen}
           open={@open_panels}
+          stories_available={
+            CodeMySpec.Projects.Onboarding.phase(@project) == :stories or
+              (is_nil(@project.onboarding) and @copies != [])
+          }
           dynamic_view={@dynamic_view}
           dynamic_stories={@dynamic_stories}
           dynamic_story={@dynamic_story}
@@ -2313,6 +2425,10 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
               scope={@current_scope}
               screen={:wide}
               open={@open_panels}
+              stories_available={
+                CodeMySpec.Projects.Onboarding.phase(@project) == :stories or
+                  (is_nil(@project.onboarding) and @copies != [])
+              }
               dynamic_view={@dynamic_view}
               dynamic_stories={@dynamic_stories}
               dynamic_story={@dynamic_story}
@@ -2604,6 +2720,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         A single "unavailable" would send half the people who read it to the
         wrong place. Carried over from the agents index, which used to be where
         somebody landed and so used to be where this was said. --%>
+        <div
+          :if={match?({:error, {:product, _}}, @main)}
+          data-test="product-unavailable"
+          class="rounded-box border border-warning/40 bg-warning/10 p-4 text-sm"
+        >
+          Product needs an available execution host and your selected model credentials. Connect your desktop device, then retry.
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/agent-conversation?role=product"}
+            class="link"
+          >Retry product</.link>
+          <.link navigate={~p"/app/agent-models"} class="link">Agent models</.link>
+        </div>
         <p
           :if={match?({:error, :no_main_working_copy}, @main)}
           data-test="no-main-working-copy"
@@ -2766,7 +2894,14 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
         data-test="agent-undelivered-message"
         class="flex shrink-0 items-center gap-2 pt-3 text-xs text-error px-[max(1rem,calc((100%-48rem)/2))]"
       >
-        <span class="min-w-0 flex-1 truncate">{Message.text(message)}</span>
+        <ChatComponents.turn
+          :if={message.sender_id == "setup"}
+          id={"undelivered-context-#{message.id}"}
+          message={message}
+        />
+        <span :if={message.sender_id != "setup"} class="min-w-0 flex-1 truncate">{Message.text(
+          message
+        )}</span>
         <span class="opacity-80">Not delivered{if message.delivery_diagnostic,
           do: ": #{message.delivery_diagnostic}"}</span>
       </div>

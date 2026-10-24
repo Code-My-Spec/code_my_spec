@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1971Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @release_type "release"
@@ -32,8 +32,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1971Spex do
     scenario "UAT holds unreleased work, and the journeys are not done" do
       given_ "a story has been deployed to UAT and never released", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/devops/deploys/story_9001.md",
             "# Deploy\n\nstory 9001 to uat — verified\n"
           )

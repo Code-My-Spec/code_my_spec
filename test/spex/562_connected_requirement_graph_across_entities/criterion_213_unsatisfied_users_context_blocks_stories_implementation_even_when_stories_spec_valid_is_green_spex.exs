@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
 
   import CodeMySpecSpex.GraphGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
 
@@ -29,14 +29,14 @@ defmodule CodeMySpecSpex.Story562.Criterion5610Spex do
 
       and_ "the Users context's implementation file is removed", context do
         :ok =
-          Environments.delete_file(
-            context.environment,
+          ExecutionContexts.delete_file(
+            context.execution_context,
             Content.impl_path(context.users_child.module_name)
           )
 
         :ok =
-          Environments.delete_file(
-            context.environment,
+          ExecutionContexts.delete_file(
+            context.execution_context,
             Content.impl_path(context.users_context.module_name)
           )
 

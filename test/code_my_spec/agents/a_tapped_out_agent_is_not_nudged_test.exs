@@ -15,7 +15,7 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Notifications
   alias CodeMySpec.Notifications.PermissionRequest
   alias CodeMySpec.Repo
@@ -114,7 +114,11 @@ defmodule CodeMySpec.Agents.ATappedOutAgentIsNotNudgedTest do
 
     setup ctx do
       :ok =
-        Environments.write_file(ctx.environment, @impl_path, "defmodule ExampleContext do\nend\n")
+        ExecutionContexts.write_file(
+          ctx.execution_context,
+          @impl_path,
+          "defmodule ExampleContext do\nend\n"
+        )
 
       Fixtures.deliver_manifest(ctx.scope)
       Fixtures.record_problem(ctx.scope, "credo", %{file_path: @impl_path})

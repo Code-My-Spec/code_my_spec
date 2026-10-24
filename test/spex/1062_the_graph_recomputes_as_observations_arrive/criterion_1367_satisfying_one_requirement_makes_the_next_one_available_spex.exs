@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
 
       given_ "a graph whose frontier has reached the children", context do
         for {_module, path} <- @children do
-          :ok = CodeMySpec.Environments.delete_file(context.environment, path)
+          :ok = CodeMySpec.ExecutionContexts.delete_file(context.execution_context, path)
         end
 
         :ok = Fixtures.scan_working_copy(context.scope)
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3428Spex do
         for {module_name, path} <- @children do
           :ok =
             Fixtures.write_env_file(
-              context.environment,
+              context.execution_context,
               path,
               "defmodule #{module_name} do\nend\n"
             )

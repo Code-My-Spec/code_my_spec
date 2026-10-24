@@ -2,7 +2,7 @@ defmodule CodeMySpec.Provisioning.Tools.WriteProjectFile do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Resources
   alias CodeMySpec.WorkingCopies
@@ -54,14 +54,14 @@ defmodule CodeMySpec.Provisioning.Tools.WriteProjectFile do
 
   defp project_environment(%{active_working_copy_id: copy_id} = scope, _project)
        when is_binary(copy_id),
-       do: WorkingCopies.environment(scope)
+       do: WorkingCopies.execution_context(scope)
 
-  defp project_environment(_scope, project), do: LocalScope.environment(project)
+  defp project_environment(_scope, project), do: LocalScope.execution_context(project)
 
   defp write_file(nil, _path, _content), do: {:error, :no_working_environment}
 
   defp write_file(environment, path, content),
-    do: Environments.write_file(environment, path, content)
+    do: ExecutionContexts.write_file(environment, path, content)
 
   defp reply(:ok, path), do: ok("Wrote #{path}.")
   defp reply({:ok, _}, path), do: ok("Wrote #{path}.")

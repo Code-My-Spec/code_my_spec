@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   alias CodeMySpec.Documents.DocumentSpecProjector
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @proposal_path Paths.proposal_path()
   @patch_mode_marker Path.join(Paths.architecture_dir(), ".proposal_pre_existed_at_session_start")
@@ -61,7 +61,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     component_count = Components.count_components(scope)
 
     # The caller's environment or none, never one at this server's directory.
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     proposal_exists? = revision_mode?(env, component_count)
 
@@ -101,15 +101,15 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   end
 
   defp record_session_start_state(env, true),
-    do: Environments.write_file(env, @patch_mode_marker, "1")
+    do: ExecutionContexts.write_file(env, @patch_mode_marker, "1")
 
   defp record_session_start_state(env, false),
-    do: Environments.delete_file(env, @patch_mode_marker)
+    do: ExecutionContexts.delete_file(env, @patch_mode_marker)
 
   # Same asymmetry as `proposal_status/1`: an unreadable marker stays in patch
   # mode rather than promoting to a full proposal execution.
   defp patch_mode?(env) do
-    case Environments.stat(env, @patch_mode_marker) do
+    case ExecutionContexts.stat(env, @patch_mode_marker) do
       {:ok, _} ->
         true
 
@@ -137,7 +137,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   """
   # No environment, no answer: refuse before guessing a mode.
   def evaluate(scope, task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     if is_nil(env) do
       {:error, :no_environment}
@@ -173,7 +173,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @spec execute_proposal(map()) ::
           {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def execute_proposal(scope) do
-    case CodeMySpec.AgentTasks.environment(scope) do
+    case CodeMySpec.AgentTasks.execution_context(scope) do
       nil -> {:error, :no_environment}
       env -> evaluate_initial_mode(scope, env)
     end
@@ -211,7 +211,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       # "Could not look" is not "unmet": passed through as an error so
       # `TaskEvaluator` can name it.
       {:error, reason} ->
-        if Environments.unobservable?(reason) do
+        if ExecutionContexts.unobservable?(reason) do
           {:error, reason}
         else
           {:ok, :invalid, "Error: #{inspect(reason)}"}
@@ -228,7 +228,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   end
 
   defp read_proposal(env) do
-    case Environments.read_file(env, @proposal_path) do
+    case ExecutionContexts.read_file(env, @proposal_path) do
       {:ok, content} -> {:ok, content}
       {:error, :enoent} -> {:error, :proposal_not_found}
       {:error, reason} -> {:error, reason}
@@ -259,7 +259,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp proposal_status(nil), do: :absent
 
   defp proposal_status(env) do
-    case Environments.stat(env, @proposal_path) do
+    case ExecutionContexts.stat(env, @proposal_path) do
       {:ok, _} -> :present
       {:error, :enoent} -> :absent
       {:error, _reason} -> :unobservable

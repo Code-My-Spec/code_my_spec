@@ -50,7 +50,10 @@ defmodule CodeMySpecSpex.Story1014.Criterion2868Spex do
         device = device_id(context, hostname: "the-laptop")
 
         root = checkout("placeholder")
-        joined = join_working_copy(context, root, "the first copy", device_id: device)
+
+        {joined, socket} =
+          join_working_copy_socket(context, root, "the first copy", device_id: device)
+
         first_id = joined.working_copy_id
 
         RealDisk.write!(
@@ -65,9 +68,11 @@ defmodule CodeMySpecSpex.Story1014.Criterion2868Spex do
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")
 
-        live
-        |> element("#offboard-#{first_id} [data-role='confirm-confirm']")
-        |> render_click()
+        with_app_cleanup(socket, fn ->
+          live
+          |> element("#offboard-#{first_id} [data-role='confirm-confirm']")
+          |> render_click()
+        end)
 
         # The directory comes back — a fresh `git worktree add` at the same path.
         # It carries no identity, because the file that held one went with the

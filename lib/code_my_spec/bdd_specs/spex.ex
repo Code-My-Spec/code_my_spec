@@ -7,8 +7,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   require Logger
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   alias CodeMySpec.BddSpecs.Spex.{Error, Failure, Step}
 
@@ -19,7 +19,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   - `args` - List of arguments to pass to mix spex (e.g., ["test/spex/login_spex.ex"])
   - `opts` - Keyword list of options:
-    - `:environment` - Environment to run specs in (required); commands run in its cwd
+    - `:execution_context` - ExecutionContext to run specs in (required); commands run in its cwd
     - `:quiet` - Suppress console output (default: false)
     - `:jsonl_path` - Custom path for JSONL output file (defaults to temp file)
     - `:output_file` - An existing JSONL to parse instead of running anything
@@ -36,7 +36,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   ## Example
 
       {:ok, failures, exit_code, _output} =
-        Spex.execute(["test/spex/login_spex.ex"], environment: env)
+        Spex.execute(["test/spex/login_spex.ex"], execution_context: env)
 
       exit_code  # => 0 for success, non-zero for failure
   """
@@ -44,7 +44,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
           {:ok, [Failure.t()], integer(), String.t()}
           | {:error, {:parse_error, String.t()}}
   def execute(args, opts \\ []) do
-    environment = Keyword.fetch!(opts, :environment)
+    environment = Keyword.fetch!(opts, :execution_context)
     project_root = environment.cwd
     quiet = Keyword.get(opts, :quiet, false)
 
@@ -101,7 +101,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     command = program <> " " <> Enum.join(spex_args, " ")
 
     # The scrub keeps the child `mix`/`erl` off our Burrito ERTS (see
-    # CodeMySpec.Environments.clean_otp_env/0), and `merge_clean_env/1` applies
+    # CodeMySpec.ExecutionContexts.clean_otp_env/0), and `merge_clean_env/1` applies
     # it without overwriting anything chosen here.
     # `extra_env` is how the harness hands over `MIX_TEST_PARTITION`, a database
     # `TestDatabase.env/1` has already created and migrated; without it a run
@@ -110,7 +110,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     # apply in order, and the scrub's MIX_ENV=nil would unset "test".
     # See knowledge/requirements_graph/checkers, "BDD specs".
     cmd_env =
-      Environments.merge_clean_env(
+      ExecutionContexts.merge_clean_env(
         env: [{"MIX_ENV", "test"}] ++ Keyword.get(opts, :extra_env, [])
       )[:env]
 
@@ -119,7 +119,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
     # The output is returned, not discarded: an empty JSONL with a nonzero exit
     # means the suite did not run, and the output is the only record of why (as
     # exunit's `{:test_suite_did_not_run, status, excerpt}`).
-    case Environments.cmd(environment, program, spex_args, stderr_to_stdout: true, env: cmd_env) do
+    case ExecutionContexts.cmd(environment, program, spex_args,
+           stderr_to_stdout: true,
+           env: cmd_env
+         ) do
       {raw_output, exit_code} ->
         result =
           parse_and_return_failures(
@@ -154,7 +157,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   """
   # The JSONL is written inside the environment, so it is read back through it;
   # reading the wrong machine's disk reads as "0 failures", a clean run.
-  @spec parse_jsonl(String.t(), Environment.t() | nil) ::
+  @spec parse_jsonl(String.t(), ExecutionContext.t() | nil) ::
           {:ok, [Failure.t()]} | {:error, term()}
   def parse_jsonl(path, env_or_nil \\ nil) do
     case read_jsonl(env_or_nil, path) do
@@ -173,9 +176,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
   end
 
   # A nil environment means the file is on this machine (the replay seam);
-  # `Environments.read_file(nil, _)` would answer `:no_environment`.
+  # `ExecutionContexts.read_file(nil, _)` would answer `:no_environment`.
   defp read_jsonl(nil, path), do: File.read(path)
-  defp read_jsonl(env, path), do: Environments.read_file(env, path)
+  defp read_jsonl(env, path), do: ExecutionContexts.read_file(env, path)
 
   # Private functions
 
@@ -186,7 +189,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   through with zero tests loaded) into their `*_spex.exs` files.
   """
   def expand_directory_args(args, project_root, env_or_nil \\ nil) do
-    env = env_or_nil || Environment.new(:local, project_root)
+    env = env_or_nil || ExecutionContext.new(:local, project_root)
 
     Enum.flat_map(args, fn arg ->
       cond do
@@ -195,7 +198,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
         directory?(env, Path.expand(arg, project_root)) ->
           env
-          |> Environments.glob(Path.join(Path.expand(arg, project_root), "**/*_spex.exs"))
+          |> ExecutionContexts.glob(Path.join(Path.expand(arg, project_root), "**/*_spex.exs"))
           |> Enum.map(&Path.relative_to(&1, project_root))
           |> spex_files_or_arg(arg)
 
@@ -205,7 +208,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end)
   end
 
-  # `Environments` exposes no dir? predicate; a successful listing is the check.
+  # `ExecutionContexts` exposes no dir? predicate; a successful listing is the check.
   # A directory with no spex in it is passed through untouched rather than
   # expanded to nothing — `mix spex <dir>` can then say so itself.
   defp spex_files_or_arg([], arg) do
@@ -215,13 +218,13 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   defp spex_files_or_arg(files, _arg), do: files
 
-  defp directory?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
+  defp directory?(env, path), do: match?({:ok, _}, ExecutionContexts.list_directory(env, path))
 
   # The project's `spex` recipe when it declares one, so how the suite runs —
   # sharded, say — is the project's choice. The arguments are the same either
   # way: `just spex …` and `mix spex …` both begin with the recipe/task name.
   defp program(environment, recipe),
-    do: if(Environments.recipe?(environment, recipe), do: "just", else: "mix")
+    do: if(ExecutionContexts.recipe?(environment, recipe), do: "just", else: "mix")
 
   defp build_args(args, temp_file, quiet) do
     base_args = ["spex" | args] ++ ["--jsonl=#{temp_file}"]
@@ -290,7 +293,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   defp relativize_spec_file(failure, _project_root), do: failure
 
   defp cleanup_temp_file(temp_file, env) do
-    Environments.delete_file(env, temp_file)
+    ExecutionContexts.delete_file(env, temp_file)
   end
 
   defp parse_jsonl_content(content) do

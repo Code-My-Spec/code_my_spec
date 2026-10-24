@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5930Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @in_tree_path "lib/in_tree_module.ex"
   @out_of_tree_path "priv/static/out_of_tree.txt"
@@ -25,8 +25,12 @@ defmodule CodeMySpecSpex.Story127.Criterion5930Spex do
     scenario "file in priv/static is invisible while a sibling lib file is projected" do
       given_ "the agent has written one file inside lib/ and another inside priv/static/",
              context do
-        :ok = Environments.write_file(context.environment, @in_tree_path, in_tree_module())
-        :ok = Environments.write_file(context.environment, @out_of_tree_path, "ignored\n")
+        :ok =
+          ExecutionContexts.write_file(context.execution_context, @in_tree_path, in_tree_module())
+
+        :ok =
+          ExecutionContexts.write_file(context.execution_context, @out_of_tree_path, "ignored\n")
+
         {:ok, context}
       end
 

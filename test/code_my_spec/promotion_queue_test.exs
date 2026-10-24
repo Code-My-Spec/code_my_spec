@@ -24,7 +24,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -53,6 +53,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # there fails until it does.
   setup ctx do
     scope = full_scope_fixture()
+    local_promotion_project(scope)
     main_root = CodeMySpec.TempFile.dir("queue-main")
     File.mkdir_p!(main_root)
     git!(main_root, ["init", "-q", "-b", "main"])
@@ -71,9 +72,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, main} = WorkingCopies.report_root(main, main_root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: main.id},
-        Environment.new(:local, main_root)
+        ExecutionContext.new(:local, main_root)
       )
 
     {:ok, gate} =
@@ -82,9 +83,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, gate} = WorkingCopies.report_root(gate, gate_root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: gate.id},
-        Environment.new(:local, gate_root)
+        ExecutionContext.new(:local, gate_root)
       )
 
     a_harness_for(main.id, main_root)
@@ -148,9 +149,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{ctx.scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     %{copy: copy, commit: git!(root, ["rev-parse", "HEAD"])}
@@ -173,6 +174,76 @@ defmodule CodeMySpec.PromotionQueueTest do
   defp clean_runs_at(ctx, commit),
     do:
       AnalysisFixtures.fresh_analysis_runs_fixture(gate_scope(ctx), Run.sources(), commit: commit)
+
+  test "a production queue without origin cannot fall back to the desktop", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    a = candidate(ctx, "missing-origin", "main", "a.ex", "a\n")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    # The call synchronizes with the worker's initial attempt.
+    state = :sys.get_state(GenServer.whereis(Worker.via(ctx.scope.active_project_id)))
+    assert state.phase == :idle
+    assert Repository.get(entry.id).status == :queued
+    assert git!(ctx.main_root, ["rev-parse", "HEAD"]) != a.commit
+  end
+
+  test "remote publication uses the source gate while the desktop destination is offline", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    remote = CodeMySpec.TempFile.dir("queue-origin")
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--bare", "-q"])
+    on_exit(fn -> File.rm_rf(remote) end)
+    git!(ctx.main_root, ["remote", "add", "origin", remote])
+    git!(ctx.main_root, ["push", "-q", "origin", "main"])
+    a = candidate(ctx, "remote-a", "main", "a.ex", "a\n")
+
+    {:ok, _} =
+      ctx.gate
+      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Repo.update()
+
+    clean_runs_at(ctx, a.commit)
+    # Destination cannot be consulted; the gate shares only source objects.
+    {:ok, _} = WorkingCopies.report_root(ctx.main, "/missing/offline/desktop")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :landed}} = settle(entry)
+    assert git!(remote, ["rev-parse", "refs/heads/main"]) == a.commit
+    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit
+  end
+
+  test "an already published remote head must acquire a certification receipt", ctx do
+    Application.put_env(:code_my_spec, :local_promotion_projects, [])
+    remote = CodeMySpec.TempFile.dir("queue-origin")
+    File.mkdir_p!(remote)
+    git!(remote, ["init", "--bare", "-q"])
+    on_exit(fn -> File.rm_rf(remote) end)
+    git!(ctx.main_root, ["remote", "add", "origin", remote])
+    git!(ctx.main_root, ["push", "-q", "origin", "main"])
+    a = candidate(ctx, "remote-a", "main", "a.ex", "a\n")
+
+    {:ok, _} =
+      ctx.gate
+      |> Ecto.Changeset.change(label: Worker.gate_label(a.copy.id), device_id: a.copy.device_id)
+      |> Repo.update()
+
+    git!(a.copy.root, ["push", "-q", "origin", "HEAD:main"])
+    clean_runs_at(ctx, a.commit)
+    # Destination cannot be consulted; the gate shares only source objects.
+    {:ok, _} = WorkingCopies.report_root(ctx.main, "/missing/offline/desktop")
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    assert {:ok, %{status: :landed} = landed} = settle(entry)
+    assert is_binary(landed.result["promotion_id"])
+
+    assert git!(remote, [
+             "rev-parse",
+             "refs/codemyspec/promotions/" <> landed.result["promotion_id"]
+           ]) == a.commit
+
+    assert git!(remote, ["rev-parse", "refs/heads/main"]) == a.commit
+    assert git!(a.copy.root, ["rev-parse", "HEAD"]) == a.commit
+  end
 
   test "a candidate lands on main as its exact commit", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
@@ -339,9 +410,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{ctx.scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     # Main diverges on its own, after the candidate branched -- the same
@@ -369,7 +440,7 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert result["reason"] =~ ".code_my_spec"
     assert result["reason"] =~ String.slice(candidate_commit, 0, 12)
     assert result["reason"] =~ String.slice(main_commit, 0, 12)
-    assert result["reason"] =~ "Merge main"
+    assert result["reason"] =~ "Merge the current development branch"
 
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == main_commit
     assert git!(ctx.gate_root, ["status", "--porcelain", "--ignore-submodules"]) == ""

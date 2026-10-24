@@ -550,32 +550,45 @@ defmodule CodeMySpec.WorkingCopiesTest do
   end
 
   describe "record_preview_tunnel/2" do
-    test "refuses a non-main copy with no app of its own", %{scope: scope} do
+    test "records preview metadata for a source checkout before it reports its root", %{
+      scope: scope
+    } do
       {:ok, worktree} =
         WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
 
-      assert {:error, :not_the_main_copy} =
+      assert {:ok, instance} =
                WorkingCopies.record_preview_tunnel(worktree, %{
                  preview_url: "https://preview-#{worktree.id}.astralbi.com",
                  preview_tunnel_id: "tunnel-1",
                  preview_tunnel_secret: "s3cret"
                })
+
+      assert is_nil(instance.source_root)
+      assert instance.preview_url == "https://preview-#{worktree.id}.astralbi.com"
+      assert instance.preview_tunnel_id == "tunnel-1"
+      assert instance.preview_tunnel_secret == "s3cret"
     end
 
     # Story 1108 gave every copy an `app_url` once its own app comes up —
     # criterion 1586 is what that unlocks.
     test "allows a non-main copy whose own app has come up", %{scope: scope} do
       {:ok, worktree} =
-        WorkingCopies.issue(scope, nil, label: "worktree", device: device_fixture(scope))
+        WorkingCopies.issue(scope, nil,
+          label: "worktree",
+          device: device_fixture(scope),
+          root: "/a/worktree"
+        )
 
-      {:ok, worktree} =
+      {:ok, worktree} = WorkingCopies.report_root(worktree, "/a/worktree")
+
+      {:ok, instance} =
         WorkingCopies.record_app_status(worktree, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
       assert {:ok, saved} =
-               WorkingCopies.record_preview_tunnel(worktree, %{
+               CodeMySpec.AppInstances.record_preview_tunnel(scope, instance, %{
                  preview_url: "https://preview-#{worktree.id}.astralbi.com",
                  preview_tunnel_id: "tunnel-1",
                  preview_tunnel_secret: "s3cret"

@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
 
   Surface: `InstallClaudeMd` MCP tool. The tool reads and writes through
   `scope.environment`, so the spec observes the in-memory environment via
-  `CodeMySpec.Environments`.
+  `CodeMySpec.ExecutionContexts`.
   """
 
   use CodeMySpecSpex.Case
@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Content
 
   setup :register_log_in_setup_account
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
     criterion: 453 do
     scenario "First install creates CLAUDE.md with the managed section" do
       given_ "the working directory has no CLAUDE.md", context do
-        refute Environments.file_exists?(context.environment, "CLAUDE.md"),
+        refute ExecutionContexts.file_exists?(context.execution_context, "CLAUDE.md"),
                "expected CLAUDE.md to not exist before install"
 
         {:ok, context}
@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6239Spex do
       end
 
       then_ "CLAUDE.md exists at the project root", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, "CLAUDE.md"),
+        assert {:ok, contents} =
+                 ExecutionContexts.read_file(context.execution_context, "CLAUDE.md"),
                "expected CLAUDE.md to exist after install"
 
         {:ok, Map.put(context, :claude_md_contents, contents)}

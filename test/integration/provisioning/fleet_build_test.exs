@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Builder.Remote
 
   @moduletag :fleet
@@ -48,7 +48,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
       source = tmp_repo()
 
       opts = [
-        env: Environment.new(:local, source),
+        env: ExecutionContext.new(:local, source),
         ssh_key_path: @key,
         ssh_port: 2222,
         service: "fleet-test",
@@ -78,7 +78,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
 
       assert {:ok, _} =
                Remote.build(@builder, ref, reference,
-                 env: Environment.new(:local, source),
+                 env: ExecutionContext.new(:local, source),
                  ssh_key_path: @key,
                  ssh_port: 2222,
                  service: "fleet-label",
@@ -106,7 +106,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
 
       assert {:ok, _} =
                Remote.build(@builder, ref, reference,
-                 env: Environment.new(:local, source),
+                 env: ExecutionContext.new(:local, source),
                  ssh_key_path: @key,
                  ssh_port: 2222,
                  service: "fleet-push",

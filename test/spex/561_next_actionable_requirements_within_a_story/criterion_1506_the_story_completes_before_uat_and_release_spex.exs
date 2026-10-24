@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3608Spex do
   spex "The story completes before UAT and release", criterion: 1506 do
     scenario "The story completes before UAT and release" do
       given_ "a story complete for this copy, with releases enabled", context do
-        context = Slice.complete(context)
+        context = context |> Slice.complete() |> Slice.land()
         CodeMySpecSpex.Fixtures.enable_devops(context.scope)
         {:ok, context}
       end

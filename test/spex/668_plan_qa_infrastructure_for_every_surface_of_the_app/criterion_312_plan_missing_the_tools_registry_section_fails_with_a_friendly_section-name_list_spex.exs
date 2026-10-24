@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -37,8 +37,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
 
       given_ "a plan exists with App Overview and Seed Strategy but no Tools Registry", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/qa/plan.md",
             incomplete_plan()
           )

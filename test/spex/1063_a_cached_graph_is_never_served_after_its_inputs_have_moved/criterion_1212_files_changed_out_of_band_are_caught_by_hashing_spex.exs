@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3238Spex do
 
   import CodeMySpecSpex.GraphReadHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3238Spex do
         # or a git operation makes one. Nothing published; the scan is what
         # discovers it.
         :ok =
-          Environments.write_file(context.environment, @impl_path, """
+          ExecutionContexts.write_file(context.execution_context, @impl_path, """
           defmodule OutOfBand do
             @moduledoc "Written with nothing announcing it."
           end

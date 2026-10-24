@@ -15,6 +15,7 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   @behaviour Alloy.Tool
 
   alias CmsHarness.Mcp
+  alias CmsHarness.Agents.Spill
 
   # One number, defined where both callers can reach it. This tool cut at
   # 24,000 and said so; the server tool it calls through did not cut at all,
@@ -58,7 +59,7 @@ defmodule CmsHarness.Agents.Tools.RunScript do
     with {:ok, client} <- session(context) do
       client
       |> Mcp.call("run_script", arguments(script, context))
-      |> answer()
+      |> answer(context)
     end
   end
 
@@ -79,9 +80,9 @@ defmodule CmsHarness.Agents.Tools.RunScript do
   # off its own row. Sending the list from here would let the machine declare
   # its own scope.
   defp arguments(script, %{agent_id: agent_id}) when is_binary(agent_id),
-    do: %{"script" => script, "agent_id" => agent_id}
+    do: %{"script" => script, "agent_id" => agent_id, "client_shapes_output" => true}
 
-  defp arguments(script, _context), do: %{"script" => script}
+  defp arguments(script, _context), do: %{"script" => script, "client_shapes_output" => true}
 
   defp session(%{mcp_client: client}) when not is_nil(client), do: {:ok, client}
 
@@ -91,16 +92,19 @@ defmodule CmsHarness.Agents.Tools.RunScript do
        "called. The machine could not authenticate — check the harness is connected."}
   end
 
-  defp answer({:ok, text}), do: {:ok, truncate(text)}
-  defp answer({:error, reason}) when is_binary(reason), do: {:error, truncate(reason)}
-  defp answer({:error, reason}), do: {:error, truncate(inspect(reason))}
+  defp answer({:ok, text}, context), do: {:ok, shape(text, context)}
 
-  # Cut, and said so. Cutting silently is worse than not cutting: the agent
-  # reasons about a fragment as though it were the whole answer, and nothing in
-  # the transcript says otherwise.
-  #
-  # Delegated so there is one implementation as well as one number — this one
-  # split a binary on a byte boundary, which can land inside a multi-byte
-  # character and produce a reply that fails to encode.
-  defp truncate(text), do: CodeMySpec.CodeMode.cap(text, spill_label: "run_script")
+  defp answer({:error, reason}, context) when is_binary(reason),
+    do: {:error, shape(reason, context)}
+
+  defp answer({:error, reason}, context), do: {:error, shape(inspect(reason), context)}
+
+  # Spill on the harness, inside this agent's readable directory. The server
+  # may be remote: a server filesystem path is not a usable local attachment.
+  defp shape(text, context) do
+    text
+    |> String.replace_invalid()
+    |> Spill.shape(context, name())
+    |> CodeMySpec.CodeMode.cap()
+  end
 end

@@ -36,7 +36,7 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
   """
   use CodeMySpecSpex.Case, async: true
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpecSpex.Fixtures
@@ -63,8 +63,8 @@ defmodule CodeMySpec.Requirements.ANarrowLoadReadsItsOwnCheckoutTest do
         })
 
       :ok =
-        Environments.write_file(
-          ctx.environment,
+        ExecutionContexts.write_file(
+          ctx.execution_context,
           @impl_path,
           "defmodule ExampleContext do\nend\n"
         )

@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.Setup
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -154,14 +154,14 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   @doc "Satisfies `technical_strategy` by writing the decisions index."
   @spec apply_technical_strategy(map()) :: map()
   def apply_technical_strategy(context) do
-    Fixtures.with_decisions_index(context.environment)
+    Fixtures.with_decisions_index(context.execution_context)
     context
   end
 
   @doc "Satisfies `code_generation` by writing a populated generator script."
   @spec apply_code_generation(map()) :: map()
   def apply_code_generation(context) do
-    Fixtures.with_full_script(context.environment)
+    Fixtures.with_full_script(context.execution_context)
     context
   end
 
@@ -174,7 +174,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   @spec apply_devops_setup(map()) :: map()
   def apply_devops_setup(context) do
     :ok =
-      Environments.write_file(context.environment, ".code_my_spec/devops/setup.md", """
+      ExecutionContexts.write_file(context.execution_context, ".code_my_spec/devops/setup.md", """
       # DevOps Setup
 
       ## Environments
@@ -198,8 +198,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   @spec apply_deploy_record(map()) :: map()
   def apply_deploy_record(%{story: story} = context) do
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         ".code_my_spec/devops/deploys/story_#{story.id}.md",
         """
         # Deploy — story #{story.id}
@@ -221,8 +221,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   @spec apply_release_record(map()) :: map()
   def apply_release_record(%{story: story} = context) do
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         ".code_my_spec/releases/0.1.0.md",
         """
         # Release 0.1.0
@@ -251,7 +251,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_qa_integration_plan(map(), String.t()) :: map()
   def apply_qa_integration_plan(context, provider \\ "stripe") do
-    Fixtures.with_verified_integration(context.environment, provider)
+    Fixtures.with_verified_integration(context.execution_context, provider)
     context
   end
 
@@ -278,7 +278,7 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
         )
       end)
 
-    Fixtures.with_proposal(context.environment, proposal_content)
+    Fixtures.with_proposal(context.execution_context, proposal_content)
     context
   end
 
@@ -288,15 +288,19 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_spex_boundary_ready(map()) :: map()
   def apply_spex_boundary_ready(context) do
-    :ok = CodeMySpecSpex.SpexBoundaryArtifactHelpers.write_baseline_artifacts(context.environment)
+    :ok =
+      CodeMySpecSpex.SpexBoundaryArtifactHelpers.write_baseline_artifacts(
+        context.execution_context
+      )
+
     context
   end
 
   @doc "Satisfies `qa_setup` by writing the QA plan file."
   @spec apply_qa_setup(map()) :: map()
   def apply_qa_setup(context) do
-    env = context.environment
-    :ok = Environments.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
+    env = context.execution_context
+    :ok = ExecutionContexts.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
     synced(context)
   end
 
@@ -306,13 +310,17 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_journey_artifacts(map()) :: map()
   def apply_journey_artifacts(context) do
-    env = context.environment
+    env = context.execution_context
 
     :ok =
-      Environments.write_file(env, ".code_my_spec/qa/journey_plan.md", qa_journey_plan_content())
+      ExecutionContexts.write_file(
+        env,
+        ".code_my_spec/qa/journey_plan.md",
+        qa_journey_plan_content()
+      )
 
     :ok =
-      Environments.write_file(
+      ExecutionContexts.write_file(
         env,
         ".code_my_spec/qa/journey_result.md",
         qa_journey_result_content()
@@ -341,15 +349,15 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     persona_id = created_or_existing_persona_id(context.scope, slug, created)
 
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         ".code_my_spec/personas/#{slug}/summary.md",
         persona_summary_content()
       )
 
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         ".code_my_spec/personas/#{slug}/sources.md",
         persona_sources_content()
       )
@@ -506,8 +514,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
       bdd_path = Fixtures.spec_file_path(story, criterion)
 
       :ok =
-        Environments.write_file(
-          context.environment,
+        ExecutionContexts.write_file(
+          context.execution_context,
           bdd_path,
           passing_bdd_spec_content(story, criterion)
         )
@@ -532,11 +540,15 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_qa_complete_for_story(map(), term()) :: :ok
   def apply_qa_complete_for_story(context, story) do
-    env = context.environment
+    env = context.execution_context
     story_id = story.id
 
     :ok =
-      Environments.write_file(env, ".code_my_spec/qa/#{story_id}/brief.md", qa_brief_content())
+      ExecutionContexts.write_file(
+        env,
+        ".code_my_spec/qa/#{story_id}/brief.md",
+        qa_brief_content()
+      )
 
     {:ok, _attempt} =
       Fixtures.passed_qa_attempt(context.scope, story_id: story_id)

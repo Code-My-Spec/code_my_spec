@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
 
   Two ways to arrive here and only one was handled. The `cwd: nil` clause caught
   the light harness; everything else fell through to a real scan that reached
-  `Environments.Harness.stream_files/3`, which refuses on purpose, and surfaced
+  `ExecutionContexts.Harness.stream_files/3`, which refuses on purpose, and surfaced
   as `Sync failed: {:cannot_scan, :not_supported_on_harness}`. `cwd` is set for
   any resolved scope and is not the claim "there is a working copy here" — the
   same distinction `Validation.do_validate_stop/3` already makes, by re-asking
@@ -29,7 +29,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   defp run(scope) do
     frame = %Frame{assigns: %{current_scope: scope}}
@@ -68,7 +68,9 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
   setup do
     scope = full_scope_fixture()
     remote_root = "/somewhere/on/another/machine"
-    scope = put_fixture_environment(scope, %Environment{type: :harness, cwd: remote_root})
+
+    scope =
+      put_fixture_execution_context(scope, %ExecutionContext{type: :harness, cwd: remote_root})
 
     %{
       scope: scope,

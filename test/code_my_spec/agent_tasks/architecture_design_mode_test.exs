@@ -25,18 +25,18 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignModeTest do
   import CodeMySpec.ComponentsFixtures
 
   alias CodeMySpec.AgentTasks.ArchitectureDesign
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{working_copy_scope_fixture() | cwd: tmp},
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
-    :ok = register_working_copy_environment(scope, fixture_environment(scope))
+    :ok = register_working_copy_execution_context(scope, fixture_execution_context(scope))
 
     %{scope: scope, tmp: tmp}
   end

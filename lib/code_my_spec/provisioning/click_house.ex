@@ -5,10 +5,10 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
   the owner's separate read-only credential can query the whole box.
   """
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.Provisioning.ClickHouse.{Credentials, Exposure, Stack}
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps, Transport}
-  alias CodeMySpec.Provisioning.HostBaseline
+  alias CodeMySpec.Provisioning.{Cloudflare, HostBaseline, Steps, Transport}
   alias CodeMySpec.Users.Scope
 
   def host, do: "cms-clickhouse"
@@ -49,7 +49,7 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
   end
 
   defp target(scope, environment) do
-    case EnvironmentRepository.get(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
       %{ip: ip} = target when is_binary(ip) and ip != "" -> {:ok, target}
       _ -> {:error, "no server is provisioned for #{environment} -- set one up first"}
     end

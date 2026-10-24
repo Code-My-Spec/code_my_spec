@@ -1,14 +1,14 @@
 defmodule CodeMySpec.GeneratorsTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Generators
 
   @router "lib/my_app_web/router.ex"
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    %{env: Environment.new(:local, tmp), dir: tmp}
+    %{env: ExecutionContext.new(:local, tmp), dir: tmp}
   end
 
   defp write(dir, path, contents) do
@@ -285,7 +285,7 @@ defmodule CodeMySpec.GeneratorsTest do
   end
 
   # A harness-only project's real files are on the checkout's own machine, not
-  # this one — `Environments.read_file/2` has nowhere to read from server-side
+  # this one — `ExecutionContexts.read_file/2` has nowhere to read from server-side
   # (see `CodeMySpec.Provisioning.Steps.app_path/1`). `CmsHarness.Sync` runs
   # this exact check where the files really are and reports the verdict onto
   # `project.health_route_status`; these prove the reported status is what

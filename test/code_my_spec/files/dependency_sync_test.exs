@@ -9,7 +9,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
   alias CodeMySpec.Repo
 
   setup do
-    %{scope: put_fixture_environment(full_scope_fixture(), nil)}
+    %{scope: put_fixture_execution_context(full_scope_fixture(), nil)}
   end
 
   test "stored call evidence creates an edge without reopening source files", %{scope: scope} do
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert %{provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
     assert is_nil(Components.get_dependency_between(scope, billing.id, accounts.id))
   end
 
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
       "defmodule MyApp.Billing do\n def call(\nend"
     )
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert %{id: id, provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -99,7 +99,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert is_nil(Components.get_dependency_between(scope, billing.id, notifications.id))
 
@@ -129,7 +129,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    other_scope = put_fixture_environment(full_scope_fixture(), nil)
+    other_scope = put_fixture_execution_context(full_scope_fixture(), nil)
     other_billing = component(other_scope, "MyApp.Billing")
     other_accounts = component(other_scope, "MyApp.Accounts")
 
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
         in_code: true
       })
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert %{source_component_id: billing_id, target_component_id: accounts_id} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -184,7 +184,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
       validation_errors: %{"data" => %{"module_name" => "MyApp.Billing"}}
     })
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert %{id: id, provenance: :discovered, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -211,7 +211,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     """)
 
     assert {:ok, %{dependency_observation: %{status: :partial}}} =
-             ComponentSync.sync_from_files(scope, environment: nil)
+             ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert %{id: id, in_code: true} =
              Components.get_dependency_between(scope, billing.id, accounts.id)
@@ -249,7 +249,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
 
     assert {:ok, _} =
              ComponentSync.sync_from_files(scope,
-               environment: nil,
+               execution_context: nil,
                changed_paths: ["lib/my_app/billing.ex"]
              )
 
@@ -269,7 +269,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
 
     assert {:ok, _} =
              ComponentSync.sync_from_files(scope,
-               environment: nil,
+               execution_context: nil,
                changed_paths: ["lib/my_app/billing.ex"]
              )
 
@@ -287,7 +287,7 @@ defmodule CodeMySpec.Files.DependencySyncTest do
     end
     """)
 
-    report = ComponentSync.dependency_report(scope, environment: nil)
+    report = ComponentSync.dependency_report(scope, execution_context: nil)
     assert report.additions == [{billing.id, accounts.id}]
     assert report.unavailable == []
     assert is_nil(Components.get_dependency_between(scope, billing.id, accounts.id))

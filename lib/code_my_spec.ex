@@ -46,7 +46,7 @@ defmodule CodeMySpec do
       CodeMySpec.Documents,
       CodeMySpec.Embeddings,
       CodeMySpec.Encrypted.Binary,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Epics,
       CodeMySpec.Events,

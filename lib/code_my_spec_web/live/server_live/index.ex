@@ -514,7 +514,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   defp status_colour(_server), do: "bg-error"
 
   # The real answer to "does anything point at this box", read from
-  # `provisioning_environments` rather than from the purpose label above —
+  # `environments` rather than from the purpose label above —
   # which can say anything and link to nothing (a654ed04).
   defp linked_projects_label(nil, _name), do: "not used by any project"
 

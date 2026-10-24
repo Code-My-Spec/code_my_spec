@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story1076.Criterion4697Spex do
         [number] = CriterionScript.numbers(text)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/#{CriterionScript.story_number(text)}_story_a/criterion_#{number}_spex.exs",
             spex_naming(number)
           )

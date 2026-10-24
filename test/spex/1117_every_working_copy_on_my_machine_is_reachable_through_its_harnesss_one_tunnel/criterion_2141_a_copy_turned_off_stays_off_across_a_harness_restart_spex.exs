@@ -60,15 +60,7 @@ defmodule CodeMySpecSpex.Story1117.Criterion2141Spex do
       when_ "the harness restarts and the copy's app comes back up", context do
         {_reply, copy} = rejoin(context, context.copy)
 
-        ref =
-          Phoenix.ChannelTest.push(copy.socket, "ensure_app_running_result", %{
-            "ref" => "spex-2141-back",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => copy.app_url
-          })
-
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = report_serving(copy.socket, copy.instance_id, copy.app_url)
         {:ok, context}
       end
 

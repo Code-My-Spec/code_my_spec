@@ -128,8 +128,8 @@ defmodule CmsHarness.Projects do
   def stop_serving(root) when is_binary(root) do
     ServedRoots.forget(root)
 
-    # The whole copy: its channel, its agents and its app go together, so an
-    # offboarded copy leaves nothing running behind it.
+    # App dependencies are disposed explicitly by offboarding before this call.
+    # This stops the copy channel and agents; app supervision is independent.
     case Copy.stop(root) do
       :ok ->
         Logger.info("[CmsHarness] no longer serving #{root} — offboarded on the server")

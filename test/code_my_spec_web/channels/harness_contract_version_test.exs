@@ -14,7 +14,9 @@ defmodule CodeMySpecWeb.HarnessContractVersionTest do
 
   The two version numbers are the contract, so the invariant worth pinning is
   not any particular value — it is that the two ends agree, and that a
-  disagreement is *named* rather than inferred.
+  disagreement is *named* rather than inferred. Contract v3 requires app
+  instance UUID descriptors, instance-tagged replies and confirmed disposal
+  through discard_app. Explicit v2 clients cannot use that lifecycle contract.
   """
 
   # Not async, and not for the usual reason: joining runs the channel's real
@@ -72,6 +74,20 @@ defmodule CodeMySpecWeb.HarnessContractVersionTest do
 
       assert refusal.detail =~ "restart the harness" or refusal.detail =~ "Restart the harness",
              "the refusal has to say what to do — the old one sent people to the network"
+    end
+
+    test "v2 checkout-owned app clients are refused before instance verbs can be routed", ctx do
+      assert {:error,
+              %{
+                reason: "contract_version_mismatch",
+                harness_contract: 2,
+                server_contract: 3,
+                detail: detail
+              }} =
+               join_with(ctx.scope, ctx.project_id, %{"contract_version" => 2})
+
+      assert detail =~ "v2"
+      assert detail =~ "v3"
     end
 
     test "the refusal does not send the reader to the network", ctx do

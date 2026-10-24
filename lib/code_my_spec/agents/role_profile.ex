@@ -117,7 +117,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
-    list_tasks list_notifications
+    list_tasks list_notifications list_environments
     check_answer list_user_questions tool_docs search_answers
     list_problems get_analysis_output
     start_analysis
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     create_component update_component validate_dependency_graph set_story_component
     add_dependency remove_dependency
     list_requirements show_requirement
-    list_working_copies
+    list_working_copies list_environments
     list_rules list_questions withdraw_question ask_question tap_out cancel_task
     check_answer list_user_questions tool_docs
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
@@ -161,11 +161,12 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # (`accept_issue`, `dismiss_issue`); declaring an issue fixed (`resolve_issue`)
   # is coding's. No staffing: that is main's.
   @product_tools ~w(
+    get_project_onboarding update_project_onboarding start_project_setup
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
     add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
-    list_working_copies assign_epic_to_working_copy
+    list_working_copies list_environments assign_epic_to_working_copy
     link_criterion_to_rule start_three_amigos_session start_story_interview
     start_story_review get_story_gherkin show_story_requirements
     list_personas get_persona create_persona update_persona delete_persona
@@ -183,22 +184,32 @@ defmodule CodeMySpec.Agents.RoleProfile do
     query_logs get_trace slow_spans error_summary
   )
 
-  # Models, most preferred first; the first whose provider the account holds a
-  # key for wins (`Agents.Defaults`). QA runs constantly and reads more than it
-  # reasons, so it leads cheap. openai-codex is `gpt-6-astra` in both: the
-  # ChatGPT-plan account refuses the older Codex models.
+  # Models, most preferred first; the first connected provider wins.
+  # Main/product handle broad judgment, coding balances capability and cost,
+  # and QA runs focused, repeatable checks. Keep provider-specific defaults
+  # here so the launcher and the onboarding form resolve the same choices.
   @strong [
     {"anthropic", "claude-sonnet-5"},
     {"openai-codex", "gpt-6-astra"},
     {"zai", "glm-5.3"},
-    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-opus-5-5"}
+  ]
+
+  @coding [
+    {"anthropic", "claude-sonnet-5"},
+    {"openai-codex", "gpt-6.1-sol"},
+    {"zai", "glm-5.3"},
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-sonnet-5"}
   ]
 
   @cheap [
     {"zai", "glm-5.3"},
-    {"openai-codex", "gpt-6-astra"},
+    {"openai-codex", "gpt-6-luna"},
     {"anthropic", "claude-haiku-4-5"},
-    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"}
+    {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
+    {"claude-code", "claude-sonnet-5"}
   ]
 
   # In role order: `roles/0` is this list's order, and so is every enum built
@@ -289,7 +300,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
       browses?: true,
       holds_problems?: true,
       claims_any?: false,
-      model_preference: @strong
+      model_preference: @coding
     },
     %{
       role: :qa,

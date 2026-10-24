@@ -2,13 +2,13 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.AgentTasks.CodeGeneration
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Widget
   alias CodeMySpec.Users.Scope
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("widget")
-    %{env: Environment.new(:local, tmp), scope: %Scope{}}
+    %{env: ExecutionContext.new(:local, tmp), scope: %Scope{}}
   end
 
   defp page(body), do: fn _url -> {:ok, %{status: 200, body: body}} end

@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   Interview the engineer to establish the project's design system.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   def dispatch(_node) do
     "Interview the engineer to establish the project's design system. " <>
@@ -20,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
 
   @spec command(term(), map()) :: {:ok, String.t()} | {:error, term()}
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     project = scope.active_project
 
     html_content = load_html_content(env)
@@ -34,9 +34,9 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()} | {:error, term()}
   def evaluate(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
-    with {:ok, content} <- Environments.read_file(env, @design_system_path),
+    with {:ok, content} <- ExecutionContexts.read_file(env, @design_system_path),
          {:ok, html} <- parse_html(content) do
       validate_html(html)
     end
@@ -47,8 +47,8 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   # ============================================================================
 
   defp load_html_content(env) do
-    if Environments.file_exists?(env, @design_system_path) do
-      case Environments.read_file(env, @design_system_path) do
+    if ExecutionContexts.file_exists?(env, @design_system_path) do
+      case ExecutionContexts.read_file(env, @design_system_path) do
         {:ok, content} -> {:existing, content}
         _ -> load_template(env)
       end
@@ -58,21 +58,21 @@ defmodule CodeMySpec.AgentTasks.DesignUi do
   end
 
   defp load_template(env) do
-    case Environments.read_file(env, @template_path) do
+    case ExecutionContexts.read_file(env, @template_path) do
       {:ok, content} -> {:template, content}
       _ -> {:template, default_template()}
     end
   end
 
   defp read_optional_file(env, path) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   defp find_core_components(env) do
-    matches = Environments.glob(env, "lib/**/*core_components*")
+    matches = ExecutionContexts.glob(env, "lib/**/*core_components*")
 
     case matches do
       [first | _] -> read_optional_file(env, first)

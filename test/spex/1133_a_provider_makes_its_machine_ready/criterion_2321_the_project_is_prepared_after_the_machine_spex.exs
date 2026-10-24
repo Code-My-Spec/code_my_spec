@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
   """
   use CodeMySpecSpex.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.DesktopSetupHelpers
 
   setup :fresh_machine
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
         project_dir = Path.join(context.machine_root, "dev_setup_app")
 
         :ok =
-          Environments.write_file(
+          ExecutionContexts.write_file(
             context.machine_environment,
             Path.join(project_dir, "mix.exs"),
             """
@@ -43,24 +43,17 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
             """
           )
 
-        {:ok, view, _} = live(context.conn, "/app")
-        view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(view, 10_000)
+        {:ok, _snapshot} = CmsHarness.Setup.check_prerequisites()
 
         {:ok,
          Map.merge(context, %{
-           view: view,
            project_dir: project_dir,
            commands_before_project: read_machine_file!(context, context.command_log)
          })}
       end
 
       when_ "setup finishes the machine steps by linking the project", context do
-        context.view
-        |> form("[data-test='link-project-form']", project: %{path: context.project_dir})
-        |> render_submit()
-
-        render_async(context.view, 10_000)
+        assert {:ok, _snapshot} = DesktopSetupHelpers.connect_setup_project(context)
         {:ok, context}
       end
 
@@ -83,7 +76,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

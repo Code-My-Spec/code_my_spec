@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.StoryHelpers
@@ -72,15 +72,15 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
         impl_path = "lib/three_amigos_surface_live.ex"
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             spec_path,
             Content.liveview_spec(surface_module, dependencies: [])
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             impl_path,
             Content.impl_file(surface_module)
           )

@@ -20,8 +20,7 @@ defmodule CodeMySpec.Servers do
     deps: [
       CodeMySpec.AccountSecrets,
       CodeMySpec.Projects,
-      CodeMySpec.Provisioning.Environment,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Repo,
       CodeMySpec.TempFile,
@@ -33,9 +32,11 @@ defmodule CodeMySpec.Servers do
   import Ecto.Query
 
   alias CodeMySpec.AccountSecrets
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository, Hetzner}
+  alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Repo
   alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.TempFile
@@ -181,7 +182,7 @@ defmodule CodeMySpec.Servers do
   defp environment_names(%Scope{} = scope, project) do
     Utils.rescued("Servers.environment_names", @suggested_environments, fn ->
       %Scope{scope | active_project: project, active_project_id: project.id}
-      |> EnvironmentRepository.names()
+      |> Environments.deployment_names()
     end)
   end
 
@@ -302,6 +303,7 @@ defmodule CodeMySpec.Servers do
   # matches its label (including every name, when the label was cleared).
   defp stale_links(account_id, server_id, keep_name) do
     Environment
+    |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
     |> where([e, p], p.account_id == ^account_id and e.server_id == ^server_id)
     |> keep_name_filter(keep_name)
@@ -316,6 +318,7 @@ defmodule CodeMySpec.Servers do
   # nothing has claimed yet â the ones this label is now allowed to adopt.
   defp unlinked_matches(account_id, name) do
     Environment
+    |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
     |> where([e, p], p.account_id == ^account_id and e.name == ^name and is_nil(e.server_id))
     |> select([e, p], p)
@@ -323,11 +326,12 @@ defmodule CodeMySpec.Servers do
   end
 
   defp unlink_environment(scope, project, env_name),
-    do: EnvironmentRepository.put(environment_scope(scope, project), env_name, %{server_id: nil})
+    do:
+      Environments.put_deployment(environment_scope(scope, project), env_name, %{server_id: nil})
 
   defp link_environment(scope, project, env_name, server_id),
     do:
-      EnvironmentRepository.put(environment_scope(scope, project), env_name, %{
+      Environments.put_deployment(environment_scope(scope, project), env_name, %{
         server_id: server_id
       })
 
@@ -597,13 +601,14 @@ defmodule CodeMySpec.Servers do
 
   Matches both ways an environment points at a box: `server_name`, written
   back by a successful setup run, and `server_id`, written immediately by
-  linking (`EnvironmentRepository.put/3`) before any run.
+  linking (`Environments.put/3`) before any run.
   """
   @spec environments_on(Ecto.UUID.t(), String.t()) :: [
           %{project: Project.t(), environment: String.t()}
         ]
   def environments_on(account_id, server_name) do
     Environment
+    |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
     |> select([e, p], %{project: p, environment: e.name})
     |> by_name_or_id(account_id, server_name, server_id_for(account_id, server_name))

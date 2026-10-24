@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
   import CodeMySpecSpex.GraphGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.McpServers.LocalServer
   alias CodeMySpec.McpServers.ScriptableTools
   alias CodeMySpecSpex.HarnessHooks
@@ -85,8 +85,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
       and_ "an orphan context is synced into the project DB",
            context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/spec/my_orphan_context.spec.md",
             """
             # MyOrphanContext
@@ -104,8 +104,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5874Spex do
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/my_orphan_context.ex",
             """
             defmodule MyOrphanContext do

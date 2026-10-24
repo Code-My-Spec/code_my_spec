@@ -29,7 +29,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   setup :register_log_in_setup_account
@@ -41,7 +42,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
   spex "Recording a preview address does not cost the checkout its identity", criterion: 1049 do
     scenario "Recording the address keeps what the file already said" do
       given_ "a checkout whose config already holds its project and its key", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         # A real working copy, minted the way one actually is - a harness joining
         # for it. Onboarding looks the copy up to decide whether it is the
@@ -51,9 +52,19 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
+
+        {:ok, _instance} =
+          AppInstances.update(context.scope, instance, %{
+            persistent: true,
+            after_promote: true,
+            port_mode: :configured,
+            database_mode: :configured
+          })
+
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{
@@ -68,7 +79,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
 
         Req.Test.stub(PreviewTunnel, &cloudflare_response/1)
 
-        {:ok, context}
+        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
       end
 
       when_ "onboarding records where its preview answers", context do
@@ -85,6 +96,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
         assert config["preview_url"],
                "no address was recorded, so this scenario cannot say anything about " <>
                  "what recording one preserves. Got: #{inspect(config)}"
+
+        instance = AppInstances.for_working_copy(context.scope, context.working_copy_id)
+        assert config["preview_url"] == instance.preview_url
 
         {:ok, context}
       end
@@ -115,7 +129,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2964Spex do
   end
 
   defp read_config(context) do
-    {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+    {:ok, contents} = ExecutionContexts.read_file(context.execution_context, @harness_config)
     Jason.decode!(contents)
   end
 

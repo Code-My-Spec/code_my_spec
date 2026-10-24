@@ -2,10 +2,10 @@ defmodule CodeMySpec.Paths do
   @moduledoc """
   Central path resolution for all project resource directories.
 
-  All paths are relative to the project root directory. Every module that needs
+  Project resource paths are relative to the project root directory. Every module that needs
   to reference a .code_my_spec/spec/status/architecture/knowledge path should use this
-  module instead of hardcoding strings. `local_state_dir/0` is the one
-  exception: this machine's state, outside any project.
+  module instead of hardcoding strings. Machine state and generated projects
+  live under `~/.codemyspec`, separate from project resources.
   """
 
   use Boundary, top_level?: true, deps: []
@@ -19,9 +19,21 @@ defmodule CodeMySpec.Paths do
   @doc "The root resource directory (`.code_my_spec`)."
   def base_dir, do: @base_dir
 
+  @doc "The user's CodeMySpec state directory, independent of workspace identity."
+  @spec user_state_dir() :: String.t()
+  def user_state_dir do
+    home =
+      if Code.ensure_loaded?(Desktop.OS),
+        do: apply(Desktop.OS, :home, []),
+        else: System.user_home!()
+
+    home |> Path.join(".codemyspec") |> expand()
+  end
+
   @doc """
-  This machine's state dir: explicit `CMS_STATE_DIR`, otherwise `~/.codemyspec`,
-  or beside `CMS_PROJECT_DIR` on a workspace.
+  This machine's state directory: explicit `CMS_STATE_DIR`, otherwise
+  `~/.codemyspec` on a laptop or beside `CMS_PROJECT_DIR` on a workspace.
+  Independent workspaces never reuse the host's machine identity.
   """
   @spec local_state_dir() :: String.t()
   def local_state_dir do
@@ -36,9 +48,53 @@ defmodule CodeMySpec.Paths do
   # Existing desktop and one-project workspace defaults remain the same.
   defp default_local_state_dir do
     case System.get_env("CMS_PROJECT_DIR") do
-      dir when is_binary(dir) and dir != "" -> Path.dirname(dir)
-      _ -> "~/.codemyspec"
+      dir when is_binary(dir) and dir != "" -> dir |> expand() |> Path.dirname()
+      _ -> user_state_dir()
     end
+  end
+
+  @doc "Normalize an absolute path using Desktop's platform-aware expansion when available."
+  @spec expand(Path.t()) :: String.t()
+  def expand(path) do
+    if Code.ensure_loaded?(Desktop.OS),
+      do: apply(Desktop.OS, :path_expand, [path]),
+      else: Path.expand(path)
+  end
+
+  @doc "Detached agent runtime storage, preserving the configured explicit override."
+  def agents_root do
+    (Application.get_env(:code_my_spec, :detached_agents_root) ||
+       Path.join(local_state_dir(), "agents"))
+    |> expand()
+  end
+
+  @doc "Scratch files outside any project checkout."
+  def scratch_root, do: Path.join(local_state_dir(), "scratch")
+
+  @doc "Default destination for generated projects without a user-selected directory."
+  def projects_root, do: Path.join(local_state_dir(), "projects")
+
+  @doc "Default folder for a new local project; resolving it does not create or move files."
+  def project_home(%{name: name, id: id}) do
+    folder =
+      name
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9]+/, "-")
+      |> String.trim("-")
+      |> String.slice(0, 80)
+
+    folder =
+      if folder == "" or Regex.match?(~r/^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/, folder),
+        do: "project-#{id}",
+        else: folder
+
+    Path.join(projects_root(), folder)
+  end
+
+  @doc "The desktop SQLite database, preserving CMS_DESKTOP_DB when supplied."
+  def desktop_database do
+    (System.get_env("CMS_DESKTOP_DB") || Path.join(user_state_dir(), "desktop.db"))
+    |> expand()
   end
 
   # ============================================================================

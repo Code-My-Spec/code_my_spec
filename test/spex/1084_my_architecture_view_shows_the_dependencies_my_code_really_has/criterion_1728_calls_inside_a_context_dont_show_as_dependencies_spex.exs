@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story1084.Criterion1728Spex do
 
   import CodeMySpecSpex.ComponentGraphHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1084.Criterion1728Spex do
         design!(context, "Accounts")
 
         :ok =
-          Environments.write_file(context.environment, "lib/billing.ex", """
+          ExecutionContexts.write_file(context.execution_context, "lib/billing.ex", """
           defmodule Billing do
             @moduledoc false
             alias Billing.Invoice

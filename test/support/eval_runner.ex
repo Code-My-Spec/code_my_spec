@@ -11,7 +11,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   It was one, and every wall it hit was a spex's wall rather than an eval's.
 
   A spex runs inside ExUnit with the Ecto sandbox, and its environment is
-  `Support.InMemoryEnvironment` — `Environments.write_file/3` answers `:ok` and
+  `Support.InMemoryExecutionContext` — `ExecutionContexts.write_file/3` answers `:ok` and
   puts nothing on disk. That is right for a scenario driving a LiveView and
   exactly wrong for one driving an agent, because a real agent reads real files
   with a real `Read` tool. The fixture and the agent were looking at two
@@ -357,7 +357,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   # nothing to compute one from, which is the state being measured.
   defp bare_world do
     %Scope{} = scope = fresh_scope()
-    root = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
+    root = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
     scope = %Scope{scope | cwd: root}
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
 
@@ -369,12 +369,12 @@ defmodule CodeMySpec.Support.EvalRunner do
 
   defp full_satisfaction_world do
     %Scope{} = scope = fresh_scope()
-    root = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
+    root = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
     scope = %Scope{scope | cwd: root}
 
     context = %{
       scope: scope,
-      environment: CodeMySpec.UsersFixtures.fixture_environment(scope),
+      execution_context: CodeMySpec.UsersFixtures.fixture_execution_context(scope),
       project: scope.active_project
     }
 

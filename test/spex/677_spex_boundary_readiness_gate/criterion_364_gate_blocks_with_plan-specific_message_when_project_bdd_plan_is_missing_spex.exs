@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5758Spex do
     scenario "framework checks and bridge present, no .md under bdd/spex/ → response names the plan directory" do
       given_ "framework checks and fixtures bridge are present, but no project BDD plan exists",
              context do
-        :ok = Artifacts.write_baseline_artifacts(context.environment, skip: [:plan])
+        :ok = Artifacts.write_baseline_artifacts(context.execution_context, skip: [:plan])
         {:ok, context}
       end
 

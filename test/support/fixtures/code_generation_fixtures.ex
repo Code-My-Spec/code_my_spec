@@ -1,6 +1,6 @@
 defmodule CodeMySpec.CodeGenerationFixtures do
   @moduledoc """
-  Seeds an `InMemoryEnvironment` for BDD specs covering the
+  Seeds an `InMemoryExecutionContext` for BDD specs covering the
   `CodeMySpec.AgentTasks.CodeGeneration` task. Used by Story
   "Standard stack code generation".
 
@@ -63,8 +63,8 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   of each scenario that needs a clean slate.
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.SetupFixtures
 
   @app_name "my_app"
@@ -224,10 +224,10 @@ defmodule CodeMySpec.CodeGenerationFixtures do
 
   Idempotent — only writes if `mix.exs` is absent.
   """
-  @spec with_baseline_project(Environment.t()) :: :ok
+  @spec with_baseline_project(ExecutionContext.t()) :: :ok
   def with_baseline_project(env) do
-    unless Environments.file_exists?(env, "mix.exs") do
-      Environments.write_file(env, "mix.exs", """
+    unless ExecutionContexts.file_exists?(env, "mix.exs") do
+      ExecutionContexts.write_file(env, "mix.exs", """
       defmodule #{@app_mod}.MixProject do
         use Mix.Project
 
@@ -267,7 +267,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   end
 
   @doc "Wipe every file from the in-memory env. Delegates to SetupFixtures."
-  @spec reset(Environment.t()) :: :ok
+  @spec reset(ExecutionContext.t()) :: :ok
   defdelegate reset(env), to: SetupFixtures
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -282,12 +282,12 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   rendered ADR — useful for retrofit scenarios that assert on
   hand-written content.
   """
-  @spec with_decision(Environment.t(), String.t(), keyword()) :: :ok
+  @spec with_decision(ExecutionContext.t(), String.t(), keyword()) :: :ok
   def with_decision(env, topic, opts \\ []) do
     title = Keyword.get(opts, :title, "Use #{topic}")
     body = Keyword.get(opts, :body, "Use #{topic} as the standard choice.")
 
-    Environments.write_file(env, "#{@decisions_dir}/#{topic}.md", """
+    ExecutionContexts.write_file(env, "#{@decisions_dir}/#{topic}.md", """
     # #{title}
 
     ## Status
@@ -305,7 +305,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   end
 
   @doc "Write multiple decision records in one call."
-  @spec with_decisions(Environment.t(), [String.t()]) :: :ok
+  @spec with_decisions(ExecutionContext.t(), [String.t()]) :: :ok
   def with_decisions(env, topics) when is_list(topics) do
     Enum.each(topics, &with_decision(env, &1))
     :ok
@@ -321,14 +321,14 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   CodeGeneration task discovers which providers to scaffold via
   `cms_gen.integration_provider`.
   """
-  @spec with_integration_spec(Environment.t(), String.t()) :: :ok
+  @spec with_integration_spec(ExecutionContext.t(), String.t()) :: :ok
   def with_integration_spec(env, provider) do
     display_name =
       provider
       |> String.split(["_", "-"])
       |> Enum.map_join(" ", &String.capitalize/1)
 
-    Environments.write_file(env, "#{@integrations_dir}/#{provider}.md", """
+    ExecutionContexts.write_file(env, "#{@integrations_dir}/#{provider}.md", """
     # #{display_name} Integration
 
     ## Provider Key
@@ -348,7 +348,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   end
 
   @doc "Write multiple integration specs in one call."
-  @spec with_integration_specs(Environment.t(), [String.t()]) :: :ok
+  @spec with_integration_specs(ExecutionContext.t(), [String.t()]) :: :ok
   def with_integration_specs(env, providers) when is_list(providers) do
     Enum.each(providers, &with_integration_spec(env, &1))
     :ok
@@ -364,11 +364,11 @@ defmodule CodeMySpec.CodeGenerationFixtures do
 
   Raises if `generator_id` isn't one of `generator_ids/0`.
   """
-  @spec with_generator_applied(Environment.t(), String.t()) :: :ok
+  @spec with_generator_applied(ExecutionContext.t(), String.t()) :: :ok
   def with_generator_applied(env, generator_id) do
     case Enum.find(@generators, fn {id, _, _, _} -> id == generator_id end) do
       {_id, _cmd, glob, stub} ->
-        Environments.write_file(env, resolve_glob(glob), expand_stub(stub))
+        ExecutionContexts.write_file(env, resolve_glob(glob), expand_stub(stub))
         :ok
 
       nil ->
@@ -381,7 +381,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   Mark every standard generator as applied. Use for the
   "all generators have run" scenario.
   """
-  @spec with_all_generators_applied(Environment.t()) :: :ok
+  @spec with_all_generators_applied(ExecutionContext.t()) :: :ok
   def with_all_generators_applied(env) do
     Enum.each(@generators, fn {id, _, _, _} -> with_generator_applied(env, id) end)
     :ok
@@ -391,11 +391,11 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   Returns true if a generator's detection file exists in `env`.
   Mirrors the heuristic the CodeGeneration task uses.
   """
-  @spec generator_applied?(Environment.t(), String.t()) :: boolean()
+  @spec generator_applied?(ExecutionContext.t(), String.t()) :: boolean()
   def generator_applied?(env, generator_id) do
     case Enum.find(@generators, fn {id, _, _, _} -> id == generator_id end) do
       {_id, _cmd, glob, _stub} ->
-        Environments.file_exists?(env, resolve_glob(glob)) == true
+        ExecutionContexts.file_exists?(env, resolve_glob(glob)) == true
 
       nil ->
         raise ArgumentError, "Unknown generator #{inspect(generator_id)}"
@@ -411,7 +411,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   command. Use for "agent has finished" scenarios where a populated
   script is the gating artifact.
   """
-  @spec with_full_script(Environment.t()) :: :ok
+  @spec with_full_script(ExecutionContext.t()) :: :ok
   def with_full_script(env) do
     body = """
     #!/bin/bash
@@ -428,7 +428,7 @@ defmodule CodeMySpec.CodeGenerationFixtures do
         "# #{cmd}\n#{cmd}"
       end)
 
-    Environments.write_file(env, @script_path, body <> commands <> "\n")
+    ExecutionContexts.write_file(env, @script_path, body <> commands <> "\n")
     :ok
   end
 
@@ -437,9 +437,9 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   minimal-project happy path where no generators were applicable
   and the agent recorded that explicitly.
   """
-  @spec with_empty_script(Environment.t()) :: :ok
+  @spec with_empty_script(ExecutionContext.t()) :: :ok
   def with_empty_script(env) do
-    Environments.write_file(env, @script_path, """
+    ExecutionContexts.write_file(env, @script_path, """
     #!/bin/bash
     # No generators needed for this project.
     """)
@@ -449,25 +449,25 @@ defmodule CodeMySpec.CodeGenerationFixtures do
   Write a custom `code_generation.sh` body. Use for retrofit
   scenarios that assert on the prompt's "existing script" branch.
   """
-  @spec with_existing_script(Environment.t(), String.t()) :: :ok
+  @spec with_existing_script(ExecutionContext.t(), String.t()) :: :ok
   def with_existing_script(env, body) when is_binary(body) do
-    Environments.write_file(env, @script_path, body)
+    ExecutionContexts.write_file(env, @script_path, body)
     :ok
   end
 
   @doc "Read `code_generation.sh`. Returns content or nil if missing."
-  @spec read_script(Environment.t()) :: String.t() | nil
+  @spec read_script(ExecutionContext.t()) :: String.t() | nil
   def read_script(env) do
-    case Environments.read_file(env, @script_path) do
+    case ExecutionContexts.read_file(env, @script_path) do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   @doc "Returns true if `code_generation.sh` exists."
-  @spec script_exists?(Environment.t()) :: boolean()
+  @spec script_exists?(ExecutionContext.t()) :: boolean()
   def script_exists?(env) do
-    Environments.file_exists?(env, @script_path) == true
+    ExecutionContexts.file_exists?(env, @script_path) == true
   end
 
   # ──────────────────────────────────────────────────────────────────────────

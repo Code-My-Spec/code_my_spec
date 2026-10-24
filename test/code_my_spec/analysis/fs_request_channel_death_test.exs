@@ -39,23 +39,27 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
   retry it.
   """
 
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.DataCase, async: true
+
+  import CodeMySpec.UsersFixtures
+  import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.WorkingCopies
 
   # Unlinked, so its exit is the subject of the test rather than the end of it,
   # and it registers itself so the registry entry dies when it does — which is
   # what makes this the real shape rather than a mocked one.
-  defp a_channel_that_dies_with(reason) do
-    id = "dies-#{System.unique_integer([:positive])}"
+  defp a_channel_that_dies_with(reason, id \\ "dies-#{System.unique_integer([:positive])}") do
     test = self()
 
     spawn(fn ->
       # `{instance, root}`, not a bare atom: `HarnessRegistry.executor_holder/1`
-      # (what `WorkingCopies.AppTransport` looks a working copy's channel up
+      # (what `AppInstances.Transport` looks a working copy's channel up
       # through) pattern-matches the registered value as that shape and
       # raises a `CaseClauseError` on anything else. Every other test in this
       # file reaches this channel through `Analysis.harness_fs_request/4`
@@ -63,10 +67,8 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
       {:ok, _} = Registry.register(HarnessRegistry, id, {"test", nil})
       send(test, {:registered, id})
 
-      # Any call, not just `{:fs_request, op, payload}`: this doubles as the
-      # channel `Runner.restart/3` calls through `AppTransport`, which sends
-      # `{:restart_app, %{}}` — a different message shape for the same
-      # "a channel that dies before answering" scenario.
+      # Any call, not just `{:fs_request, op, payload}`: this also catches the
+      # AppInstances transport's `{:restart_app, %{instance: descriptor}}`.
       receive do
         {:"$gen_call", _from, _msg} -> exit(reason)
       end
@@ -154,11 +156,19 @@ defmodule CodeMySpec.Analysis.FsRequestChannelDeathTest do
     # this module chose. Renaming the tag is therefore a change to a contract
     # nothing else names out loud, which is worth one test.
     test "a restart whose channel died is still recognised as a lost acknowledgement" do
-      id = a_channel_that_dies_with({:shutdown, :draining})
+      scope = full_scope_fixture()
 
-      scope = %CodeMySpec.Users.Scope{}
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil,
+          device: device_fixture(scope),
+          root: "/tmp/restart-dies"
+        )
 
-      assert {:error, reason} = Runner.restart(scope, "/anywhere", id)
+      {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/restart-dies")
+      {:ok, instance} = AppInstances.ensure_default(scope, copy)
+      a_channel_that_dies_with({:shutdown, :draining}, copy.id)
+
+      assert {:error, reason} = Runner.restart(scope, copy.root, instance.id)
 
       assert Promotion.restart_acknowledgement_lost?(reason), """
       A restart that worked has to keep reading as "merged, restart

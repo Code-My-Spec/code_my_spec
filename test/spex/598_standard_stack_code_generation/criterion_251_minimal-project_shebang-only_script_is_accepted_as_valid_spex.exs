@@ -26,8 +26,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5302Spex do
   spex "The generation script is the durable artifact", criterion: 251 do
     scenario "Minimal-project shebang-only script is accepted as valid" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
@@ -39,9 +39,9 @@ defmodule CodeMySpecSpex.Story598.Criterion5302Spex do
 
       given_ "code_generation.sh contains only a shebang and a no-generators comment",
              context do
-        Fixtures.with_empty_script(context.environment)
+        Fixtures.with_empty_script(context.execution_context)
 
-        body = Fixtures.read_script(context.environment)
+        body = Fixtures.read_script(context.execution_context)
         assert body =~ "#!/bin/bash", "expected the shebang line"
         assert body =~ "No generators needed", "expected the empty-marker comment"
 

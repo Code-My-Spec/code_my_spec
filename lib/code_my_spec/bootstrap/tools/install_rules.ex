@@ -2,7 +2,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallRules do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
 
   @impl true
@@ -24,7 +24,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallRules do
 
   @impl true
   def call(_params, context) do
-    env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+    env = CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
     case install(env) do
       :ok ->
@@ -62,14 +62,14 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallRules do
   """
   # No working copy here. Refusing is the whole point: the previous behaviour
   # was to root a `:local` environment at the server's own checkout and write
-  # there, reporting success. See `WorkingCopies.tool_environment/1`.
+  # there, reporting success. See `WorkingCopies.tool_execution_context/1`.
   def install(nil), do: {:error, :no_working_copy}
 
   def install(env) do
     source_dir = Application.app_dir(:code_my_spec, "priv/rules")
     target_dir = CodeMySpec.Paths.rules_dir()
 
-    with :ok <- Environments.ensure_dir(env, target_dir) do
+    with :ok <- ExecutionContexts.ensure_dir(env, target_dir) do
       case File.ls(source_dir) do
         {:ok, files} ->
           files
@@ -84,12 +84,12 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallRules do
   end
 
   defp rule_installed?(env, target_dir, file),
-    do: Environments.file_exists?(env, Path.join(target_dir, file))
+    do: ExecutionContexts.file_exists?(env, Path.join(target_dir, file))
 
   defp copy_rules(files, env, source_dir, target_dir) do
     Enum.reduce_while(files, :ok, fn file, :ok ->
       with {:ok, content} <- File.read(Path.join(source_dir, file)),
-           :ok <- Environments.write_file(env, Path.join(target_dir, file), content) do
+           :ok <- ExecutionContexts.write_file(env, Path.join(target_dir, file), content) do
         {:cont, :ok}
       else
         {:error, reason} -> {:halt, {:error, reason}}

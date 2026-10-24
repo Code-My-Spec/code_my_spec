@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -48,8 +48,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
         [criterion] = story.criteria
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             # `number`, not `id` — see the note in criterion_8186.
             "test/spex/#{story.number}_capture_a_task/criterion_#{criterion.id}_a_task_is_captured_spex.exs",
             CodeMySpecSpex.CriterionScript.spex_naming(criterion.id)

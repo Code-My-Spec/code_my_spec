@@ -31,6 +31,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.CodeMode.LuaValue
+  alias CodeMySpec.CodeMode.Progress
 
   @printed :code_mode_printed
 
@@ -75,6 +76,7 @@ defmodule CodeMySpec.CodeMode.Bindings do
     Lua.set!(lua, [:print], fn args, state ->
       line = Enum.map_join(args, "\t", &render/1)
       Process.put(@printed, Process.get(@printed, []) ++ [line])
+      Progress.report({:print, line})
       {[], state}
     end)
   end
@@ -186,7 +188,11 @@ defmodule CodeMySpec.CodeMode.Bindings do
 
   defp callback(tool) do
     fn args, state ->
-      case call(tool, arguments(state, args)) do
+      Progress.report({:call, tool.name})
+      outcome = call(tool, arguments(state, args))
+      Progress.report({:done, tool.name})
+
+      case outcome do
         {:ok, value} ->
           {encoded, state} = Lua.encode!(state, value)
           {[encoded], state}

@@ -3,7 +3,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Auth.OAuthClient
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Installers
   alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
   alias CodeMySpec.Projects.Project
@@ -51,7 +51,8 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
       # rather than waiting for an agent to call four MCP tools is what lets a
       # freshly generated project satisfy `project_setup` with zero model
       # turns. Best-effort: a failed install must not fail the link.
-      env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+      env =
+        CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
       # Record the project's identity in the project itself. Without this, this
       # directory is only findable by a `local_path` lookup — a database query
@@ -88,16 +89,20 @@ defmodule CodeMySpec.Bootstrap.Tools.InitProject do
   # Existing values win: an id already in the file is the project's own answer,
   # and re-linking must not silently repoint a directory at something else.
   defp ensure_project_id_in_config(env, project_id) do
-    case Environments.read_file(env, @config_path) do
+    case ExecutionContexts.read_file(env, @config_path) do
       {:ok, content} ->
         if Regex.match?(~r/^project_id:/m, content) do
           :ok
         else
-          Environments.write_file(env, @config_path, "project_id: #{project_id}\n" <> content)
+          ExecutionContexts.write_file(
+            env,
+            @config_path,
+            "project_id: #{project_id}\n" <> content
+          )
         end
 
       {:error, _} ->
-        Environments.write_file(env, @config_path, "project_id: #{project_id}\n")
+        ExecutionContexts.write_file(env, @config_path, "project_id: #{project_id}\n")
     end
   end
 

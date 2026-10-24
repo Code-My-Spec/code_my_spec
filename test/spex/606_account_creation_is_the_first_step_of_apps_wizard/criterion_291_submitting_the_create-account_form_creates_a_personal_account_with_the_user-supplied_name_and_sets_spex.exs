@@ -19,6 +19,10 @@ defmodule CodeMySpecSpex.Story606.Criterion5514Spex do
 
   setup :register_and_log_in_user
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "Valid create-account submission advances onboarding", criterion: 291 do
     scenario "Valid submission creates the account and advances onboarding" do
       given_ "the user is on /app with no accounts", context do

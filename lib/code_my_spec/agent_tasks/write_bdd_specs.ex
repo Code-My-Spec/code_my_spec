@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Stories
@@ -265,7 +265,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     path = module_path(env, module_name)
 
     body =
-      case path && Environments.read_file(env, path) do
+      case path && ExecutionContexts.read_file(env, path) do
         {:ok, source} ->
           if stub_source?(source) do
             stub_framing(path)
@@ -557,14 +557,14 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       |> Enum.map_join("/", &Macro.underscore/1)
 
     candidates = ["lib/#{relative}.ex", "#{relative}.ex"]
-    Enum.find(candidates, &Environments.file_exists?(env, &1))
+    Enum.find(candidates, &ExecutionContexts.file_exists?(env, &1))
   end
 
   defp module_path(_env, _), do: nil
 
   # Every probe of the source tree is asked of the machine holding it, never
   # this server's cwd.
-  defp environment(scope), do: CodeMySpec.AgentTasks.environment(scope)
+  defp environment(scope), do: CodeMySpec.AgentTasks.execution_context(scope)
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
     relative =
@@ -595,7 +595,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp story_spec_dir(_story, _), do: nil
 
   defp list_existing_specs(env, dir) do
-    case Environments.list_directory(env, dir) do
+    case ExecutionContexts.list_directory(env, dir) do
       {:ok, entries} ->
         entries
         |> Enum.filter(&String.ends_with?(&1, "_spex.exs"))
@@ -674,9 +674,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # project's module name. `my_app` is the last resort: placeholders in a prompt
   # read as real instructions.
   defp derive_app_name(scope) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
-    case env && Environments.read_file(env, "mix.exs") do
+    case env && ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} -> extract_app_name(content, scope)
       _ -> app_name_from_project(scope)
     end

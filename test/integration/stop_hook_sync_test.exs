@@ -18,7 +18,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Hooks.Stop
@@ -167,9 +167,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
       scope =
-        CodeMySpec.UsersFixtures.put_fixture_environment(
+        CodeMySpec.UsersFixtures.put_fixture_execution_context(
           %{scope | active_project: project},
-          Environment.new(:local, tmp_dir)
+          ExecutionContext.new(:local, tmp_dir)
         )
 
       external_id = "manual-test-#{System.unique_integer([:positive])}"
@@ -227,9 +227,9 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     {scope, tmp_dir}

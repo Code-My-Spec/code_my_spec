@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5952Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story687.Criterion5952Spex do
 
       given_ "a new module is written to the env after the initial sync", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @drift_path,
             """
             defmodule PostDriftModule do

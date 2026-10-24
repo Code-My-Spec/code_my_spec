@@ -9,14 +9,14 @@ defmodule CodeMySpec.Validation.SpecsReadyNoteTest do
   import CodeMySpec.{StoriesFixtures, UsersFixtures}
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Stories
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("specs_ready_note")
-    environment = Environment.new(:local, tmp)
-    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
-    :ok = register_working_copy_environment(scope, environment)
+    environment = ExecutionContext.new(:local, tmp)
+    scope = put_fixture_execution_context(%{full_scope_fixture() | cwd: tmp}, environment)
+    :ok = register_working_copy_execution_context(scope, environment)
 
     Configurations.get_or_create(scope)
     # spex defaults to :off for a fresh project (nothing has ever gone green

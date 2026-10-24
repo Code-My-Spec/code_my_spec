@@ -167,8 +167,9 @@ defmodule CodeMySpec.Requirements.Handlers do
     "questions_answered" => [:stories],
     # Issues too: a fix resolved after the last promotion unsatisfies it.
     "story_promoted" => [:stories, :issues],
-    # :stories too: re-stamping qa_ready_at without a new attempt moves it.
-    "qa_complete" => [:qa, :stories],
+    # Cited issues can release a partial/fail without changing its certification.
+    # Story changes also move the certification the attempt must answer for.
+    "qa_complete" => {[:qa, :stories, :issues], [:qa, :stories]},
     # The rollups. `qa_integration_plan` is handed the file profile it would
     # otherwise re-read; the rest query for themselves — see
     # `@delegate_requirements`.

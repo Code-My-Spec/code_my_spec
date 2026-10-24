@@ -3,7 +3,7 @@ defmodule CodeMySpec.Architecture.Tools.CheckDecisions do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Architecture.DecisionCoverage
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
 
   @adr_glob ".code_my_spec/architecture/decisions/*.md"
@@ -30,10 +30,10 @@ defmodule CodeMySpec.Architecture.Tools.CheckDecisions do
   @impl true
   def call(_params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
-         env when not is_nil(env) <- WorkingCopies.environment(scope),
-         {:ok, mix_exs} <- Environments.read_file(env, "mix.exs") do
+         env when not is_nil(env) <- WorkingCopies.execution_context(scope),
+         {:ok, mix_exs} <- ExecutionContexts.read_file(env, "mix.exs") do
       adrs =
-        env |> Environments.glob(@adr_glob) |> Map.new(&{&1, read_adr(env, &1)})
+        env |> ExecutionContexts.glob(@adr_glob) |> Map.new(&{&1, read_adr(env, &1)})
 
       {:ok, mix_exs |> DecisionCoverage.check(adrs) |> DecisionCoverage.report()}
     else
@@ -43,7 +43,7 @@ defmodule CodeMySpec.Architecture.Tools.CheckDecisions do
   end
 
   defp read_adr(env, path) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, text} -> text
       {:error, _} -> ""
     end

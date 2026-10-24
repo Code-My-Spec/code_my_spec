@@ -19,7 +19,7 @@ defmodule Mix.Tasks.Cms.Eval do
   coupling the artifact split exists to remove, and it cost a day:
 
   A spex runs inside ExUnit with the Ecto sandbox, and its environment is
-  `Support.InMemoryEnvironment`, where `Environments.write_file/3` answers `:ok`
+  `Support.InMemoryExecutionContext`, where `ExecutionContexts.write_file/3` answers `:ok`
   and puts nothing on disk. Right for a scenario driving a LiveView, exactly
   wrong for one driving an agent — a real agent reads real files. The fixture
   and the agent were on two different filesystems, so the project chain never

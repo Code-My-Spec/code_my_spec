@@ -32,7 +32,9 @@ defmodule CodeMySpecSpex.Story677.Criterion5752Spex do
     scenario "spex_denied_calls.ex missing, three other artifacts present → response names only the missing path" do
       given_ "three of four artifacts are present, only spex_denied_calls.ex is missing",
              context do
-        :ok = Artifacts.write_baseline_artifacts(context.environment, skip: [:framework_denied])
+        :ok =
+          Artifacts.write_baseline_artifacts(context.execution_context, skip: [:framework_denied])
+
         {:ok, context}
       end
 

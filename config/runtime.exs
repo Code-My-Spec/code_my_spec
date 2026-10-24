@@ -103,7 +103,7 @@ if config_env() == :harness do
          Keyword.put(
            Application.get_env(:code_my_spec, CodeMySpec.Repo, []),
            :database,
-           System.get_env("CMS_DB_PATH") || Path.expand("~/.codemyspec/cli.db")
+           System.get_env("CMS_DB_PATH") || Path.join(CodeMySpec.Paths.user_state_dir(), "cli.db")
          )
 
   # Concurrent analyzer runs. Unset, `CmsHarness.AnalysisSlots.limit/0` takes a
@@ -276,7 +276,7 @@ end
 if config_env() == :desktop do
   # One SQLite file beside the rest of the machine's CodeMySpec state.
   config :code_my_spec, CodeMySpec.Repo,
-    database: System.get_env("CMS_DESKTOP_DB") || Path.expand("~/.codemyspec/desktop.db"),
+    database: CodeMySpec.Paths.desktop_database(),
     journal_mode: :wal,
     busy_timeout: 10_000,
     default_transaction_mode: :immediate,

@@ -2,7 +2,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Content
   alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
 
@@ -26,7 +26,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
 
   @impl true
   def call(_params, context) do
-    env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+    env = CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
     case install(env) do
       :ok ->
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
   """
   # No working copy here. Refusing is the whole point: the previous behaviour
   # was to root a `:local` environment at the server's own checkout and write
-  # there, reporting success. See `WorkingCopies.tool_environment/1`.
+  # there, reporting success. See `WorkingCopies.tool_execution_context/1`.
   def install(nil), do: {:error, :no_working_copy}
 
   def install(env) do
@@ -55,17 +55,17 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
     managed_section = Content.claude_md_content(app_name)
     start_marker = Content.claude_md_start_marker()
 
-    case Environments.read_file(env, "CLAUDE.md") do
+    case ExecutionContexts.read_file(env, "CLAUDE.md") do
       {:ok, existing} ->
         if String.contains?(existing, start_marker) do
           updated = replace_managed_section(existing, managed_section)
-          Environments.write_file(env, "CLAUDE.md", updated)
+          ExecutionContexts.write_file(env, "CLAUDE.md", updated)
         else
-          Environments.write_file(env, "CLAUDE.md", existing <> "\n" <> managed_section)
+          ExecutionContexts.write_file(env, "CLAUDE.md", existing <> "\n" <> managed_section)
         end
 
       {:error, :enoent} ->
-        Environments.write_file(env, "CLAUDE.md", managed_section)
+        ExecutionContexts.write_file(env, "CLAUDE.md", managed_section)
 
       {:error, reason} ->
         {:error, reason}
@@ -73,7 +73,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallClaudeMd do
   end
 
   defp extract_app_name(env) do
-    case Environments.read_file(env, "mix.exs") do
+    case ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} -> Content.extract_app_name_from_source(content)
       _ -> nil
     end

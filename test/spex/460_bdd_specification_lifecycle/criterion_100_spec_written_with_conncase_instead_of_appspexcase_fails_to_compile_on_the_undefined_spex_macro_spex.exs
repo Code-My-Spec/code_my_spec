@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -58,8 +58,8 @@ defmodule CodeMySpecSpex.Story460.Criterion5557Spex do
         spec_path = Fixtures.spec_file_path(context.story, criterion)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             spec_path,
             conncase_only_spec_content(criterion.id)
           )

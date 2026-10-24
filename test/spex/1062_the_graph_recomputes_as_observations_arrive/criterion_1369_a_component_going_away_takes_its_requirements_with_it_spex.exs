@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3430Spex do
           )
 
         assert match?({:ok, _}, reply)
-        :ok = Fixtures.delete_env_file(context.environment, "lib/catalog/product.ex")
+        :ok = Fixtures.delete_env_file(context.execution_context, "lib/catalog/product.ex")
         sync(context)
 
         {:ok, Map.put(context, :after, read_settled_graph(context))}

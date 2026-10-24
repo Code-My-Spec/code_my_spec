@@ -21,6 +21,7 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Main.Machinery
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Devices.Device
@@ -50,6 +51,8 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
     from(w in WorkingCopy, where: w.project_id == ^project_id)
     |> Repo.all()
     |> Enum.map(fn copy ->
+      instance = AppInstances.for_working_copy(%Scope{active_project_id: project_id}, copy)
+
       %{
         working_copy_id: copy.id,
         root: copy.root,
@@ -59,8 +62,11 @@ defmodule CodeMySpec.Agents.Main.MachineryRepository do
         # claiming life indefinitely with nothing behind it.
         connected?: connected?(copy.id),
         machine_tools: copy.machine_tools,
-        preview_status: copy.preview_status,
-        preview_url: copy.preview_url,
+        preview_status: instance && instance.preview_status,
+        preview_url: instance && instance.preview_url,
+        app_status: instance && instance.status,
+        app_url: instance && instance.url,
+        app_serving_commit: instance && instance.serving_commit,
         agent_ids: by_copy |> Map.get(copy.id, []) |> Enum.map(& &1.id)
       }
     end)

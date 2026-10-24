@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8189Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -24,8 +24,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8189Spex do
     scenario "writing the journey result satisfies qa_journey_execute" do
       given_ "a journey plan exists and no result does", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.qa_journey_plan_path(),
             "# QA Journey Plan\n\n## Journeys\n\n### Capture\n\n1. Sign in\n2. Capture a task\n"
           )
@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8189Spex do
       when_ "the agent writes the journey result and the harness delivers its manifest",
             context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.qa_journey_result_path(),
             "# Journey Result\n\n## Capture\n\nRan it against the running server. Passed.\n"
           )

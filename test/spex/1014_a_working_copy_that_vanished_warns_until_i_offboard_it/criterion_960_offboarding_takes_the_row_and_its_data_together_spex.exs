@@ -48,7 +48,10 @@ defmodule CodeMySpecSpex.Story1014.Criterion2863Spex do
         device = device_id(context, hostname: "the-laptop")
 
         root = checkout("placeholder")
-        joined = join_working_copy(context, root, "the copy to offboard", device_id: device)
+
+        {joined, socket} =
+          join_working_copy_socket(context, root, "the copy to offboard", device_id: device)
+
         working_copy_id = joined.working_copy_id
 
         RealDisk.write!(
@@ -64,6 +67,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2863Spex do
 
         {:ok,
          context
+         |> Map.put(:harness_socket, socket)
          |> Map.put(:working_copy_id, working_copy_id)
          |> Map.put(:device, device)}
       end
@@ -85,9 +89,11 @@ defmodule CodeMySpecSpex.Story1014.Criterion2863Spex do
                  "thing that ever removes one is unreachable"
 
         html =
-          live
-          |> element("#offboard-#{context.working_copy_id} [data-role='confirm-confirm']")
-          |> render_click()
+          with_app_cleanup(context.harness_socket, fn ->
+            live
+            |> element("#offboard-#{context.working_copy_id} [data-role='confirm-confirm']")
+            |> render_click()
+          end)
 
         {:ok, context |> Map.put(:live, live) |> Map.put(:html, html)}
       end

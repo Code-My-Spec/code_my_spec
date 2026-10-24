@@ -10,7 +10,7 @@ defmodule CodeMySpec.Agents.Phase do
   ## Why this is not an agent task
 
   `CodeMySpec.AgentTasks` asks the same two questions — build a prompt, judge
-  the result — for work on a checkout, through `Environments` and a `Session`.
+  the result — for work on a checkout, through `ExecutionContexts` and a `Session`.
   A conversation with a visitor who has not signed up has no checkout, session,
   working copy or project for a requirement node to hang off. So this borrows
   the shape and none of the machinery.

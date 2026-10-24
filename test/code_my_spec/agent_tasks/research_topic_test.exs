@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.ResearchTopic
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # ============================================================================
   # Test Helpers
@@ -15,8 +15,8 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
+    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -110,7 +110,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
     end
 
     test "includes ADR content as decision context", %{scope: scope, task: task} do
-      write_decision_record(fixture_environment(scope), "wallaby")
+      write_decision_record(fixture_execution_context(scope), "wallaby")
 
       assert {:ok, prompt} = ResearchTopic.command(scope, task)
       assert prompt =~ "Use Wallaby for Integration Testing"
@@ -118,7 +118,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
     end
 
     test "includes research brief when one exists", %{scope: scope, task: task} do
-      write_research_brief(fixture_environment(scope), "wallaby")
+      write_research_brief(fixture_execution_context(scope), "wallaby")
 
       assert {:ok, prompt} = ResearchTopic.command(scope, task)
       assert prompt =~ "Research Wallaby for integration testing"
@@ -130,7 +130,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
     end
 
     test "includes mix.exs content when available", %{scope: scope, task: task} do
-      write_mix_exs(fixture_environment(scope))
+      write_mix_exs(fixture_execution_context(scope))
 
       assert {:ok, prompt} = ResearchTopic.command(scope, task)
       assert prompt =~ "phoenix_live_view"
@@ -140,7 +140,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       scope: scope,
       task: task
     } do
-      write_knowledge(fixture_environment(scope), "wallaby")
+      write_knowledge(fixture_execution_context(scope), "wallaby")
 
       assert {:ok, prompt} = ResearchTopic.command(scope, task)
       assert prompt =~ "getting_started.md"
@@ -232,7 +232,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       scope: scope,
       task: task
     } do
-      write_knowledge(fixture_environment(scope), "wallaby")
+      write_knowledge(fixture_execution_context(scope), "wallaby")
 
       capture_log(fn ->
         assert {:ok, :valid} = ResearchTopic.evaluate(scope, task)
@@ -254,7 +254,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_knowledge(env, "wallaby")
       write_research_brief(env, "wallaby")
 
@@ -272,7 +272,7 @@ defmodule CodeMySpec.AgentTasks.ResearchTopicTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_research_brief(env, "wallaby")
 
       prompt_path = Path.join(env.cwd, ".code_my_spec/tasks/research/wallaby.md")

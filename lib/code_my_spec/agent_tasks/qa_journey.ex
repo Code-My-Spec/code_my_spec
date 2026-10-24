@@ -4,7 +4,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   """
 
   alias CodeMySpec.Documents.DocumentSpecProjector
-  alias CodeMySpec.{Environments, Paths, Stories}
+  alias CodeMySpec.{ExecutionContexts, Paths, Stories}
 
   @stories_file Path.join(Paths.qa_dir(), "stories_summary.md")
   @journey_tests_dir Paths.qa_journey_tests_dir()
@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   the agent works on the first un-skipped phase per session.
   """
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     stories = list_stories(scope)
     write_stories_file(env, stories)
@@ -32,9 +32,10 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
       stories: stories,
       plan_spec: DocumentSpecProjector.project_spec("qa_journey_plan"),
       result_spec: DocumentSpecProjector.project_spec("qa_journey_result"),
-      qa_plan_exists: Environments.file_exists?(env, Paths.qa_plan()) == true,
-      journey_plan_exists: Environments.file_exists?(env, Paths.qa_journey_plan()) == true,
-      journey_result_exists: Environments.file_exists?(env, Paths.qa_journey_result()) == true,
+      qa_plan_exists: ExecutionContexts.file_exists?(env, Paths.qa_plan()) == true,
+      journey_plan_exists: ExecutionContexts.file_exists?(env, Paths.qa_journey_plan()) == true,
+      journey_result_exists:
+        ExecutionContexts.file_exists?(env, Paths.qa_journey_result()) == true,
       existing_tests: list_journey_tests(env)
     }
 
@@ -50,7 +51,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   end
 
   defp list_journey_tests(env) do
-    case Environments.glob(env, Path.join(@journey_tests_dir, "*_test.exs")) do
+    case ExecutionContexts.glob(env, Path.join(@journey_tests_dir, "*_test.exs")) do
       files when is_list(files) -> files
       _ -> []
     end
@@ -72,7 +73,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
         """
       end)
 
-    Environments.write_file(env, @stories_file, "# Stories\n\n" <> content)
+    ExecutionContexts.write_file(env, @stories_file, "# Stories\n\n" <> content)
   end
 
   defp format_criteria([]), do: "_No acceptance criteria._"

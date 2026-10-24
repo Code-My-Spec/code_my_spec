@@ -27,8 +27,8 @@ defmodule CodeMySpecSpex.Story80.Criterion5273Spex do
   spex "The phase adapts to the project's current state", criterion: 59 do
     scenario "Populated project's prompt includes architecture, deps, and story context" do
       given_ "a realistic mix.exs is present in the project root", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_mix_exs(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_mix_exs(context.execution_context)
         {:ok, context}
       end
 

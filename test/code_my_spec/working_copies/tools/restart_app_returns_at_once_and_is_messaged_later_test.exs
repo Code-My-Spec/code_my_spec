@@ -1,4 +1,4 @@
-defmodule CodeMySpec.WorkingCopies.Tools.RestartAppReturnsAtOnceAndIsMessagedLaterTest do
+defmodule CodeMySpec.AppInstances.Tools.RestartAppReturnsAtOnceAndIsMessagedLaterTest do
   @moduledoc """
   Issue f2977826, batch 2 of 4f7929e4: `restart_app` raced the code-mode
   sandbox's 30s wall clock with a shrinking margin. Same lock-then-ack
@@ -34,7 +34,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.RestartAppReturnsAtOnceAndIsMessagedLat
     # The run spawns a detached task, which checks out its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     RecordingAgentTransport.listen(scope)
 
     {:ok, agent} =

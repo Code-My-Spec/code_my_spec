@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2360Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,11 +30,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2360Spex do
   spex "Onboarding hands over everything needed to finish", criterion: 872 do
     scenario "The output is sufficient to finish the job" do
       given_ "a working copy that has just been onboarded", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2360"}, pretty: true)
           )

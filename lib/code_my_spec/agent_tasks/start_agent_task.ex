@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Paths
@@ -320,7 +320,10 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   end
 
   defp decisions_context(scope) do
-    case Environments.read_file(CodeMySpec.AgentTasks.environment(scope), Paths.decisions_index()) do
+    case ExecutionContexts.read_file(
+           CodeMySpec.AgentTasks.execution_context(scope),
+           Paths.decisions_index()
+         ) do
       {:ok, content} when byte_size(content) > 0 ->
         """
         ## Architecture Decision Records
@@ -351,7 +354,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   defp validate_external_id(external_id) when is_binary(external_id), do: {:ok, external_id}
 
   defp validate_environment(scope) do
-    case CodeMySpec.AgentTasks.environment(scope) do
+    case CodeMySpec.AgentTasks.execution_context(scope) do
       nil -> {:error, "No environment configured (no working directory)"}
       env -> {:ok, env}
     end
@@ -423,7 +426,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   # Sync — incremental only.
 
   defp sync_project(scope) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     base_dir = env && env.cwd
 
     if base_dir do

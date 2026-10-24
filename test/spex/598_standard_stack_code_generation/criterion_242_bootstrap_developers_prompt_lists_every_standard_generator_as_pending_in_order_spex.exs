@@ -24,8 +24,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5293Spex do
     scenario "Bootstrap developer's prompt lists every standard generator as pending, in order" do
       given_ "the project has a baseline mix.exs and no generator detection files",
              context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

@@ -18,7 +18,7 @@ defmodule CmsHarness.AppInstanceStatusRefreshTest do
     assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("ensure_app_running")
 
     FakeAppInstanceRunner.put_probe(:erroring)
-    pid = GenServer.whereis(AppInstance.via(root))
+    pid = GenServer.whereis(AppInstance.via(instance(root)))
     # Requests reaching the app move its log; an idle copy would be stopped.
     log = :sys.get_state(pid).log_path
     File.mkdir_p!(Path.dirname(log))

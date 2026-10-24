@@ -19,8 +19,8 @@ defmodule CodeMySpecSpex.Story561.Criterion3596Spex do
         other = CodeMySpecSpex.Fixtures.live_agent_scope(context.scope)
 
         :ok =
-          CodeMySpec.Environments.write_file(
-            CodeMySpecSpex.Fixtures.fixture_environment(other),
+          CodeMySpec.ExecutionContexts.write_file(
+            CodeMySpecSpex.Fixtures.fixture_execution_context(other),
             "lib/reservations/booking.ex",
             "defmodule Reservations.Booking do end"
           )

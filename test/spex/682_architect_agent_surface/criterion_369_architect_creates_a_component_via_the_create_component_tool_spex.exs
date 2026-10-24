@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5832Spex do
         module_name = "#{app}.Notifications"
         spec_path = Fixtures.spec_file(Macro.underscore(module_name))
 
-        refute CodeMySpec.Environments.file_exists?(context.environment, spec_path),
+        refute CodeMySpec.ExecutionContexts.file_exists?(context.execution_context, spec_path),
                "pre-condition failed: expected no spec file at #{spec_path}"
 
         {:ok,

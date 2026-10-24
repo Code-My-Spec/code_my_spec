@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3348Spex do
             context do
         [criterion] = context.new_story.criteria
 
-        ProjectBuilder.new(context.environment, app: "my_app")
+        ProjectBuilder.new(context.execution_context, app: "my_app")
         |> ProjectBuilder.spex(context.new_story.number, criterion.id)
         |> ProjectBuilder.write!()
 

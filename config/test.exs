@@ -427,7 +427,7 @@ config :code_my_spec,
   github_client_id: "test_github_client_id",
   github_client_secret: "test_github_client_secret",
   git_impl_module: CodeMySpec.Support.TestAdapter,
-  environment: CodeMySpec.Support.RecordingEnvironment,
+  execution_context_adapter: CodeMySpec.Support.RecordingExecutionContext,
   embeddings_backend: CodeMySpec.Embeddings.TestBackend,
   # Route ProjectUsers' outbound Req through Req.Test so specs/tests can stub
   # the target app's users endpoint without hitting the network.

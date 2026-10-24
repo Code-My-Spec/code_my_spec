@@ -17,8 +17,8 @@ defmodule CodeMySpecSpex.Story1143.Criterion2372Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.SlotHolder
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -59,8 +59,8 @@ defmodule CodeMySpecSpex.Story1143.Criterion2372Spex do
         run_id = String.to_integer(id)
 
         root = context.harness.root
-        disk = Environment.new(:local, root)
-        git = &Environments.cmd(disk, "git", &1, cd: root, stderr_to_stdout: true)
+        disk = ExecutionContext.new(:local, root)
+        git = &ExecutionContexts.cmd(disk, "git", &1, cd: root, stderr_to_stdout: true)
 
         {_, 0} = git.(["add", "-A"])
 

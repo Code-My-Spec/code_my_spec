@@ -27,15 +27,15 @@ defmodule CodeMySpecSpex.Story80.Criterion5276Spex do
   spex "Validation gates on the decisions index", criterion: 62 do
     scenario "Missing decisions index yields needs-work feedback referencing the expected path" do
       given_ "the env is reset for this scenario", context do
-        Fixtures.reset_setup_env(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
         {:ok, context}
       end
 
       given_ :technical_strategy_task_started
 
       given_ "the decisions index file does NOT exist", context do
-        refute CodeMySpec.Environments.file_exists?(
-                 context.environment,
+        refute CodeMySpec.ExecutionContexts.file_exists?(
+                 context.execution_context,
                  ".code_my_spec/architecture/decisions.md"
                ),
                "expected decisions.md to be absent — start_task does not write the index"

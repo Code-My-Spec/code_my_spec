@@ -12,7 +12,13 @@ defmodule CodeMySpecSpex.Story561.Criterion3594Spex do
     scenario "Satisfying a prerequisite unblocks dependent work" do
       given_ "the prerequisite that was blocking the story, now satisfied", context do
         context = context |> Slice.base() |> Slice.child()
-        :ok = CodeMySpec.Environments.delete_file(context.environment, ".code_my_spec/qa/plan.md")
+
+        :ok =
+          CodeMySpec.ExecutionContexts.delete_file(
+            context.execution_context,
+            ".code_my_spec/qa/plan.md"
+          )
+
         {:ok, CodeMySpecSpex.GraphGivens.sync(context)}
       end
 

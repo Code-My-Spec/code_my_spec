@@ -14,7 +14,7 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptingARepositoryReturnsAtOnceAndIsMes
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.GitHub
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecTest.AgentPresence
@@ -43,7 +43,7 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptingARepositoryReturnsAtOnceAndIsMes
 
     scope = full_scope_fixture()
     _ = github_integration_fixture(scope.user)
-    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, working_dir))
 
     RecordingAgentTransport.listen(scope)
 

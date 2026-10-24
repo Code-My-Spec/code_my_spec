@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Local
+  alias CodeMySpec.ExecutionContexts.Local
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Hetzner, Sops, Steps}
 
@@ -41,7 +41,9 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     {public, _private} = key_for(scope, "uat")
 
     :ok =
-      Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), %{"uat" => public})
+      Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(scope), %{
+        "uat" => public
+      })
 
     put_secret(scope, "uat", "DATABASE_URL", "postgresql://u:p@10.0.0.5:5432/app")
 
@@ -86,7 +88,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
       assert {:ok, missing} =
                Sops.missing_secrets(
-                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
                  "uat",
                  private,
                  ["DATABASE_URL"]
@@ -182,8 +184,8 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
       # still have present, reproducing a role provisioned back when
       # `CMS_RESTORE_ADMIN_URL` was never written at all.
       :ok =
-        CodeMySpec.Environments.delete_file(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+        CodeMySpec.ExecutionContexts.delete_file(
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           Sops.env_file("uat")
         )
 
@@ -206,7 +208,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
   # Found live against MarketMySpec: a harness-scoped caller's scope carries
   # no working directory for a real project, and `Sops.missing_secrets/4`
-  # resolves a relative path through it. `Environments.Local.resolve_path/2`
+  # resolves a relative path through it. `ExecutionContexts.Local.resolve_path/2`
   # used to raise there rather than silently reading against the server's
   # own checkout — right instinct, wrong mechanism: the raise propagated out
   # of `verify(:server, …)` entirely, past `safe_verify/3`'s rescue, so the
@@ -217,15 +219,15 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
   # every caller's own already-correct "cannot prove it" handling runs
   # instead of being unwound past.
   #
-  # The suite swaps `:local` for `RecordingEnvironment` globally
+  # The suite swaps `:local` for `RecordingExecutionContext` globally
   # (`test_helper.exs`), which does not reproduce this — it always carries a
-  # cwd, only the real `Environments.Local` needs to answer a directoryless
+  # cwd, only the real `ExecutionContexts.Local` needs to answer a directoryless
   # one. Restored to the real one for just this test, since the claim under
   # test is specifically about that module's own behavior.
   describe "the caller's scope carries no working directory" do
     test "verify(:server, …) reports absent instead of raising", ctx do
-      previous = Application.get_env(:code_my_spec, :environment)
-      Application.put_env(:code_my_spec, :environment, Local)
+      previous = Application.get_env(:code_my_spec, :execution_context_adapter)
+      Application.put_env(:code_my_spec, :execution_context_adapter, Local)
 
       on_exit(fn -> restore_environment_env(previous) end)
 
@@ -257,8 +259,8 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
     # returned, it raised. Now that `resolve_path/2` itself answers cleanly,
     # this reaches `put_secret/4`'s own `with`/`else` like any other error.
     test "put_secret/4 reports a clean error instead of raising", ctx do
-      previous = Application.get_env(:code_my_spec, :environment)
-      Application.put_env(:code_my_spec, :environment, Local)
+      previous = Application.get_env(:code_my_spec, :execution_context_adapter)
+      Application.put_env(:code_my_spec, :execution_context_adapter, Local)
 
       on_exit(fn -> restore_environment_env(previous) end)
 
@@ -281,10 +283,11 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
   # probe now (`running_bind/2`'s correction), so the curl is no longer
   # necessarily the first `:ran` message — drains the mailbox instead of
   # grabbing just the next one.
-  defp restore_environment_env(nil), do: Application.delete_env(:code_my_spec, :environment)
+  defp restore_environment_env(nil),
+    do: Application.delete_env(:code_my_spec, :execution_context_adapter)
 
   defp restore_environment_env(previous),
-    do: Application.put_env(:code_my_spec, :environment, previous)
+    do: Application.put_env(:code_my_spec, :execution_context_adapter, previous)
 
   defp find_ran(pattern, acc \\ []) do
     receive do
@@ -305,7 +308,7 @@ defmodule CodeMySpec.Provisioning.ServerRegistryVerifyTest do
 
     :ok =
       Sops.put_secret(
-        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        CodeMySpec.UsersFixtures.fixture_execution_context(scope),
         environment,
         key,
         value,

@@ -24,10 +24,10 @@ defmodule CodeMySpecSpex.Story598.Criterion5296Spex do
   spex "The prompt is grounded in real project state", criterion: 245 do
     scenario "Bare project produces a minimal prompt without optional sections" do
       given_ "only a baseline mix.exs exists in the project", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
 
-        refute Fixtures.script_exists?(context.environment),
+        refute Fixtures.script_exists?(context.execution_context),
                "expected no existing generation script in the bare-project fixture"
 
         {:ok, context}

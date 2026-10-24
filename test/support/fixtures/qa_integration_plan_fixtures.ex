@@ -1,6 +1,6 @@
 defmodule CodeMySpec.QaIntegrationPlanFixtures do
   @moduledoc """
-  Seeds an `InMemoryEnvironment` for BDD specs covering the
+  Seeds an `InMemoryExecutionContext` for BDD specs covering the
   `CodeMySpec.AgentTasks.QaIntegrationPlan` task. Used by the
   "Verified third-party integrations" story.
 
@@ -55,8 +55,8 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   Delegates to `SetupFixtures.reset/1` (in-memory env wipe).
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.SetupFixtures
 
   @app_name "my_app"
@@ -107,10 +107,10 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   Write a baseline `mix.exs` so app-name detection succeeds. Idempotent —
   only writes if `mix.exs` is absent.
   """
-  @spec with_baseline_project(Environment.t()) :: :ok
+  @spec with_baseline_project(ExecutionContext.t()) :: :ok
   def with_baseline_project(env) do
-    unless Environments.file_exists?(env, "mix.exs") do
-      Environments.write_file(env, "mix.exs", """
+    unless ExecutionContexts.file_exists?(env, "mix.exs") do
+      ExecutionContexts.write_file(env, "mix.exs", """
       defmodule #{@app_mod}.MixProject do
         use Mix.Project
 
@@ -131,7 +131,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   end
 
   @doc "Wipe the in-memory env. Delegates to SetupFixtures."
-  @spec reset(Environment.t()) :: :ok
+  @spec reset(ExecutionContext.t()) :: :ok
   defdelegate reset(env), to: SetupFixtures
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -151,14 +151,14 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   Use `:auth_type, "oauth2"` to model integrations that should also
   trigger token-exchange script instructions in the prompt.
   """
-  @spec with_decision_for_service(Environment.t(), String.t(), keyword()) :: :ok
+  @spec with_decision_for_service(ExecutionContext.t(), String.t(), keyword()) :: :ok
   def with_decision_for_service(env, service, opts \\ []) do
     title = Keyword.get(opts, :title, "Use #{display(service)}")
     auth_type = Keyword.get(opts, :auth_type, "api_token")
     purpose = Keyword.get(opts, :purpose, "third-party integration")
     env_vars = Keyword.get(opts, :env_vars, "#{String.upcase(service)}_API_KEY")
 
-    Environments.write_file(env, "#{@decisions_dir}/#{service}.md", """
+    ExecutionContexts.write_file(env, "#{@decisions_dir}/#{service}.md", """
     # #{title}
 
     ## Status
@@ -188,7 +188,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   script itself; pair with `with_verify_script/2` for the full happy
   state, or use `with_verified_integration/2` for the composite.
   """
-  @spec with_verified_integration_spec(Environment.t(), String.t()) :: :ok
+  @spec with_verified_integration_spec(ExecutionContext.t(), String.t()) :: :ok
   def with_verified_integration_spec(env, name) do
     write_integration_spec(env, name, status_label: "verified")
   end
@@ -198,7 +198,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   carries a `## Verify Script` section but credentials have not yet
   been verified.
   """
-  @spec with_pending_integration_spec(Environment.t(), String.t()) :: :ok
+  @spec with_pending_integration_spec(ExecutionContext.t(), String.t()) :: :ok
   def with_pending_integration_spec(env, name) do
     write_integration_spec(env, name, status_label: "pending")
   end
@@ -208,9 +208,9 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   `## Verify Script` section — the failure mode for Rule 4's
   "spec without verify script" branch.
   """
-  @spec with_integration_spec_missing_verify_script(Environment.t(), String.t()) :: :ok
+  @spec with_integration_spec_missing_verify_script(ExecutionContext.t(), String.t()) :: :ok
   def with_integration_spec_missing_verify_script(env, name) do
-    Environments.write_file(env, integration_spec_path(name), """
+    ExecutionContexts.write_file(env, integration_spec_path(name), """
     # #{display(name)} Integration
 
     ## Status
@@ -239,11 +239,11 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   format mandates. The script is realistic but not actually executable
   in the in-memory env — its presence is what gates evaluation.
   """
-  @spec with_verify_script(Environment.t(), String.t()) :: :ok
+  @spec with_verify_script(ExecutionContext.t(), String.t()) :: :ok
   def with_verify_script(env, name) do
     upper = String.upcase(name)
 
-    Environments.write_file(env, verify_script_path(name), """
+    ExecutionContexts.write_file(env, verify_script_path(name), """
     #!/bin/bash
     # Verify #{name} credentials.
     set -e
@@ -270,10 +270,10 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   becomes a row in the index table. With no `topics`, writes a
   minimal table header.
   """
-  @spec with_integration_index(Environment.t()) :: :ok
+  @spec with_integration_index(ExecutionContext.t()) :: :ok
   def with_integration_index(env), do: with_integration_index(env, [])
 
-  @spec with_integration_index(Environment.t(), [String.t()]) :: :ok
+  @spec with_integration_index(ExecutionContext.t(), [String.t()]) :: :ok
   def with_integration_index(env, topics) when is_list(topics) do
     rows =
       Enum.map_join(topics, "\n", fn name ->
@@ -282,7 +282,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
 
     rows_block = if rows == "", do: "", else: "\n#{rows}"
 
-    Environments.write_file(env, @integrations_index, """
+    ExecutionContexts.write_file(env, @integrations_index, """
     # Integrations Index
 
     | Name | Auth Type | Status |
@@ -296,9 +296,9 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   Write an explicitly empty integrations index — a "no integrations
   required" marker. Use for the empty-pipeline happy path scenario.
   """
-  @spec with_empty_integration_index(Environment.t()) :: :ok
+  @spec with_empty_integration_index(ExecutionContext.t()) :: :ok
   def with_empty_integration_index(env) do
-    Environments.write_file(env, @integrations_index, """
+    ExecutionContexts.write_file(env, @integrations_index, """
     # Integrations Index
 
     No third-party integrations are required for this project.
@@ -319,7 +319,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
       with_verify_script(env, name)
       with_integration_index(env, [name])
   """
-  @spec with_verified_integration(Environment.t(), String.t()) :: :ok
+  @spec with_verified_integration(ExecutionContext.t(), String.t()) :: :ok
   def with_verified_integration(env, name) do
     with_verified_integration_spec(env, name)
     with_verify_script(env, name)
@@ -332,39 +332,39 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
   # ──────────────────────────────────────────────────────────────────────────
 
   @doc "Read an integration spec. Returns content or nil."
-  @spec read_integration_spec(Environment.t(), String.t()) :: String.t() | nil
+  @spec read_integration_spec(ExecutionContext.t(), String.t()) :: String.t() | nil
   def read_integration_spec(env, name) do
-    case Environments.read_file(env, integration_spec_path(name)) do
+    case ExecutionContexts.read_file(env, integration_spec_path(name)) do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   @doc "Read the integrations index. Returns content or nil."
-  @spec read_integration_index(Environment.t()) :: String.t() | nil
+  @spec read_integration_index(ExecutionContext.t()) :: String.t() | nil
   def read_integration_index(env) do
-    case Environments.read_file(env, @integrations_index) do
+    case ExecutionContexts.read_file(env, @integrations_index) do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   @doc "True if an integration spec exists for `name`."
-  @spec integration_spec_exists?(Environment.t(), String.t()) :: boolean()
+  @spec integration_spec_exists?(ExecutionContext.t(), String.t()) :: boolean()
   def integration_spec_exists?(env, name) do
-    Environments.file_exists?(env, integration_spec_path(name)) == true
+    ExecutionContexts.file_exists?(env, integration_spec_path(name)) == true
   end
 
   @doc "True if the integrations index file exists."
-  @spec integration_index_exists?(Environment.t()) :: boolean()
+  @spec integration_index_exists?(ExecutionContext.t()) :: boolean()
   def integration_index_exists?(env) do
-    Environments.file_exists?(env, @integrations_index) == true
+    ExecutionContexts.file_exists?(env, @integrations_index) == true
   end
 
   @doc "True if the verify script for `name` exists at the canonical path."
-  @spec verify_script_exists?(Environment.t(), String.t()) :: boolean()
+  @spec verify_script_exists?(ExecutionContext.t(), String.t()) :: boolean()
   def verify_script_exists?(env, name) do
-    Environments.file_exists?(env, verify_script_path(name)) == true
+    ExecutionContexts.file_exists?(env, verify_script_path(name)) == true
   end
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ defmodule CodeMySpec.QaIntegrationPlanFixtures do
     # Status section. `check_verified_status/2` does a case-insensitive
     # substring match (a known brittle contract) — leaking "verified"
     # into the body of a pending spec would falsely satisfy the check.
-    Environments.write_file(env, integration_spec_path(name), """
+    ExecutionContexts.write_file(env, integration_spec_path(name), """
     # #{display(name)} Integration
 
     ## Status

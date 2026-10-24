@@ -113,7 +113,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3171Spex do
       end
 
       then_ "the agent is told to resolve it in its own copy, not the running one", context do
-        assert context.told =~ "Merge main into your branch",
+        assert context.told =~ "Merge the current development branch into your branch",
                "the agent was refused without being told the remedy is its own to run"
 
         {:ok, context}

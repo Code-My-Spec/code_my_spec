@@ -24,10 +24,10 @@ defmodule CodeMySpecSpex.Story598.Criterion5297Spex do
     scenario "Fully-populated project's prompt includes decisions, providers, and existing-script sections" do
       given_ "the project has ADRs for elixir, phoenix, and pow-assent-integrations",
              context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
 
-        Fixtures.with_decisions(context.environment, [
+        Fixtures.with_decisions(context.execution_context, [
           "elixir",
           "phoenix",
           "pow-assent-integrations"
@@ -37,12 +37,12 @@ defmodule CodeMySpecSpex.Story598.Criterion5297Spex do
       end
 
       given_ "an existing code_generation.sh records prior generator runs", context do
-        Fixtures.with_full_script(context.environment)
+        Fixtures.with_full_script(context.execution_context)
         {:ok, context}
       end
 
       given_ "integration specs exist for github and google", context do
-        Fixtures.with_integration_specs(context.environment, ["github", "google"])
+        Fixtures.with_integration_specs(context.execution_context, ["github", "google"])
         {:ok, context}
       end
 

@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3473Spex do
       given_ "a test file for the ordinary component", context do
         :ok =
           Fixtures.write_env_file(
-            context.environment,
+            context.execution_context,
             "test/reservations_test.exs",
             "defmodule ReservationsTest do\n  use ExUnit.Case\nend\n"
           )

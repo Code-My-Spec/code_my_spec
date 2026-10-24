@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -98,7 +98,11 @@ defmodule CodeMySpecSpex.Story538.Criterion1494Spex do
           path = Fixtures.spec_file_path(refreshed_story, criterion)
 
           :ok =
-            Environments.write_file(context.environment, path, valid_spec_content(criterion.id))
+            ExecutionContexts.write_file(
+              context.execution_context,
+              path,
+              valid_spec_content(criterion.id)
+            )
         end)
 
         :ok =

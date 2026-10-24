@@ -171,7 +171,12 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   # goes to agents without a story, and does not hold a bound agent's story.
   describe "a project-level requirement the story waits on" do
     setup ctx do
-      :ok = CodeMySpec.Environments.delete_file(ctx.environment, ".code_my_spec/qa/plan.md")
+      :ok =
+        CodeMySpec.ExecutionContexts.delete_file(
+          ctx.execution_context,
+          ".code_my_spec/qa/plan.md"
+        )
+
       CodeMySpecSpex.GraphGivens.sync(ctx)
       %{qa: reload(ctx.qa)}
     end
@@ -225,6 +230,95 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
       assert [%{requirement_name: "issues_resolved", status: :active}] = coding.tasks
       refute "issues_resolved" in names(ctx, coding)
     end
+  end
+
+  test "resolving a partial review's unlinked blocker reoffers the same certification", ctx do
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    blocker = accept(ctx, %{scope: :qa})
+
+    %CodeMySpec.Qa.QaAttempt{}
+    |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      story_id: story.id,
+      status: :partial,
+      scenarios: [%{name: "Browser access", status: :partial, observation: "Tool unavailable"}],
+      issue_ids: [blocker.id],
+      reviewed_commit: story.qa_ready_commit,
+      review_certified_at: story.qa_ready_at,
+      review_started_at: DateTime.utc_now(),
+      submitted_at: DateTime.utc_now()
+    })
+    |> Repo.insert!()
+
+    CodeMySpec.Requirements.GraphInputs.event(
+      ctx.scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      [{"story", story.id}],
+      :project_wide
+    )
+
+    :ok = GraphWatcher.settle(ctx.scope)
+    refute "qa_complete" in names(ctx, ctx.qa)
+
+    {:ok, _} = Issues.resolve_issue(ctx.scope, blocker, "Browser access repaired")
+    :ok = GraphWatcher.settle(ctx.scope)
+
+    assert "qa_complete" in names(ctx, ctx.qa)
+    current = CodeMySpec.Stories.get_story!(ctx.scope, story.id)
+    assert current.qa_ready_commit == story.qa_ready_commit
+    assert current.qa_ready_at == story.qa_ready_at
+  end
+
+  test "resolving a cited blocker cannot release QA after the certified HEAD moved", ctx do
+    story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
+    blocker = accept(ctx, %{scope: :qa})
+
+    %CodeMySpec.Qa.QaAttempt{}
+    |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      story_id: story.id,
+      status: :fail,
+      scenarios: [%{name: "Browser access", status: :fail, observation: "Tool unavailable"}],
+      issue_ids: [blocker.id],
+      reviewed_commit: story.qa_ready_commit,
+      review_certified_at: story.qa_ready_at,
+      review_started_at: DateTime.utc_now(),
+      submitted_at: DateTime.utc_now()
+    })
+    |> Repo.insert!()
+
+    CodeMySpec.Requirements.GraphInputs.event(
+      ctx.scope,
+      "Qa",
+      "qa_attempt_submitted",
+      %{},
+      [{"story", story.id}],
+      :project_wide
+    )
+
+    :ok = GraphWatcher.settle(ctx.scope)
+    refute "qa_complete" in names(ctx, ctx.qa)
+
+    new_head = String.duplicate("b", 40)
+
+    [released] =
+      CodeMySpec.PromotionQueue.release_moved_certifications(
+        ctx.scope,
+        ctx.scope.active_working_copy_id,
+        new_head
+      )
+
+    assert released.id == story.id
+    assert is_nil(released.qa_ready_commit)
+    {:ok, _} = Issues.resolve_issue(ctx.scope, blocker, "Browser access repaired")
+    :ok = GraphWatcher.settle(ctx.scope)
+
+    refute "qa_complete" in names(ctx, ctx.qa)
+    assert "ready_for_qa" in names(ctx, ctx.coding)
+
+    {:ok, _} = CodeMySpec.Stories.set_qa_ready(ctx.scope, released, new_head)
+    :ok = GraphWatcher.settle(ctx.scope)
+    assert "qa_complete" in names(ctx, ctx.qa)
   end
 
   defp story_work?(ctx, node) do

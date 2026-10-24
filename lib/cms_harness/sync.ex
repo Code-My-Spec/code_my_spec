@@ -15,8 +15,8 @@ defmodule CmsHarness.Sync do
 
   alias CmsHarness.Channel
   alias CmsHarness.HarnessConfig
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Generators.DeployBoilerplate
@@ -59,7 +59,7 @@ defmodule CmsHarness.Sync do
   @spec run(map(), ReadModel.t()) :: :ok
   def run(project, %ReadModel{} = read_model) do
     started = System.monotonic_time(:millisecond)
-    env = Environment.new(:local, project.root)
+    env = ExecutionContext.new(:local, project.root)
 
     report_app_name(env, project.root)
     report_head_commit(env, project.root)
@@ -102,7 +102,7 @@ defmodule CmsHarness.Sync do
   # The server cannot read this checkout's `mix.exs`; this machine reports the
   # app name on every sync, which also corrects a wrong `module_name`.
   defp report_app_name(env, root) do
-    case Environments.mix_exs_app_name(env) do
+    case ExecutionContexts.mix_exs_app_name(env) do
       # `module_name` stores the CamelCase form.
       name when is_binary(name) ->
         Channel.deliver_module_name(root, Macro.camelize(name))
@@ -119,7 +119,7 @@ defmodule CmsHarness.Sync do
   """
   @spec measure_preview(String.t()) :: :ok
   def measure_preview(root) do
-    :local |> Environment.new(root) |> report_preview_health(root)
+    :local |> ExecutionContext.new(root) |> report_preview_health(root)
   end
 
   @doc """
@@ -128,7 +128,7 @@ defmodule CmsHarness.Sync do
   """
   @spec measure_checkout(String.t()) :: :ok
   def measure_checkout(root) do
-    env = Environment.new(:local, root)
+    env = ExecutionContext.new(:local, root)
 
     report_preview_health(env, root)
   end
@@ -141,7 +141,7 @@ defmodule CmsHarness.Sync do
   Without it a saturated machine reads as several slow agents, and restarting
   them makes it worse.
 
-  Plain `System.cmd`/`/proc`, not `Environments` (which reaches a checkout,
+  Plain `System.cmd`/`/proc`, not `ExecutionContexts` (which reaches a checkout,
   not this box) and not `:os_mon` (not started). Fields a platform cannot
   answer are omitted.
   """
@@ -273,7 +273,7 @@ defmodule CmsHarness.Sync do
 
   # `curl` through the environment: tunnel, proxy or port alike.
   defp preview_status(env, url) do
-    case Environments.cmd(
+    case ExecutionContexts.cmd(
            env,
            "curl",
            ["-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", url],
@@ -311,10 +311,10 @@ defmodule CmsHarness.Sync do
   # a commit changes no file a sync watches.
   @doc "Report `root`'s HEAD to the server."
   @spec report_head(String.t()) :: :ok
-  def report_head(root), do: report_head_commit(Environment.new(:local, root), root)
+  def report_head(root), do: report_head_commit(ExecutionContext.new(:local, root), root)
 
   defp report_head_commit(env, root) do
-    case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+    case ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
       {sha, 0} -> Channel.deliver_head_commit(root, String.trim(sha))
       _ -> :ok
     end
@@ -343,7 +343,7 @@ defmodule CmsHarness.Sync do
   behaviour under test.
   """
   def report_skipped(root) do
-    log_unclassified(Environment.new(:local, root), root)
+    log_unclassified(ExecutionContext.new(:local, root), root)
   end
 
   # Keyed on the root: two checkouts of one project skip different files, and a

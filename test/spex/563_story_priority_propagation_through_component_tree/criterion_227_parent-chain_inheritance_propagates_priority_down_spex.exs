@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
 
       given_ "HighContext (priority 1) and LowContext (priority 9), each with a schema child, the contexts coded",
              context do
-        env = context.environment
+        env = context.execution_context
 
         for {parent, child} <- [
               {"HighContext", "HighContext.Item"},
@@ -76,7 +76,13 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
             ] do
           design!(context, parent)
           design!(context, child, [], type: "schema", parent: parent)
-          :ok = Environments.write_file(env, Content.impl_path(parent), Content.impl_file(parent))
+
+          :ok =
+            ExecutionContexts.write_file(
+              env,
+              Content.impl_path(parent),
+              Content.impl_file(parent)
+            )
         end
 
         {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")

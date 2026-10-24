@@ -24,15 +24,15 @@ defmodule CodeMySpecSpex.Story598.Criterion5303Spex do
   spex "The generation script is the durable artifact", criterion: 252 do
     scenario "Missing generation script yields needs-work feedback referencing the expected path" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
       given_ :code_generation_task_started
 
       given_ "code_generation.sh does NOT exist", context do
-        refute Fixtures.script_exists?(context.environment),
+        refute Fixtures.script_exists?(context.execution_context),
                "expected the generation script to be absent"
 
         {:ok, context}

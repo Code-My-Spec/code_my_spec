@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1045.Criterion3075Spex do
 
         Req.Test.stub(Hetzner, plug)
 
-        # `EnvironmentRepository.list/1` seeds both prod and uat the first
+        # `Environments.list_deployment/1` seeds both prod and uat the first
         # time it is called for a project, but only if neither already has a
         # row. Linking uat below creates just uat's row via `put/3` — if that
         # happened first, the later :server run would find a non-empty list

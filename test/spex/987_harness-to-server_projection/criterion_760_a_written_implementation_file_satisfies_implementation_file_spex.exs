@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8190Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -29,8 +29,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8190Spex do
     scenario "writing the module at the component's conventional path satisfies implementation_file" do
       given_ "a component has a spec and no implementation", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/spec/my_app/widgets.spec.md",
             "# MyApp.Widgets\n\nStores widgets.\n\n## Type\n\ncontext\n"
           )
@@ -41,8 +41,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8190Spex do
 
       when_ "the agent writes the module and the harness delivers its manifest", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "lib/my_app/widgets.ex",
             "defmodule MyApp.Widgets do\nend\n"
           )

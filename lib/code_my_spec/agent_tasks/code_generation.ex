@@ -4,7 +4,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{ExecutionContexts, Paths}
 
   @artifact_path Path.join(Paths.tasks_dir(), "code_generation.sh")
 
@@ -53,7 +53,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   """
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     app_name = Helpers.extract_app_name(env) || "app"
     decisions = list_decisions(env)
     already_run = detect_already_run(env, app_name)
@@ -74,7 +74,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    case check_artifact(CodeMySpec.AgentTasks.environment(scope)) do
+    case check_artifact(CodeMySpec.AgentTasks.execution_context(scope)) do
       :ok -> {:ok, :valid}
       {:error, feedback} -> {:ok, :invalid, feedback}
     end
@@ -84,7 +84,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   # over a static skill.
 
   defp list_decisions(env) do
-    case Environments.glob(env, Path.join(Paths.decisions_dir(), "*.md")) do
+    case ExecutionContexts.glob(env, Path.join(Paths.decisions_dir(), "*.md")) do
       files when is_list(files) -> Enum.map(files, &Path.basename(&1, ".md"))
       _ -> []
     end
@@ -93,13 +93,13 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   defp detect_already_run(env, app_name) do
     @generators
     |> Enum.filter(fn {_id, _cmd, _desc, _prereq, glob} ->
-      Environments.file_exists?(env, resolve_glob(glob, app_name)) == true
+      ExecutionContexts.file_exists?(env, resolve_glob(glob, app_name)) == true
     end)
     |> Enum.map(fn {id, _, _, _, _} -> id end)
   end
 
   defp detect_needed_providers(env) do
-    case Environments.glob(env, Path.join(Paths.integrations_dir(), "*.md")) do
+    case ExecutionContexts.glob(env, Path.join(Paths.integrations_dir(), "*.md")) do
       files when is_list(files) ->
         files |> Enum.map(&Path.basename(&1, ".md")) |> Enum.reject(&(&1 == "index"))
 
@@ -109,7 +109,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   end
 
   defp read_existing_artifact(env) do
-    case Environments.read_file(env, @artifact_path) do
+    case ExecutionContexts.read_file(env, @artifact_path) do
       {:ok, content} when byte_size(content) > 0 -> content
       _ -> nil
     end
@@ -124,7 +124,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   end
 
   defp check_artifact(env) do
-    case Environments.read_file(env, @artifact_path) do
+    case ExecutionContexts.read_file(env, @artifact_path) do
       {:ok, content} when byte_size(content) > 0 ->
         :ok
 

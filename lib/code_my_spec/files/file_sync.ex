@@ -18,7 +18,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.ProjectKnowledgeReconciler
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
@@ -36,9 +36,9 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   defp environment(scope, opts) do
-    case Keyword.fetch(opts, :environment) do
+    case Keyword.fetch(opts, :execution_context) do
       {:ok, env} -> env
-      :error -> WorkingCopies.environment(scope)
+      :error -> WorkingCopies.execution_context(scope)
     end
   end
 
@@ -267,7 +267,7 @@ defmodule CodeMySpec.Files.FileSync do
   # would be true.
   defp project_components(_scope, %{changed_entries: [], removed: 0}), do: :unchanged
 
-  # No environment: the manifest is the harness's own report, and reading a file
+  # No execution_context: the manifest is the harness's own report, and reading a file
   # back from inside its channel asks the process that is waiting on this one.
   defp project_components(scope, summary) do
     changed_paths = Enum.map(summary.changed_entries, & &1.path)
@@ -275,7 +275,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     {:ok, components} =
       ComponentSync.sync_from_files(scope,
-        environment: nil,
+        execution_context: nil,
         changed_paths: changed_paths,
         removed_module_names: removed_module_names
       )
@@ -388,7 +388,7 @@ defmodule CodeMySpec.Files.FileSync do
   # "did it change" from stored state.
   defp maybe_reconcile_lockfile(scope, changed_entries, env) do
     if Enum.any?(changed_entries, &(&1.role == :lockfile)) do
-      reconcile_lockfile(scope, environment: env)
+      reconcile_lockfile(scope, execution_context: env)
     end
 
     :ok
@@ -441,7 +441,7 @@ defmodule CodeMySpec.Files.FileSync do
   defp fetch_and_record_lockfile(_scope, _project, _fingerprint, nil), do: :ok
 
   defp fetch_and_record_lockfile(scope, project, fingerprint, env) do
-    with {:ok, content} <- Environments.read_file(env, "mix.lock"),
+    with {:ok, content} <- ExecutionContexts.read_file(env, "mix.lock"),
          {:ok, _} <- Dependencies.record_lockfile(scope, content) do
       Projects.update_project(scope, project, %{mix_lock_fingerprint: fingerprint})
       :ok
@@ -523,7 +523,7 @@ defmodule CodeMySpec.Files.FileSync do
     case ProjectKnowledgeReconciler.reconcile(
            project.id,
            desired,
-           &Environments.read_file(env, &1)
+           &ExecutionContexts.read_file(env, &1)
          ) do
       {:ok, _summary} ->
         :ok

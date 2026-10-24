@@ -16,6 +16,10 @@ defmodule CodeMySpecSpex.Story603.Criterion5501Spex do
 
   setup :register_log_in_setup_account
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   setup %{scope: scope, account: account} do
     project = Fixtures.project_fixture(scope, account_id: account.id, name: "First Project")
     {:ok, _} = Fixtures.select_active_project(scope, project.id)

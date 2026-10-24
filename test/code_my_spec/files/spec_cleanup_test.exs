@@ -15,11 +15,11 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Files.SpecCleanup
   alias CodeMySpec.Stories.AcceptanceCriteria
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
 
   @online "/online/app"
@@ -38,8 +38,8 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
 
     {:ok, offline} = WorkingCopies.report_root(offline, @offline)
 
-    {:ok, env} = InMemoryEnvironment.create([])
-    :ok = Environments.register({:working_copy, online.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create([])
+    :ok = ExecutionContexts.register({:working_copy, online.id}, env)
 
     story = story_fixture(scope)
     one = criterion_fixture(scope, story, %{description: "A thing happens"})
@@ -58,7 +58,7 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
 
   # Only the reachable copy has a disk to write to.
   defp write_on(%{online: %{id: id}} = ctx, %{id: id}, path),
-    do: :ok = Environments.write_file(ctx.env, path, "x")
+    do: :ok = ExecutionContexts.write_file(ctx.env, path, "x")
 
   defp write_on(_ctx, _copy, _path), do: :ok
 
@@ -99,8 +99,8 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
     assert [%{path: ^mine, outcome: :deleted}] =
              SpecCleanup.for_retired(ctx.scope, ctx.one.number)
 
-    refute Environments.file_exists?(ctx.env, mine)
-    assert Environments.file_exists?(ctx.env, other)
+    refute ExecutionContexts.file_exists?(ctx.env, mine)
+    assert ExecutionContexts.file_exists?(ctx.env, other)
     refute Map.has_key?(rows(ctx), mine)
     assert Map.has_key?(rows(ctx), other)
   end
@@ -141,8 +141,8 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
 
     assert Enum.sort(Enum.map(results, & &1.path)) == Enum.sort([retired, unknown])
     assert Enum.all?(results, &(&1.outcome == :deleted))
-    assert Environments.file_exists?(ctx.env, live)
-    refute Environments.file_exists?(ctx.env, retired)
+    assert ExecutionContexts.file_exists?(ctx.env, live)
+    refute ExecutionContexts.file_exists?(ctx.env, retired)
   end
 
   test "with nothing to remove the report says so, and the sweep is idempotent", ctx do
@@ -154,6 +154,6 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
     live = spex(ctx, ctx.online, "test/spex/s/live_spex.exs", ctx.two.number)
 
     assert SpecCleanup.sweep_orphans(ctx.scope) == []
-    assert Environments.file_exists?(ctx.env, live)
+    assert ExecutionContexts.file_exists?(ctx.env, live)
   end
 end

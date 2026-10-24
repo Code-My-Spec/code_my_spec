@@ -15,6 +15,11 @@ defmodule CodeMySpecSpex.Story607.Criterion5522Spex do
 
   setup :register_and_log_in_user
 
+  setup context do
+    :ok = CodeMySpecSpex.Fixtures.configure_agent_models(context.scope)
+    :ok
+  end
+
   spex "Zero-account user on /app sees the create-account form, not the picker", criterion: 298 do
     scenario "User with zero accounts sees the create-account form on /app" do
       given_ "the user is on /app with zero accounts", context do

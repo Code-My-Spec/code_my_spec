@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5150Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,8 +35,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5150Spex do
 
       given_ "summary.md is written without the Evidence section", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             summary_missing_evidence()
           )
@@ -46,8 +46,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5150Spex do
 
       given_ "sources.md is written", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "# Sources\n\n- https://example.com — Source — 2026-04-23\n"
           )

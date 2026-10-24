@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6271Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -31,13 +31,13 @@ defmodule CodeMySpecSpex.Story712.Criterion6271Spex do
   spex "Images upload to the user's own S3 image bucket on sync", criterion: 473 do
     scenario "Images upload to the user's S3 image bucket on sync" do
       given_ "a post referencing an image and the project's image bucket configured", context do
-        env = context.environment
+        env = context.execution_context
 
         :ok =
-          Environments.write_file(env, "#{@source}/images/hero-foo.webp", "fake-webp-bytes")
+          ExecutionContexts.write_file(env, "#{@source}/images/hero-foo.webp", "fake-webp-bytes")
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/foo.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/foo.md", """
           ---
           title: Foo
           slug: foo

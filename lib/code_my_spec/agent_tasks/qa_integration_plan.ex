@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   end
 
   alias CodeMySpec.Documents.DocumentSpecProjector
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{ExecutionContexts, Paths}
 
   @integrations_index Paths.integrations_index()
   @integrations_dir Paths.integrations_dir()
@@ -26,7 +26,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   credential gathering with the user.
   """
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     decisions = read_decisions(env)
     existing_specs = read_existing_specs(env)
@@ -52,7 +52,7 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
 
   # Glob `*.md` under `dir`, read each, return [{file, content}] dropping unreadable files.
   defp read_md_pairs(env, dir) do
-    case Environments.glob(env, Path.join(dir, "*.md")) do
+    case ExecutionContexts.glob(env, Path.join(dir, "*.md")) do
       files when is_list(files) and files != [] ->
         files
         |> Enum.map(&read_file_pair(env, &1))
@@ -64,14 +64,14 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   end
 
   defp read_file_pair(env, file) do
-    case Environments.read_file(env, file) do
+    case ExecutionContexts.read_file(env, file) do
       {:ok, content} -> {file, content}
       _ -> nil
     end
   end
 
   defp read_existing_index(env) do
-    case Environments.read_file(env, @integrations_index) do
+    case ExecutionContexts.read_file(env, @integrations_index) do
       {:ok, content} when byte_size(content) > 0 -> content
       _ -> nil
     end

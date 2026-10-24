@@ -57,6 +57,10 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
+  # `LiveRun.start(` (story 1141) starts a live harness on Sam's checkout and
+  # has his agent start the suite through `start_analysis`: the run is the
+  # premise, and it holds it open for the scenario to watch.
+  #
   # `Req.Test.stub` is a provider seam, listed by the same precedent as `stage_`
   # and `with_provider_cassette`. A block saying "Z.ai will accept this key" and
   # calling it has made its precondition true in the only way available: the
@@ -146,7 +150,7 @@ defmodule CodeMySpec.SpexGivensTest do
   #     for. `Fixtures.` is here on the same grounds.
   #   * `CriterionScript.` — drives the story and criterion tools by name
   #     through `run_script`, as an agent does. Same grounds as `StoryHelpers.`.
-  #   * `Artifacts.` — writes through the `Environments` seam, which is listed
+  #   * `Artifacts.` — writes through the `ExecutionContexts` seam, which is listed
   #     one line up, so listing the wrapper and not the wrapped was arbitrary.
   #   * `story_for` — story 460's local wrapper around
   #     `StoryHelpers.create_and_link/3`.
@@ -229,7 +233,7 @@ defmodule CodeMySpec.SpexGivensTest do
   # `Slice.` is `CodeMySpecSpex.StorySliceHelpers`, and its whole surface drives:
   # `base/1` selects a story through `SetActiveStory.execute/2`, `child/2`,
   # `missing/2` and `implement/2` write and delete real files through
-  # `Environments` and re-sync, and `waiting/2` creates and links a story through
+  # `ExecutionContexts` and re-sync, and `waiting/2` creates and links a story through
   # `StoryHelpers` and assigns it through the epic tools. A story-slice criterion
   # whose premise is "a story whose component has no implementation yet" has no
   # other way to say it.
@@ -276,9 +280,10 @@ defmodule CodeMySpec.SpexGivensTest do
   # through the real reject_offer tool.
   # Story 1146's prepared_cloud/1 creates a real target directory and validation
   # marker and starts the external harness HTTP boundary used by the shipped CLI.
-  # It establishes the scenario's filesystem and provider preconditions.
+  # AttachmentHelpers.setup creates Main, its conversation, isolated device
+  # roots and copy teams through Fixtures, and starts the device runtime seam.
   @establishes ~w(
-    prepared_cloud(
+    prepared_cloud( AttachmentHelpers.setup(
     Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
     the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it
@@ -295,13 +300,13 @@ defmodule CodeMySpec.SpexGivensTest do
     stage_servers
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
-    connect_providers tear_down_after Environments. File.write File.mkdir
+    connect_providers tear_down_after ExecutionContexts. File.write File.mkdir
     assign put_session seed_cookies
     StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
-    join_working_copy report_agents
+    join_working_copy report_agents LiveRun.start(
     H.start( EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
     given_a_live_harness HarnessHooks.
@@ -309,6 +314,7 @@ defmodule CodeMySpec.SpexGivensTest do
     main_answers user_answers
     Req.Test.stub
     a_promotable_project analyzers_are_current
+    remote_project verified_candidate
     this_copy_is_the_running_one write( git(
     report_preview a_running_copy
     ensure_harness_supervisor_started FakeServer. BlockingProject.

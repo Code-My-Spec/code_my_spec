@@ -7,7 +7,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.GitHub
   alias CodeMySpec.Provisioning.RunLock
 
@@ -17,7 +17,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepTest do
 
     scope = full_scope_fixture()
     _ = github_integration_fixture(scope.user)
-    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, working_dir))
 
     %{scope: scope, project: scope.active_project}
   end
