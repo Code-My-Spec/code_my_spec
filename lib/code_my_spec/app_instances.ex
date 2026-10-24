@@ -15,6 +15,7 @@ defmodule CodeMySpec.AppInstances do
 
   import Ecto.Query, except: [update: 3], warn: false
   alias CodeMySpec.AppInstances.AppInstance
+  alias CodeMySpec.Devices
   alias CodeMySpec.Devices.Device
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
@@ -339,7 +340,7 @@ defmodule CodeMySpec.AppInstances do
          [:status, :url, :preview_status, :preview_url],
          &(Map.get(before, &1) != Map.get(updated, &1))
        ) do
-      CodeMySpec.Devices.runtime_changed(updated.device_id)
+      Devices.runtime_changed(updated.device_id)
     end
 
     if Enum.any?([:preview_status, :preview_url], &(Map.get(before, &1) != Map.get(updated, &1))) do
