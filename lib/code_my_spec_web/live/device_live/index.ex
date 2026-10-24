@@ -1,7 +1,7 @@
 defmodule CodeMySpecWeb.DeviceLive.Index do
   @moduledoc """
-  Every dev box on this account — a machine running a harness — and what is on
-  each, in the console's Development section.
+  Machines on this account, including provider-managed servers without a harness,
+  and the working copies hosted by connected machines.
 
   One level above `WorkingCopyLive.Index`. That page lists checkouts and this
   one lists the machines they sit on, which is what turns 105 rows into a
@@ -35,9 +35,9 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   No stopping agents, no reaching onto the box. Destroying is here because it is
   a real thing that happens to a sprite, and because the alternative — a
-  machine that is gone staying on the list forever — is worse. It is careful
-  about what it takes with it: the checkouts stay, orphaned, because they were
-  real and were worked in, and the record should not vanish because the box did.
+  machine that is gone staying on the list forever — is worse. Active environment
+  links prevent deletion. Otherwise the existing device deletion cascade applies
+  to its working-copy records; provider infrastructure is never destroyed here.
   """
 
   use CodeMySpecWeb, :live_view
@@ -189,12 +189,56 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   def handle_event("cancel_dev_box", _params, socket),
     do: {:noreply, assign(socket, adding?: false)}
 
-  def handle_event("destroy", %{"id" => id}, socket) do
-    socket.assigns.current_scope
-    |> Devices.get_device(id)
-    |> destroy(socket.assigns.current_scope)
+  def handle_event("enroll_machine", %{"id" => id}, socket) do
+    case Devices.enroll_existing_device(socket.assigns.current_scope, id) do
+      {:ok, device, token} ->
+        sections = [
+          %{
+            key: "setup-existing-machine",
+            copy: "copy-setup-existing-machine",
+            title: "Start the installed harness on this machine",
+            body:
+              "CMS_SERVER_URL=#{CodeMySpecWeb.Endpoint.url()} CMS_DEVICE_TOKEN=#{token} cms harness"
+          }
+        ]
 
-    {:noreply, load(socket)}
+        {:noreply,
+         socket
+         |> assign(
+           new_box: %{
+             device: device,
+             name: Device.display_name(device),
+             token: token,
+             sections: sections
+           }
+         )
+         |> load()}
+
+      {:error, :already_enrolled} ->
+        {:noreply, put_flash(socket, :error, "This machine already has a harness token.")}
+
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Only an account owner or admin can enroll this machine.")}
+    end
+  end
+
+  def handle_event("destroy", %{"id" => id}, socket) do
+    result =
+      socket.assigns.current_scope
+      |> Devices.get_device(id)
+      |> destroy(socket.assigns.current_scope)
+
+    case result do
+      {:error, :in_use} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "This machine is still assigned to an environment.")
+         |> load()}
+
+      _ ->
+        {:noreply, load(socket)}
+    end
   end
 
   def handle_event("revoke_authorization", %{"id" => id}, socket) do
@@ -338,6 +382,9 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
 
   # Never heard from at all is not the same claim as having gone quiet: nothing
   # has happened yet, rather than something having stopped.
+  defp presence(false, %Device{provider: :hetzner, last_seen_at: nil}, _now),
+    do: %{label: "Harness not connected", since: nil}
+
   defp presence(false, %{last_seen_at: nil}, _now),
     do: %{label: "Not yet seen", since: nil}
 
@@ -369,8 +416,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
           <.header>
             Dev boxes
             <:subtitle>
-              Every machine running a harness for this account. Add a dev box here, or a
-              machine onboards itself when its harness comes up.
+              Machines linked to this account. Harness connections and provider infrastructure
+              are shown separately.
             </:subtitle>
             <:actions>
               <.button :if={@can_add?} phx-click="new_dev_box" data-test="add-dev-box">
@@ -418,7 +465,7 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
             class="card card-compact mt-4 border border-success bg-base-100"
           >
             <div class="card-body gap-3">
-              <h2 class="card-title">{@new_box.name} added</h2>
+              <h2 class="card-title">{@new_box.name} harness access</h2>
               <p class="text-sm">
                 This is its token. It is shown once: copy it now, because it cannot be shown again.
               </p>
@@ -462,6 +509,14 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                 <div class="flex items-start gap-3">
                   <div class="min-w-0 flex-1">
                     <div data-test="device-name" class="font-medium truncate">{row.name}</div>
+                    <div
+                      :if={row.device.provider == :hetzner}
+                      data-test="provider-machine"
+                      class="text-xs opacity-60"
+                    >
+                      Hetzner · {row.device.provider_name}
+                      <span :if={row.device.purpose}> · {row.device.purpose}</span>
+                    </div>
                     <div data-test="device-kind" class="text-xs opacity-60">
                       {kind_name(row.device.kind)}
                     </div>
@@ -569,7 +624,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                     <span :if={row.presence.since} class="opacity-70">{row.presence.since}</span>
                   </div>
 
-                  <div data-test="dev-box-up" class="shrink-0 text-right text-sm">
+                  <div
+                    :if={row.device.provider != :hetzner}
+                    data-test="dev-box-up"
+                    class="shrink-0 text-right text-sm"
+                  >
                     <%= if row.up? do %>
                       Up
                     <% else %>
@@ -590,6 +649,18 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                     class="btn btn-sm"
                     data-test="device-setup"
                   >Setup</.link>
+                  <.button
+                    :if={
+                      @can_add? and row.device.provider == :hetzner and
+                        not Device.dev_box?(row.device)
+                    }
+                    phx-click="enroll_machine"
+                    phx-value-id={row.device.id}
+                    data-test="enroll-machine"
+                    class="btn btn-sm"
+                  >
+                    Connect harness
+                  </.button>
                   <.button
                     phx-click="revoke_authorization"
                     phx-value-id={row.device.id}

@@ -35,13 +35,13 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
      |> assign(assigns)
      |> assign(:other, @other)
      |> assign(:environments, environments)
-     |> assign(:custom?, custom?(server.environment, environments))
+     |> assign(:custom?, custom?(server.purpose, environments))
      |> assign_form(Servers.change_server(server))}
   end
 
   @impl true
   def handle_event("validate", %{"server" => params}, socket) do
-    custom? = params["environment"] == @other or (socket.assigns.custom? and pending?(params))
+    custom? = params["purpose"] == @other or (socket.assigns.custom? and pending?(params))
 
     changeset =
       socket.assigns.server
@@ -72,13 +72,13 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
 
   # Once the text field is showing, it is the answer — the select still reads
   # "Other…", and taking that literally would store the sentinel.
-  defp resolve(%{"environment" => @other} = params, _custom?),
-    do: Map.put(params, "environment", params["custom"] || "")
+  defp resolve(%{"purpose" => @other} = params, _custom?),
+    do: Map.put(params, "purpose", params["custom"] || "")
 
-  defp resolve(params, true), do: Map.put(params, "environment", params["custom"] || "")
+  defp resolve(params, true), do: Map.put(params, "purpose", params["custom"] || "")
   defp resolve(params, _custom?), do: params
 
-  defp pending?(params), do: params["environment"] in [@other, nil]
+  defp pending?(params), do: params["purpose"] in [@other, nil]
 
   # A label already saved that is not one of the suggestions has to open in the
   # text field, or editing anything else on the form would quietly replace it
@@ -97,7 +97,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
     ~H"""
     <div>
       <.header>
-        Edit {@server.name}
+        Edit {@server.provider_name}
         <:subtitle>
           What this box is for. Two servers running the same image are told apart
           only by this — it is what decides whether real mail goes out from one.
@@ -117,17 +117,17 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
             <span class="label mb-1">Environment</span>
           </label>
           <select
-            name="server[environment]"
+            name="server[purpose]"
             data-test="environment-select"
             class="select select-bordered w-full"
           >
-            <option value="" selected={is_nil(@server.environment) and not @custom?}>
+            <option value="" selected={is_nil(@server.purpose) and not @custom?}>
               Not set
             </option>
             <option
               :for={known <- @environments}
               value={known}
-              selected={not @custom? and known == @server.environment}
+              selected={not @custom? and known == @server.purpose}
             >
               {known}
             </option>
@@ -142,7 +142,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
           <input
             type="text"
             name="server[custom]"
-            value={@form[:environment].value}
+            value={@form[:purpose].value}
             data-test="environment-custom"
             placeholder="qa-story-812"
             class="input input-bordered w-full"

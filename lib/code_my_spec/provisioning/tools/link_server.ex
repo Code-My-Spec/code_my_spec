@@ -52,7 +52,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
          scope <- Resources.project_scope(scope, project),
          {:ok, server} <- find_linked_server(scope, server_name) do
       scope
-      |> Environments.put_deployment(environment, %{server_id: server.id})
+      |> Environments.put_deployment(environment, %{device_id: server.id})
       |> reply(environment, server_name, context)
     else
       {:error, reason} -> error(reason)

@@ -7,7 +7,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
 
   setup do
     scope = full_scope_fixture()
@@ -16,7 +16,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
 
   describe "execute/2" do
     test "points an environment at an already-linked account server", %{scope: scope} do
-      {:ok, _} = Server.link(scope, %{name: "fuellytics-prod"})
+      {:ok, _} = CodeMySpec.Devices.link_provider_machine(scope, %{name: "fuellytics-prod"})
       frame = %Frame{assigns: %{current_scope: scope}}
 
       params = %{environment: "prod", server_name: "fuellytics-prod"}
@@ -32,8 +32,8 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServerTest do
       assert response_text(response) =~ "prod now points at fuellytics-prod"
 
       environment = Environments.get(scope, "prod")
-      linked = Server.get_linked(scope, "fuellytics-prod")
-      assert environment.server_id == linked.id
+      linked = Servers.get_linked(scope, "fuellytics-prod")
+      assert environment.device_id == linked.id
     end
 
     test "refuses when the server has not been linked to this account yet", %{scope: scope} do

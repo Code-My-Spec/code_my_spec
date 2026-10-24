@@ -38,7 +38,7 @@ defmodule CodeMySpec.Environments.Tools.ListEnvironments do
       "name" => environment.name,
       "management" => to_string(environment.management),
       "host" => environment.host,
-      "server_id" => environment.server_id,
+      "device_id" => environment.device_id,
       "instances" =>
         Enum.map(AppInstances.list_for_environment(scope, environment.id), &instance_row/1)
     }

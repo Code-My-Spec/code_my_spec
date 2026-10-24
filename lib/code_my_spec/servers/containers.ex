@@ -11,7 +11,7 @@ defmodule CodeMySpec.Servers.Containers do
   happened, and wrong from then on.
 
   So this asks the box. Same doctrine as `Servers.list/1` asking Hetzner rather
-  than reading `linked_servers`, one level in.
+  than reading provider-linked `devices`, one level in.
 
   ## Why `-a`
 

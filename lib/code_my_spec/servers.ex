@@ -19,6 +19,7 @@ defmodule CodeMySpec.Servers do
     top_level?: true,
     deps: [
       CodeMySpec.AccountSecrets,
+      CodeMySpec.Devices,
       CodeMySpec.Projects,
       CodeMySpec.Environments,
       CodeMySpec.Provisioning.Hetzner,
@@ -32,13 +33,15 @@ defmodule CodeMySpec.Servers do
   import Ecto.Query
 
   alias CodeMySpec.AccountSecrets
+  alias CodeMySpec.Devices
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Repo
-  alias CodeMySpec.Servers.{Containers, Server}
+  alias CodeMySpec.Servers.Containers
   alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
@@ -56,7 +59,7 @@ defmodule CodeMySpec.Servers do
   claims we know nothing, and neither is true when the provider is unreachable
   but our link records remain. Their *state* is unknown, hence `unverified`.
   """
-  @spec list(Scope.t()) :: {:ok, [Server.t()]} | {:error, term(), [Server.t()]}
+  @spec list(Scope.t()) :: {:ok, [map()]} | {:error, term(), [map()]}
   def list(%Scope{} = scope) do
     case reported(scope) do
       {:ok, reported} -> {:ok, merge_with_linked(scope, reported)}
@@ -67,13 +70,11 @@ defmodule CodeMySpec.Servers do
   defp unverified_linked(scope) do
     Utils.rescued("Servers.unverified_linked", [], fn ->
       scope
-      |> Server.linked_environments()
-      |> Enum.sort()
-      |> Enum.map(fn {name, environment} ->
-        # Not `missing`: the provider told us nothing. The label is ours, so
-        # it survives.
+      |> linked_machines()
+      |> Enum.sort_by(&elem(&1, 0))
+      |> Enum.map(fn {name, device} ->
         name
-        |> Server.placeholder(environment)
+        |> placeholder(device.purpose, device.id)
         |> Map.put(:missing, false)
         |> Map.put(:unverified, true)
       end)
@@ -86,11 +87,11 @@ defmodule CodeMySpec.Servers do
   Touches nothing on the machine: linking is used on boxes already serving
   traffic.
   """
-  @spec link(Scope.t(), String.t()) :: {:ok, Server.t()} | {:error, term()}
+  @spec link(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def link(%Scope{} = scope, name) when is_binary(name) do
     with {:ok, servers} <- reported(scope),
          %{} = server <- Enum.find(servers, &(&1.name == name)) || {:error, :not_found} do
-      Server.link(scope, server)
+      link_inventory(scope, server)
     end
   end
 
@@ -102,10 +103,10 @@ defmodule CodeMySpec.Servers do
   size, which could be a machine nobody chose on an architecture the images
   cannot run on.
   """
-  @spec provision(Scope.t(), map()) :: {:ok, Server.t()} | {:error, term()}
+  @spec provision(Scope.t(), map()) :: {:ok, map()} | {:error, term()}
   def provision(%Scope{} = scope, attrs) do
     case create(scope, attrs) do
-      {:ok, created} -> Server.link(scope, normalise(created))
+      {:ok, created} -> link_inventory(scope, normalise(created))
       {:error, reason} -> {:error, reason}
     end
   end
@@ -116,7 +117,7 @@ defmodule CodeMySpec.Servers do
   Built from `list/1` so a single server carries exactly what a row does,
   including `unverified` when the provider could not be asked.
   """
-  @spec get(Scope.t(), String.t()) :: {:ok, Server.t()} | {:error, :not_found}
+  @spec get(Scope.t(), String.t()) :: {:ok, map()} | {:error, :not_found}
   def get(%Scope{} = scope, name) when is_binary(name) do
     case list(scope) do
       {:ok, servers} -> find(servers, name)
@@ -226,38 +227,38 @@ defmodule CodeMySpec.Servers do
   end
 
   defp delete_linked(scope, name) do
-    case Server.get_linked(scope, name) do
+    case Devices.get_provider_machine(scope, name) do
       nil -> {:error, :not_found}
-      server -> with {:ok, _} <- Server.delete(server), do: :ok
+      server -> with {:ok, _} <- Devices.unlink_provider_machine(scope, server.id), do: :ok
     end
   end
 
   @doc """
   The linked record for a name, or nil — what the edit form is built from.
   """
-  @spec get_linked(Scope.t(), String.t()) :: Server.t() | nil
+  @spec get_linked(Scope.t(), String.t()) :: Device.t() | nil
   def get_linked(%Scope{} = scope, name) when is_binary(name) do
-    Server.get_linked(scope, name)
+    Devices.get_provider_machine(scope, name)
   end
 
   @doc """
   Changeset for editing a linked server.
   """
-  @spec change_server(Server.t(), map()) :: Ecto.Changeset.t()
-  def change_server(%Server{} = server, attrs \\ %{}) do
-    Server.environment_changeset(server, attrs)
+  @spec change_server(Device.t(), map()) :: Ecto.Changeset.t()
+  def change_server(%Device{} = server, attrs \\ %{}) do
+    Devices.change_machine_purpose(server, attrs)
   end
 
   @doc """
   Save what a linked server is for.
 
   A free string, not a fixed set: `prod` is a value here, never a branch (see
-  `CodeMySpec.Servers.Server`). Blank clears the label.
+  `CodeMySpec.Devices.Device`). Blank clears the label.
   """
-  @spec update_server(Server.t(), map()) ::
-          {:ok, Server.t()} | {:error, Ecto.Changeset.t()}
-  def update_server(%Server{} = server, attrs) do
-    Server.update(server, attrs)
+  @spec update_server(Device.t(), map()) ::
+          {:ok, Device.t()} | {:error, Ecto.Changeset.t()}
+  def update_server(%Device{} = server, attrs) do
+    Devices.update_machine_purpose(server, attrs)
   end
 
   @doc """
@@ -266,9 +267,9 @@ defmodule CodeMySpec.Servers do
 
   a654ed04: these used to be two screens, and the first one looked like it
   did the second â Sam set `fuellytics -> uat` on `/app/servers` and read
-  that as done, while the project's `uat` environment still had `server_id`
+  that as done, while the project's `uat` environment still had `device_id`
   nil and the `:server` step still couldn't find the box. There is one
-  control now, this server's `environment` field; this is what saving it
+  control now, this machine's `purpose` field; this is what saving it
   does besides recording the label.
 
   Naming a label that matches an unlinked environment of this exact name,
@@ -278,19 +279,21 @@ defmodule CodeMySpec.Servers do
   pointing here. A label that matches nothing stays exactly what it always
   was â Sam's own words, not a link (`qa-story-812` included).
   """
-  @spec sync_linked_environments(Scope.t(), Server.t()) :: :ok
-  def sync_linked_environments(%Scope{active_account_id: account_id} = scope, %Server{
-        id: server_id,
-        environment: name
+  @spec sync_linked_environments(Scope.t(), Device.t()) :: :ok
+  def sync_linked_environments(%Scope{active_account_id: account_id} = scope, %Device{
+        id: device_id,
+        account_id: account_id,
+        provider: :hetzner,
+        purpose: name
       })
       when is_binary(account_id) do
-    for {project, env_name} <- stale_links(account_id, server_id, name) do
+    for {project, env_name} <- stale_links(account_id, device_id, name) do
       unlink_environment(scope, project, env_name)
     end
 
     if name do
       for project <- unlinked_matches(account_id, name) do
-        link_environment(scope, project, name, server_id)
+        link_environment(scope, project, name, device_id)
       end
     end
 
@@ -301,11 +304,11 @@ defmodule CodeMySpec.Servers do
 
   # Everything currently pointing at this server under a name that no longer
   # matches its label (including every name, when the label was cleared).
-  defp stale_links(account_id, server_id, keep_name) do
+  defp stale_links(account_id, device_id, keep_name) do
     Environment
     |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
-    |> where([e, p], p.account_id == ^account_id and e.server_id == ^server_id)
+    |> where([e, p], p.account_id == ^account_id and e.device_id == ^device_id)
     |> keep_name_filter(keep_name)
     |> select([e, p], {p, e.name})
     |> Repo.all()
@@ -320,19 +323,19 @@ defmodule CodeMySpec.Servers do
     Environment
     |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
-    |> where([e, p], p.account_id == ^account_id and e.name == ^name and is_nil(e.server_id))
+    |> where([e, p], p.account_id == ^account_id and e.name == ^name and is_nil(e.device_id))
     |> select([e, p], p)
     |> Repo.all()
   end
 
   defp unlink_environment(scope, project, env_name),
     do:
-      Environments.put_deployment(environment_scope(scope, project), env_name, %{server_id: nil})
+      Environments.put_deployment(environment_scope(scope, project), env_name, %{device_id: nil})
 
-  defp link_environment(scope, project, env_name, server_id),
+  defp link_environment(scope, project, env_name, device_id),
     do:
       Environments.put_deployment(environment_scope(scope, project), env_name, %{
-        server_id: server_id
+        device_id: device_id
       })
 
   defp environment_scope(scope, project),
@@ -350,7 +353,7 @@ defmodule CodeMySpec.Servers do
     Utils.rescued("Servers.known_environments", @suggested_environments, fn ->
       in_use =
         scope
-        |> Server.linked_environments()
+        |> linked_environments()
         |> Map.values()
         |> Enum.reject(&is_nil/1)
 
@@ -559,25 +562,40 @@ defmodule CodeMySpec.Servers do
   # A linked server the provider no longer reports is kept and marked, never
   # dropped: anything still pointed at it is pointed at nothing.
   defp merge_with_linked(scope, reported) do
-    linked = Server.linked_environments(scope)
+    linked = linked_machines(scope)
     reported_names = MapSet.new(reported, & &1.name)
 
-    present =
-      Enum.map(reported, fn server ->
-        server
-        |> Map.put(:linked, Map.has_key?(linked, server.name))
-        |> Map.put(:missing, false)
-        |> Map.put(:unverified, false)
-        |> Map.put(:environment, Map.get(linked, server.name))
-      end)
+    present = Enum.map(reported, &inventory_row(&1, Map.get(linked, &1.name)))
 
     gone =
       linked
-      |> Enum.reject(fn {name, _env} -> MapSet.member?(reported_names, name) end)
-      |> Enum.map(fn {name, environment} -> Server.placeholder(name, environment) end)
+      |> Enum.reject(fn {name, _device} -> MapSet.member?(reported_names, name) end)
+      |> Enum.map(fn {name, device} -> placeholder(name, device.purpose, device.id) end)
 
     Enum.sort_by(present ++ gone, &{not &1.linked, &1.name})
   end
+
+  defp inventory_row(server, device) do
+    if provider_identity_conflict?(server, device) do
+      device.provider_name
+      |> placeholder(device.purpose, device.id)
+      |> Map.put(:identity_conflict, true)
+      |> Map.put(:replacement_resource_id, server.id)
+    else
+      server
+      |> Map.put(:linked, not is_nil(device))
+      |> Map.put(:missing, false)
+      |> Map.put(:unverified, false)
+      |> Map.put(:environment, device && device.purpose)
+      |> Map.put(:device_id, device && device.id)
+    end
+  end
+
+  defp provider_identity_conflict?(_server, nil), do: false
+  defp provider_identity_conflict?(_server, %Device{provider_resource_id: nil}), do: false
+
+  defp provider_identity_conflict?(server, device),
+    do: not is_nil(server[:id]) and to_string(server.id) != device.provider_resource_id
 
   @doc """
   Names of the projects currently pointed at a server, deduplicated.
@@ -600,7 +618,7 @@ defmodule CodeMySpec.Servers do
   Every `%{project, environment}` of the account pointed at a named server.
 
   Matches both ways an environment points at a box: `server_name`, written
-  back by a successful setup run, and `server_id`, written immediately by
+  back by a successful setup run, and `device_id`, written immediately by
   linking (`Environments.put/3`) before any run.
   """
   @spec environments_on(Ecto.UUID.t(), String.t()) :: [
@@ -611,7 +629,7 @@ defmodule CodeMySpec.Servers do
     |> where([e], e.management == :provisioned)
     |> join(:inner, [e], p in Project, on: p.id == e.project_id)
     |> select([e, p], %{project: p, environment: e.name})
-    |> by_name_or_id(account_id, server_name, server_id_for(account_id, server_name))
+    |> by_name_or_id(account_id, server_name, device_id_for(account_id, server_name))
     |> Repo.all()
   end
 
@@ -619,19 +637,53 @@ defmodule CodeMySpec.Servers do
     where(query, [e, p], p.account_id == ^account_id and e.server_name == ^server_name)
   end
 
-  defp by_name_or_id(query, account_id, server_name, server_id) do
+  defp by_name_or_id(query, account_id, server_name, device_id) do
     where(
       query,
       [e, p],
       p.account_id == ^account_id and
-        (e.server_name == ^server_name or e.server_id == ^server_id)
+        (e.server_name == ^server_name or e.device_id == ^device_id)
     )
   end
 
-  defp server_id_for(account_id, server_name) do
-    Server
-    |> where([s], s.account_id == ^account_id and s.name == ^server_name)
-    |> select([s], s.id)
-    |> Repo.one()
+  defp device_id_for(account_id, server_name) do
+    case Devices.get_provider_machine(%Scope{active_account_id: account_id}, server_name) do
+      nil -> nil
+      device -> device.id
+    end
+  end
+
+  defp linked_machines(scope),
+    do: Map.new(Devices.list_provider_machines(scope), &{&1.provider_name, &1})
+
+  defp linked_environments(scope),
+    do: Map.new(Devices.list_provider_machines(scope), &{&1.provider_name, &1.purpose})
+
+  defp link_inventory(scope, server) do
+    with {:ok, device} <- Devices.link_provider_machine(scope, server) do
+      {:ok,
+       server
+       |> Map.put(:linked, true)
+       |> Map.put(:missing, false)
+       |> Map.put(:device_id, device.id)
+       |> Map.put(:environment, device.purpose)}
+    end
+  end
+
+  defp placeholder(name, environment, device_id) do
+    %{
+      id: nil,
+      device_id: device_id,
+      name: name,
+      ip: nil,
+      size: nil,
+      architecture: nil,
+      location: nil,
+      status: nil,
+      linked: true,
+      missing: true,
+      unverified: false,
+      environment: environment
+    }
   end
 end

@@ -5774,11 +5774,10 @@ defmodule CodeMySpecSpex.Fixtures do
   def link_environment_to_server(%Scope{} = scope, environment_name, server_name) do
     alias CodeMySpec.Environments
     alias CodeMySpec.Servers
-    alias CodeMySpec.Servers.Server
 
-    with {:ok, _} <- Server.link(scope, %{name: server_name}),
-         %{id: server_id} <- Servers.get_linked(scope, server_name) do
-      Environments.put(scope, environment_name, %{server_id: server_id})
+    with {:ok, _} <- CodeMySpec.Devices.link_provider_machine(scope, %{name: server_name}),
+         %{id: device_id} <- Servers.get_linked(scope, server_name) do
+      Environments.put(scope, environment_name, %{device_id: device_id})
     else
       nil -> {:error, :not_found}
       error -> error

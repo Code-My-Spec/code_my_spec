@@ -2,7 +2,12 @@ defmodule CodeMySpec.Environments do
   @moduledoc "Durable project destinations, independently of their running app instances."
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Repo, CodeMySpec.Requirements.GraphInputs, CodeMySpec.Users.Scope],
+    deps: [
+      CodeMySpec.Devices,
+      CodeMySpec.Repo,
+      CodeMySpec.Requirements.GraphInputs,
+      CodeMySpec.Users.Scope
+    ],
     exports: :all
 
   import Ecto.Query
@@ -91,9 +96,27 @@ defmodule CodeMySpec.Environments do
         existing = get(scope, name) || %Environment{}
         attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
         attrs = Map.merge(attrs, %{"name" => name, "project_id" => id})
-        result = existing |> Environment.changeset(attrs) |> Repo.insert_or_update()
+
+        result =
+          existing
+          |> Environment.changeset(attrs)
+          |> validate_device_account(scope)
+          |> Repo.insert_or_update()
+
         if is_nil(existing.id) and match?({:ok, _}, result), do: setup_changed(scope)
         result
+    end
+  end
+
+  defp validate_device_account(changeset, scope) do
+    case Ecto.Changeset.fetch_change(changeset, :device_id) do
+      {:ok, id} when is_binary(id) ->
+        if CodeMySpec.Devices.get_device(scope, id),
+          do: changeset,
+          else: Ecto.Changeset.add_error(changeset, :device_id, "does not belong to this account")
+
+      _ ->
+        changeset
     end
   end
 

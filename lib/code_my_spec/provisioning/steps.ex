@@ -38,11 +38,11 @@ defmodule CodeMySpec.Provisioning.Steps do
     ProjectSecrets
   }
 
+  alias CodeMySpec.Devices
+  alias CodeMySpec.Devices.Device
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.Provisioning.TelemetryStep
-  alias CodeMySpec.Repo
   alias CodeMySpec.Servers
-  alias CodeMySpec.Servers.Server
   alias CodeMySpec.TempFile
   alias CodeMySpec.Utils.MapAccess
 
@@ -2990,9 +2990,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp linked_server_name(scope, environment_name) do
-    with %{server_id: server_id} when is_binary(server_id) <-
+    with %{device_id: device_id} when is_binary(device_id) <-
            Environments.get_deployment(scope, environment_name),
-         %Server{name: name} <- Repo.get(Server, server_id) do
+         %Device{provider_name: name} <- Devices.get_device(scope, device_id) do
       name
     else
       _ -> nil
@@ -3412,8 +3412,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     ip = get_in(server, ["public_net", "ipv4", "ip"])
     recorded = Environments.get_deployment(scope, environment)
 
-    if is_binary(ip) and (recorded == nil or recorded.ip != ip or recorded.server_name != name) do
-      Environments.put_deployment(scope, environment, %{server_name: name, ip: ip})
+    if is_binary(ip) and
+         (recorded == nil or recorded.ip != ip or recorded.server_name != name or
+            is_nil(recorded.device_id)) do
+      put_environment_server(scope, environment, name, ip, server)
     end
 
     server_resource(server, environment)
@@ -3424,7 +3426,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp record_environment_server(scope, environment, name, server, acc) do
     ip = get_in(server, ["public_net", "ipv4", "ip"])
 
-    case Environments.put_deployment(scope, environment.name, %{server_name: name, ip: ip}) do
+    case put_environment_server(scope, environment.name, name, ip, server) do
       {:ok, _environment} ->
         {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
 
@@ -3433,6 +3435,16 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:error,
           "provisioned #{name} but could not record it against the #{environment.name} " <>
             "environment: #{format(reason)}", acc}}
+    end
+  end
+
+  defp put_environment_server(scope, environment, name, ip, server) do
+    with {:ok, device} <- Devices.link_provider_machine(scope, %{name: name, id: server["id"]}) do
+      Environments.put_deployment(scope, environment, %{
+        server_name: name,
+        ip: ip,
+        device_id: device.id
+      })
     end
   end
 

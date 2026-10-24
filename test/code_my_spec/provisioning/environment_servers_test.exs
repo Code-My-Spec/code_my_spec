@@ -25,7 +25,7 @@ defmodule CodeMySpec.Environments.EnvironmentServersTest do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
 
   setup do
     scope = provisioning_scope_fixture()
@@ -71,6 +71,30 @@ defmodule CodeMySpec.Environments.EnvironmentServersTest do
     assert collect_names([]) == []
 
     _ = ctx
+  end
+
+  test "verification records provider machines as the environment devices", ctx do
+    base = Repository.default_name(ctx.scope.active_project)
+
+    servers =
+      for {name, id} <- [{"prod", 91}, {"uat", 92}] do
+        %{
+          "id" => id,
+          "name" => "#{base}-#{name}",
+          "public_net" => %{"ipv4" => %{"ip" => "192.0.2.#{id}"}}
+        }
+      end
+
+    Req.Test.stub(Hetzner, fn conn -> json(conn, %{"servers" => servers}) end)
+    # The provider is reachable, but database/registry setup has not run yet.
+    assert {:ok, :absent} = Steps.verify(:server, ctx.scope, [])
+
+    for environment <- Environments.list_deployment(ctx.scope) do
+      assert is_binary(environment.device_id)
+      device = CodeMySpec.Devices.get_device(ctx.scope, environment.device_id)
+      assert device.provider == :hetzner
+      assert device.provider_name == environment.server_name
+    end
   end
 
   test "asks for one server per environment, named for it", ctx do
@@ -164,16 +188,16 @@ defmodule CodeMySpec.Environments.EnvironmentServersTest do
   # key and not one box — this is 402f9439, reproduced without touching a
   # real Hetzner project.
   # The re-grain story 879 deferred: an environment linked to an account
-  # server (`CodeMySpec.Servers.Server`) already has a real name, and asking
+  # server (`CodeMySpec.Servers`) already has a real name, and asking
   # for a derived one instead would search for a box that was never going to
   # exist under that name — exactly the shape of bug this step exists to
   # prevent for the un-linked case.
   test "an environment linked to an account server is asked for by that server's own name", ctx do
     record_requests(self(), :always_available)
 
-    {:ok, _} = Server.link(ctx.scope, %{name: "fuellytics-prod"})
-    linked = Server.get_linked(ctx.scope, "fuellytics-prod")
-    {:ok, _} = Environments.put(ctx.scope, "prod", %{server_id: linked.id})
+    {:ok, _} = CodeMySpec.Devices.link_provider_machine(ctx.scope, %{name: "fuellytics-prod"})
+    linked = Servers.get_linked(ctx.scope, "fuellytics-prod")
+    {:ok, _} = Environments.put(ctx.scope, "prod", %{device_id: linked.id})
 
     # uat too — the escape hatch that used to let an unlinked environment
     # through with a derived name is gone, so uat needs its own grant to
@@ -545,7 +569,7 @@ defmodule CodeMySpec.Environments.EnvironmentServersTest do
   end
 
   # Grants the account's link for one environment, the same way the account
-  # side of the hard line does it for real (`CodeMySpec.Servers.Server.link/2`
+  # side of the hard line does it for real (`CodeMySpec.Servers.link/2`
   # then `Environments.put/3`). `confirm_new_server` used to let a
   # project-scoped call reach the provider for a name nobody had approved —
   # removed along with the outage it caused — so every test asserting a
@@ -553,9 +577,9 @@ defmodule CodeMySpec.Environments.EnvironmentServersTest do
   # human would through the servers page or the account agent would through
   # its own tool.
   defp link_environment(scope, environment, name) do
-    {:ok, _} = Server.link(scope, %{name: name})
-    linked = Server.get_linked(scope, name)
-    {:ok, _} = Environments.put(scope, environment, %{server_id: linked.id})
+    {:ok, _} = CodeMySpec.Devices.link_provider_machine(scope, %{name: name})
+    linked = Servers.get_linked(scope, name)
+    {:ok, _} = Environments.put(scope, environment, %{device_id: linked.id})
   end
 
   # Links each environment to the exact derived name `Steps.server_name/3`

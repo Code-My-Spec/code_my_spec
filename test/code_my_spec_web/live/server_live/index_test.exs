@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
   a654ed04: setting what a server is for used to be a free label with no
   effect on any project, while the real link lived on a separate page. Sam
   set `fuellytics -> uat` here, read it as done, and the project's `uat`
-  environment still had no `server_id` pointed at the box.
+  environment still had no `device_id` pointed at the box.
 
   Now the single environment field on this form IS the link: naming an
   environment that matches an unlinked one anywhere in the account points it
@@ -69,13 +69,13 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
   # matching option, same as it would for a human picking from it.
   defp save_environment(view, environment) when environment in ["prod", "uat", ""] do
     view
-    |> form("[data-test='server-form']", server: %{environment: environment})
+    |> form("[data-test='server-form']", server: %{purpose: environment})
     |> render_submit()
   end
 
   defp save_environment(view, environment) do
     view
-    |> form("[data-test='server-form']", server: %{environment: "__other__"})
+    |> form("[data-test='server-form']", server: %{purpose: "__other__"})
     |> render_change()
 
     view
@@ -101,14 +101,14 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Metric Flow")
     project_scope = project_scope(scope, project)
     {:ok, _env} = Environments.put(project_scope, "prod", %{})
-    assert %{server_id: nil} = Environments.get(project_scope, "prod")
+    assert %{device_id: nil} = Environments.get(project_scope, "prod")
 
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     link_and_edit(view, "fuellytics-prod")
     save_environment(view, "prod")
 
-    assert %{server_id: server_id} = Environments.get(project_scope, "prod")
-    refute is_nil(server_id)
+    assert %{device_id: device_id} = Environments.get(project_scope, "prod")
+    refute is_nil(device_id)
 
     html = reload(conn)
     assert html =~ "Metric Flow / prod"
@@ -142,8 +142,8 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
     link_and_edit(view, "fuellytics")
     save_environment(view, "uat")
 
-    assert %{server_id: server_id} = Environments.get(project_scope, "uat")
-    refute is_nil(server_id)
+    assert %{device_id: device_id} = Environments.get(project_scope, "uat")
+    refute is_nil(device_id)
     assert reload(conn) =~ "Metric Flow / uat"
 
     view
@@ -152,7 +152,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     save_environment(view, "")
 
-    assert %{server_id: nil} = Environments.get(project_scope, "uat")
+    assert %{device_id: nil} = Environments.get(project_scope, "uat")
     assert reload(conn) =~ "not used by any project"
   end
 
@@ -169,8 +169,8 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     link_and_edit(view, "fuellytics")
     save_environment(view, "uat")
-    assert %{server_id: uat_server_id} = Environments.get(project_scope, "uat")
-    refute is_nil(uat_server_id)
+    assert %{device_id: uat_device_id} = Environments.get(project_scope, "uat")
+    refute is_nil(uat_device_id)
 
     view
     |> element("[data-test='server'][data-name='fuellytics'] [data-test='edit-server']")
@@ -178,7 +178,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     save_environment(view, "staging")
 
-    assert %{server_id: nil} = Environments.get(project_scope, "uat")
+    assert %{device_id: nil} = Environments.get(project_scope, "uat")
   end
 
   describe "in the project's console" do

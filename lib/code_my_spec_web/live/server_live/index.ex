@@ -75,7 +75,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         |> push_patch(to: socket.assigns.servers_path)
 
       server ->
-        socket |> assign(:server, server) |> assign(:page_title, "Edit #{server.name}")
+        socket |> assign(:server, server) |> assign(:page_title, "Edit #{server.provider_name}")
     end
   end
 

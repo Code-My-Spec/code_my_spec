@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.ClickHouse do
     with {:ok, target} <- target(scope, environment),
          {:ok, telemetry_host} <- telemetry_host(target, opts),
          {:ok, credentials} <-
-           Credentials.prepare(scope, environment, target.server_id || target.ip),
+           Credentials.prepare(scope, environment, target.device_id || target.ip),
          {:ok, zone} <- Cloudflare.find_zone(scope, telemetry_host),
          {:ok, _record} <-
            Cloudflare.ensure_dns_record(scope, zone["id"], telemetry_host, target.ip,

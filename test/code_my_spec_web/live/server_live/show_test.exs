@@ -83,14 +83,14 @@ defmodule CodeMySpecWeb.ServerLive.ShowTest do
     |> render_click()
 
     view
-    |> form("[data-test='server-form']", server: %{environment: "uat"})
+    |> form("[data-test='server-form']", server: %{purpose: "uat"})
     |> render_submit()
 
     {:ok, _view, html} = live(conn, ~p"/app/servers/shared-box")
 
     assert html =~ "Second Project"
     assert html =~ "uat"
-    assert %{server_id: server_id} = Environments.get(project_scope, "uat")
-    refute is_nil(server_id)
+    assert %{device_id: device_id} = Environments.get(project_scope, "uat")
+    refute is_nil(device_id)
   end
 end

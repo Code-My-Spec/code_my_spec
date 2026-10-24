@@ -237,7 +237,11 @@ defmodule CodeMySpec.AppInstances do
   defp persist_deployment(scope, environment, receipt) do
     instance = deployment_instance(environment)
     attrs = deployment_attrs(environment, receipt)
-    result = if instance, do: update(scope, instance, attrs), else: create(scope, attrs)
+
+    result =
+      if instance,
+        do: update_deployment_instance(scope, instance, attrs),
+        else: create(scope, attrs)
 
     case result do
       {:ok, updated} -> updated
@@ -245,11 +249,20 @@ defmodule CodeMySpec.AppInstances do
     end
   end
 
+  # Only a confirmed deployment can move a rootless provider runtime to the
+  # environment's newly selected machine. General instance updates still refuse
+  # device changes, protecting working-copy and harness-owned identities.
+  defp update_deployment_instance(scope, instance, attrs) do
+    with :ok <- validate_source(scope.active_project_id, nil, attrs.device_id) do
+      instance |> AppInstance.changeset(attrs) |> Repo.update() |> announce_change(instance)
+    end
+  end
+
   defp deployment_instance(environment) do
     Repo.one(
       from i in AppInstance,
         where: i.project_id == ^environment.project_id and i.environment_id == ^environment.id,
-        where: is_nil(i.working_copy_id) and is_nil(i.device_id) and is_nil(i.source_root),
+        where: is_nil(i.working_copy_id) and is_nil(i.source_root),
         where: i.persistent == true and i.default == false,
         order_by: [asc: i.inserted_at],
         limit: 1
@@ -259,6 +272,7 @@ defmodule CodeMySpec.AppInstances do
   defp deployment_attrs(environment, receipt) do
     %{
       environment_id: environment.id,
+      device_id: environment.device_id,
       persistent: true,
       default: false,
       port_mode: :configured,
