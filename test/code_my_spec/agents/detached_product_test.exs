@@ -29,9 +29,21 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     def start_agent(_, _, _), do: {:error, :no_credential}
   end
 
+  defmodule AttachmentTransport do
+    def request(_copy, "attachment_connect", payload, _timeout) do
+      {:ok, %{"attachment_id" => payload["attachment_id"]}}
+    end
+  end
+
   setup do
     previous =
-      for key <- [:env, :desktop_agent_transport, :agent_transport, :detached_agents_root],
+      for key <- [
+            :env,
+            :desktop_agent_transport,
+            :agent_transport,
+            :detached_agents_root,
+            :agent_attachment_transport
+          ],
           do: {key, Application.fetch_env(:code_my_spec, key)}
 
     root = CodeMySpec.TempFile.owned_dir("detached-product")
@@ -39,6 +51,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     Application.put_env(:code_my_spec, :desktop_agent_transport, Transport)
     Application.put_env(:code_my_spec, :agent_transport, Transport)
     Application.put_env(:code_my_spec, :detached_agents_root, root)
+    Application.put_env(:code_my_spec, :agent_attachment_transport, AttachmentTransport)
 
     on_exit(fn ->
       for {key, value} <- previous do
@@ -192,7 +205,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert Agents.present?(scope, same_product)
   end
 
-  test "the first main copy moves the onboarding team and retains both conversations", %{
+  test "the first main copy attaches Main without restarting and retains both conversations", %{
     scope: scope
   } do
     {:ok, _} = ready_for_setup(scope)
@@ -211,14 +224,21 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
              Agents.move_main_agent(%{scope | active_working_copy_id: nil, cwd: nil}, copy)
 
     assert moved.id == main.id
-    assert moved.execution_mode == :working_copy
-    assert moved.working_copy_id == copy.id
+    assert moved.execution_mode == :detached
+    assert moved.working_copy_id == nil
+    assert moved.working_copy == main.working_copy
+    assert moved.os_pid == main.os_pid
+    assert moved.os_boot_id == main.os_boot_id
+    assert [%{working_copy_id: target}] = CodeMySpec.AgentAttachments.list(scope, main.id)
+    assert target == copy.id
     assert {:ok, retained_product} = Agents.fetch_agent(scope, product.id)
     assert retained_product.execution_mode == :working_copy
     assert retained_product.working_copy_id == copy.id
     assert {:ok, ^main_conversation} = Agents.conversation_id(scope, main.id)
     assert {:ok, ^product_conversation} = Agents.conversation_id(scope, product.id)
-    assert :none = Agents.move_main_agent(scope, copy)
+    assert {:ok, same_main} = Agents.move_main_agent(scope, copy)
+    assert same_main.id == main.id
+    assert length(CodeMySpec.AgentAttachments.list(scope, main.id)) == 1
     assert length(Agents.list_agents(scope)) == 2
   end
 

@@ -11,6 +11,7 @@ defmodule CodeMySpec.WorkingCopies.Tools do
       CodeMySpec.Analysis,
       CodeMySpec.AppInstances,
       CodeMySpec.CodeMode,
+      CodeMySpec.Devices,
       CodeMySpec.Promotion,
       CodeMySpec.Staffing,
       CodeMySpec.Tools,

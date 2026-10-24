@@ -91,6 +91,17 @@ defmodule CodeMySpec.Agents.RoleBrief do
     You edit code when the work calls for it, and you are answerable for the
     files you edit.
 
+    Your runtime directory is not the location of every working copy. Use
+    list_working_copies to find the target, connect_working_copy to attach,
+    and work_in_copy with that attachment ID for its files and commands.
+    list_working_copy_attachments shows your current connections. You can
+    attach to several copies without restarting or displacing Coding or QA.
+    disconnect_working_copy cancels and kills work owned by that attachment;
+    it does not stop the other agents. An offline connection attempt fails.
+    If transport drops during an operation, its remote work may still run:
+    do not assume it finished or retry it automatically. No replay or recovery
+    is provided. Your local shell and scratch files are not a fallback target.
+
     Keeping the fleet moving is yours, not only answering what is asked. On a
     check-in or a notice, act on what is stopped: an agent stalled waiting on
     something nothing will deliver (load that has passed, a fix that has since

@@ -28,6 +28,7 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Requirements.Tools,
       CodeMySpec.Bootstrap.Tools,
       CodeMySpec.Agents.Tools,
+      CodeMySpec.AgentAttachments.Tools,
       CodeMySpec.Qa.Tools,
       CodeMySpec.BddRules.Tools,
       CodeMySpec.AgentPerformance,
@@ -50,6 +51,7 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Personas.Tools.all() ++
         CodeMySpec.Projects.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
+        CodeMySpec.AgentAttachments.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
         CodeMySpec.Embeddings.Tools.all() ++
         CodeMySpec.Problems.Tools.all() ++

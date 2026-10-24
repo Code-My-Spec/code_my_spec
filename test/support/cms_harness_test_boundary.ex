@@ -23,6 +23,7 @@ defmodule CmsHarnessTest do
     deps: [
       CmsHarness,
       CmsHarness.Agents,
+      CmsHarness.Attachments,
       CmsHarness.Channel,
       CmsHarness.Project,
       CmsHarness.Supervisor,
@@ -42,6 +43,7 @@ defmodule CmsHarnessTest do
       ClusteredProject,
       SlotHolder,
       AppInstanceHelpers,
+      AttachmentRuntime,
       FakeAppInstanceRunner,
       ClaudeSessions
     ]

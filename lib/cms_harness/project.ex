@@ -10,6 +10,7 @@ defmodule CmsHarness.Project do
     top_level?: true,
     deps: [
       CmsHarness,
+      CmsHarness.Attachments,
       CmsHarness.Agents,
       CmsHarness.Channel,
       CodeMySpec.BootVersion,

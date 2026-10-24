@@ -2104,6 +2104,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
+        if payload["attachment_operations"] == true do
+          HarnessRegistry.register_verb(harness.id, "attachment_operations")
+        end
+
         register_app_verbs(harness, payload)
 
       {:error, {:already_registered, pid}} ->

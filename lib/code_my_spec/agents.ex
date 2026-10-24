@@ -23,6 +23,7 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
+      CodeMySpec.AgentAttachments,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
@@ -2366,8 +2367,14 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Main can leave setup scratch when a real main copy is designated. Stop the
-  # old engine before changing its routing; its conversation stays with its id.
+  # Main keeps its onboarding runtime. A checkout is a resource attachment,
+  # not a reason to interrupt the conversation and launch another engine.
+  defp relocate(scope, %Agent{role: :main, execution_mode: :detached} = agent, copy) do
+    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
+      {:ok, agent}
+    end
+  end
+
   defp relocate(scope, %Agent{execution_mode: :detached} = agent, copy) do
     with {:ok, credential} <- Credential.fetch(scope, agent.provider),
          :ok <- halt_for_restart(agent),

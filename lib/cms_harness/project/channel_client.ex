@@ -225,6 +225,7 @@ defmodule CmsHarness.Project.ChannelClient do
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
+       "attachment_operations" => true,
        # Lets the server name a contract mismatch outright. Absent means a
        # harness that predates the field.
        "contract_version" => @contract_version
@@ -841,6 +842,25 @@ defmodule CmsHarness.Project.ChannelClient do
 
     Task.Supervisor.start_child(Sync.task_supervisor(socket.assigns.project.root), fn ->
       GenServer.cast(client, {:promotion_result, topic, ref, apply_promotion(op, payload)})
+    end)
+
+    {:ok, socket}
+  end
+
+  # Attachment work runs off the channel so a disconnect can cancel it.
+  def handle_message(
+        _topic,
+        "fs_request",
+        %{"ref" => ref, "op" => "attachment_" <> _ = op} = msg,
+        socket
+      ) do
+    client = self()
+    topic = socket.assigns.topic
+    root = socket.assigns.project.root
+
+    Task.start(fn ->
+      result = CmsHarness.Attachments.request(root, op, msg["payload"] || %{})
+      GenServer.cast(client, {:promotion_result, topic, ref, result})
     end)
 
     {:ok, socket}

@@ -3,8 +3,9 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.WorkingCopies
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.Devices
+  alias CodeMySpec.WorkingCopies
 
   @impl true
   def name, do: "list_working_copies"
@@ -65,12 +66,15 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
   # String keys and plain values: these cross into a Lua VM, where an atom
   # key and a struct are not things that exist.
   defp row(scope, copy, agents) do
+    device = copy.device_id && Devices.get_device(scope, copy.device_id)
     instances = AppInstances.list_for_working_copy(scope, copy)
     instance = Enum.find(instances, & &1.default)
 
     %{
       "id" => copy.id,
       "root" => copy.root,
+      "device_id" => copy.device_id,
+      "device_name" => device && device.hostname,
       "main" => copy.main,
       "promotion_sync" => instance && instance.promotion_sync,
       "app_instance" => if(instance, do: AppInstances.descriptor(instance)),

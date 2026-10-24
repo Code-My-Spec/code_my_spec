@@ -6,7 +6,7 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
   """
   use CodeMySpecTest.ConnCase, async: false
   import Phoenix.LiveViewTest
-  alias CodeMySpec.{Agents, UserPreferences, WorkingCopies}
+  alias CodeMySpec.{AgentAttachments, Agents, UserPreferences, WorkingCopies}
   alias CodeMySpec.Projects.Tools.{SetupLocalProject, UpdateProjectOnboarding}
   alias CmsHarness.Setup
 
@@ -47,6 +47,21 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     end
   end
 
+  # The websocket server in this journey is the protocol fixture, not the
+  # production server registry. Route attachments to the real device runtime
+  # after verifying that this checkout completed its websocket connection.
+  defmodule AttachmentTransport do
+    @behaviour CodeMySpec.AgentAttachments.Transport
+    def request(copy_id, operation, payload, _timeout) do
+      with {:ok, copy} <- WorkingCopies.fetch(copy_id),
+           true <- CmsHarness.Projects.connected?(copy.root) do
+        CmsHarness.Attachments.request(copy.root, operation, payload)
+      else
+        _ -> {:error, :harness_unreachable}
+      end
+    end
+  end
+
   setup do
     root = CodeMySpec.TempFile.owned_dir("onboarding-journey")
     bin = Path.join(root, "bin")
@@ -61,6 +76,7 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
       env: :desktop,
       desktop_agent_transport: Transport,
       agent_transport: Transport,
+      agent_attachment_transport: AttachmentTransport,
       generator_runner: Generator,
       detached_agents_root: Path.join(root, "agents"),
       desktop_project_setup: {CodeMySpecDesktop.ProjectSetup, :run},
@@ -192,20 +208,28 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     assert {:ok, %{"team_activated" => true}} = Setup.project_status(scope.active_project_id)
     # Retrying/refreshing setup must not undo a deliberate pause.
     assert {:ok, _} = Agents.set_copy_continuous(scope, copy.id, false)
+    assert {:ok, _, :paused} = Agents.set_agent_continuous(scope, main.id, false)
     assert run_setup(scope, "refresh").result["ready"] == true
     refute Enum.any?(Agents.list_agents(scope), & &1.continuous)
     assert_team(scope, copy, main, product, main_conversation, product_conversation)
     assert %{started: [], failed: []} = Agents.ensure_copy_agents(scope, copy)
+    [attachment] = AgentAttachments.list(scope, main.id)
+    assert :ok = AgentAttachments.disconnect(scope, main.id, attachment.id)
   end
 
   defp assert_team(scope, copy, main, product, main_conversation, product_conversation) do
     agents = Agents.list_agents(scope)
     assert Enum.sort(Enum.map(agents, & &1.id)) == Enum.sort([main.id, product.id])
 
-    assert Enum.all?(
-             agents,
-             &(&1.working_copy_id == copy.id and &1.execution_mode == :working_copy)
-           )
+    saved_main = Enum.find(agents, &(&1.id == main.id))
+    saved_product = Enum.find(agents, &(&1.id == product.id))
+    assert saved_main.execution_mode == :detached
+    assert saved_main.working_copy_id == nil
+    assert saved_main.working_copy == main.working_copy
+    assert saved_product.working_copy_id == copy.id
+    assert saved_product.execution_mode == :working_copy
+    assert [attachment] = AgentAttachments.list(scope, main.id)
+    assert attachment.working_copy_id == copy.id
 
     assert {:ok, ^main_conversation} = Agents.conversation_id(scope, main.id)
     assert {:ok, ^product_conversation} = Agents.conversation_id(scope, product.id)

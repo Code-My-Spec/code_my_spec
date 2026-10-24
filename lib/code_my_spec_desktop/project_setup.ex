@@ -283,6 +283,7 @@ defmodule CodeMySpecDesktop.ProjectSetup do
       :ok
     else
       with {:ok, _} <- Agents.set_copy_continuous(scope, WorkingCopies.main(scope).id, true),
+           :ok <- activate_detached_main(scope),
            {:ok, _} <- Setup.mark_team_activated(scope.active_project_id) do
         :ok
       end
@@ -290,6 +291,16 @@ defmodule CodeMySpecDesktop.ProjectSetup do
   end
 
   defp activate_team(_scope, _snapshot, false), do: :ok
+
+  defp activate_detached_main(scope) do
+    case Agents.main_agent(scope) do
+      %{execution_mode: :detached, id: id} ->
+        with {:ok, _, _} <- Agents.set_agent_continuous(scope, id, true), do: :ok
+
+      _ ->
+        :ok
+    end
+  end
 
   defp ready(scope, snapshot) do
     connected = get_in(snapshot, ["operations", "connect", "result", "connected"]) == true

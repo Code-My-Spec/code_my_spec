@@ -34,6 +34,7 @@ defmodule CmsHarness.Supervisor do
     top_level?: true,
     deps: [
       CmsHarness,
+      CmsHarness.Attachments,
       CmsHarness.Web,
       CodeMySpec.BootVersion,
       CodeMySpec.RunGuard
@@ -94,6 +95,7 @@ defmodule CmsHarness.Supervisor do
       # identities and remain alive when a source copy's supervision stops.
       {DynamicSupervisor, name: CmsHarness.CopiesSupervisor, strategy: :one_for_one},
       {DynamicSupervisor, name: CmsHarness.AppInstancesSupervisor, strategy: :one_for_one},
+      {DynamicSupervisor, name: CmsHarness.AttachmentsSupervisor, strategy: :one_for_one},
 
       # A copy's tunnel connector, for whichever copy holds one (see
       # `CmsHarness.AppInstance`'s own comment — a copy with no DB-backed
