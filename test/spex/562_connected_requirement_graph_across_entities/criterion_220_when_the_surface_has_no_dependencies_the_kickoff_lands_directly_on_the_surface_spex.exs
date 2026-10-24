@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphAssertions
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -32,15 +32,15 @@ defmodule CodeMySpecSpex.Story562.Criterion5651Spex do
             content = spec_content_for(type, module_name, deps)
 
             :ok =
-              Environments.write_file(
-                context.environment,
+              ExecutionContexts.write_file(
+                context.execution_context,
                 Content.spec_path(module_name),
                 content
               )
 
             :ok =
-              Environments.write_file(
-                context.environment,
+              ExecutionContexts.write_file(
+                context.execution_context,
                 Content.impl_path(module_name),
                 Content.impl_file(module_name)
               )

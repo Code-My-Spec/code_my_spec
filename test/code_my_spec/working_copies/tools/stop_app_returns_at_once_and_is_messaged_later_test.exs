@@ -1,4 +1,4 @@
-defmodule CodeMySpec.WorkingCopies.Tools.StopAppReturnsAtOnceAndIsMessagedLaterTest do
+defmodule CodeMySpec.AppInstances.Tools.StopAppReturnsAtOnceAndIsMessagedLaterTest do
   @moduledoc """
   Issue f2977826, batch 2 of 4f7929e4: `stop_app` declared the full 30s of
   the code-mode sandbox's wall clock with no margin at all to even return an
@@ -33,7 +33,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.StopAppReturnsAtOnceAndIsMessagedLaterT
     # The run spawns a detached task, which checks out its own connection.
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     RecordingAgentTransport.listen(scope)
 
     {:ok, agent} =

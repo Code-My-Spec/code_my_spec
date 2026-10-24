@@ -1,4 +1,4 @@
-defmodule CodeMySpec.WorkingCopies.Tools.EnsureAppRunningRevisionTest do
+defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunningRevisionTest do
   use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.ToolLibrary
@@ -41,7 +41,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.EnsureAppRunningRevisionTest do
   end
 
   defp call_tool(revisions) do
-    scope = full_scope_fixture()
+    scope = working_copy_scope_fixture()
     caller = self()
     info = Map.merge(%{status: "serving", url: "http://127.0.0.1:12345"}, revisions)
 

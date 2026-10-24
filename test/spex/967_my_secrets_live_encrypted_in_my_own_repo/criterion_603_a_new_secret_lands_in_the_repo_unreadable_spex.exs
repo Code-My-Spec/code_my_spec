@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -55,7 +55,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
       end
 
       then_ "the value in the repo's environment file is ciphertext", context do
-        {:ok, contents} = Environments.read_file(context.environment, "envs/prod.enc.env")
+        {:ok, contents} =
+          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
 
         # Anchor: the file exists and mentions the key, so the refute below
         # is not passing on an empty or absent file.
@@ -69,10 +70,10 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
       end
 
       then_ "the plaintext appears nowhere in the working tree", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         offenders =
-          Enum.filter(entries, &contains_plaintext?(context.environment, &1))
+          Enum.filter(entries, &contains_plaintext?(context.execution_context, &1))
 
         assert offenders == [],
                "expected no plaintext anywhere in the tree, found in: #{inspect(offenders)}"
@@ -84,7 +85,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
 
   defp contains_plaintext?(environment, path) do
     environment
-    |> Environments.read_file(path)
+    |> ExecutionContexts.read_file(path)
     |> body_contains_plaintext?()
   end
 

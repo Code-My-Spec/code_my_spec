@@ -89,7 +89,7 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
       Fixtures.desktop_harness_credential(user)
     )
 
-    environment = Fixtures.local_environment_fixture(working_dir: root)
+    environment = Fixtures.local_execution_context_fixture(working_dir: root)
 
     {:ok,
      Map.merge(context, %{

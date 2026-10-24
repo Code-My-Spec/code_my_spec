@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5945Spex do
   File.fingerprint to their last-seen fingerprint see no diff and
   skip work.
 
-  In the in-memory test environment, `Environments.write_file/3`
+  In the in-memory test environment, `ExecutionContexts.write_file/3`
   advances mtime on every write — including writes of byte-identical
   content. That's exactly the simulation we want for "mtime moved
   without a real content change."
@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5945Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/fingerprint_stable.ex"
 
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5945Spex do
     criterion: 91 do
     scenario "rewriting the same content advances mtime but leaves fingerprint unchanged" do
       given_ "the agent has written content A and the engineer has synced", context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_a())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_a())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5945Spex do
 
       when_ "the agent rewrites the file with byte-identical content A and the engineer re-syncs",
             context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_a())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_a())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

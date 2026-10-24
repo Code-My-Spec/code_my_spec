@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
 
   Surface: `InstallCredoChecks` MCP tool. The tool writes through
   `scope.environment`, so the spec seeds and reads the framework file via
-  `CodeMySpec.Environments`.
+  `CodeMySpec.ExecutionContexts`.
   """
 
   use CodeMySpecSpex.Case
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @framework_check ".code_my_spec/credo_checks/framework/spex_denied_calls.ex"
   @custom_marker "# PROJECT EDIT — do not overwrite\n"
@@ -36,7 +36,12 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
     scenario "framework file already present with project-specific content → re-install leaves content untouched" do
       given_ "the framework directory exists with a locally-modified spex_denied_calls.ex",
              context do
-        :ok = Environments.write_file(context.environment, @framework_check, @custom_marker)
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            @framework_check,
+            @custom_marker
+          )
 
         {:ok, context}
       end
@@ -55,7 +60,8 @@ defmodule CodeMySpecSpex.Story677.Criterion5754Spex do
       end
 
       then_ "spex_denied_calls.ex still contains the project-specific edit", context do
-        assert {:ok, content} = Environments.read_file(context.environment, @framework_check)
+        assert {:ok, content} =
+                 ExecutionContexts.read_file(context.execution_context, @framework_check)
 
         assert content == @custom_marker,
                "expected file content to be preserved as `#{inspect(@custom_marker)}`, got: #{inspect(content)}"

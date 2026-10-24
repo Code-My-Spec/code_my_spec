@@ -24,16 +24,16 @@ defmodule CodeMySpecSpex.Story80.Criterion5272Spex do
   spex "The phase adapts to the project's current state", criterion: 58 do
     scenario "Bare project produces a minimal prompt with only pre-made context" do
       given_ "the project has no components, no mix.exs, and no stories", context do
-        Fixtures.reset_setup_env(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
 
-        refute CodeMySpec.Environments.file_exists?(context.environment, "mix.exs"),
+        refute CodeMySpec.ExecutionContexts.file_exists?(context.execution_context, "mix.exs"),
                "expected mix.exs to be absent in the bare-project fixture"
 
         {:ok, context}
       end
 
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
+        {:ok, HarnessHooks.ensure_live_harness(context, execution_context: :in_memory)}
       end
 
       given_ "the agent has signalled session start", context do

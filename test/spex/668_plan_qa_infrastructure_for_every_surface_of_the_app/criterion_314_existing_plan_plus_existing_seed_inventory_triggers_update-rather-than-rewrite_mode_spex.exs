@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,16 +27,16 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
     scenario "Existing plan plus existing seed inventory triggers update-rather-than-rewrite mode" do
       given_ "the project already has a qa plan, a qa seed script, and a helper script",
              context do
-        env = context.environment
+        env = context.execution_context
 
         :ok =
-          Environments.write_file(env, ".code_my_spec/qa/plan.md", existing_plan())
+          ExecutionContexts.write_file(env, ".code_my_spec/qa/plan.md", existing_plan())
 
         :ok =
-          Environments.write_file(env, "priv/repo/qa_seeds.exs", "# qa seeds\n")
+          ExecutionContexts.write_file(env, "priv/repo/qa_seeds.exs", "# qa seeds\n")
 
         :ok =
-          Environments.write_file(
+          ExecutionContexts.write_file(
             env,
             ".code_my_spec/qa/scripts/authenticated_curl.sh",
             "#!/usr/bin/env bash\n"

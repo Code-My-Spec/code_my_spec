@@ -303,7 +303,7 @@ defmodule CmsHarness.AnalysisTest do
                  `Compile` takes its path from `TempFile.path/2` through
                  `Keyword.get_lazy/3` — per call, and the token carries OS pid,
                  a unique integer and random bytes.
-               * A leaked `PATH`. `CodeMySpec.EnvironmentsTest` does rewrite
+               * A leaked `PATH`. `CodeMySpec.ExecutionContextsTest` does rewrite
                  `PATH` and `RELEASE_ROOT` globally, but it is `use ExUnit.Case`
                  with no `async: true`, so it runs in the serial phase and
                  cannot overlap anything.

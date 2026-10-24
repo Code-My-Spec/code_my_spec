@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
 
   setup [:register_log_in_setup_account]
 
@@ -38,6 +39,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
 
   defp path(project), do: "/app/projects/#{project.id}/agent-conversation"
 
+  defp project_scope(scope, project),
+    do: %{scope | active_project: project, active_project_id: project.id}
+
   defp main_copy(scope, project) do
     scope = %{scope | active_project: project, active_project_id: project.id}
 
@@ -50,15 +54,18 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
     copy
   end
 
-  defp with_preview_url(copy) do
-    {:ok, copy} =
-      WorkingCopies.record_preview_tunnel(copy, %{
-        preview_url: "https://preview-#{copy.id}.codemyspec.com",
-        preview_tunnel_id: "tun-#{copy.id}",
+  defp with_preview_url(scope, copy) do
+    scope = %{scope | active_project_id: copy.project_id}
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+
+    {:ok, instance} =
+      AppInstances.record_preview_tunnel(scope, instance, %{
+        preview_url: "https://preview-#{instance.id}.codemyspec.com",
+        preview_tunnel_id: "tun-#{instance.id}",
         preview_tunnel_secret: "shh"
       })
 
-    copy
+    instance
   end
 
   # The preview tab starts closed for a scope that has never opened it —
@@ -74,7 +81,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
     scope: scope,
     project: project
   } do
-    scope |> main_copy(project) |> with_preview_url()
+    scoped = project_scope(scope, project)
+    copy = main_copy(scoped, project)
+    with_preview_url(scoped, copy)
 
     {:ok, view, _html} = live(conn, path(project))
     html = open_preview(view)
@@ -94,8 +103,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
     scope: scope,
     project: project
   } do
-    copy = scope |> main_copy(project) |> with_preview_url()
-    {:ok, _copy} = WorkingCopies.record_preview_status(copy, "serving")
+    scope = project_scope(scope, project)
+    instance = scope |> main_copy(project) |> then(&with_preview_url(scope, &1))
+    {:ok, _instance} = AppInstances.record_preview_status(scope, instance, "serving")
 
     {:ok, view, _html} = live(conn, path(project))
     html = open_preview(view)
@@ -108,8 +118,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
     scope: scope,
     project: project
   } do
-    copy = scope |> main_copy(project) |> with_preview_url()
-    {:ok, _copy} = WorkingCopies.record_preview_status(copy, "down")
+    scope = project_scope(scope, project)
+    instance = scope |> main_copy(project) |> then(&with_preview_url(scope, &1))
+    {:ok, _instance} = AppInstances.record_preview_status(scope, instance, "down")
 
     {:ok, view, _html} = live(conn, path(project))
     html = open_preview(view)
@@ -123,8 +134,9 @@ defmodule CodeMySpecWeb.AgentConversationLive.PreviewStateTest do
     scope: scope,
     project: project
   } do
-    copy = scope |> main_copy(project) |> with_preview_url()
-    {:ok, _copy} = WorkingCopies.record_preview_status(copy, "erroring")
+    scope = project_scope(scope, project)
+    instance = scope |> main_copy(project) |> then(&with_preview_url(scope, &1))
+    {:ok, _instance} = AppInstances.record_preview_status(scope, instance, "erroring")
 
     {:ok, view, _html} = live(conn, path(project))
     html = open_preview(view)

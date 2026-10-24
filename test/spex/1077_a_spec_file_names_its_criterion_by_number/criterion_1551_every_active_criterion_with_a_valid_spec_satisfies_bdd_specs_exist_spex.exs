@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4675Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4675Spex do
       and_ "each has a valid spec on this working copy naming it", context do
         for n <- context.numbers do
           :ok =
-            Environments.write_file(
-              context.environment,
+            ExecutionContexts.write_file(
+              context.execution_context,
               "test/spex/three_things/criterion_#{n}_spex.exs",
               CriterionScript.spex_naming(n, "Criterion#{n}")
             )

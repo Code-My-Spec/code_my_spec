@@ -5,7 +5,7 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
   reconcile a lost response only when that receipt exists. No operation edits
   the source checkout; synchronization is explicitly a destination operation.
   """
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   def remote_head(env, root, branch) do
     with :ok <- valid_branch(env, root, branch),
@@ -250,7 +250,7 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
   end
 
   defp command(env, root, args) do
-    case Environments.cmd(env, "git", args, cd: root, stderr_to_stdout: true) do
+    case ExecutionContexts.cmd(env, "git", args, cd: root, stderr_to_stdout: true) do
       {output, 0} ->
         {:ok, String.trim(output)}
 

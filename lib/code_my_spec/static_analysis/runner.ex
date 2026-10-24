@@ -69,8 +69,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   @spec run(Scope.t(), atom(), keyword()) ::
           {:ok, [Problem.t()]} | {:error, String.t() | :no_environment}
   def run(%Scope{} = scope, analyzer_name, opts \\ []) do
-    environment = resolve_environment(scope, opts)
-    opts = opts |> Keyword.put(:environment, environment) |> put_runtime_cwd(environment)
+    environment = resolve_execution_context(scope, opts)
+    opts = opts |> Keyword.put(:execution_context, environment) |> put_runtime_cwd(environment)
 
     with {:ok, _project} <- validate_project(scope),
          :ok <- validate_cwd(environment, opts),
@@ -113,8 +113,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
   def run_all(%Scope{} = scope, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, 120_000)
 
-    environment = resolve_environment(scope, opts)
-    opts = opts |> Keyword.put(:environment, environment) |> put_runtime_cwd(environment)
+    environment = resolve_execution_context(scope, opts)
+    opts = opts |> Keyword.put(:execution_context, environment) |> put_runtime_cwd(environment)
 
     with :ok <- validate_cwd(environment, opts) do
       problems =
@@ -144,8 +144,8 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
     end
   end
 
-  defp resolve_environment(scope, opts) do
-    StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+  defp resolve_execution_context(scope, opts) do
+    StaticAnalysis.resolve_execution_context(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
   end
 
   defp put_runtime_cwd(opts, %{cwd: cwd}) when is_binary(cwd) and cwd != "",

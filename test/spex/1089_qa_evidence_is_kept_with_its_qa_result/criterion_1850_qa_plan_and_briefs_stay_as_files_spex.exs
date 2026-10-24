@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,15 +30,15 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
         story_dir = Path.join(".code_my_spec/qa", to_string(context.story.number))
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Path.join(story_dir, "brief.md"),
             "# brief\n"
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Path.join([story_dir, "screenshots", "one.png"]),
             "fake-png"
           )
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
       then_ "and the brief is still on disk, untouched", context do
         path = Path.join([".code_my_spec/qa", to_string(context.story.number), "brief.md"])
 
-        assert {:ok, "# brief\n"} = Environments.read_file(context.environment, path)
+        assert {:ok, "# brief\n"} = ExecutionContexts.read_file(context.execution_context, path)
 
         {:ok, context}
       end

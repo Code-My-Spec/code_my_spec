@@ -26,7 +26,7 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
   import CodeMySpecSpex.Case,
     only: [fake_providers: 1, zone_exists: 2, zone_record_exists: 2, zone_records: 1]
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Steps
 
   @domain "competing-mx-drill.example.com"
@@ -35,9 +35,9 @@ defmodule CodeMySpec.Provisioning.InboundCompetingMxTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, project} =

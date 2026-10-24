@@ -16,7 +16,7 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
   import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, UsersFixtures}
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.FileEdits
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
@@ -27,9 +27,9 @@ defmodule CodeMySpec.Validation.ASpexFindingWithNoLocationDoesNotBlockTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    environment = Environment.new(:local, tmp)
-    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
-    :ok = register_working_copy_environment(scope, environment)
+    environment = ExecutionContext.new(:local, tmp)
+    scope = put_fixture_execution_context(%{full_scope_fixture() | cwd: tmp}, environment)
+    :ok = register_working_copy_execution_context(scope, environment)
 
     Configurations.get_or_create(scope)
 

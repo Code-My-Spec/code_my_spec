@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Conversations,
       CodeMySpec.Devices,
       CodeMySpec.DevState,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Epics,
       CodeMySpec.Events,
@@ -109,6 +109,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.LocalScope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
+      CodeMySpec.AppInstances,
       CodeMySpec.Workspaces
     ],
     exports: :all

@@ -1,7 +1,8 @@
-defmodule CodeMySpec.WorkingCopies.Tools.UnshareCopyAppTest do
+defmodule CodeMySpec.AppInstances.Tools.UnshareCopyAppTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   alias Anubis.Server.Frame
   alias CodeMySpec.WorkingCopies
@@ -29,25 +30,28 @@ defmodule CodeMySpec.WorkingCopies.Tools.UnshareCopyAppTest do
 
       {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device)
       {:ok, main} = WorkingCopies.report_root(main, "/tmp/unshare_tool_main")
+      {:ok, main_instance} = AppInstances.ensure_default(scope, main)
 
       {:ok, _main} =
-        WorkingCopies.record_preview_tunnel(main, %{
-          preview_url: "https://preview-#{main.id}.astralbi.com",
+        AppInstances.record_preview_tunnel(scope, main_instance, %{
+          preview_url: "https://preview-#{main_instance.id}.astralbi.com",
           preview_tunnel_id: tunnel_id,
           preview_tunnel_secret: "s3cret"
         })
 
       {:ok, sibling} = WorkingCopies.issue(scope, nil, label: "worktree", device: device)
+      {:ok, sibling} = WorkingCopies.report_root(sibling, "/tmp/unshare_tool_sibling")
+      {:ok, sibling_instance} = AppInstances.ensure_default(scope, sibling)
 
-      {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+      {:ok, sibling_instance} =
+        AppInstances.record_status(scope, sibling_instance, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
 
-      {:ok, sibling} =
-        WorkingCopies.record_preview_tunnel(sibling, %{
-          preview_url: "https://preview-#{sibling.id}.astralbi.com",
+      {:ok, sibling_instance} =
+        AppInstances.record_preview_tunnel(scope, sibling_instance, %{
+          preview_url: "https://preview-#{sibling_instance.id}.astralbi.com",
           preview_tunnel_id: tunnel_id,
           preview_tunnel_secret: "s3cret"
         })
@@ -65,7 +69,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.UnshareCopyAppTest do
 
       assert match?({:ok, _}, response)
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = AppInstances.get(scope, sibling_instance.id)
       assert saved.preview_tunnel_id == nil
       assert saved.preview_url == nil
     end

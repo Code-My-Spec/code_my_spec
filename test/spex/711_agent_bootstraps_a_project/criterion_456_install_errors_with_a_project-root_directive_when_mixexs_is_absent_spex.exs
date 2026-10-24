@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6242Spex do
     criterion: 456 do
     scenario "Install errors with a project-root directive when mix.exs is absent" do
       given_ "the working directory has no mix.exs", context do
-        refute Environments.file_exists?(context.environment, "mix.exs"),
+        refute ExecutionContexts.file_exists?(context.execution_context, "mix.exs"),
                "expected mix.exs to be absent before install"
 
         {:ok, context}

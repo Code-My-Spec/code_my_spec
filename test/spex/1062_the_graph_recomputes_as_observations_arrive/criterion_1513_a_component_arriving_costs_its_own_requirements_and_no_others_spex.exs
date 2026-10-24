@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
   import CodeMySpecSpex.StoryHelpers, only: [create_story: 2]
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
           description: "Charges for what the example context did."
         )
 
-        :ok = Environments.write_file(context.environment, @arriving_impl, impl_file())
+        :ok = ExecutionContexts.write_file(context.execution_context, @arriving_impl, impl_file())
 
         {:ok, files, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

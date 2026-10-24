@@ -12,7 +12,7 @@ defmodule CodeMySpec.Promotion.AGateResetLeavesTheSubmoduleAloneTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Steps
 
   setup do
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Promotion.AGateResetLeavesTheSubmoduleAloneTest do
     pinned = commit(root, "pin a docs commit that is not here")
     {_, 0} = git(root, ["-c", "submodule.recurse=false", "checkout", "-q", "--detach", main])
 
-    %{root: root, main: main, pinned: pinned, env: Environment.new(:local, root)}
+    %{root: root, main: main, pinned: pinned, env: ExecutionContext.new(:local, root)}
   end
 
   test "the gate checkout is reset to a commit pinning a docs commit it does not have", ctx do

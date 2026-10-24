@@ -33,7 +33,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeAddressTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Steps
 
   @domain "inbound-drill.example.com"
@@ -42,9 +42,9 @@ defmodule CodeMySpec.Provisioning.InboundProbeAddressTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, project} =

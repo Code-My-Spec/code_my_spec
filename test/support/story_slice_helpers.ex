@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   @moduledoc "Surface setup and response readers for active-story execution acceptance tests."
   import ExUnit.Assertions
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
 
   alias CodeMySpecSpex.{
@@ -28,9 +28,9 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   @doc "Use the fixture's in-memory runtime for an explicitly joined working copy."
-  def scope_for_copy(%{scope: scope, environment: environment}, copy_id, root) do
-    :ok = Environments.unregister({:working_copy, copy_id})
-    :ok = Environments.register({:working_copy, copy_id}, environment)
+  def scope_for_copy(%{scope: scope, execution_context: environment}, copy_id, root) do
+    :ok = ExecutionContexts.unregister({:working_copy, copy_id})
+    :ok = ExecutionContexts.register({:working_copy, copy_id}, environment)
     %{scope | active_working_copy_id: copy_id, cwd: root}
   end
 
@@ -110,14 +110,14 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   def component(context, name), do: Fixtures.get_component_by_module_name(context.scope, name)
 
   def missing(context, name) do
-    :ok = Environments.delete_file(context.environment, Content.impl_path(name))
+    :ok = ExecutionContexts.delete_file(context.execution_context, Content.impl_path(name))
     GraphGivens.sync(context)
   end
 
   def implement(context, name) do
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         Content.impl_path(name),
         Content.impl_file(name)
       )
@@ -200,7 +200,7 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     root = CodeMySpec.TempFile.owned_dir("story-slice-git")
 
     {_, 0} =
-      Environments.cmd(context.environment, "git", [
+      ExecutionContexts.cmd(context.execution_context, "git", [
         "init",
         "--quiet",
         "--initial-branch=main",
@@ -208,8 +208,8 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
       ])
 
     {_, 0} =
-      Environments.cmd(
-        context.environment,
+      ExecutionContexts.cmd(
+        context.execution_context,
         "git",
         [
           "-c",

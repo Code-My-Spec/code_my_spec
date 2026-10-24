@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6444Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6444Spex do
              context do
         brief_path = ".code_my_spec/qa/#{context.story.id}/brief.md"
 
-        refute Environments.file_exists?(context.environment, brief_path),
+        refute ExecutionContexts.file_exists?(context.execution_context, brief_path),
                "precondition: expected no brief.md on disk"
 
         {:ok, context}

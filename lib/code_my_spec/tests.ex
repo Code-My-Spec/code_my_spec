@@ -6,12 +6,12 @@ defmodule CodeMySpec.Tests do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.TempFile],
+    deps: [CodeMySpec.ExecutionContexts, CodeMySpec.TempFile],
     exports: :all
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   alias CodeMySpec.Tests.TestRun
 
@@ -22,7 +22,7 @@ defmodule CodeMySpec.Tests do
 
   - `args` - List of arguments to pass to mix test (e.g., ["test/my_test.exs", "--only", "integration"])
   - `opts` - Keyword list of options:
-    - `:environment` - Environment to run tests in (required); commands run in its cwd
+    - `:execution_context` - Environment to run tests in (required); commands run in its cwd
     - `:output_file` - Path for test results JSON (optional, defaults to temp file)
 
   ## Returns
@@ -32,13 +32,13 @@ defmodule CodeMySpec.Tests do
 
   ## Example
 
-      {:ok, test_run} = Tests.execute(["test/my_test.exs"], environment: env)
+      {:ok, test_run} = Tests.execute(["test/my_test.exs"], execution_context: env)
       test_run.stats.failures  # => 0
   """
   @spec execute(args :: [String.t()], opts :: keyword()) ::
           {:ok, TestRun.t()} | {:error, {:parse_error, String.t()}}
   def execute(args, opts \\ []) do
-    env = Keyword.fetch!(opts, :environment)
+    env = Keyword.fetch!(opts, :execution_context)
 
     temp_file =
       Keyword.get_lazy(opts, :output_file, fn ->
@@ -47,7 +47,7 @@ defmodule CodeMySpec.Tests do
 
     test_args = ["test", "--formatter", "ClientUtils.TestFormatter" | args]
     # The project's `test` recipe when it declares one; the arguments are the same.
-    program = if Environments.recipe?(env, "test"), do: "just", else: "mix"
+    program = if ExecutionContexts.recipe?(env, "test"), do: "just", else: "mix"
     command = program <> " " <> Enum.join(test_args, " ")
     file_path = extract_file_path(args)
 
@@ -56,7 +56,7 @@ defmodule CodeMySpec.Tests do
     # `merge_clean_env/1` scrubs the release's OTP variables while keeping these
     # explicit ones; `++ clean_otp_env()` would unset MIX_ENV.
     cmd_env =
-      Environments.merge_clean_env(
+      ExecutionContexts.merge_clean_env(
         env:
           [{"MIX_ENV", "test"}, {"EXUNIT_JSON_OUTPUT_FILE", temp_file}] ++
             partition_env(env, extra_env) ++ extra_env
@@ -114,7 +114,7 @@ defmodule CodeMySpec.Tests do
   # missing database surfaces as the child's own "database does not exist".
   # See knowledge/analysis, "Test databases".
   defp run_with_database(env, program, test_args, cmd_env) do
-    Environments.cmd(env, program, test_args, stderr_to_stdout: true, env: cmd_env)
+    ExecutionContexts.cmd(env, program, test_args, stderr_to_stdout: true, env: cmd_env)
   end
 
   # The generated path is written inside the environment, so it is read (and
@@ -124,7 +124,7 @@ defmodule CodeMySpec.Tests do
     read =
       if caller_provided_file,
         do: File.read(temp_file),
-        else: Environments.read_file(env, temp_file)
+        else: ExecutionContexts.read_file(env, temp_file)
 
     result =
       case read do
@@ -136,7 +136,7 @@ defmodule CodeMySpec.Tests do
           "{}"
       end
 
-    unless caller_provided_file, do: Environments.delete_file(env, temp_file)
+    unless caller_provided_file, do: ExecutionContexts.delete_file(env, temp_file)
     result
   end
 

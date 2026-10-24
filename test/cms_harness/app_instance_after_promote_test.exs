@@ -47,7 +47,7 @@ defmodule CmsHarness.AppInstanceAfterPromoteTest do
       capture_log(fn ->
         push_app_event_as_main("restart_app")
         # The reply goes out before the hook runs; this waits the hook out.
-        :sys.get_state(CmsHarness.AppInstance.via(root))
+        :sys.get_state(CmsHarness.AppInstance.via(instance(root)))
       end)
 
     assert log =~ "after-promote: running `just after-promote` in #{root}"
@@ -74,7 +74,7 @@ defmodule CmsHarness.AppInstanceAfterPromoteTest do
         assert %{"status" => "ok", "app_status" => "serving", "app_commit" => "cafef00d"} =
                  result
 
-        :sys.get_state(CmsHarness.AppInstance.via(root))
+        :sys.get_state(CmsHarness.AppInstance.via(instance(root)))
       end)
 
     assert log =~ "after-promote failed"

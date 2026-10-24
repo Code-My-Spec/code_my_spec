@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         {:ok, deploy_view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/deploys?env=uat")
 
-        {:ok, before} = Environments.list_directory(context.environment, "lib")
+        {:ok, before} = ExecutionContexts.list_directory(context.execution_context, "lib")
 
         {:ok,
          context
@@ -102,7 +102,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         assert context.html =~ ~r/data-step="deploy"[^>]*data-state="done"/,
                "expected the redeploy to succeed with the rotated secret"
 
-        {:ok, contents} = Environments.read_file(context.environment, "envs/uat.enc.env")
+        {:ok, contents} =
+          ExecutionContexts.read_file(context.execution_context, "envs/uat.enc.env")
 
         refute contents =~ @old_value,
                "expected the old value not to remain in the encrypted file"
@@ -114,7 +115,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
       end
 
       then_ "no application code changed", context do
-        {:ok, lib_after} = Environments.list_directory(context.environment, "lib")
+        {:ok, lib_after} = ExecutionContexts.list_directory(context.execution_context, "lib")
 
         assert lib_after == context.lib_before,
                "expected rotation to touch no application code:\n  before: #{inspect(context.lib_before)}\n  after:  #{inspect(lib_after)}"

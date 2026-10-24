@@ -48,8 +48,8 @@ defmodule CodeMySpecSpex.Story555.Criterion1606Spex do
       # not on disk is cleared by the next sync, which every stop runs.
       given_ "the failing spec is in the working copy", context do
         :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/example_context_spex.exs",
             "defmodule ExampleContextSpex do\nend\n"
           )

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
       end
 
       when_ "he looks at its deploy configuration", context do
-        entries = project_tree(context.environment)
+        entries = project_tree(context.execution_context)
 
         configs =
           Enum.filter(entries, fn path ->
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
       then_ "each names its own host and its own environment discriminator", context do
         details =
           Enum.map(context.configs, fn path ->
-            {:ok, body} = Environments.read_file(context.environment, path)
+            {:ok, body} = ExecutionContexts.read_file(context.execution_context, path)
 
             # Anchored to the start of the line (after indentation), not just
             # anywhere the four characters "host:" appear — `image:` names a

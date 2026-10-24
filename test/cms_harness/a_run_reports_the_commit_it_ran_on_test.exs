@@ -11,14 +11,14 @@ defmodule CmsHarness.ARunReportsTheCommitItRanOnTest do
 
   alias CmsHarness.Analysis
   alias CmsHarness.Project.AnalysisServer
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   @sha_a String.duplicate("a", 40)
   @sha_b String.duplicate("b", 40)
 
   defp git(head, status) do
     {:ok, env} =
-      InMemoryEnvironment.create(
+      InMemoryExecutionContext.create(
         shell: fn
           "git", ["rev-parse", "HEAD"], _opts -> head
           "git", ["status", "--porcelain" | _], _opts -> status

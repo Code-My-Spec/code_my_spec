@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3240Spex do
       when_ "a file appears in the first checkout and it scans", context do
         :ok =
           CodeMySpecSpex.Fixtures.write_env_file(
-            context.environment,
+            context.execution_context,
             "lib/only_in_the_first_checkout.ex",
             "defmodule OnlyInTheFirstCheckout do\n  @moduledoc false\nend\n"
           )

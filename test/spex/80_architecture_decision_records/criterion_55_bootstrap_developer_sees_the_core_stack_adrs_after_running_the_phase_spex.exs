@@ -23,16 +23,16 @@ defmodule CodeMySpecSpex.Story80.Criterion5269Spex do
   spex "Pre-made decisions are auto-written before the prompt", criterion: 55 do
     scenario "Bootstrap developer sees the core stack ADRs after running the phase" do
       given_ "the project has no decision files on disk", context do
-        Fixtures.reset_setup_env(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
 
-        refute Fixtures.adr_exists?(context.environment, "elixir")
-        refute Fixtures.adr_exists?(context.environment, "phoenix")
+        refute Fixtures.adr_exists?(context.execution_context, "elixir")
+        refute Fixtures.adr_exists?(context.execution_context, "phoenix")
 
         {:ok, context}
       end
 
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
+        {:ok, HarnessHooks.ensure_live_harness(context, execution_context: :in_memory)}
       end
 
       given_ "the agent has signalled session start", context do
@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5269Spex do
       end
 
       then_ "each core stack ADR exists on disk", context do
-        env = context.environment
+        env = context.execution_context
 
         for topic <- ~w(elixir phoenix liveview tailwind daisyui) do
           assert Fixtures.adr_exists?(env, topic),

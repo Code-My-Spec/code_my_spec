@@ -90,8 +90,14 @@ defmodule CodeMySpecSpex.HarnessLifecycleHelpers do
   defp connected(context) do
     # The fixture's files are in its in-memory runtime, and the test machine
     # serves no filesystem requests: the joined copy reads that runtime.
-    :ok = CodeMySpec.Environments.unregister({:working_copy, context.copy_id})
-    :ok = CodeMySpec.Environments.register({:working_copy, context.copy_id}, context.environment)
+    :ok = CodeMySpec.ExecutionContexts.unregister({:working_copy, context.copy_id})
+
+    :ok =
+      CodeMySpec.ExecutionContexts.register(
+        {:working_copy, context.copy_id},
+        context.execution_context
+      )
+
     scope = %{context.scope | active_working_copy_id: context.copy_id}
     {:ok, _integration} = Fixtures.connect_provider(scope, :zai)
 

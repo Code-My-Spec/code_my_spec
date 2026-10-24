@@ -4,7 +4,7 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposal do
 
   alias CodeMySpec.Architecture.ProposalProjector
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Architecture.Tools.Responses, as: ArchitectureMapper
   alias CodeMySpec.Paths
@@ -82,9 +82,9 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposal do
   end
 
   defp project_environment(%{active_working_copy_id: nil, active_project: project}),
-    do: LocalScope.environment(project)
+    do: LocalScope.execution_context(project)
 
-  defp project_environment(scope), do: WorkingCopies.environment(scope)
+  defp project_environment(scope), do: WorkingCopies.execution_context(scope)
 
   # A proposal with no contexts, written over one that had them, is worse than
   # no proposal: it is a document that confidently describes an empty
@@ -121,7 +121,7 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposal do
   end
 
   defp do_write(env, content) do
-    case Environments.write_file(env, Paths.proposal_path(), content) do
+    case ExecutionContexts.write_file(env, Paths.proposal_path(), content) do
       :ok ->
         text("""
         # Proposal Regenerated

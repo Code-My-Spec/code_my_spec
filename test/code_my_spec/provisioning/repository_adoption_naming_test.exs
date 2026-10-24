@@ -15,7 +15,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.GitHub
   alias CodeMySpec.Provisioning.Steps
 
@@ -24,7 +24,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
     scope = provisioning_scope_fixture()
     _ = github_integration_fixture(scope.user)
 
-    %{env: Environment.new(:local, tmp), scope: scope}
+    %{env: ExecutionContext.new(:local, tmp), scope: scope}
   end
 
   defp stub_github(fun), do: Req.Test.stub(GitHub, fun)
@@ -58,7 +58,7 @@ defmodule CodeMySpec.Provisioning.RepositoryAdoptionNamingTest do
 
     scope =
       ctx.scope
-      |> put_fixture_environment(ctx.env)
+      |> put_fixture_execution_context(ctx.env)
       |> Map.put(:active_project, %{
         name: "Cleaner CRM",
         code_repo: "git@github.com:Code-My-Spec/cleaner_crm.git"

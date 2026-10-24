@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2350Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,16 +30,16 @@ defmodule CodeMySpecSpex.Story1013.Criterion2350Spex do
   spex "One command takes a working copy from checkout to ready", criterion: 863 do
     scenario "A worktree the agent made is configured by one command run inside it" do
       given_ "a worktree with no harness configuration", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2350"}, pretty: true)
           )
 
-        refute Environments.file_exists?(context.environment, @settings),
+        refute ExecutionContexts.file_exists?(context.execution_context, @settings),
                "the premise failed: this working copy is already configured"
 
         {:ok, context}
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2350Spex do
       end
 
       then_ "its identity and partition are set", context do
-        assert {:ok, settings} = Environments.read_file(context.environment, @settings),
+        assert {:ok, settings} = ExecutionContexts.read_file(context.execution_context, @settings),
                "onboarding wrote no #{@settings}, so nothing about this working " <>
                  "copy's identity was recorded and every consumer is left to derive it."
 

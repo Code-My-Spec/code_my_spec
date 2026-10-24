@@ -10,13 +10,13 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   require Logger
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @pg ~w(-h localhost -U postgres)
 
   @impl true
-  def recipe?(root, name), do: Environments.recipe?(local(root), name)
+  def recipe?(root, name), do: ExecutionContexts.recipe?(local(root), name)
 
   @impl true
   def free_port do
@@ -27,7 +27,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
-  def app_name(root), do: Environments.mix_exs_app_name(local(root))
+  def app_name(root), do: ExecutionContexts.mix_exs_app_name(local(root))
 
   @impl true
   def database_exists?(database) do
@@ -42,7 +42,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   @impl true
   def main_database_name(root) do
     with main when is_binary(main) <- main_checkout_path(root),
-         {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
+         {:ok, content} <- ExecutionContexts.read_file(local(main), "config/dev.exs"),
          [_, db] <-
            Regex.run(
              ~r/database:\s*(?:System\.get_env\("DATABASE_NAME"\)\s*\|\|\s*)?"([^"]+)"/,
@@ -59,7 +59,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   @impl true
   def main_ports(root) do
     with main when is_binary(main) <- main_checkout_path(root),
-         {:ok, content} <- Environments.read_file(local(main), "config/dev.exs"),
+         {:ok, content} <- ExecutionContexts.read_file(local(main), "config/dev.exs"),
          http when is_integer(http) <- declared_port(content, "PORT") do
       {http, declared_port(content, "HTTPS_PORT")}
     else
@@ -105,7 +105,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   defp main_checkout_path(root) do
-    case Environments.cmd(
+    case ExecutionContexts.cmd(
            local(root),
            "git",
            ["rev-parse", "--path-format=absolute", "--git-common-dir"],
@@ -123,9 +123,9 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   def clone_database(root, main_database, database) do
     env = local(root)
 
-    with {_out, 0} <- Environments.cmd(env, "createdb", @pg ++ [database], []),
+    with {_out, 0} <- ExecutionContexts.cmd(env, "createdb", @pg ++ [database], []),
          {out, 0} <-
-           Environments.cmd(
+           ExecutionContexts.cmd(
              env,
              "bash",
              [
@@ -144,19 +144,21 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   @impl true
   def seed(root) do
-    if recipe?(root, "seed"), do: Environments.cmd(local(root), "just", ["seed"], [])
+    if recipe?(root, "seed"), do: ExecutionContexts.cmd(local(root), "just", ["seed"], [])
     :ok
   end
 
   @impl true
   def drop_database(database) do
-    System.cmd("dropdb", @pg ++ ["--if-exists", database], stderr_to_stdout: true)
-    :ok
+    case System.cmd("dropdb", @pg ++ ["--if-exists", database], stderr_to_stdout: true) do
+      {_out, 0} -> :ok
+      {out, _status} -> {:error, {:database_drop_failed, database, String.trim(out)}}
+    end
   end
 
   @impl true
   def current_commit(root) do
-    case Environments.cmd(local(root), "git", ["rev-parse", "HEAD"], []) do
+    case ExecutionContexts.cmd(local(root), "git", ["rev-parse", "HEAD"], []) do
       {out, 0} -> String.trim(out)
       _ -> nil
     end
@@ -182,7 +184,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
     shell = detached_after_promote(log, status_file, System.find_executable("setsid") != nil)
 
-    case Environments.cmd(local(root), "bash", ["-c", shell], []) do
+    case ExecutionContexts.cmd(local(root), "bash", ["-c", shell], []) do
       {_out, 0} ->
         await_status(status_file, log, @after_promote_wait_ms)
 
@@ -278,7 +280,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
         "#{cmd} & disown; echo $!"
       end
 
-    case Environments.cmd(local(root), "bash", ["-c", shell], []) do
+    case ExecutionContexts.cmd(local(root), "bash", ["-c", shell], []) do
       {out, 0} ->
         case out |> String.trim() |> Integer.parse() do
           {os_pid, _} -> {:ok, os_pid}
@@ -311,7 +313,7 @@ defmodule CmsHarness.AppInstance.Runner.Local do
         if(https_port, do: [{"HTTPS_PORT", to_string(https_port)}], else: [])
 
     {out, status} =
-      Environments.cmd(local(root), "just", ["reload"], env: env, stderr_to_stdout: true)
+      ExecutionContexts.cmd(local(root), "just", ["reload"], env: env, stderr_to_stdout: true)
 
     File.mkdir_p!(Path.dirname(log_path))
     File.write!(log_path, "\n--- just reload ---\n" <> out, [:append])
@@ -392,9 +394,43 @@ defmodule CmsHarness.AppInstance.Runner.Local do
 
   @impl true
   def stop_process(os_pid) do
+    root = process_root(os_pid)
     System.cmd("pkill", ["-TERM", "-P", Integer.to_string(os_pid)], stderr_to_stdout: true)
     System.cmd("kill", ["-TERM", Integer.to_string(os_pid)], stderr_to_stdout: true)
-    :ok
+
+    case wait_for_exit(os_pid, System.monotonic_time(:millisecond) + 5_000) do
+      :ok -> :ok
+      {:error, _} -> force_stop_owned_process(os_pid, root)
+    end
+  end
+
+  defp force_stop_owned_process(os_pid, root) when is_binary(root) do
+    case process_root(os_pid) do
+      ^root ->
+        System.cmd("pkill", ["-KILL", "-P", Integer.to_string(os_pid)], stderr_to_stdout: true)
+        System.cmd("kill", ["-KILL", Integer.to_string(os_pid)], stderr_to_stdout: true)
+        wait_for_exit(os_pid, System.monotonic_time(:millisecond) + 1_000)
+
+      _ ->
+        {:error, {:cannot_confirm_process_stopped, os_pid}}
+    end
+  end
+
+  defp force_stop_owned_process(os_pid, _),
+    do: {:error, {:cannot_confirm_process_stopped, os_pid}}
+
+  defp wait_for_exit(os_pid, deadline) do
+    cond do
+      not alive?(os_pid) ->
+        :ok
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        {:error, {:cannot_confirm_process_stopped, os_pid}}
+
+      true ->
+        Process.sleep(25)
+        wait_for_exit(os_pid, deadline)
+    end
   end
 
   @impl true
@@ -496,5 +532,5 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
-  defp local(root), do: %Environment{type: :local, cwd: root}
+  defp local(root), do: %ExecutionContext{type: :local, cwd: root}
 end

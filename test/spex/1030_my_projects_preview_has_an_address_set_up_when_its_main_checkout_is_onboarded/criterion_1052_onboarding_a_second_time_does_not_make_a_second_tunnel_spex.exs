@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Req.Test
 
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
   spex "Onboarding repeatedly does not litter the account with tunnels", criterion: 1052 do
     scenario "Onboarding a second time does not make a second tunnel" do
       given_ "a checkout that has already been onboarded once", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         # A real working copy, minted the way one actually is - a harness joining
         # for it. Onboarding looks the copy up to decide whether it is the
@@ -50,8 +50,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
         reply = join_working_copy(context, "/workspace/main", "main")
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
         Mix.Task.reenable("cms.harness.onboard")
         Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
-        {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        {:ok, contents} = ExecutionContexts.read_file(context.execution_context, @harness_config)
         first = Jason.decode!(contents)
 
         # Drain what the first run did, so what the second run does is what the
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2967Spex do
       end
 
       then_ "it is still carrying the tunnel it already had", context do
-        {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        {:ok, contents} = ExecutionContexts.read_file(context.execution_context, @harness_config)
         second = Jason.decode!(contents)
 
         assert second["preview_tunnel_id"] == context.first["preview_tunnel_id"],

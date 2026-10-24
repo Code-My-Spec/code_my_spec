@@ -24,6 +24,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.Requirements.Invalidations
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
 
@@ -33,6 +34,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
     {:ok, copy} =
       WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/checkout")
 
+    {:ok, copy} = WorkingCopies.report_root(copy, "/a/checkout")
     drain(scope)
 
     %{scope: scope, copy: copy}
@@ -62,7 +64,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
 
       # The poll that found it still serving. `preview_checked_at` moves and
       # nothing the graph reads does.
-      {:ok, _} = WorkingCopies.record_preview_status(serving, "serving")
+      {:ok, _} = AppInstances.record_preview_status(scope, serving, "serving")
 
       refute announced?(scope),
              "confirming an unchanged status is a check, not a change"
@@ -74,7 +76,7 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
 
       latest =
         Enum.reduce(1..5, serving, fn _, acc ->
-          {:ok, next} = WorkingCopies.record_preview_status(acc, "serving")
+          {:ok, next} = AppInstances.record_preview_status(scope, acc, "serving")
           next
         end)
 
@@ -111,13 +113,16 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
           commit: "abc123"
         })
 
-      assert updated.app_status == "serving"
-      assert updated.app_url == "http://127.0.0.1:51234"
-      assert updated.app_commit == "abc123"
-      assert updated.app_checked_at
+      assert updated.status == "serving"
+      assert updated.url == "http://127.0.0.1:51234"
+      assert updated.commit == "abc123"
+      assert updated.checked_at
     end
 
-    test "a health-probe-only report keeps the existing url and commit", %{copy: copy} do
+    test "a health-probe-only report keeps the existing url and commit", %{
+      scope: scope,
+      copy: copy
+    } do
       {:ok, started} =
         WorkingCopies.record_app_status(copy, %{
           status: "serving",
@@ -125,13 +130,13 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
           commit: "abc123"
         })
 
-      {:ok, polled} = WorkingCopies.record_app_status(started, %{status: "serving"})
+      {:ok, polled} = AppInstances.record_status(scope, started, %{status: "serving"})
 
-      assert polled.app_url == "http://127.0.0.1:51234"
-      assert polled.app_commit == "abc123"
+      assert polled.url == "http://127.0.0.1:51234"
+      assert polled.commit == "abc123"
     end
 
-    test "going down clears the url regardless of what's passed", %{copy: copy} do
+    test "going down clears the url regardless of what's passed", %{scope: scope, copy: copy} do
       {:ok, started} =
         WorkingCopies.record_app_status(copy, %{
           status: "serving",
@@ -140,14 +145,17 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
         })
 
       {:ok, stopped} =
-        WorkingCopies.record_app_status(started, %{status: "down", url: "http://127.0.0.1:51234"})
+        AppInstances.record_status(scope, started, %{
+          status: "down",
+          url: "http://127.0.0.1:51234"
+        })
 
-      assert stopped.app_status == "down"
+      assert stopped.status == "down"
 
-      assert stopped.app_url == nil,
+      assert stopped.url == nil,
              "a stale address on a stopped copy is the bug this story fixes"
 
-      assert stopped.app_commit == "abc123"
+      assert stopped.commit == "abc123"
     end
 
     test "does not announce — this story hasn't wired the graph to read it yet", %{

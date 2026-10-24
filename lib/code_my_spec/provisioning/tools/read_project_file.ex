@@ -2,7 +2,7 @@ defmodule CodeMySpec.Provisioning.Tools.ReadProjectFile do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.LocalScope
   alias CodeMySpec.Resources
   alias CodeMySpec.WorkingCopies
@@ -48,12 +48,12 @@ defmodule CodeMySpec.Provisioning.Tools.ReadProjectFile do
 
   defp project_environment(%{active_working_copy_id: copy_id} = scope, _project)
        when is_binary(copy_id),
-       do: WorkingCopies.environment(scope)
+       do: WorkingCopies.execution_context(scope)
 
-  defp project_environment(_scope, project), do: LocalScope.environment(project)
+  defp project_environment(_scope, project), do: LocalScope.execution_context(project)
 
   defp read_file(nil, _path), do: {:error, :no_working_environment}
-  defp read_file(environment, path), do: Environments.read_file(environment, path)
+  defp read_file(environment, path), do: ExecutionContexts.read_file(environment, path)
 
   defp reply({:ok, content}, _path), do: ok(content)
   defp reply({:error, :enoent}, path), do: error("#{path}: not found")

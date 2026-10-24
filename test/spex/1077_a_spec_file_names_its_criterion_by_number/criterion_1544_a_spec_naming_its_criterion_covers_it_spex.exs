@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4668Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4668Spex do
 
       when_ "the agent writes a spec whose spex call names that criterion", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/anywhere/a_task_is_captured_spex.exs",
             CriterionScript.spex_naming(context.number)
           )

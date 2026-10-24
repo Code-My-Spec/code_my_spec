@@ -11,10 +11,10 @@ defmodule CodeMySpecSpex.RecordedAnalysis do
   in `test/fixtures/validation/`.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Environments]
+  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.ExecutionContexts]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   @doc """
   Returns `context` with the recordings on its scope's environment, and
@@ -22,26 +22,32 @@ defmodule CodeMySpecSpex.RecordedAnalysis do
   """
   @spec attach_recorded_analysis(map(), keyword(String.t())) :: map()
   def attach_recorded_analysis(%{scope: scope} = context, recordings) do
-    env = Enum.reduce(recordings, CodeMySpec.UsersFixtures.fixture_environment(scope), &record/2)
+    env =
+      Enum.reduce(
+        recordings,
+        CodeMySpec.UsersFixtures.fixture_execution_context(scope),
+        &record/2
+      )
+
     reregister(scope.active_project_id, env)
 
     context
-    |> Map.replace(:environment, env)
-    |> Map.put(:scope, CodeMySpec.UsersFixtures.put_fixture_environment(scope, env))
+    |> Map.replace(:execution_context, env)
+    |> Map.put(:scope, CodeMySpec.UsersFixtures.put_fixture_execution_context(scope, env))
   end
 
   defp record({source, path}, env) do
     path = Path.expand(path)
     File.exists?(path) || raise ArgumentError, "no recorded analyzer output at #{path}"
-    InMemoryEnvironment.record_output(env, to_string(source), path)
+    InMemoryExecutionContext.record_output(env, to_string(source), path)
   end
 
   defp reregister(nil, _env), do: :ok
 
   defp reregister(project_id, env) do
-    if Environments.lookup_registered(project_id) do
-      Environments.unregister(project_id)
-      Environments.register(project_id, env)
+    if ExecutionContexts.lookup_registered(project_id) do
+      ExecutionContexts.unregister(project_id)
+      ExecutionContexts.register(project_id, env)
     end
 
     :ok

@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
   without parsing or referencing it.
 
   Surfaces:
-  - `CodeMySpec.Environments` (seed the brief)
+  - `CodeMySpec.ExecutionContexts` (seed the brief)
   - `CodeMySpec.Qa.Tools.SubmitQaResult`
   """
 
@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
         brief_path = ".code_my_spec/qa/#{context.story.id}/brief.md"
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             brief_path,
             "# garbage\n\nthis brief is malformed nonsense the harness must ignore\n"
           )

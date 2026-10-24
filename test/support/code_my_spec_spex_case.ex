@@ -2207,7 +2207,7 @@ defmodule CodeMySpecSpex.Case do
       :code_my_spec,
       :provisioning_step_opts,
       Keyword.merge(previous,
-        run: Fixtures.fleet_runner(Fixtures.fixture_environment(scope), ssh_key_path: key),
+        run: Fixtures.fleet_runner(Fixtures.fixture_execution_context(scope), ssh_key_path: key),
         # The fleet box carries no private network address, so the registry
         # publishes on loopback there. `serve_one_registry/5` uses `put_new`,
         # which is what lets this stand.
@@ -2533,7 +2533,7 @@ defmodule CodeMySpecSpex.Case do
   # analyzer is running. MIX_TEST_PARTITION for the same reason one directory
   # over.
   #
-  # Written out rather than borrowed from `CodeMySpec.Environments`, which
+  # Written out rather than borrowed from `CodeMySpec.ExecutionContexts`, which
   # `CodeMySpecSpex` may not reach into.
   @child_mix_env [
     {"MIX_ENV", "dev"},
@@ -2841,7 +2841,7 @@ defmodule CodeMySpecSpex.Case do
   where the project is.
   """
   def real_working_directory(%{scope: scope, project: project} = context) do
-    env = Fixtures.local_environment_fixture(working_dir: project.local_path)
+    env = Fixtures.local_execution_context_fixture(working_dir: project.local_path)
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
@@ -2851,8 +2851,8 @@ defmodule CodeMySpecSpex.Case do
     Callbacks.on_exit(fn -> Fixtures.unregister_environment(project.id) end)
 
     context
-    |> Map.put(:environment, env)
-    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
+    |> Map.put(:execution_context, env)
+    |> Map.put(:scope, Fixtures.put_fixture_execution_context(scope, env))
   end
 
   @doc """
@@ -2879,7 +2879,7 @@ defmodule CodeMySpecSpex.Case do
   """
   def fake_working_directory(%{scope: scope, project: project} = context) do
     env =
-      Fixtures.memory_environment_fixture(
+      Fixtures.memory_execution_context_fixture(
         working_dir: project.local_path,
         shell_module: Fakes.Shell
       )
@@ -2911,8 +2911,8 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     context
-    |> Map.put(:environment, env)
-    |> Map.put(:scope, Fixtures.put_fixture_environment(scope, env))
+    |> Map.put(:execution_context, env)
+    |> Map.put(:scope, Fixtures.put_fixture_execution_context(scope, env))
   end
 
   @doc """
@@ -2933,7 +2933,7 @@ defmodule CodeMySpecSpex.Case do
   excludes it (otherwise the probe gets a 301 and the deploy waits on a health
   check that redirects forever).
   """
-  def deploy_ready_checkout(%{environment: env, project: project} = context) do
+  def deploy_ready_checkout(%{execution_context: env, project: project} = context) do
     # The domain as the database has it, not as the fixture struct remembers
     # it: this runs inside a `given_` that has just set one, and the struct in
     # context predates that write. Reading the stale copy generated a
@@ -3028,7 +3028,7 @@ defmodule CodeMySpecSpex.Case do
   @doc """
   Every file in the project tree, as paths relative to its root.
 
-  `Environments.list_directory/2` lists one level, which is right for what it
+  `ExecutionContexts.list_directory/2` lists one level, which is right for what it
   is. The generated artifacts are nested — `config/deploy.yml`,
   `lib/…_web/router.ex`, `envs/prod.enc.env` — so a criterion asking "did the
   generator produce this" has to see the whole tree, not the top of it.
@@ -3040,7 +3040,7 @@ defmodule CodeMySpecSpex.Case do
   def project_tree(_env, _path, 0), do: []
 
   def project_tree(env, path, depth) do
-    case CodeMySpec.Environments.list_directory(env, path) do
+    case CodeMySpec.ExecutionContexts.list_directory(env, path) do
       {:ok, names} -> Enum.flat_map(names, &tree_entry(env, path, &1, depth))
       _ -> []
     end
@@ -3051,7 +3051,7 @@ defmodule CodeMySpecSpex.Case do
 
     # A directory lists; a file does not. Cheaper than a stat call through an
     # abstraction that does not offer one.
-    case CodeMySpec.Environments.list_directory(env, child) do
+    case CodeMySpec.ExecutionContexts.list_directory(env, child) do
       {:ok, []} -> [child]
       {:ok, _} -> [child | project_tree(env, child, depth - 1)]
       _ -> [child]
@@ -4026,7 +4026,7 @@ defmodule CodeMySpecSpex.Case do
   `:health_fails`. The required secrets are written so the deploy step's
   pre-flight passes, and step opts carry the host, environment and probe.
   """
-  def stage_deploy(%{scope: scope, environment: env} = context, scenario \\ :ok) do
+  def stage_deploy(%{scope: scope, execution_context: env} = context, scenario \\ :ok) do
     # First, so the `bin/deploy` stub below overwrites the generated one rather
     # than the other way round. The deploy step audits the checkout before it
     # runs anything, and an empty working directory is refused with "this
@@ -6417,7 +6417,7 @@ defmodule CodeMySpecSpex.Case do
     File.mkdir_p!(Path.join(stub_dir, ".code_my_spec/spec"))
     Callbacks.on_exit(fn -> File.rm_rf(stub_dir) end)
 
-    env = Fixtures.memory_environment_fixture(working_dir: stub_dir)
+    env = Fixtures.memory_execution_context_fixture(working_dir: stub_dir)
 
     # Derived from the spex module, which makes it unique across spex and
     # identical across runs. Both halves are load-bearing:
@@ -6443,7 +6443,7 @@ defmodule CodeMySpecSpex.Case do
       user
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
-      |> Fixtures.put_fixture_environment(env)
+      |> Fixtures.put_fixture_execution_context(env)
 
     Fixtures.register_environment({:root, stub_dir}, env)
     Callbacks.on_exit(fn -> Fixtures.unregister_environment({:root, stub_dir}) end)
@@ -6474,7 +6474,7 @@ defmodule CodeMySpecSpex.Case do
     # against the wrong shape and then have to redo it.
     Fixtures.watch_graph(updated_scope)
 
-    Map.merge(context, %{project: project, scope: updated_scope, environment: env})
+    Map.merge(context, %{project: project, scope: updated_scope, execution_context: env})
   end
 
   # The other half of `existing_or_created_account/1`. The name is already

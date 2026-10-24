@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2358Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -31,11 +31,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2358Spex do
   spex "Onboarding never creates, migrates or drops a database", criterion: 871 do
     scenario "The commands are handed over, not run" do
       given_ "a working copy being onboarded", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2358"}, pretty: true)
           )

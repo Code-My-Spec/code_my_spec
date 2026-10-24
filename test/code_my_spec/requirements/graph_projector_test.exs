@@ -30,7 +30,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
@@ -48,7 +48,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
     on_exit(fn -> File.rm_rf(stub_dir) end)
 
-    env = Fixtures.memory_environment_fixture(working_dir: stub_dir)
+    env = Fixtures.memory_execution_context_fixture(working_dir: stub_dir)
 
     project =
       Fixtures.project_fixture(scope_after_account, account_id: account.id, local_path: stub_dir)
@@ -60,7 +60,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
       user
       |> Fixtures.user_scope_fixture(account, project)
       |> Map.put(:cwd, stub_dir)
-      |> Fixtures.put_fixture_environment(env)
+      |> Fixtures.put_fixture_execution_context(env)
 
     Fixtures.select_active_project(scope, project.id)
 
@@ -228,10 +228,10 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
     Enum.each(specs, fn {module_name, type, deps} ->
       spec_content = spec_content_for(type, module_name, deps)
 
-      :ok = Environments.write_file(env, Content.spec_path(module_name), spec_content)
+      :ok = ExecutionContexts.write_file(env, Content.spec_path(module_name), spec_content)
 
       :ok =
-        Environments.write_file(
+        ExecutionContexts.write_file(
           env,
           Content.impl_path(module_name),
           Content.impl_file(module_name)

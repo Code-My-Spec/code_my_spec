@@ -32,8 +32,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
 
   import CodeMySpecSpex.PromotionHelpers, only: [a_promotable_story: 2]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.McpServers.Promotion.Tools.PromoteSync
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
@@ -174,7 +174,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   defp a_running_copy(context) do
     CodeMySpecSpex.PromotionHelpers.local_bootstrap_project(context)
     running_root = CodeMySpec.TempFile.dir("spex-3176-running")
-    {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "mkdir", ["-p", running_root])
 
     {_, 0} = git(context, running_root, ["init", "--initial-branch", "main"])
     {_, 0} = git(context, running_root, ["config", "user.email", "spex@example.com"])
@@ -250,16 +250,21 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
   # An explicit `:cd` wins over the environment's own cwd, which is what lets
   # one environment drive a checkout on the OS temp filesystem.
   defp git(context, dir, args),
-    do: Environments.cmd(context.environment, "git", args, cd: dir, stderr_to_stdout: true)
+    do:
+      ExecutionContexts.cmd(context.execution_context, "git", args,
+        cd: dir,
+        stderr_to_stdout: true
+      )
 
   # A local environment over the OS temp filesystem, which is where git looks.
   # The suite's own environment fakes the domain filesystem, so a file written
   # through it is invisible to `git`.
-  defp disk(root), do: Environment.new(:local, root)
+  defp disk(root), do: ExecutionContext.new(:local, root)
 
-  defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
+  defp write(root, path, content),
+    do: :ok = ExecutionContexts.write_file(disk(root), path, content)
 
-  defp exists?(root, path), do: Environments.file_exists?(disk(root), path)
+  defp exists?(root, path), do: ExecutionContexts.file_exists?(disk(root), path)
 
   defp ask_for_next_work(context) do
     frame = %Anubis.Server.Frame{assigns: %{current_scope: context.scope}}

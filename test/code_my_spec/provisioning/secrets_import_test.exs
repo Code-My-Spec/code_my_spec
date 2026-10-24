@@ -11,7 +11,7 @@ defmodule CodeMySpec.Provisioning.SecretsImportTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sops, Steps}
 
@@ -24,14 +24,17 @@ defmodule CodeMySpec.Provisioning.SecretsImportTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      put_fixture_environment(provisioning_scope_fixture(), Environment.new(:local, tmp))
+      put_fixture_execution_context(
+        provisioning_scope_fixture(),
+        ExecutionContext.new(:local, tmp)
+      )
 
     {:ok, scope: scope, tmp: tmp}
   end
 
   defp decrypted(scope, environment) do
     {:ok, private} = ProjectSecrets.fetch_value(scope, Steps.age_key_name(environment))
-    Sops.decrypt(fixture_environment(scope), environment, private)
+    Sops.decrypt(fixture_execution_context(scope), environment, private)
   end
 
   describe "import_dotenv/3" do

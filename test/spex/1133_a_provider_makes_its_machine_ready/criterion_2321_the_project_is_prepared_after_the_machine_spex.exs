@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
   """
   use CodeMySpecSpex.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.DesktopSetupHelpers
 
   setup :fresh_machine
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
         project_dir = Path.join(context.machine_root, "dev_setup_app")
 
         :ok =
-          Environments.write_file(
+          ExecutionContexts.write_file(
             context.machine_environment,
             Path.join(project_dir, "mix.exs"),
             """
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

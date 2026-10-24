@@ -17,8 +17,8 @@ defmodule CodeMySpecSpex.Story561.Criterion3589Spex do
           CodeMySpecSpex.StoryHelpers.fetch(context.scope, context.story.id).criteria
 
         :ok =
-          CodeMySpec.Environments.delete_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.delete_file(
+            context.execution_context,
             CodeMySpecSpex.Fixtures.spec_file_path(context.story, criterion)
           )
 

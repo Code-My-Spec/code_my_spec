@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
         # rebuild anything, which is the opposite of what it is here to say.
         :ok =
           CodeMySpecSpex.Fixtures.write_file(
-            context.environment,
+            context.execution_context,
             "config/deploy.uat.yml",
             "service: story841\nimage: story841\nproxy:\n  host: uat.c1969.legwork.ca\n"
           )

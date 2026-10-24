@@ -21,8 +21,8 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
 
@@ -35,9 +35,9 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, scope: scope, tmp: tmp}
@@ -53,7 +53,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   defp put_secret(scope, environment, key, value) do
     :ok =
       Sops.put_secret(
-        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        CodeMySpec.UsersFixtures.fixture_execution_context(scope),
         environment,
         key,
         value,
@@ -66,7 +66,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
@@ -104,7 +104,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
@@ -120,13 +120,13 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "prod",
           "K",
           "v",
@@ -145,13 +145,13 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "prod",
           "K",
           "v",
@@ -162,7 +162,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {:ok, {other_public, other_private}} = Sops.generate_key()
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => other_public
         })
 
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "prod",
           "K",
           "v",
@@ -228,7 +228,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       assert {:ok, %{"CODEMYSPEC_WIDGET_URL" => url, "DEPLOY_KEY" => key}} =
                Sops.decrypt(
-                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
                  "prod",
                  stored(ctx.scope, "prod")
                )
@@ -255,7 +255,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "uat",
           "SECRET_KEY_BASE",
           "s3kr1t",
@@ -270,7 +270,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       assert {:ok, %{"SECRET_KEY_BASE" => "s3kr1t"}} =
                Sops.decrypt(
-                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
                  "uat",
                  stored(ctx.scope, "uat")
                ),
@@ -284,13 +284,13 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => public
         })
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "prod",
           "K",
           "v",
@@ -301,7 +301,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {:ok, {other_public, other_private}} = Sops.generate_key()
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => other_public
         })
 
@@ -309,7 +309,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       :ok =
         Sops.put_secret(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           "prod",
           "K",
           "v",
@@ -337,7 +337,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {prod_public, _} = key_for(ctx.scope, "prod")
 
       :ok =
-        Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(ctx.scope), %{
+        Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope), %{
           "prod" => prod_public
         })
 
@@ -356,8 +356,8 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
       {:ok, _} = Steps.run(:secrets, ctx.scope, [])
 
       {:ok, config} =
-        Environments.read_file(
-          CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+        ExecutionContexts.read_file(
+          CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
           ".sops.yaml"
         )
 
@@ -379,7 +379,7 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       assert :ok =
                Sops.put_secret(
-                 CodeMySpec.UsersFixtures.fixture_environment(ctx.scope),
+                 CodeMySpec.UsersFixtures.fixture_execution_context(ctx.scope),
                  "prod",
                  "OTHER",
                  "v",

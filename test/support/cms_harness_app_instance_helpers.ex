@@ -49,9 +49,44 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
     working_copy_id = onboard(root)
 
     await_connected(root, working_copy_id)
+    Process.put(:app_instance_descriptor, instance(root))
 
     %{root: root, working_copy_id: working_copy_id}
   end
+
+  def instance(root) do
+    {:ok, config} = CmsHarness.HarnessConfig.read(root)
+
+    %{
+      "instance_id" => config.working_copy_id,
+      "working_copy_id" => config.working_copy_id,
+      "root" => root,
+      "default" => true,
+      "persistent" => false,
+      "port_mode" => "allocated",
+      "database_mode" => "clone",
+      "database_source" => nil,
+      "after_promote" => false
+    }
+  end
+
+  defp instance_payload(payload) do
+    descriptor = instance_policies(Process.get(:app_instance_descriptor), payload["main"])
+
+    Process.put(:app_instance_descriptor, descriptor)
+    Map.put_new(payload, "instance", descriptor)
+  end
+
+  defp instance_policies(descriptor, true) do
+    Map.merge(descriptor, %{
+      "persistent" => true,
+      "port_mode" => "configured",
+      "database_mode" => "configured",
+      "after_promote" => true
+    })
+  end
+
+  defp instance_policies(descriptor, _), do: descriptor
 
   # A 10ms poll rather than the production 1s — against a scripted `Runner`
   # that already knows its answer, a real-second poll would make "an app that
@@ -154,19 +189,19 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
 
   @doc "Push one of the app verbs to the copy's real harness and wait for its `_result`."
   def push_app_event(event, timeout \\ 5_000) do
-    ref = FakeServer.push_app_event(event, %{})
+    ref = FakeServer.push_app_event(event, instance_payload(%{}))
     await_app_result(event, ref, timeout)
   end
 
   @doc "Push one of the app verbs with a payload of the caller's choosing — a `tunnel`, say — and wait for its `_result`."
   def push_app_event_with(event, payload, timeout \\ 5_000) do
-    ref = FakeServer.push_app_event(event, payload)
+    ref = FakeServer.push_app_event(event, instance_payload(payload))
     await_app_result(event, ref, timeout)
   end
 
   @doc "Push one of the app verbs marked `main: true`, the way `HarnessProjectChannel.put_main/2` does for the designated copy."
   def push_app_event_as_main(event, timeout \\ 5_000) do
-    ref = FakeServer.push_app_event(event, %{"main" => true})
+    ref = FakeServer.push_app_event(event, instance_payload(%{"main" => true}))
     await_app_result(event, ref, timeout)
   end
 
@@ -185,7 +220,7 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   fully returned, which puts the hook's completion strictly before this
   call's.
   """
-  def sync_after_reply(root), do: :sys.get_state(CmsHarness.AppInstance.via(root))
+  def sync_after_reply(root), do: :sys.get_state(CmsHarness.AppInstance.via(instance(root)))
 
   # --- internals ---
 
@@ -249,9 +284,9 @@ defmodule CmsHarnessTest.AppInstanceHelpers do
   # that started it, is what prevents it from outliving the fake it depends
   # on.
   defp stop_app_instance(root) do
-    case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
+    case Registry.lookup(CmsHarness.Registry, {:app_instance, instance(root)["instance_id"]}) do
       [{pid, _}] ->
-        DynamicSupervisor.terminate_child(CmsHarness.Copy.Supervisor.apps(root), pid)
+        DynamicSupervisor.terminate_child(CmsHarness.AppInstancesSupervisor, pid)
 
       [] ->
         :ok

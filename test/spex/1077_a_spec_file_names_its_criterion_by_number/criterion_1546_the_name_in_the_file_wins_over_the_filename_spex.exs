@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4670Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4670Spex do
 
       when_ "its spex call names the second", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/two_things/criterion_#{context.first}_something_spex.exs",
             CriterionScript.spex_naming(context.second)
           )

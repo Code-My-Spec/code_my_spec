@@ -45,7 +45,7 @@ defmodule CmsHarness.AnalyzerEnv do
   """
 
   alias CmsHarness.TestDatabase
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @build_subdir "_build/analyzer"
 
@@ -66,7 +66,7 @@ defmodule CmsHarness.AnalyzerEnv do
   So spex gets its own partition and everything else keeps the shared one. See
   `TestDatabase.partition_for/2` for why only spex moves.
   """
-  @spec extra_env(Environment.t(), String.t() | nil) :: [{String.t(), String.t()}]
+  @spec extra_env(ExecutionContext.t(), String.t() | nil) :: [{String.t(), String.t()}]
   def extra_env(environment, source \\ nil)
 
   def extra_env(%{cwd: cwd} = environment, source) when is_binary(cwd) do

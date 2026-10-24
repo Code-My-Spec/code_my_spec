@@ -21,23 +21,23 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.{Environment, Local}
+  alias CodeMySpec.ExecutionContexts.{ExecutionContext, Local}
   alias CodeMySpec.Files
   alias CodeMySpec.Generators
 
   @router "lib/my_app_web/router.ex"
 
   setup do
-    # The whole suite swaps `:environment` for `RecordingEnvironment`
+    # The whole suite swaps `:execution_context` for `RecordingExecutionContext`
     # (test_helper.exs), whose `file_exists?/2` resolves a nil cwd against
     # this very repo's own OS working directory rather than refusing —
     # so it answers "true" for paths this repo genuinely has (Dockerfile,
     # bin/deploy, ...), masking the exact incident this test proves. Swap
     # in the real adapter so a nil cwd behaves the way it does in
     # production: `false`, not "whatever happens to be underfoot".
-    previous = Application.get_env(:code_my_spec, :environment)
-    Application.put_env(:code_my_spec, :environment, Local)
-    on_exit(fn -> Application.put_env(:code_my_spec, :environment, previous) end)
+    previous = Application.get_env(:code_my_spec, :execution_context_adapter)
+    Application.put_env(:code_my_spec, :execution_context_adapter, Local)
+    on_exit(fn -> Application.put_env(:code_my_spec, :execution_context_adapter, previous) end)
     :ok
   end
 
@@ -72,7 +72,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
 
       # The audit receives a data-only scope plus a directoryless explicit
       # environment; synced file evidence must still satisfy existence checks.
-      findings = Generators.audit(scope, @router, Environment.new(:local, nil))
+      findings = Generators.audit(scope, @router, ExecutionContext.new(:local, nil))
 
       refute Enum.any?(findings, &match?({:missing_file, _}, &1)),
              "expected every synced artifact to read as present, got #{inspect(findings)}"
@@ -97,7 +97,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
         sync(scope, path)
       end
 
-      findings = Generators.audit(scope, @router, Environment.new(:local, nil))
+      findings = Generators.audit(scope, @router, ExecutionContext.new(:local, nil))
 
       assert Enum.any?(findings, &match?({:missing_file, %{key: :dockerfile}}, &1)),
              "expected the genuinely-unsynced Dockerfile to still read as missing, got #{inspect(findings)}"
@@ -110,7 +110,7 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
       assert {:plaintext_env_file, ".env"} in Generators.audit(
                scope,
                @router,
-               Environment.new(:local, nil)
+               ExecutionContext.new(:local, nil)
              )
     end
   end

@@ -38,7 +38,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpecWeb.Telemetry,
         CodeMySpec.Vault,
         CodeMySpec.Repo,
-        CodeMySpec.Environments.registry_child_spec(),
+        CodeMySpec.ExecutionContexts.registry_child_spec(),
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
@@ -124,7 +124,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Provisioning.RunLock,
         # One app start/restart/stop run per working copy; a second would
         # overlap the first's own _build directory otherwise (issue f2977826).
-        CodeMySpec.WorkingCopies.AppRunLock,
+        CodeMySpec.AppInstances.AppRunLock,
         # Timers for agents the provider refused until a named time: the held
         # turn end runs then. Re-armed on a harness reconnect.
         CodeMySpec.Agents.RefusalWake,

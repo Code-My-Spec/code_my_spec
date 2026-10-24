@@ -20,10 +20,10 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
 
   @copy "/ready-for-qa/copy"
@@ -78,9 +78,9 @@ defmodule CodeMySpec.AgentTasks.ReadyForQaTest do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "copy", device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, @copy)
     a_harness(copy.id)
-    {:ok, env} = InMemoryEnvironment.create(shell: script(status, changed))
-    scope = put_fixture_environment(%{scope | active_working_copy_id: copy.id}, env)
-    :ok = Environments.register({:working_copy, copy.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(status, changed))
+    scope = put_fixture_execution_context(%{scope | active_working_copy_id: copy.id}, env)
+    :ok = ExecutionContexts.register({:working_copy, copy.id}, env)
     %{scope: scope, story: story_fixture(scope)}
   end
 

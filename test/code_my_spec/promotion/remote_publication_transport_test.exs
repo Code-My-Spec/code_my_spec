@@ -2,13 +2,13 @@ defmodule CodeMySpec.Promotion.RemotePublicationTransportTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Runner
 
   test "an unreachable publication preserves the certified candidate for reconciliation" do
     assert {:error, %{unreachable: true, retryable: true, uncertain: true}} =
              Runner.publish(
-               Environment.new(:harness, "/gate"),
+               ExecutionContext.new(:harness, "/gate"),
                "/gate",
                "main",
                "base",
@@ -38,7 +38,7 @@ defmodule CodeMySpec.Promotion.RemotePublicationTransportTest do
 
       assert {:error, %{retryable: true, uncertain: true}} =
                apply(Runner, operation, [
-                 Environment.new(:harness, "/gate"),
+                 ExecutionContext.new(:harness, "/gate"),
                  "/gate",
                  "main",
                  "base",

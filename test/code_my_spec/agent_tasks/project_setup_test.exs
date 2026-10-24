@@ -9,7 +9,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @moduletag :tmp_dir
 
@@ -19,7 +19,7 @@ defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
 
   defp create_scope(tmp_dir) do
     scope = full_scope_fixture()
-    put_fixture_environment(%{scope | cwd: tmp_dir}, Environment.new(:local, tmp_dir))
+    put_fixture_execution_context(%{scope | cwd: tmp_dir}, ExecutionContext.new(:local, tmp_dir))
   end
 
   defp create_task(_tmp_dir) do

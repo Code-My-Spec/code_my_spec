@@ -25,8 +25,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5285Spex do
   spex "Validation gates on the integration index plus per-spec verification", criterion: 238 do
     scenario "Verified spec plus index passes evaluation" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
@@ -37,11 +37,11 @@ defmodule CodeMySpecSpex.Story597.Criterion5285Spex do
       end
 
       given_ "a fully verified twilio integration is in place", context do
-        Fixtures.with_verified_integration(context.environment, "twilio")
+        Fixtures.with_verified_integration(context.execution_context, "twilio")
 
-        assert Fixtures.integration_spec_exists?(context.environment, "twilio")
-        assert Fixtures.verify_script_exists?(context.environment, "twilio")
-        assert Fixtures.integration_index_exists?(context.environment)
+        assert Fixtures.integration_spec_exists?(context.execution_context, "twilio")
+        assert Fixtures.verify_script_exists?(context.execution_context, "twilio")
+        assert Fixtures.integration_index_exists?(context.execution_context)
 
         {:ok, context}
       end

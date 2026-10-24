@@ -4,8 +4,8 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   """
 
   alias CodeMySpec.AgentTasks.Setup.Context
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -14,7 +14,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   Prefers the synced `mix.exs`, which is where this is known without a disk, and
   falls back to reading one. On the light harness there is no disk to fall back
   to and the synced record is the only source — reading was not merely empty
-  there, it crashed: `Environments.read_file/2` has no clause for a nil
+  there, it crashed: `ExecutionContexts.read_file/2` has no clause for a nil
   environment, so `start_task` raised a `FunctionClauseError` for every setup
   step whose prompt names a module. An agent hit exactly that and had to
   reconstruct the prompts by disassembling these modules out of a release.
@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   """
   @spec app_name(Scope.t()) :: String.t()
   def app_name(%Scope{} = scope) do
-    synced_app_name(scope) || extract_app_name(CodeMySpec.AgentTasks.environment(scope)) ||
+    synced_app_name(scope) || extract_app_name(CodeMySpec.AgentTasks.execution_context(scope)) ||
       "your_app"
   end
 
@@ -36,7 +36,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   a prompt that names real modules instead of `your_app`.
 
   It is wrong inside a requirement graph computation, which is where
-  `SpexBoundaryChecker` calls it from. `Environments.read_file/2` against a
+  `SpexBoundaryChecker` calls it from. `ExecutionContexts.read_file/2` against a
   harness-served project is a `GenServer.call` to the harness with a 35-second
   limit, and the graph is computed on every cache miss — so an unsynced
   `mix.exs` could make the stop decision, the hot path of every agent turn, wait
@@ -47,12 +47,12 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   def synced_app_name(%Scope{} = scope), do: scope |> Context.load() |> Context.app_name()
 
   @doc """
-  Extract the app name from mix.exs via the Environment abstraction.
+  Extract the app name from mix.exs via the ExecutionContext abstraction.
   Returns the app name string or nil.
 
   Prefer `app_name/1` where a scope is at hand: it works without a disk.
   """
-  @spec extract_app_name(Environment.t() | nil) :: String.t() | nil
+  @spec extract_app_name(ExecutionContext.t() | nil) :: String.t() | nil
   def extract_app_name(env) do
     case read_file(env, "mix.exs") do
       nil ->
@@ -67,17 +67,17 @@ defmodule CodeMySpec.AgentTasks.Setup.Helpers do
   end
 
   @doc """
-  Read a file through the Environment, returning content or nil.
+  Read a file through the ExecutionContext, returning content or nil.
 
   Nil environment reads as nil rather than raising. A server with no disk is a
   supported configuration, not a bug to crash on, and every caller here already
   handles "could not read it".
   """
-  @spec read_file(Environment.t() | nil, String.t()) :: String.t() | nil
+  @spec read_file(ExecutionContext.t() | nil, String.t()) :: String.t() | nil
   def read_file(nil, _path), do: nil
 
   def read_file(env, path) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end

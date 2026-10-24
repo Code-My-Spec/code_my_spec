@@ -1,19 +1,10 @@
 defmodule CmsHarness.AppInstance do
   @moduledoc """
-  One working copy's own instance of the app it holds, on its own port and
-  database, so a branch can be tested before it is promoted.
+  An independently identified app runtime with an explicit source checkout.
 
-  Launch, track and kill follow `CodeMySpec.Workspaces.Runner.Local` (state in
-  a JSON file, `kill -0` liveness, process-tree kill); a non-main copy's
-  database is cloned from main's dev database. Lives under
-  `CmsHarness.Copy.Supervisor` beside the channel chain, never in it: an app
-  must survive a reconnect.
-
-  Idle timeout: every reply re-arms it; `:timeout` stops the process
-  (`restart: :temporary`). Activity is the app log's mtime, checked on a
-  periodic tick — it also counts boots and migrations, which only delays a
-  stop. Main's app is never stopped for idling.
-  See knowledge/harness, "App instances".
+  Registry, state, logs and cloned database identities use the instance UUID.
+  The harness-wide supervisor preserves runtimes through copy channel restarts.
+  Descriptor policies control idling, ports, databases and promotion hooks.
   """
 
   use GenServer, restart: :temporary
@@ -22,7 +13,6 @@ defmodule CmsHarness.AppInstance do
 
   alias CmsHarness.AppInstance.Runner
   alias CmsHarness.Channel
-  alias CmsHarness.Copy.Supervisor, as: Copy
 
   # Configurable so a test of the idle stop need not wait 30 minutes.
   defp idle_timeout,
@@ -37,7 +27,10 @@ defmodule CmsHarness.AppInstance do
       )
 
   defstruct [
+    :instance_id,
+    :working_copy_id,
     :root,
+    :database_source,
     :port,
     :https_port,
     :database,
@@ -55,44 +48,73 @@ defmodule CmsHarness.AppInstance do
     # Monotonic deadline for a first start's background watch; `nil`
     # otherwise. Not persisted: it only drives an in-BEAM timer.
     :first_start_deadline,
-    main?: false,
+    default: false,
+    persistent: false,
+    port_mode: "allocated",
+    database_mode: "clone",
+    after_promote: false,
     tunnel_held_by_harness?: false
   ]
 
   # --- Client ---
 
-  def start_link(root) when is_binary(root) do
-    GenServer.start_link(__MODULE__, root, name: via(root))
+  def start_link(descriptor) when is_map(descriptor) do
+    with {:ok, descriptor} <- validate_descriptor(descriptor) do
+      GenServer.start_link(__MODULE__, descriptor, name: via(descriptor))
+    end
   end
 
-  def via(root), do: {:via, Registry, {CmsHarness.Registry, {:app_instance, root}}}
+  def via(%{"instance_id" => id}), do: via(id)
+  def via(id), do: {:via, Registry, {CmsHarness.Registry, {:app_instance, id}}}
+
+  def validate_descriptor(%{"instance_id" => id, "root" => root} = descriptor)
+      when is_binary(root) do
+    with {:ok, _} <- Ecto.UUID.cast(id),
+         true <- descriptor["port_mode"] in ["configured", "allocated"],
+         true <- descriptor["database_mode"] in ["configured", "clone"],
+         true <- is_boolean(Map.get(descriptor, "default", false)),
+         true <- is_boolean(descriptor["persistent"]),
+         true <- is_boolean(descriptor["after_promote"]) do
+      {:ok,
+       descriptor
+       |> Map.put("root", CodeMySpec.Paths.expand(root))
+       |> Map.put_new("default", false)}
+    else
+      _ -> {:error, :invalid_instance_descriptor}
+    end
+  end
+
+  def validate_descriptor(_), do: {:error, :invalid_instance_descriptor}
 
   @doc """
   Bring this copy's app up if it is not already running, and report its
   current state either way. Idempotent — the caller does not need to know
   whether anything was actually started.
 
-  `main?: true` marks the project's designated copy (never idled out).
-  `tunnel:` carries the tunnel credentials this copy should hold. Both are told
-  fresh on every call, never remembered: only the server knows them and they
-  can change while this process lives.
+  The descriptor supplies independent persistence, port, database and hook
+  policies. `tunnel:` carries the connector credentials. These are refreshed
+  on each call from the authenticated server channel.
 
   `head` rides beside `commit`: the app restarts only on a promote, so a moved
   HEAD is not a stale report.
   """
-  @spec ensure_running(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def ensure_running(root, opts \\ []) do
-    with {:ok, pid} <- find_or_start(root),
+  @spec ensure_running(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def ensure_running(descriptor, opts \\ []) do
+    with {:ok, pid} <- find_or_start(descriptor),
          {:ok, info} <-
-           GenServer.call(pid, {:ensure_running, main?(opts), tunnel(opts)}, op_timeout()) do
-      info = Map.put(info, :head, Runner.current_commit(root))
+           GenServer.call(
+             pid,
+             {:ensure_running, descriptor["after_promote"], tunnel(opts)},
+             op_timeout()
+           ) do
+      info = Map.put(info, :head, Runner.current_commit(descriptor["root"]))
 
       info =
         if info.status in ["down", "erroring"] do
           Map.put(
             info,
             :action_reason,
-            "The health probe reports #{info.status}. Inspect the app log at #{log_path(root)} " <>
+            "The health probe reports #{info.status}. Inspect the app log at #{log_path(descriptor)} " <>
               "for startup or request errors. After correcting the cause, use restart_app " <>
               "to start this copy on its current HEAD."
           )
@@ -105,10 +127,10 @@ defmodule CmsHarness.AppInstance do
   end
 
   @doc "Stop this copy's app, then start it again on the current commit."
-  @spec restart(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def restart(root, opts \\ []) do
-    with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, {:restart, main?(opts), tunnel(opts)}, op_timeout())
+  @spec restart(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def restart(descriptor, opts \\ []) do
+    with {:ok, pid} <- find_or_start(descriptor) do
+      GenServer.call(pid, {:restart, descriptor["after_promote"], tunnel(opts)}, op_timeout())
     end
   end
 
@@ -123,14 +145,13 @@ defmodule CmsHarness.AppInstance do
   that fails replies an error and runs no hook: the caller restarts, and that
   restart runs it.
   """
-  @spec reload(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def reload(root, opts \\ []) do
-    with {:ok, pid} <- find_or_start(root) do
-      GenServer.call(pid, {:reload, main?(opts), tunnel(opts)}, reload_timeout())
+  @spec reload(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def reload(descriptor, opts \\ []) do
+    with {:ok, pid} <- find_or_start(descriptor) do
+      GenServer.call(pid, {:reload, descriptor["after_promote"], tunnel(opts)}, reload_timeout())
     end
   end
 
-  defp main?(opts), do: Keyword.get(opts, :main?, false)
   defp tunnel(opts), do: Keyword.get(opts, :tunnel)
 
   @doc """
@@ -173,11 +194,11 @@ defmodule CmsHarness.AppInstance do
   Stop this copy's app. A copy with nothing running answers `:ok` too — there
   is nothing to stop, which is success, not a failure to report.
   """
-  @spec stop_app(String.t()) :: :ok | {:error, term()}
-  def stop_app(root) do
+  @spec stop_app(map()) :: :ok | {:error, term()}
+  def stop_app(descriptor) do
     # `find_or_start/1`, not a bare lookup: after a harness restart only
     # `init/1`'s read of the state file knows about a still-running app.
-    with {:ok, pid} <- find_or_start(root) do
+    with {:ok, pid} <- find_or_start(descriptor) do
       GenServer.call(pid, :stop, op_timeout())
     end
   end
@@ -187,43 +208,45 @@ defmodule CmsHarness.AppInstance do
   not idling. Both are this module's own disposable artifacts, never the
   checkout or main's database.
   """
-  @spec discard(String.t()) :: :ok
-  def discard(root) do
-    with {:ok, pid} <- find_or_start(root) do
+  @spec discard(map()) :: :ok | {:error, term()}
+  def discard(descriptor) do
+    with {:ok, pid} <- find_or_start(descriptor) do
       GenServer.call(pid, :discard, op_timeout())
     end
-
-    :ok
   end
 
   @doc "Note that this copy's app just did something — resets the idle clock."
-  @spec touch(String.t()) :: :ok
-  def touch(root) do
-    case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
+  @spec touch(map()) :: :ok
+  def touch(%{"instance_id" => id}) do
+    case Registry.lookup(CmsHarness.Registry, {:app_instance, id}) do
       [{pid, _}] -> GenServer.cast(pid, :touch)
       [] -> :ok
     end
   end
 
-  defp find_or_start(root) do
-    case Registry.lookup(CmsHarness.Registry, {:app_instance, root}) do
-      [{pid, _}] ->
-        {:ok, pid}
+  defp find_or_start(descriptor) do
+    with {:ok, descriptor} <- validate_descriptor(descriptor) do
+      case Registry.lookup(CmsHarness.Registry, {:app_instance, descriptor["instance_id"]}) do
+        [{pid, _}] ->
+          validate_existing(pid, descriptor)
 
-      [] ->
-        # Under its copy (`Copy.Supervisor`), beside the channel chain rather
-        # than in it: an app must survive a reconnect.
-        with {:ok, _copy} <- Copy.ensure(root) do
-          start_under_copy(root)
-        end
+        [] ->
+          case DynamicSupervisor.start_child(
+                 CmsHarness.AppInstancesSupervisor,
+                 {__MODULE__, descriptor}
+               ) do
+            {:ok, pid} -> validate_existing(pid, descriptor)
+            {:error, {:already_started, pid}} -> validate_existing(pid, descriptor)
+            {:error, reason} -> {:error, reason}
+          end
+      end
     end
   end
 
-  defp start_under_copy(root) do
-    case DynamicSupervisor.start_child(Copy.apps(root), {__MODULE__, root}) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, {:already_started, pid}} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
+  defp validate_existing(pid, descriptor) do
+    case GenServer.call(pid, {:validate_source, descriptor}, max(op_timeout(), reload_timeout())) do
+      :ok -> {:ok, pid}
+      error -> error
     end
   end
 
@@ -237,73 +260,171 @@ defmodule CmsHarness.AppInstance do
   # --- Server ---
 
   @impl true
-  def init(root) do
+  def init(descriptor) do
+    case validate_persisted_descriptor(descriptor) do
+      :ok -> init_instance(descriptor)
+      {:error, reason} -> {:stop, reason}
+    end
+  end
+
+  defp init_instance(descriptor) do
     state = %__MODULE__{
-      root: root,
-      log_path: log_path(root),
-      state_path: state_path(root)
+      instance_id: descriptor["instance_id"],
+      working_copy_id: descriptor["working_copy_id"],
+      root: descriptor["root"],
+      default: descriptor["default"],
+      persistent: descriptor["persistent"],
+      port_mode: descriptor["port_mode"],
+      database_mode: descriptor["database_mode"],
+      database_source: descriptor["database_source"],
+      after_promote: descriptor["after_promote"],
+      log_path: log_path(descriptor),
+      state_path: state_path(descriptor)
     }
 
-    {:ok, restore_persisted(state), idle_timeout()}
+    state = state |> import_legacy() |> restore_persisted()
+    persist!(state)
+    {:ok, state, idle_timeout()}
+  end
+
+  defp validate_persisted_descriptor(descriptor) do
+    with {:ok, data} <- File.read(state_path(descriptor)),
+         {:ok, persisted} <- Jason.decode(data),
+         true <-
+           persisted["instance_id"] == descriptor["instance_id"] and
+             persisted["root"] == descriptor["root"] and
+             persisted["working_copy_id"] == descriptor["working_copy_id"] do
+      validate_storage_policy(persisted, descriptor)
+    else
+      {:error, :enoent} -> :ok
+      _ -> {:error, :instance_source_mismatch}
+    end
+  end
+
+  defp validate_storage_policy(persisted, descriptor) do
+    allocated? = not is_nil(persisted["port"]) or not is_nil(persisted["database"])
+
+    matches? =
+      Enum.all?(
+        ~w(port_mode database_mode database_source),
+        fn key -> persisted[key] == descriptor[key] end
+      )
+
+    if not allocated? or matches?, do: :ok, else: {:error, :instance_storage_policy_mismatch}
   end
 
   @impl true
-  def handle_call({:ensure_running, main?, tunnel}, _from, state) do
-    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
+  def handle_call({:validate_source, descriptor}, _from, state) do
+    reply =
+      if state.root == descriptor["root"] and
+           state.working_copy_id == descriptor["working_copy_id"],
+         do:
+           validate_storage_policy(
+             %{
+               "port" => state.port,
+               "database" => state.database,
+               "port_mode" => state.port_mode,
+               "database_mode" => state.database_mode,
+               "database_source" => state.database_source
+             },
+             descriptor
+           ),
+         else: {:error, :instance_source_mismatch}
+
+    state =
+      if reply == :ok do
+        %{
+          state
+          | default: descriptor["default"],
+            persistent: descriptor["persistent"],
+            port_mode: descriptor["port_mode"],
+            database_mode: descriptor["database_mode"],
+            database_source: descriptor["database_source"],
+            after_promote: descriptor["after_promote"]
+        }
+      else
+        state
+      end
+
+    {:reply, reply, state, idle_timeout()}
+  end
+
+  @impl true
+  def handle_call({:ensure_running, after_promote?, tunnel}, _from, state) do
+    state = %{state | after_promote: after_promote?, tunnel_held_by_harness?: not is_nil(tunnel)}
 
     cond do
       running?(state) ->
-        new_state = state |> probe() |> ensure_tunnel(main?, tunnel)
+        new_state = state |> probe() |> ensure_tunnel(after_promote?, tunnel)
         {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
       first_start?(state) ->
-        start_first_run(state, main?, tunnel)
+        start_first_run(state, after_promote?, tunnel)
 
       true ->
         case start_app(state, tunnel, settle_by(op_timeout())) do
           {:ok, new_state} ->
-            new_state = ensure_tunnel(new_state, main?, tunnel)
+            new_state = ensure_tunnel(new_state, after_promote?, tunnel)
             {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
           {:error, reason} ->
-            new_state = ensure_tunnel(state, main?, tunnel)
+            new_state = ensure_tunnel(state, after_promote?, tunnel)
             {:reply, {:error, reason}, new_state, idle_timeout()}
         end
     end
   end
 
   @impl true
-  def handle_call({:restart, main?, tunnel}, from, state) do
-    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
-    restart_and_reply(state, from, main?, tunnel, %{}, settle_by(op_timeout()))
+  def handle_call({:restart, after_promote?, tunnel}, from, state) do
+    state = %{state | after_promote: after_promote?, tunnel_held_by_harness?: not is_nil(tunnel)}
+    restart_and_reply(state, from, after_promote?, tunnel, %{}, settle_by(op_timeout()))
   end
 
-  def handle_call({:reload, main?, tunnel}, from, state) do
-    state = %{state | main?: main?, tunnel_held_by_harness?: not is_nil(tunnel)}
+  def handle_call({:reload, after_promote?, tunnel}, from, state) do
+    state = %{state | after_promote: after_promote?, tunnel_held_by_harness?: not is_nil(tunnel)}
 
     cond do
       not running?(state) ->
-        restart_instead(state, from, main?, tunnel, "the app was not running")
+        restart_instead(state, from, after_promote?, tunnel, "the app was not running")
 
       not Runner.recipe?(state.root, "reload") ->
-        restart_instead(state, from, main?, tunnel, "this project declares no reload recipe")
+        restart_instead(
+          state,
+          from,
+          after_promote?,
+          tunnel,
+          "this project declares no reload recipe"
+        )
 
       true ->
-        reload_in_place(state, from, main?, tunnel)
+        reload_in_place(state, from, after_promote?, tunnel)
     end
   end
 
   @impl true
   def handle_call(:stop, _from, state) do
-    new_state = if running?(state), do: stop_process(state), else: state
-    {:reply, :ok, new_state, idle_timeout()}
+    case stop_if_running(state) do
+      {:ok, new_state} -> {:reply, :ok, new_state, idle_timeout()}
+      {:error, reason} -> {:reply, {:error, reason}, state, idle_timeout()}
+    end
   end
 
   @impl true
   def handle_call(:discard, _from, state) do
-    stopped = if running?(state), do: stop_process(state), else: state
-    drop_database(stopped)
-    {:stop, :normal, :ok, %{stopped | database: nil}}
+    case stop_if_running(state) do
+      {:ok, stopped} ->
+        with :ok <- drop_database(stopped),
+             :ok <- clear_database_name_status(stopped),
+             :ok <- retire_legacy_claim(stopped),
+             :ok <- File.rm(stopped.state_path) do
+          {:stop, :normal, :ok, %{stopped | database: nil}}
+        else
+          {:error, reason} -> {:reply, {:error, reason}, stopped, idle_timeout()}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state, idle_timeout()}
+    end
   end
 
   @impl true
@@ -346,7 +467,7 @@ defmodule CmsHarness.AppInstance do
   def handle_info(:first_start_check, state), do: {:noreply, state, idle_timeout()}
 
   @impl true
-  def handle_info(:timeout, %{main?: true} = state) do
+  def handle_info(:timeout, %{persistent: true} = state) do
     # Main's app is never stopped for idling — rule, not a longer timeout.
     Process.send_after(self(), :timeout, idle_check_interval())
     {:noreply, refresh_status(state), :infinity}
@@ -360,8 +481,17 @@ defmodule CmsHarness.AppInstance do
       # Stops the app, not this process: one exiting here stays registered until
       # it is gone, so a request landing in between got no reply. The next
       # `ensure_running` starts the app again.
-      new_state = if running?(state), do: stop_process(state), else: state
-      {:noreply, new_state, :hibernate}
+      case stop_if_running(state) do
+        {:ok, new_state} ->
+          {:noreply, new_state, :hibernate}
+
+        {:error, reason} ->
+          Logger.warning(
+            "[CmsHarness] could not stop idle instance #{state.instance_id}: #{inspect(reason)}"
+          )
+
+          {:noreply, state, idle_check_interval()}
+      end
     end
   end
 
@@ -381,27 +511,38 @@ defmodule CmsHarness.AppInstance do
 
   # `extra` rides on the success reply: empty for a plain restart, the
   # `action`/`action_reason` pair for a reload that restarted instead.
-  defp restart_and_reply(state, from, main?, tunnel, extra, deadline) do
-    stopped = if running?(state), do: stop_process(state), else: state
+  defp restart_and_reply(state, from, after_promote?, tunnel, extra, deadline) do
+    case stop_if_running(state) do
+      {:ok, stopped} -> start_and_reply(stopped, from, after_promote?, tunnel, extra, deadline)
+      {:error, reason} -> {:reply, {:error, reason}, state, idle_timeout()}
+    end
+  end
 
+  defp start_and_reply(stopped, from, after_promote?, tunnel, extra, deadline) do
     case start_app(stopped, tunnel, deadline) do
       {:ok, new_state} ->
-        new_state = ensure_tunnel(new_state, main?, tunnel)
-        reply_then_hook(from, {:ok, Map.merge(result(new_state), extra)}, new_state, main?)
+        new_state = ensure_tunnel(new_state, after_promote?, tunnel)
+
+        reply_then_hook(
+          from,
+          {:ok, Map.merge(result(new_state), extra)},
+          new_state,
+          after_promote?
+        )
 
       {:error, reason} ->
-        stopped = ensure_tunnel(stopped, main?, tunnel)
+        stopped = ensure_tunnel(stopped, after_promote?, tunnel)
         {:reply, {:error, reason}, stopped, idle_timeout()}
     end
   end
 
-  defp restart_instead(state, from, main?, tunnel, why) do
+  defp restart_instead(state, from, after_promote?, tunnel, why) do
     Logger.info("[CmsHarness] reload of #{state.root}: restarting instead, #{why}")
 
     restart_and_reply(
       state,
       from,
-      main?,
+      after_promote?,
       tunnel,
       %{action: "restarted", action_reason: why},
       settle_by(reload_timeout())
@@ -412,19 +553,25 @@ defmodule CmsHarness.AppInstance do
   # runs no hook — the caller's restart will. Unless the app is down: then the
   # caller may be that app (:4000 reloading itself), and nobody would restart
   # it — it sat down from 02:15 to 02:19 on 2026-10-16. It is restarted here.
-  defp reload_in_place(state, from, main?, tunnel) do
+  defp reload_in_place(state, from, after_promote?, tunnel) do
     Logger.info("[CmsHarness] reload of #{state.root}: running `just reload` on #{state.port}")
 
     case Runner.reload(state.root, state.port, state.https_port, state.database, state.log_path) do
       :ok ->
-        state |> probe() |> reloaded(from, main?, tunnel)
+        state |> probe() |> reloaded(from, after_promote?, tunnel)
 
       {:error, reason} ->
         Logger.warning("[CmsHarness] reload of #{state.root} failed: #{inspect(reason)}")
 
         case probe(state) do
           %{status: "down"} = down ->
-            restart_instead(down, from, main?, tunnel, "the reload failed and left the app down")
+            restart_instead(
+              down,
+              from,
+              after_promote?,
+              tunnel,
+              "the reload failed and left the app down"
+            )
 
           probed ->
             {:reply, {:error, {:reload_failed, reason}}, probed, idle_timeout()}
@@ -432,10 +579,10 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  defp reloaded(%__MODULE__{status: "serving"} = probed, from, main?, tunnel) do
+  defp reloaded(%__MODULE__{status: "serving"} = probed, from, after_promote?, tunnel) do
     new_state = %{probed | serving_commit: current_commit(probed)}
     persist!(new_state)
-    new_state = ensure_tunnel(new_state, main?, tunnel)
+    new_state = ensure_tunnel(new_state, after_promote?, tunnel)
 
     Logger.info(
       "[CmsHarness] reload of #{new_state.root} done, serving #{new_state.serving_commit}"
@@ -445,14 +592,14 @@ defmodule CmsHarness.AppInstance do
       from,
       {:ok, Map.put(result(new_state), :action, "reloaded")},
       new_state,
-      main?
+      after_promote?
     )
   end
 
-  defp reloaded(%__MODULE__{status: "down"} = probed, from, main?, tunnel),
-    do: restart_instead(probed, from, main?, tunnel, "the reload left the app down")
+  defp reloaded(%__MODULE__{status: "down"} = probed, from, after_promote?, tunnel),
+    do: restart_instead(probed, from, after_promote?, tunnel, "the reload left the app down")
 
-  defp reloaded(probed, _from, _main?, _tunnel) do
+  defp reloaded(probed, _from, _after_promote?, _tunnel) do
     Logger.warning(
       "[CmsHarness] reload of #{probed.root} ran, but the app answers #{probed.status}"
     )
@@ -478,6 +625,7 @@ defmodule CmsHarness.AppInstance do
   """
   def result(%__MODULE__{status: status, port: port, commit: commit} = state) do
     %{
+      instance_id: state.instance_id,
       status: status || "down",
       url: url(port, status),
       commit: commit,
@@ -494,9 +642,11 @@ defmodule CmsHarness.AppInstance do
   # and the server ignores it.
   defp deliver_app_status(state, reason \\ nil) do
     Channel.deliver_app_status(state.root, %{
+      "instance_id" => state.instance_id,
       "status" => state.status,
       "url" => url(state.port, state.status),
       "commit" => state.commit,
+      "serving_commit" => state.serving_commit,
       "reason" => reason
     })
   end
@@ -505,8 +655,9 @@ defmodule CmsHarness.AppInstance do
   # recycled, and a stop must never signal a stranger.
   defp running?(%__MODULE__{os_pid: nil}), do: false
 
-  defp running?(%__MODULE__{os_pid: pid, root: root}) do
-    Runner.alive?(pid) and Runner.process_root(pid) == Path.expand(root)
+  defp running?(%__MODULE__{os_pid: pid, root: root} = state) do
+    Runner.alive?(pid) and Runner.process_root(pid) == CodeMySpec.Paths.expand(root) and
+      not owned_by_another?(state, pid)
   end
 
   # The app log's mtime moving inside the idle window means "not idle".
@@ -573,7 +724,7 @@ defmodule CmsHarness.AppInstance do
   # it waits a short inline window, then replies `starting` with the address
   # and polls in the background up to `first_start_ceiling_ms/0`, pushing
   # `app_status` when it resolves.
-  defp start_first_run(state, main?, tunnel) do
+  defp start_first_run(state, after_promote?, tunnel) do
     case launch_process(state, tunnel) do
       {:ok, launched_state} ->
         window = first_start_probe_attempts() * health_wait_interval_ms()
@@ -581,7 +732,7 @@ defmodule CmsHarness.AppInstance do
         settled_state = wait_for_health(launched_state, deadline)
 
         if settled_state.status == "serving" do
-          new_state = ensure_tunnel(settled_state, main?, tunnel)
+          new_state = ensure_tunnel(settled_state, after_promote?, tunnel)
           {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
         else
           # Reported as `starting`. `os_pid` is set, so a concurrent
@@ -594,7 +745,7 @@ defmodule CmsHarness.AppInstance do
         end
 
       {:error, reason} ->
-        new_state = ensure_tunnel(state, main?, tunnel)
+        new_state = ensure_tunnel(state, after_promote?, tunnel)
         {:reply, {:error, reason}, new_state, idle_timeout()}
     end
   end
@@ -679,49 +830,65 @@ defmodule CmsHarness.AppInstance do
     {:ok, {port, https_port, database}}
   end
 
-  # Main keeps its own address and real dev database, both from its
-  # `config/dev.exs`.
-  defp ensure_port_and_database(%__MODULE__{main?: true} = state) do
-    with {http, https} <- Runner.main_ports(state.root),
-         database when is_binary(database) <- Runner.main_database_name(state.root) do
-      {:ok, {state.port || http, state.https_port || https, state.database || database}}
-    else
-      _ -> {:error, {:cannot_resolve_main_address, state.root}}
-    end
-  end
-
+  # Port and database policy are independent, including configured HTTP with
+  # a cloned database or allocated ports with the configured database.
   defp ensure_port_and_database(state) do
-    {:ok,
-     {state.port || Runner.free_port(), state.https_port || Runner.free_port(),
-      state.database || database_name(state)}}
+    ports =
+      if state.port_mode == "configured",
+        do: Runner.main_ports(state.root),
+        else: {state.port || Runner.free_port(), state.https_port || Runner.free_port()}
+
+    database =
+      if state.database_mode == "configured",
+        do: Runner.main_database_name(state.root),
+        else: state.database || database_name(state)
+
+    case ports do
+      {http, https} when is_integer(http) and is_binary(database) ->
+        {:ok, {state.port || http, state.https_port || https, state.database || database}}
+
+      _ ->
+        {:error, {:cannot_resolve_main_address, state.root}}
+    end
   end
 
   # Main's fixed port may be held by an untracked server. Killed only when its
   # cwd is this checkout's root; anything else is refused, never killed.
   # Non-main ports come fresh from `free_port/0`.
-  defp ensure_port_free(%__MODULE__{main?: true} = state, port) do
+  defp ensure_port_free(%__MODULE__{port_mode: "configured"} = state, port) do
     case Runner.listener_pid(port) do
       nil ->
         :ok
 
       pid ->
-        if Runner.process_root(pid) == Path.expand(state.root) do
+        if Runner.process_root(pid) == CodeMySpec.Paths.expand(state.root) and
+             not owned_by_another?(state, pid) do
           Runner.stop_process(pid)
-          :ok
         else
           {:error, {:port_held_by_untracked_process, port, pid}}
         end
     end
   end
 
-  defp ensure_port_free(_state, _port), do: :ok
+  defp ensure_port_free(_state, port) do
+    case Runner.listener_pid(port) do
+      nil -> :ok
+      pid -> {:error, {:port_held_by_untracked_process, port, pid}}
+    end
+  end
 
-  # `<app>_dev_wc_<hash of root>`: stable per checkout, distinct across copies.
+  defp owned_by_another?(state, pid) do
+    Enum.any?(descriptors_for_root(state.root), fn descriptor ->
+      descriptor["instance_id"] != state.instance_id and descriptor["os_pid"] == pid
+    end)
+  end
+
+  # The UUID suffix keeps clones independent even when they share a checkout.
   defp database_name(state) do
     app = Runner.app_name(state.root) || "app"
 
     suffix =
-      state.root
+      state.instance_id
       |> then(&:crypto.hash(:sha256, &1))
       |> Base.encode16(case: :lower)
       |> binary_part(0, 8)
@@ -730,23 +897,25 @@ defmodule CmsHarness.AppInstance do
   end
 
   # Drops only names in this module's own `_dev_wc_` convention: no undo.
-  defp drop_database(%__MODULE__{database: database})
+  defp drop_database(%__MODULE__{database_mode: "clone", database: database})
        when is_binary(database) do
     if safe_identifier?(database) and String.contains?(database, "_dev_wc_") do
       Runner.drop_database(database)
+    else
+      {:error, {:unsafe_database_name, database}}
     end
-
-    :ok
   end
 
   defp drop_database(_state), do: :ok
+
+  defp ensure_database(%{database_mode: "configured"}, _database), do: :ok
 
   defp ensure_database(state, database) do
     if Runner.database_exists?(database), do: :ok, else: clone_database(state, database)
   end
 
   defp clone_database(state, database) do
-    main_db = Runner.main_database_name(state.root)
+    main_db = state.database_source || default_database_source(state)
 
     cond do
       not (is_binary(main_db) and safe_identifier?(main_db)) ->
@@ -762,6 +931,9 @@ defmodule CmsHarness.AppInstance do
         end
     end
   end
+
+  defp default_database_source(%{default: true, root: root}), do: Runner.main_database_name(root)
+  defp default_database_source(_), do: nil
 
   @doc """
   Whether `name` is safe to interpolate into the shell string
@@ -779,7 +951,7 @@ defmodule CmsHarness.AppInstance do
       https_port,
       database,
       state.log_path,
-      state.main?,
+      state.port_mode == "configured",
       state.tunnel_held_by_harness?,
       tunnel_host(tunnel)
     )
@@ -818,16 +990,34 @@ defmodule CmsHarness.AppInstance do
   defp health_wait_interval_ms,
     do: Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)
 
-  defp stop_process(%__MODULE__{os_pid: pid} = state) when is_integer(pid) do
-    Runner.stop_process(pid)
+  defp stop_if_running(%{os_pid: nil} = state), do: {:ok, persist_stopped(state)}
 
-    # A stopped copy never keeps a stale address.
-    new_state = %{state | status: "down"}
+  defp stop_if_running(state),
+    do: confirm_stop(state, Runner.alive?(state.os_pid), Runner.process_root(state.os_pid))
+
+  defp confirm_stop(%{os_pid: pid}, true, nil),
+    do: {:error, {:cannot_confirm_process_stopped, pid}}
+
+  defp confirm_stop(%{root: root} = state, true, root) do
+    case owned_by_another?(state, state.os_pid) do
+      true -> {:ok, persist_stopped(state)}
+      false -> stop_process(state)
+    end
+  end
+
+  defp confirm_stop(state, _alive?, _root), do: {:ok, persist_stopped(state)}
+
+  defp stop_process(%__MODULE__{os_pid: pid} = state) when is_integer(pid) do
+    with :ok <- Runner.stop_process(pid) do
+      {:ok, persist_stopped(state)}
+    end
+  end
+
+  defp persist_stopped(state) do
+    new_state = %{state | status: "down", os_pid: nil, first_start_deadline: nil}
     persist!(new_state)
     new_state
   end
-
-  defp stop_process(state), do: %{state | status: "down"}
 
   # --- Internals: tunnel ---
   #
@@ -836,13 +1026,13 @@ defmodule CmsHarness.AppInstance do
   # never by main-ness; copies handed the same tunnel share one connector.
   # Handed none: nothing to run and nothing stopped (a shared connector carries
   # other copies' addresses). See knowledge/harness, "App instances".
-  defp ensure_tunnel(state, _main?, nil), do: state
+  defp ensure_tunnel(state, _after_promote?, nil), do: state
 
   # Already running this tunnel: re-checked each call, since an unlinked
   # connector can die on its own.
   defp ensure_tunnel(
          %__MODULE__{tunnel_pid: pid, tunnel_id: id} = state,
-         _main?,
+         _after_promote?,
          %{tunnel_id: id} = tunnel
        )
        when is_pid(pid) do
@@ -852,12 +1042,13 @@ defmodule CmsHarness.AppInstance do
   end
 
   # Holding a tunnel for different credentials: swap to the new ones.
-  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, _main?, tunnel) when is_pid(pid) do
+  defp ensure_tunnel(%__MODULE__{tunnel_pid: pid} = state, _after_promote?, tunnel)
+       when is_pid(pid) do
     Runner.stop_tunnel(pid)
     start_tunnel(%{state | tunnel_pid: nil, tunnel_id: nil}, tunnel)
   end
 
-  defp ensure_tunnel(state, _main?, tunnel), do: start_tunnel(state, tunnel)
+  defp ensure_tunnel(state, _after_promote?, tunnel), do: start_tunnel(state, tunnel)
 
   defp start_tunnel(state, tunnel) do
     case tunnel_origin(state) do
@@ -903,6 +1094,16 @@ defmodule CmsHarness.AppInstance do
     File.mkdir_p!(Path.dirname(state.state_path))
 
     payload = %{
+      "instance_id" => state.instance_id,
+      "working_copy_id" => state.working_copy_id,
+      "root" => state.root,
+      "default" => state.default,
+      "persistent" => state.persistent,
+      "port_mode" => state.port_mode,
+      "database_mode" => state.database_mode,
+      "database_source" => state.database_source,
+      "after_promote" => state.after_promote,
+      "log_path" => state.log_path,
       "port" => state.port,
       "https_port" => state.https_port,
       "database" => state.database,
@@ -912,7 +1113,8 @@ defmodule CmsHarness.AppInstance do
       "status" => state.status
     }
 
-    File.write!(state.state_path, Jason.encode!(payload))
+    atomic_write!(state.state_path, Jason.encode!(payload))
+    index_source(state)
     write_database_name_status(state)
   end
 
@@ -923,7 +1125,9 @@ defmodule CmsHarness.AppInstance do
   # Written inside the checkout, where config/dev.exs can read it back.
   # Main is excluded: its database is always config/dev.exs's own literal
   # default, not a per-copy name, so there is nothing of its own to record.
-  defp write_database_name_status(%__MODULE__{main?: true}), do: :ok
+  defp write_database_name_status(%__MODULE__{default: false}), do: :ok
+
+  defp write_database_name_status(%__MODULE__{database_mode: "configured"}), do: :ok
 
   defp write_database_name_status(%__MODULE__{database: database}) when not is_binary(database),
     do: :ok
@@ -934,12 +1138,33 @@ defmodule CmsHarness.AppInstance do
     File.write!(path, state.database)
   end
 
+  defp clear_database_name_status(%{
+         default: true,
+         database_mode: "clone",
+         database: database,
+         root: root
+       })
+       when is_binary(database) do
+    path = Path.join(root, ".code_my_spec/status/database_name")
+
+    case File.read(path) do
+      {:ok, ^database} -> File.rm(path)
+      _ -> :ok
+    end
+  end
+
+  defp clear_database_name_status(_), do: :ok
+
   defp restore_persisted(state) do
     case File.read(state.state_path) do
       {:ok, contents} ->
         case Jason.decode(contents) do
-          {:ok, %{} = decoded} -> apply_persisted(state, decoded)
-          _ -> state
+          {:ok, %{"instance_id" => id, "root" => root} = decoded}
+          when id == state.instance_id and root == state.root ->
+            apply_persisted(state, decoded)
+
+          _ ->
+            state
         end
 
       {:error, _} ->
@@ -950,7 +1175,8 @@ defmodule CmsHarness.AppInstance do
   defp apply_persisted(state, decoded) do
     %{
       state
-      | port: decoded["port"],
+      | log_path: decoded["log_path"] || state.log_path,
+        port: decoded["port"],
         https_port: decoded["https_port"],
         database: decoded["database"],
         os_pid: decoded["os_pid"],
@@ -968,13 +1194,14 @@ defmodule CmsHarness.AppInstance do
   disk because no `AppInstance` may be running yet. `nil` when nothing was ever
   written.
   """
-  @spec reported(String.t()) :: map() | nil
-  def reported(root) when is_binary(root) do
-    case File.read(state_path(root)) do
+  @spec reported(map()) :: map() | nil
+  def reported(descriptor) do
+    case File.read(state_path(descriptor)) do
       {:ok, contents} ->
         case Jason.decode(contents) do
           {:ok, %{} = decoded} ->
             %{
+              "instance_id" => decoded["instance_id"],
               "status" => decoded["status"] || "down",
               "commit" => decoded["commit"],
               "serving_commit" => decoded["serving_commit"],
@@ -990,16 +1217,125 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  defp state_path(root) do
-    Path.join([instances_root(), instance_key(root), "state.json"])
+  defp state_path(%{"instance_id" => id}) do
+    Path.join([instances_root(), id, "state.json"])
   end
 
-  defp log_path(root) do
-    Path.join([instances_root(), instance_key(root), "app.log"])
+  defp log_path(%{"instance_id" => id}) do
+    Path.join([instances_root(), id, "app.log"])
   end
 
   defp instance_key(root) do
     :sha256 |> :crypto.hash(root) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+  end
+
+  defp retire_legacy_claim(state) do
+    path = Path.join([instances_root(), instance_key(state.root), "instance-owner"])
+
+    case File.read(path) do
+      {:ok, id} when id == state.instance_id -> File.write!(path, "discarded:" <> id)
+      _ -> :ok
+    end
+  end
+
+  defp import_legacy(%{default: false} = state), do: state
+
+  defp import_legacy(state) do
+    legacy_dir = Path.join(instances_root(), instance_key(state.root))
+    legacy_state = Path.join(legacy_dir, "state.json")
+
+    if not File.exists?(state.state_path) and File.exists?(legacy_state) do
+      case File.open(Path.join(legacy_dir, "instance-owner"), [:write, :exclusive]) do
+        {:ok, file} ->
+          IO.binwrite(file, state.instance_id)
+          File.close(file)
+          adopt_legacy(state, legacy_state, legacy_dir)
+
+        {:error, :eexist} ->
+          if File.read(Path.join(legacy_dir, "instance-owner")) == {:ok, state.instance_id},
+            do: adopt_legacy(state, legacy_state, legacy_dir),
+            else: state
+
+        _ ->
+          state
+      end
+    else
+      state
+    end
+  end
+
+  defp adopt_legacy(state, path, dir) do
+    with {:ok, contents} <- File.read(path), {:ok, decoded} <- Jason.decode(contents) do
+      restored = apply_persisted(state, Map.put(decoded, "log_path", Path.join(dir, "app.log")))
+
+      # A recycled PID is retained only as historical data; running?/1 checks ownership before signals.
+      persist!(restored)
+      restored
+    else
+      _ -> state
+    end
+  end
+
+  defp atomic_write!(path, contents) do
+    temporary = path <> ".tmp"
+    File.write!(temporary, contents)
+    File.rename!(temporary, path)
+  end
+
+  defp source_index_path(root),
+    do: Path.join([instances_root(), "source-index", instance_key(root) <> ".json"])
+
+  defp indexed_ids(root) do
+    with {:ok, data} <- File.read(source_index_path(root)),
+         {:ok, ids} when is_list(ids) <- Jason.decode(data),
+         do: ids,
+         else: (_ -> [])
+  end
+
+  defp index_source(state) do
+    :global.trans({{__MODULE__, :source_index, state.root}, self()}, fn ->
+      ids = indexed_ids(state.root)
+
+      unless state.instance_id in ids do
+        path = source_index_path(state.root)
+        File.mkdir_p!(Path.dirname(path))
+        atomic_write!(path, Jason.encode!([state.instance_id | ids]))
+      end
+    end)
+  end
+
+  def descriptors_for_root(root) do
+    root = CodeMySpec.Paths.expand(root)
+
+    for id <- indexed_ids(root),
+        {:ok, _} <- [Ecto.UUID.cast(id)],
+        path = Path.join([instances_root(), id, "state.json"]),
+        {:ok, data} <- [File.read(path)],
+        {:ok, descriptor} <- [Jason.decode(data)],
+        descriptor["root"] == root,
+        {:ok, descriptor} <- [validate_descriptor(descriptor)],
+        do: descriptor
+  end
+
+  def reported_for_root(root) do
+    Enum.map(descriptors_for_root(root), &reported/1)
+  end
+
+  def legacy_reported(root) do
+    path = Path.join([instances_root(), instance_key(root), "state.json"])
+
+    with false <- File.exists?(Path.join(Path.dirname(path), "instance-owner")),
+         {:ok, data} <- File.read(path),
+         {:ok, decoded} <- Jason.decode(data) do
+      %{
+        "status" => decoded["status"],
+        "commit" => decoded["commit"],
+        "serving_commit" => decoded["serving_commit"],
+        "url" => url(decoded["port"], decoded["status"])
+      }
+    else
+      _ -> nil
+    end
   end
 
   @doc "Where every app instance keeps its state and log, one directory each."
@@ -1007,7 +1343,7 @@ defmodule CmsHarness.AppInstance do
     Application.get_env(
       :code_my_spec,
       :app_instances_root,
-      Path.expand("~/.codemyspec/app-instances")
+      Path.join(CodeMySpec.Paths.user_state_dir(), "app-instances")
     )
   end
 end

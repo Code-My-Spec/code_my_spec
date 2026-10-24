@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
   ## Surface note
 
   These criteria describe the *output of the cms_new generator*, which lives
-  in a separate repository. The spex boundary reaches `Environments`,
+  in a separate repository. The spex boundary reaches `ExecutionContexts`,
   `McpServers`, `Fixtures` and `Web` — not that generator. The `given_`
   therefore drives generation through the harness's generator surface; if no
   such surface exists, this story's real verification is a QA pass against
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -50,15 +50,15 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
       end
 
       when_ "he looks for its environment files", context do
-        top = project_tree(context.environment)
+        top = project_tree(context.execution_context)
 
         # `list_directory/2` lists one level, so the env files have to be asked
         # for where they live. Prefixed back to full paths, because what the
         # assertions below are about is the *shape* — `envs/…​.enc.…` present,
         # a plaintext `.env` absent — not which directory the listing came from.
         envs =
-          context.environment
-          |> Environments.list_directory("envs")
+          context.execution_context
+          |> ExecutionContexts.list_directory("envs")
           |> env_paths()
 
         entries = top ++ envs
@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
       then_ "pushing the repo exposes no secret", context do
         # Any file the generator wrote that carries a secret-shaped value
         # would ship on the first push.
-        offenders = Enum.filter(context.entries, &carries_secret?(context.environment, &1))
+        offenders = Enum.filter(context.entries, &carries_secret?(context.execution_context, &1))
 
         assert offenders == [],
                "expected no generated file to carry a real secret value, found in: #{inspect(offenders)}"
@@ -110,7 +110,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
 
   defp carries_secret?(environment, path) do
     environment
-    |> Environments.read_file(path)
+    |> ExecutionContexts.read_file(path)
     |> secret_body?()
   end
 

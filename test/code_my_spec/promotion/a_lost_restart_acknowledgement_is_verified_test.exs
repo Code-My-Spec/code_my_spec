@@ -22,10 +22,10 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -146,9 +146,9 @@ defmodule CodeMySpec.Promotion.ALostRestartAcknowledgementIsVerifiedTest do
 
     AgentPresence.present(agent)
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script())
-    :ok = Environments.register({:working_copy, running.id}, env)
-    :ok = Environments.register({:working_copy, copy.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script())
+    :ok = ExecutionContexts.register({:working_copy, running.id}, env)
+    :ok = ExecutionContexts.register({:working_copy, copy.id}, env)
     scope = %{scope | active_working_copy_id: copy.id}
 
     story = story_fixture(scope, %{title: "Lost ack"})

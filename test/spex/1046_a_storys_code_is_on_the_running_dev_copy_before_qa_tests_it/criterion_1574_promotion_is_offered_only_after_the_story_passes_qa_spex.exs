@@ -18,8 +18,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1574Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.PromotionHelpers
   alias Ecto.Adapters.SQL.Sandbox
@@ -97,7 +97,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1574Spex do
   # See criterion 1170's own copy of this helper for the full rationale.
   defp a_promotable_project(context) do
     running_root = CodeMySpec.TempFile.dir("spex-1574-running")
-    {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "mkdir", ["-p", running_root])
 
     {_, 0} = git(context, running_root, ["init", "--initial-branch", "main"])
     {_, 0} = git(context, running_root, ["config", "user.email", "spex@example.com"])
@@ -116,7 +116,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1574Spex do
     {_, 0} = git(context, running_root, ["commit", "-q", "-m", "base"])
 
     agent_root = CodeMySpec.TempFile.dir("spex-1574-agent")
-    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", agent_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "rm", ["-rf", agent_root])
 
     {out, 0} =
       git(context, running_root, ["worktree", "add", "-b", "story/war", agent_root, "main"])
@@ -153,13 +153,18 @@ defmodule CodeMySpecSpex.Story1046.Criterion1574Spex do
   end
 
   defp git(context, dir, args),
-    do: Environments.cmd(context.environment, "git", args, cd: dir, stderr_to_stdout: true)
+    do:
+      ExecutionContexts.cmd(context.execution_context, "git", args,
+        cd: dir,
+        stderr_to_stdout: true
+      )
 
   defp war(body) do
     "defmodule BrokenOaths.Diplomacy.War do\n  def declare, do: #{body}\nend\n"
   end
 
-  defp disk(root), do: Environment.new(:local, root)
+  defp disk(root), do: ExecutionContext.new(:local, root)
 
-  defp write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
+  defp write(root, path, content),
+    do: :ok = ExecutionContexts.write_file(disk(root), path, content)
 end

@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2317Spex do
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = CodeMySpec.Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = CodeMySpec.ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

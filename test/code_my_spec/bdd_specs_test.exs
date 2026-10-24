@@ -3,7 +3,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
   alias CodeMySpec.BddSpecs
   alias CodeMySpec.BddSpecs.Stamp
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -46,7 +46,7 @@ defmodule CodeMySpec.BddSpecsTest do
   defp stamped(:error, content), do: content
 
   defp create_environment(scope) do
-    %Environment{
+    %ExecutionContext{
       type: :local,
       cwd: scope.active_project.code_repo,
       ref: %{working_dir: scope.active_project.code_repo}
@@ -674,7 +674,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          Environment.new(:local, File.cwd!())
+          ExecutionContext.new(:local, File.cwd!())
         )
 
       assert result == :ok
@@ -690,7 +690,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          Environment.new(:local, File.cwd!())
+          ExecutionContext.new(:local, File.cwd!())
         )
 
       assert {:error, reasons} = result
@@ -708,7 +708,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          Environment.new(:local, File.cwd!())
+          ExecutionContext.new(:local, File.cwd!())
         )
 
       # Malformed scenarios might pass or fail depending on validation strictness
@@ -748,7 +748,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          Environment.new(:local, File.cwd!())
+          ExecutionContext.new(:local, File.cwd!())
         )
 
       assert result == :ok
@@ -761,7 +761,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           nonexistent_path,
-          Environment.new(:local, File.cwd!())
+          ExecutionContext.new(:local, File.cwd!())
         )
 
       assert {:error, reasons} = result

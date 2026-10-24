@@ -11,7 +11,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Truncate
   alias CodeMySpec.Provisioning.Wait
 
@@ -227,7 +227,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
       # Through the project's own environment, so the archive comes from the
       # deploy's checkout, not the server's cwd.
-      case Environments.cmd(env, "sh", ["-c", command], stderr_to_stdout: true) do
+      case ExecutionContexts.cmd(env, "sh", ["-c", command], stderr_to_stdout: true) do
         {_, 0} -> :ok
         {output, status} -> {:error, {:source_delivery_failed, status, trim(output)}}
       end
@@ -482,7 +482,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     timeout = Keyword.get(opts, :remote_command_timeout_s, @default_remote_timeout_s)
 
     fn [command] ->
-      Environments.cmd(env, "ssh", args ++ [wrap_with_timeout(command, timeout)],
+      ExecutionContexts.cmd(env, "ssh", args ++ [wrap_with_timeout(command, timeout)],
         stderr_to_stdout: true
       )
     end

@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
   import CodeMySpecSpex.GraphReadHelpers
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphGivens
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3517Spex do
 
       when_ "the code is edited, synced, and the drain runs", context do
         :ok =
-          Environments.write_file(context.environment, @impl_path, """
+          ExecutionContexts.write_file(context.execution_context, @impl_path, """
           defmodule ExampleContext do
             @moduledoc false
 

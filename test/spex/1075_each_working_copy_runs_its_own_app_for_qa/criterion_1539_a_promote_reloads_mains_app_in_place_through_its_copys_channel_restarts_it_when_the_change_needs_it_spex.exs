@@ -1,50 +1,9 @@
 defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
   @moduledoc """
-  Story 1108 — Each working copy runs its own app for QA.
-  Criterion 1539 — A promote reloads main's app in place through its copy's
-  channel, restarts it when the change needs it, and runs main's
-  after-promote hook exactly once.
-
-  Rule: Main's dev app runs under the same start, restart and stop, and a
-  promote reloads it — or restarts it when a reload cannot take the change
-  (John, 2026-10-02).
-
-  The first two blocks are the reload: `Promotion.Runner.reload/3` sends main's
-  harness the `reload_app` verb, tagged `main: true`, to a harness that
-  declared it; the harness reloads in place when the app is running and has a
-  `reload` recipe, and runs after-promote once for main only. Without a reload
-  recipe it restarts instead. The blocks after them are the restart path, which
-  every promote that needs one still takes.
-
-  `Promotion.Runner.restart/3` used to shell `just restart` directly,
-  through `Steps.restart/2`. It now calls
-  `WorkingCopies.AppTransport.restart_app/2` — the same channel verb every
-  other working copy's own `restart_app` MCP tool already uses — so a
-  promotion's restart is the *same* mechanism every copy's app already
-  answers to, not a second, main-only path to the same machine. Proven
-  concretely: main's own harness receives the same `restart_app` push,
-  tagged `main: true` the way `HarnessProjectChannel.put_main/2` already
-  tags it for every other app verb, and a successful reply is read back as
-  the revision now serving.
-
-  A second scenario covers this repo's own optional after-promote hook
-  (`AppInstance.after_promote/1`): it runs only when the restart is main's —
-  the recipe lives in the shared justfile every working copy's checkout has,
-  so running it for an ordinary copy's own "HEAD moved" restart would bounce
-  the one shared harness on every agent's commit, not just a promote. Its
-  own failure, and why that can only be logged rather than replied, is
-  proven separately in `test/cms_harness/app_instance_test.exs` — asserting
-  it here would trip this project's spex-wide "no error-level log during a
-  spex" rule (`SexySpex.ErrorCapture`) on a failure this scenario means to
-  provoke on purpose, not one it means to catch by surprise.
-
-  The same scenario also covers main's port already being held by an
-  untracked process — the first unified restart ever run against a checkout
-  whose dev server predates story 1108, or was ever started by hand.
-  `running?/1` only tracks a *persisted* `os_pid`, so that old process would
-  otherwise sit on the port forever. It's adopted (killed) once its own cwd
-  is confirmed to be this checkout's root, and the restart is refused
-  loudly, not killed, when it isn't.
+  Promotion reloads or restarts its selected AppInstance through the source
+  checkout's authenticated harness channel. The descriptor carries the
+  instance identity and explicit policies; successful replies report the
+  revision now serving. Hook execution follows the after_promote policy.
   """
 
   use CodeMySpecSpex.Case
@@ -55,6 +14,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
   alias CmsHarnessTest.FakeAppInstanceRunner
   alias CodeMySpec.Promotion.Runner
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -73,13 +33,22 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
           WorkingCopies.designate_main(context.scope, context.scope.active_working_copy_id)
 
         {:ok, _reply, socket} = join_harness_project(context, ["reload_app"])
-        {:ok, context |> Map.put(:socket, socket) |> Map.put(:main_copy, main_copy)}
+
+        {:ok,
+         context
+         |> Map.put(:socket, socket)
+         |> Map.put(:main_copy, main_copy)
+         |> Map.put(:main_instance, promotion_instance(context.scope, main_copy))}
       end
 
       when_ "promotion reloads this working copy's app", context do
         task =
           Task.async(fn ->
-            Runner.reload(context.scope, context.main_copy.root, context.main_copy.id)
+            Runner.reload(
+              context.scope,
+              context.main_instance.source_root,
+              context.main_instance.id
+            )
           end)
 
         {:ok, Map.put(context, :task, task)}
@@ -87,10 +56,16 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
       then_ "the harness is asked to reload, told this is main, and the reply reports the commit now serving",
             context do
-        assert_push "reload_app", %{"ref" => ref, "main" => true}
+        assert_push("reload_app", %{
+          "ref" => ref,
+          "instance" => %{"instance_id" => instance_id, "after_promote" => true}
+        })
+
+        assert instance_id == context.main_instance.id
 
         reply(context.socket, "reload_app_result", %{
           "ref" => ref,
+          "instance_id" => instance_id,
           "status" => "ok",
           "app_status" => "serving",
           "app_url" => "http://127.0.0.1:4000",
@@ -115,7 +90,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
             recipe: %{"after-promote" => true, "reload" => true}
           )
 
-        assert %{"status" => "ok"} = push_app_event("restart_app")
+        assert %{"status" => "ok"} = push_app_event_as_main("ensure_app_running")
         {:ok, Map.merge(context, rig)}
       end
 
@@ -136,7 +111,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
       end
 
       when_ "the server asks the same copy to reload again, not marked main", context do
-        {:ok, Map.put(context, :ordinary_result, push_app_event("reload_app"))}
+        {:ok, Map.put(context, :ordinary_result, push_without_hook(context.root, "reload_app"))}
       end
 
       then_ "it reloads without running after-promote again", context do
@@ -183,13 +158,21 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
         {:ok, _reply, socket} = join_harness_project(context)
 
-        {:ok, context |> Map.put(:socket, socket) |> Map.put(:main_copy, main_copy)}
+        {:ok,
+         context
+         |> Map.put(:socket, socket)
+         |> Map.put(:main_copy, main_copy)
+         |> Map.put(:main_instance, promotion_instance(context.scope, main_copy))}
       end
 
       when_ "promotion restarts this working copy's app", context do
         task =
           Task.async(fn ->
-            Runner.restart(context.scope, context.main_copy.root, context.main_copy.id)
+            Runner.restart(
+              context.scope,
+              context.main_instance.source_root,
+              context.main_instance.id
+            )
           end)
 
         {:ok, Map.put(context, :task, task)}
@@ -197,10 +180,16 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
       then_ "the harness is asked to restart, told this is main, and the reply reports the commit now serving",
             context do
-        assert_push "restart_app", %{"ref" => ref, "main" => true}
+        assert_push("restart_app", %{
+          "ref" => ref,
+          "instance" => %{"instance_id" => instance_id, "after_promote" => true}
+        })
+
+        assert instance_id == context.main_instance.id
 
         reply(context.socket, "restart_app_result", %{
           "ref" => ref,
+          "instance_id" => instance_id,
           "status" => "ok",
           "app_status" => "serving",
           "app_url" => "http://127.0.0.1:4000",
@@ -253,7 +242,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
 
       when_ "the server later asks the same copy to restart again, this time not marked main",
             context do
-        {:ok, Map.put(context, :ordinary_result, push_app_event("restart_app"))}
+        {:ok, Map.put(context, :ordinary_result, push_without_hook(context.root, "restart_app"))}
       end
 
       then_ "that restart still reports success", context do
@@ -319,10 +308,37 @@ defmodule CodeMySpecSpex.Story1108.Criterion4663Spex do
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/app",
+      "root" => scope.cwd || "/workspace/app",
       "harness_id" => scope.active_working_copy_id,
       "device" => %{"id" => device_id(context)},
       "app_verbs" => app_verbs
     })
+  end
+
+  defp promotion_instance(scope, copy) do
+    instance = AppInstances.for_working_copy(scope, copy.id)
+
+    {:ok, instance} =
+      AppInstances.update(scope, instance, %{
+        persistent: true,
+        after_promote: true,
+        port_mode: :configured,
+        database_mode: :configured
+      })
+
+    instance
+  end
+
+  defp push_without_hook(root, event) do
+    descriptor =
+      Map.merge(instance(root), %{
+        "persistent" => true,
+        "port_mode" => "configured",
+        "database_mode" => "configured",
+        "after_promote" => false
+      })
+
+    push_app_event_with(event, %{"instance" => descriptor})
   end
 
   defp reply(socket, event, payload) do

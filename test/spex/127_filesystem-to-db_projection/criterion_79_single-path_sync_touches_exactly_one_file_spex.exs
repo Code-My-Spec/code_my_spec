@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @impl_a "lib/alpha.ex"
@@ -31,8 +31,8 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
     scenario "editing alpha and notifying the watcher leaves bravo's projection untouched" do
       given_ "the agent has written two impl files and the engineer has full-synced",
              context do
-        :ok = Environments.write_file(context.environment, @impl_a, impl_a_v1())
-        :ok = Environments.write_file(context.environment, @impl_b, impl_b())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_a, impl_a_v1())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_b, impl_b())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
       end
 
       when_ "the agent edits alpha and pushes a single-path watcher event", context do
-        :ok = Environments.write_file(context.environment, @impl_a, impl_a_v2())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_a, impl_a_v2())
         {:ok, _} = Fixtures.notify_file_changed(context.scope, @impl_a)
         {:ok, context}
       end

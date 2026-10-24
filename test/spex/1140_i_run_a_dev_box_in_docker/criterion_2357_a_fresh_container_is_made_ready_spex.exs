@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
   """
   use CodeMySpecSpex.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.DesktopSetupHelpers
 
   setup :fresh_machine
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
         assert Enum.any?(context.snapshot["steps"], &(&1["key"] == "postgres"))
         path = context.snapshot["results_path"]
 
-        assert {:ok, _results} = Environments.read_file(context.machine_environment, path)
+        assert {:ok, _results} = ExecutionContexts.read_file(context.machine_environment, path)
         {:ok, context}
       end
 

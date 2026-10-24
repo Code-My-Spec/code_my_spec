@@ -21,7 +21,7 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.IssuePromote
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Issues
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.Qa
@@ -52,9 +52,9 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     on_exit(fn -> stop_worker(scope.active_project_id) end)

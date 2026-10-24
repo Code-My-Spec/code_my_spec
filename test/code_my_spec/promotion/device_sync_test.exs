@@ -3,6 +3,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
   alias CodeMySpec.Promotion.DeviceSync
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.{Repo, WorkingCopies}
 
   defmodule App do
@@ -40,7 +41,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     copy: copy
   } do
     assert {:ok, %{"status" => "pending"}} = DeviceSync.request(scope, "one", "develop", "p1")
-    assert Repo.reload!(copy).promotion_sync["head"] == "one"
+    assert app_instance(scope, copy).promotion_sync["head"] == "one"
     assert Repo.reload!(scope.active_project).promotion_sync["branch"] == "develop"
   end
 
@@ -120,7 +121,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
                dispatch: false
              )
 
-    assert Repo.reload!(copy).promotion_sync["head"] == "new"
+    assert app_instance(scope, copy).promotion_sync["head"] == "new"
     assert Repo.reload!(scope.active_project).promotion_sync["head"] == "new"
   end
 
@@ -133,7 +134,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
        %{scope: scope, copy: copy} do
     DeviceSync.request(scope, "retry-head", "main", "retry-id", dispatch: false)
     DeviceSync.apply_pending(scope, copy.id, sync: fn _, _, _, _, _ -> {:error, :dirty} end)
-    assert Repo.reload!(copy).promotion_sync["status"] == "failed"
+    assert app_instance(scope, copy).promotion_sync["status"] == "failed"
 
     assert {:ok, text} =
              CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy.call(
@@ -145,7 +146,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     assert text =~ "do not promote again"
 
     assert %{"status" => "pending", "head" => "retry-head", "promotion_id" => "retry-id"} =
-             Repo.reload!(copy).promotion_sync
+             app_instance(scope, copy).promotion_sync
   end
 
   test "joining the destination resumes an offline publication through its own harness", %{
@@ -176,18 +177,20 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     assert_receive :registered
     assert :ok = DeviceSync.copy_joined(scope, copy)
     assert_receive {:sync_received, %{"head" => "joined-head"}}, 2_000
-    assert_applied(copy, 100)
+    assert_applied(scope, copy, 100)
   end
 
-  defp assert_applied(copy, attempts) do
-    await_applied(Repo.reload!(copy).promotion_sync["status"], copy, attempts)
+  defp app_instance(scope, copy), do: AppInstances.for_working_copy(scope, copy.id)
+
+  defp assert_applied(scope, copy, attempts) do
+    await_applied(app_instance(scope, copy).promotion_sync["status"], scope, copy, attempts)
   end
 
-  defp await_applied("applied", _copy, _attempts), do: :ok
-  defp await_applied(status, _copy, 0), do: assert(status == "applied")
+  defp await_applied("applied", _scope, _copy, _attempts), do: :ok
+  defp await_applied(status, _scope, _copy, 0), do: assert(status == "applied")
 
-  defp await_applied(_status, copy, attempts) do
+  defp await_applied(_status, scope, copy, attempts) do
     Process.sleep(10)
-    assert_applied(copy, attempts - 1)
+    assert_applied(scope, copy, attempts - 1)
   end
 end

@@ -90,18 +90,10 @@ defmodule CmsHarness.Supervisor do
       # so it is up to watch the first agent.
       CmsHarness.Agents.Liveness,
 
-      # One supervisor per working copy (`CmsHarness.Copy.Supervisor`), holding
-      # everything this harness runs for it: its channel chain once served, its
-      # agents, its app. Copies arrive at runtime — from the environment on a
-      # sprite, from a hook's working directory on a laptop — so the tree cannot
-      # be static, and a subtree each means a wedged copy restarts alone: the
-      # server's watcher was once a singleton managing every project at once,
-      # and one project's crash stopped watching for all of them.
-      #
-      # Agents and the app are siblings of the channel chain under the copy, not
-      # inside it: a reconnect restarts the chain, and an agent or an app must
-      # not notice (story 1108). Offboarding a copy stops all of it at once.
+      # Copy agents and channels share a subtree; app instances have independent
+      # identities and remain alive when a source copy's supervision stops.
       {DynamicSupervisor, name: CmsHarness.CopiesSupervisor, strategy: :one_for_one},
+      {DynamicSupervisor, name: CmsHarness.AppInstancesSupervisor, strategy: :one_for_one},
 
       # A copy's tunnel connector, for whichever copy holds one (see
       # `CmsHarness.AppInstance`'s own comment — a copy with no DB-backed

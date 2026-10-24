@@ -9,7 +9,7 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
 
   @behaviour CodeMySpec.Workspaces.Runner
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   require Logger
 
@@ -202,6 +202,6 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
   end
 
   defp docker(executable, args) do
-    System.cmd(executable, args, stderr_to_stdout: true, env: Environments.clean_otp_env())
+    System.cmd(executable, args, stderr_to_stdout: true, env: ExecutionContexts.clean_otp_env())
   end
 end

@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaStory
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # ab4e412c
   #
@@ -29,8 +29,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryAppUrlTest do
   defp prompt_with_app(info) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("qa_story_app_url")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
+    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
     story = story_fixture(scope)
 
     plan_path = Path.join(tmp_dir, ".code_my_spec/qa/plan.md")

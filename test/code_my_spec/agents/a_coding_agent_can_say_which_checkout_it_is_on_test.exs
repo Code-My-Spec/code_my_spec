@@ -27,6 +27,7 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.ToolLibrary
   alias CodeMySpec.WorkingCopies
@@ -114,6 +115,22 @@ defmodule CodeMySpec.Agents.ACodingAgentCanSayWhichCheckoutItIsOnTest do
              "another project's checkout in this answer is a wrong answer to 'which one am I'"
 
       assert Enum.any?(rows, &(&1["id"] == mine.id))
+    end
+
+    test "app instance health timestamps cross the Lua boundary as ISO 8601", %{
+      scope: scope,
+      mine: mine
+    } do
+      {:ok, instance} = AppInstances.ensure_default(scope, mine)
+      {:ok, _instance} = AppInstances.record_status(scope, instance, %{status: "serving"})
+
+      {:ok, rows} =
+        ToolLibrary.data("list_working_copies", %{}, Map.put(frame(scope).assigns, :scope, scope))
+
+      row = Enum.find(rows, &(&1["id"] == mine.id))
+      [app] = row["app_instances"]
+
+      assert {:ok, _datetime, 0} = DateTime.from_iso8601(app["checked_at"])
     end
   end
 

@@ -12,7 +12,13 @@ defmodule CodeMySpecSpex.Story561.Criterion3593Spex do
     scenario "An external prerequisite still blocks the story" do
       given_ "a project requirement the story waits on that is not met", context do
         context = context |> Slice.base() |> Slice.child()
-        :ok = CodeMySpec.Environments.delete_file(context.environment, ".code_my_spec/qa/plan.md")
+
+        :ok =
+          CodeMySpec.ExecutionContexts.delete_file(
+            context.execution_context,
+            ".code_my_spec/qa/plan.md"
+          )
+
         {:ok, CodeMySpecSpex.GraphGivens.sync(context)}
       end
 

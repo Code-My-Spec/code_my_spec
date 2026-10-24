@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCallsFromItsOwnCopyTest do
   import ExUnit.CaptureLog
 
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecWeb.Plugs.AgentScope
 
@@ -53,7 +53,8 @@ defmodule CodeMySpecWeb.Plugs.AnAgentCallsFromItsOwnCopyTest do
     assert conn.assigns.agent_id == agent.id
     assert conn.assigns.current_scope.active_working_copy_id == copy_id
 
-    assert %Environment{} = CodeMySpec.WorkingCopies.environment(conn.assigns.current_scope),
+    assert %ExecutionContext{} =
+             CodeMySpec.WorkingCopies.execution_context(conn.assigns.current_scope),
            "the agent's rooted copy must resolve its own execution environment"
   end
 

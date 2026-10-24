@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1846Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,7 +29,13 @@ defmodule CodeMySpecSpex.Story1089.Criterion1846Spex do
     scenario "a pass with a screenshot on disk names no git command" do
       given_ "a screenshot sits in the story's screenshot directory", context do
         dir = Path.join([".code_my_spec/qa", to_string(context.story.number), "screenshots"])
-        :ok = Environments.write_file(context.environment, Path.join(dir, "one.png"), "fake-png")
+
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            Path.join(dir, "one.png"),
+            "fake-png"
+          )
 
         Req.Test.stub(CodeMySpec.Uploads, fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
 

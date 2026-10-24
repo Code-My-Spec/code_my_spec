@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5584Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -39,22 +39,22 @@ defmodule CodeMySpecSpex.Story670.Criterion5584Spex do
       given_ "three rule files exist — one matching, one wrong type, one wrong session",
              context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/rules/context_code.md",
             rule_file("context", "code", @match_signature)
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/rules/liveview_code.md",
             rule_file("liveview", "code", @wrong_type_signature)
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/rules/context_test.md",
             rule_file("context", "test", @wrong_session_signature)
           )

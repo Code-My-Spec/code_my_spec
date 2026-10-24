@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story1062.Criterion3619Spex do
         # component's answer.
         :ok =
           Fixtures.delete_env_file(
-            context.environment,
+            context.execution_context,
             Content.impl_path(context.child_schema.module_name)
           )
 

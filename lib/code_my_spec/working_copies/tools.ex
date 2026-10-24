@@ -9,6 +9,7 @@ defmodule CodeMySpec.WorkingCopies.Tools do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.Analysis,
+      CodeMySpec.AppInstances,
       CodeMySpec.CodeMode,
       CodeMySpec.Promotion,
       CodeMySpec.Staffing,
@@ -20,15 +21,10 @@ defmodule CodeMySpec.WorkingCopies.Tools do
   def all do
     [
       CodeMySpec.WorkingCopies.Tools.CreateWorkingCopy,
-      CodeMySpec.WorkingCopies.Tools.EnsureAppRunning,
       CodeMySpec.WorkingCopies.Tools.ListWorkingCopies,
       CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy,
-      CodeMySpec.WorkingCopies.Tools.RestartApp,
       CodeMySpec.WorkingCopies.Tools.SetWorkingCopyLoop,
-      CodeMySpec.WorkingCopies.Tools.ShareCopyApp,
-      CodeMySpec.WorkingCopies.Tools.StopApp,
-      CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy,
-      CodeMySpec.WorkingCopies.Tools.UnshareCopyApp
+      CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy
     ]
   end
 end

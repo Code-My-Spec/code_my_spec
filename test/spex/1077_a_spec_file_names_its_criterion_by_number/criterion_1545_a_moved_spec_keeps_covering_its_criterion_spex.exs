@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4669Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -28,8 +28,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4669Spex do
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @old_path,
             CriterionScript.spex_naming(number)
           )
@@ -40,11 +40,11 @@ defmodule CodeMySpecSpex.Story1077.Criterion4669Spex do
       end
 
       when_ "the file is moved to another directory", context do
-        :ok = Environments.delete_file(context.environment, @old_path)
+        :ok = ExecutionContexts.delete_file(context.execution_context, @old_path)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @new_path,
             CriterionScript.spex_naming(context.number)
           )

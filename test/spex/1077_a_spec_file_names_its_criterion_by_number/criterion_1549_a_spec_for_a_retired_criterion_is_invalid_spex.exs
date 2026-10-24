@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4673Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4673Spex do
 
       and_ "a spec naming it is on disk", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @path,
             CriterionScript.spex_naming(context.number)
           )

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -49,10 +49,10 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
       end
 
       when_ "an agent reads the environment files and its own process environment", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         file_hits =
-          Enum.filter(entries, &contains_plaintext?(context.environment, &1))
+          Enum.filter(entries, &contains_plaintext?(context.execution_context, &1))
 
         env_hits =
           System.get_env()
@@ -65,7 +65,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
       then_ "it finds only ciphertext in the files", context do
         # Anchor: the encrypted file exists and names the key, so this is a
         # real absence of plaintext rather than an absence of the secret.
-        {:ok, contents} = Environments.read_file(context.environment, "envs/prod.enc.env")
+        {:ok, contents} =
+          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
 
         assert contents =~ "CLOUDFLARE_TOKEN",
                "expected the key to be present in the encrypted file"
@@ -87,7 +88,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
 
   defp contains_plaintext?(environment, path) do
     environment
-    |> Environments.read_file(path)
+    |> ExecutionContexts.read_file(path)
     |> body_contains_plaintext?()
   end
 

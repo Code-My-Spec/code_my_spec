@@ -37,13 +37,14 @@ defmodule CmsHarness.AnAppReportedOnJoinIsTheOneRunningTest do
     # reporting whatever the last reply said.
     FakeAppInstanceRunner.configure(current_commit: "bbbb2222")
 
-    assert %{"commit" => "aaaa1111", "status" => "serving"} = AppInstance.reported(ctx.root)
+    assert %{"commit" => "aaaa1111", "status" => "serving"} =
+             AppInstance.reported(instance(ctx.root))
   end
 
   test "a copy whose app never ran reports nothing rather than a guess" do
     ctx = app_instance_rig()
 
-    assert AppInstance.reported(ctx.root) == nil
+    assert AppInstance.reported(instance(ctx.root)) == nil
   end
 
   test "a stopped app reports itself down, not its last commit" do
@@ -51,6 +52,7 @@ defmodule CmsHarness.AnAppReportedOnJoinIsTheOneRunningTest do
     assert %{"app_status" => "serving"} = push_app_event("ensure_app_running")
     assert %{"status" => "ok"} = push_app_event("stop_app")
 
-    assert %{"commit" => "aaaa1111", "status" => "down"} = AppInstance.reported(ctx.root)
+    assert %{"commit" => "aaaa1111", "status" => "down"} =
+             AppInstance.reported(instance(ctx.root))
   end
 end

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
   """
   use CodeMySpecSpex.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.DesktopSetupHelpers
 
   setup :fresh_machine
@@ -45,14 +45,14 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
         assert {:ok, snapshot} = CmsHarness.Setup.status()
         path = snapshot["results_path"]
 
-        assert {:ok, _results} = Environments.read_file(context.machine_environment, path)
+        assert {:ok, _results} = ExecutionContexts.read_file(context.machine_environment, path)
         {:ok, context}
       end
     end
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

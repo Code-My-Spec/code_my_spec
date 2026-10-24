@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -60,8 +60,8 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       given_ "the user journeys have been walked", context do
         # The release refuses until a journey result exists.
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/qa/journey_result.md",
             "# Journey result\n\nwalked end to end — passed\n"
           )
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       end
 
       given_ "every story on UAT is covered by a release that already shipped", context do
-        env = context.environment
+        env = context.execution_context
 
         # Deploy tracking reads and writes the deploys table now, not a file
         # the agent wrote for itself (a46f3ec5) — "on UAT" is a row with
@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
         # covers nothing, so the story reads unreleased and ships twice —
         # which is the failure this criterion is meant to catch, not stage.
         :ok =
-          Environments.write_file(
+          ExecutionContexts.write_file(
             env,
             ".code_my_spec/releases/#{@already_shipped_tag}.md",
             notes
@@ -102,25 +102,29 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
         # counting the record's coverage. `setup_active_project` builds a
         # directory, not a checkout, so `git tag` had nothing to tag without
         # this — same reason criterion 1973 does it.
-        {_, 0} = Environments.cmd(env, "git", ["init", "-q"])
-        {_, 0} = Environments.cmd(env, "git", ["config", "user.email", "spex@example.com"])
-        {_, 0} = Environments.cmd(env, "git", ["config", "user.name", "Spex"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["init", "-q"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["config", "user.email", "spex@example.com"])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["config", "user.name", "Spex"])
 
         # `gh release view` with no `--repo` infers the repository from the
         # `origin` remote, the same way it would in a real deployed checkout
         # cloned from `project.code_repo` — a fixture built as a bare
         # directory has no remote to infer from without this.
         {_, 0} =
-          Environments.cmd(env, "git", [
+          ExecutionContexts.cmd(env, "git", [
             "remote",
             "add",
             "origin",
             "https://github.com/codemy-my-spec-test/release-spex-fixture.git"
           ])
 
-        {_, 0} = Environments.cmd(env, "git", ["add", "-A"])
-        {_, 0} = Environments.cmd(env, "git", ["commit", "-q", "-m", "the code already shipped"])
-        {_, 0} = Environments.cmd(env, "git", ["tag", "-a", @already_shipped_tag, "-m", notes])
+        {_, 0} = ExecutionContexts.cmd(env, "git", ["add", "-A"])
+
+        {_, 0} =
+          ExecutionContexts.cmd(env, "git", ["commit", "-q", "-m", "the code already shipped"])
+
+        {_, 0} =
+          ExecutionContexts.cmd(env, "git", ["tag", "-a", @already_shipped_tag, "-m", notes])
 
         {:ok, Map.put(context, :already_shipped, already_shipped)}
       end

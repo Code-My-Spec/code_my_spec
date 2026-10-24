@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5830Spex do
         proposal = Fixtures.proposal_with_context("MyApp", "Accounts", "Accounts domain")
 
         {:ok, _result} =
-          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+          Fixtures.with_executed_proposal(context.scope, context.execution_context, proposal)
 
         {:ok, Map.put(context, :module_name, "MyApp.Accounts")}
       end

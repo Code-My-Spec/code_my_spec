@@ -24,16 +24,16 @@ defmodule CodeMySpecSpex.Story597.Criterion5282Spex do
   spex "Validation gates on the integration index plus per-spec verification", criterion: 235 do
     scenario "No integration specs and no index passes evaluation as the empty-pipeline path" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
       given_ :qa_integration_plan_task_started
 
       given_ "no integration specs and no index exist", context do
-        refute Fixtures.integration_spec_exists?(context.environment, "twilio")
-        refute Fixtures.integration_index_exists?(context.environment)
+        refute Fixtures.integration_spec_exists?(context.execution_context, "twilio")
+        refute Fixtures.integration_index_exists?(context.execution_context)
         {:ok, context}
       end
 

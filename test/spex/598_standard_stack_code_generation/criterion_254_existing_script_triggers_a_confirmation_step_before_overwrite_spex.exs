@@ -23,11 +23,11 @@ defmodule CodeMySpecSpex.Story598.Criterion5305Spex do
   spex "Retrofit script is rewritten from the currently-detected state", criterion: 254 do
     scenario "Existing script triggers a confirmation step before overwrite" do
       given_ "an existing code_generation.sh is present in the project", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_full_script(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_full_script(context.execution_context)
 
-        assert Fixtures.script_exists?(context.environment),
+        assert Fixtures.script_exists?(context.execution_context),
                "expected an existing generation script to be present"
 
         {:ok, context}

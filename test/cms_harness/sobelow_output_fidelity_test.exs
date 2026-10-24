@@ -2,8 +2,8 @@ defmodule CmsHarness.SobelowOutputFidelityTest do
   use ExUnit.Case, async: false
 
   alias CmsHarness.Analysis
-  alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Environments.Local
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.ExecutionContexts.Local
   alias CodeMySpec.StaticAnalysis.SobelowRun
 
   @output " \t\n{\"findings\":{\"high_confidence\":[{\"type\":\"SQL Injection\",\"file\":\"lib/example.ex\"}],\"medium_confidence\":[],\"low_confidence\":[]}}\n \t\n"
@@ -31,7 +31,7 @@ defmodule CmsHarness.SobelowOutputFidelityTest do
       {@output, 1}
     end)
 
-    env = Environment.new(:local, root)
+    env = ExecutionContext.new(:local, root)
     assert {:ok, findings, output} = SobelowRun.run(env)
     assert output == @output
     assert [%{"type" => "SQL Injection", "file" => "lib/example.ex"}] = findings

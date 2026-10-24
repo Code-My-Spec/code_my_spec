@@ -11,7 +11,7 @@ defmodule CodeMySpec.Architecture.Tools do
       CodeMySpec.Architecture,
       CodeMySpec.Components,
       CodeMySpec.Configurations,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.LocalScope,
       CodeMySpec.Paths,
       CodeMySpec.Stories,

@@ -1,12 +1,12 @@
 defmodule CodeMySpec.SetupFixtures do
   @moduledoc """
-  Seeds an `InMemoryEnvironment` so named setup step modules evaluate
+  Seeds an `InMemoryExecutionContext` so named setup step modules evaluate
   `{:ok, :valid}`. Used by BDD specs for Story 124 (Project Setup).
 
   Additive — `satisfy/2` can be called multiple times to simulate
   incremental completion across a single scenario.
 
-  All writes are relative to `env.cwd` via the `Environments` API, so
+  All writes are relative to `env.cwd` via the `ExecutionContexts` API, so
   the fixture works against any environment (memory, local, cli).
 
   ## Cross-cutting invariants
@@ -21,7 +21,7 @@ defmodule CodeMySpec.SetupFixtures do
   - `TestSupportNamespace` passes when `conn_case.ex`/`data_case.ex`
     are absent. The `satisfy/2` clause for that step is a no-op.
   - `ProjectStructure` satisfies by writing `.keep` files under the
-    required directories (InMemoryEnvironment treats a path with
+    required directories (InMemoryExecutionContext treats a path with
     descendants as an existing directory).
 
   See `.code_my_spec/issues/project-setup/fixtures.md` for the
@@ -29,8 +29,8 @@ defmodule CodeMySpec.SetupFixtures do
   """
 
   alias CodeMySpec.AgentTasks.Setup
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Users.Scope
 
@@ -46,9 +46,9 @@ defmodule CodeMySpec.SetupFixtures do
   Note: Scenarios within a single `spex` block share the in-memory env.
   Call `reset/1` at the start of each scenario that needs a clean slate.
   """
-  @spec satisfy(Scope.t() | Environment.t(), [module()]) :: :ok
+  @spec satisfy(Scope.t() | ExecutionContext.t(), [module()]) :: :ok
   def satisfy(%Scope{} = scope, steps) when is_list(steps) do
-    env = CodeMySpec.UsersFixtures.fixture_environment(scope)
+    env = CodeMySpec.UsersFixtures.fixture_execution_context(scope)
     ensure_baseline_mix_exs(env)
     Enum.each(steps, &satisfy_step(env, &1))
 
@@ -56,13 +56,13 @@ defmodule CodeMySpec.SetupFixtures do
     # populate `valid` + `validation_errors`. The Setup.* step `check/1`
     # functions read those persisted records — they no longer touch disk.
     if scope.active_project_id do
-      {:ok, _} = FileSync.sync(scope, environment: env)
+      {:ok, _} = FileSync.sync(scope, execution_context: env)
     end
 
     :ok
   end
 
-  def satisfy(%Environment{} = env, steps) when is_list(steps) do
+  def satisfy(%ExecutionContext{} = env, steps) when is_list(steps) do
     ensure_baseline_mix_exs(env)
     Enum.each(steps, &satisfy_step(env, &1))
     :ok
@@ -74,8 +74,8 @@ defmodule CodeMySpec.SetupFixtures do
   Use at the start of scenarios that need a clean env — scenarios
   share the env across a single spex block otherwise.
   """
-  @spec reset(Environment.t()) :: :ok
-  def reset(%Environment{type: :memory, ref: %{agent: agent}}) do
+  @spec reset(ExecutionContext.t()) :: :ok
+  def reset(%ExecutionContext{type: :memory, ref: %{agent: agent}}) do
     Agent.update(agent, fn _ -> %{} end)
   end
 
@@ -90,7 +90,7 @@ defmodule CodeMySpec.SetupFixtures do
   # --- per-step satisfaction ---
 
   defp satisfy_step(env, Setup.ApplicationInWeb) do
-    Environments.write_file(
+    ExecutionContexts.write_file(
       env,
       "lib/#{@app_name}_web/application.ex",
       "defmodule #{@app_mod}Web.Application do\nend\n"
@@ -102,13 +102,13 @@ defmodule CodeMySpec.SetupFixtures do
   defp satisfy_step(env, Setup.SpexConfig), do: amend_mix_exs(env, :spex_config)
 
   defp satisfy_step(env, Setup.TestBoundaries) do
-    Environments.write_file(
+    ExecutionContexts.write_file(
       env,
       "test/support/#{@app_name}_spex.ex",
       "defmodule #{@app_mod}Spex do\n  use Boundary\nend\n"
     )
 
-    Environments.write_file(
+    ExecutionContexts.write_file(
       env,
       "test/support/#{@app_name}_test_boundary.ex",
       "defmodule #{@app_mod}Test do\n  use Boundary\nend\n"
@@ -119,7 +119,7 @@ defmodule CodeMySpec.SetupFixtures do
   defp satisfy_step(_env, Setup.TestSupportNamespace), do: :ok
 
   defp satisfy_step(env, Setup.SpexCase) do
-    Environments.write_file(env, "test/support/#{@app_name}_spex_case.ex", """
+    ExecutionContexts.write_file(env, "test/support/#{@app_name}_spex_case.ex", """
     defmodule #{@app_mod}Spex.Case do
       use SexySpex
       import Phoenix.LiveViewTest
@@ -128,22 +128,22 @@ defmodule CodeMySpec.SetupFixtures do
   end
 
   defp satisfy_step(env, Setup.ProjectStructure) do
-    # InMemoryEnvironment treats "path with descendants" as an existing dir.
-    Environments.write_file(env, ".code_my_spec/rules/.keep", "")
-    Environments.write_file(env, ".code_my_spec/spec/#{@app_name}/.keep", "")
-    Environments.write_file(env, ".code_my_spec/spec/#{@app_name}_web/.keep", "")
+    # InMemoryExecutionContext treats "path with descendants" as an existing dir.
+    ExecutionContexts.write_file(env, ".code_my_spec/rules/.keep", "")
+    ExecutionContexts.write_file(env, ".code_my_spec/spec/#{@app_name}/.keep", "")
+    ExecutionContexts.write_file(env, ".code_my_spec/spec/#{@app_name}_web/.keep", "")
   end
 
   defp satisfy_step(env, Setup.AgentsMd) do
-    Environments.write_file(env, ".code_my_spec/AGENTS.md", "# Agents\n")
+    ExecutionContexts.write_file(env, ".code_my_spec/AGENTS.md", "# Agents\n")
   end
 
   defp satisfy_step(env, Setup.Rules) do
-    Environments.write_file(env, ".code_my_spec/rules/default.md", "# Default Rule\n")
+    ExecutionContexts.write_file(env, ".code_my_spec/rules/default.md", "# Default Rule\n")
   end
 
   defp satisfy_step(env, Setup.CredoChecks) do
-    Environments.write_file(env, ".credo.exs", """
+    ExecutionContexts.write_file(env, ".credo.exs", """
     %{configs: [%{
       requires: [
         ".code_my_spec/credo_checks/framework/**/*.ex",
@@ -159,7 +159,7 @@ defmodule CodeMySpec.SetupFixtures do
   end
 
   defp satisfy_step(env, Setup.ClaudeMd) do
-    Environments.write_file(
+    ExecutionContexts.write_file(
       env,
       "CLAUDE.md",
       "# CLAUDE\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->\n"
@@ -169,8 +169,8 @@ defmodule CodeMySpec.SetupFixtures do
   # --- mix.exs baseline + amendments ---
 
   defp ensure_baseline_mix_exs(env) do
-    unless Environments.file_exists?(env, "mix.exs") do
-      Environments.write_file(env, "mix.exs", """
+    unless ExecutionContexts.file_exists?(env, "mix.exs") do
+      ExecutionContexts.write_file(env, "mix.exs", """
       defmodule #{@app_mod}.MixProject do
         use Mix.Project
         def project, do: [app: :#{@app_name}, version: "0.0.1"]
@@ -213,12 +213,12 @@ defmodule CodeMySpec.SetupFixtures do
   end
 
   defp append_if_missing(env, path, marker, snippet) do
-    {:ok, content} = Environments.read_file(env, path)
+    {:ok, content} = ExecutionContexts.read_file(env, path)
 
     if String.contains?(content, marker) do
       :ok
     else
-      Environments.write_file(env, path, content <> snippet)
+      ExecutionContexts.write_file(env, path, content <> snippet)
     end
   end
 end

@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2370Spex do
   use CodeMySpecSpex.Case
 
   alias ClientUtils.Harness.Onboarding
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -44,11 +44,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2370Spex do
   spex "The recorded partition is the one consumers use", criterion: 882 do
     scenario "A consumer resolves the recorded partition, not one it derives" do
       given_ "a working copy whose recorded partition no digest would produce", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @settings,
             Jason.encode!(%{"env" => %{"MIX_TEST_PARTITION" => @recorded}}, pretty: true)
           )
@@ -57,10 +57,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion2370Spex do
       end
 
       when_ "a consumer resolves this copy's test partition", context do
-        env = context.environment
+        env = context.execution_context
 
         resolved =
-          Onboarding.resolve_partition(env.cwd, read: &Environments.read_file(env, &1))
+          Onboarding.resolve_partition(env.cwd, read: &ExecutionContexts.read_file(env, &1))
 
         resolved = with {:ok, partition} <- resolved, do: partition
 
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2370Spex do
       end
 
       then_ "it is not the value a digest would have produced", context do
-        refute context.resolved == Onboarding.partition_name(context.environment.cwd),
+        refute context.resolved == Onboarding.partition_name(context.execution_context.cwd),
                "the consumer returned the derived partition. With a recorded value " <>
                  "present, deriving means the recording is never consulted — and the " <>
                  "two only ever match because the algorithm is duplicated by hand."

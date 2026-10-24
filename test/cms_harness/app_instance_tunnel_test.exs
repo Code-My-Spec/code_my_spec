@@ -19,7 +19,6 @@ defmodule CmsHarness.AppInstanceTunnelTest do
   import CmsHarnessTest.AppInstanceHelpers
 
   alias CmsHarnessTest.FakeAppInstanceRunner
-  alias CmsHarnessTest.FakeServer
 
   @tunnel %{
     "hostname" => "preview-main.codemyspec.com",
@@ -28,16 +27,8 @@ defmodule CmsHarness.AppInstanceTunnelTest do
     "account_tag" => "acct-1"
   }
 
-  defp push_with(payload, event \\ "ensure_app_running") do
-    ref = FakeServer.push_app_event(event, payload)
-    result_event = String.to_existing_atom("#{event}_result")
-
-    receive do
-      {^result_event, %{"ref" => ^ref} = reply} -> reply
-    after
-      5_000 -> flunk("no #{result_event} for ref #{ref}")
-    end
-  end
+  defp push_with(payload, event \\ "ensure_app_running"),
+    do: push_app_event_with(event, payload)
 
   defp tunnel_calls,
     do: Enum.filter(FakeAppInstanceRunner.calls(), &match?({:start_tunnel, _}, &1))

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -36,8 +36,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
     scenario "a failing verification leaves the previous version serving" do
       given_ "a good version of the post is already live", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "content/posts/hello.md",
             "---\ntitle: Hello\ntype: blog\n---\n\nGood version.\n"
           )

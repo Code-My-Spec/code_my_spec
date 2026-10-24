@@ -23,7 +23,7 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
   alias CodeMySpec.Embeddings.DocEmbedding
   alias CodeMySpec.Embeddings.EmbeddingService
   alias CodeMySpec.Embeddings.PgVectorBackend
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.LockfileSweep
@@ -198,7 +198,9 @@ defmodule CodeMySpec.Files.ProjectKnowledgeReconcileTest do
   defp manifest(scope, dir), do: FileSync.reconcile_and_project(scope, observe(scope, dir))
 
   defp observe(scope, dir) do
-    {:ok, observations} = Scanner.observe(Environment.new(:local, dir), Files.read_model(scope))
+    {:ok, observations} =
+      Scanner.observe(ExecutionContext.new(:local, dir), Files.read_model(scope))
+
     observations
   end
 

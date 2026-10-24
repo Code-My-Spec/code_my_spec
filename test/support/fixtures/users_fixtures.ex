@@ -7,8 +7,8 @@ defmodule CodeMySpec.UsersFixtures do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Repo
   alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users
@@ -120,7 +120,7 @@ defmodule CodeMySpec.UsersFixtures do
     project = user_scope_fixture(user, account) |> project_fixture(project_attrs)
 
     # Anchor the test scope's environment to an isolated tmp dir. With a nil
-    # cwd, Environments.Local.resolve_path/2 falls through to the BEAM's
+    # cwd, ExecutionContexts.Local.resolve_path/2 falls through to the BEAM's
     # working directory — i.e. the project root — and any code path under
     # test that writes through an unrooted runtime leaks files into the live
     # tree (e.g. SpecStub.write_for_scope creating
@@ -144,54 +144,54 @@ defmodule CodeMySpec.UsersFixtures do
     tmp_dir = CodeMySpec.TempFile.owned_dir("full_scope")
 
     scope = user_scope_fixture(user, account, project)
-    env = Environment.new(:local, tmp_dir)
-    :ok = Environments.register(project.id, env)
+    env = ExecutionContext.new(:local, tmp_dir)
+    :ok = ExecutionContexts.register(project.id, env)
     %{scope | cwd: tmp_dir}
   end
 
   @doc "The runtime explicitly registered by a test fixture, independent of Scope's fields."
-  def fixture_environment(scope) do
-    Environments.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
-      Environments.lookup_registered({:root, scope.cwd}) ||
-      Environments.lookup_registered(scope.active_project_id)
+  def fixture_execution_context(scope) do
+    ExecutionContexts.lookup_registered({:working_copy, scope.active_working_copy_id}) ||
+      ExecutionContexts.lookup_registered({:root, scope.cwd}) ||
+      ExecutionContexts.lookup_registered(scope.active_project_id)
   end
 
   @doc "Register a fixture runtime without storing it on Scope."
-  def put_fixture_environment(scope, nil) do
+  def put_fixture_execution_context(scope, nil) do
     for key <- [
           {:working_copy, scope.active_working_copy_id},
           {:root, scope.cwd},
           scope.active_project_id
         ] do
-      :ok = Environments.unregister(key)
+      :ok = ExecutionContexts.unregister(key)
     end
 
     %{scope | cwd: nil}
   end
 
-  def put_fixture_environment(scope, %Environment{} = env) do
+  def put_fixture_execution_context(scope, %ExecutionContext{} = env) do
     case CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id) do
       {:ok, _} when is_binary(env.cwd) ->
-        :ok = register_working_copy_environment(scope, env)
+        :ok = register_working_copy_execution_context(scope, env)
 
       _ ->
-        :ok = Environments.unregister(scope.active_project_id)
-        :ok = Environments.register(scope.active_project_id, env)
+        :ok = ExecutionContexts.unregister(scope.active_project_id)
+        :ok = ExecutionContexts.register(scope.active_project_id, env)
     end
 
     %{scope | cwd: env.cwd}
   end
 
   @doc "Registers the selected working copy at an explicit environment root."
-  def register_working_copy_environment(
+  def register_working_copy_execution_context(
         %{active_working_copy_id: id},
-        %Environment{cwd: cwd} = env
+        %ExecutionContext{cwd: cwd} = env
       )
       when is_binary(id) and is_binary(cwd) do
     {:ok, copy} = WorkingCopies.fetch(id)
     root_copy(copy, cwd)
-    :ok = Environments.unregister({:working_copy, id})
-    :ok = Environments.register({:working_copy, id}, env)
+    :ok = ExecutionContexts.unregister({:working_copy, id})
+    :ok = ExecutionContexts.register({:working_copy, id}, env)
     :ok
   end
 
@@ -210,7 +210,7 @@ defmodule CodeMySpec.UsersFixtures do
   @doc "A full test scope whose selected working copy has a registered environment."
   def working_copy_scope_fixture(project_attrs \\ %{}) do
     scope = full_scope_fixture(project_attrs)
-    :ok = register_working_copy_environment(scope, fixture_environment(scope))
+    :ok = register_working_copy_execution_context(scope, fixture_execution_context(scope))
     scope
   end
 

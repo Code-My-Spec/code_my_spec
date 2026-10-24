@@ -22,9 +22,14 @@
   },
   {
     "name": "ensure_app_running",
-    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nStory 1108's rule: an agent on a copy can start, restart and stop its own\ncopy's app. Always the caller's own copy -- resolved from the connection's\nscope, never a parameter a caller could point at a different one. That is\nwhat makes \"an agent cannot reach another copy's app\" structural rather\nthan a check that could be bypassed: there is nothing on this schema to\nname another copy with.\n\n## Returns when the run starts, not when it finishes\n\nA first boot compiles, which can run well past the code-mode sandbox's\n30s wall clock (issue f2977826, batch 2 of 4f7929e4) -- this used to\nshrink its own wait to fit that budget instead, racing it with a margin.\nThe spawned task claims this working copy's own lock -- shared with\n`restart_app` and `stop_app`, since all three touch the same app process\n-- and only then acks: the reply is \"started\" or \"already running\"; an\nagent that started it is messaged the outcome, any other caller calls\nthis tool again to check.\n",
+    "description": "Bring up the caller's own copy of the app, starting it if it isn't already\nrunning. A live process is health-checked, not automatically restarted when\nHEAD moves. If it is unhealthy, the error reports the current checkout HEAD,\nthe last recorded app revision, and the app log to inspect before recovery.\nA healthy app whose served revision differs from HEAD, or whose revision\ncannot be verified, returns an error refusing QA against it. The process\nstays running; restart_app refreshes it explicitly.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified against the caller's project and active\nworking copy before the runtime is contacted.\n\n## Returns when the run starts, not when it finishes\n\nA first boot compiles, which can run well past the code-mode sandbox's\n30s wall clock (issue f2977826, batch 2 of 4f7929e4) -- this used to\nshrink its own wait to fit that budget instead, racing it with a margin.\nThe spawned task claims this working copy's own lock -- shared with\n`restart_app` and `stop_app`, since all three touch the same app process\n-- and only then acks: the reply is \"started\" or \"already running\"; an\nagent that started it is messaged the outcome, any other caller calls\nthis tool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
@@ -38,11 +43,15 @@
   },
   {
     "name": "offboard_working_copy",
-    "description": "Discard a working copy, ending the agents on it.\n\nThe other end of `create_working_copy`. Story 964's rule: *a working copy is\nthe boundary of the work, and discarding it ends its agents and its\nconversation*. John, 2026-09-04: *\"I can keep them through that whole epic and\nthen I can discard the working copy and then come up with another one — that's\nhow I need to control these boundaries.\"*\n\nA boundary is only usable if both ends are reachable by whoever is doing the\nwork. Until this existed, `offboard` was a control on the working-copies page\nand nothing else, so an agent could be given a copy and never let go of one.\n\n## What it does not do\n\nRemove the directory. The copy stops being this project's and its agents stop\nrunning; the checkout on disk is left for a person. Deleting a worktree\nsomebody may have put uncommitted work in is not a thing to do on an agent's\nsay-so, and the row going is what makes everything downstream stop pointing at\nit.\n\n## An agent that would not stop is reported, not swallowed\n\nThe copy this is most often used on is one whose machine has gone — that is\nstory 892's premise — so failing to reach an agent cannot block the offboard.\nIt is said instead: the process may still be running, and ending it is the\noperator's, because the server could not reach it to try.\n",
+    "description": "Discard a working copy, ending the agents on it.\n\nThe other end of `create_working_copy`. Story 964's rule: *a working copy is\nthe boundary of the work, and discarding it ends its agents and its\nconversation*. John, 2026-09-04: *\"I can keep them through that whole epic and\nthen I can discard the working copy and then come up with another one — that's\nhow I need to control these boundaries.\"*\n\nA boundary is only usable if both ends are reachable by whoever is doing the\nwork. Until this existed, `offboard` was a control on the working-copies page\nand nothing else, so an agent could be given a copy and never let go of one.\n\n## What it does not do\n\nRemove the directory. The copy stops being this project's and its agents stop\nrunning; the checkout on disk is left for a person. Deleting a worktree\nsomebody may have put uncommitted work in is not a thing to do on an agent's\nsay-so, and the row going is what makes everything downstream stop pointing at\nit.\n\n## An agent that would not stop is reported, not swallowed\n\nThe copy this is most often used on is one whose machine has gone — that is\nstory 892's premise. Unreachable agents are reported while the source can\nstill be removed, but an unreachable running app instance is refused because\nits runtime cannot safely be disposed from here.\n\n## Persistent app instances\n\nA source checkout with a persistent app instance cannot be discarded until\nthat instance is explicitly disposed. Pass `instance_disposition: \"discard\"`\nto stop and dispose the instance first. An unreachable running instance is\nleft in place with its checkout so its runtime is not abandoned silently.\n",
     "input_schema": {
       "properties": {
         "working_copy_id": {
           "description": "Id of the working copy to discard. `list_working_copies` names them.",
+          "type": "string"
+        },
+        "instance_disposition": {
+          "description": "For a persistent app instance, pass `discard` to stop and dispose it before removing its source checkout.",
           "type": "string"
         }
       },
@@ -54,9 +63,14 @@
   },
   {
     "name": "restart_app",
-    "description": "Restart the caller's own copy of the app, on its current commit.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here.\n\n## Returns when the run starts, not when it finishes\n\nA restart waits for a recompile and a boot, which can run well past the\ncode-mode sandbox's 30s wall clock (issue f2977826, batch 2 of 4f7929e4)\n-- this used to shrink its own wait to fit that budget instead, racing it\nwith a margin. The spawned task claims this working copy's own lock --\nshared with `stop_app` and `ensure_app_running`, since all three touch\nthe same app process, and a restart racing another restart's own\n`_build` directory is exactly the hazard this closes -- and only then\nacks: the reply is \"started\" or \"already running\". A second restart_app\ncall while one is in flight never starts a second one; it is told the\none already running is still going. An agent that started it is messaged\nthe outcome; any other caller calls this tool again to check.\n",
+    "description": "Restart the caller's own copy of the app, on its current commit.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before the runtime is contacted.\n\n## Returns when the run starts, not when it finishes\n\nA restart waits for a recompile and a boot, which can run well past the\ncode-mode sandbox's 30s wall clock (issue f2977826, batch 2 of 4f7929e4)\n-- this used to shrink its own wait to fit that budget instead, racing it\nwith a margin. The spawned task claims this working copy's own lock --\nshared with `stop_app` and `ensure_app_running`, since all three touch\nthe same app process, and a restart racing another restart's own\n`_build` directory is exactly the hazard this closes -- and only then\nacks: the reply is \"started\" or \"already running\". A second restart_app\ncall while one is in flight never starts a second one; it is told the\none already running is still going. An agent that started it is messaged\nthe outcome; any other caller calls this tool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
@@ -83,17 +97,27 @@
   },
   {
     "name": "share_copy_app",
-    "description": "Give the caller's own copy a public preview address.\n\nShares its device's tunnel rather than provisioning one of its own —\ncriteria 1586/1587: a same-device sibling's connector can already reach\nthis copy's local port, so its hostname is added to that tunnel's ingress\ninstead of standing up a second connector nothing needs.\n\nAlways the caller's own copy, never a parameter — same \"an agent cannot\nreach another copy\" reasoning as `EnsureAppRunning`/`StopApp`. Refused\nwhile the copy's own app is not serving: sharing points a public hostname\nat a local port, and a port nothing is listening on yet is exactly the gap\nbetween \"reported\" and \"actually up\" story 1108's `app_url` exists to\nclose.\n",
+    "description": "Give the caller's own copy a public preview address.\n\nShares its device's tunnel rather than provisioning one of its own —\ncriteria 1586/1587: a same-device sibling's connector can already reach\nthis copy's local port, so its hostname is added to that tunnel's ingress\ninstead of standing up a second connector nothing needs.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before sharing. Refused\nwhile the copy's own app is not serving: sharing points a public hostname\nat a local port, and a port nothing is listening on yet is exactly the gap\nbetween \"reported\" and \"actually up\" story 1108's `app_url` exists to\nclose.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
   {
     "name": "stop_app",
-    "description": "Stop the caller's own copy of the app.\n\nSee `EnsureAppRunning` -- same \"always the caller's own copy, never a\nparameter\" reasoning applies here. A copy with nothing running answers\nsuccess too, same as `AppTransport.stop_app/2` itself.\n\n## Returns when the run starts, not when it finishes\n\nStopping is normally fast, but this used to hold the code-mode sandbox's\nentire 30s budget inline with no margin to even return an answer\nafterward (issue f2977826, batch 2 of 4f7929e4). The spawned task claims\nthis working copy's own lock -- shared with `restart_app` and\n`ensure_app_running`, since all three touch the same app process -- and\nonly then acks: the reply is \"started\" or \"already running\"; an agent\nthat started it is messaged the outcome, any other caller calls this\ntool again to check.\n",
+    "description": "Stop the caller's own copy of the app.\n\nBy default this uses the caller's source checkout's default app instance.\n`instance_id` may select another instance only when it belongs to that same\ncheckout; ownership is verified before the runtime is contacted. A copy\nwith nothing running answers success too, same as `AppTransport.stop_app/2`.\n\n## Returns when the run starts, not when it finishes\n\nStopping is normally fast, but this used to hold the code-mode sandbox's\nentire 30s budget inline with no margin to even return an answer\nafterward (issue f2977826, batch 2 of 4f7929e4). The spawned task claims\nthis working copy's own lock -- shared with `restart_app` and\n`ensure_app_running`, since all three touch the same app process -- and\nonly then acks: the reply is \"started\" or \"already running\"; an agent\nthat started it is messaged the outcome, any other caller calls this\ntool again to check.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   },
@@ -115,9 +139,14 @@
   },
   {
     "name": "unshare_copy_app",
-    "description": "Drop the caller's own copy's shared preview.\n\nRemoves the ingress rule that pointed its hostname at this copy's app and\nthe DNS record behind it, and clears the copy's own recorded address. See\n`ShareCopyApp`.\n\nA no-op on main, whose tunnel is the project's rather than this call's to\nremove, and on a copy that was never shared — see `PreviewTunnel.release/1`.\n",
+    "description": "Drop the caller's own copy's shared preview.\n\nRemoves the ingress rule that pointed its hostname at this copy's app and\nthe DNS record behind it, and clears the copy's own recorded address. See\n`ShareCopyApp`.\n\nA no-op on main, whose tunnel is the project's rather than this call's to\nremove, and on a copy that was never shared — see `PreviewTunnel.release/1`.\n\nBy default this resolves the caller's active source checkout's default app\ninstance. `instance_id` can select another instance from that same source;\nownership is checked before the preview is released.\n",
     "input_schema": {
-      "properties": {},
+      "properties": {
+        "instance_id": {
+          "description": "App instance UUID from `list_working_copies`.",
+          "type": "string"
+        }
+      },
       "type": "object"
     }
   }

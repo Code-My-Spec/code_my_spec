@@ -8,7 +8,7 @@ defmodule CodeMySpec.Promotion.EachCandidateGetsFreshTestDatabasesTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Promotion.Steps
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   @gate "/w/gate"
 
@@ -16,7 +16,7 @@ defmodule CodeMySpec.Promotion.EachCandidateGetsFreshTestDatabasesTest do
     test = self()
 
     {:ok, env} =
-      InMemoryEnvironment.create(
+      InMemoryExecutionContext.create(
         shell: fn "mix", args, opts ->
           send(test, {:mix, Keyword.fetch!(opts, :cd), args, Keyword.get(opts, :env, [])})
           answer.(opts)

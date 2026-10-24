@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.ResidueGuardScopeTest do
 
   So the setup takes them away and puts them back, which is deterministic
   everywhere. That write is process-global, hence no `async: true` — the same
-  reasoning `CodeMySpec.EnvironmentsTest` uses for rewriting `PATH`.
+  reasoning `CodeMySpec.ExecutionContextsTest` uses for rewriting `PATH`.
   """
 
   use ExUnit.Case

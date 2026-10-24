@@ -2,7 +2,7 @@ defmodule CodeMySpecSpex.Story1147.Criterion2392Spex do
   use CodeMySpecSpex.Case
   import CodeMySpecSpex.RemotePromotionHelpers
   import Phoenix.ChannelTest, only: [close: 1]
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecSpex.{Fixtures, PromotionHelpers}
   alias Ecto.Adapters.SQL.Sandbox
   setup :register_log_in_setup_account
@@ -21,9 +21,9 @@ defmodule CodeMySpecSpex.Story1147.Criterion2392Spex do
         Process.unlink(context.agent_socket.channel_pid)
         close(context.agent_socket)
 
-        Fixtures.put_fixture_environment(
+        Fixtures.put_fixture_execution_context(
           context.scope,
-          Environment.new(:harness, context.agent_root)
+          ExecutionContext.new(:harness, context.agent_root)
         )
 
         {:ok, context}

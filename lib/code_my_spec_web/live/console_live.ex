@@ -1072,9 +1072,9 @@ defmodule CodeMySpecWeb.ConsoleLive do
   # Resolve the checkout at the operation boundary; caller identity supplies
   # authorization, not the execution environment.
   defp operation_environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
-    do: WorkingCopies.environment(scope)
+    do: WorkingCopies.execution_context(scope)
 
-  defp operation_environment(scope), do: LocalScope.environment(scope.active_project)
+  defp operation_environment(scope), do: LocalScope.execution_context(scope.active_project)
 
   @impl true
   def handle_event("generate_project", _params, socket) do

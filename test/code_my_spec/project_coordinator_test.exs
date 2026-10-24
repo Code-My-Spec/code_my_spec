@@ -3,7 +3,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ProjectCoordinator
 
   defmodule ValidTask do
@@ -29,8 +29,8 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   test "prompt generation uses the explicit environment despite stale scope state" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_explicit_environment")
-    env = Environment.new(:local, root)
-    scope = put_fixture_environment(full_scope_fixture(), nil)
+    env = ExecutionContext.new(:local, root)
+    scope = put_fixture_execution_context(full_scope_fixture(), nil)
     component = %{module_name: "Sample.Accounts"}
     session = %{project: scope.active_project}
 
@@ -40,7 +40,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
                session,
                [%{component: component, task_module: ValidTask}],
                "prompts",
-               environment: env
+               execution_context: env
              )
 
     assert File.read!(Path.join(root, file_path)) == "prompt"
@@ -48,13 +48,13 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   test "prompt generation resolves and uses the selected working copy despite stale project runtime" do
     scope = working_copy_scope_fixture()
-    selected_root = fixture_environment(scope).cwd
+    selected_root = fixture_execution_context(scope).cwd
     stale_root = CodeMySpec.TempFile.owned_dir("coordinator_stale_environment")
 
     :ok =
-      CodeMySpec.Environments.register(
+      CodeMySpec.ExecutionContexts.register(
         scope.active_project_id,
-        Environment.new(:local, stale_root)
+        ExecutionContext.new(:local, stale_root)
       )
 
     component = %{module_name: "Sample.Accounts"}
@@ -73,9 +73,9 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   test "an invalid selected working copy does not fall back to the stale scope environment" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_invalid_selection")
-    stale = Environment.new(:local, root)
+    stale = ExecutionContext.new(:local, root)
     full_scope = full_scope_fixture()
-    :ok = CodeMySpec.Environments.register(full_scope.active_project_id, stale)
+    :ok = CodeMySpec.ExecutionContexts.register(full_scope.active_project_id, stale)
 
     scope = %{
       full_scope
@@ -108,9 +108,9 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
   test "completion cleanup deletes files only from the explicitly selected environment" do
     selected_root = CodeMySpec.TempFile.owned_dir("coordinator_cleanup_selected")
     stale_root = CodeMySpec.TempFile.owned_dir("coordinator_cleanup_stale")
-    selected = Environment.new(:local, selected_root)
-    stale = Environment.new(:local, stale_root)
-    scope = put_fixture_environment(full_scope_fixture(), stale)
+    selected = ExecutionContext.new(:local, selected_root)
+    stale = ExecutionContext.new(:local, stale_root)
+    scope = put_fixture_execution_context(full_scope_fixture(), stale)
     status_dir = "prompts"
     prompt_path = Path.join(status_dir, "accounts_valid_task.md")
     problem_path = Path.join(status_dir, "accounts_valid_task_problems.md")
@@ -127,7 +127,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
                scope,
                %{component_module_name: "Accounts"},
                status_dir: status_dir,
-               environment: selected
+               execution_context: selected
              )
 
     refute File.exists?(Path.join(selected_root, prompt_path))
@@ -138,7 +138,10 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
 
   test "complete orchestration keeps its success result with no environment" do
     root = CodeMySpec.TempFile.owned_dir("coordinator_no_environment_completion")
-    scope = put_fixture_environment(full_scope_fixture(), Environment.new(:local, root))
+
+    scope =
+      put_fixture_execution_context(full_scope_fixture(), ExecutionContext.new(:local, root))
+
     status_dir = "prompts"
     prompt_path = Path.join(status_dir, "accounts_valid_task.md")
     File.mkdir_p!(Path.dirname(Path.join(root, prompt_path)))
@@ -150,7 +153,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
                scope,
                %{component_module_name: "Accounts"},
                status_dir: status_dir,
-               environment: nil
+               execution_context: nil
              )
 
     assert File.exists?(Path.join(root, prompt_path))
@@ -165,7 +168,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
                scope,
                %{component_module_name: "Accounts"},
                status_dir: "prompts",
-               environment: nil
+               execution_context: nil
              )
 
     assert_received :evaluate_called
@@ -177,7 +180,7 @@ defmodule CodeMySpec.ProjectCoordinatorTest do
                scope,
                %{component_module_name: "Accounts"},
                status_dir: "prompts",
-               environment: nil
+               execution_context: nil
              )
 
     assert_received :evaluate_called

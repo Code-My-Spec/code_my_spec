@@ -3,19 +3,19 @@ defmodule CodeMySpec.AgentTasks.Init.PhoenixProject do
   Init step: verify a Phoenix project exists (mix.exs, lib/, config/).
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   def evaluate(scope, _task) do
     dir = working_dir(scope)
 
-    case CodeMySpec.AgentTasks.environment(scope) do
+    case CodeMySpec.AgentTasks.execution_context(scope) do
       nil ->
         {:error, :no_environment}
 
       env ->
         missing =
           ["mix.exs", "lib", "config"]
-          |> Enum.reject(&Environments.file_exists?(env, &1))
+          |> Enum.reject(&ExecutionContexts.file_exists?(env, &1))
           |> Enum.map(fn
             "mix.exs" -> "mix.exs"
             dirname -> dirname <> "/"

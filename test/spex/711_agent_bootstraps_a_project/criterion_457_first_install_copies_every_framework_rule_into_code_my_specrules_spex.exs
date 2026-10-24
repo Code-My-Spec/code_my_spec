@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
 
   Surface: `InstallRules` MCP tool. The tool reads from `priv/rules/`
   (via `Application.app_dir/2`) and writes through `scope.environment`, so
-  the spec observes the in-memory environment via `CodeMySpec.Environments`.
+  the spec observes the in-memory environment via `CodeMySpec.ExecutionContexts`.
   The canonical framework rule list comes from `Fixtures.framework_rule_files/0`.
   """
 
@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @rules_dir ".code_my_spec/rules"
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
         # directory that does not exist answers `{:error, :enoent}` — and the
         # step title says it does not exist. Asserting only `{:ok, []}` was a
         # claim about a leftover empty directory rather than about install.
-        assert Environments.list_directory(context.environment, @rules_dir) in [
+        assert ExecutionContexts.list_directory(context.execution_context, @rules_dir) in [
                  {:ok, []},
                  {:error, :enoent}
                ],
@@ -62,7 +62,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
       end
 
       then_ ".code_my_spec/rules/ now contains rule files", context do
-        assert {:ok, entries} = Environments.list_directory(context.environment, @rules_dir)
+        assert {:ok, entries} =
+                 ExecutionContexts.list_directory(context.execution_context, @rules_dir)
 
         assert entries != [], "expected rules dir to contain files after install"
 
@@ -74,7 +75,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
         for rule_file <- context.framework_rules do
           path = Path.join(@rules_dir, rule_file)
 
-          assert Environments.file_exists?(context.environment, path),
+          assert ExecutionContexts.file_exists?(context.execution_context, path),
                  "expected framework rule `#{rule_file}` at `#{path}` after install"
         end
 

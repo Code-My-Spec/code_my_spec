@@ -8,7 +8,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
 
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
@@ -145,7 +145,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   # ============================================================================
 
   defp build_prompt(scope, relevant_pairs) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     project = scope.active_project
 
     grouped = Enum.group_by(relevant_pairs, fn {_problem, story} -> story.id end)
@@ -222,7 +222,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   defp read_file_content(_env, nil), do: nil
 
   defp read_file_content(env, path) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> content
       _ -> nil
     end

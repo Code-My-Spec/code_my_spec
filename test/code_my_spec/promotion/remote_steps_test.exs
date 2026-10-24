@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Promotion.RemoteStepsTest do
   use ExUnit.Case, async: true
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.RemoteSteps
 
   setup do
@@ -23,7 +23,7 @@ defmodule CodeMySpec.Promotion.RemoteStepsTest do
       destination: destination,
       base: base,
       head: head,
-      env: Environment.new(:local, source)
+      env: ExecutionContext.new(:local, source)
     }
   end
 

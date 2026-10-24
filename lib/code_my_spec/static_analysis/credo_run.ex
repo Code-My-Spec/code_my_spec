@@ -17,7 +17,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @doc """
   Run Credo in `environment` and return its issues.
@@ -36,7 +36,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   the real tool output rather than a count or a line reformatted from the
   parsed issues. See `.code_my_spec/rules/analysis_output_fidelity.md`.
   """
-  @spec run(Environments.Environment.t(), keyword()) ::
+  @spec run(ExecutionContexts.ExecutionContext.t(), keyword()) ::
           {:ok, [map()], String.t()} | {:error, String.t()}
   def run(environment, opts \\ []) do
     if available?(environment) do
@@ -49,13 +49,13 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @doc """
   Whether Credo can run against this working copy at all.
 
-  Through `Environments`, not `File`: on a remote environment the `mix` that
+  Through `ExecutionContexts`, not `File`: on a remote environment the `mix` that
   would run is not on this machine's disk.
   """
-  @spec available?(Environments.Environment.t()) :: boolean()
+  @spec available?(ExecutionContexts.ExecutionContext.t()) :: boolean()
   def available?(environment) do
-    Environments.exec_file_exists?(environment, "mix.exs") and
-      Environments.exec_file_exists?(environment, "deps/credo")
+    ExecutionContexts.exec_file_exists?(environment, "mix.exs") and
+      ExecutionContexts.exec_file_exists?(environment, "deps/credo")
   end
 
   defp execute(environment, opts) do
@@ -64,15 +64,15 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     args = build_args(opts, cwd)
 
     # clean_otp_env keeps the child `mix`/`erl` off a Burrito release's
-    # extracted ERTS (see CodeMySpec.Environments.clean_otp_env/0).
+    # extracted ERTS (see CodeMySpec.ExecutionContexts.clean_otp_env/0).
     cmd_opts = [
       stderr_to_stdout: true,
-      env: Keyword.get(opts, :extra_env, []) ++ Environments.clean_otp_env()
+      env: Keyword.get(opts, :extra_env, []) ++ ExecutionContexts.clean_otp_env()
     ]
 
     Logger.info("[CredoRun] Running: mix #{Enum.join(args, " ")}")
 
-    case Environments.cmd(environment, "mix", args, cmd_opts) do
+    case ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
       {output, exit_code} when exit_code in 0..1 ->
         parse(output)
 

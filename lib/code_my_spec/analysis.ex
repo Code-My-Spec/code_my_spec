@@ -29,7 +29,7 @@ defmodule CodeMySpec.Analysis do
     deps: [
       CodeMySpec.BddSpecs,
       CodeMySpec.Compile,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Problems,
       CodeMySpec.Repo,
@@ -41,8 +41,8 @@ defmodule CodeMySpec.Analysis do
     ],
     exports: :all
 
-  # Declared in `Environments` (a leaf) and implemented here, to avoid a cycle.
-  @behaviour CodeMySpec.Environments.HarnessTransport
+  # Declared in `ExecutionContexts` (a leaf) and implemented here, to avoid a cycle.
+  @behaviour CodeMySpec.ExecutionContexts.HarnessTransport
 
   require Logger
 
@@ -640,7 +640,7 @@ defmodule CodeMySpec.Analysis do
   @doc """
   Ask a harness to perform a filesystem operation on its own working copy.
 
-  The transport behind `Environments.Harness`, reads and writes both: the
+  The transport behind `ExecutionContexts.Harness`, reads and writes both: the
   server holds no checkout. Addressed by working copy id through the same
   registry `remote_executor/1` uses.
 
@@ -662,7 +662,7 @@ defmodule CodeMySpec.Analysis do
 
   See knowledge/analysis, "Harness filesystem requests".
   """
-  @impl CodeMySpec.Environments.HarnessTransport
+  @impl CodeMySpec.ExecutionContexts.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
           {:ok, term()} | :ok | {:error, term()}
   def harness_fs_request(working_copy_id, op, payload, timeout) do

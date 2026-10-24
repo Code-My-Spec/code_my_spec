@@ -34,9 +34,16 @@ defmodule CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy do
     ## An agent that would not stop is reported, not swallowed
 
     The copy this is most often used on is one whose machine has gone — that is
-    story 892's premise — so failing to reach an agent cannot block the offboard.
-    It is said instead: the process may still be running, and ending it is the
-    operator's, because the server could not reach it to try.
+    story 892's premise. Unreachable agents are reported while the source can
+    still be removed, but an unreachable running app instance is refused because
+    its runtime cannot safely be disposed from here.
+
+    ## Persistent app instances
+
+    A source checkout with a persistent app instance cannot be discarded until
+    that instance is explicitly disposed. Pass `instance_disposition: "discard"`
+    to stop and dispose the instance first. An unreachable running instance is
+    left in place with its checkout so its runtime is not abandoned silently.
     """
   end
 
@@ -46,27 +53,35 @@ defmodule CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy do
       working_copy_id:
         {:required,
          {:meta, :string,
-          [description: "Id of the working copy to discard. `list_working_copies` names them."]}}
+          [description: "Id of the working copy to discard. `list_working_copies` names them."]}},
+      instance_disposition:
+        {:meta, :string,
+         [
+           description:
+             "For a persistent app instance, pass `discard` to stop and dispose it before removing its source checkout."
+         ]}
     }
   end
 
   @impl true
-  def call(%{working_copy_id: id}, context) do
+  def call(%{working_copy_id: id} = params, context) do
     case CodeMySpec.Tools.project_scope(context) do
-      {:ok, scope} -> offboard(scope, id)
+      {:ok, scope} -> offboard(scope, id, Map.get(params, :instance_disposition))
       {:error, reason} -> {:error, refusal(reason)}
     end
   end
 
-  defp offboard(scope, id) do
+  defp offboard(scope, id, disposition) do
     case WorkingCopies.fetch(id) do
-      {:ok, copy} -> discard(scope, copy)
+      {:ok, copy} -> discard(scope, copy, disposition)
       _ -> {:error, "No working copy has the id #{id}."}
     end
   end
 
-  defp discard(scope, copy) do
-    case Staffing.offboard(scope, copy) do
+  defp discard(scope, copy, disposition) do
+    opts = if disposition == "discard", do: [instance_disposition: :discard], else: []
+
+    case Staffing.offboard(scope, copy, opts) do
       {:ok, counts} ->
         {:ok, report(copy, counts)}
 
@@ -74,6 +89,10 @@ defmodule CodeMySpec.WorkingCopies.Tools.OffboardWorkingCopy do
         {:error,
          "That working copy belongs to a different project, so this call cannot " <>
            "discard it. Nothing was changed."}
+
+      {:error, :persistent_instances_require_explicit_discard} ->
+        {:error,
+         "This working copy owns a persistent app instance. Pass `instance_disposition: \"discard\"` to stop and dispose that instance before removing its source checkout."}
 
       {:error, reason} ->
         {:error, "The working copy could not be discarded: #{inspect(reason)}"}

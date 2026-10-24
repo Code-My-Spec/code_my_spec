@@ -10,7 +10,7 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
   import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, UsersFixtures}
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Promotion
 
@@ -18,9 +18,9 @@ defmodule CodeMySpec.Validation.AdvisoryNeverBlocksTest do
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("advisory_never_blocks")
-    environment = Environment.new(:local, tmp)
-    scope = put_fixture_environment(%{full_scope_fixture() | cwd: tmp}, environment)
-    :ok = register_working_copy_environment(scope, environment)
+    environment = ExecutionContext.new(:local, tmp)
+    scope = put_fixture_execution_context(%{full_scope_fixture() | cwd: tmp}, environment)
+    :ok = register_working_copy_execution_context(scope, environment)
 
     File.mkdir_p!(Path.join(tmp, "lib/my_app"))
     File.write!(Path.join(tmp, @path), "defmodule MyApp.Accounts do\nend\n")

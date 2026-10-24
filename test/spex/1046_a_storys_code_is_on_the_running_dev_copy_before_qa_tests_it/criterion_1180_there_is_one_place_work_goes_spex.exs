@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3173Spex do
 
   import CodeMySpecSpex.PromotionHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.Fixtures.StoryIssueBag
   alias Ecto.Adapters.SQL.Sandbox
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion3173Spex do
 
       given_ "a third checkout that is not the running one", context do
         elsewhere = CodeMySpec.TempFile.dir("spex-1046-elsewhere")
-        {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", elsewhere])
+        {_, 0} = ExecutionContexts.cmd(context.execution_context, "rm", ["-rf", elsewhere])
 
         {_, 0} =
           git(context, context.running_root, [

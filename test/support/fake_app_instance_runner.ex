@@ -51,6 +51,8 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       launch_result:
         Keyword.get(opts, :launch_result, Map.get(base, :launch_result, {:ok, next_fake_pid()})),
       alive?: Keyword.get(opts, :alive?, Map.get(base, :alive?, true)),
+      stop_result: Keyword.get(opts, :stop_result, Map.get(base, :stop_result, :ok)),
+      drop_result: Keyword.get(opts, :drop_result, Map.get(base, :drop_result, :ok)),
       probe: Keyword.get(opts, :probe, Map.get(base, :probe, :serving)),
       probes: Keyword.get(opts, :probes, Map.get(base, :probes, [])),
       reload_result: Keyword.get(opts, :reload_result, Map.get(base, :reload_result, :ok)),
@@ -151,8 +153,11 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   @impl true
   def drop_database(database) do
     record(:drop_database, [database])
-    put_database_exists(false)
-    :ok
+
+    case Agent.get(__MODULE__, & &1.drop_result) do
+      :ok -> put_database_exists(false)
+      error -> error
+    end
   end
 
   @impl true
@@ -239,8 +244,11 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   @impl true
   def stop_process(os_pid) do
     record(:stop_process, [os_pid])
-    put_alive(false)
-    :ok
+
+    case Agent.get(__MODULE__, & &1.stop_result) do
+      :ok -> put_alive(false)
+      error -> error
+    end
   end
 
   @doc "Sets what `listener_pid/1` answers — an os_pid, or `nil` for \"nothing is listening\"."

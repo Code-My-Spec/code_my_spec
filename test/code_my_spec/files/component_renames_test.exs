@@ -6,7 +6,7 @@ defmodule CodeMySpec.Files.ComponentRenamesTest do
   import CodeMySpec.StoriesFixtures
 
   alias CodeMySpec.{Components, Files, Stories}
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.{ComponentExtract, FileSync, Scanner}
 
   @tag :tmp_dir
@@ -125,7 +125,9 @@ defmodule CodeMySpec.Files.ComponentRenamesTest do
   end
 
   defp scan(scope, root) do
-    {:ok, observations} = Scanner.observe(Environment.new(:local, root), Files.read_model(scope))
+    {:ok, observations} =
+      Scanner.observe(ExecutionContext.new(:local, root), Files.read_model(scope))
+
     FileSync.reconcile_and_project(scope, observations)
   end
 end

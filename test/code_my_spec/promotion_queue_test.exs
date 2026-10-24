@@ -24,7 +24,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.PromotionQueue.Worker
@@ -72,9 +72,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, main} = WorkingCopies.report_root(main, main_root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: main.id},
-        Environment.new(:local, main_root)
+        ExecutionContext.new(:local, main_root)
       )
 
     {:ok, gate} =
@@ -83,9 +83,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, gate} = WorkingCopies.report_root(gate, gate_root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: gate.id},
-        Environment.new(:local, gate_root)
+        ExecutionContext.new(:local, gate_root)
       )
 
     a_harness_for(main.id, main_root)
@@ -149,9 +149,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{ctx.scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     %{copy: copy, commit: git!(root, ["rev-parse", "HEAD"])}
@@ -410,9 +410,9 @@ defmodule CodeMySpec.PromotionQueueTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{ctx.scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     # Main diverges on its own, after the candidate branched -- the same

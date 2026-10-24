@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
   """
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Conversations
   alias CodeMySpec.Devices.Device
@@ -63,7 +64,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
 
     scope
     |> WorkingCopies.list_harnesses()
-    |> Enum.map(&build(&1, agents, transcripts, now))
+    |> Enum.map(&build(scope, &1, agents, transcripts, now))
     |> Enum.sort_by(&(not &1.harness.main))
     |> group_by_root()
   end
@@ -112,7 +113,23 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
     |> Map.new(&{&1.conversation.agent_id, &1})
   end
 
-  defp build(harness, agents, transcripts, now) do
+  defp build(scope, harness, agents, transcripts, now) do
+    heading = WorkingCopies.display_name(harness)
+    missing = missing(harness, now)
+    instance = default_instance(scope, harness)
+
+    harness =
+      harness
+      |> Map.from_struct()
+      |> Map.merge(%{
+        app_instance_id: instance && instance.id,
+        app_status: instance && instance.status,
+        app_url: instance && instance.url,
+        app_commit: instance && instance.serving_commit,
+        preview_status: instance && instance.preview_status,
+        preview_url: instance && instance.preview_url
+      })
+
     on_this_copy =
       agents |> Enum.filter(&(&1.working_copy_id == harness.id)) |> Enum.sort_by(& &1.role)
 
@@ -124,7 +141,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       device: device(harness),
       device_name: device_name(harness),
       label: harness.label || harness.root,
-      heading: WorkingCopies.display_name(harness),
+      heading: heading,
       agents: on_this_copy,
       chats: chats,
       # The copy's totals, summed across its agents.
@@ -135,9 +152,16 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Rows do
       # Whether a harness holds this checkout, from the registry (live by
       # construction). Distinct from liveness, which is what agents last said.
       served: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(harness.id)),
-      missing: missing(harness, now)
+      missing: missing
     }
   end
+
+  defp default_instance(scope, %{default_app_instance: %Ecto.Association.NotLoaded{}} = copy),
+    do: AppInstances.for_working_copy(scope, copy)
+
+  defp default_instance(_scope, %{default_app_instance: instance}), do: instance
+
+  defp default_instance(scope, copy), do: AppInstances.for_working_copy(scope, copy)
 
   # An agent with no conversation yet contributes nothing; never create one here.
   defp chat(agent, transcripts) do

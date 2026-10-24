@@ -17,7 +17,7 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpecTest.PromotionQueueHelpers
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.Qa
@@ -47,9 +47,9 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_working_copy_id: copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     on_exit(fn -> stop_worker(scope.active_project_id) end)

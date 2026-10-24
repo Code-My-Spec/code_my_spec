@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1735Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentGraphHelpers
 
   setup :register_log_in_setup_account
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1735Spex do
         ComponentGraphHelpers.design!(context, "#{app}.Billing", ["#{app}.Accounts"])
 
         :ok =
-          Environments.write_file(context.environment, "lib/billing.ex", """
+          ExecutionContexts.write_file(context.execution_context, "lib/billing.ex", """
           defmodule #{app}.Billing do
             @moduledoc false
             alias #{app}.Notifications

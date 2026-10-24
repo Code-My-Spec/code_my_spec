@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
       end
 
       then_ "there is no second copy of the configuration to maintain", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         plaintext_env_files =
           Enum.filter(entries, fn path ->

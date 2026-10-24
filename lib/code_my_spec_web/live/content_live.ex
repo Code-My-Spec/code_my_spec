@@ -107,9 +107,9 @@ defmodule CodeMySpecWeb.ContentLive do
 
   defp content_environment(%{active_working_copy_id: id} = scope, _project)
        when not is_nil(id),
-       do: WorkingCopies.environment(scope)
+       do: WorkingCopies.execution_context(scope)
 
-  defp content_environment(_scope, project), do: LocalScope.environment(project)
+  defp content_environment(_scope, project), do: LocalScope.execution_context(project)
 
   defp publish_message(%{total: total} = result) do
     breakdown =

@@ -49,7 +49,7 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
       # (the same reasoning `sync_after_reply/1` documents), not a read of
       # internals a spex would be barred from — this is a plain `mix test`
       # file inside `CmsHarness`'s own namespace.
-      pid = GenServer.whereis(AppInstance.via(root))
+      pid = GenServer.whereis(AppInstance.via(instance(root)))
       send(pid, :first_start_check)
       state = :sys.get_state(pid)
 
@@ -71,7 +71,7 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
       assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("restart_app"),
              "a booting app was reported down before it came up"
 
-      state = :sys.get_state(GenServer.whereis(AppInstance.via(root)))
+      state = :sys.get_state(GenServer.whereis(AppInstance.via(instance(root))))
 
       assert state.first_start_deadline == nil,
              "an ordinary restart must never enter the first-start ceiling path"
@@ -90,7 +90,7 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
 
       assert %{"status" => "ok", "app_status" => "down"} = push_app_event("restart_app")
 
-      state = :sys.get_state(GenServer.whereis(AppInstance.via(root)))
+      state = :sys.get_state(GenServer.whereis(AppInstance.via(instance(root))))
 
       assert state.first_start_deadline == nil,
              "an ordinary restart must never enter the first-start ceiling path"

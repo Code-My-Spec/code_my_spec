@@ -7,8 +7,8 @@ defmodule CodeMySpecSpex.RemotePromotionHelpers do
   import ExUnit.Assertions
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.PromotionHelpers, as: Promotion
 
@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.RemotePromotionHelpers do
 
   def git!(root, args) do
     {output, status} =
-      Environments.cmd(Environment.new(:local, root), "git", args,
+      ExecutionContexts.cmd(ExecutionContext.new(:local, root), "git", args,
         cd: root,
         stderr_to_stdout: true
       )

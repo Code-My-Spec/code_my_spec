@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5585Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
 
@@ -33,15 +33,15 @@ defmodule CodeMySpecSpex.Story670.Criterion5585Spex do
     scenario "No matching rules leaves the rules section empty rather than padded" do
       given_ "only non-matching rule files exist (wrong type, wrong session)", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/rules/liveview_code.md",
             rule_file("liveview", "code", @wrong_type_signature)
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/rules/context_test.md",
             rule_file("context", "test", @wrong_session_signature)
           )

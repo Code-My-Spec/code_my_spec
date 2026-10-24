@@ -37,7 +37,7 @@ defmodule CodeMySpec.Qa do
       CodeMySpec.Qa.Invalidations,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Configurations,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Issues,
       CodeMySpec.Paths,
       CodeMySpec.Repo,

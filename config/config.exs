@@ -42,7 +42,7 @@ config :code_my_spec, google_oauth_scopes: "email profile"
 config :code_my_spec, :cloudflare_offline_access, true
 
 # Who carries a file operation to the working copy a harness is serving.
-# `Environments.Harness` needs a transport and cannot name one: `Environments`
+# `ExecutionContexts.Harness` needs a transport and cannot name one: `ExecutionContexts`
 # is a leaf with `deps: []` that `CodeMySpec` itself depends on, so referring to
 # `Analysis` from inside it closes a cycle. The leaf declares the behaviour and
 # the application picks the implementation here.

@@ -51,9 +51,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Ecto.Adapters.SQL
 
@@ -83,17 +82,17 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # belongs to). A registered environment for `--project` wins — the
   # remote-checkout case, and how a spec drives this through an in-memory
   # environment; otherwise the disk is here. Every write goes through
-  # `Environments`.
+  # `ExecutionContexts`.
   defp environment(root, args) do
     registered =
       case project_flag(args) do
         nil -> nil
-        project_id -> Environments.lookup_registered(project_id)
+        project_id -> ExecutionContexts.lookup_registered(project_id)
       end
 
     case registered do
       nil ->
-        {:ok, env} = Environments.create(:local, working_dir: root)
+        {:ok, env} = ExecutionContexts.create(:local, working_dir: root)
         env
 
       env ->
@@ -113,7 +112,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   # Absence has to report itself. Asks `ClientUtils.Harness.Onboarding.check/2`,
-  # the one implementation, through `Environments` so specs can drive it. It
+  # the one implementation, through `ExecutionContexts` so specs can drive it. It
   # prints as well as returns: at a terminal the return value goes nowhere.
   defp check(env, root) do
     report = Onboarding.check(root, io: io(env), remedy: "mix cms.harness.onboard")
@@ -122,9 +121,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   # No adapter: `Onboarding.Port` calls `read_file/2`, `write_file/3`,
-  # `file_exists?/2` and `cmd/4` on the module it is given — `Environments`'
+  # `file_exists?/2` and `cmd/4` on the module it is given — `ExecutionContexts`'
   # contract exactly.
-  defp io(env), do: {Environments, env}
+  defp io(env), do: {ExecutionContexts, env}
 
   defp announce_check(true, _missing, _remedy, root) do
     Mix.shell().info("onboarded: #{root}")
@@ -170,7 +169,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          {:ok, copy} <- WorkingCopies.fetch(id),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
       record_preview(env, root, id, %{
-        "preview_url" => PreviewAddress.url(copy.id),
+        "preview_url" => credentials.preview_url,
         "preview_tunnel_id" => credentials.tunnel_id,
         "preview_tunnel_secret" => credentials.tunnel_secret
       })
@@ -206,7 +205,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   # Merged over what the file already says, never written from scratch:
   # `identity/3` has recorded `project_id` and possibly a `deploy_key` there.
-  # Same rule as `HarnessConfig.write/2`, through `Environments` because the
+  # Same rule as `HarnessConfig.write/2`, through `ExecutionContexts` because the
   # copy may be on another machine.
   def record_preview(env, root, id, preview) do
     body =
@@ -216,7 +215,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       |> Map.merge(preview)
       |> Jason.encode!(pretty: true)
 
-    Environments.write_file(env, @harness_config_file, body)
+    ExecutionContexts.write_file(env, @harness_config_file, body)
 
     Mix.shell().info("      preview:    #{preview["preview_url"]}")
     :ok
@@ -226,7 +225,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # caller is about to write the id back either way, and refusing to record an
   # address because the file needs repairing helps nobody.
   defp recorded_config(env) do
-    with {:ok, contents} <- Environments.read_file(env, @harness_config_file),
+    with {:ok, contents} <- ExecutionContexts.read_file(env, @harness_config_file),
          {:ok, map} when is_map(map) <- Jason.decode(contents) do
       map
     else
@@ -288,7 +287,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # branch to carry them.
   defp configure_git(env) do
     Enum.reduce_while(Onboarding.git_config(), true, fn {key, value}, true ->
-      case Environments.cmd(env, "git", ["config", key, value]) do
+      case ExecutionContexts.cmd(env, "git", ["config", key, value]) do
         {_out, 0} ->
           {:cont, true}
 
@@ -462,7 +461,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Read through the environment, so a working copy that already has an id is a
   # file the spec wrote through the same surface — not a fixture reaching past it.
   defp identity(env, root, project_id) do
-    case Environments.read_file(env, @harness_config_file) do
+    case ExecutionContexts.read_file(env, @harness_config_file) do
       {:ok, contents} -> existing_id(contents, env, root, project_id)
       _ -> CmsHarness.Onboarding.mint(root, project_id)
     end
@@ -506,7 +505,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # explicit `--project` must confirm against THAT project, not whatever
   # `ProjectIdentity.resolve(root)` finds on real disk at `root` -- with no
   # `--root` given, `root` is `File.cwd!()`, which for a spec driving this
-  # through an in-memory `Environments` fixture is this very checkout's own
+  # through an in-memory `ExecutionContexts` fixture is this very checkout's own
   # real directory, unrelated to the fixture's project. Resolving the wrong
   # project meant confirming a fixture-minted id against a real server using
   # a real, unrelated project's credentials -- a mismatched 404 that
@@ -578,7 +577,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp mint_and_record(env, root, project_id) do
     with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
-      # `Environments` rather than that function because the copy may be on
+      # `ExecutionContexts` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.
       body =
         env
@@ -586,7 +585,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         |> Map.merge(%{"working_copy_id" => id, "harness_id" => id, "root" => root})
         |> Jason.encode!(pretty: true)
 
-      Environments.write_file(env, @harness_config_file, body)
+      ExecutionContexts.write_file(env, @harness_config_file, body)
       {:ok, id}
     end
   end

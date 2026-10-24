@@ -17,7 +17,7 @@ defmodule CodeMySpec.ContentPublishing do
     top_level?: true,
     deps: [
       CodeMySpec.Content,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Users.Scope
@@ -33,8 +33,8 @@ defmodule CodeMySpec.ContentPublishing do
   alias CodeMySpec.ContentPublishing.FrontmatterParser
   alias CodeMySpec.ContentPublishing.ImageAsset
   alias CodeMySpec.ContentPublishing.Snapshot
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -51,7 +51,7 @@ defmodule CodeMySpec.ContentPublishing do
   Returns `{:ok, counts}`, `{:error, :no_source_path}` when no source is set,
   or `{:error, :no_environment}` when no environment is supplied.
   """
-  @spec sync(Scope.t(), Environment.t() | nil) ::
+  @spec sync(Scope.t(), ExecutionContext.t() | nil) ::
           {:ok, counts()} | {:error, :no_source_path | :no_environment}
   def sync(%Scope{} = scope, environment) do
     project = scope.active_project
@@ -369,7 +369,7 @@ defmodule CodeMySpec.ContentPublishing do
   end
 
   defp all_files(environment, source_path) do
-    case Environments.glob(environment, Path.join(source_path, "**/*")) do
+    case ExecutionContexts.glob(environment, Path.join(source_path, "**/*")) do
       {:ok, paths} -> paths
       paths when is_list(paths) -> paths
       _ -> []
@@ -532,7 +532,7 @@ defmodule CodeMySpec.ContentPublishing do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp read(environment, path) do
-    case Environments.read_file(environment, path) do
+    case ExecutionContexts.read_file(environment, path) do
       {:ok, content} -> content
       _ -> nil
     end

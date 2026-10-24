@@ -4,7 +4,7 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.{ComponentSync, FileSync}
   alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
@@ -210,9 +210,9 @@ defmodule CodeMySpec.Requirements.ComputeGraphFullProjectTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     WorkflowHelpers.seed_all_setup_steps(tmp_dir)

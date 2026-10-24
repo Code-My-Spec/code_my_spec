@@ -6,7 +6,7 @@ defmodule CodeMySpec.Provisioning.Environment do
   environment, or one per story, without a code change — which is the point.
   Steps fan out over whatever environments a project has and never test a name.
 
-  Not to be confused with `CodeMySpec.Environments`, which is the execution
+  Not to be confused with `CodeMySpec.ExecutionContexts`, which is the execution
   abstraction (local / memory / container / cli) for *running commands*. This
   is a place to deploy to.
 

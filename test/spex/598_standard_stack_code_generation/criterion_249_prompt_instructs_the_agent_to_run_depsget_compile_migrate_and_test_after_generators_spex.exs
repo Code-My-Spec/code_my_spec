@@ -23,8 +23,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5300Spex do
   spex "The scaffold must land clean before completion", criterion: 249 do
     scenario "Prompt instructs the agent to run deps.get, compile, migrate, and test after generators" do
       given_ "the project has a baseline mix.exs", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

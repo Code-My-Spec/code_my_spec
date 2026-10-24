@@ -38,7 +38,7 @@ defmodule CodeMySpec.Hooks do
       CodeMySpec.Analysis,
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.FileEdits,
       CodeMySpec.McpServers,
       CodeMySpec.Notifications,

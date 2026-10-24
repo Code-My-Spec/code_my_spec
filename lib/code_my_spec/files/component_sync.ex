@@ -27,7 +27,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Components.ConventionalPaths
   alias CodeMySpec.Components.Dependency
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.{ComponentExtract, DependencyEvidence, File, LiveCopies}
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -42,9 +42,9 @@ defmodule CodeMySpec.Files.ComponentSync do
         }
 
   defp environment(scope, opts) do
-    case Keyword.fetch(opts, :environment) do
+    case Keyword.fetch(opts, :execution_context) do
       {:ok, env} -> env
-      :error -> WorkingCopies.environment(scope)
+      :error -> WorkingCopies.execution_context(scope)
     end
   end
 
@@ -52,7 +52,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   Sync components from File records.
 
   ## Options
-  - `:environment` — the filesystem environment to read, resolved from the
+  - `:execution_context` — the filesystem environment to read, resolved from the
     active working copy when omitted.
   - `:base_dir` — accepted for backwards compatibility, ignored.
   - `:changed_paths` — when provided, only process files matching these paths (incremental sync)
@@ -265,7 +265,7 @@ defmodule CodeMySpec.Files.ComponentSync do
   defp impl_type(_data), do: nil
 
   defp parse_impl_file_from_disk(%File{path: path} = _file, env) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} ->
         case Regex.run(~r/^defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
           [_, name] ->
@@ -422,7 +422,7 @@ defmodule CodeMySpec.Files.ComponentSync do
         %{error: :no_environment}
 
       _ ->
-        case Environments.read_file(environment, path) do
+        case ExecutionContexts.read_file(environment, path) do
           {:ok, source} -> DependencyEvidence.extract(source)
           {:error, reason} -> %{error: reason}
         end

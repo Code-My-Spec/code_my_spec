@@ -5,7 +5,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
   alias CodeMySpec.BddSpecs.Spex.Error
   alias CodeMySpec.BddSpecs.Spex.Failure
   alias CodeMySpec.BddSpecs.Spex.Step
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Support.TestAdapter
 
   @moduletag :tmp_dir
@@ -28,7 +28,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, failures} =
                Spex.parse_jsonl(
                  jsonl_path,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
 
       assert length(failures) == 2
@@ -46,7 +46,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, []} =
                Spex.parse_jsonl(
                  jsonl_path,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
     end
 
@@ -56,7 +56,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, []} =
                Spex.parse_jsonl(
                  jsonl_path,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
     end
 
@@ -94,7 +94,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, [failure]} =
                Spex.parse_jsonl(
                  jsonl_path,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
 
       assert %Failure{} = failure
@@ -128,7 +128,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:error, _} =
                Spex.parse_jsonl(
                  jsonl_path,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
     end
 
@@ -139,7 +139,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, failures} =
                Spex.parse_jsonl(
                  cached_jsonl,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
 
       # Passing tests should have no failures
@@ -153,7 +153,7 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       assert {:ok, failures} =
                Spex.parse_jsonl(
                  cached_jsonl,
-                 Environment.new(:local, File.cwd!())
+                 ExecutionContext.new(:local, File.cwd!())
                )
 
       # Should have at least one failure

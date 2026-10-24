@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
   one-line markdown header.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @bridge_relpath "test/support/fixtures/my_app_spex_fixtures.ex"
   @denied_calls_relpath ".code_my_spec/credo_checks/framework/spex_denied_calls.ex"
@@ -51,23 +51,31 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
     # steps, etc.) may have written a more complete one already. The
     # checker only needs `app:` to resolve, which any reasonable mix.exs
     # will provide.
-    unless Environments.file_exists?(env, "mix.exs") == true do
-      :ok = Environments.write_file(env, "mix.exs", mix_exs())
+    unless ExecutionContexts.file_exists?(env, "mix.exs") == true do
+      :ok = ExecutionContexts.write_file(env, "mix.exs", mix_exs())
     end
 
     unless :framework_denied in skip do
       :ok =
-        Environments.write_file(env, @denied_calls_relpath, "# Framework: spex denied calls\n")
+        ExecutionContexts.write_file(
+          env,
+          @denied_calls_relpath,
+          "# Framework: spex denied calls\n"
+        )
     end
 
     unless :framework_send in skip do
       :ok =
-        Environments.write_file(env, @no_send_relpath, "# Framework: no direct send in spex\n")
+        ExecutionContexts.write_file(
+          env,
+          @no_send_relpath,
+          "# Framework: no direct send in spex\n"
+        )
     end
 
     unless :local_check in skip do
       :ok =
-        Environments.write_file(
+        ExecutionContexts.write_file(
           env,
           @local_check_relpath,
           "# Project-local: spex whole-module denies\n"
@@ -76,11 +84,15 @@ defmodule CodeMySpecSpex.SpexBoundaryArtifactHelpers do
 
     unless :bridge in skip do
       :ok =
-        Environments.write_file(env, @bridge_relpath, "defmodule MyAppSpex.Fixtures do\nend\n")
+        ExecutionContexts.write_file(
+          env,
+          @bridge_relpath,
+          "defmodule MyAppSpex.Fixtures do\nend\n"
+        )
     end
 
     unless :plan in skip do
-      :ok = Environments.write_file(env, @plan_relpath, "# Project BDD spec plan\n")
+      :ok = ExecutionContexts.write_file(env, @plan_relpath, "# Project BDD spec plan\n")
     end
 
     :ok

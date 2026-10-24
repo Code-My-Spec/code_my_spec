@@ -11,7 +11,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
 
   import Ecto.Query
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -29,23 +29,26 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
   @type t :: %__MODULE__{
           files_by_path: %{String.t() => FileRecord.t()},
           files_by_role: %{atom() => [FileRecord.t()]},
-          environment: term() | nil,
+          execution_context: ExecutionContexts.ExecutionContext.t() | nil,
           project_id: Ecto.UUID.t() | nil
         }
 
-  defstruct files_by_path: %{}, files_by_role: %{}, environment: nil, project_id: nil
+  defstruct files_by_path: %{}, files_by_role: %{}, execution_context: nil, project_id: nil
 
   @doc """
   Load setup-relevant File records for the project.
 
-  Also stashes `CodeMySpec.AgentTasks.environment(scope)` so `dir_status/2` can stat a directory when
+  Also stashes `CodeMySpec.AgentTasks.execution_context(scope)` so `dir_status/2` can stat a directory when
   there is a disk — directories aren't synced, so they are the one thing not
   answerable from File records alone. It is nil on the light harness, which
   `dir_status/2` treats as "cannot tell" rather than "not there".
   """
   @spec load(Scope.t()) :: t()
   def load(%Scope{active_project_id: nil} = scope) do
-    %__MODULE__{environment: CodeMySpec.AgentTasks.environment(scope), project_id: nil}
+    %__MODULE__{
+      execution_context: CodeMySpec.AgentTasks.execution_context(scope),
+      project_id: nil
+    }
   end
 
   def load(%Scope{active_project_id: project_id} = scope) do
@@ -58,7 +61,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
     %__MODULE__{
       files_by_path: Map.new(files, &{&1.path, &1}),
       files_by_role: Enum.group_by(files, & &1.role),
-      environment: CodeMySpec.AgentTasks.environment(scope),
+      execution_context: CodeMySpec.AgentTasks.execution_context(scope),
       project_id: project_id
     }
   end
@@ -140,7 +143,7 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
 
   Three states rather than two, because on the light harness there is a real
   third one. The server has no disk — that is the whole design — so
-  `CodeMySpec.AgentTasks.environment(scope)` is nil and there is nothing to stat. Answering `false` in
+  `CodeMySpec.AgentTasks.execution_context(scope)` is nil and there is nothing to stat. Answering `false` in
   that case is worse than not answering: it reports a directory as missing that
   may well exist, and no `mkdir` the agent runs can change the reply, because
   directories are not synced. That produced a requirement an agent could work at
@@ -157,13 +160,13 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
   def dir_status(%__MODULE__{} = ctx, path) do
     cond do
       holds_synced_file?(ctx, path) -> :present
-      ctx.environment -> stat(ctx.environment, path)
+      ctx.execution_context -> stat(ctx.execution_context, path)
       true -> :unobservable
     end
   end
 
   defp stat(env, path) do
-    if Environments.file_exists?(env, path), do: :present, else: :absent
+    if ExecutionContexts.file_exists?(env, path), do: :present, else: :absent
   end
 
   # Prefix match on the separator so `spec/foo` is not proven by `spec/foobar`.

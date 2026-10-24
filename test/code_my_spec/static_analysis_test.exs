@@ -27,7 +27,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Support.TestAdapter
@@ -120,13 +120,15 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
       assert {:error, "Unknown analyzer: spec_alignment"} =
-               StaticAnalysis.run(scope, :spec_alignment, environment: local_environment(scope))
+               StaticAnalysis.run(scope, :spec_alignment,
+                 execution_context: local_environment(scope)
+               )
     end
 
     test "returns error when analyzer name is invalid", %{scope: scope} do
       assert {:error, message} =
                StaticAnalysis.run(scope, :nonexistent_analyzer,
-                 environment: local_environment(scope)
+                 execution_context: local_environment(scope)
                )
 
       assert is_binary(message)
@@ -152,7 +154,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
     test "executes all available analyzers and returns aggregated Problems", %{scope: scope} do
       use_cmd_cassette "static_analysis_run_all" do
         assert {:ok, problems} =
-                 StaticAnalysis.run_all(scope, environment: local_environment(scope))
+                 StaticAnalysis.run_all(scope, execution_context: local_environment(scope))
 
         assert is_list(problems)
       end
@@ -164,7 +166,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
         assert {:ok, problems} =
                  StaticAnalysis.run_all(scope,
                    timeout: 60_000,
-                   environment: local_environment(scope)
+                   execution_context: local_environment(scope)
                  )
 
         assert is_list(problems)
@@ -186,7 +188,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
       use_cmd_cassette "static_analysis_run_all" do
         log =
           capture_log(fn ->
-            StaticAnalysis.run_all(scope, environment: local_environment(scope))
+            StaticAnalysis.run_all(scope, execution_context: local_environment(scope))
           end)
 
         # Log output may contain warnings about failed or unavailable analyzers
@@ -195,5 +197,5 @@ defmodule CodeMySpec.StaticAnalysisTest do
     end
   end
 
-  defp local_environment(scope), do: Environment.new(:local, scope.cwd)
+  defp local_environment(scope), do: ExecutionContext.new(:local, scope.cwd)
 end

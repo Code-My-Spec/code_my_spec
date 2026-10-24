@@ -44,11 +44,11 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   ## Usage
 
       given_ :fully_satisfied_project
-      # context now has :scope, :environment, :project, :story, :component
+      # context now has :scope, :execution_context, :project, :story, :component
       # and next_actionable should return []
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.GraphContentFixtures, as: Content
@@ -228,18 +228,22 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   # Single context component, designed, with its code → simplest viable
   # subgraph. With no children, child-scoped reqs don't exist.
   defp apply_component_subgraph(context) do
-    env = context.environment
+    env = context.execution_context
     module_name = "Reservations"
     module_path = module_name |> String.split(".") |> Enum.map_join("/", &Macro.underscore/1)
 
     ComponentGraphHelpers.design!(context, module_name)
 
     :ok =
-      Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
+      ExecutionContexts.write_file(
+        env,
+        Content.impl_path(module_name),
+        Content.impl_file(module_name)
+      )
 
     # Test file at canonical path for the parent context — file_exists check.
     :ok =
-      Environments.write_file(
+      ExecutionContexts.write_file(
         env,
         "test/#{module_path}_test.exs",
         test_file_content(module_name)

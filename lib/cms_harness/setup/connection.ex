@@ -4,8 +4,8 @@ defmodule CmsHarness.Setup.Connection do
   alias ClientUtils.Harness.Onboarding
   alias CmsHarness.{Config, HarnessConfig, ProjectIdentity, Projects}
   alias CmsHarness.Setup.Project
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @spec connect(String.t(), map()) :: {:ok, map()} | {:error, term()}
   def connect(path, %{project_id: project_id, working_copy_id: copy_id, app: app})
@@ -91,7 +91,7 @@ defmodule CmsHarness.Setup.Connection do
   defp configure(root, copy_id, app) do
     report =
       Onboarding.onboard(root,
-        io: {Environments, Environment.new(:local, root)},
+        io: {ExecutionContexts, ExecutionContext.new(:local, root)},
         app: app,
         harness_id: copy_id,
         relay_model_turns: false
@@ -105,7 +105,7 @@ defmodule CmsHarness.Setup.Connection do
   end
 
   defp verify_configuration(root) do
-    case Onboarding.check(root, io: {Environments, Environment.new(:local, root)}) do
+    case Onboarding.check(root, io: {ExecutionContexts, ExecutionContext.new(:local, root)}) do
       %{onboarded: true} -> :ok
       %{missing: missing} -> {:error, {:incomplete_onboarding, missing}}
     end

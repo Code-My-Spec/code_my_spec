@@ -18,7 +18,7 @@ defmodule CmsHarness.OnboardSettingsTest do
   # still leaves a window every concurrent test can see.
   use ExUnit.Case, async: false
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias Mix.Tasks.Cms.Harness.Onboard
 
   @base "http://localhost:4003"
@@ -29,9 +29,9 @@ defmodule CmsHarness.OnboardSettingsTest do
     on_exit(fn -> File.rm_rf(root) end)
 
     # A local environment over the same directory. Onboarding writes through
-    # `Environments` so a spec can drive it against the in-memory one; a real
+    # `ExecutionContexts` so a spec can drive it against the in-memory one; a real
     # directory is still what these assert on, because the file is the point.
-    {:ok, env} = Environments.create(:local, working_dir: root)
+    {:ok, env} = ExecutionContexts.create(:local, working_dir: root)
 
     {:ok,
      root: root, env: env, settings_file: Path.join([root, ".claude", "settings.local.json"])}

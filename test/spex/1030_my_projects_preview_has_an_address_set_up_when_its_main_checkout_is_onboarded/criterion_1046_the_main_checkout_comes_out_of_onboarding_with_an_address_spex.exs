@@ -34,7 +34,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   setup :register_log_in_setup_account
@@ -46,7 +47,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
   spex "Onboarding the main checkout gives the project a preview address", criterion: 1046 do
     scenario "The main checkout comes out of onboarding with an address" do
       given_ "a checkout of the project on the harness, and Cloudflare answering", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         # A real working copy, minted the way one actually is — a harness joining
         # for it. The id has to be one the server issued: onboarding looks the
@@ -60,9 +61,19 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
 
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
+
+        {:ok, _instance} =
+          AppInstances.update(context.scope, instance, %{
+            persistent: true,
+            after_promote: true,
+            port_mode: :configured,
+            database_mode: :configured
+          })
+
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -72,7 +83,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
 
         Req.Test.stub(PreviewTunnel, &cloudflare_response/1)
 
-        {:ok, context}
+        {:ok, Map.put(context, :working_copy_id, reply.working_copy_id)}
       end
 
       when_ "the engineer onboards it", context do
@@ -84,7 +95,8 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
       end
 
       then_ "the checkout's own config names where its preview answers", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        assert {:ok, contents} =
+                 ExecutionContexts.read_file(context.execution_context, @harness_config)
 
         config = Jason.decode!(contents)
 
@@ -100,11 +112,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion2961Spex do
                  "derived from the same base domain, and Safari drops the framed " <>
                  "app's session cookie across a registrable domain. Got: #{url}"
 
+        instance = AppInstances.for_working_copy(context.scope, context.working_copy_id)
+        assert url == instance.preview_url
+
         {:ok, context}
       end
 
       then_ "the identity it was onboarded with is still there", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, @harness_config)
+        assert {:ok, contents} =
+                 ExecutionContexts.read_file(context.execution_context, @harness_config)
 
         config = Jason.decode!(contents)
 

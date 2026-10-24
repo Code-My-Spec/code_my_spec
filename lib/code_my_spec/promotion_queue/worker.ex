@@ -224,7 +224,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     with %WorkingCopy{} = gate <- find_gate_copy(scope),
          {:ok, %{contained: [_ | _] = contained}} <-
            Runner.contained(
-             WorkingCopies.environment(scope_for(scope, gate)),
+             WorkingCopies.execution_context(scope_for(scope, gate)),
              gate.root,
              base,
              Enum.map(entries, & &1.commit),
@@ -253,13 +253,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
            WorkingCopies.fetch(entry.working_copy_id),
          own = scope_for(scope, copy),
          {:ok, %{head: head}} <-
-           Runner.precheck(WorkingCopies.environment(own), root, copy.id, base),
+           Runner.precheck(WorkingCopies.execution_context(own), root, copy.id, base),
          true <- head == entry.commit,
          true <- Promotion.certified_at?(own, entry.commit),
          # Read-only: a requester's copy is not ours to commit in. Unformatted,
          # it goes through the gate copy, which formats it.
          {:ok, %{unformatted: []}} <-
-           Runner.format(WorkingCopies.environment(own), root, copy.id, check: true) do
+           Runner.format(WorkingCopies.execution_context(own), root, copy.id, check: true) do
       {:ok, copy}
     else
       _ -> :no
@@ -272,7 +272,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     with {:ok, gate} <- gate_copy(state.scope),
          gate_scope = scope_for(state.scope, gate),
          :ok <- gate_quiet(gate_scope, gate_wait_since(state)),
-         environment = WorkingCopies.environment(gate_scope),
+         environment = WorkingCopies.execution_context(gate_scope),
          {:ok, built} <-
            Runner.build_batch(
              environment,
@@ -497,7 +497,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # ledger is green, rather than as a new `Run.sources()` member every
   # Problem/Run/UI surface would have to learn.
   defp assets_build(%{batch: batch} = state, swept) do
-    environment = WorkingCopies.environment(batch.scope)
+    environment = WorkingCopies.execution_context(batch.scope)
 
     case Runner.build_assets(environment, batch.gate.root, batch.gate.id) do
       {:ok, _} -> stories_green(state, swept)
@@ -962,7 +962,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp local_main_version(scope) do
     with %WorkingCopy{root: root} = main when is_binary(root) <- WorkingCopies.main(scope),
          {:ok, %{version: version}} <-
-           Runner.current(WorkingCopies.environment(scope_for(scope, main)), root, main.id) do
+           Runner.current(WorkingCopies.execution_context(scope_for(scope, main)), root, main.id) do
       version
     else
       _ -> nil
@@ -977,7 +977,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       with {:ok, source} <- WorkingCopies.fetch(scope.active_working_copy_id),
            {:ok, %{head: head}} <-
              Runner.remote_head(
-               WorkingCopies.environment(scope_for(scope, source)),
+               WorkingCopies.execution_context(scope_for(scope, source)),
                source.root,
                development_branch(scope),
                source.id
@@ -1052,7 +1052,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp head_of(scope, %WorkingCopy{} = copy, name) do
-    case Runner.current(WorkingCopies.environment(scope_for(scope, copy)), copy.root, copy.id) do
+    case Runner.current(
+           WorkingCopies.execution_context(scope_for(scope, copy)),
+           copy.root,
+           copy.id
+         ) do
       {:ok, %{head: head}} when is_binary(head) -> {:ok, head}
       other -> {:error, %{reason: "could not read #{name}'s HEAD: #{inspect(other)}"}}
     end

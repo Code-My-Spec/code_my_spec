@@ -25,8 +25,8 @@ defmodule CodeMySpecSpex.Story598.Criterion5301Spex do
   spex "The generation script is the durable artifact", criterion: 250 do
     scenario "Non-empty generation script passes evaluation" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
@@ -37,9 +37,9 @@ defmodule CodeMySpecSpex.Story598.Criterion5301Spex do
       end
 
       given_ "code_generation.sh records every generator command", context do
-        Fixtures.with_full_script(context.environment)
+        Fixtures.with_full_script(context.execution_context)
 
-        assert Fixtures.script_exists?(context.environment),
+        assert Fixtures.script_exists?(context.execution_context),
                "expected the full generation script to be written"
 
         {:ok, context}

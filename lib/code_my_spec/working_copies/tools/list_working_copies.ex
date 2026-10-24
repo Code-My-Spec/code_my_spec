@@ -4,6 +4,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
 
   @impl true
   def name, do: "list_working_copies"
@@ -55,22 +56,42 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
   def script_result(_params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context) do
       running = running_by_copy(scope)
-      {:ok, Enum.map(WorkingCopies.list_harnesses(scope), &row(&1, Map.get(running, &1.id, [])))}
+
+      {:ok,
+       Enum.map(WorkingCopies.list_harnesses(scope), &row(scope, &1, Map.get(running, &1.id, [])))}
     end
   end
 
   # String keys and plain values: these cross into a Lua VM, where an atom
   # key and a struct are not things that exist.
-  defp row(copy, agents) do
+  defp row(scope, copy, agents) do
+    instances = AppInstances.list_for_working_copy(scope, copy)
+    instance = Enum.find(instances, & &1.default)
+
     %{
       "id" => copy.id,
       "root" => copy.root,
       "main" => copy.main,
-      "promotion_sync" => copy.promotion_sync,
-      "app_status" => copy.app_status,
-      "app_serving_commit" => copy.app_serving_commit,
+      "promotion_sync" => instance && instance.promotion_sync,
+      "app_instance" => if(instance, do: AppInstances.descriptor(instance)),
+      "app_status" => instance && instance.status,
+      "app_serving_commit" => instance && instance.serving_commit,
+      "app_instances" => Enum.map(instances, &instance_row/1),
       "agents" => Enum.map(agents, &agent_row/1)
     }
+  end
+
+  defp instance_row(instance) do
+    AppInstances.descriptor(instance)
+    |> Map.merge(%{
+      "status" => instance.status,
+      "url" => instance.url,
+      "commit" => instance.commit,
+      "serving_commit" => instance.serving_commit,
+      "checked_at" => if(instance.checked_at, do: DateTime.to_iso8601(instance.checked_at)),
+      "preview_status" => instance.preview_status,
+      "preview_url" => instance.preview_url
+    })
   end
 
   defp agent_row({agent, lifecycle}) do
@@ -85,17 +106,21 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
       copies ->
         running = running_by_copy(scope)
 
-        Enum.map_join(copies, "\n", &line(&1, Map.get(running, &1.id, [])))
+        Enum.map_join(copies, "\n", &line(scope, &1, Map.get(running, &1.id, [])))
     end
   end
 
-  defp line(copy, agents) do
+  defp line(scope, copy, agents) do
+    instances = AppInstances.list_for_working_copy(scope, copy)
+    instance = Enum.find(instances, & &1.default)
+
     [
       copy.id,
       describe_root(copy.root),
       if(copy.main, do: "main", else: "—"),
       describe_agents(agents),
-      describe_sync(copy.promotion_sync)
+      describe_sync(instance && instance.promotion_sync),
+      describe_app(instances)
     ]
     |> Enum.join("  |  ")
   end
@@ -111,6 +136,14 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
       "device sync #{status} at #{head}" <> if(sync["error"], do: ": #{sync["error"]}", else: "")
 
   defp describe_sync(_), do: "no pending publication"
+
+  defp describe_app([]), do: "no app instance"
+
+  defp describe_app(instances) do
+    Enum.map_join(instances, "; ", fn instance ->
+      "app #{instance.id} #{instance.status || "not reported"}"
+    end)
+  end
 
   defp describe_agents([]), do: "nothing running"
 

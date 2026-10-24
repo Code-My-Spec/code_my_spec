@@ -37,7 +37,7 @@ defmodule CodeMySpec.Support.TestAdapter do
   @behaviour CodeMySpec.Git.Behaviour
 
   alias CodeMySpec.Compile
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @code_repo_fixture_path "../code_my_spec_test_repos/test_phoenix_project"
   @content_repo_fixture_path "../code_my_spec_test_repos/test_content_repo"
@@ -460,7 +460,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
+        Compile.execute(execution_context: ExecutionContext.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_ok_cache_abs)
 
@@ -479,7 +479,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
+        Compile.execute(execution_context: ExecutionContext.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_warnings_cache_abs)
 
@@ -502,7 +502,7 @@ defmodule CodeMySpec.Support.TestAdapter do
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
       result =
-        Compile.execute(environment: Environment.new(:local, code_repo_fixture_abs))
+        Compile.execute(execution_context: ExecutionContext.new(:local, code_repo_fixture_abs))
 
       save_compile_result(result, compiler_errors_cache_abs)
 

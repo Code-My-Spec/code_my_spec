@@ -15,8 +15,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   import CodeMySpecSpex.WorkingCopyHelpers
 
   alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
   alias CodeMySpec.WorkingCopies
@@ -115,14 +115,14 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   Source environments without a corresponding local working-copy environment
   are left alone, preserving memory-only fixture scenarios.
   """
-  def sync_story_specs_to_local_copy(%{scope: scope, environment: source}, story) do
-    case WorkingCopies.environment(scope) do
-      %Environment{type: :local, cwd: root} = local when is_binary(root) ->
+  def sync_story_specs_to_local_copy(%{scope: scope, execution_context: source}, story) do
+    case WorkingCopies.execution_context(scope) do
+      %ExecutionContext{type: :local, cwd: root} = local when is_binary(root) ->
         paths =
           Enum.map(story.criteria, fn criterion ->
             path = Fixtures.spec_file_path(story, criterion)
-            {:ok, contents} = Environments.read_file(source, path)
-            :ok = Environments.write_file(local, path, contents)
+            {:ok, contents} = ExecutionContexts.read_file(source, path)
+            :ok = ExecutionContexts.write_file(local, path, contents)
             path
           end)
 
@@ -144,9 +144,9 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   only when the local checkout has none, because the boundary checker needs its
   app name to resolve the fixtures bridge path.
   """
-  def materialize_source_fixture_files(%{scope: scope, environment: source}) do
-    case WorkingCopies.environment(scope) do
-      %Environment{type: :local, cwd: root} = local when is_binary(root) ->
+  def materialize_source_fixture_files(%{scope: scope, execution_context: source}) do
+    case WorkingCopies.execution_context(scope) do
+      %ExecutionContext{type: :local, cwd: root} = local when is_binary(root) ->
         paths = source_fixture_paths(source, local)
 
         changed_paths =
@@ -165,26 +165,26 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   def materialize_source_fixture_files(_context), do: :ok
 
   defp copy_changed_fixture_file(source, local, path, changed) do
-    {:ok, contents} = Environments.read_file(source, path)
+    {:ok, contents} = ExecutionContexts.read_file(source, path)
 
-    case Environments.read_file(local, path) do
+    case ExecutionContexts.read_file(local, path) do
       {:ok, ^contents} ->
         changed
 
       _ ->
-        :ok = Environments.write_file(local, path, contents)
+        :ok = ExecutionContexts.write_file(local, path, contents)
         [path | changed]
     end
   end
 
   defp source_fixture_paths(source, local) do
     fixture_paths =
-      Environments.stream_files(source, [".code_my_spec", "lib", "test", "config"])
+      ExecutionContexts.stream_files(source, [".code_my_spec", "lib", "test", "config"])
       |> Enum.map(&Path.relative_to(&1, source.cwd))
 
     mix_file_paths =
-      if Environments.file_exists?(local, "mix.exs") or
-           not Environments.file_exists?(source, "mix.exs") do
+      if ExecutionContexts.file_exists?(local, "mix.exs") or
+           not ExecutionContexts.file_exists?(source, "mix.exs") do
         []
       else
         ["mix.exs"]
@@ -206,10 +206,10 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   end
 
   defp commit_fixture_paths(local, root, paths, message) do
-    {_, 0} = Environments.cmd(local, "git", ["add", "--" | paths], cd: root)
+    {_, 0} = ExecutionContexts.cmd(local, "git", ["add", "--" | paths], cd: root)
 
     {_, 0} =
-      Environments.cmd(
+      ExecutionContexts.cmd(
         local,
         "git",
         ["commit", "-q", "-m", message, "--" | paths],
@@ -245,7 +245,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     local_bootstrap_project(context)
     stop_the_queue_on_exit(context.project.id)
     running_root = CodeMySpec.TempFile.dir("spex-1046-running")
-    {_, 0} = Environments.cmd(context.environment, "mkdir", ["-p", running_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "mkdir", ["-p", running_root])
 
     {_, 0} = git(context, running_root, ["init", "--initial-branch", "main"])
     {_, 0} = git(context, running_root, ["config", "user.email", "spex@example.com"])
@@ -271,7 +271,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     # `worktree add` requires the path not to exist yet.
     agent_root = CodeMySpec.TempFile.dir("spex-1046-agent")
-    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", agent_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "rm", ["-rf", agent_root])
 
     {_out, 0} =
       git(context, running_root, ["worktree", "add", "-b", "story/war", agent_root, "main"])
@@ -333,7 +333,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   """
   def a_gate_copy(context, running_root) do
     gate_root = CodeMySpec.TempFile.dir("spex-1046-gate")
-    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", gate_root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "rm", ["-rf", gate_root])
     {_, 0} = git(context, running_root, ["worktree", "add", "--detach", gate_root, "main"])
 
     {gate, socket} =
@@ -482,7 +482,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   """
   def another_candidate(context, key, from \\ "main") do
     root = CodeMySpec.TempFile.dir("spex-1046-#{key}")
-    {_, 0} = Environments.cmd(context.environment, "rm", ["-rf", root])
+    {_, 0} = ExecutionContexts.cmd(context.execution_context, "rm", ["-rf", root])
 
     {_, 0} =
       git(context, context.running_root, ["worktree", "add", "-b", "story/#{key}", root, from])
@@ -587,7 +587,11 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   @doc "An explicit `:cd` wins over the environment's own cwd, which is what lets one environment drive two checkouts."
   def git(context, dir, args),
-    do: Environments.cmd(context.environment, "git", args, cd: dir, stderr_to_stdout: true)
+    do:
+      ExecutionContexts.cmd(context.execution_context, "git", args,
+        cd: dir,
+        stderr_to_stdout: true
+      )
 
   @doc "The commit a checkout is on."
   def head_of(context, root) do
@@ -605,16 +609,17 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     "defmodule BrokenOaths.Diplomacy.Treaty do\n  def sign, do: :signed\nend\n"
   end
 
-  def disk(root), do: Environment.new(:local, root)
+  def disk(root), do: ExecutionContext.new(:local, root)
 
-  def write(root, path, content), do: :ok = Environments.write_file(disk(root), path, content)
+  def write(root, path, content),
+    do: :ok = ExecutionContexts.write_file(disk(root), path, content)
 
   def read(root, path) do
-    {:ok, contents} = Environments.read_file(disk(root), path)
+    {:ok, contents} = ExecutionContexts.read_file(disk(root), path)
     contents
   end
 
-  def exists?(root, path), do: Environments.file_exists?(disk(root), path)
+  def exists?(root, path), do: ExecutionContexts.file_exists?(disk(root), path)
 
   @doc """
   Join a promotion checkout and register its real local disk environment by working copy ID.
@@ -650,8 +655,8 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
   defp register_disk_environment(copy, root) do
     key = {:working_copy, copy.working_copy_id}
-    :ok = Environments.unregister(key)
-    :ok = Environments.register(key, disk(root))
+    :ok = ExecutionContexts.unregister(key)
+    :ok = ExecutionContexts.register(key, disk(root))
     :ok
   end
 end

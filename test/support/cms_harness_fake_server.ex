@@ -240,7 +240,7 @@ defmodule CmsHarnessTest.FakeServer do
   echo back on the matching `_result`.
   """
   def push_app_event(event, payload \\ %{})
-      when event in ~w(ensure_app_running restart_app reload_app stop_app) do
+      when event in ~w(ensure_app_running restart_app reload_app stop_app discard_app) do
     ref = payload["ref"] || Integer.to_string(System.unique_integer([:positive]))
 
     case :persistent_term.get({__MODULE__, :channel}, nil) do
@@ -442,6 +442,11 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
 
   def handle_in("stop_app_result", payload, socket) do
     FakeServer.notify({:stop_app_result, payload})
+    {:reply, :ok, socket}
+  end
+
+  def handle_in("discard_app_result", payload, socket) do
+    FakeServer.notify({:discard_app_result, payload})
     {:reply, :ok, socket}
   end
 

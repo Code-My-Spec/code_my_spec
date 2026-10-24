@@ -173,7 +173,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
   # records "not uploaded" and does not fail the submission).
   defp upload_evidence(scope, _context, %{status: :pass} = attempt, story_number)
        when not is_nil(story_number) do
-    env = CodeMySpec.WorkingCopies.environment(scope)
+    env = CodeMySpec.WorkingCopies.execution_context(scope)
 
     case EvidenceUpload.collect(env, scope.active_project_id, attempt.id, story_number) do
       [] -> attempt

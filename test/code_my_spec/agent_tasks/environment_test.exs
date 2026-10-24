@@ -4,17 +4,22 @@ defmodule CodeMySpec.AgentTasks.EnvironmentTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects
 
   test "the selected working copy environment wins over a stale project runtime" do
     scope = working_copy_scope_fixture()
-    expected_cwd = fixture_environment(scope).cwd
+    expected_cwd = fixture_execution_context(scope).cwd
     stale_root = CodeMySpec.TempFile.owned_dir("stale_scope_environment")
-    :ok = Environments.register(scope.active_project_id, Environment.new(:local, stale_root))
 
-    assert %Environment{cwd: cwd} = AgentTasks.environment(scope)
+    :ok =
+      ExecutionContexts.register(
+        scope.active_project_id,
+        ExecutionContext.new(:local, stale_root)
+      )
+
+    assert %ExecutionContext{cwd: cwd} = AgentTasks.execution_context(scope)
     assert cwd == expected_cwd
     refute cwd == stale_root
   end
@@ -32,7 +37,7 @@ defmodule CodeMySpec.AgentTasks.EnvironmentTest do
         active_working_copy_id: Ecto.UUID.generate()
     }
 
-    assert AgentTasks.environment(scope) == nil
+    assert AgentTasks.execution_context(scope) == nil
   end
 
   test "without a selected working copy, the project local path supplies the environment" do
@@ -42,9 +47,9 @@ defmodule CodeMySpec.AgentTasks.EnvironmentTest do
     {:ok, project} =
       Projects.update_project(scope, scope.active_project, %{local_path: project_root})
 
-    :ok = CodeMySpec.Environments.unregister(scope.active_project_id)
+    :ok = CodeMySpec.ExecutionContexts.unregister(scope.active_project_id)
     scope = %{scope | active_project: project, active_working_copy_id: nil}
 
-    assert %Environment{cwd: ^project_root} = AgentTasks.environment(scope)
+    assert %ExecutionContext{cwd: ^project_root} = AgentTasks.execution_context(scope)
   end
 end

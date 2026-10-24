@@ -7,7 +7,7 @@ defmodule CodeMySpec.Repo.Migrations.AHarnessReportsWhetherHealthRouteIsThere do
   Files sync table records existence, never content. For a project reached
   only through a live harness connection, `scope.environment` server-side
   resolves through `Resources.project_scope/2`'s fallback to a path on the
-  checkout's own machine, not this one, so `Environments.read_file/2` there
+  checkout's own machine, not this one, so `ExecutionContexts.read_file/2` there
   answers `nil`/an error regardless of what the file actually contains.
 
   Nullable, and stays that way: a project onboarded before this exists, or

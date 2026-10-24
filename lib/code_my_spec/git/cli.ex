@@ -41,7 +41,7 @@ defmodule CodeMySpec.Git.CLI do
   """
   @spec clone(Scope.t(), repo_url(), path()) :: {:ok, path()} | {:error, error_reason()}
   def clone(%Scope{} = scope, repo_url, path),
-    do: clone(scope, repo_url, path, resolve_environment(scope))
+    do: clone(scope, repo_url, path, resolve_execution_context(scope))
 
   @doc "Clones using the explicitly selected execution environment."
   @spec clone(Scope.t(), repo_url(), path(), term()) :: {:ok, path()} | {:error, error_reason()}
@@ -84,7 +84,7 @@ defmodule CodeMySpec.Git.CLI do
   def pull(%Scope{}, ""), do: {:error, :invalid_path}
 
   def pull(%Scope{} = scope, path) when is_binary(path) do
-    pull(scope, path, resolve_environment(scope))
+    pull(scope, path, resolve_execution_context(scope))
   end
 
   @doc "Pulls using the explicitly selected execution environment."
@@ -117,11 +117,12 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  defp resolve_environment(%Scope{active_working_copy_id: copy_id} = scope)
+  defp resolve_execution_context(%Scope{active_working_copy_id: copy_id} = scope)
        when not is_nil(copy_id),
-       do: WorkingCopies.environment(scope)
+       do: WorkingCopies.execution_context(scope)
 
-  defp resolve_environment(%Scope{active_project: project}), do: LocalScope.environment(project)
+  defp resolve_execution_context(%Scope{active_project: project}),
+    do: LocalScope.execution_context(project)
 
   # Private Functions
 
@@ -138,7 +139,7 @@ defmodule CodeMySpec.Git.CLI do
   # its own repo would have cloned it onto whichever machine ran the call.
   defp cmd(nil, _args, _opts), do: {:error, :no_environment}
 
-  defp cmd(env, args, opts), do: CodeMySpec.Environments.cmd(env, "git", args, opts)
+  defp cmd(env, args, opts), do: CodeMySpec.ExecutionContexts.cmd(env, "git", args, opts)
 
   defp get_remote_url(env, path) do
     case cmd(env, ["-C", path, "config", "--get", "remote.origin.url"], stderr_to_stdout: true) do

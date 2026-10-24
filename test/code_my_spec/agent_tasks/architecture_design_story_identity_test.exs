@@ -10,14 +10,20 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignStoryIdentityTest do
   alias Anubis.Server.{Frame}
   alias CodeMySpec.AgentTasks.ArchitectureDesign
   alias CodeMySpec.Agents.{Agent, AgentsRepository}
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.{Directives, RequirementGraph}
   alias CodeMySpecTest.AgentPresence
 
   setup do
     root = CodeMySpec.TempFile.owned_dir("architecture_identity")
-    scope = put_fixture_environment(working_copy_scope_fixture(), Environment.new(:local, root))
+
+    scope =
+      put_fixture_execution_context(
+        working_copy_scope_fixture(),
+        ExecutionContext.new(:local, root)
+      )
+
     component = component_fixture(scope)
     other = story_fixture(scope, %{title: "Other collision story"})
     # Ids and numbers both start at 1 on a fresh database; move `other`'s number

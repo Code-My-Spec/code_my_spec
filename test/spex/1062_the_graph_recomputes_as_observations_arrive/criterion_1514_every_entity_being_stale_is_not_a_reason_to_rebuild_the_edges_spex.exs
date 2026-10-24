@@ -112,7 +112,8 @@ defmodule CodeMySpecSpex.Story1062.Criterion3618Spex do
         # hashes ids, types, parents and dependencies, and a file going away
         # touches none of them.
         for module_name <- @modules do
-          :ok = Fixtures.delete_env_file(context.environment, Content.impl_path(module_name))
+          :ok =
+            Fixtures.delete_env_file(context.execution_context, Content.impl_path(module_name))
         end
 
         :ok = Fixtures.scan_working_copy(context.scope)

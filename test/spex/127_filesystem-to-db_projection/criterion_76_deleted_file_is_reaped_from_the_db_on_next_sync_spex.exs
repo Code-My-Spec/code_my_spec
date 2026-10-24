@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/example_context.ex"
   @anchor_path ".code_my_spec/rules/example.md"
@@ -25,7 +25,12 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
       given_ :synced_context_component
 
       given_ "the impl file appears in the Files projection, beside a rules file", context do
-        :ok = Environments.write_file(context.environment, @anchor_path, "# Example rules\n")
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            @anchor_path,
+            "# Example rules\n"
+          )
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -35,7 +40,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
       end
 
       when_ "the agent deletes the impl from disk and the engineer re-syncs", context do
-        :ok = Environments.delete_file(context.environment, @impl_path)
+        :ok = ExecutionContexts.delete_file(context.execution_context, @impl_path)
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

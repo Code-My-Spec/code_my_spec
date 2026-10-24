@@ -74,7 +74,7 @@ defmodule CodeMySpec.Files.ASyncThatChangedNothingWritesNothingTest do
 
     # No environment, matching the light-harness server: nothing may depend on
     # reading a file here.
-    %{scope: put_fixture_environment(scope, nil)}
+    %{scope: put_fixture_execution_context(scope, nil)}
   end
 
   defp settled_component(scope) do

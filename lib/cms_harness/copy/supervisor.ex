@@ -1,25 +1,10 @@
 defmodule CmsHarness.Copy.Supervisor do
   @moduledoc """
-  Everything this harness runs for one working copy, under one supervisor: the
-  tree mirrors copy → agents (John, phase 2b).
+  Supervises agents and the channel chain for a working copy.
 
-      Copy.Supervisor        one per root, :one_for_one
-       ├ apps   DynamicSupervisor — the copy's own app (`AppInstance`), on demand
-       ├ agents DynamicSupervisor — an `Engine.Keeper` per agent
-       └ Project.Supervisor  the channel chain, once the copy is served
-
-  Siblings, not one chain. A channel blip restarts the project chain
-  (`Project.Supervisor` is `:rest_for_one` inside) and nothing else: the agents
-  and the app keep running, and the rejoin reports them. Offboarding is
-  terminating this supervisor — every agent, the app and the channel go with
-  it, in one place, with no list of things to remember to stop.
-
-  `Project.Supervisor` is added when the copy is served (`serve/2`), not at
-  start: an agent runs in a copy whether or not this harness serves its project
-  — a test's scratch directory, a copy being prepared.
-
-  Generous restart intensity, because the children restart themselves: this
-  only gives up when the copy itself is beyond saving.
+  App runtimes belong to the harness-wide AppInstancesSupervisor and survive
+  source copy supervision changes. Offboarding must explicitly dispose app
+  dependencies before removing the source checkout.
   """
 
   use Supervisor, restart: :temporary
@@ -31,9 +16,6 @@ defmodule CmsHarness.Copy.Supervisor do
   @impl true
   def init(root) do
     children = [
-      Supervisor.child_spec({DynamicSupervisor, name: apps(root), strategy: :one_for_one},
-        id: :apps
-      ),
       Supervisor.child_spec({DynamicSupervisor, name: agents(root), strategy: :one_for_one},
         id: :agents
       )
@@ -114,9 +96,6 @@ defmodule CmsHarness.Copy.Supervisor do
       [] -> {:error, :not_running}
     end
   end
-
-  @doc "Where the copy at `root`'s app runs."
-  def apps(root), do: {:via, Registry, {CmsHarness.Registry, {:apps, Path.expand(root)}}}
 
   @doc "Where the copy at `root`'s agents run."
   def agents(root), do: {:via, Registry, {CmsHarness.Registry, {:agents, Path.expand(root)}}}

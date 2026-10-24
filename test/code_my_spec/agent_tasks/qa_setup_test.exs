@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaSetup
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
 
   # ============================================================================
@@ -15,8 +15,8 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
+    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -76,7 +76,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
   # copy can still tell whether it is valid. Syncing here means these tests
   # exercise the classifier and the validator too, not just the checker.
   defp sync!(scope) do
-    {:ok, _} = FileSync.sync(scope, base_dir: fixture_environment(scope).cwd)
+    {:ok, _} = FileSync.sync(scope, base_dir: fixture_execution_context(scope).cwd)
     :ok
   end
 
@@ -129,8 +129,8 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     end
 
     test "includes router content when router exists", %{scope: scope, task: task} do
-      write_mix_exs(fixture_environment(scope))
-      write_router(fixture_environment(scope))
+      write_mix_exs(fixture_execution_context(scope))
+      write_router(fixture_execution_context(scope))
 
       assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "PageController"
@@ -149,7 +149,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       scope: scope,
       task: task
     } do
-      write_qa_plan(fixture_environment(scope))
+      write_qa_plan(fixture_execution_context(scope))
 
       assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ ~r/existing plan/i
@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       scope: scope,
       task: task
     } do
-      write_qa_plan(fixture_environment(scope))
+      write_qa_plan(fixture_execution_context(scope))
       sync!(scope)
 
       assert {:ok, :valid} = QaSetup.evaluate(scope, task)
@@ -205,7 +205,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       scope: scope,
       task: task
     } do
-      write_qa_plan(fixture_environment(scope), """
+      write_qa_plan(fixture_execution_context(scope), """
       # QA Plan
 
       ## App Overview
@@ -225,7 +225,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       scope: scope,
       task: task
     } do
-      write_qa_plan(fixture_environment(scope), """
+      write_qa_plan(fixture_execution_context(scope), """
       # QA Plan
 
       ## App Overview
@@ -248,7 +248,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     setup [:create_scope, :create_task]
 
     test "a valid journey plan is not marked invalid by the qa_plan spec", %{scope: scope} do
-      write_file!(fixture_environment(scope), ".code_my_spec/qa/journey_plan.md", """
+      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/journey_plan.md", """
       # QA Journey Plan
 
       ## Journeys

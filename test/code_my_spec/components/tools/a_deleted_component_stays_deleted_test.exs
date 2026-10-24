@@ -22,7 +22,7 @@ defmodule CodeMySpec.Components.Tools.ADeletedComponentStaysDeletedTest do
   alias CodeMySpec.Files.File, as: FileRecord
 
   setup do
-    scope = put_fixture_environment(full_scope_fixture(), nil)
+    scope = put_fixture_execution_context(full_scope_fixture(), nil)
 
     component =
       component_fixture(scope, %{

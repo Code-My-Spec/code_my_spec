@@ -23,7 +23,7 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
   alias CodeMySpec.Components
   alias CodeMySpec.Configurations
   alias CodeMySpec.ConfigurationsFixtures
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.Edges
   alias CodeMySpec.Requirements.Preloader
@@ -290,9 +290,9 @@ defmodule CodeMySpec.Requirements.EdgesDerivedPerEntityMatchThePassTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %Scope{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     ConfigurationsFixtures.ensure_configuration!(scope)

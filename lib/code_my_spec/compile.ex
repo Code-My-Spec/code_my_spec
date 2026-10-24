@@ -10,11 +10,11 @@ defmodule CodeMySpec.Compile do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments, CodeMySpec.TempFile]
+    deps: [CodeMySpec.ExecutionContexts, CodeMySpec.TempFile]
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.TempFile
 
   @doc """
@@ -44,7 +44,7 @@ defmodule CodeMySpec.Compile do
   @spec execute(keyword()) :: map()
   def execute(opts \\ []) do
     output_file = Keyword.get_lazy(opts, :output_file, &create_temp_file_path/0)
-    env = Keyword.fetch!(opts, :environment)
+    env = Keyword.fetch!(opts, :execution_context)
     injected_file = Keyword.has_key?(opts, :output_file)
 
     cmd_opts = [
@@ -65,7 +65,7 @@ defmodule CodeMySpec.Compile do
     Logger.debug("[Compile] env=#{inspect(cmd_opts[:env])}")
 
     {output, exit_code} =
-      Environments.cmd(env, "mix", compile_args(opts), cmd_opts)
+      ExecutionContexts.cmd(env, "mix", compile_args(opts), cmd_opts)
 
     Logger.debug("[Compile] exit_code=#{exit_code}")
 
@@ -273,10 +273,10 @@ defmodule CodeMySpec.Compile do
   # is read through the environment (a host `File.read` would miss and read as
   # clean). An injected `:output_file` is a cassette fixture on the host's disk.
   defp read_output(_env, path, true), do: File.read(path)
-  defp read_output(env, path, false), do: Environments.read_file(env, path)
+  defp read_output(env, path, false), do: ExecutionContexts.read_file(env, path)
 
   defp output_exists?(_env, path, true), do: File.exists?(path)
-  defp output_exists?(env, path, false), do: Environments.file_exists?(env, path)
+  defp output_exists?(env, path, false), do: ExecutionContexts.file_exists?(env, path)
 
   # Machine-wide unique, not per-BEAM: see `CodeMySpec.TempFile`.
   defp create_temp_file_path, do: TempFile.path("compile_diagnostics", ".jsonl")

@@ -9,7 +9,7 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.WorkingCopies
@@ -29,9 +29,9 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
     # HarnessRegistry has nothing under its id, even though the copy itself
     # is of type :harness and genuinely exists.
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: main.id},
-        Environment.new(:harness, "/main", ref: %{"harness_id" => main.id})
+        ExecutionContext.new(:harness, "/main", ref: %{"harness_id" => main.id})
       )
 
     {:ok, candidate} =
@@ -40,9 +40,9 @@ defmodule CodeMySpec.PromotionQueue.AHarnessStillRegisteringIsNotABuildFailureTe
     {:ok, candidate} = WorkingCopies.report_root(candidate, "/source")
 
     :ok =
-      register_working_copy_environment(
+      register_working_copy_execution_context(
         %{scope | active_working_copy_id: candidate.id},
-        Environment.new(:harness, "/source", ref: %{"harness_id" => candidate.id})
+        ExecutionContext.new(:harness, "/source", ref: %{"harness_id" => candidate.id})
       )
 
     {:ok, entry} =

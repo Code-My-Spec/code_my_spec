@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @impl_path "lib/stale_mtime_demo.ex"
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
   spex "Engineer sees sync_path advance fingerprint without bumping mtime", criterion: 80 do
     scenario "single-path sync after edit leaves mtime stale; full sync catches it up" do
       given_ "the agent has written v1 and the engineer has full-synced", context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_v1())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_v1())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
       end
 
       when_ "the agent edits to v2 and the watcher fires a single-path event", context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_v2())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_v2())
         {:ok, _} = Fixtures.notify_file_changed(context.scope, @impl_path)
         {:ok, context}
       end
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
     scenario "follow-up full sync brings the mtime forward, completing the catch-up" do
       given_ "the agent has written v1 and the engineer has full-synced", context do
-        :ok = Environments.write_file(context.environment, @impl_path, content_v1())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_v1())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -100,7 +100,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
         captured_v1_mtime = extract_raw_mtime(html, @impl_path)
         assert is_binary(captured_v1_mtime), "expected v1 mtime to be rendered"
 
-        :ok = Environments.write_file(context.environment, @impl_path, content_v2())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, content_v2())
         {:ok, _} = Fixtures.notify_file_changed(context.scope, @impl_path)
 
         {:ok, Map.put(context, :v1_mtime, captured_v1_mtime)}

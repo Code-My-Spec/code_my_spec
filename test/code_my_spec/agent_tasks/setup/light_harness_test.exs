@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   The setup steps on a scope with no environment.
 
   That is not an edge case — it is the light harness's normal shape. The server
-  holds no working copy, so `fixture_environment(scope)` is nil and every step that
+  holds no working copy, so `fixture_execution_context(scope)` is nil and every step that
   reaches for a disk finds nothing there.
 
   Both behaviours below were found by an agent, in a container, mid-drill,
@@ -24,7 +24,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   setup do
     scope = full_scope_fixture()
     # Explicit, because it is the property under test: no working copy here.
-    %{scope: put_fixture_environment(scope, nil)}
+    %{scope: put_fixture_execution_context(scope, nil)}
   end
 
   defp sync_file(scope, path, role) do
@@ -89,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
     test "no working directory resolves to no environment, not to the server's own" do
       frame = %{assigns: %{}}
 
-      assert Validators.mcp_environment(frame) == nil,
+      assert Validators.mcp_execution_context(frame) == nil,
              "this returned `Environment.new(:local, File.cwd!())`, so every " <>
                "filesystem tool on the server-hosted mount operated on the " <>
                "server's own checkout — and reported success for it"
@@ -129,7 +129,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
       test "#{inspect(step)}.command/2 builds a prompt naming the real app", %{scope: scope} do
         sync_mix_exs(scope, "my_app")
 
-        # Raised before: `Environments.read_file(nil, "mix.exs")` had no matching
+        # Raised before: `ExecutionContexts.read_file(nil, "mix.exs")` had no matching
         # clause, so `start_task` returned a FunctionClauseError for these steps
         # and the agent never received a prompt at all.
         assert {:ok, prompt} = unquote(step).command(scope, %{})

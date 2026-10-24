@@ -5,14 +5,14 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   alias CodeMySpec.{
     Agents,
     Devices,
-    Environments,
+    ExecutionContexts,
     Projects,
     UserPreferences,
     Users,
     WorkingCopies
   }
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.QaFixture
 
   def create(conn, params) do
@@ -192,7 +192,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
 
       owner ->
         Agent.get(owner, fn _ ->
-          Environments.register({:working_copy, copy_id}, Environment.new(:local, root))
+          ExecutionContexts.register({:working_copy, copy_id}, ExecutionContext.new(:local, root))
         end)
     end
   end

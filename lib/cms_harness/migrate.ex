@@ -28,7 +28,7 @@ defmodule CmsHarness.Migrate do
     children = [
       CodeMySpec.Vault,
       CodeMySpec.Repo,
-      CodeMySpec.Environments.registry_child_spec(),
+      CodeMySpec.ExecutionContexts.registry_child_spec(),
       CmsHarness.Migrate.Migrator
     ]
 

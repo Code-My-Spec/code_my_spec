@@ -34,7 +34,7 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpecSpex.Case, only: [fake_providers: 1, zone_exists: 2]
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Provisioning.Steps
 
@@ -44,9 +44,9 @@ defmodule CodeMySpec.Provisioning.InboundProbeDefaultTest do
     tmp = CodeMySpec.TempFile.owned_dir("test")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, project} =

@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +37,13 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
     scenario "the story page links the upload, and the link serves it back" do
       given_ "a screenshot is uploaded by a passing attempt", context do
         dir = Path.join([".code_my_spec/qa", to_string(context.story.number), "screenshots"])
-        :ok = Environments.write_file(context.environment, Path.join(dir, "one.png"), "fake-png")
+
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            Path.join(dir, "one.png"),
+            "fake-png"
+          )
 
         Req.Test.stub(CodeMySpec.Uploads, fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
 

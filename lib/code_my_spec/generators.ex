@@ -36,14 +36,14 @@ defmodule CodeMySpec.Generators do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Projects,
       CodeMySpec.Users.Scope
     ],
     exports: :all
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.Users.Scope
 
@@ -64,7 +64,8 @@ defmodule CodeMySpec.Generators do
       iex> deploy_ready?(scope, "lib/my_app_web/router.ex", environment)
       true
   """
-  @spec deploy_ready?(Scope.t(), String.t(), Environments.Environment.t() | nil) :: boolean()
+  @spec deploy_ready?(Scope.t(), String.t(), ExecutionContexts.ExecutionContext.t() | nil) ::
+          boolean()
   def deploy_ready?(%Scope{} = scope, router_path, environment),
     do: audit(scope, router_path, environment) == []
 
@@ -74,7 +75,7 @@ defmodule CodeMySpec.Generators do
   The scope supplies project identity and synced file evidence; filesystem
   checks use `environment` directly, independently of caller identity.
   """
-  @spec audit(Scope.t(), String.t(), Environments.Environment.t() | nil) :: [finding()]
+  @spec audit(Scope.t(), String.t(), ExecutionContexts.ExecutionContext.t() | nil) :: [finding()]
   def audit(%Scope{} = scope, router_path, environment) do
     missing_files(scope, environment) ++
       missing_env_files(scope, environment) ++
@@ -191,7 +192,7 @@ defmodule CodeMySpec.Generators do
   @doc """
   Convenience for callers that hold an environment rather than a scope.
   """
-  @spec audit_environment(Environments.Environment.t(), String.t()) :: [finding()]
+  @spec audit_environment(ExecutionContexts.ExecutionContext.t(), String.t()) :: [finding()]
   def audit_environment(env, router_path) do
     audit(%Scope{}, router_path, env)
   end

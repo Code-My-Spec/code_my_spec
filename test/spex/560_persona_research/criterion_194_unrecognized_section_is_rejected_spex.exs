@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5152Spex do
   alias CodeMySpec.ToolLibrary
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5152Spex do
 
       given_ "summary.md includes an unrecognized Demographics section", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             """
             # Founder
@@ -52,8 +52,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5152Spex do
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "- https://example.com — Source — 2026-04-23\n"
           )

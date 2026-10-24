@@ -591,8 +591,10 @@ defmodule CodeMySpec.Requirements.Preloader do
   defp running_copy_inputs(project_id) do
     Repo.all(
       from(c in "working_copies",
+        left_join: i in "app_instances",
+        on: i.working_copy_id == c.id and i.default == true,
         where: c.project_id == type(^project_id, :binary_id) and c.main,
-        select: {"running", c.id, c.preview_status, c.preview_url}
+        select: {"running", c.id, i.preview_status, i.preview_url}
       )
     )
   end

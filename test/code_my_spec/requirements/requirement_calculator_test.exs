@@ -5,7 +5,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
 
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
@@ -126,9 +126,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     {scope, tmp_dir}

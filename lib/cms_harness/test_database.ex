@@ -23,7 +23,11 @@ defmodule CmsHarness.TestDatabase do
 
   `build_env` is accepted and ignored.
   """
-  @spec env(CodeMySpec.Environments.Environment.t(), [{String.t(), String.t()}], String.t() | nil) ::
+  @spec env(
+          CodeMySpec.ExecutionContexts.ExecutionContext.t(),
+          [{String.t(), String.t()}],
+          String.t() | nil
+        ) ::
           [{String.t(), String.t()}]
   def env(environment, build_env \\ [], source \\ nil)
 

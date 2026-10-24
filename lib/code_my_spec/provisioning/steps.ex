@@ -31,7 +31,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     AccountSecrets,
     Conversations,
     Deploys,
-    Environments,
+    ExecutionContexts,
     Files,
     Projects,
     ProjectSecrets
@@ -1828,7 +1828,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp read_deploy_config(scope, environment) do
-    Environments.read_file(env(scope), deploy_config_path(environment))
+    ExecutionContexts.read_file(env(scope), deploy_config_path(environment))
   end
 
   # Mirrors `bin/deploy`'s choice of file.
@@ -2067,13 +2067,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # `cwd` checked first: `Environments.cmd/4` raises for an environment with
+  # `cwd` checked first: `ExecutionContexts.cmd/4` raises for an environment with
   # no working directory. Falls back to the `head_commit` the harness reports
   # on sync.
   defp head_commit(scope) do
     case env(scope) do
       %{cwd: cwd} = environment when is_binary(cwd) ->
-        case Environments.cmd(environment, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+        case ExecutionContexts.cmd(environment, "git", ["rev-parse", "HEAD"],
+               stderr_to_stdout: true
+             ) do
           {sha, 0} -> String.trim(sha)
           _ -> reported_head_commit(scope)
         end
@@ -2827,9 +2829,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp project(%Scope{active_project: project}), do: project
 
   defp env(%Scope{active_working_copy_id: copy_id} = scope) when not is_nil(copy_id),
-    do: WorkingCopies.environment(scope)
+    do: WorkingCopies.execution_context(scope)
 
-  defp env(%Scope{} = scope), do: LocalScope.environment(scope.active_project)
+  defp env(%Scope{} = scope), do: LocalScope.execution_context(scope.active_project)
 
   defp domain(%Scope{active_project: %{domain: d}}) when is_binary(d) and d != "", do: d
   defp domain(_), do: nil
@@ -3646,7 +3648,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp origin(%{"__adopted__" => true}), do: "adopted"
   defp origin(_), do: "created"
 
-  # Checked first: `Environments.cmd/4` raises :enoent on a missing executable.
+  # Checked first: `ExecutionContexts.cmd/4` raises :enoent on a missing executable.
   # The error names what is missing via `Generators`.
   defp require_script(scope, path) do
     case env(scope) do
@@ -3656,7 +3658,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   # Steps that shell out need an environment; a nil one would crash in
-  # `Environments.cmd/4` instead of erroring one step.
+  # `ExecutionContexts.cmd/4` instead of erroring one step.
   defp no_environment_message do
     "this project has no working environment, so setup cannot run commands for it. " <>
       "The steps that shell out — the repository push, the deploy, and backups — need a " <>
@@ -3664,12 +3666,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp require_script_in(scope, environment, path) do
-    if Environments.exec_file_exists?(environment, path) do
+    if ExecutionContexts.exec_file_exists?(environment, path) do
       :ok
     else
       findings = CodeMySpec.Generators.audit(scope, router_path(scope), environment)
 
-      case {findings, Environments.file_exists?(environment, path)} do
+      case {findings, ExecutionContexts.file_exists?(environment, path)} do
         # Audit is clean and this environment cannot see the file at all (a
         # harness-scoped environment): cannot prove it wrong. The audit
         # already consulted the `Files` sync table.
@@ -3717,7 +3719,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     paths =
       [".sops.yaml", "envs"]
       |> Enum.concat(Enum.map(DeployBoilerplate.manifest(), & &1.path))
-      |> Enum.filter(&Environments.file_exists?(environment, &1))
+      |> Enum.filter(&ExecutionContexts.file_exists?(environment, &1))
 
     with true <- work_tree?(environment),
          {_, 0} <- git(environment, ["add", "--"] ++ paths),
@@ -3762,7 +3764,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp git(environment, args),
-    do: Environments.cmd(environment, "git", args, stderr_to_stdout: true)
+    do: ExecutionContexts.cmd(environment, "git", args, stderr_to_stdout: true)
 
   # Setup generates its own keypair (the operator's key is not on hosted
   # machines); the private half lives only in `AccountSecrets`.
@@ -3878,8 +3880,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # guessed `app`.
   defp app_path(scope) do
     case env(scope) do
-      nil -> module_name_app_path(scope)
-      environment -> Environments.mix_exs_app_name(environment) || module_name_app_path(scope)
+      nil ->
+        module_name_app_path(scope)
+
+      environment ->
+        ExecutionContexts.mix_exs_app_name(environment) || module_name_app_path(scope)
     end
   end
 
@@ -4320,14 +4325,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp discard_unreadable_env(env, environment) do
     path = Sops.env_file(environment)
 
-    case Environments.file_exists?(env, path) do
+    case ExecutionContexts.file_exists?(env, path) do
       true ->
         Logger.warning(
           "[Secrets] #{environment}'s encrypted env was written to a key that no longer " <>
             "exists — discarding #{path}, its contents cannot be decrypted by anyone."
         )
 
-        Environments.delete_file(env, path)
+        ExecutionContexts.delete_file(env, path)
 
       _ ->
         :ok

@@ -25,7 +25,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.ContentPublishing,
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Generators,
       CodeMySpec.GitHub,

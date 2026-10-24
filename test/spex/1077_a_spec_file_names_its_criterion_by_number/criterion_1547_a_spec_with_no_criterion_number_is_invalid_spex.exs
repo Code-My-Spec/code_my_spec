@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4671Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -23,7 +23,11 @@ defmodule CodeMySpecSpex.Story1077.Criterion4671Spex do
     scenario "a spec whose spex call names no criterion" do
       given_ "a spec file whose spex call names no criterion", context do
         :ok =
-          Environments.write_file(context.environment, @path, CriterionScript.spex_naming(nil))
+          ExecutionContexts.write_file(
+            context.execution_context,
+            @path,
+            CriterionScript.spex_naming(nil)
+          )
 
         {:ok, context}
       end

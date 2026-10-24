@@ -10,7 +10,7 @@ defmodule CmsHarness.AGateResetHealsStaleDepsTest do
 
   alias CmsHarness.Analysis
   alias CodeMySpec.Promotion.Steps
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   @stale """
   Unchecked dependencies for environment test:
@@ -23,7 +23,7 @@ defmodule CmsHarness.AGateResetHealsStaleDepsTest do
     test = self()
 
     {:ok, env} =
-      InMemoryEnvironment.create(
+      InMemoryExecutionContext.create(
         shell: fn "mix", args, _opts ->
           send(test, {:mix, args})
           answer(args, fetched?)

@@ -48,8 +48,8 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
     component =
       component_fixture(scope, %{name: "Widgets", module_name: "CodeMySpec.Widgets"})
 
-    # No environment: exactly the light harness server's situation.
-    %{scope: put_fixture_environment(scope, nil), component: component}
+    # No execution_context: exactly the light harness server's situation.
+    %{scope: put_fixture_execution_context(scope, nil), component: component}
   end
 
   test "a full sync that could not read a spec does not delete its component", %{
@@ -58,7 +58,7 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
   } do
     unreadable_spec!(scope, ".code_my_spec/spec/code_my_spec/widgets.spec.md")
 
-    ComponentSync.sync_from_files(scope, environment: nil)
+    ComponentSync.sync_from_files(scope, execution_context: nil)
 
     assert Components.get_component(scope, component.id),
            "the component was deleted because a file could not be opened — architecture " <>
@@ -69,11 +69,11 @@ defmodule CodeMySpec.Files.ComponentSyncPruningTest do
     # Refusing outright would take the whole sync down for one bad file. The
     # rule is "do not prune", not "do not sync".
     scope = full_scope_fixture()
-    scope = put_fixture_environment(scope, nil)
+    scope = put_fixture_execution_context(scope, nil)
 
     unreadable_spec!(scope, ".code_my_spec/spec/code_my_spec/anything.spec.md")
 
-    assert {:ok, _} = ComponentSync.sync_from_files(scope, environment: nil)
+    assert {:ok, _} = ComponentSync.sync_from_files(scope, execution_context: nil)
   end
 
   test "a reconcile that removes a file whose module has no component does not raise", %{

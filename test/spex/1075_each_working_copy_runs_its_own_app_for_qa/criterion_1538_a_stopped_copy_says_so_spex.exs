@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
   import Phoenix.ChannelTest
   import CodeMySpecSpex.DeviceHelpers
 
-  alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
 
@@ -41,34 +41,37 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
         # WorkingCopies.record_app_status/2, the same as a real harness's
         # `_result` would.
         ref =
-          Phoenix.ChannelTest.push(context.socket, "ensure_app_running_result", %{
-            "ref" => "unwaited",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => "http://127.0.0.1:51234",
-            "app_commit" => "abc1234"
+          Phoenix.ChannelTest.push(context.socket, "app_status", %{
+            "instance_id" => instance(context).id,
+            "status" => "serving",
+            "url" => "http://127.0.0.1:51234",
+            "commit" => "abc1234"
           })
 
         await_ok(ref)
 
-        {:ok, copy} = WorkingCopies.fetch(context.scope.active_working_copy_id)
-        assert copy.app_status == "serving"
-        assert copy.app_url == "http://127.0.0.1:51234"
+        copy = instance(context)
+        assert copy.status == "serving"
+        assert copy.url == "http://127.0.0.1:51234"
 
         {:ok, context}
       end
 
       when_ "the harness reports the app stopped", context do
-        report(context.socket, "stop_app_result", %{"status" => "ok"})
+        report(context.socket, "app_status", %{
+          "instance_id" => instance(context).id,
+          "status" => "down"
+        })
+
         {:ok, context}
       end
 
       then_ "the copy's row says down, with no address left standing", context do
-        {:ok, copy} = WorkingCopies.fetch(context.scope.active_working_copy_id)
+        copy = instance(context)
 
-        assert copy.app_status == "down"
+        assert copy.status == "down"
 
-        assert copy.app_url == nil,
+        assert copy.url == nil,
                "a stale address on a stopped copy is exactly what this story exists to prevent"
 
         {:ok, context}
@@ -82,15 +85,15 @@ defmodule CodeMySpecSpex.Story1108.Criterion4662Spex do
     socket(UserSocket, "harness_test", %{scope: scope})
     |> subscribe_and_join(HarnessProjectChannel, "harness_project:#{scope.active_project_id}", %{
       "label" => "the harness at /workspace/app",
+      "root" => scope.cwd || "/workspace/app",
       "harness_id" => scope.active_working_copy_id,
       "device" => %{"id" => device_id(context)}
     })
   end
 
-  # A ref no `AppTransport` call is waiting on — `handle_in` still decodes
-  # and persists the report, the same as it would for one tied to a parked
-  # caller. Only the `GenServer.reply/2` half (nothing to reply to here) is
-  # skipped.
+  defp instance(context),
+    do: AppInstances.for_working_copy(context.scope, context.scope.active_working_copy_id)
+
   defp report(socket, event, payload) do
     ref = Phoenix.ChannelTest.push(socket, event, Map.put(payload, "ref", "unwaited"))
     await_ok(ref)

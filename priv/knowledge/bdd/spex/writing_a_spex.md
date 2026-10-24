@@ -192,10 +192,10 @@ than failing when it was wrong.
 ```elixir
 alias <App>.Environments
 
-:ok = Environments.write_file(context.environment, "lib/example_context.ex", contents)
+:ok = ExecutionContexts.write_file(context.environment, "lib/example_context.ex", contents)
 ```
 
-Every file the agent would create must go through `Environments.write_file/3`
+Every file the agent would create must go through `ExecutionContexts.write_file/3`
 against `context.environment`. This is what the memfs interprets, and it's
 what the sync pipeline will pick up when the LiveView sync button runs.
 

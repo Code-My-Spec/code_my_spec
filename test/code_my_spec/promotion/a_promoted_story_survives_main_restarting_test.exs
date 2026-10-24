@@ -17,7 +17,7 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
   defp main_copy(scope, status) do
     {:ok, copy} = WorkingCopies.issue(scope, nil, label: "main", device: device_fixture(scope))
     {:ok, copy} = Staffing.designate_main(scope, copy.id)
-    {:ok, copy} = WorkingCopies.record_preview_status(copy, status)
+    {:ok, _instance} = WorkingCopies.record_preview_status(copy, status)
     copy
   end
 

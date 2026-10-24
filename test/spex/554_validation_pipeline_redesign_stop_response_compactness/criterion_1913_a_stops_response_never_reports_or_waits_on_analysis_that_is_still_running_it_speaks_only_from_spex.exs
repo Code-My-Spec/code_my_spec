@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story554.Criterion1913Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
 
   @impl_path "lib/example_context.ex"
@@ -40,8 +40,8 @@ defmodule CodeMySpecSpex.Story554.Criterion1913Spex do
       given_ :synced_context_component
 
       given_ "the agent writes a failing test file", context do
-        :ok = Environments.write_file(context.environment, @test_path, failing_test())
-        :ok = Environments.write_file(context.environment, @impl_path, impl())
+        :ok = ExecutionContexts.write_file(context.execution_context, @test_path, failing_test())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, impl())
         {:ok, context}
       end
 

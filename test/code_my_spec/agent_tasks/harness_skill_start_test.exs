@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.SkillRouter
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -34,7 +34,7 @@ defmodule CodeMySpec.AgentTasks.HarnessSkillStartTest do
   # The shape a light harness presents: it names the working copy it serves
   # through the registered environment and cannot walk it from here.
   defp harness_scope(scope) do
-    put_fixture_environment(scope, Environment.new(:harness, "/workspace/app"))
+    put_fixture_execution_context(scope, ExecutionContext.new(:harness, "/workspace/app"))
   end
 
   test "/sync says why it did not scan, rather than reporting a clean sync", %{scope: scope} do

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -30,10 +30,10 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
   spex "Publish refuses to run while the snapshot still has parse errors", criterion: 476 do
     scenario "Publish aborts when parse errors remain in the snapshot" do
       given_ "a synced snapshot with one parse-error row", context do
-        env = context.environment
+        env = context.execution_context
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/good.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/good.md", """
           ---
           title: Good
           slug: good
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
           """)
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/broken.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/broken.md", """
           ---
           : : not valid yaml
           ---

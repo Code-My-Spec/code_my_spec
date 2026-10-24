@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1591Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
@@ -69,10 +70,10 @@ defmodule CodeMySpecSpex.Story1030.Criterion1591Spex do
       then_ "nothing was recorded for it", context do
         {:ok, saved} = WorkingCopies.fetch(context.copy_id)
 
-        assert saved.preview_tunnel_id == nil,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_tunnel_id == nil,
                "the copy holds a tunnel id despite being refused one"
 
-        assert saved.preview_url == nil,
+        assert AppInstances.for_working_copy(context.scope, saved.id).preview_url == nil,
                "the copy holds an address despite being refused one"
 
         {:ok, context}

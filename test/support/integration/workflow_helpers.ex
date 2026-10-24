@@ -9,7 +9,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.{Frame, Response}
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects
   alias CodeMySpec.TerminalAgentFixtures
 
@@ -37,7 +37,10 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     }
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(scope, Environment.new(:local, tmp_dir))
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
+        scope,
+        ExecutionContext.new(:local, tmp_dir)
+      )
 
     external_id = "workflow-#{System.unique_integer([:positive])}"
     agent = TerminalAgentFixtures.terminal_agent_fixture(scope, %{engine_session_id: external_id})

@@ -24,9 +24,9 @@ defmodule CodeMySpecSpex.Story597.Criterion5277Spex do
   spex "Integration specs are derived from technical decisions", criterion: 230 do
     scenario "Bootstrap developer with a Twilio ADR sees a prompt that points at the integrations directory" do
       given_ "a Twilio decision record is on disk", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_decision_for_service(context.environment, "twilio")
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_decision_for_service(context.execution_context, "twilio")
         {:ok, context}
       end
 

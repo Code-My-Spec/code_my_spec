@@ -22,7 +22,7 @@ defmodule CodeMySpec.Provisioning.DeployReadinessAppNameTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Steps
 
   describe "mix.exs is readable" do
@@ -30,8 +30,8 @@ defmodule CodeMySpec.Provisioning.DeployReadinessAppNameTest do
       scope = provisioning_scope_fixture(%{module_name: "SomethingStale"})
 
       :ok =
-        Environments.write_file(
-          CodeMySpec.UsersFixtures.fixture_environment(scope),
+        ExecutionContexts.write_file(
+          CodeMySpec.UsersFixtures.fixture_execution_context(scope),
           "mix.exs",
           """
           defmodule MarketMySpec.MixProject do

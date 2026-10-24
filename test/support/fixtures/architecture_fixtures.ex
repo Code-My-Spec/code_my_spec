@@ -17,7 +17,7 @@ defmodule CodeMySpec.ArchitectureFixtures do
   """
 
   alias CodeMySpec.Architecture.Proposal
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Paths
   alias CodeMySpec.Stories
 
@@ -99,7 +99,7 @@ defmodule CodeMySpec.ArchitectureFixtures do
   """
   @spec with_proposal(map(), String.t()) :: :ok
   def with_proposal(env, content) do
-    :ok = Environments.write_file(env, Paths.proposal_path(), content)
+    :ok = ExecutionContexts.write_file(env, Paths.proposal_path(), content)
   end
 
   @doc """
@@ -115,7 +115,7 @@ defmodule CodeMySpec.ArchitectureFixtures do
     app_name = app_name_for(scope)
     working_dir = scope.cwd || (env && env.cwd) || File.cwd!()
 
-    :ok = Environments.write_file(env, Paths.proposal_path(), content)
+    :ok = ExecutionContexts.write_file(env, Paths.proposal_path(), content)
     {:ok, proposal} = Proposal.from_markdown(content, app_name: app_name)
 
     {:ok, proposal} =

@@ -7,7 +7,7 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
   which cannot be copied verbatim — its `run/2` finishes by building
   `%Problems.Problem{}` structs against a `%Users.Scope{}`, and both of those
   are database. What is left once those go is this: build the args, shell out
-  through `Environments`, find the JSON in the output, and return `findings`
+  through `ExecutionContexts`, find the JSON in the output, and return `findings`
   exactly as Sobelow emitted them.
 
   Conversion to Problems stays on the server, where the schema is. See
@@ -24,7 +24,7 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @doc """
   Run Sobelow in `environment` and return its findings.
@@ -37,7 +37,7 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
   not a count or a line reformatted from the parsed findings. See
   `.code_my_spec/rules/analysis_output_fidelity.md`.
   """
-  @spec run(Environments.Environment.t(), keyword()) ::
+  @spec run(ExecutionContexts.ExecutionContext.t(), keyword()) ::
           {:ok, [map()], String.t()} | {:error, String.t()}
   def run(environment, opts \\ []) do
     if available?(environment) do
@@ -50,14 +50,14 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
   @doc """
   Whether Sobelow can run against this working copy at all.
 
-  Through `Environments`, not `File` — see `CredoRun.available?/1`'s doc for
+  Through `ExecutionContexts`, not `File` — see `CredoRun.available?/1`'s doc for
   why: the question is about the `mix` that would actually run, which on a
   remote environment is not this machine's disk.
   """
-  @spec available?(Environments.Environment.t()) :: boolean()
+  @spec available?(ExecutionContexts.ExecutionContext.t()) :: boolean()
   def available?(environment) do
-    Environments.exec_file_exists?(environment, "mix.exs") and
-      Environments.exec_file_exists?(environment, "deps/sobelow")
+    ExecutionContexts.exec_file_exists?(environment, "mix.exs") and
+      ExecutionContexts.exec_file_exists?(environment, "deps/sobelow")
   end
 
   @args ["sobelow", "--format", "json", "--private"]
@@ -65,12 +65,12 @@ defmodule CodeMySpec.StaticAnalysis.SobelowRun do
   defp execute(environment, opts) do
     cmd_opts = [
       stderr_to_stdout: true,
-      env: Keyword.get(opts, :extra_env, []) ++ Environments.clean_otp_env()
+      env: Keyword.get(opts, :extra_env, []) ++ ExecutionContexts.clean_otp_env()
     ]
 
     Logger.info("[SobelowRun] Running: mix #{Enum.join(@args, " ")}")
 
-    case Environments.cmd(environment, "mix", @args, cmd_opts) do
+    case ExecutionContexts.cmd(environment, "mix", @args, cmd_opts) do
       # Sobelow exit codes: 0 = no findings, 1 = findings found. Exit 1 with no
       # output is not "findings found" — see the moduledoc on unreadable
       # output.

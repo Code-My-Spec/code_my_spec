@@ -11,7 +11,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Repo
 
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
       |> Enum.map(&{&1.source_component.module_name, &1.target_component.module_name})
 
   setup do
-    scope = put_fixture_environment(full_scope_fixture(), nil)
+    scope = put_fixture_execution_context(full_scope_fixture(), nil)
 
     accounts =
       component_fixture(scope, %{
@@ -241,7 +241,7 @@ defmodule CodeMySpec.Files.ASyncKeepsComponentsAsRecordsTest do
 
     assert {:ok, _} =
              ComponentSync.sync_from_files(stale_scope,
-               environment: Environment.new(:local, dir)
+               execution_context: ExecutionContext.new(:local, dir)
              )
 
     assert Map.has_key?(by_name(ctx.scope), "MyApp.New")

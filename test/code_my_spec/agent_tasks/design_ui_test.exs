@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.DesignUi
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # ============================================================================
   # Test Helpers
@@ -14,8 +14,8 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
+    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -147,7 +147,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     setup [:create_scope, :create_task]
 
     test "returns ok tuple with prompt text", %{scope: scope, task: task} do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert is_binary(prompt)
@@ -158,7 +158,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "Design System Template"
@@ -168,7 +168,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_template_file(env)
       write_design_system_html(env)
 
@@ -177,7 +177,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     end
 
     test "includes tailwind config when available", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_template_file(env)
       write_tailwind_config(env)
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     end
 
     test "includes core_components reference", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_template_file(env)
       write_core_components(env)
 
@@ -200,7 +200,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "<html" or prompt =~ "<!DOCTYPE" or prompt =~ "section"
@@ -210,7 +210,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
 
@@ -225,7 +225,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "DaisyUI" or prompt =~ "daisyui" or prompt =~ "daisy"
@@ -235,14 +235,14 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ "modify" or prompt =~ "template" or prompt =~ "update"
     end
 
     test "includes project name and description for context", %{scope: scope, task: task} do
-      write_template_file(fixture_environment(scope))
+      write_template_file(fixture_execution_context(scope))
 
       assert {:ok, prompt} = DesignUi.command(scope, task)
       assert prompt =~ scope.active_project.name
@@ -260,7 +260,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_design_system_html(fixture_environment(scope))
+      write_design_system_html(fixture_execution_context(scope))
 
       assert {:ok, :valid} = DesignUi.evaluate(scope, task)
     end
@@ -269,7 +269,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_design_system_html(fixture_environment(scope), html_missing_sections())
+      write_design_system_html(fixture_execution_context(scope), html_missing_sections())
 
       assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
@@ -280,7 +280,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_design_system_html(fixture_environment(scope), html_no_data_theme())
+      write_design_system_html(fixture_execution_context(scope), html_no_data_theme())
 
       assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
@@ -291,7 +291,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
       scope: scope,
       task: task
     } do
-      write_design_system_html(fixture_environment(scope), html_empty_section())
+      write_design_system_html(fixture_execution_context(scope), html_empty_section())
 
       assert {:ok, :invalid, feedback} = DesignUi.evaluate(scope, task)
       assert is_binary(feedback)
@@ -305,7 +305,7 @@ defmodule CodeMySpec.AgentTasks.DesignUiTest do
     end
 
     test "returns error when file cannot be parsed as HTML", %{scope: scope, task: task} do
-      write_file!(fixture_environment(scope), ".code_my_spec/design/design_system.html", "")
+      write_file!(fixture_execution_context(scope), ".code_my_spec/design/design_system.html", "")
 
       result = DesignUi.evaluate(scope, task)
 

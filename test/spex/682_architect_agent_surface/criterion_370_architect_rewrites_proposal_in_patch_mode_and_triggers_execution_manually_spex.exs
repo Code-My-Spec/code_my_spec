@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         proposal = Fixtures.proposal_with_context("MyApp", "Existing", "An existing context")
 
         {:ok, _result} =
-          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+          Fixtures.with_executed_proposal(context.scope, context.execution_context, proposal)
 
         {:ok, Map.put(context, :existing_module, "MyApp.Existing")}
       end
@@ -81,8 +81,8 @@ defmodule CodeMySpecSpex.Story682.Criterion5833Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.proposal_path(),
             proposal
           )

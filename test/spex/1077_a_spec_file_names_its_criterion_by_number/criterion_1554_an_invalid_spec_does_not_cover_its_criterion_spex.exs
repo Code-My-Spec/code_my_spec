@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4678Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -32,8 +32,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4678Spex do
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/story_a/broken_spex.exs",
             broken
           )

@@ -12,7 +12,7 @@ defmodule CodeMySpec.HostTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Host
 
   # A target environment plus a recording runner injected through the `:cmd`
@@ -25,7 +25,7 @@ defmodule CodeMySpec.HostTest do
       result
     end
 
-    environment = %Environment{type: :local, cwd: "/host", ref: %{}}
+    environment = %ExecutionContext{type: :local, cwd: "/host", ref: %{}}
     {environment, runner}
   end
 

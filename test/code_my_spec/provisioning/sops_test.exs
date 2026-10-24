@@ -13,8 +13,8 @@ defmodule CodeMySpec.Provisioning.SopsTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Sops
 
   @moduletag :sops
@@ -32,7 +32,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
 
   defp build_context(context, true) do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    env = Environment.new(:local, tmp)
+    env = ExecutionContext.new(:local, tmp)
 
     {:ok, {uat_pub, uat_priv}} = Sops.generate_key()
     {:ok, {prod_pub, prod_priv}} = Sops.generate_key()
@@ -67,7 +67,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
     test "is ciphertext in the file, and plaintext nowhere in the tree", ctx do
       :ok = Sops.put_secret(ctx.env, "prod", "RESEND_API_KEY", "re_live_plaintext", ctx.prod.priv)
 
-      {:ok, contents} = Environments.read_file(ctx.env, "envs/prod.enc.env")
+      {:ok, contents} = ExecutionContexts.read_file(ctx.env, "envs/prod.enc.env")
 
       # Anchor: the key name IS present, so the refute below is not passing
       # against an empty or absent file.
@@ -148,7 +148,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
     # page as a raw `{:sops_failed, 100, ...}` tuple on the first deploy of
     # every project.
     test "counts everything as missing when the file does not exist yet", ctx do
-      refute Environments.file_exists?(ctx.env, "envs/prod.enc.env"),
+      refute ExecutionContexts.file_exists?(ctx.env, "envs/prod.enc.env"),
              "this test is meaningless if something already created the file"
 
       assert {:ok, ["DATABASE_URL", "SECRET_KEY_BASE"]} =
@@ -167,7 +167,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
     # {:sops_failed, 1, ...} error instead of "everything is missing".
     test "counts everything as missing when the file exists but was never encrypted", ctx do
       :ok =
-        Environments.write_file(
+        ExecutionContexts.write_file(
           ctx.env,
           "envs/prod.enc.env",
           "# prod secrets for this project, encrypted with sops.\n# This file is scaffolding and holds no values yet.\n"
@@ -183,7 +183,7 @@ defmodule CodeMySpec.Provisioning.SopsTest do
 
   describe "write_config/2" do
     test "maps each environment to its own recipient", ctx do
-      {:ok, yaml} = Environments.read_file(ctx.env, ".sops.yaml")
+      {:ok, yaml} = ExecutionContexts.read_file(ctx.env, ".sops.yaml")
 
       # Dots are escaped because the field is a path_regex, not a path.
       assert yaml =~ ~S(envs/uat\.enc\.env$)

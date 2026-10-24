@@ -14,10 +14,10 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposalTest do
   alias CodeMySpec.ToolLibrary
 
   import CodeMySpec.ComponentsFixtures
-  import CodeMySpec.UsersFixtures, only: [full_scope_fixture: 0, put_fixture_environment: 2]
+  import CodeMySpec.UsersFixtures, only: [full_scope_fixture: 0, put_fixture_execution_context: 2]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Paths
   alias CodeMySpec.Projects
   alias Ecto.Adapters.SQL.Sandbox
@@ -92,7 +92,7 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposalTest do
     # Same shape `create_component` uses when it cannot write: hand back the
     # content rather than reporting success over a file that does not exist.
     test "returns the content inline when it cannot write" do
-      scope = full_scope_fixture() |> put_fixture_environment(nil)
+      scope = full_scope_fixture() |> put_fixture_execution_context(nil)
 
       response = run(scope, %{confirm: true})
       assert response_text(response) =~ "Not Written"
@@ -109,10 +109,10 @@ defmodule CodeMySpec.Architecture.Tools.RegenerateProposalTest do
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
-    env = Environment.new(:local, tmp_dir)
-    scope = %{scope | active_project: project} |> put_fixture_environment(env)
+    env = ExecutionContext.new(:local, tmp_dir)
+    scope = %{scope | active_project: project} |> put_fixture_execution_context(env)
 
-    Environments.ensure_dir(env, Path.dirname(Paths.proposal_path()))
+    ExecutionContexts.ensure_dir(env, Path.dirname(Paths.proposal_path()))
 
     {scope, tmp_dir}
   end

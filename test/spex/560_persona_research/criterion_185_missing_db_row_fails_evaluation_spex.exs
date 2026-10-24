@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5142Spex do
   alias CodeMySpec.ToolLibrary
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -21,15 +21,15 @@ defmodule CodeMySpecSpex.Story560.Criterion5142Spex do
     scenario "stop hook blocks because no persona is linked to the project" do
       given_ "files for an orphan slug are written to disk", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/orphan/summary.md",
             "# Orphan\n\n## Role\nOrphan.\n\n## Goals\nNone.\n\n## Pain Points\nNone.\n\n## Context\nNone.\n\n## Decision Drivers\nNone.\n\n## Evidence\nNone.\n"
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/orphan/sources.md",
             "- https://example.com — Source — 2026-04-23\n"
           )

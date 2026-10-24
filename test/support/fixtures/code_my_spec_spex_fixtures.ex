@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Conversations,
       CodeMySpec.Deploys,
       CodeMySpec.Devices,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Epics,
       CodeMySpec.Events,
       CodeMySpec.Faults,
@@ -86,6 +86,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Utils,
       CodeMySpec.Validation,
       CodeMySpec.WorkingCopies,
+      CodeMySpec.AppInstances,
       CodeMySpec.Workspaces,
       CodeMySpecTest,
       CodeMySpecWeb
@@ -101,8 +102,8 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeGenerationFixtures,
     Components,
     EmbeddingsFixtures,
-    EnvironmentFixtures,
-    Environments,
+    ExecutionContextFixtures,
+    ExecutionContexts,
     IntegrationsFixtures,
     IssuesFixtures,
     Notifications,
@@ -1337,17 +1338,17 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defdelegate mark_cli_first_connected(user), to: UsersFixtures
 
-  # -- Environments --
-  defdelegate fixture_environment(scope), to: UsersFixtures
-  defdelegate put_fixture_environment(scope, env), to: UsersFixtures
+  # -- Execution contexts --
+  defdelegate fixture_execution_context(scope), to: UsersFixtures
+  defdelegate put_fixture_execution_context(scope, env), to: UsersFixtures
 
-  defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
-  defdelegate local_environment_fixture(opts \\ []), to: EnvironmentFixtures
-  defdelegate register_environment(project_id, env), to: Environments, as: :register
-  defdelegate unregister_environment(project_id), to: Environments, as: :unregister
+  defdelegate memory_execution_context_fixture(opts \\ []), to: ExecutionContextFixtures
+  defdelegate local_execution_context_fixture(opts \\ []), to: ExecutionContextFixtures
+  defdelegate register_environment(project_id, env), to: ExecutionContexts, as: :register
+  defdelegate unregister_environment(project_id), to: ExecutionContexts, as: :unregister
 
   @doc "Write a file into an environment — a premise the checkout starts from."
-  defdelegate write_file(env, path, contents), to: Environments
+  defdelegate write_file(env, path, contents), to: ExecutionContexts
 
   @doc "The project as the database has it, for a premise set after the fixture."
   def reload_project(project), do: CodeMySpec.Repo.get!(project.__struct__, project.id)
@@ -1488,8 +1489,8 @@ defmodule CodeMySpecSpex.Fixtures do
     # `components_deleted=1` and `ComponentSync` upserted it back in the same
     # request. Correct behaviour on a false premise, and it made every scenario
     # here read as though reclaiming did nothing.
-    {:ok, env} = Environments.create(:memory, working_dir: root)
-    :ok = Environments.register({:root, root}, env)
+    {:ok, env} = ExecutionContexts.create(:memory, working_dir: root)
+    :ok = ExecutionContexts.register({:root, root}, env)
 
     %{scope | active_working_copy_id: harness.id, cwd: root}
   end
@@ -1521,8 +1522,8 @@ defmodule CodeMySpecSpex.Fixtures do
     # disk, and what the server reads back goes over the wire.
     observed_env =
       case Keyword.get(opts, :observe_in) do
-        nil -> UsersFixtures.fixture_environment(scope)
-        dir -> CodeMySpec.Environments.Environment.new(:local, dir)
+        nil -> UsersFixtures.fixture_execution_context(scope)
+        dir -> CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, dir)
       end
 
     {:ok, entries} = Scanner.observe(observed_env, read_model)
@@ -1649,15 +1650,17 @@ defmodule CodeMySpecSpex.Fixtures do
   1117: the old model, recorded on the copy itself.
   """
   @spec record_project_tunnel(Scope.t(), Ecto.UUID.t(), map()) :: :ok
-  def record_project_tunnel(%Scope{} = _scope, working_copy_id, %{
+  def record_project_tunnel(%Scope{} = scope, working_copy_id, %{
         tunnel_id: id,
         tunnel_secret: secret
       }) do
     {:ok, copy} = WorkingCopies.fetch(working_copy_id)
 
-    {:ok, _copy} =
-      WorkingCopies.record_preview_tunnel(copy, %{
-        preview_url: PreviewAddress.url(copy.id),
+    {:ok, instance} = CodeMySpec.AppInstances.ensure_default(scope, copy)
+
+    {:ok, _instance} =
+      CodeMySpec.AppInstances.record_preview_tunnel(scope, instance, %{
+        preview_url: PreviewAddress.url(instance.id),
         preview_tunnel_id: id,
         preview_tunnel_secret: secret
       })
@@ -2970,7 +2973,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
-    do: Scanner.unclassified(UsersFixtures.fixture_environment(scope))
+    do: Scanner.unclassified(UsersFixtures.fixture_execution_context(scope))
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -4180,12 +4183,15 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec add_phoenix_project_shape(Scope.t()) :: :ok
   def add_phoenix_project_shape(%Scope{} = scope),
-    do: add_phoenix_project_shape(%{environment: UsersFixtures.fixture_environment(scope)})
+    do:
+      add_phoenix_project_shape(%{
+        execution_context: UsersFixtures.fixture_execution_context(scope)
+      })
 
-  def add_phoenix_project_shape(%{environment: env}) do
-    :ok = Environments.write_file(env, "mix.exs", "# stub for PhoenixProject.evaluate\n")
-    :ok = Environments.write_file(env, "lib/.gitkeep", "")
-    :ok = Environments.write_file(env, "config/.gitkeep", "")
+  def add_phoenix_project_shape(%{execution_context: env}) do
+    :ok = ExecutionContexts.write_file(env, "mix.exs", "# stub for PhoenixProject.evaluate\n")
+    :ok = ExecutionContexts.write_file(env, "lib/.gitkeep", "")
+    :ok = ExecutionContexts.write_file(env, "config/.gitkeep", "")
     :ok
   end
 
@@ -4199,10 +4205,10 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec remove_mix_exs(Scope.t()) :: :ok
   def remove_mix_exs(%Scope{} = scope),
-    do: remove_mix_exs(%{environment: UsersFixtures.fixture_environment(scope)})
+    do: remove_mix_exs(%{execution_context: UsersFixtures.fixture_execution_context(scope)})
 
-  def remove_mix_exs(%{environment: env}) do
-    :ok = Environments.delete_file(env, "mix.exs")
+  def remove_mix_exs(%{execution_context: env}) do
+    :ok = ExecutionContexts.delete_file(env, "mix.exs")
     :ok
   end
 
@@ -5204,8 +5210,8 @@ defmodule CodeMySpecSpex.Fixtures do
     |> then(&Steps.run(key, scope, &1))
   end
 
-  @doc "Write a file into an environment (bridge to Environments)."
-  def write_env_file(env, path, content), do: Environments.write_file(env, path, content)
+  @doc "Write a file into an environment (bridge to ExecutionContexts)."
+  def write_env_file(env, path, content), do: ExecutionContexts.write_file(env, path, content)
 
   @doc """
   Remove a file through the scope's environment.
@@ -5215,10 +5221,10 @@ defmodule CodeMySpecSpex.Fixtures do
   `c23f4427`), and components are projections of files, so a component stops
   existing when nothing names its module any more.
   """
-  def delete_env_file(env, path), do: Environments.delete_file(env, path)
+  def delete_env_file(env, path), do: ExecutionContexts.delete_file(env, path)
 
-  @doc "Run a command in an environment (bridge to Environments)."
-  def env_cmd(env, command, args), do: Environments.cmd(env, command, args)
+  @doc "Run a command in an environment (bridge to ExecutionContexts)."
+  def env_cmd(env, command, args), do: ExecutionContexts.cmd(env, command, args)
 
   def set_code_repo(project, url) do
     project
@@ -6157,7 +6163,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defp sync_ledger(scope) do
-    case WorkingCopies.environment(scope) do
+    case WorkingCopies.execution_context(scope) do
       %{type: :harness} ->
         :ok
 
@@ -6169,13 +6175,13 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc """
   The scope on `copy_id`, with that copy reading the fixture's in-memory
-  runtime (`context.environment`) rather than a checkout. For a spex that joins
+  runtime (`context.execution_context`) rather than a checkout. For a spex that joins
   a copy and keeps its files in memory.
   """
   @spec in_memory_copy(map(), Ecto.UUID.t()) :: Scope.t()
-  def in_memory_copy(%{scope: scope, environment: env}, copy_id) do
-    :ok = Environments.unregister({:working_copy, copy_id})
-    :ok = Environments.register({:working_copy, copy_id}, env)
+  def in_memory_copy(%{scope: scope, execution_context: env}, copy_id) do
+    :ok = ExecutionContexts.unregister({:working_copy, copy_id})
+    :ok = ExecutionContexts.register({:working_copy, copy_id}, env)
     %{scope | active_working_copy_id: copy_id}
   end
 
@@ -6232,11 +6238,11 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   defp at_head(%Scope{active_working_copy_id: id} = scope, opts) do
-    env = WorkingCopies.environment(scope)
+    env = WorkingCopies.execution_context(scope)
 
     if Keyword.get(opts, :at_head, false) do
       {:ok, %{root: root}} = CodeMySpec.WorkingCopies.fetch(id)
-      {sha, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"], cd: root)
+      {sha, 0} = ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD"], cd: root)
       [commit: String.trim(sha)]
     else
       []

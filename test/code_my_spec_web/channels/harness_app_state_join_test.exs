@@ -1,6 +1,6 @@
 defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
   @moduledoc """
-  Issue 00bd7d4a, story 1046: `working_copies.app_commit` converges on what the
+  Issue 00bd7d4a, story 1046: `working_copies.commit` converges on what the
   harness's own `state.json` says after any restart.
 
   A restart's result reaches the server as a channel reply or push, and a
@@ -28,6 +28,7 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
@@ -43,8 +44,9 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
       Map.merge(
         %{
           "label" => "the harness at /workspace/app",
+          "root" => scope.cwd,
           "harness_id" => scope.active_working_copy_id,
-          "device" => %{"id" => device_fixture(scope).id}
+          "device" => %{"id" => copy_device(scope)}
         },
         extra
       )
@@ -53,10 +55,12 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
     |> subscribe_and_join(HarnessProjectChannel, topic, payload)
   end
 
-  defp copy(scope) do
+  defp copy_device(scope) do
     {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
-    copy
+    copy.device_id || device_fixture(scope).id
   end
+
+  defp instance(scope), do: AppInstances.for_working_copy(scope, scope.active_working_copy_id)
 
   test "a join records the app the harness says it is running", ctx do
     {:ok, _, _} =
@@ -68,10 +72,10 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
         }
       })
 
-    recorded = copy(ctx.scope)
+    recorded = instance(ctx.scope)
 
-    assert recorded.app_commit == "aaaa1111"
-    assert recorded.app_status == "serving"
+    assert recorded.commit == "aaaa1111"
+    assert recorded.status == "serving"
   end
 
   test "a later join corrects a commit the server still held", ctx do
@@ -80,7 +84,7 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
         "app" => %{"status" => "serving", "commit" => "c3eb20b", "url" => "http://127.0.0.1:4000"}
       })
 
-    assert copy(ctx.scope).app_commit == "c3eb20b"
+    assert instance(ctx.scope).commit == "c3eb20b"
     leave_and_wait(first)
 
     # The restart's result never reached the server; the harness comes back and
@@ -90,7 +94,7 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
         "app" => %{"status" => "serving", "commit" => "59dc451", "url" => "http://127.0.0.1:4000"}
       })
 
-    assert copy(ctx.scope).app_commit == "59dc451",
+    assert instance(ctx.scope).commit == "59dc451",
            "the server kept the commit the app was not running, which is the state " <>
              "promotion now keys on"
   end
@@ -105,7 +109,7 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
 
     assert {:ok, _, _} = join_reporting(ctx.scope, ctx.topic, %{})
 
-    assert copy(ctx.scope).app_commit == "aaaa1111",
+    assert instance(ctx.scope).commit == "aaaa1111",
            "an older harness sends nothing, and 'not reported' is not 'the app is down'. " <>
              "Clearing here would take a serving copy off the graph for a field it does not know."
   end
@@ -127,8 +131,8 @@ defmodule CodeMySpecWeb.HarnessAppStateJoinTest do
         "app" => %{"status" => "down", "commit" => "aaaa1111"}
       })
 
-    assert copy(ctx.scope).app_status == "down"
-    assert copy(ctx.scope).app_url == nil
+    assert instance(ctx.scope).status == "down"
+    assert instance(ctx.scope).url == nil
   end
 
   # The lease is the channel, so a second join of the same working copy has to

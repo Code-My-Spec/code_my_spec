@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8188Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -35,7 +35,13 @@ defmodule CodeMySpecSpex.Story987.Criterion8188Spex do
       end
 
       when_ "the agent writes the QA plan and the harness delivers its manifest", context do
-        :ok = Environments.write_file(context.environment, Fixtures.qa_plan_path(), qa_plan())
+        :ok =
+          ExecutionContexts.write_file(
+            context.execution_context,
+            Fixtures.qa_plan_path(),
+            qa_plan()
+          )
+
         Fixtures.deliver_manifest(context.scope)
         {:ok, context}
       end

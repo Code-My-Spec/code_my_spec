@@ -5,7 +5,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluatorTest do
   The stop hook returned exactly `Error: :no_environment` and nothing else — no
   task, no requirement, no working copy, no action. The turn was blocked with
   nothing in the message to act on, which is the whole of the defect: the atom
-  itself is the intended reply from `Environments` when a scope has no working
+  itself is the intended reply from `ExecutionContexts` when a scope has no working
   copy, and under a light harness that is the steady state rather than an edge
   case.
   """

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
     scenario "test file deleted while watcher offline is reaped after the next sync" do
       given_ "the agent has written an impl + test pair and the engineer has synced",
              context do
-        :ok = Environments.write_file(context.environment, @impl_path, impl_content())
-        :ok = Environments.write_file(context.environment, @test_path, test_content())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, impl_content())
+        :ok = ExecutionContexts.write_file(context.execution_context, @test_path, test_content())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
 
       when_ "the test file vanishes from disk (watcher missed it) and the engineer re-syncs",
             context do
-        :ok = Environments.delete_file(context.environment, @test_path)
+        :ok = ExecutionContexts.delete_file(context.execution_context, @test_path)
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

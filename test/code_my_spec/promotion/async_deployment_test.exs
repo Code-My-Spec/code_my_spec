@@ -24,8 +24,8 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
@@ -93,7 +93,7 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
   end
 
   # `Promotion.Runner.restart/3` now asks the running copy's own harness to
-  # restart its app through `WorkingCopies.AppTransport.restart_app/2` —
+  # restart its app through `AppInstances.restart/3` —
   # the same channel verb every working copy's app already answers to,
   # rather than shelling `just restart` in `running_root` directly. So the
   # thing standing in for "the harness" here is a process registered in
@@ -141,9 +141,9 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     {:ok, running} = WorkingCopies.report_root(running, running_root)
 
     :ok =
-      Environments.register(
+      ExecutionContexts.register(
         {:working_copy, running.id},
-        Environment.new(:local, running_root)
+        ExecutionContext.new(:local, running_root)
       )
 
     a_running_harness_for(running.id, running_root)
@@ -157,9 +157,9 @@ defmodule CodeMySpec.Promotion.AsyncDeploymentTest do
     {:ok, agent} = WorkingCopies.report_root(agent, agent_root)
 
     :ok =
-      Environments.register(
+      ExecutionContexts.register(
         {:working_copy, agent.id},
-        Environment.new(:local, agent_root)
+        ExecutionContext.new(:local, agent_root)
       )
 
     File.write!(

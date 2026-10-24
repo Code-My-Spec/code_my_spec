@@ -22,8 +22,8 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.McpServers.Promotion.Tools.Promote
   alias CodeMySpec.PromotionQueue.Worker
@@ -94,9 +94,9 @@ defmodule CodeMySpec.Promotion.AConfirmedRestartReachesTheAgentTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      Environments.register(
+      ExecutionContexts.register(
         {:working_copy, copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     copy

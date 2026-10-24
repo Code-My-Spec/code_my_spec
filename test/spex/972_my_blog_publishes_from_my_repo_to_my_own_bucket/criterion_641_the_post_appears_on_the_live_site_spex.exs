@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -39,8 +39,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
       # covering two things while covering one.
       given_ "Sam has written a post in his repo", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "content/posts/hello.md",
             "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )

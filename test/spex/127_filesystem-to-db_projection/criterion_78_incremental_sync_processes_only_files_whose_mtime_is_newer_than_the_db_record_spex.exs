@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
 
   @impl_a "lib/alpha.ex"
@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
     scenario "edited file advances; unchanged sibling's projection row is untouched" do
       given_ "the agent has written two impl files and the engineer has full-synced",
              context do
-        :ok = Environments.write_file(context.environment, @impl_a, impl_a_v1())
-        :ok = Environments.write_file(context.environment, @impl_b, impl_b())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_a, impl_a_v1())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_b, impl_b())
 
         # Establish the live harness here, before anything snapshots a mtime.
         # Joining already does the full sync this needs: the harness's own
@@ -64,10 +64,10 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
       when_ "the agent edits alpha and the stop hook fires (freestyle, no session)",
             context do
         # mtime resolves to the whole second everywhere in this system
-        # (environments_behaviour.ex:83); without a gap, this edit and the
+        # (execution_contexts_behaviour.ex:83); without a gap, this edit and the
         # baseline above can land in the same second and look unchanged.
         Process.sleep(1_000)
-        :ok = Environments.write_file(context.environment, @impl_a, impl_a_v2())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_a, impl_a_v2())
         HarnessHooks.write_file(context, @impl_a, impl_a_v2())
 
         # A stop starts no analysis, so there is nothing to cassette.

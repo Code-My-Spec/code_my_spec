@@ -5,20 +5,20 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaJourney
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   # ============================================================================
   # Test Helpers
   # ============================================================================
 
   defp create_scope(_context) do
-    {:ok, env} = InMemoryEnvironment.create()
-    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
+    {:ok, env} = InMemoryExecutionContext.create()
+    on_exit(fn -> InMemoryExecutionContext.destroy(env) end)
 
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, env)
-    :ok = register_working_copy_environment(scope, env)
+    scope = put_fixture_execution_context(scope, env)
+    :ok = register_working_copy_execution_context(scope, env)
     %{scope: scope, tmp_dir: env.cwd}
   end
 
@@ -30,7 +30,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
   # Through the environment the code under test reads from. Writing to disk here
   # would be seeding a filesystem `QaJourney` never looks at.
   defp write_file!(env, relative_path, content) do
-    :ok = Environments.write_file(env, relative_path, content)
+    :ok = ExecutionContexts.write_file(env, relative_path, content)
   end
 
   # ============================================================================
@@ -63,7 +63,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "marks phase 1 as SKIP when journey plan exists", %{scope: scope, task: task} do
-      write_file!(fixture_environment(scope), ".code_my_spec/qa/journey_plan.md", """
+      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/journey_plan.md", """
       # Journey Plan
       ## Journeys
       ### Registration Flow
@@ -76,7 +76,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "marks phase 2 as SKIP when journey result exists", %{scope: scope, task: task} do
-      write_file!(fixture_environment(scope), ".code_my_spec/qa/journey_result.md", """
+      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/journey_result.md", """
       # Journey Result
       ## Status
       pass
@@ -89,7 +89,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "references QA plan path when it exists", %{scope: scope, task: task} do
-      write_file!(fixture_environment(scope), ".code_my_spec/qa/plan.md", """
+      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/plan.md", """
       # QA Plan
       ## App Overview
       Phoenix app on port 4000.
@@ -110,7 +110,7 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     end
 
     test "notes existing journey tests when present", %{scope: scope, task: task} do
-      write_file!(fixture_environment(scope), "test/journeys/registration_test.exs", """
+      write_file!(fixture_execution_context(scope), "test/journeys/registration_test.exs", """
       defmodule MyAppWeb.Journeys.RegistrationTest do
         use MyAppWeb.FeatureCase, async: true
       end

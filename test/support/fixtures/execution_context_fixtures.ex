@@ -1,0 +1,75 @@
+defmodule CodeMySpec.ExecutionContextFixtures do
+  @moduledoc """
+  Test helpers for creating ExecutionContext instances.
+
+  Execution contexts are created via the `CodeMySpec.ExecutionContexts` context so the
+  real dispatcher is exercised. Each fixture returns a fully-initialized
+  `%ExecutionContexts.ExecutionContext{}` struct ready to be attached to a scope.
+  """
+
+  alias CodeMySpec.ExecutionContexts
+
+  @doc """
+  Generate an in-memory environment for tests.
+
+  Each call creates a fresh `:memory` environment backed by its own Agent
+  with a unique `working_dir` under `/memfs/`. Nothing touches the real
+  filesystem — all reads/writes go through the Agent's state.
+
+  ## Options
+
+  - `:working_dir` — override the default unique `/memfs/env-N` path. Pass
+    the same value across multiple calls to share state (rare — usually
+    tests want isolation).
+  - `:metadata` — arbitrary map stored on the env for test bookkeeping.
+  - `:shell_module` — a module shaped like `CodeMySpecSpex.Fakes.Shell`
+    (`cmd(env, command, args, opts)`) to model this environment's shell with.
+    Scoped to the returned env, not global — two concurrent tests can each
+    pass their own (or none) without one resetting the other's.
+
+  ## Examples
+
+      iex> env = memory_execution_context_fixture()
+      iex> env.type
+      :memory
+
+      iex> env = memory_execution_context_fixture(working_dir: "/memfs/my-test")
+      iex> env.cwd
+      "/memfs/my-test"
+  """
+  @spec memory_execution_context_fixture(keyword()) :: ExecutionContexts.ExecutionContext.t()
+  def memory_execution_context_fixture(opts \\ []) do
+    working_dir =
+      Keyword.get(opts, :working_dir, "/memfs/env-#{System.unique_integer([:positive])}")
+
+    {:ok, env} =
+      ExecutionContexts.create(:memory,
+        working_dir: working_dir,
+        metadata: Keyword.get(opts, :metadata, %{}),
+        shell_module: Keyword.get(opts, :shell_module)
+      )
+
+    env
+  end
+
+  @doc """
+  A `:local` environment rooted at a real directory.
+
+  For the spex whose subject is a real subprocess. `sops` and `age` are
+  binaries: they read and write actual files, and a memory environment is
+  invisible to them — the encrypt appeared to succeed and the file it was
+  supposed to write was never there.
+  """
+  @spec local_execution_context_fixture(keyword()) :: ExecutionContexts.ExecutionContext.t()
+  def local_execution_context_fixture(opts \\ []) do
+    working_dir =
+      Keyword.get_lazy(opts, :working_dir, fn ->
+        dir = CodeMySpec.TempFile.dir("spex-local")
+        File.mkdir_p!(dir)
+        dir
+      end)
+
+    {:ok, env} = ExecutionContexts.create(:local, working_dir: working_dir)
+    env
+  end
+end

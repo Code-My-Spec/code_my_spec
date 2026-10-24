@@ -18,7 +18,7 @@ defmodule CodeMySpec.Files.Scanner do
 
   alias CodeMySpec.BddSpecs.ContentCheck
   alias CodeMySpec.Documents
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.ComponentExtract
   alias CodeMySpec.Files.DependencyEvidence
   alias CodeMySpec.Paths
@@ -104,7 +104,8 @@ defmodule CodeMySpec.Files.Scanner do
   which a caller cannot tell from an empty working copy and would answer by
   deleting every row.
   """
-  @spec observe(Environments.Environment.t(), ReadModel.t()) :: {:ok, [map()]} | {:error, term()}
+  @spec observe(ExecutionContexts.ExecutionContext.t(), ReadModel.t()) ::
+          {:ok, [map()]} | {:error, term()}
   def observe(env, %ReadModel{} = read_model) do
     case stream_files(env) do
       {:error, reason} ->
@@ -132,10 +133,10 @@ defmodule CodeMySpec.Files.Scanner do
   the point is that "cannot see my file" and "chose not to track it" stop
   looking the same.
   """
-  @spec unclassified(Environments.Environment.t()) :: [String.t()]
+  @spec unclassified(ExecutionContexts.ExecutionContext.t()) :: [String.t()]
   def unclassified(env) do
     env
-    |> Environments.stream_files(@sync_roots)
+    |> ExecutionContexts.stream_files(@sync_roots)
     |> Stream.filter(&(classify(&1) == nil))
     |> Enum.to_list()
   end
@@ -145,7 +146,7 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   defp add_fingerprint(env, entry) do
-    case Environments.read_file(env, entry.path) do
+    case ExecutionContexts.read_file(env, entry.path) do
       {:ok, content} ->
         entry
         |> Map.put(:fingerprint, fingerprint(content))
@@ -177,9 +178,10 @@ defmodule CodeMySpec.Files.Scanner do
   not walk a working copy. Same contract as `observe/2`: the refusal must stay
   distinguishable from an empty tree.
   """
-  @spec stream_files(Environments.Environment.t()) :: {:ok, Enumerable.t()} | {:error, term()}
+  @spec stream_files(ExecutionContexts.ExecutionContext.t()) ::
+          {:ok, Enumerable.t()} | {:error, term()}
   def stream_files(env) do
-    case Environments.stream_files(env, @sync_roots) do
+    case ExecutionContexts.stream_files(env, @sync_roots) do
       {:error, reason} -> {:error, reason}
       stream -> {:ok, classified(stream, env)}
     end
@@ -207,7 +209,7 @@ defmodule CodeMySpec.Files.Scanner do
   # hold no working copy. Only the verdict travels; `ContentCheck` is pure so it
   # runs without a database or shipping content.
   def validate_entry(%{role: :bdd_spec} = entry, env, _component_by_id, _strict?) do
-    case Environments.read_file(env, entry.path) do
+    case ExecutionContexts.read_file(env, entry.path) do
       {:ok, content} ->
         case ContentCheck.check(content, entry.path) do
           # The number rides in `data`, as `module_name` does for
@@ -294,7 +296,7 @@ defmodule CodeMySpec.Files.Scanner do
     # whether it is an Ecto schema (the one type fact read from an
     # implementation — see `ComponentExtract.ecto_schema?/1`), so
     # `ComponentSync` never re-opens the file.
-    case Environments.read_file(env, entry.path) do
+    case ExecutionContexts.read_file(env, entry.path) do
       {:ok, content} ->
         Map.merge(entry, %{
           valid: true,
@@ -483,7 +485,7 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   defp validate_setup_file(entry, env, validator) do
-    case Environments.read_file(env, entry.path) do
+    case ExecutionContexts.read_file(env, entry.path) do
       {:ok, content} ->
         %{errors: errors, data: data} = validator.(content)
         all_pass? = Enum.all?(errors, fn {_, v} -> is_nil(v) end)
@@ -905,7 +907,7 @@ defmodule CodeMySpec.Files.Scanner do
 
   @doc "Stat a file for mtime and size. Returns entry map or nil if file doesn't exist."
   def stat_file(env, path, role) do
-    case Environments.stat(env, path) do
+    case ExecutionContexts.stat(env, path) do
       {:ok, %{mtime: mtime, size: size}} ->
         %{path: path, role: role, mtime: mtime, size: size}
 

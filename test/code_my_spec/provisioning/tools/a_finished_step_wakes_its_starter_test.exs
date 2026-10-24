@@ -13,7 +13,7 @@ defmodule CodeMySpec.Provisioning.Tools.AFinishedStepWakesItsStarterTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Provisioning.Tools.AFinishedStepWakesItsStarterTest do
     working_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = full_scope_fixture()
     RecordingAgentTransport.listen(scope)
-    scope = put_fixture_environment(scope, Environment.new(:local, working_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, working_dir))
     {:ok, _} = Projects.update_project(scope, scope.active_project, %{domain: "example.com"})
 
     {:ok, agent} =

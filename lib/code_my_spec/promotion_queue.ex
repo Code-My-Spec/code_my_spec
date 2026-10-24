@@ -481,7 +481,7 @@ defmodule CodeMySpec.PromotionQueue do
 
   # A clean, committed checkout, read where it lives.
   defp clean_head(scope, copy) do
-    environment = WorkingCopies.environment(%{scope | active_working_copy_id: copy.id})
+    environment = WorkingCopies.execution_context(%{scope | active_working_copy_id: copy.id})
 
     case Runner.precheck(environment, copy.root, copy.id, nil) do
       {:ok, %{head: head}} when is_binary(head) -> {:ok, head}

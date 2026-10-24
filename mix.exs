@@ -234,7 +234,7 @@ defmodule CodeMySpec.MixProject do
       # `cms_gen.*` reference in this repo is a string — prompt text in
       # `AgentTasks.CodeGeneration`, the scaffold script, docs — and the one
       # place that shells a generator (`Provisioning.Widget`) runs it through
-      # `Environments.cmd/4` in the *provisioned* project, which carries its
+      # `ExecutionContexts.cmd/4` in the *provisioned* project, which carries its
       # own copy. Depending on it here bought nothing and dragged the whole
       # web stack forward on every resolve.
 

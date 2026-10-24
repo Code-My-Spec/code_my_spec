@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6245Spex do
   a non-zero file count and a component count.
 
   Surface: `SyncProject` MCP tool. Files are seeded via
-  `Environments.write_file/3` against the test scope's memory
+  `ExecutionContexts.write_file/3` against the test scope's memory
   environment — the same surface other sync tests (story 127) use.
   """
 
@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6245Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/example_bootstrap.ex"
 
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6245Spex do
     criterion: 459 do
     scenario "Sync against a populated working directory returns a file and component summary" do
       given_ "the working directory has at least one tracked source file under lib/", context do
-        :ok = Environments.write_file(context.environment, @impl_path, impl_content())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, impl_content())
         {:ok, context}
       end
 

@@ -150,7 +150,7 @@ defmodule CodeMySpec.SpexGivensTest do
   #     for. `Fixtures.` is here on the same grounds.
   #   * `CriterionScript.` — drives the story and criterion tools by name
   #     through `run_script`, as an agent does. Same grounds as `StoryHelpers.`.
-  #   * `Artifacts.` — writes through the `Environments` seam, which is listed
+  #   * `Artifacts.` — writes through the `ExecutionContexts` seam, which is listed
   #     one line up, so listing the wrapper and not the wrapped was arbitrary.
   #   * `story_for` — story 460's local wrapper around
   #     `StoryHelpers.create_and_link/3`.
@@ -233,7 +233,7 @@ defmodule CodeMySpec.SpexGivensTest do
   # `Slice.` is `CodeMySpecSpex.StorySliceHelpers`, and its whole surface drives:
   # `base/1` selects a story through `SetActiveStory.execute/2`, `child/2`,
   # `missing/2` and `implement/2` write and delete real files through
-  # `Environments` and re-sync, and `waiting/2` creates and links a story through
+  # `ExecutionContexts` and re-sync, and `waiting/2` creates and links a story through
   # `StoryHelpers` and assigns it through the epic tools. A story-slice criterion
   # whose premise is "a story whose component has no implementation yet" has no
   # other way to say it.
@@ -295,7 +295,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stage_servers
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
-    connect_providers tear_down_after Environments. File.write File.mkdir
+    connect_providers tear_down_after ExecutionContexts. File.write File.mkdir
     assign put_session seed_cookies
     StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on

@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4677Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecWeb.HarnessProjectChannel
@@ -42,8 +42,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4677Spex do
         copy_b = reply["harness_id"] || reply[:working_copy_id]
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "test/spex/story_a/a_thing_happens_spex.exs",
             CriterionScript.spex_naming(number)
           )

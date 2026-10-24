@@ -9,7 +9,7 @@ defmodule CodeMySpec.Promotion.AConflictingCandidateLeavesNoMergeBehindTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Steps
 
   setup do
@@ -42,7 +42,7 @@ defmodule CodeMySpec.Promotion.AConflictingCandidateLeavesNoMergeBehindTest do
     candidate = diverge(root, base, "candidate\n", String.duplicate("a", 40))
     main = diverge(root, base, "main\n", String.duplicate("b", 40))
 
-    %{root: root, main: main, candidate: candidate, env: Environment.new(:local, root)}
+    %{root: root, main: main, candidate: candidate, env: ExecutionContext.new(:local, root)}
   end
 
   test "a candidate conflicting in a file and the docs pointer leaves a clean tree", ctx do

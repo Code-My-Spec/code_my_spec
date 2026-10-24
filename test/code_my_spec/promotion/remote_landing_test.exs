@@ -2,7 +2,8 @@ defmodule CodeMySpec.Promotion.RemoteLandingTest do
   use CodeMySpecTest.DataCase, async: true
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.{Promotion, Repo, WorkingCopies}
 
   setup do
@@ -18,7 +19,10 @@ defmodule CodeMySpec.Promotion.RemoteLandingTest do
     git!(root, ["push", "origin", "develop"])
     git!(root, ["commit", "--allow-empty", "-m", "candidate"])
     head = git!(root, ["rev-parse", "HEAD"])
-    scope = put_fixture_environment(full_scope_fixture(), Environment.new(:local, root))
+
+    scope =
+      put_fixture_execution_context(full_scope_fixture(), ExecutionContext.new(:local, root))
+
     {:ok, source} = WorkingCopies.fetch(scope.active_working_copy_id)
     %{scope: scope, source: source, origin: origin, base: base, head: head}
   end
@@ -31,7 +35,7 @@ defmodule CodeMySpec.Promotion.RemoteLandingTest do
     assert {:ok, %{published: true, head: head, device_sync: %{"status" => "pending"}}} = land(c)
     assert head == c.head
     assert git!(c.origin, ["rev-parse", "develop"]) == c.head
-    assert Repo.reload!(main).promotion_sync["head"] == c.head
+    assert AppInstances.for_working_copy(c.scope, main).promotion_sync["head"] == c.head
     assert {:ok, %{published: true, reconciled: true}} = land(c)
   end
 

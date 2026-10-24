@@ -30,6 +30,9 @@ defmodule CodeMySpec.Agents.Main.Machinery do
           root: String.t() | nil,
           connected?: boolean(),
           machine_tools: [String.t()] | nil,
+          app_status: String.t() | nil,
+          app_url: String.t() | nil,
+          app_serving_commit: String.t() | nil,
           preview_status: String.t() | nil,
           preview_url: String.t() | nil,
           agent_ids: [Ecto.UUID.t()]

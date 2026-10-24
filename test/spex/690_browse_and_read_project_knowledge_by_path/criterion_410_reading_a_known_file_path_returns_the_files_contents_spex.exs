@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5965Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,8 +28,8 @@ defmodule CodeMySpecSpex.Story690.Criterion5965Spex do
     scenario "Reading .code_my_spec/knowledge/README.md returns its content" do
       given_ "a README.md exists in the project_knowledge library", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/knowledge/README.md",
             @readme_content
           )

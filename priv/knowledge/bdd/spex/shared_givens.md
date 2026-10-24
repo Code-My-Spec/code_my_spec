@@ -15,7 +15,7 @@ Until then, inline the given with a descriptive sentence:
 ```elixir
 given_ "the implementation file has been mutated with credo violations",
        context do
-  :ok = Environments.write_file(context.environment, @impl_path, messy_impl())
+  :ok = ExecutionContexts.write_file(context.environment, @impl_path, messy_impl())
   {:ok, context}
 end
 ```
@@ -34,8 +34,8 @@ defmodule <App>Spex.SharedGivens do
     scope = context.scope
     env = context.environment
 
-    :ok = Environments.write_file(env, @spec_path, spec_file_content())
-    :ok = Environments.write_file(env, @impl_path, impl_file_content())
+    :ok = ExecutionContexts.write_file(env, @spec_path, spec_file_content())
+    :ok = ExecutionContexts.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
       live(context.conn, "/projects/#{context.project.name}/sync")

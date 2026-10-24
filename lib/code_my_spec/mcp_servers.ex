@@ -35,7 +35,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.Configurations,
       CodeMySpec.Conversations,
       CodeMySpec.Embeddings,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Epics,
       CodeMySpec.Files,

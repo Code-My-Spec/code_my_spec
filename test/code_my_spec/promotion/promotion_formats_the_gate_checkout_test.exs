@@ -10,14 +10,19 @@ defmodule CodeMySpec.Promotion.PromotionFormatsTheGateCheckoutTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Promotion.Steps
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   @formatted_head "f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0"
 
   defp project(shell) do
-    {:ok, env} = InMemoryEnvironment.create(shell: shell)
-    :ok = InMemoryEnvironment.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
-    :ok = InMemoryEnvironment.write_file(env, ".formatter.exs", "[inputs: [\"lib/**/*.ex\"]]\n")
+    {:ok, env} = InMemoryExecutionContext.create(shell: shell)
+
+    :ok =
+      InMemoryExecutionContext.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
+
+    :ok =
+      InMemoryExecutionContext.write_file(env, ".formatter.exs", "[inputs: [\"lib/**/*.ex\"]]\n")
+
     env
   end
 
@@ -59,8 +64,10 @@ defmodule CodeMySpec.Promotion.PromotionFormatsTheGateCheckoutTest do
   end
 
   test "a checkout with no formatter config is skipped, not failed" do
-    {:ok, env} = InMemoryEnvironment.create(shell: fn _, _, _ -> {"", 0} end)
-    :ok = InMemoryEnvironment.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
+    {:ok, env} = InMemoryExecutionContext.create(shell: fn _, _, _ -> {"", 0} end)
+
+    :ok =
+      InMemoryExecutionContext.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
 
     assert {:ok, %{skipped: true, commit: nil}} = Steps.format(env, env.cwd)
   end

@@ -16,7 +16,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Support.TestAdapter
 
@@ -101,7 +101,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   describe "run/3" do
     test "the retired spec alignment analyzer is unavailable", %{scope: scope} do
       assert {:error, "Unknown analyzer: spec_alignment"} =
-               Runner.run(scope, :spec_alignment, environment: Environment.new(:local, scope.cwd))
+               Runner.run(scope, :spec_alignment,
+                 execution_context: ExecutionContext.new(:local, scope.cwd)
+               )
     end
 
     @tag timeout: 120_000
@@ -128,7 +130,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
     test "returns error when analyzer name is invalid", %{scope: scope} do
       assert {:error, message} =
                Runner.run(scope, :nonexistent_analyzer,
-                 environment: Environment.new(:local, scope.cwd)
+                 execution_context: ExecutionContext.new(:local, scope.cwd)
                )
 
       assert is_binary(message)
@@ -142,7 +144,9 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       scope = user_scope_fixture(user, account, project)
 
       assert {:error, message} =
-               Runner.run(scope, :credo, environment: Environment.new(:local, "/nonexistent"))
+               Runner.run(scope, :credo,
+                 execution_context: ExecutionContext.new(:local, "/nonexistent")
+               )
 
       assert is_binary(message)
     end

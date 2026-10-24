@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
   alias Anubis.Server.Frame
   alias CmsHarnessTest.HeldProvider
   alias CmsHarnessTest.Machine
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
@@ -208,8 +208,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
         [first | _rest] = context.story.criteria
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.spec_file_path(context.story, first),
             valid_spec_content(first.id)
           )
@@ -273,8 +273,8 @@ defmodule CodeMySpecSpex.Story538.Criterion1502Spex do
 
         Enum.each(context.story.criteria, fn criterion ->
           :ok =
-            Environments.write_file(
-              context.environment,
+            ExecutionContexts.write_file(
+              context.execution_context,
               Fixtures.spec_file_path(context.story, criterion),
               valid_spec_content(criterion.id)
             )

@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -31,11 +31,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
   spex "Submodules follow the working copy", criterion: 873 do
     scenario "Submodules follow the working copy without being asked" do
       given_ "a git working copy whose config does not recurse submodules", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2361"}, pretty: true)
           )
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
         # is testing the shell's arrangement of the world rather than the
         # product's. The environment delegates commands to the real shell, so
         # this is a genuine repository.
-        assert {_out, 0} = Environments.cmd(context.environment, "git", ["init"]),
+        assert {_out, 0} = ExecutionContexts.cmd(context.execution_context, "git", ["init"]),
                "the premise failed: could not make this working copy a git " <>
                  "repository, so nothing here would be testing submodule recursion"
 

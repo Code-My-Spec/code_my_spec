@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -77,8 +77,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "summary.md is written with all required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_persona_summary()
           )
@@ -88,8 +88,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "sources.md has well-formed entries with URL + title + date", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             """
             # Sources — Test Persona
@@ -137,8 +137,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "summary.md is written with all required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_persona_summary()
           )
@@ -148,8 +148,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "sources.md has an entry with no URL", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             """
             # Sources — Test Persona
@@ -202,8 +202,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "summary.md is written with all required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_persona_summary()
           )
@@ -213,8 +213,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "sources.md cites a file in the repo, with no URL and no date", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             """
             # Sources — Test Persona
@@ -266,8 +266,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "summary.md is written with all required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_persona_summary()
           )
@@ -277,8 +277,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5147Spex do
 
       given_ "sources.md has only prose, no list items", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             """
             # Sources — Test Persona

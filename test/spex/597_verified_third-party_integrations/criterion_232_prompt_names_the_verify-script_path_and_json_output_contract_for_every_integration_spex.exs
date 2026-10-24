@@ -24,8 +24,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5279Spex do
   spex "Each integration carries a runnable verify script", criterion: 232 do
     scenario "Prompt names the verify-script path and JSON output contract for every integration" do
       given_ "a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

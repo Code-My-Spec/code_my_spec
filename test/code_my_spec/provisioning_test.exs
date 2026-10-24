@@ -534,7 +534,7 @@ defmodule CodeMySpec.ProvisioningTest do
       end)
     end
 
-    # `Environments.cmd/4` answers a nil environment with a FunctionClauseError
+    # `ExecutionContexts.cmd/4` answers a nil environment with a FunctionClauseError
     # several frames down, so a scope without one crashed the whole LiveView
     # instead of recording a single errored step. A cloud scope never has an
     # environment — `Scope.environment` is only populated for local scopes —

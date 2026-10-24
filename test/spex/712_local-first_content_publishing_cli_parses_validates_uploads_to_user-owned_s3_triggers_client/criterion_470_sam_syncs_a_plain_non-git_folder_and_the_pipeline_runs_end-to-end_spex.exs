@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,24 +29,24 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
   spex "A plain non-Git folder syncs end-to-end", criterion: 470 do
     scenario "Sam syncs a plain non-Git folder and the pipeline runs end-to-end" do
       given_ "a plain folder with three markdown files and no .git directory", context do
-        original_env = context.environment
+        original_env = context.execution_context
         {:ok, commands} = Agent.start_link(fn -> [] end)
 
         env =
           put_in(original_env.ref[:shell], fn command, args, opts ->
             Agent.update(commands, &[{command, args} | &1])
-            Environments.cmd(original_env, command, args, opts)
+            ExecutionContexts.cmd(original_env, command, args, opts)
           end)
 
-        CodeMySpecSpex.Fixtures.put_fixture_environment(context.scope, env)
-        :ok = Environments.unregister(context.project.id)
-        :ok = Environments.register(context.project.id, env)
-        :ok = Environments.unregister({:root, env.cwd})
-        :ok = Environments.register({:root, env.cwd}, env)
+        CodeMySpecSpex.Fixtures.put_fixture_execution_context(context.scope, env)
+        :ok = ExecutionContexts.unregister(context.project.id)
+        :ok = ExecutionContexts.register(context.project.id, env)
+        :ok = ExecutionContexts.unregister({:root, env.cwd})
+        :ok = ExecutionContexts.register({:root, env.cwd}, env)
 
         for slug <- ~w(alpha beta gamma) do
           :ok =
-            Environments.write_file(env, "#{@source}/blog/#{slug}.md", """
+            ExecutionContexts.write_file(env, "#{@source}/blog/#{slug}.md", """
             ---
             title: #{String.capitalize(slug)}
             slug: #{slug}

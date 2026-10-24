@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3347Spex do
       end
 
       when_ "the implementation file appears and the engineer syncs", context do
-        ProjectBuilder.new(context.environment, app: "my_app")
+        ProjectBuilder.new(context.execution_context, app: "my_app")
         |> ProjectBuilder.impl_only("Accounts")
         |> ProjectBuilder.write!()
 

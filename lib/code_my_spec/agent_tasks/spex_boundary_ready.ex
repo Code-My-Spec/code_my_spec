@@ -27,7 +27,7 @@ defmodule CodeMySpec.AgentTasks.SpexBoundaryReady do
 
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     if is_nil(env) do
       {:ok,

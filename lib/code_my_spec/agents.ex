@@ -45,6 +45,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Validation,
       CodeMySpec.Validation.Blocking,
       CodeMySpec.WorkingCopies,
+      CodeMySpec.AppInstances,
       CodeMySpec.Configurations,
       CodeMySpec.Devices,
       CodeMySpec.Epics,

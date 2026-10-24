@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6276Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6276Spex do
     scenario "Client gets pull trigger and fetches the manifest from S3" do
       given_ "a clean snapshot with the client api url and deploy key set", context do
         :ok =
-          Environments.write_file(context.environment, "#{@source}/blog/foo.md", """
+          ExecutionContexts.write_file(context.execution_context, "#{@source}/blog/foo.md", """
           ---
           title: Foo
           slug: foo

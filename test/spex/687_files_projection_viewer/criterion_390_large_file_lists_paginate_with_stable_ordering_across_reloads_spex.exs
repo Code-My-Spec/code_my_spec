@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,8 +29,8 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
       given_ "many extra files are added and synced", context do
         for i <- 1..@file_count do
           :ok =
-            Environments.write_file(
-              context.environment,
+            ExecutionContexts.write_file(
+              context.execution_context,
               "lib/orphan_#{:io_lib.format("~3..0B", [i]) |> IO.iodata_to_binary()}.ex",
               """
               defmodule Orphan#{i} do

@@ -17,8 +17,9 @@ defmodule CodeMySpec.Promotion do
     deps: [
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
+      CodeMySpec.AppInstances,
       CodeMySpec.BootVersion,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.LandingHold,
       CodeMySpec.Problems,
@@ -37,6 +38,7 @@ defmodule CodeMySpec.Promotion do
   require Logger
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.BootVersion
   alias CodeMySpec.Files
@@ -51,7 +53,6 @@ defmodule CodeMySpec.Promotion do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Validation.Blocking
   alias CodeMySpec.WorkingCopies
-  alias CodeMySpec.WorkingCopies.AppTransport
   alias CodeMySpec.WorkingCopies.WorkingCopy
 
   # ----------------------------------------------------------------- read model
@@ -431,7 +432,7 @@ defmodule CodeMySpec.Promotion do
         to: Map.get(merge_result, :head) || Map.get(merge_result, :after)
       }
 
-      plan = deployment_plan(Map.get(merge_result, :changed), reload_opts(running, opts))
+      plan = deployment_plan(Map.get(merge_result, :changed), reload_opts(scope, running, opts))
 
       Logger.info("[Promotion] #{plan.action} #{running.root}: #{plan.reason}")
 
@@ -677,7 +678,7 @@ defmodule CodeMySpec.Promotion do
   defp copy_environment(scope, %WorkingCopy{id: id}), do: copy_environment(scope, id)
 
   defp copy_environment(scope, id),
-    do: WorkingCopies.environment(%{scope | active_working_copy_id: id})
+    do: WorkingCopies.execution_context(%{scope | active_working_copy_id: id})
 
   # Main's HEAD, which the promoting copy must contain. Asked through the
   # promoting copy's harness, the one the merge runs through.
@@ -1239,8 +1240,13 @@ defmodule CodeMySpec.Promotion do
     if length(paths) > 3, do: "#{shown} and #{length(paths) - 3} more", else: shown
   end
 
-  defp reload_opts(running, opts),
-    do: Keyword.put(opts, :reload_supported, AppTransport.reload_supported?(running.id))
+  defp reload_opts(scope, running, opts) do
+    with {:ok, instance} <- default_instance(scope, running) do
+      Keyword.put(opts, :reload_supported, AppInstances.reload_supported?(scope, instance.id))
+    else
+      _ -> Keyword.put(opts, :reload_supported, false)
+    end
+  end
 
   # Dispatched, never awaited: the restart may kill this very BEAM before it
   # could answer. `merged/6` reads the result as "merged, restart unconfirmed".
@@ -1248,9 +1254,15 @@ defmodule CodeMySpec.Promotion do
   # next gate read does not see a stale `down` and loop the agent.
   # See knowledge/promotion, "Deployment".
   defp deploy(%Scope{} = scope, %WorkingCopy{root: root} = running, plan, opts) do
-    dispatch_deployment(scope, root, running.id, plan, opts)
-    {:ok, _} = WorkingCopies.record_preview_status(running, "serving")
-    {:error, %{reason: deployment_dispatched_reason(plan)}}
+    with {:ok, instance} <- default_instance(scope, running) do
+      dispatch_deployment(scope, root, instance.id, plan, opts)
+      {:ok, _} = AppInstances.record_preview_status(scope, instance.id, "serving")
+      {:error, %{reason: deployment_dispatched_reason(plan)}}
+    end
+  end
+
+  defp default_instance(scope, running) do
+    AppInstances.ensure_default(scope, running)
   end
 
   # Detached: this process may not exist by the time a restart returns. The
@@ -1271,20 +1283,20 @@ defmodule CodeMySpec.Promotion do
 
   # `done` names what actually ran, for the log and the agent: the plan, or
   # the restart a reload fell back to.
-  defp deploy_now(%{action: :restart}, scope, root, working_copy_id, opts) do
+  defp deploy_now(%{action: :restart}, scope, root, instance_id, opts) do
     outcome =
       scope
-      |> Runner.restart(root, working_copy_id)
+      |> Runner.restart(root, instance_id)
       |> classify_restart()
-      |> verify_unconfirmed(working_copy_id, opts)
+      |> verify_unconfirmed(scope, instance_id, opts)
 
     {"restart", outcome}
   end
 
-  defp deploy_now(%{action: :reload}, scope, root, working_copy_id, opts) do
+  defp deploy_now(%{action: :reload}, scope, root, instance_id, opts) do
     scope
-    |> Runner.reload(root, working_copy_id)
-    |> reloaded(scope, root, working_copy_id, opts)
+    |> Runner.reload(root, instance_id)
+    |> reloaded(scope, root, instance_id, opts)
   end
 
   # The far side restarted instead (app not running, no `reload` recipe).
@@ -1299,15 +1311,15 @@ defmodule CodeMySpec.Promotion do
   # A channel lost mid-reload may have taken a reload that worked with it —
   # :4000's own reloader swaps the channel's modules. Asked what is serving
   # before restarting over it.
-  defp reloaded({:error, %{reason: reason} = error}, scope, root, working_copy_id, opts) do
+  defp reloaded({:error, %{reason: reason} = error}, scope, root, instance_id, opts) do
     with true <- restart_acknowledgement_lost?(error),
          {:confirmed, _} = confirmed <-
-           verify_unconfirmed({:unconfirmed, reason}, working_copy_id, opts) do
+           verify_unconfirmed({:unconfirmed, reason}, scope, instance_id, opts) do
       {"reload", confirmed}
     else
       _ ->
         Logger.warning("[Promotion] reload of #{root} failed (#{reason}); restarting instead")
-        {"restart", outcome} = deploy_now(%{action: :restart}, scope, root, working_copy_id, opts)
+        {"restart", outcome} = deploy_now(%{action: :restart}, scope, root, instance_id, opts)
         {"restart after a failed reload (#{reason})", outcome}
     end
   end
@@ -1325,12 +1337,12 @@ defmodule CodeMySpec.Promotion do
   defp classify_restart(other), do: {:unexpected, other}
 
   # A lost acknowledgement is settled by asking the app what it serves
-  # (`AppTransport`) until it reports the merged commit or the bound runs out.
+  # (`AppInstances`) until it reports the merged commit or the bound runs out.
   # Only an app answering on the wrong commit is a failure; one that never
   # answered stays unconfirmed.
   @verify_every 2_000
 
-  defp verify_unconfirmed({:unconfirmed, _reason}, working_copy_id, opts) do
+  defp verify_unconfirmed({:unconfirmed, _reason}, scope, instance_id, opts) do
     expect = Keyword.get(opts, :expect, %{})
     every = Keyword.get(opts, :verify_every, @verify_every)
 
@@ -1341,42 +1353,44 @@ defmodule CodeMySpec.Promotion do
 
     deadline = System.monotonic_time(:millisecond) + within
 
-    await_serving(working_copy_id, Map.get(expect, :to), every, deadline, :unanswered)
+    await_serving(scope, instance_id, Map.get(expect, :to), every, deadline, :unanswered)
   end
 
-  defp verify_unconfirmed(outcome, _working_copy_id, _opts), do: outcome
+  defp verify_unconfirmed(outcome, _scope, _instance_id, _opts), do: outcome
 
   # `seen` is the last commit the app reported, or `:unanswered`.
-  defp await_serving(working_copy_id, expected, every, deadline, seen) do
+  defp await_serving(scope, instance_id, expected, every, deadline, seen) do
     remaining = deadline - System.monotonic_time(:millisecond)
 
-    working_copy_id
-    |> AppTransport.ensure_app_running(max(remaining, every))
+    AppInstances.ensure_running(scope, instance_id, max(remaining, every))
     |> serving_commit()
     |> case do
       {"serving", commit} when expected in [nil, commit] ->
         {:confirmed, commit}
 
       {_status, commit} when is_binary(commit) ->
-        retry_serving(working_copy_id, expected, every, deadline, commit)
+        retry_serving(scope, instance_id, expected, every, deadline, commit)
 
       _unreachable_or_down ->
-        retry_serving(working_copy_id, expected, every, deadline, seen)
+        retry_serving(scope, instance_id, expected, every, deadline, seen)
     end
   end
 
   # What the app serves, not what it launched from: a reload moves the first
   # and leaves the second, and reading the launch commit called a reload that
   # worked "still on <old>".
-  defp serving_commit({:ok, %{status: status} = info}),
-    do: {status, Map.get(info, :serving_commit) || Map.get(info, :commit)}
+  defp serving_commit({:ok, info}) when is_map(info),
+    do:
+      {Map.get(info, :status) || Map.get(info, "status"),
+       Map.get(info, :serving_commit) || Map.get(info, "serving_commit") ||
+         Map.get(info, :commit) || Map.get(info, "commit")}
 
   defp serving_commit(_other), do: :unanswered
 
-  defp retry_serving(working_copy_id, expected, every, deadline, seen) do
+  defp retry_serving(scope, instance_id, expected, every, deadline, seen) do
     if System.monotonic_time(:millisecond) + every < deadline do
       Process.sleep(every)
-      await_serving(working_copy_id, expected, every, deadline, seen)
+      await_serving(scope, instance_id, expected, every, deadline, seen)
     else
       settle_unverified(seen)
     end

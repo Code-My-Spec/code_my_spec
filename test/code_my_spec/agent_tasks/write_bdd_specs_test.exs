@@ -3,7 +3,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   alias CodeMySpec.AgentTasks.WriteBddSpecs
   alias CodeMySpec.BddSpecs
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
 
   import CodeMySpec.UsersFixtures
@@ -19,9 +19,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   defp scope_with_cwd(tmp_dir) do
     scope = working_copy_scope_fixture()
-    env = Environment.new(:local, tmp_dir)
-    :ok = register_working_copy_environment(scope, env)
-    put_fixture_environment(scope, env)
+    env = ExecutionContext.new(:local, tmp_dir)
+    :ok = register_working_copy_execution_context(scope, env)
+    put_fixture_execution_context(scope, env)
   end
 
   defp create_story_with_component(scope, opts \\ %{}) do

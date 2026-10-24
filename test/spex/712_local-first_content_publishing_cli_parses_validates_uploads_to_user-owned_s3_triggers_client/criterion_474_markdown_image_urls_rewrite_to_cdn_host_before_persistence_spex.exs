@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6272Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -31,12 +31,12 @@ defmodule CodeMySpecSpex.Story712.Criterion6272Spex do
   spex "Source-relative image paths become CDN URLs before they are stored", criterion: 474 do
     scenario "Markdown image URLs rewrite to CDN host before persistence" do
       given_ "a post with a source-relative image ref and a configured CDN host", context do
-        env = context.environment
+        env = context.execution_context
 
-        :ok = Environments.write_file(env, "#{@source}/images/hero-foo.webp", "bytes")
+        :ok = ExecutionContexts.write_file(env, "#{@source}/images/hero-foo.webp", "bytes")
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/foo.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/foo.md", """
           ---
           title: Foo
           slug: foo

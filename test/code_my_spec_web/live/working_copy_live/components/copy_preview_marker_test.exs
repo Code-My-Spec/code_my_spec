@@ -3,11 +3,24 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.CopyPreviewMarkerTest do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.WorkingCopies.WorkingCopy
   alias CodeMySpecWeb.WorkingCopyLive.Components.Copy
 
-  defp marker(attrs, size \\ :small),
-    do: render_component(&Copy.preview_marker/1, harness: struct(WorkingCopy, attrs), size: size)
+  defp marker(attrs, size \\ :small) do
+    harness =
+      Map.merge(
+        %{
+          app_instance_id: nil,
+          app_status: nil,
+          app_url: nil,
+          app_commit: nil,
+          preview_status: nil,
+          preview_url: nil
+        },
+        Map.new(attrs)
+      )
+
+    render_component(&Copy.preview_marker/1, harness: harness, size: size)
+  end
 
   test "a copy serving on a tunnel links to its preview" do
     html =

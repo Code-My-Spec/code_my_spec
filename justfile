@@ -524,7 +524,7 @@ after-promote:
     set -euo pipefail
     built="$(curl -s --max-time 10 http://localhost:4004/health | sed -nE 's/.*"build":"([0-9a-f]+)".*/\1/p')"
     if [ -n "$built" ] && git cat-file -e "${built}^{commit}" 2>/dev/null; then
-        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks lib/code_my_spec/promotion lib/code_my_spec/analysis lib/code_my_spec/tests.ex lib/code_my_spec/compile.ex lib/code_my_spec/static_analysis lib/code_my_spec/bdd_specs lib/code_my_spec/environments mix.exs mix.lock config)"
+        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks lib/code_my_spec/promotion lib/code_my_spec/analysis lib/code_my_spec/tests.ex lib/code_my_spec/compile.ex lib/code_my_spec/static_analysis lib/code_my_spec/bdd_specs lib/code_my_spec/execution_contexts mix.exs mix.lock config)"
         if [ -z "$changed" ]; then
             echo "→ harness stays up: nothing it runs or speaks changed since $built"
             exit 0

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Bootstrap.Tools do
     exports: [Content],
     deps: [
       CodeMySpec.Auth,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.PublicUrl,

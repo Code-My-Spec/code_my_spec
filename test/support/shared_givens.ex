@@ -117,7 +117,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   Every `*_task_started` given (and `:persona_research_prompt`) posts its
   `session-start` through a live harness (`HarnessHooks.open_session/1`), the
   path production takes, and leaves `context.harness` for the hooks that
-  follow. Its checkout starts with what `context.environment` held; a file the
+  follow. Its checkout starts with what `context.execution_context` held; a file the
   scenario writes to the environment afterwards reaches the disk through
   `record_edit/3`.
 
@@ -130,7 +130,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
@@ -148,13 +148,13 @@ defmodule CodeMySpecSpex.SharedGivens do
   # component that sync derived.
   register_given :synced_context_component, context do
     scope = context.scope
-    env = context.environment
+    env = context.execution_context
 
     ComponentGraphHelpers.design!(context, @component_module_name, [],
       description: "An example context for BDD specs."
     )
 
-    :ok = Environments.write_file(env, @impl_path, impl_file_content())
+    :ok = ExecutionContexts.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
       live(context.conn, files_page(context))
@@ -187,14 +187,14 @@ defmodule CodeMySpecSpex.SharedGivens do
   register_given :synced_context_in_satisfied_project, context do
     context = FullSatisfactionFixtures.apply(context)
 
-    env = context.environment
+    env = context.execution_context
     scope = context.scope
 
     ComponentGraphHelpers.design!(context, @component_module_name, [],
       description: "An example context for BDD specs."
     )
 
-    :ok = Environments.write_file(env, @impl_path, impl_file_content())
+    :ok = ExecutionContexts.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
       live(context.conn, files_page(context))
@@ -290,7 +290,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       end
       """
 
-      :ok = Environments.write_file(env, bdd_path, bdd_content)
+      :ok = ExecutionContexts.write_file(env, bdd_path, bdd_content)
     end)
 
     {:ok, sync_live, _html} =
@@ -306,8 +306,8 @@ defmodule CodeMySpecSpex.SharedGivens do
   # sitting ahead of its own `bdd_specs_exist` in the coding queue.
   register_given :context_review_satisfied, context do
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         ".code_my_spec/spec/example_context/design_review.md",
         context_review_content()
       )
@@ -372,13 +372,13 @@ defmodule CodeMySpecSpex.SharedGivens do
   # task on this component. Produces `context.liveview_component`.
   register_given :synced_liveview_component, context do
     scope = context.scope
-    env = context.environment
+    env = context.execution_context
 
     spec_path = ".code_my_spec/spec/example_context_web/dashboard_live.spec.md"
     impl_path = "lib/example_context_web/live/dashboard_live.ex"
 
     :ok =
-      Environments.write_file(env, spec_path, """
+      ExecutionContexts.write_file(env, spec_path, """
       # DashboardLive
 
       An example liveview for BDD specs.
@@ -389,7 +389,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       """)
 
     :ok =
-      Environments.write_file(env, impl_path, """
+      ExecutionContexts.write_file(env, impl_path, """
       defmodule ExampleContextWeb.DashboardLive do
         @moduledoc false
       end
@@ -537,15 +537,15 @@ defmodule CodeMySpecSpex.SharedGivens do
     surface_impl_path = "lib/example_surface_live_#{unique}.ex"
 
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         surface_spec_path,
         CodeMySpecSpex.GraphContentFixtures.liveview_spec(surface_module, dependencies: [])
       )
 
     :ok =
-      Environments.write_file(
-        context.environment,
+      ExecutionContexts.write_file(
+        context.execution_context,
         surface_impl_path,
         CodeMySpecSpex.GraphContentFixtures.impl_file(surface_module)
       )
@@ -1080,14 +1080,14 @@ defmodule CodeMySpecSpex.SharedGivens do
   end
 
   # The edit the hook records is one the checkout holds. A scenario still
-  # writes through `context.environment`, so its content is put on disk here --
+  # writes through `context.execution_context`, so its content is put on disk here --
   # the harness reads the disk, and a stop judging this file judges what is
   # there.
   defp on_disk(%{harness: %{root: root}} = context, path) do
     absolute = Path.expand(path, root)
     relative = Path.relative_to(absolute, root)
 
-    case Environments.read_file(Map.get(context, :environment), relative) do
+    case ExecutionContexts.read_file(Map.get(context, :execution_context), relative) do
       {:ok, content} -> write_if_changed(context, relative, absolute, content)
       {:error, _} -> absolute
     end

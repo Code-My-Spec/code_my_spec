@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5149Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.ProjectStateFixtures
 
@@ -42,8 +42,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5149Spex do
 
       given_ "summary.md has all six required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             """
             # Founder
@@ -69,8 +69,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5149Spex do
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "- https://example.com — Source — 2026-04-23\n"
           )

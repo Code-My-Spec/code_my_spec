@@ -9,7 +9,7 @@ defmodule CodeMySpec.Provisioning.Tools do
     deps: [
       CodeMySpec.Activity,
       CodeMySpec.Agents,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Generators,
       CodeMySpec.Integrations,
       CodeMySpec.LocalScope,

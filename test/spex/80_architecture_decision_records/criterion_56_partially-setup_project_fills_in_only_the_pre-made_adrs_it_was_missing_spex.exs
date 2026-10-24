@@ -24,10 +24,10 @@ defmodule CodeMySpecSpex.Story80.Criterion5270Spex do
   spex "Pre-made decisions are auto-written before the prompt", criterion: 56 do
     scenario "Partially-setup project fills in only the pre-made ADRs it was missing" do
       given_ "a custom elixir.md already exists with a retrofit marker", context do
-        Fixtures.reset_setup_env(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
 
         Fixtures.with_custom_adr(
-          context.environment,
+          context.execution_context,
           "elixir",
           "custom elixir rationale from the retrofit team"
         )
@@ -36,12 +36,12 @@ defmodule CodeMySpecSpex.Story80.Criterion5270Spex do
       end
 
       given_ "phoenix.md does not yet exist", context do
-        refute Fixtures.adr_exists?(context.environment, "phoenix")
+        refute Fixtures.adr_exists?(context.execution_context, "phoenix")
         {:ok, context}
       end
 
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
+        {:ok, HarnessHooks.ensure_live_harness(context, execution_context: :in_memory)}
       end
 
       given_ "the agent has signalled session start", context do
@@ -71,14 +71,14 @@ defmodule CodeMySpecSpex.Story80.Criterion5270Spex do
       end
 
       then_ "phoenix.md now exists", context do
-        assert Fixtures.adr_exists?(context.environment, "phoenix"),
+        assert Fixtures.adr_exists?(context.execution_context, "phoenix"),
                "expected pre-made phoenix.md to be written"
 
         {:ok, context}
       end
 
       and_ "elixir.md still contains the retrofit marker", context do
-        content = Fixtures.read_adr(context.environment, "elixir")
+        content = Fixtures.read_adr(context.execution_context, "elixir")
 
         assert is_binary(content), "expected elixir.md to still exist"
 

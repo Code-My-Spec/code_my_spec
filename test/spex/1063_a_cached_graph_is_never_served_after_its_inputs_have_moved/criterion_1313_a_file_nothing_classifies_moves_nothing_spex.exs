@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1063.Criterion3349Spex do
 
   import CodeMySpecSpex.GraphReadHelpers
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,8 +35,8 @@ defmodule CodeMySpecSpex.Story1063.Criterion3349Spex do
 
       when_ "a file is written at a path the scanner does not classify", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "notes/scratch.txt",
             "not a thing the scanner classifies"
           )

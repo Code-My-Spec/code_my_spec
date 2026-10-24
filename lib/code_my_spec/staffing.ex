@@ -12,6 +12,7 @@ defmodule CodeMySpec.Staffing do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.AppInstances,
       # Offboarding removes the copy's derived rows before its own; the
       # contexts that own them sit below WorkingCopies' callers, not under it.
       CodeMySpec.Components,
@@ -33,6 +34,7 @@ defmodule CodeMySpec.Staffing do
   import Ecto.Query
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.Transport.Harness
   alias CodeMySpec.Projects
@@ -196,17 +198,18 @@ defmodule CodeMySpec.Staffing do
   end
 
   @doc """
-  End the agents on a working copy, then offboard it.
+  Dispose the working copy's runtime dependencies, end its agents, and offboard it.
 
   Then remove the copy and everything derived from it: files and problems
   unconditionally; components only where they have no files **and** no story
   link; then the row. Answers those counts plus `agents_stopped` and
   `agents_left_running`.
 
-  Refuses rather than offboarding, without removing anything, when a shared
-  copy's preview could not be released — see the reasoning inline. The copy
-  stays exactly as it was; offboarding it is safe to retry once whatever
-  Cloudflare error caused it clears.
+  Persistent app instances require an explicit `instance_disposition: :discard`.
+  Each runtime is stopped, its preview released, and its disposable resources
+  discarded before its row is removed. A failed cleanup retains the source
+  checkout and the failing instance record so the operation can be retried.
+  Earlier successful runtime cleanup is not rolled back.
 
   An act a person takes, never a sweep on elapsed time: the harness reports a
   missing path as a warning and a person decides. The row goes too (a copy
@@ -215,32 +218,85 @@ defmodule CodeMySpec.Staffing do
 
   See knowledge/agents/coordination, "Staffing".
   """
-  @spec offboard(Scope.t(), WorkingCopy.t()) ::
-          {:ok, map()} | {:error, :not_yours} | {:error, {:preview_not_released, term()}}
+  @spec offboard(Scope.t(), WorkingCopy.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def offboard(scope, copy, opts \\ [])
+
   def offboard(
         %Scope{active_project_id: project_id} = scope,
         %WorkingCopy{
           project_id: project_id,
           id: id
-        } = copy
+        } = copy,
+        opts
       )
       when is_binary(project_id) do
-    # The agents first, outside the transaction (stopping is a request to a
-    # machine). Best-effort: the usual case is a copy whose machine is gone, and
-    # that must stay offboardable.
-    agents = stop_agents_on(scope, id)
+    instances = AppInstances.list_for_working_copy(scope, copy)
 
-    # Not best-effort: releasing a shared preview talks to Cloudflare, not the
-    # machine. If it fails the ingress rule or DNS record is still live, and the
-    # row is the only record of it, so the offboard is refused.
-    with :ok <- release_shared_preview(copy) do
+    with :ok <- permit_instance_disposal(instances, opts),
+         :ok <- dispose_instances(scope, instances) do
+      agents = stop_agents_on(scope, id)
       counts = remove(scope, copy)
       WorkingCopies.released(id)
       {:ok, Map.merge(counts, agents)}
     end
   end
 
-  def offboard(%Scope{}, %WorkingCopy{}), do: {:error, :not_yours}
+  def offboard(%Scope{}, %WorkingCopy{}, _opts), do: {:error, :not_yours}
+
+  defp permit_instance_disposal(instances, opts) do
+    if Enum.any?(instances, & &1.persistent) and
+         Keyword.get(opts, :instance_disposition) not in [:discard, "discard"] do
+      {:error, :persistent_instances_require_explicit_discard}
+    else
+      :ok
+    end
+  end
+
+  defp dispose_instances(scope, instances) do
+    Enum.reduce_while(instances, :ok, fn instance, :ok ->
+      with :ok <- stop_instance(scope, instance),
+           :ok <- release_shared_preview(instance),
+           :ok <- discard_instance(scope, instance),
+           {:ok, _} <- AppInstances.delete(scope, instance.id) do
+        {:cont, :ok}
+      else
+        {:error, reason} -> {:halt, {:error, {:instance_not_disposed, instance.id, reason}}}
+      end
+    end)
+  end
+
+  defp discard_instance(scope, instance) do
+    case AppInstances.discard(scope, instance.id) do
+      :ok ->
+        :ok
+
+      {:error, reason}
+      when reason in [:harness_not_connected, :invalid_source] and
+             instance.status in [nil, "down"] ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp stop_instance(scope, instance) do
+    case AppInstances.stop(scope, instance.id) do
+      :ok ->
+        :ok
+
+      {:ok, _} ->
+        :ok
+
+      {:error, reason}
+      when reason in [:harness_not_connected, :invalid_source] and
+             instance.status in [nil, "down"] ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   defp remove(scope, %WorkingCopy{project_id: project_id, id: id} = copy) do
     Repo.transaction(fn ->
