@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1732Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentGraphHelpers
 
   setup :register_log_in_setup_account
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1732Spex do
         app = ComponentGraphHelpers.app(context)
 
         :ok =
-          Environments.write_file(context.environment, "lib/billing.ex", """
+          ExecutionContexts.write_file(context.execution_context, "lib/billing.ex", """
           defmodule #{app}.Billing do
             @moduledoc false
           end

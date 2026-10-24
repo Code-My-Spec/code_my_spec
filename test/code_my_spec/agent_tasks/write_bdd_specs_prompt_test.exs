@@ -39,8 +39,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsPromptTest do
     story = story_fixture(scope, %{title: "My blog publishes from my repo to my own bucket"})
     {:ok, story} = Stories.set_story_component(scope, story, component.id)
 
-    # No environment: the light-harness scope. This is the case under test.
-    %{scope: put_fixture_environment(scope, nil), story: story, component: component}
+    # No execution_context: the light-harness scope. This is the case under test.
+    %{scope: put_fixture_execution_context(scope, nil), story: story, component: component}
   end
 
   defp prompt(scope, story) do

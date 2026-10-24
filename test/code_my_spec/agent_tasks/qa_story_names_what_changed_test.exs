@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.QaStory
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Issues
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Qa.QaAttempt
@@ -23,9 +23,9 @@ defmodule CodeMySpec.AgentTasks.QaStoryNamesWhatChangedTest do
     scope = working_copy_scope_fixture()
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         scope,
-        Environment.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
+        ExecutionContext.new(:local, CodeMySpec.TempFile.owned_dir("qa_changed"))
       )
 
     story = story_fixture(scope, %{title: "Stripe connect"})

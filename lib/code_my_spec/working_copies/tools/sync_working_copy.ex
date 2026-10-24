@@ -3,6 +3,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.WorkingCopies
 
   @timeout :timer.minutes(2)
@@ -14,6 +15,11 @@ defmodule CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy do
   def description do
     """
     Bring a working copy's checkout up to date with its remote's main.
+
+    On a main copy with pending or failed publication synchronization, retries
+    that exact published revision and its app lifecycle on the destination's
+    harness. It does not promote or publish the candidate again. Offline work
+    remains pending until the harness reconnects; list_working_copies shows its status.
 
     8f5ebfb2: asked to staff a working copy reported days behind main, there
     was no reachable way to catch it up first -- `list_working_copies`,
@@ -56,18 +62,44 @@ defmodule CodeMySpec.WorkingCopies.Tools.SyncWorkingCopy do
     end
   end
 
-  defp sync_copy(%{active_project_id: project_id}, %{project_id: project_id, id: id} = copy)
+  defp sync_copy(
+         %{active_project_id: project_id} = scope,
+         %{project_id: project_id, main: true} = copy
+       )
        when is_binary(project_id) do
-    case Analysis.harness_fs_request(id, "sync_to_main", %{}, @timeout) do
-      {:ok, result} -> {:ok, report(copy, result)}
-      {:error, reason} -> {:error, failure(copy, reason)}
+    case AppInstances.for_working_copy(scope, copy.id) do
+      %{promotion_sync: %{"status" => status}} when status in ["pending", "failed"] ->
+        case CodeMySpec.Promotion.DeviceSync.retry(scope, copy.id) do
+          {:ok, state} ->
+            {:ok,
+             "Device synchronization retry requested for published revision #{state["head"]}. " <>
+               "Status: #{state["status"]}. Offline work resumes on reconnect. " <>
+               "Use list_working_copies to check completion; do not promote again."}
+
+          {:error, reason} ->
+            {:error, failure(copy, reason)}
+        end
+
+      _ ->
+        sync_checkout(copy)
     end
   end
+
+  defp sync_copy(%{active_project_id: project_id}, %{project_id: project_id} = copy)
+       when is_binary(project_id),
+       do: sync_checkout(copy)
 
   defp sync_copy(%{}, %{}) do
     {:error,
      "That working copy belongs to a different project, so this call cannot sync it. " <>
        "Nothing was changed."}
+  end
+
+  defp sync_checkout(copy) do
+    case Analysis.harness_fs_request(copy.id, "sync_to_main", %{}, @timeout) do
+      {:ok, result} -> {:ok, report(copy, result)}
+      {:error, reason} -> {:error, failure(copy, reason)}
+    end
   end
 
   defp report(copy, %{"updated" => false, "from" => sha}) do

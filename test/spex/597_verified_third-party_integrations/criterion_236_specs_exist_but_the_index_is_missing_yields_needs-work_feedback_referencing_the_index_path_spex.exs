@@ -26,8 +26,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5283Spex do
   spex "Validation gates on the integration index plus per-spec verification", criterion: 236 do
     scenario "Specs exist but the index is missing yields needs-work feedback referencing the index path" do
       given_ "the env is reset and a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 
@@ -39,10 +39,10 @@ defmodule CodeMySpecSpex.Story597.Criterion5283Spex do
 
       given_ "a verified twilio spec and verify script exist but the index does not",
              context do
-        Fixtures.with_verified_integration_spec(context.environment, "twilio")
-        Fixtures.with_verify_script(context.environment, "twilio")
+        Fixtures.with_verified_integration_spec(context.execution_context, "twilio")
+        Fixtures.with_verify_script(context.execution_context, "twilio")
 
-        refute Fixtures.integration_index_exists?(context.environment),
+        refute Fixtures.integration_index_exists?(context.execution_context),
                "expected the integration index to be absent"
 
         {:ok, context}

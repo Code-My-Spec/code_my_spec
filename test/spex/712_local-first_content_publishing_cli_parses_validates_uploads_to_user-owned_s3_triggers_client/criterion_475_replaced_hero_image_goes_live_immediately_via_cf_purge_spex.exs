@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -32,12 +32,13 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
   spex "A replaced image is purged from the Cloudflare edge on re-sync", criterion: 475 do
     scenario "Replaced hero image goes live immediately via CF purge" do
       given_ "an already-synced hero image and Cloudflare configured", context do
-        env = context.environment
-
-        :ok = Environments.write_file(env, "#{@source}/images/hero-foo.webp", "original-bytes")
+        env = context.execution_context
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/foo.md", """
+          ExecutionContexts.write_file(env, "#{@source}/images/hero-foo.webp", "original-bytes")
+
+        :ok =
+          ExecutionContexts.write_file(env, "#{@source}/blog/foo.md", """
           ---
           title: Foo
           slug: foo
@@ -68,8 +69,8 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
 
       when_ "Sam replaces the image bytes and re-syncs", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "#{@source}/images/hero-foo.webp",
             "new-bytes"
           )

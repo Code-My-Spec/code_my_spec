@@ -3,17 +3,17 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
   import ExUnit.CaptureLog
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Deploy
   alias CodeMySpec.Provisioning.Deploy.Result
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    %{env: Environment.new(:local, tmp)}
+    %{env: ExecutionContext.new(:local, tmp)}
   end
 
   # A script that records the phase it was called with and exits how the test
-  # tells it to. Real shelling out through Environments.cmd/4, so the ordering
+  # tells it to. Real shelling out through ExecutionContexts.cmd/4, so the ordering
   # under test is the ordering that actually happens.
   defp deploy_script(dir, opts) do
     migrate_exit = Keyword.get(opts, :migrate_exit, 0)
@@ -511,7 +511,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
   # at all, and even a real local checkout is the wrong place. `Builder`
   # supplies this bound to the box the image was just built and pushed on.
   describe "running via opts[:run] instead of shelling out locally" do
-    test "migrate and swap run through it, not Environments.cmd/4", %{env: env} do
+    test "migrate and swap run through it, not ExecutionContexts.cmd/4", %{env: env} do
       test_pid = self()
 
       run = fn [command] ->

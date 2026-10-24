@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story682.Criterion1653Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story682.Criterion1653Spex do
             context do
         path = "lib/#{Macro.underscore("#{app(context)}.Accounts")}.ex"
 
-        assert Environments.file_exists?(context.environment, path)
+        assert ExecutionContexts.file_exists?(context.execution_context, path)
         assert context.said =~ path
         assert context.said =~ "discovers it again"
         {:ok, context}

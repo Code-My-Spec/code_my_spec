@@ -11,7 +11,7 @@ defmodule CodeMySpec.BddSpecs do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Stories,
       CodeMySpec.TempFile,
       CodeMySpec.Utils
@@ -21,8 +21,8 @@ defmodule CodeMySpec.BddSpecs do
   require Logger
 
   alias CodeMySpec.BddSpecs.{Parser, Spec, SpecProjector, Spex}
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria.Criterion
   alias CodeMySpec.Stories.Story
@@ -38,10 +38,10 @@ defmodule CodeMySpec.BddSpecs do
       [%Spec{}, ...]
 
   """
-  @spec list_specs(Environment.t()) :: [Spec.t()]
-  def list_specs(%Environment{} = env) do
+  @spec list_specs(ExecutionContext.t()) :: [Spec.t()]
+  def list_specs(%ExecutionContext{} = env) do
     pattern = "test/spex/**/*_spex.exs"
-    files = Environments.glob(env, pattern)
+    files = ExecutionContexts.glob(env, pattern)
 
     specs =
       files
@@ -63,8 +63,9 @@ defmodule CodeMySpec.BddSpecs do
       [%Spec{}, ...]
 
   """
-  @spec list_specs_for_story(Environment.t(), integer()) :: [Spec.t()]
-  def list_specs_for_story(%Environment{} = env, story_number) when is_integer(story_number) do
+  @spec list_specs_for_story(ExecutionContext.t(), integer()) :: [Spec.t()]
+  def list_specs_for_story(%ExecutionContext{} = env, story_number)
+      when is_integer(story_number) do
     env
     |> list_specs()
     |> Enum.filter(&(&1.story_number == story_number))
@@ -79,8 +80,8 @@ defmodule CodeMySpec.BddSpecs do
       [%Spec{}, ...]
 
   """
-  @spec list_specs_for_criterion(Environment.t(), integer()) :: [Spec.t()]
-  def list_specs_for_criterion(%Environment{} = env, criterion_id)
+  @spec list_specs_for_criterion(ExecutionContext.t(), integer()) :: [Spec.t()]
+  def list_specs_for_criterion(%ExecutionContext{} = env, criterion_id)
       when is_integer(criterion_id) do
     env
     |> list_specs()
@@ -96,8 +97,8 @@ defmodule CodeMySpec.BddSpecs do
       "# BDD Spec Coverage\\n\\n..."
 
   """
-  @spec get_coverage_report(Environment.t(), [Story.t()]) :: String.t()
-  def get_coverage_report(%Environment{} = env, stories) do
+  @spec get_coverage_report(ExecutionContext.t(), [Story.t()]) :: String.t()
+  def get_coverage_report(%ExecutionContext{} = env, stories) do
     specs = list_specs(env)
     SpecProjector.format_coverage(stories, specs)
   end
@@ -111,11 +112,11 @@ defmodule CodeMySpec.BddSpecs do
       %{covered: [1, 2], missing: [3, 4]}
 
   """
-  @spec check_story_coverage(Environment.t(), Story.t()) :: %{
+  @spec check_story_coverage(ExecutionContext.t(), Story.t()) :: %{
           covered: [integer()],
           missing: [integer()]
         }
-  def check_story_coverage(%Environment{} = env, %Story{} = story) do
+  def check_story_coverage(%ExecutionContext{} = env, %Story{} = story) do
     criteria = story.criteria || []
     all_criterion_ids = Enum.map(criteria, & &1.number)
 
@@ -151,8 +152,8 @@ defmodule CodeMySpec.BddSpecs do
       nil
 
   """
-  @spec get_next_incomplete_story(Environment.t(), Scope.t()) :: Story.t() | nil
-  def get_next_incomplete_story(%Environment{} = env, scope) do
+  @spec get_next_incomplete_story(ExecutionContext.t(), Scope.t()) :: Story.t() | nil
+  def get_next_incomplete_story(%ExecutionContext{} = env, scope) do
     stories = Stories.list_project_stories_by_priority(scope)
 
     Enum.find(stories, fn story ->
@@ -173,11 +174,11 @@ defmodule CodeMySpec.BddSpecs do
       {:error, ["Missing spex macro"]}
 
   """
-  @spec validate_spec_syntax(Path.t(), Environment.t() | nil) :: :ok | {:error, [String.t()]}
+  @spec validate_spec_syntax(Path.t(), ExecutionContext.t() | nil) :: :ok | {:error, [String.t()]}
   def validate_spec_syntax(path, env_or_nil \\ nil) do
     env = env_or_nil
 
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> Parser.validate_syntax(content)
       {:error, reason} -> {:error, ["File not found: #{path} (#{inspect(reason)})"]}
     end
@@ -244,7 +245,7 @@ defmodule CodeMySpec.BddSpecs do
 
   ## Options
 
-  - `:environment` - Environment to run specs in (required)
+  - `:execution_context` - ExecutionContext to run specs in (required)
   - `:quiet` - Suppress console output (default: false)
 
   ## Returns
@@ -255,10 +256,10 @@ defmodule CodeMySpec.BddSpecs do
 
   ## Examples
 
-      iex> run_specs(["test/spex/login_spex.exs"], environment: env)
+      iex> run_specs(["test/spex/login_spex.exs"], execution_context: env)
       {:ok, [], 0, "…"}
 
-      iex> run_specs(["test/spex/failing_spex.exs"], environment: env)
+      iex> run_specs(["test/spex/failing_spex.exs"], execution_context: env)
       {:ok, [%Spex.Failure{...}], 1, "…"}
 
   """
@@ -270,7 +271,7 @@ defmodule CodeMySpec.BddSpecs do
 
   # Private helper to parse a spec file, returning nil on error
   defp parse_spec_file(env, file_path) do
-    case Environments.read_file(env, file_path) do
+    case ExecutionContexts.read_file(env, file_path) do
       {:ok, content} -> parse_spec_content(content, file_path)
       {:error, _} -> nil
     end

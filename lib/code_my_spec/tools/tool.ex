@@ -30,5 +30,8 @@ defmodule CodeMySpec.Tools.Tool do
   """
   @callback tombstone?() :: boolean()
 
-  @optional_callbacks script_result: 2, tombstone?: 0
+  @doc "Validate raw arguments before schema casting can drop unsupported fields."
+  @callback validate_input(map()) :: :ok | {:error, String.t()}
+
+  @optional_callbacks script_result: 2, tombstone?: 0, validate_input: 1
 end

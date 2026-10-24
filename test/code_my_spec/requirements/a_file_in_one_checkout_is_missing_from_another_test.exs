@@ -43,7 +43,7 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
 
   import Ecto.Query, only: [from: 2]
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.{IncrementalGraph, Projection}
   alias CodeMySpecSpex.Fixtures
@@ -105,8 +105,8 @@ defmodule CodeMySpec.Requirements.AFileInOneCheckoutIsMissingFromAnotherTest do
       # The file exists in the first checkout only. The second one's tree is
       # real and empty — the state a branch that never carried the file is in.
       :ok =
-        Environments.write_file(
-          ctx.environment,
+        ExecutionContexts.write_file(
+          ctx.execution_context,
           @impl_path,
           "defmodule ExampleContext do\nend\n"
         )

@@ -13,8 +13,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1961Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   setup :register_log_in_setup_account
 
@@ -36,8 +36,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion1961Spex do
         ref = ref_from_version(context.health["version"])
 
         {described, 0} =
-          Environments.cmd(
-            Environment.new(:local, root),
+          ExecutionContexts.cmd(
+            ExecutionContext.new(:local, root),
             "git",
             ["describe", "--tags", "--long", "--match", "v[0-9]*.[0-9]*.[0-9]*", ref],
             cd: root

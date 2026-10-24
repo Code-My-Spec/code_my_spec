@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
   set: choosing **Other…** reveals a text field, and the stored value is a
   plain string.
 
-  That distinction is the whole design. `provisioning_environments` exists
+  That distinction is the whole design. `environments` exists
   because `["prod", "uat"]` had been a literal repeated through seven places in
   `Provisioning.Steps`; an enum here would put it straight back, and could not
   hold `qa-story-812` at all.

@@ -16,7 +16,7 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.AcceptanceCriteria
@@ -103,7 +103,9 @@ defmodule CodeMySpec.Agents.Offers.TheTurnEndMenuIsRecordedAsAnOfferTest do
   describe "problems" do
     setup ctx do
       tmp = CodeMySpec.TempFile.owned_dir("test")
-      scope = put_fixture_environment(%{ctx.scope | cwd: tmp}, Environment.new(:local, tmp))
+
+      scope =
+        put_fixture_execution_context(%{ctx.scope | cwd: tmp}, ExecutionContext.new(:local, tmp))
 
       Configurations.get_or_create(scope)
 

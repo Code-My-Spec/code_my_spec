@@ -13,7 +13,7 @@ defmodule CodeMySpec.Host do
   supplied by the caller. Nothing here guesses which host should receive a
   deployment from the caller's working copy.
 
-  That falls out of `Environments.Container` rather than being arranged: the
+  That falls out of `ExecutionContexts.Container` rather than being arranged: the
   container environment drives `docker`, and `DOCKER_HOST` already accepts
   `ssh://user@host`. So "dev or prod" is configuration, not a second transport
   to write and debug — and the scripts that get rehearsed in a drill are
@@ -42,12 +42,12 @@ defmodule CodeMySpec.Host do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec.Environments]
+    deps: [CodeMySpec.ExecutionContexts]
 
   require Logger
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @scripts_dir "priv/host"
 
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Host do
   to the app's key *and* the admin's, and a default here would silently
   produce a box whose secrets nobody can read once the box is gone.
   """
-  @spec provision_app(Environment.t() | nil, app(), keyword()) ::
+  @spec provision_app(ExecutionContext.t() | nil, app(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
   def provision_app(environment, %{name: name, port: port} = app, opts \\ []) do
     admin_key = Keyword.get(opts, :admin_age_pubkey) || System.get_env("ADMIN_AGE_PUBKEY")
@@ -93,7 +93,7 @@ defmodule CodeMySpec.Host do
   non-zero exit is deliberate: this is meant to gate a deploy rather than be
   read by a human who may or may not be looking.
   """
-  @spec verify_isolation(Environment.t() | nil, String.t(), String.t(), keyword()) ::
+  @spec verify_isolation(ExecutionContext.t() | nil, String.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
   def verify_isolation(environment, app, other, opts \\ []) do
     case run(environment, "verify_isolation.sh", [app, other], Keyword.take(opts, [:cmd])) do
@@ -112,15 +112,20 @@ defmodule CodeMySpec.Host do
   They live in this repository so that one edit changes what runs everywhere,
   rather than each box carrying a copy that drifts.
   """
-  @spec install(Environment.t() | nil) :: :ok | {:error, term()}
-  def install(%Environment{} = env) do
+  @spec install(ExecutionContext.t() | nil) :: :ok | {:error, term()}
+  def install(%ExecutionContext{} = env) do
     for file <-
           ~w(provision_app.sh verify_isolation.sh templates/app.service templates/caddy-site) do
       source = Path.join([Application.app_dir(:code_my_spec), @scripts_dir, file])
-      :ok = Environments.write_file(env, Path.join("/host", file), File.read!(source))
+      :ok = ExecutionContexts.write_file(env, Path.join("/host", file), File.read!(source))
     end
 
-    Environments.cmd(env, "chmod", ["+x", "/host/provision_app.sh", "/host/verify_isolation.sh"])
+    ExecutionContexts.cmd(env, "chmod", [
+      "+x",
+      "/host/provision_app.sh",
+      "/host/verify_isolation.sh"
+    ])
+
     :ok
   end
 
@@ -130,11 +135,11 @@ defmodule CodeMySpec.Host do
     {"cannot run #{script}: no target environment was provided", 1}
   end
 
-  defp run(%Environment{} = env, script, args, opts) do
+  defp run(%ExecutionContext{} = env, script, args, opts) do
     # `:cmd` is a seam for tests to observe the command without a container;
-    # in every real path it is `Environments.cmd/4`, which is what actually
+    # in every real path it is `ExecutionContexts.cmd/4`, which is what actually
     # reaches the box.
-    {runner, opts} = Keyword.pop(opts, :cmd, &Environments.cmd/4)
+    {runner, opts} = Keyword.pop(opts, :cmd, &ExecutionContexts.cmd/4)
     runner.(env, Path.join("/host", script), args, opts ++ [stderr_to_stdout: true])
   end
 end

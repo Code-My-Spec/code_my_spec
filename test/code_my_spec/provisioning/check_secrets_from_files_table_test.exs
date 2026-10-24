@@ -4,9 +4,9 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
   to read a harness-only project's encrypted env file directly.
 
   Reported live against MarketMySpec: `check_secrets/2` read
-  `envs/prod.enc.env` via `Environments.file_exists?/2` against
-  `CodeMySpec.UsersFixtures.fixture_environment(scope)` — unreachable for a project connected only through a
-  harness (it resolves to `Environment.new(:local, project.local_path)`,
+  `envs/prod.enc.env` via `ExecutionContexts.file_exists?/2` against
+  `CodeMySpec.UsersFixtures.fixture_execution_context(scope)` — unreachable for a project connected only through a
+  harness (it resolves to `ExecutionContext.new(:local, project.local_path)`,
   `local_path: nil`) — so it reported every required secret missing
   regardless of what the file actually contained.
   `Scanner.validate_entry/4`'s `:encrypted_env` clause now checks this at
@@ -17,8 +17,8 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sops, Steps}
@@ -31,16 +31,16 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
   end
 
   # An environment that resolves but cannot actually be read from — the same
-  # shape a harness-only project's `Environment.new(:local, project.
+  # shape a harness-only project's `ExecutionContext.new(:local, project.
   # local_path)` takes when `local_path` is nil. Distinct from `nil` itself,
   # which is a different, earlier-guarded failure (`no_environment_message/0`).
   defp unreachable(scope) do
-    :ok = Environments.unregister({:working_copy, scope.active_working_copy_id})
+    :ok = ExecutionContexts.unregister({:working_copy, scope.active_working_copy_id})
 
     :ok =
-      Environments.register(
+      ExecutionContexts.register(
         {:working_copy, scope.active_working_copy_id},
-        Environment.new(:local, nil)
+        ExecutionContext.new(:local, nil)
       )
 
     scope
@@ -48,9 +48,9 @@ defmodule CodeMySpec.Provisioning.CheckSecretsFromFilesTableTest do
 
   defp sync_env_file(scope, content) do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    env = Environment.new(:local, tmp)
-    Environments.write_file(env, "envs/prod.enc.env", content)
-    {:ok, _} = FileSync.sync(scope, base_dir: tmp, environment: env)
+    env = ExecutionContext.new(:local, tmp)
+    ExecutionContexts.write_file(env, "envs/prod.enc.env", content)
+    {:ok, _} = FileSync.sync(scope, base_dir: tmp, execution_context: env)
     :ok
   end
 

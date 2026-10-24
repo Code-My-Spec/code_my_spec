@@ -11,7 +11,7 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
   what a manifest sync actually triggers. `LockfileSweep` is exercised
   separately, since its scopes are `:harness`-typed and the thing worth
   proving about it is that an unreachable harness is a quiet no-op, not a
-  crash — matching `Environments.Harness`'s own documented contract.
+  crash — matching `ExecutionContexts.Harness`'s own documented contract.
   """
 
   use ExUnit.Case, async: true
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Dependencies
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.LockfileSweep
   alias CodeMySpec.Projects
@@ -54,7 +54,10 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       assert [%{name: "bandit", version: "1.10.4"}] = dependency_names_and_versions(scope)
       assert is_binary(stamped_fingerprint(scope))
@@ -64,7 +67,10 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       {scope, tmp_dir} = project_with_copy(@lock, main?: false)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       assert dependency_names_and_versions(scope) == []
       assert is_nil(stamped_fingerprint(scope))
@@ -74,7 +80,10 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       {scope, tmp_dir} = project_with_copy(nil, main?: true)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       assert dependency_names_and_versions(scope) == []
       assert is_nil(stamped_fingerprint(scope))
@@ -84,12 +93,18 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       fingerprint_after_first = stamped_fingerprint(scope)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       fingerprint_after_second = stamped_fingerprint(scope)
 
@@ -101,14 +116,20 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       {scope, tmp_dir} = project_with_copy(@lock, main?: true)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       fingerprint_after_first = stamped_fingerprint(scope)
 
       write_mix_lock(tmp_dir, @other_lock)
 
       {:ok, _} =
-        FileSync.sync(scope, base_dir: tmp_dir, environment: Environment.new(:local, tmp_dir))
+        FileSync.sync(scope,
+          base_dir: tmp_dir,
+          execution_context: ExecutionContext.new(:local, tmp_dir)
+        )
 
       assert [%{name: "bandit", version: "1.10.5"}] = dependency_names_and_versions(scope)
       assert stamped_fingerprint(scope) != fingerprint_after_first
@@ -123,14 +144,14 @@ defmodule CodeMySpec.Files.LockfileReconcileTest do
       found = Enum.find(scopes, &(&1.active_project_id == scope.active_project_id))
 
       assert found.active_account_id == scope.active_account_id
-      assert %Environment{type: :harness} = WorkingCopies.environment(found)
+      assert %ExecutionContext{type: :harness} = WorkingCopies.execution_context(found)
     end
   end
 
   describe "LockfileSweep.sweep_now/0" do
     # The scopes `main_copy_scopes/0` builds are `:harness`-typed, reached
     # over a channel this test opens none of — exactly the "harness offline"
-    # case `Environments.Harness`'s own moduledoc documents as a quiet
+    # case `ExecutionContexts.Harness`'s own moduledoc documents as a quiet
     # `{:error, _}`, not a raise. The sweep's whole value is surviving that
     # for every *other* project while this one waits for its harness to
     # come back, so proving it does not crash is the property that matters

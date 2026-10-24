@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -79,8 +79,8 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
 
       then_ "its deploy configuration names the telemetry collector and the app's service name",
             context do
-        CodeMySpecSpex.Fixtures.fixture_environment(context.scope)
-        |> Environments.read_file("config/deploy.yml")
+        CodeMySpecSpex.Fixtures.fixture_execution_context(context.scope)
+        |> ExecutionContexts.read_file("config/deploy.yml")
         |> assert_deploy_config_names_telemetry()
 
         {:ok, context}

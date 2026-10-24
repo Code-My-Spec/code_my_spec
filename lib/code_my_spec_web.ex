@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.AgentPerformance,
       CodeMySpec.Agents.Agent,
       CodeMySpec.PromotionQueue,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.Accounts,
@@ -54,7 +54,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.Conversations,
       CodeMySpec.Devices,
       CodeMySpec.DevState,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.EpicDispatch,
       CodeMySpec.Epics,
       CodeMySpec.Events,
@@ -109,6 +109,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.LocalScope,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
+      CodeMySpec.AppInstances,
       CodeMySpec.Workspaces
     ],
     exports: :all

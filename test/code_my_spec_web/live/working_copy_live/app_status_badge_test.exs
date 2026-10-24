@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AppStatusBadgeTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias Ecto.Adapters.SQL.Sandbox
 
   setup :register_log_in_setup_account
@@ -36,9 +37,10 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AppStatusBadgeTest do
   test "a copy whose app is serving shows its status and commit", context do
     copy = join_working_copy(context, "/tmp/app-status-serving", "a copy with a serving app")
     {:ok, harness} = WorkingCopies.fetch(copy.working_copy_id)
+    instance = AppInstances.for_working_copy(context.scope, harness)
 
-    {:ok, _harness} =
-      WorkingCopies.record_app_status(harness, %{
+    {:ok, _instance} =
+      AppInstances.record_status(context.scope, instance, %{
         status: "serving",
         url: "http://127.0.0.1:4100",
         commit: "cafef00dcafef00dcafef00dcafef00dcafef00d"
@@ -60,8 +62,9 @@ defmodule CodeMySpecWeb.WorkingCopyLive.AppStatusBadgeTest do
   test "a copy whose app is down shows that status, distinctly from serving", context do
     copy = join_working_copy(context, "/tmp/app-status-down", "a copy with a down app")
     {:ok, harness} = WorkingCopies.fetch(copy.working_copy_id)
+    instance = AppInstances.for_working_copy(context.scope, harness)
 
-    {:ok, _harness} = WorkingCopies.record_app_status(harness, %{status: "down"})
+    {:ok, _instance} = AppInstances.record_status(context.scope, instance, %{status: "down"})
 
     live = index(context)
 

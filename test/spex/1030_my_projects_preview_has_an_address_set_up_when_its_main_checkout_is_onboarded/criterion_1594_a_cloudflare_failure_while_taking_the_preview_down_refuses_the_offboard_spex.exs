@@ -19,11 +19,15 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   import CodeMySpecSpex.WorkingCopyHelpers
 
+  import CodeMySpecSpex.MachineTunnelHelpers,
+    only: [configure_persistent_main: 2, report_serving: 3, offboard: 2]
+
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewTunnel
 
@@ -37,15 +41,16 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
     criterion: 1594 do
     scenario "Cloudflare fails while a shared copy is being discarded" do
       given_ "main is onboarded and holds a tunnel of its own", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         reply = join_working_copy(context, "/workspace/main", "main")
 
         :ok = CodeMySpecSpex.Fixtures.designate_main(context.scope, reply.working_copy_id)
+        :ok = configure_persistent_main(context.scope, reply.working_copy_id)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(
               %{working_copy_id: reply.working_copy_id, project_id: context.project.id},
@@ -53,7 +58,11 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
             )
           )
 
-        Req.Test.stub(PreviewTunnel, &cloudflare_response(&1, self()))
+        test_pid = self()
+
+        Req.Test.stub(PreviewTunnel, fn conn ->
+          cloudflare_response(conn, test_pid)
+        end)
 
         Mix.Task.reenable("cms.harness.onboard")
         _report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
@@ -62,7 +71,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
         assert_receive {:cloudflare, "dns_records"}
 
         {:ok, main} = WorkingCopies.fetch(reply.working_copy_id)
-        assert main.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, main.id).preview_tunnel_id ==
+                 @tunnel_id
 
         {:ok, Map.put(context, :main, main)}
       end
@@ -73,15 +84,9 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
             device_id: context.main.device_id
           )
 
-        ref =
-          Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
-            "ref" => "spex-1594-share",
-            "status" => "ok",
-            "app_status" => "serving",
-            "app_url" => "http://127.0.0.1:41594"
-          })
+        instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok)
+        :ok = report_serving(socket, instance.id, "http://127.0.0.1:41594")
 
         share_frame = %Frame{
           assigns: %{
@@ -100,7 +105,11 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
                "setup failed to share the copy in the first place"
 
         {:ok, sibling} = WorkingCopies.fetch(reply.working_copy_id)
-        assert sibling.preview_tunnel_id == @tunnel_id
+
+        assert AppInstances.for_working_copy(context.scope, sibling.id).preview_tunnel_id ==
+                 @tunnel_id
+
+        sibling = Map.merge(sibling, %{socket: socket, instance_id: instance.id})
 
         {:ok, context |> Map.put(:sibling_id, sibling.id) |> Map.put(:sibling, sibling)}
       end
@@ -112,14 +121,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
       end
 
       when_ "an operator discards that copy", context do
-        operator_frame = %Frame{assigns: %{current_scope: context.scope}}
-
-        response =
-          ToolLibrary.run(
-            "offboard_working_copy",
-            %{working_copy_id: context.sibling_id},
-            Map.put(operator_frame.assigns, :scope, operator_frame.assigns[:current_scope])
-          )
+        response = offboard(context, context.sibling)
 
         {:ok, Map.put(context, :response, response)}
       end
@@ -135,11 +137,13 @@ defmodule CodeMySpecSpex.Story1030.Criterion1594Spex do
       then_ "the copy's row, and what it remembers about its preview, is unchanged", context do
         assert {:ok, still_there} = WorkingCopies.fetch(context.sibling_id)
 
-        assert still_there.preview_tunnel_id == context.sibling.preview_tunnel_id,
+        assert AppInstances.for_working_copy(context.scope, still_there.id).preview_tunnel_id ==
+                 AppInstances.for_working_copy(context.scope, context.sibling.id).preview_tunnel_id,
                "the row was cleared even though releasing the preview failed — the one " <>
                  "record of a hostname Cloudflare may still be serving is now gone"
 
-        assert still_there.preview_url == context.sibling.preview_url
+        assert AppInstances.for_working_copy(context.scope, still_there.id).preview_url ==
+                 AppInstances.for_working_copy(context.scope, context.sibling.id).preview_url
 
         {:ok, context}
       end

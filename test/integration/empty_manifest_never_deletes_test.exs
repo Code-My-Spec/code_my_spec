@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
   answered from, and the answer was to rewrite working code.
 
   The fix is only at the point where the two are actually distinguishable —
-  `Environments.stream_files/3` either refuses or it doesn't. A blanket "never
+  `ExecutionContexts.stream_files/3` either refuses or it doesn't. A blanket "never
   delete on an empty manifest" rule was tried first and was wrong: it broke
   `FileSyncTest` "removes files that no longer exist on disk", where a project's
   only tracked file is deleted and the empty scan is the truth. Emptiness is not
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
 
       assert {:error, :not_supported_on_harness} =
                Scanner.observe(
-                 Environment.new(:harness, nil),
+                 ExecutionContext.new(:harness, nil),
                  Files.read_model(scope)
                )
     end
@@ -76,7 +76,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
                FileSync.sync(server,
                  base_dir: nil,
                  embed: false,
-                 environment: Environment.new(:harness, nil)
+                 execution_context: ExecutionContext.new(:harness, nil)
                )
 
       assert length(Files.list_files(local)) == before
@@ -104,7 +104,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       assert {:error, {:cannot_scan, :not_supported_on_harness}} =
                FileSync.sync_changed(server,
                  base_dir: tmp_dir,
-                 environment: Environment.new(:harness, nil)
+                 execution_context: ExecutionContext.new(:harness, nil)
                )
 
       assert length(Files.list_files(local)) == before
@@ -113,7 +113,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
     # The refusal is right and permanent for this environment, which is exactly
     # why it must not be an error.
     #
-    # `Environments.Harness.stream_files/3` returns `:not_supported_on_harness`
+    # `ExecutionContexts.Harness.stream_files/3` returns `:not_supported_on_harness`
     # unconditionally — a working copy on another machine has no disk here — so
     # a harness-backed copy takes this branch on every stop hook. Logged at
     # `:error` it produced 197 error-level lines in one `web.log`, and made the
@@ -154,7 +154,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       assert {:error, {:cannot_scan, :not_supported_on_harness}} =
                FileSync.sync_changed(server,
                  base_dir: tmp_dir,
-                 environment: Environment.new(:harness, nil)
+                 execution_context: ExecutionContext.new(:harness, nil)
                )
 
       assert length(Files.list_files(local)) == before
@@ -190,9 +190,9 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
 
     scope =
-      put_fixture_environment(
+      put_fixture_execution_context(
         %{scope | active_project: project},
-        Environment.new(:local, tmp_dir)
+        ExecutionContext.new(:local, tmp_dir)
       )
 
     {scope, tmp_dir}

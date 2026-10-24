@@ -49,6 +49,8 @@ defmodule CodeMySpec.CodeMode.Sandbox do
   mechanism from the other side.
   """
 
+  alias CodeMySpec.CodeMode.Progress
+
   @defaults [
     max_instructions: 10_000_000,
     max_call_depth: 200,
@@ -88,19 +90,32 @@ defmodule CodeMySpec.CodeMode.Sandbox do
   @doc """
   Runs `fun` under the wall-clock timeout.
 
-  `{:error, :timeout}` and `{:error, {:crashed, reason}}` are different answers
+  `{:error, {:timeout, what}}` and `{:error, {:crashed, reason}}` are different answers
   because they are different problems: the first is a script or a provider
   taking too long, the second is a bug. Reporting both as "it failed" is how a
-  crash goes unnoticed for a week.
+  crash goes unnoticed for a week. `what` says which tool call was still
+  waiting, what had finished, and what the script printed (`Progress`).
   """
-  @spec with_timeout((-> result), keyword()) :: result | {:error, :timeout | {:crashed, term()}}
+  @spec with_timeout((-> result), keyword()) ::
+          result | {:error, {:timeout, String.t()} | {:crashed, term()}}
         when result: term()
   def with_timeout(fun, opts \\ []) when is_function(fun, 0) do
-    task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fun)
-    await(task, timeout(opts))
+    listener = self()
+    tag = make_ref()
+
+    task =
+      Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+        Progress.listen(listener, tag)
+        fun.()
+      end)
+
+    result = await(task, timeout(opts), tag)
+    # Progress is only read on a timeout; anything else leaves it to flush.
+    Progress.collect(tag)
+    result
   end
 
-  defp await(task, timeout) do
+  defp await(task, timeout, tag) do
     receive do
       {ref, result} when ref == task.ref ->
         Process.demonitor(task.ref, [:flush])
@@ -114,16 +129,19 @@ defmodule CodeMySpec.CodeMode.Sandbox do
         # between the timeout firing and the kill landing, and reporting a
         # timeout for work that finished is its own kind of wrong.
         Task.shutdown(task, :brutal_kill)
-        drain(task)
+        drain(task, tag)
     end
   end
 
-  defp drain(task) do
+  defp drain(task, tag) do
     receive do
       {ref, result} when ref == task.ref -> result
-      {:DOWN, ref, :process, _pid, _reason} when ref == task.ref -> {:error, :timeout}
+      {:DOWN, ref, :process, _pid, _reason} when ref == task.ref -> timed_out(tag)
     after
-      0 -> {:error, :timeout}
+      0 -> timed_out(tag)
     end
   end
+
+  defp timed_out(tag),
+    do: {:error, {:timeout, Progress.describe(Progress.collect(tag), Progress.now())}}
 end

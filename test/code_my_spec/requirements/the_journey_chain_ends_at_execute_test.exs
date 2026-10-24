@@ -9,10 +9,11 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
   """
   use CodeMySpecSpex.Case, async: true
 
-  import CodeMySpec.UsersFixtures, only: [fixture_environment: 1, put_fixture_environment: 2]
+  import CodeMySpec.UsersFixtures,
+    only: [fixture_execution_context: 1, put_fixture_execution_context: 2]
 
   alias CodeMySpec.AgentTasks.Release
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Paths
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpecSpex.Fixtures
@@ -61,7 +62,10 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
     end
 
     test "completes QA's journey chain", ctx do
-      assert Environments.glob(fixture_environment(ctx.scope), "test/journeys/*_test.exs") in [
+      assert ExecutionContexts.glob(
+               fixture_execution_context(ctx.scope),
+               "test/journeys/*_test.exs"
+             ) in [
                [],
                nil
              ]
@@ -84,7 +88,12 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
       {:ok, ready} = Release.command(ctx.scope, %{})
       refute ready =~ "the user journeys come first"
 
-      :ok = Environments.delete_file(fixture_environment(ctx.scope), Paths.qa_journey_result())
+      :ok =
+        ExecutionContexts.delete_file(
+          fixture_execution_context(ctx.scope),
+          Paths.qa_journey_result()
+        )
+
       {:ok, refused} = Release.command(ctx.scope, %{})
       assert refused =~ "the user journeys come first"
     end

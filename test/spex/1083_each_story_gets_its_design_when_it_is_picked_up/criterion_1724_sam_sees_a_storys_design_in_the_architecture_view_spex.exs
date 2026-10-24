@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Paths
   alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.HarnessHooks
@@ -93,7 +93,7 @@ defmodule CodeMySpecSpex.Story1083.Criterion1724Spex do
       end
 
       then_ "no proposal file was written", context do
-        refute Environments.file_exists?(context.environment, Paths.proposal_path()),
+        refute ExecutionContexts.file_exists?(context.execution_context, Paths.proposal_path()),
                "expected no proposal file for a patch-mode design"
 
         {:ok, context}

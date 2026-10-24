@@ -35,8 +35,8 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.WorkingCopies
@@ -158,9 +158,9 @@ defmodule CodeMySpec.Promotion.AFailedDeploymentCorrectsTheAgentTest do
     {:ok, copy} = WorkingCopies.report_root(copy, root)
 
     :ok =
-      Environments.register(
+      ExecutionContexts.register(
         {:working_copy, copy.id},
-        Environment.new(:local, root)
+        ExecutionContext.new(:local, root)
       )
 
     copy

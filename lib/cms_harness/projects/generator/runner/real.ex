@@ -1,10 +1,10 @@
 defmodule CmsHarness.Projects.Generator.Runner.Real do
   @moduledoc """
-  `Environments.cmd/4` rather than a bare `System.cmd/3`: a real harness is a
+  `ExecutionContexts.cmd/4` rather than a bare `System.cmd/3`: a real harness is a
   Burrito release, and its own `ROOTDIR`/`BINDIR`/`RELEASE_*` would otherwise
   leak into the child `mix` it spawns and make that child try to boot from the
   release's own extracted ERTS instead of the machine's real Elixir install
-  ("cannot get bootfile") — `Environments.Local.cmd/4` is what strips those
+  ("cannot get bootfile") — `ExecutionContexts.Local.cmd/4` is what strips those
   before the child ever starts.
 
   Measured directly, not theorised: installing an Elixir-version-mismatched
@@ -16,14 +16,14 @@ defmodule CmsHarness.Projects.Generator.Runner.Real do
 
   @behaviour CmsHarness.Projects.Generator.Runner
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @impl true
   def cmd(cwd, command, args) do
-    env = Environment.new(:local, cwd)
+    env = ExecutionContext.new(:local, cwd)
 
-    case Environments.cmd(env, command, args, []) do
+    case ExecutionContexts.cmd(env, command, args, []) do
       {output, 0} ->
         {:ok, output}
 

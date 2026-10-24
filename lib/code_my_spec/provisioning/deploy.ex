@@ -2,7 +2,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   @moduledoc """
   Image, migrate, swap — in that order, and only when each step earns the next.
 
-  Shell steps run through `CodeMySpec.Environments.cmd/4` rather than
+  Shell steps run through `CodeMySpec.ExecutionContexts.cmd/4` rather than
   `System.cmd/3`, so they execute on whichever device the environment names
   (the harness channel for a remote box) and are recordable in tests.
 
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Transport
   alias CodeMySpec.Provisioning.Wait
 
@@ -74,7 +74,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
     * `:now` — clock injection for tests
     * `:probe` — health probe injection for tests
   """
-  @spec run(CodeMySpec.Environments.Environment.t(), String.t(), keyword()) :: Result.t()
+  @spec run(CodeMySpec.ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
+          Result.t()
   def run(env, environment, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     script = deploy_script(env, opts)
@@ -429,7 +430,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   defp run_script(env, script, args, opts) do
     case Keyword.get(opts, :run) do
       nil ->
-        Environments.cmd(env, script, args, env: script_env(opts), stderr_to_stdout: true)
+        ExecutionContexts.cmd(env, script, args, env: script_env(opts), stderr_to_stdout: true)
 
       run ->
         run.([remote_command(script, args, opts)])

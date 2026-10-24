@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Story670.Criterion5583Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.TaskResponseHelpers
@@ -31,10 +31,12 @@ defmodule CodeMySpecSpex.Story670.Criterion5583Spex do
   spex "Component Code Generation", criterion: 328 do
     scenario "Component without a description still produces a labeled prompt" do
       given_ "a context Component is synced from a spec with no description prose", context do
-        env = context.environment
+        env = context.execution_context
 
-        :ok = Environments.write_file(env, @spec_path, spec_file_content_without_description())
-        :ok = Environments.write_file(env, @impl_path, impl_file_content())
+        :ok =
+          ExecutionContexts.write_file(env, @spec_path, spec_file_content_without_description())
+
+        :ok = ExecutionContexts.write_file(env, @impl_path, impl_file_content())
 
         {:ok, sync_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")

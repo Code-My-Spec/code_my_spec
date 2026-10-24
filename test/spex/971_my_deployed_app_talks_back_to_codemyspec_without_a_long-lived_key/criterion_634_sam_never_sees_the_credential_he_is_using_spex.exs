@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -94,12 +94,12 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
       end
 
       then_ "the value is not left sitting in plaintext config", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         plaintext_configs =
           Enum.filter(entries, fn path ->
             Path.extname(path) in [".exs", ".env"] and
-              carries_credential?(Environments.read_file(context.environment, path))
+              carries_credential?(ExecutionContexts.read_file(context.execution_context, path))
           end)
 
         assert plaintext_configs == [],

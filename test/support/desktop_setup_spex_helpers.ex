@@ -26,8 +26,9 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
         {"asdf", "v0.16.0\nerlang 27.2\nelixir 1.18.1"},
         {"erl", "27"},
         {"elixir", "Erlang/OTP 27\nElixir 1.18.1"},
-        {"cms", "cms 2.0.0"},
-        {"vibium", "Vibium 1.0.0"}
+        {"mix", "mix cms.new"},
+        {"vibium", "Vibium 1.0.0"},
+        {"just", "just 1.40.0"}
       ],
       fn {name, output} ->
         script =
@@ -88,7 +89,7 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
       Fixtures.desktop_harness_credential(user)
     )
 
-    environment = Fixtures.local_environment_fixture(working_dir: root)
+    environment = Fixtures.local_execution_context_fixture(working_dir: root)
 
     {:ok,
      Map.merge(context, %{
@@ -98,6 +99,8 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
        machine_environment: environment
      })}
   end
+
+  defdelegate connect_setup_project(context), to: Fixtures
 
   def with_project_generator(context) do
     previous_runner = Application.fetch_env(:code_my_spec, :generator_runner)
@@ -146,24 +149,7 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
   end
 
   @doc "Make the Postgres version check itself fail, leaving the pgvector check untouched."
-  def without_postgres(context) do
-    path = Path.join([context.machine_root, "bin", "psql"])
-
-    File.write!(path, """
-    #!/bin/sh
-    printf 'psql' >> '#{context.command_log}'
-    printf ' %s' "$@" >> '#{context.command_log}'
-    printf '\\n' >> '#{context.command_log}'
-    case "$*" in
-      *--version*) printf 'psql: error: could not connect to server\\n' >&2; exit 1 ;;
-      *vector*) printf 'vector|0.8.0\\n' ;;
-      *) exit 0 ;;
-    esac
-    """)
-
-    File.chmod!(path, 0o700)
-    context
-  end
+  defdelegate without_postgres(context), to: Fixtures, as: :without_setup_postgres
 
   @doc """
   Tell desktop setup which machine it is running on, for a criterion about a
@@ -207,6 +193,7 @@ defmodule CodeMySpecSpex.DesktopSetupHelpers do
 
     File.write!(path, """
     #!/bin/sh
+    printf 'just 1.40.0\\n'
     printf 'just' >> '#{context.command_log}'
     printf ' %s' "$@" >> '#{context.command_log}'
     printf '\\n' >> '#{context.command_log}'

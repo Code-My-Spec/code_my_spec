@@ -22,8 +22,8 @@ defmodule CodeMySpecSpex.Story597.Criterion5280Spex do
   spex "Each integration carries a runnable verify script", criterion: 233 do
     scenario "OAuth2 integrations trigger an additional token-exchange script instruction" do
       given_ "a baseline project is in place", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
         {:ok, context}
       end
 

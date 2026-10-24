@@ -2,10 +2,10 @@ defmodule CodeMySpec.PromotionTest do
   @moduledoc """
   Where a promotion's disk work runs, and what it does when it cannot run.
 
-  Every spec in story 1046 builds `Environment.new(:local, root)` and drives a
+  Every spec in story 1046 builds `ExecutionContext.new(:local, root)` and drives a
   real checkout on the machine running the suite. Production does not look like
-  that: a project's checkout is on someone else's machine, `fixture_environment(scope)`
-  is a harness environment, and `Environments.Harness.cmd/4` answers
+  that: a project's checkout is on someone else's machine, `fixture_execution_context(scope)`
+  is a harness environment, and `ExecutionContexts.Harness.cmd/4` answers
   `{:error, :not_supported_on_harness}` — it carries file operations to the
   disk, not commands.
 
@@ -25,7 +25,8 @@ defmodule CodeMySpec.PromotionTest do
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.DevicesFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.{Runner, Steps}
   alias CodeMySpec.Staffing
@@ -33,7 +34,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a runner with nowhere to run" do
     test "a harness environment with no working copy id says so" do
-      environment = Environment.new(:harness, nil)
+      environment = ExecutionContext.new(:harness, nil)
 
       assert {:error, %{reason: reason}} = Runner.precheck(environment, "/somewhere", nil)
 
@@ -43,10 +44,21 @@ defmodule CodeMySpec.PromotionTest do
     end
 
     test "a harness that is not connected is reported, not crashed into" do
-      scope = put_fixture_environment(full_scope_fixture(), Environment.new(:harness, nil))
+      scope =
+        put_fixture_execution_context(full_scope_fixture(), ExecutionContext.new(:harness, nil))
+
+      {:ok, copy} =
+        WorkingCopies.issue(scope, nil,
+          device: device_fixture(scope),
+          root: "/somewhere"
+        )
+
+      {:ok, copy} = WorkingCopies.report_root(copy, "/somewhere")
+      scope = %{scope | active_working_copy_id: copy.id}
+      {:ok, instance} = AppInstances.ensure_default(scope, copy)
 
       assert {:error, %{reason: reason}} =
-               Runner.restart(scope, "/somewhere", Ecto.UUID.generate())
+               Runner.restart(scope, "/somewhere", instance.id)
 
       assert reason =~ "could not reach",
              "an unreachable machine is a state to report, not an exception. " <>
@@ -60,7 +72,7 @@ defmodule CodeMySpec.PromotionTest do
   end
 
   describe "a command that errors instead of running" do
-    # The exact crash. `Environments.cmd(nil, ...)` answers `{"no environment", 1}`
+    # The exact crash. `ExecutionContexts.cmd(nil, ...)` answers `{"no environment", 1}`
     # and a harness environment answers `{:error, :not_supported_on_harness}`;
     # `Steps` has to survive both without trimming an atom.
     test "does not raise out of a step" do
@@ -69,7 +81,7 @@ defmodule CodeMySpec.PromotionTest do
     end
 
     test "a step handed a harness environment reports rather than raises" do
-      env = Environment.new(:harness, nil)
+      env = ExecutionContext.new(:harness, nil)
 
       assert {:error, %{reason: reason}} = Steps.precheck(env, "/nowhere")
 
@@ -105,7 +117,7 @@ defmodule CodeMySpec.PromotionTest do
       {_, code} = git.(["merge", "--no-edit", "side"])
       assert code != 0
 
-      %{root: root, git: git, env: Environment.new(:local, root)}
+      %{root: root, git: git, env: ExecutionContext.new(:local, root)}
     end
 
     test "one whose conflicts are resolved is concluded, and the new merge runs",
@@ -184,7 +196,7 @@ defmodule CodeMySpec.PromotionTest do
           cd: sub_root
         )
 
-      %{root: root, env: Environment.new(:local, root)}
+      %{root: root, env: ExecutionContext.new(:local, root)}
     end
 
     test "a promote names the submodule and the fix, not a raw git error", %{root: root, env: env} do
@@ -268,7 +280,7 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = git.(["add", "."])
       {_, 0} = git.(["commit", "-m", "base"])
 
-      %{root: root, git: git, env: Environment.new(:local, root)}
+      %{root: root, git: git, env: ExecutionContext.new(:local, root)}
     end
 
     test "a content conflict is refused before it is ever attempted, and nothing moves",
@@ -351,7 +363,7 @@ defmodule CodeMySpec.PromotionTest do
       {_, 0} = git.(["config", "user.email", "t@example.com"])
       {_, 0} = git.(["config", "user.name", "T"])
 
-      %{root: root, git: git, env: Environment.new(:local, root)}
+      %{root: root, git: git, env: ExecutionContext.new(:local, root)}
     end
 
     test "tags the certified commit with the next patch, commits nothing, and reports it",
@@ -685,7 +697,7 @@ defmodule CodeMySpec.PromotionTest do
       # The QA agent's own act: rewriting a file the submodule already tracks.
       File.write!(Path.join(root, ".code_my_spec/qa_brief.md"), "in progress\n")
 
-      env = Environment.new(:local, root)
+      env = ExecutionContext.new(:local, root)
 
       assert {:ok, %{branch: "main"}} = Steps.precheck(env, root),
              "a submodule with a modified tracked file made this checkout read " <>
@@ -705,7 +717,7 @@ defmodule CodeMySpec.PromotionTest do
 
       File.write!(Path.join(root, "app.ex"), "defmodule App do\n  def changed, do: true\nend\n")
 
-      env = Environment.new(:local, root)
+      env = ExecutionContext.new(:local, root)
 
       assert {:error, %{reason: reason}} = Steps.precheck(env, root)
 

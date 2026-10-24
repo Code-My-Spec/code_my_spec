@@ -1,11 +1,11 @@
 defmodule CodeMySpec.TechnicalStrategyFixtures do
   @moduledoc """
-  Seeds an `InMemoryEnvironment` with the filesystem state a technical
+  Seeds an `InMemoryExecutionContext` with the filesystem state a technical
   strategy task inspects. Used by BDD specs for Story 80 (Architecture
   Decision Records).
 
   Additive — each helper writes one piece of state and can be composed.
-  All writes go through the `Environments` API so the fixture works
+  All writes go through the `ExecutionContexts` API so the fixture works
   against any environment (memory, local, cli).
 
   ## Conventions
@@ -29,8 +29,8 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
     `.code_my_spec/architecture/decisions.md`.
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @decisions_dir ".code_my_spec/architecture/decisions"
   @index_path ".code_my_spec/architecture/decisions.md"
@@ -50,9 +50,9 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
   the "Current Dependencies" prompt section sees realistic content —
   not a stub the agent would never encounter in production.
   """
-  @spec with_mix_exs(Environment.t()) :: :ok
+  @spec with_mix_exs(ExecutionContext.t()) :: :ok
   def with_mix_exs(env) do
-    Environments.write_file(env, "mix.exs", """
+    ExecutionContexts.write_file(env, "mix.exs", """
     defmodule MyApp.MixProject do
       use Mix.Project
 
@@ -96,7 +96,7 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
   survived the auto-write pass. Default marker phrasing mirrors
   the shape of an ADR a human might have written by hand.
   """
-  @spec with_custom_adr(Environment.t(), String.t(), String.t()) :: :ok
+  @spec with_custom_adr(ExecutionContext.t(), String.t(), String.t()) :: :ok
   def with_custom_adr(env, topic, marker) when is_binary(marker) do
     content = """
     # Custom decision for #{topic}
@@ -111,7 +111,7 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
     Retain the existing choice — this ADR predates CodeMySpec adoption.
     """
 
-    Environments.write_file(env, "#{@decisions_dir}/#{topic}.md", content)
+    ExecutionContexts.write_file(env, "#{@decisions_dir}/#{topic}.md", content)
   end
 
   @doc """
@@ -120,9 +120,9 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
   The index is the artifact the technical_strategy requirement's
   `:path_exists` check gates on.
   """
-  @spec with_decisions_index(Environment.t()) :: :ok
+  @spec with_decisions_index(ExecutionContext.t()) :: :ok
   def with_decisions_index(env) do
-    Environments.write_file(env, @index_path, """
+    ExecutionContexts.write_file(env, @index_path, """
     # Architecture Decisions
 
     | Topic | Decision | Status |
@@ -139,9 +139,9 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
   Scenarios assert both existence and content preservation through this
   helper rather than poking the environment directly.
   """
-  @spec read_adr(Environment.t(), String.t()) :: String.t() | nil
+  @spec read_adr(ExecutionContext.t(), String.t()) :: String.t() | nil
   def read_adr(env, topic) do
-    case Environments.read_file(env, "#{@decisions_dir}/#{topic}.md") do
+    case ExecutionContexts.read_file(env, "#{@decisions_dir}/#{topic}.md") do
       {:ok, content} -> content
       _ -> nil
     end
@@ -150,8 +150,8 @@ defmodule CodeMySpec.TechnicalStrategyFixtures do
   @doc """
   Returns true if an ADR file exists for `topic`.
   """
-  @spec adr_exists?(Environment.t(), String.t()) :: boolean()
+  @spec adr_exists?(ExecutionContext.t(), String.t()) :: boolean()
   def adr_exists?(env, topic) do
-    Environments.file_exists?(env, "#{@decisions_dir}/#{topic}.md") == true
+    ExecutionContexts.file_exists?(env, "#{@decisions_dir}/#{topic}.md") == true
   end
 end

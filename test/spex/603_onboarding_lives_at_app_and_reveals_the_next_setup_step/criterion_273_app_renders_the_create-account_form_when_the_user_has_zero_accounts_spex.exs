@@ -16,6 +16,10 @@ defmodule CodeMySpecSpex.Story603.Criterion5499Spex do
 
   setup :register_and_log_in_user
 
+  setup context do
+    CodeMySpecSpex.ModelOnboardingHelpers.configure_models(context)
+  end
+
   spex "User with no accounts sees the create-account form on /app", criterion: 273 do
     scenario "User with no accounts sees the create-account form on /app" do
       given_ "the user is on /app with zero accounts", context do

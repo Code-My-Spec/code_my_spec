@@ -43,6 +43,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
   alias CodeMySpec.Promotion
   alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
@@ -59,6 +60,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
         "harness_project:#{scope.active_project_id}",
         %{
           "label" => "the harness at /workspace/app",
+          "root" => scope.cwd,
           "harness_id" => scope.active_working_copy_id,
           "device" => %{"id" => device_fixture(scope).id}
         }
@@ -74,15 +76,13 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
         device: device_fixture(scope)
       )
 
+    {:ok, running} = WorkingCopies.report_root(running, scope.cwd <> "-running")
     {:ok, _} = Staffing.designate_main(scope, running.id)
 
     %{scope: scope, socket: socket, running: running}
   end
 
-  defp copy(scope) do
-    {:ok, copy} = WorkingCopies.fetch(scope.active_working_copy_id)
-    copy
-  end
+  defp instance(scope), do: AppInstances.for_working_copy(scope, scope.active_working_copy_id)
 
   # What a *successful* promotion leaves behind: the branch merged into the
   # running copy, this worktree where it was. It used to read as "its work is
@@ -108,7 +108,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
 
     {:ok, prompt} = PromoteWork.command(scope, %{story_id: story.id})
 
-    assert prompt =~ ~r/already on the running dev\s+copy/,
+    assert prompt =~ ~r/already published to the development\s+branch/,
            "a promoted story should read as done rather than as something to " <>
              "remedy. Got: " <> prompt
 
@@ -121,13 +121,13 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
     defp report_preview(socket, status), do: push(socket, "preview_status", %{"status" => status})
 
     test "a reported status reaches the row", %{scope: scope, socket: socket} do
-      assert copy(scope).preview_status == nil,
+      assert instance(scope).preview_status == nil,
              "the premise failed: this copy already has a measurement"
 
       ref = report_preview(socket, "serving")
       assert_reply(ref, :ok)
 
-      recorded = copy(scope)
+      recorded = instance(scope)
 
       assert recorded.preview_status == "serving"
       assert recorded.preview_checked_at
@@ -164,7 +164,7 @@ defmodule CodeMySpecWeb.HarnessCheckoutStateTest do
       ref = report_preview(socket, "probably fine")
       assert_reply(ref, :error, _)
 
-      assert copy(scope).preview_status == nil,
+      assert instance(scope).preview_status == nil,
              "a report the handler could not read still moved the row, so the gate " <>
                "would judge a checkout on a measurement that never happened"
     end

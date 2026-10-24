@@ -16,9 +16,9 @@ defmodule CmsHarness.AnalyzerEnvTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.AnalyzerEnv
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
-  defp env_for(cwd), do: Environment.new(:local, cwd)
+  defp env_for(cwd), do: ExecutionContext.new(:local, cwd)
 
   # A working copy is onboarded; the analyzer only runs against one that is.
   # `TestDatabase.partition_for/1` reads the recorded partition and refuses a copy

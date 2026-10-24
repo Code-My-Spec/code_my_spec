@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
@@ -56,7 +56,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
 
   setup %{tmp_dir: tmp_dir} do
     scope = full_scope_fixture()
-    env = Environment.new(:local, tmp_dir)
+    env = ExecutionContext.new(:local, tmp_dir)
 
     for {path, body, _role} <- artifacts() do
       full = Path.join(tmp_dir, path)
@@ -70,7 +70,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
     )
 
     %{
-      scope: CodeMySpec.UsersFixtures.put_fixture_environment(%{scope | cwd: tmp_dir}, env),
+      scope: CodeMySpec.UsersFixtures.put_fixture_execution_context(%{scope | cwd: tmp_dir}, env),
       tmp_dir: tmp_dir
     }
   end

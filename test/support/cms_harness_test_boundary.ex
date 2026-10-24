@@ -23,12 +23,14 @@ defmodule CmsHarnessTest do
     deps: [
       CmsHarness,
       CmsHarness.Agents,
+      CmsHarness.Attachments,
       CmsHarness.Channel,
       CmsHarness.Project,
       CmsHarness.Supervisor,
       CodeMySpec.TempFile
     ],
     exports: [
+      SetupFixture,
       Machine,
       LiveHarness,
       ConnectHeaders,
@@ -41,6 +43,7 @@ defmodule CmsHarnessTest do
       ClusteredProject,
       SlotHolder,
       AppInstanceHelpers,
+      AttachmentRuntime,
       FakeAppInstanceRunner,
       ClaudeSessions
     ]

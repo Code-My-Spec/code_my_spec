@@ -37,7 +37,7 @@ Three rules fall out of this framing:
 | User | Surface | How specs drive it |
 |---|---|---|
 | Engineer | LiveView (`<App>LocalWeb`) | `live/2`, `form/2`, `render_submit/1`, `render_click/1` |
-| Coding agent | Working directory + harness hooks | `Environments.write_file/3`, `post(conn, ~p"/api/hooks/...")` |
+| Coding agent | Working directory + harness hooks | `ExecutionContexts.write_file/3`, `post(conn, ~p"/api/hooks/...")` |
 
 Every `when_` step should be framed as one of these two users doing a
 single discrete thing. "The engineer toggles require_unit_tests off."
@@ -60,7 +60,7 @@ decision to expand what specs can reach.
 
 ## Why in-memory, not tmpfs
 
-The spec suite runs against an in-memory filesystem (`InMemoryEnvironment`,
+The spec suite runs against an in-memory filesystem (`InMemoryExecutionContext`,
 an Agent-backed `{path => {content, mtime}}` store). This isn't just a
 speed optimization:
 
@@ -69,7 +69,7 @@ speed optimization:
 - **Isolation.** Each scenario gets its own Agent. No cross-test
   pollution, no "forgot to clean up."
 - **Forcing function.** The agent *must* go through
-  `Environments.write_file`/`read_file` to do anything. If a code path
+  `ExecutionContexts.write_file`/`read_file` to do anything. If a code path
   reaches `File.read!` directly, the spec exposes it immediately — the
   memory env doesn't answer those calls.
 

@@ -3,15 +3,15 @@ defmodule CodeMySpec.Rules do
   Simple file-based rules system.
   Reads rules from markdown files with YAML frontmatter in `.code_my_spec/rules/`.
 
-  Filesystem access goes through `CodeMySpec.Environments` so spex tests
+  Filesystem access goes through `CodeMySpec.ExecutionContexts` so spex tests
   can drive setup through the in-memory environment. When called without
   an environment, falls back to direct `File.*` reads in the process cwd.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Environments]
+  use Boundary, top_level?: true, deps: [CodeMySpec.ExecutionContexts]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   defstruct [:name, :content, :component_type, :session_type]
 
@@ -21,7 +21,7 @@ defmodule CodeMySpec.Rules do
   Finds matching rules based on component type and session type.
   Supports wildcard matching with "*".
 
-  The third argument is the execution environment (`Environment.t()`)
+  The third argument is the execution environment (`ExecutionContext.t()`)
   to read rule files from. When `nil`, the process working directory is
   wrapped in a local environment — the same read path, not a second one.
 
@@ -39,8 +39,8 @@ defmodule CodeMySpec.Rules do
 
   # Private functions
 
-  defp load_all_rules(%Environment{} = env) do
-    case Environments.list_directory(env, @rules_dir) do
+  defp load_all_rules(%ExecutionContext{} = env) do
+    case ExecutionContexts.list_directory(env, @rules_dir) do
       {:ok, entries} ->
         entries
         |> Enum.filter(&String.ends_with?(&1, ".md"))
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Rules do
   defp load_all_rules(nil), do: []
 
   defp parse_env_rule_file(env, path) do
-    case Environments.read_file(env, path) do
+    case ExecutionContexts.read_file(env, path) do
       {:ok, content} -> build_rule(path, content)
       {:error, reason} -> {:error, reason}
     end

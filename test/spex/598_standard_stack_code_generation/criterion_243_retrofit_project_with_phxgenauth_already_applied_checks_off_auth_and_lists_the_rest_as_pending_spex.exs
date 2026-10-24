@@ -24,11 +24,11 @@ defmodule CodeMySpecSpex.Story598.Criterion5294Spex do
     scenario "Retrofit project with phx.gen.auth already applied checks off auth and lists the rest as pending" do
       given_ "the baseline project exists with phx.gen.auth's detection file in place",
              context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_generator_applied(context.environment, "phx_gen_auth")
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_generator_applied(context.execution_context, "phx_gen_auth")
 
-        assert Fixtures.generator_applied?(context.environment, "phx_gen_auth"),
+        assert Fixtures.generator_applied?(context.execution_context, "phx_gen_auth"),
                "expected phx_gen_auth detection file to be present"
 
         {:ok, context}

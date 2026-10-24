@@ -119,6 +119,10 @@ defmodule CodeMySpec.Qa.Verdict do
     end
   end
 
+  # An invalidated attempt no longer speaks for the story, so neither does
+  # what it cited.
+  defp blocking_issue(_scope, _story, %QaAttempt{invalidations: [_ | _]}), do: nil
+
   defp blocking_issue(scope, story, %QaAttempt{status: status, issue_ids: issue_ids})
        when status in [:partial, :fail] do
     threshold = Configurations.fix_issues_min_severity(scope)

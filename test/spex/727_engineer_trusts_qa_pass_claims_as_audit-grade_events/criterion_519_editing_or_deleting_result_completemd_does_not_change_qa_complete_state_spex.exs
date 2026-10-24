@@ -11,8 +11,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
 
   Surfaces:
   - `CodeMySpec.Qa.Tools.SubmitQaResult` (seed the pass)
-  - `CodeMySpec.Environments.write_file/3` (write the file)
-  - `CodeMySpec.Environments` delete via `write_file` rewrite or
+  - `CodeMySpec.ExecutionContexts.write_file/3` (write the file)
+  - `CodeMySpec.ExecutionContexts` delete via `write_file` rewrite or
     direct filesystem cleanup helper
   - `CodeMySpec.Requirements.Tools.ListRequirements`
     (observe satisfaction stays unchanged)
@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -50,15 +50,17 @@ defmodule CodeMySpecSpex.Story727.Criterion6454Spex do
         assert match?({:ok, _}, submit_response)
 
         result_path = ".code_my_spec/qa/#{context.story.id}/result_complete.md"
-        :ok = Environments.write_file(context.environment, result_path, "# legacy file\n")
+
+        :ok =
+          ExecutionContexts.write_file(context.execution_context, result_path, "# legacy file\n")
 
         {:ok, Map.put(context, :result_path, result_path)}
       end
 
       when_ "an engineer rewrites result_complete.md to claim failure", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             context.result_path,
             "# Qa Result\n\n## Status\n\nfail\n"
           )

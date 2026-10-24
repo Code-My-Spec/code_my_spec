@@ -61,6 +61,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   @impl true
@@ -90,7 +91,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          # What this harness says its app is running. A reply or push lost to
          # a restart or reconnect leaves a stale commit, which promotion keys
          # on; the join is where the two converge.
-         :ok <- report_app_state(harness, payload["app"]),
+         :ok <- ensure_default_instance(scope, harness),
+         :ok <- report_app_state(scope, harness, payload["app"]),
+         :ok <- report_app_instances(scope, harness, payload["app_instances"]),
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
@@ -105,6 +108,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # lands in this channel's mailbox and is pushed once the join returns.
       Analysis.resume_orphaned(scope, claimed_runs(payload))
       PromotionQueue.copy_joined(scope, harness)
+      CodeMySpec.Promotion.DeviceSync.copy_joined(scope, harness)
 
       # The id goes back whether minted or recognised; a first join writes it
       # down so its next restart is the same harness.
@@ -158,26 +162,96 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The app the joining harness says it is running. An absent field means "not
   # reported", not "down", so it writes nothing.
-  defp report_app_state(_harness, nil), do: :ok
-
-  defp report_app_state(harness, %{} = reported) do
-    case reported["status"] do
-      status when status in ~w(serving erroring down starting) ->
-        WorkingCopies.record_app_status(harness, %{
-          status: status,
-          url: reported["url"],
-          commit: reported["commit"],
-          serving_commit: reported["serving_commit"]
-        })
-
-        :ok
-
-      _other ->
-        :ok
+  defp ensure_default_instance(scope, %{root: root} = copy) when is_binary(root) and root != "" do
+    case AppInstances.ensure_default(scope, copy) do
+      {:ok, _} -> :ok
+      error -> error
     end
   end
 
-  defp report_app_state(_harness, _other), do: :ok
+  defp ensure_default_instance(_, _), do: :ok
+
+  defp report_app_state(_scope, _copy, nil), do: :ok
+
+  defp report_app_state(scope, copy, %{} = reported) do
+    case resolve_reported_instance(scope, copy, reported["instance_id"]) do
+      {:ok, instance} ->
+        case reported["status"] do
+          status when status in ~w(serving erroring down starting) ->
+            case AppInstances.record_status(scope, instance, %{
+                   instance_id: instance.id,
+                   status: status,
+                   url: reported["url"],
+                   commit: reported["commit"],
+                   serving_commit: reported["serving_commit"]
+                 }) do
+              {:ok, _} -> :ok
+              error -> error
+            end
+
+          _ ->
+            :ok
+        end
+
+      {:error, :no_default_instance} ->
+        :ok
+
+      error ->
+        error
+    end
+  end
+
+  defp report_app_state(_, _, _), do: :ok
+
+  defp report_app_instances(_scope, _copy, nil), do: :ok
+
+  defp report_app_instances(scope, copy, reports) when is_list(reports) do
+    Enum.reduce_while(reports, :ok, fn
+      %{"instance_id" => id} = report, :ok when is_binary(id) ->
+        case report_app_state(scope, copy, report) do
+          :ok -> {:cont, :ok}
+          error -> {:halt, error}
+        end
+
+      _, :ok ->
+        {:halt, {:error, :invalid_app_instance_report}}
+    end)
+  end
+
+  defp report_app_instances(_, _, _), do: {:error, :invalid_app_instance_report}
+
+  defp resolve_reported_instance(scope, copy, nil) do
+    case AppInstances.for_working_copy(scope, copy) do
+      nil -> {:error, :no_default_instance}
+      instance -> validate_instance_source(instance, copy)
+    end
+  end
+
+  defp resolve_reported_instance(scope, copy, id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> validate_instance_source(AppInstances.get(scope, id), copy)
+      _ -> {:error, :invalid_app_instance}
+    end
+  end
+
+  defp resolve_reported_instance(_, _, _), do: {:error, :invalid_app_instance}
+
+  defp validate_instance_source(
+         %{
+           working_copy_id: copy_id,
+           project_id: project_id,
+           device_id: device_id,
+           source_root: root
+         } = instance,
+         copy
+       ) do
+    if copy_id == copy.id and project_id == copy.project_id and device_id == copy.device_id and
+         is_binary(copy.root) and root == Path.expand(copy.root),
+       do: {:ok, instance},
+       else: {:error, :instance_source_mismatch}
+  end
+
+  defp validate_instance_source(_, _), do: {:error, :instance_source_mismatch}
 
   # Kept against the working copy, since an agent's tool list is computed at
   # start from what its machine said. Absent (an older harness) writes nothing.
@@ -201,7 +275,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Kept in step with `CmsHarness.Project.ChannelClient`'s copy. Bump on a
   # change to the join payload, the `handle_in` set, or the shapes those carry.
   # See knowledge/harness/channel, "Contract version".
-  @contract_version 2
+  # v3 requires UUID instance descriptors, instance-tagged replies, and confirmed discard_app.
+  @contract_version 3
 
   @doc """
   The channel contract version this server speaks.
@@ -393,15 +468,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in("health_route_status", _payload, socket), do: {:reply, :ok, socket}
 
   # Whether the application is answering, from the machine that can reach it.
-  def handle_in("preview_status", %{"status" => status}, socket)
+  def handle_in("preview_status", %{"status" => status} = payload, socket)
       when status in ~w(serving erroring down) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} ->
-        WorkingCopies.record_preview_status(copy, status)
-        {:reply, :ok, socket}
-
-      _ ->
-        {:reply, :ok, socket}
+    with {:ok, instance} <-
+           resolve_reported_instance(
+             socket.assigns.scope,
+             socket.assigns.harness,
+             payload["instance_id"]
+           ),
+         {:ok, _} <- AppInstances.record_preview_status(socket.assigns.scope, instance, status) do
+      {:reply, :ok, socket}
+    else
+      _ -> {:reply, :ok, socket}
     end
   end
 
@@ -409,18 +487,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `starting` resolves, rather than waiting for the next app verb to ask.
   def handle_in("app_status", %{"status" => status} = payload, socket)
       when status in ~w(serving erroring down starting) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} ->
-        WorkingCopies.record_app_status(copy, %{
-          status: status,
-          url: payload["url"],
-          commit: payload["commit"]
-        })
-
-        {:reply, :ok, socket}
-
-      _ ->
-        {:reply, :ok, socket}
+    case report_app_state(socket.assigns.scope, socket.assigns.harness, payload) do
+      :ok -> {:reply, :ok, socket}
+      {:error, reason} -> {:reply, {:error, %{reason: to_string(reason)}}, socket}
     end
   end
 
@@ -778,39 +847,36 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
   end
 
-  def handle_in("ensure_app_running_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    result = decode_app_result(msg)
-    if from, do: GenServer.reply(from, result)
-    record_app_result(socket, result)
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
+  def handle_in(event, %{"ref" => ref} = msg, socket)
+      when event in [
+             "ensure_app_running_result",
+             "restart_app_result",
+             "reload_app_result",
+             "stop_app_result",
+             "discard_app_result"
+           ] do
+    case Map.pop(socket.assigns[:pending_apps] || %{}, ref) do
+      {nil, _} ->
+        {:reply, {:error, %{reason: "unknown_app_request"}}, socket}
 
-  def handle_in("restart_app_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    result = decode_app_result(msg)
-    if from, do: GenServer.reply(from, result)
-    record_app_result(socket, result)
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
+      {{from, instance_id, expected_event}, pending} ->
+        result =
+          with true <- event == expected_event,
+               true <- msg["instance_id"] in [nil, instance_id],
+               {:ok, instance} <-
+                 resolve_reported_instance(
+                   socket.assigns.scope,
+                   socket.assigns.harness,
+                   instance_id
+                 ) do
+            decode_instance_result(msg, instance, event)
+          else
+            _ -> {:error, :instance_source_mismatch}
+          end
 
-  def handle_in("reload_app_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    result = decode_app_result(msg)
-    if from, do: GenServer.reply(from, result)
-    record_app_result(socket, result)
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
-  end
-
-  def handle_in("stop_app_result", %{"ref" => ref} = msg, socket) do
-    {from, pending} = Map.pop(pending_agent_stop(socket), ref)
-    result = decode_stop_result(msg)
-    if from, do: GenServer.reply(from, result)
-
-    if result == :ok,
-      do: record_app_result(socket, {:ok, %{status: "down", url: nil, commit: nil}})
-
-    {:reply, :ok, assign(socket, :pending_agent_stop, pending)}
+        GenServer.reply(from, result)
+        {:reply, :ok, assign(socket, :pending_apps, pending)}
+    end
   end
 
   def handle_in("tool_call_result", %{"ref" => ref} = msg, socket) do
@@ -846,16 +912,40 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  defp record_app_result(socket, {:ok, %{status: _status} = info}) do
-    case WorkingCopies.fetch(socket.assigns.scope.active_working_copy_id) do
-      {:ok, copy} -> WorkingCopies.record_app_status(copy, info)
-      _ -> :ok
-    end
+  defp decode_instance_result(msg, instance, event)
+       when event in ["stop_app_result", "discard_app_result"] do
+    case decode_stop_result(msg) do
+      :ok ->
+        AppInstances.record_status(%Scope{active_project_id: instance.project_id}, instance, %{
+          instance_id: instance.id,
+          status: "down"
+        })
 
-    :ok
+        :ok
+
+      error ->
+        error
+    end
   end
 
-  defp record_app_result(_socket, {:error, _reason}), do: :ok
+  defp decode_instance_result(msg, instance, _event) do
+    case decode_app_result(msg) do
+      {:ok, info} ->
+        info = Map.put(info, :instance_id, instance.id)
+
+        case AppInstances.record_status(
+               %Scope{active_project_id: instance.project_id},
+               instance,
+               info
+             ) do
+          {:ok, _} -> {:ok, info}
+          error -> error
+        end
+
+      error ->
+        error
+    end
+  end
 
   # Sweep the copy for work when the harness re-registers its agents:
   # `Work.consider_*` is edge-triggered and a restart is no edge. At most twice
@@ -909,7 +999,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # A filesystem operation for the working copy this channel serves.
   #
-  # The transport half of `Environments.Harness`: the harness applies it
+  # The transport half of `ExecutionContexts.Harness`: the harness applies it
   # against the disk that holds the checkout. Reads and writes. Replied out of
   # band: `from` is parked against a ref and answered by `handle_in("fs_result", …)`.
   @impl true
@@ -987,78 +1077,55 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # Bring this copy's own app up, restart it, or stop it. Same shape as every
   # request above: ref out, reply correlated back on the `_result` push.
-  def handle_call({:ensure_app_running, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(
-      socket,
-      "ensure_app_running",
-      request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
-    )
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  def handle_call({:restart_app, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(
-      socket,
-      "restart_app",
-      request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
-    )
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
-  end
-
-  # A promote's default: migrate and hot-reload the running app in place, then
-  # the after-promote hook, as a restart does. Pushed only to a harness that
-  # declared `reload_app` at join; an older one would never reply.
-  def handle_call({:reload_app, request}, from, socket) do
-    if HarnessRegistry.supports?(socket.assigns.harness.id, "reload_app") do
+  def handle_call({verb, request}, from, socket)
+      when verb in [:ensure_app_running, :restart_app, :reload_app, :stop_app, :discard_app] do
+    with :ok <- supported_app_verb(verb, socket),
+         {:ok, instance} <- requested_instance(request, socket) do
       ref = Integer.to_string(System.unique_integer([:positive]))
+      event = Atom.to_string(verb)
+      payload = %{"instance" => AppInstances.descriptor(instance), "ref" => ref}
 
-      push(
-        socket,
-        "reload_app",
-        request |> put_main(socket) |> put_tunnel(socket) |> Map.put("ref", ref)
-      )
+      payload =
+        if verb in [:stop_app, :discard_app], do: payload, else: put_tunnel(payload, instance)
 
-      {:noreply,
-       assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+      push(socket, event, payload)
+
+      pending =
+        Map.put(socket.assigns[:pending_apps] || %{}, ref, {from, instance.id, "#{event}_result"})
+
+      {:noreply, assign(socket, :pending_apps, pending)}
     else
-      {:reply, {:error, :reload_not_supported}, socket}
+      {:error, reason} -> {:reply, {:error, reason}, socket}
     end
   end
 
-  def handle_call({:stop_app, request}, from, socket) do
-    ref = Integer.to_string(System.unique_integer([:positive]))
-
-    push(socket, "stop_app", Map.put(request, "ref", ref))
-
-    {:noreply,
-     assign(socket, :pending_agent_stop, Map.put(pending_agent_stop(socket), ref, from))}
+  defp supported_app_verb(:reload_app, socket) do
+    if HarnessRegistry.supports?(socket.assigns.harness.id, "reload_app"),
+      do: :ok,
+      else: {:error, :reload_not_supported}
   end
 
-  # Main's app is never stopped for idling. Only the server designates main,
-  # so the harness is told fresh on every request.
-  defp put_main(request, socket),
-    do: Map.put(request, "main", socket.assigns.harness.main == true)
+  defp supported_app_verb(_, _), do: :ok
+
+  defp requested_instance(request, socket) do
+    descriptor = request[:instance] || request["instance"]
+
+    with %{"instance_id" => id} <- descriptor,
+         {:ok, instance} <-
+           resolve_reported_instance(socket.assigns.scope, socket.assigns.harness, id),
+         true <- descriptor == AppInstances.descriptor(instance) do
+      {:ok, instance}
+    else
+      _ -> {:error, :instance_source_mismatch}
+    end
+  end
 
   # The harness holds the tunnel, not the app it launches. Told fresh: read
   # from the row, since `socket.assigns.harness` is only fresh at join.
-  defp put_tunnel(request, socket) do
-    case WorkingCopies.fetch(socket.assigns.harness.id) do
-      {:ok, copy} ->
-        case tunnel_for(copy) do
-          nil -> request
-          tunnel -> Map.put(request, "tunnel", tunnel)
-        end
-
-      _ ->
-        request
+  defp put_tunnel(request, instance) do
+    case tunnel_for(instance) do
+      nil -> request
+      tunnel -> Map.put(request, "tunnel", tunnel)
     end
   end
 
@@ -1275,7 +1342,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  # What `File` and `Environments.Local` fail with, and nothing else.
+  # What `File` and `ExecutionContexts.Local` fail with, and nothing else.
   #
   # Callers match on `:enoent` and friends, so these come back as the atoms
   # they left as. A literal map, so nothing off the wire becomes an atom.
@@ -1389,7 +1456,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Sent after the offboard commits, so the push carries nothing to look up.
   # Pushed and forgotten: an offboard must work for a machine that is off.
   def handle_info({:offboarded, _working_copy_id}, socket) do
-    push(socket, "offboard", %{})
+    push(socket, "offboard", %{"instance_disposition" => "discard"})
     {:noreply, socket}
   end
 
@@ -2037,6 +2104,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
+        if payload["attachment_operations"] == true do
+          HarnessRegistry.register_verb(harness.id, "attachment_operations")
+        end
+
         register_app_verbs(harness, payload)
 
       {:error, {:already_registered, pid}} ->
@@ -2150,11 +2221,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The server's copy of the checkout's configured preview address, kept like
   # `root`. A refusal (not the main copy) is not a join failure; the address is
   # simply not recorded.
-  defp report_preview_url(harness, url) when is_binary(url) and url != "" do
-    case WorkingCopies.record_preview_url(harness, url) do
-      {:ok, harness} -> {:ok, harness}
-      _ -> {:ok, harness}
-    end
+  defp report_preview_url(%{main: true} = harness, url) when is_binary(url) and url != "" do
+    WorkingCopies.record_preview_url(harness, url)
+    {:ok, harness}
   end
 
   defp report_preview_url(harness, _), do: {:ok, harness}

@@ -24,7 +24,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Provisioning.{Cloudflare, Dns, EnvironmentRepository}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Cloudflare, Dns}
 
   @apex "example.com"
   @zone_id "z1"
@@ -38,7 +39,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @apex})
 
     scope = %{scope | active_project: project}
-    {:ok, _} = EnvironmentRepository.put(scope, "prod", %{host: @apex, ip: @new_ip})
+    {:ok, _} = Environments.put(scope, "prod", %{host: @apex, ip: @new_ip})
 
     stub_cloudflare()
     stub_dns()

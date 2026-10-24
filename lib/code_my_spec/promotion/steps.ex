@@ -8,13 +8,13 @@ defmodule CodeMySpec.Promotion.Steps do
   the database. `Promotion.Runner` calls them directly for a local environment
   or sends each as a named op down the harness channel, answered by this
   module on the far side. Named ops rather than a general `cmd`:
-  `Environments.Harness.cmd/4` refuses on purpose, since `analysis/run` owns
+  `ExecutionContexts.Harness.cmd/4` refuses on purpose, since `analysis/run` owns
   command execution on the harness. See knowledge/promotion, "Runner and steps".
   """
 
   require Logger
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @submodule ".code_my_spec"
 
@@ -41,7 +41,7 @@ defmodule CodeMySpec.Promotion.Steps do
   refused unless the new pointer is on the submodule's `origin` and descends
   from main's.
   """
-  @spec precheck(Environments.Environment.t(), String.t(), String.t() | nil) :: result()
+  @spec precheck(ExecutionContexts.ExecutionContext.t(), String.t(), String.t() | nil) :: result()
   def precheck(env, root, main \\ nil) do
     with :ok <- contains_main(env, root, main) do
       case git(env, root, [
@@ -334,7 +334,7 @@ defmodule CodeMySpec.Promotion.Steps do
   (the merge landed and the tag did not), and `stamp_version` (what landed
   stories are stamped with). See knowledge/promotion, "Versions".
   """
-  @spec merge(Environments.Environment.t(), String.t(), String.t()) :: result()
+  @spec merge(ExecutionContexts.ExecutionContext.t(), String.t(), String.t()) :: result()
   def merge(env, root, branch) do
     before = head(env, root)
 
@@ -358,7 +358,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # a marker older than two minutes, so a landing that dies cannot hold the app.
   # Best effort: a hold that could not be written only means the old 503 window.
   defp hold_requests(env, root) do
-    Environments.write_file(
+    ExecutionContexts.write_file(
       env,
       CodeMySpec.LandingHold.marker_path(root),
       Integer.to_string(System.os_time(:second))
@@ -366,7 +366,7 @@ defmodule CodeMySpec.Promotion.Steps do
   end
 
   defp release_requests(env, root),
-    do: Environments.delete_file(env, CodeMySpec.LandingHold.marker_path(root))
+    do: ExecutionContexts.delete_file(env, CodeMySpec.LandingHold.marker_path(root))
 
   # Only a merge that moved something is followed by a reload or a restart,
   # which is what takes the hold down. One that failed or moved nothing is
@@ -606,7 +606,7 @@ defmodule CodeMySpec.Promotion.Steps do
 
   `{:ok, %{head:, merged: [commit], conflicted: [%{commit:, files:}]}}`.
   """
-  @spec build_batch(Environments.Environment.t(), String.t(), String.t(), [String.t()]) ::
+  @spec build_batch(ExecutionContexts.ExecutionContext.t(), String.t(), String.t(), [String.t()]) ::
           result()
   def build_batch(env, root, base, commits) do
     with {_, 0} <- git(env, root, ["merge", "--abort"]) |> ok_or_not_merging(),
@@ -659,7 +659,7 @@ defmodule CodeMySpec.Promotion.Steps do
   `mix.exs` (a queue fixture with no Phoenix project). `MIX_ENV=test`, the
   build the gate's analyzers reuse.
   """
-  @spec format(Environments.Environment.t(), String.t(), keyword()) :: result()
+  @spec format(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) :: result()
   def format(env, root, opts \\ []) do
     if formattable?(env, root) do
       run_format(env, root, Keyword.get(opts, :check, false))
@@ -670,7 +670,7 @@ defmodule CodeMySpec.Promotion.Steps do
 
   defp formattable?(env, root) do
     loadable_mix_exs?(env, root) and
-      match?({:ok, _}, Environments.read_file(env, Path.join(root, ".formatter.exs")))
+      match?({:ok, _}, ExecutionContexts.read_file(env, Path.join(root, ".formatter.exs")))
   end
 
   defp run_format(env, root, true) do
@@ -719,7 +719,7 @@ defmodule CodeMySpec.Promotion.Steps do
 
   defp mix_format(env, root, args) do
     env
-    |> Environments.cmd("mix", ["format" | args],
+    |> ExecutionContexts.cmd("mix", ["format" | args],
       cd: root,
       stderr_to_stdout: true,
       env: [{"MIX_ENV", "test"}]
@@ -738,7 +738,8 @@ defmodule CodeMySpec.Promotion.Steps do
 
   `{:ok, %{dropped: [partition]}}`.
   """
-  @spec reset_test_databases(Environments.Environment.t(), String.t(), [String.t()]) :: result()
+  @spec reset_test_databases(ExecutionContexts.ExecutionContext.t(), String.t(), [String.t()]) ::
+          result()
   def reset_test_databases(env, root, partitions) do
     Enum.reduce_while(partitions, {:ok, %{dropped: []}}, fn partition, {:ok, %{dropped: done}} ->
       case drop_test_database(env, root, partition) do
@@ -763,7 +764,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # points our test config at `code_my_spec_dev`.
   defp drop_test_database(env, root, partition) do
     env
-    |> Environments.cmd("mix", ["run", "--no-start", "-e", drop_script()],
+    |> ExecutionContexts.cmd("mix", ["run", "--no-start", "-e", drop_script()],
       cd: root,
       stderr_to_stdout: true,
       env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", partition}]
@@ -783,11 +784,11 @@ defmodule CodeMySpec.Promotion.Steps do
   with no Phoenix project). `MIX_ENV=test`, the build the gate's analyzers
   reuse.
   """
-  @spec build_assets(Environments.Environment.t(), String.t()) :: result()
+  @spec build_assets(ExecutionContexts.ExecutionContext.t(), String.t()) :: result()
   def build_assets(env, root) do
     if loadable_mix_exs?(env, root) do
       env
-      |> Environments.cmd("mix", ["assets.build"],
+      |> ExecutionContexts.cmd("mix", ["assets.build"],
         cd: root,
         stderr_to_stdout: true,
         env: [{"MIX_ENV", "test"}]
@@ -802,7 +803,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # Some fixtures write a bare `version: "X.Y.Z"` `mix.exs` with no
   # `defmodule`; a real project's always has one.
   defp loadable_mix_exs?(env, root) do
-    case Environments.read_file(env, Path.join(root, "mix.exs")) do
+    case ExecutionContexts.read_file(env, Path.join(root, "mix.exs")) do
       {:ok, content} -> String.contains?(content, "defmodule")
       {:error, _} -> false
     end
@@ -916,7 +917,7 @@ defmodule CodeMySpec.Promotion.Steps do
 
   `{:ok, %{contained: [commit]}}`, in the order given.
   """
-  @spec contained(Environments.Environment.t(), String.t(), String.t(), [String.t()]) ::
+  @spec contained(ExecutionContexts.ExecutionContext.t(), String.t(), String.t(), [String.t()]) ::
           result()
   def contained(env, root, base, commits),
     do: {:ok, %{contained: Enum.filter(commits, &ancestor?(env, root, &1, base))}}
@@ -928,7 +929,7 @@ defmodule CodeMySpec.Promotion.Steps do
   What a promote from the running copy stamps a story with: the merge path's
   rule for a no-op merge, without the merge.
   """
-  @spec current(Environments.Environment.t(), String.t()) :: result()
+  @spec current(ExecutionContexts.ExecutionContext.t(), String.t()) :: result()
   def current(env, root),
     do: {:ok, %{head: head(env, root), version: current_version(env, root)}}
 
@@ -977,7 +978,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # environment rather than `File.read/1`, because the checkout is on whichever
   # machine the harness is.
   defp marked?(env, root, path) do
-    case Environments.read_file(env, Path.join(root, path)) do
+    case ExecutionContexts.read_file(env, Path.join(root, path)) do
       {:ok, content} -> String.contains?(content, "<<<<<<<")
       _ -> true
     end
@@ -993,7 +994,8 @@ defmodule CodeMySpec.Promotion.Steps do
   it minted deleted), so the refusal leaves main as it found it and a retry
   runs the whole promotion again rather than a no-op merge onto stale docs.
   """
-  @spec sync_submodule(Environments.Environment.t(), String.t(), String.t(), map()) :: result()
+  @spec sync_submodule(ExecutionContexts.ExecutionContext.t(), String.t(), String.t(), map()) ::
+          result()
   def sync_submodule(env, root, source, %{before: before, after: after_sha} = merge) do
     with {:moved, pinned} <- gitlink_moved(env, root, before, after_sha),
          :ok <- check_out_pinned(env, Path.join(root, @submodule), source, pinned) do
@@ -1180,7 +1182,7 @@ defmodule CodeMySpec.Promotion.Steps do
   # environment drive both checkouts.
   defp git(env, root, args, opts \\ []) do
     env
-    |> Environments.cmd("git", args, [cd: root, stderr_to_stdout: true] ++ opts)
+    |> ExecutionContexts.cmd("git", args, [cd: root, stderr_to_stdout: true] ++ opts)
     |> normalize()
   end
 

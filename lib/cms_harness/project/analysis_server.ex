@@ -27,7 +27,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
   alias CmsHarness.Sync
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # A ceiling, not an expectation: it bounds the run that will never finish,
   # which would otherwise hold every later analyzer behind it.
@@ -649,7 +649,7 @@ defmodule CmsHarness.Project.AnalysisServer do
         # timer and run at all -- a run that cannot even be attributed to a
         # commit should fail as that, not silently borrow from the
         # analyzer's own budget.
-        env = Environment.new(:local, project.root)
+        env = ExecutionContext.new(:local, project.root)
 
         case bounded_tree_state(env) do
           {:ok, start_tree} ->

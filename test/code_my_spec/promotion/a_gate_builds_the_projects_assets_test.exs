@@ -14,14 +14,14 @@ defmodule CodeMySpec.Promotion.AGateBuildsTheProjectsAssetsTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Promotion.Steps
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   defp script(answers) do
     fn command, args, _opts -> Map.fetch!(answers, {command, args}) end
   end
 
   test "a checkout with no mix.exs is skipped, not failed" do
-    {:ok, env} = InMemoryEnvironment.create(shell: script(%{}))
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(%{}))
 
     assert {:ok, %{skipped: true}} = Steps.build_assets(env, env.cwd)
   end
@@ -32,8 +32,10 @@ defmodule CodeMySpec.Promotion.AGateBuildsTheProjectsAssetsTest do
         {"../deps/echarts/src/echart.js:1\nCould not resolve \"echarts\"", 1}
     }
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script(answers))
-    :ok = InMemoryEnvironment.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(answers))
+
+    :ok =
+      InMemoryExecutionContext.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
 
     assert {:error, %{reason: reason}} = Steps.build_assets(env, env.cwd)
     assert reason =~ "failed to build"
@@ -43,8 +45,10 @@ defmodule CodeMySpec.Promotion.AGateBuildsTheProjectsAssetsTest do
   test "a clean bundle passes" do
     answers = %{{"mix", ["assets.build"]} => {"", 0}}
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script(answers))
-    :ok = InMemoryEnvironment.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(answers))
+
+    :ok =
+      InMemoryExecutionContext.write_file(env, "mix.exs", "defmodule App.MixProject do\nend\n")
 
     assert {:ok, %{}} = Steps.build_assets(env, env.cwd)
   end

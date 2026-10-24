@@ -30,7 +30,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
     {_, id, session} = CodeMySpecSpex.Fixtures.qa_story_task_fixture(scope, story: story)
 
     %{
-      scope: put_fixture_environment(scope, nil),
+      scope: put_fixture_execution_context(scope, nil),
       story: story,
       task: CodeMySpec.TaskOwner.find_task(session, id)
     }

@@ -23,6 +23,7 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.WorkingCopies
+  alias CodeMySpec.AppInstances
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
   alias Ecto.Adapters.SQL.Sandbox
@@ -68,7 +69,7 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
     assert {:ok, %{working_copy_id: id}, _socket} =
              join_as(scope, topic, Map.put(base(device, "/workspace/main"), "preview_url", @url))
 
-    assert fetched(id).preview_url == @url,
+    assert AppInstances.for_working_copy(scope, id).preview_url == @url,
            "the address is written in the checkout's config and nowhere the web app can " <>
              "read; if the join does not carry it, the panel has nothing to point at"
   end
@@ -88,7 +89,7 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
     refute id == main_id, "the second root did not become a second working copy"
     refute fetched(main_id).main == false, "the first rooted checkout should be the main one"
 
-    refute fetched(id).preview_url,
+    refute AppInstances.for_working_copy(scope, id).preview_url,
            "a second checkout of the project recorded the preview address. Whichever " <>
              "rejoined last would then own it, and the panel would follow the harness " <>
              "that happened to restart."
@@ -113,7 +114,7 @@ defmodule CodeMySpecWeb.HarnessPreviewUrlJoinTest do
     assert {:ok, %{working_copy_id: id}, _socket} =
              join_as(scope, topic, base(device, "/workspace/main"))
 
-    refute fetched(id).preview_url
+    refute AppInstances.for_working_copy(scope, id).preview_url
   end
 
   # The lease is the channel, so a second join of the same project has to wait

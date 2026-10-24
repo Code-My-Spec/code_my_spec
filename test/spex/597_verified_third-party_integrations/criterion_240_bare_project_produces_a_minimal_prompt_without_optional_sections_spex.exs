@@ -23,13 +23,13 @@ defmodule CodeMySpecSpex.Story597.Criterion5287Spex do
   spex "The prompt grounds itself in real project state", criterion: 240 do
     scenario "Bare project produces a minimal prompt without optional sections" do
       given_ "no specs and no index exist", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
 
-        refute Fixtures.integration_spec_exists?(context.environment, "twilio"),
+        refute Fixtures.integration_spec_exists?(context.execution_context, "twilio"),
                "expected no integration specs in the bare-project fixture"
 
-        refute Fixtures.integration_index_exists?(context.environment),
+        refute Fixtures.integration_index_exists?(context.execution_context),
                "expected no integration index in the bare-project fixture"
 
         {:ok, context}

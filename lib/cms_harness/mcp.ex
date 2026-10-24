@@ -44,7 +44,7 @@ defmodule CmsHarness.Mcp do
   """
   @spec connect(String.t(), String.t() | nil, String.t() | nil) ::
           {:ok, term()} | {:error, term()}
-  def connect(agent_id, working_copy_id, root) do
+  def connect(agent_id, working_copy_id, root, opts \\ []) do
     # The credential is not fetched here. Which one is needed — or whether one
     # is needed at all — is the transport's question: the real one authenticates
     # over HTTP, and the local one is already inside the server. Asking for a
@@ -54,6 +54,7 @@ defmodule CmsHarness.Mcp do
       base_url: Config.server_url(),
       mcp_path: "/mcp/harness",
       working_copy_id: working_copy_id,
+      project_id: Keyword.get(opts, :project_id),
       # Carried on the connection so the server knows which agent is calling
       # without being told by the model. It was already an argument here and
       # only ever named the process, so the tools that need an agent had to ask

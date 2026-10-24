@@ -27,8 +27,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.ArchitectureDesign
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   describe "an environment that cannot answer" do
     test "is reported as unobservable, not as an unmet requirement" do
@@ -41,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
 
     # The mode is chosen by `file_exists?/2` on a marker file, and that answers
     # `false` for "no disk" exactly as it does for "not there" — the asymmetry
-    # `Environments`' own moduledoc warns about. So a nil environment did not
+    # `ExecutionContexts`' own moduledoc warns about. So a nil environment did not
     # fail to pick a mode, it picked `initial`, whose evaluator "validates the
     # proposal AND executes it as one transaction — creating spec files and
     # linking stories". On a project with 903 components that is a mass rewrite.
@@ -57,7 +57,12 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
     setup do
       tmp = CodeMySpec.TempFile.owned_dir("test")
 
-      scope = put_fixture_environment(working_copy_scope_fixture(), Environment.new(:local, tmp))
+      scope =
+        put_fixture_execution_context(
+          working_copy_scope_fixture(),
+          ExecutionContext.new(:local, tmp)
+        )
+
       %{scope: scope}
     end
 
@@ -75,10 +80,10 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignUnobservableTest do
     # list would drift, and the drift is silent: the explaining branch simply
     # stops being reached, which is the bug this test file is about.
     test "recognises the error every file operation returns without a disk" do
-      assert Environments.unobservable?(:no_environment)
-      assert Environments.unobservable?({:error, :no_environment})
-      refute Environments.unobservable?(:enoent)
-      refute Environments.unobservable?({:error, :enoent})
+      assert ExecutionContexts.unobservable?(:no_environment)
+      assert ExecutionContexts.unobservable?({:error, :no_environment})
+      refute ExecutionContexts.unobservable?(:enoent)
+      refute ExecutionContexts.unobservable?({:error, :enoent})
     end
   end
 end

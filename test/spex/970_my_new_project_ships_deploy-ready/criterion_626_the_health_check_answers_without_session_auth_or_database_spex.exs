@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
       end
 
       when_ "he looks at how the health path is routed", context do
-        entries = project_tree(context.environment)
+        entries = project_tree(context.execution_context)
 
         router_path =
           Enum.find(entries, fn path -> String.ends_with?(path, "router.ex") end)
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
         assert router_path != nil,
                "expected the generated project to have a router, entries: #{inspect(entries)}"
 
-        {:ok, body} = Environments.read_file(context.environment, router_path)
+        {:ok, body} = ExecutionContexts.read_file(context.execution_context, router_path)
 
         {:ok, context |> Map.put(:router, body) |> Map.put(:router_path, router_path)}
       end

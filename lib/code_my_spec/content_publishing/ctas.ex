@@ -5,7 +5,7 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
   ## Why this module lives here and not in `CodeMySpecWeb`
 
   `ContentPublishing.render_body/3` needs to call these, and the `CodeMySpec`
-  boundary declares `deps: [CodeMySpec.Environments, CodeMySpec.Repo]`, so it
+  boundary declares `deps: [CodeMySpec.ExecutionContexts, CodeMySpec.Repo]`, so it
   cannot reach the web layer. Defining them inside the `CodeMySpec` boundary lets
   both sides use them: the publish path directly, and `CodeMySpecWeb` via its
   existing `deps: [CodeMySpec]` with `exports: :all`. One definition, no

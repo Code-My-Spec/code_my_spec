@@ -12,7 +12,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   require Logger
 
   alias CodeMySpec.AgentTasks.Evaluator
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.TaskOwner
   alias CodeMySpec.Users.Scope
@@ -142,7 +142,7 @@ defmodule CodeMySpec.AgentTasks.TaskEvaluator do
   # can route around it. Any other error is named the same way.
   # See knowledge/tools, "Unobservable environments".
   defp handle_result({:error, reason}, scope, _agent, task, type_name, _opts) do
-    if Environments.unobservable?(reason) do
+    if ExecutionContexts.unobservable?(reason) do
       Logger.error(
         "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
           "#{inspect(reason)} — this server holds no working copy"

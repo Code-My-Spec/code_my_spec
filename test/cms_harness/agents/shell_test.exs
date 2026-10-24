@@ -20,6 +20,18 @@ defmodule CmsHarness.Agents.ShellTest do
   defp restore(name, nil), do: System.delete_env(name)
   defp restore(name, value), do: System.put_env(name, value)
 
+  test "long setup deadlines are advertised without changing restricted shell execution" do
+    timeout = Bash.input_schema().properties.timeout
+    assert timeout.maximum == 3_600_000
+    assert timeout.description =~ "1800000"
+    assert Bash.description() =~ "dependency installation"
+
+    assert {:ok, output} =
+             Bash.execute(%{"command" => "printf ready", "timeout" => 1_800_000}, %{})
+
+    assert output =~ "ready"
+  end
+
   test "an agent's command is run with MIX_ENV and the harness's CMS_ variables unset" do
     unset = Config.scrubbed_env()
 

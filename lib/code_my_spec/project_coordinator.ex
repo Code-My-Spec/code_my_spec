@@ -12,7 +12,7 @@ defmodule CodeMySpec.ProjectCoordinator do
     top_level?: true,
     deps: [
       CodeMySpec.Components,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.LocalScope,
       CodeMySpec.Paths,
       CodeMySpec.WorkingCopies
@@ -21,8 +21,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   require Logger
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.LocalScope
   alias CodeMySpec.WorkingCopies
 
@@ -65,7 +65,7 @@ defmodule CodeMySpec.ProjectCoordinator do
           suffix = task_module_suffix(task_module)
           file_path = "#{status_dir}/#{safe_name}_#{suffix}.md"
 
-          :ok = Environments.write_file(environment, file_path, prompt_content)
+          :ok = ExecutionContexts.write_file(environment, file_path, prompt_content)
           Logger.info("[ProjectCoordinator]   #{suffix} → #{file_path}")
 
           %{
@@ -186,8 +186,8 @@ defmodule CodeMySpec.ProjectCoordinator do
         )
 
         {:ok, prompt_content} = task_module.command(scope, task)
-        :ok = Environments.write_file(environment, prompt_path, prompt_content)
-        :ok = Environments.write_file(environment, problem_path, feedback)
+        :ok = ExecutionContexts.write_file(environment, prompt_path, prompt_content)
+        :ok = ExecutionContexts.write_file(environment, problem_path, feedback)
         orchestration_result(module_name, suffix, prompt_path, problem_path, false, feedback)
     end
   end
@@ -256,7 +256,7 @@ defmodule CodeMySpec.ProjectCoordinator do
           "[ProjectCoordinator] #{suffix} evaluate for #{module_name}: incomplete, writing problems"
         )
 
-        :ok = Environments.write_file(environment, problem_path, feedback)
+        :ok = ExecutionContexts.write_file(environment, problem_path, feedback)
         evaluate_result(module_name, suffix, problem_path, false)
     end
   end
@@ -299,7 +299,7 @@ defmodule CodeMySpec.ProjectCoordinator do
   end
 
   defp write_prompt_file(environment, component, task_module, prompt_content, file_path, suffix) do
-    :ok = Environments.write_file(environment, file_path, prompt_content)
+    :ok = ExecutionContexts.write_file(environment, file_path, prompt_content)
 
     %{component: component, task_module: task_module, file_path: file_path, suffix: suffix}
   end
@@ -386,8 +386,8 @@ defmodule CodeMySpec.ProjectCoordinator do
   # prompt written onto a sprite was deleted from whatever machine happened to
   # run the evaluation — so the prompt survived, and the agent kept being told
   # to redo work it had finished.
-  defp cleanup_file(%Environment{} = env, relative_path) do
-    Environments.delete_file(env, relative_path)
+  defp cleanup_file(%ExecutionContext{} = env, relative_path) do
+    ExecutionContexts.delete_file(env, relative_path)
     :ok
   end
 
@@ -399,16 +399,17 @@ defmodule CodeMySpec.ProjectCoordinator do
   end
 
   defp env(scope, opts) when is_list(opts) do
-    case Keyword.fetch(opts, :environment) do
+    case Keyword.fetch(opts, :execution_context) do
       {:ok, environment} -> environment
       :error -> selected_environment(scope)
     end
   end
 
   defp selected_environment(%{active_working_copy_id: id} = scope) when not is_nil(id),
-    do: WorkingCopies.environment(scope)
+    do: WorkingCopies.execution_context(scope)
 
-  defp selected_environment(scope), do: LocalScope.environment(Map.get(scope, :active_project))
+  defp selected_environment(scope),
+    do: LocalScope.execution_context(Map.get(scope, :active_project))
 
   defp agent_for_suffix(suffix) do
     cond do

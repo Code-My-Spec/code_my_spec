@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
   ## Use
 
       project =
-        ProjectBuilder.new(context.environment, app: "my_app")
+        ProjectBuilder.new(context.execution_context, app: "my_app")
         |> ProjectBuilder.context("Accounts")
         |> ProjectBuilder.component("Accounts", "User")
         |> ProjectBuilder.unit_test("Accounts")
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
   would, then `settle_graph/1` before asserting.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   defstruct env: nil, app: "my_app", pending: [], paths: [], modules: []
 
@@ -131,7 +131,7 @@ defmodule CodeMySpecSpex.ProjectBuilder do
   """
   def write!(%__MODULE__{} = b) do
     for {path, content} <- Enum.reverse(b.pending) do
-      :ok = Environments.write_file(b.env, path, content)
+      :ok = ExecutionContexts.write_file(b.env, path, content)
     end
 
     %{

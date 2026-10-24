@@ -20,7 +20,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
 
   @behaviour CodeMySpec.Workspaces.Runner
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   require Logger
 
@@ -177,7 +177,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   @doc """
   How a boot script is shelled out.
 
-  `Environments.merge_clean_env/1`, not `clean_otp_env/0`: the script runs a
+  `ExecutionContexts.merge_clean_env/1`, not `clean_otp_env/0`: the script runs a
   child `mix` in another project's directory, and it must resolve the
   machine's toolchain (where `cms_new` is installed), not this server's
   Elixir ahead of the version-manager shims on PATH.
@@ -185,7 +185,7 @@ defmodule CodeMySpec.Workspaces.Runner.Local do
   Public so the environment can be asserted on without shelling anything out.
   """
   @spec launch_env() :: keyword()
-  def launch_env, do: Environments.merge_clean_env(stderr_to_stdout: true)
+  def launch_env, do: ExecutionContexts.merge_clean_env(stderr_to_stdout: true)
 
   # A file, not env vars: identity is read from `.cms_harness.json` only.
   # Written beside the workspace, since `mix cms.new` will not generate into a

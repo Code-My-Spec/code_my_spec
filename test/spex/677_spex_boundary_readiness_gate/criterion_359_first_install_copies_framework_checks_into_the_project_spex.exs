@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
 
   Surface: `InstallCredoChecks` MCP tool. The tool writes through
   `scope.environment`, so the spec observes the in-memory environment via
-  `CodeMySpec.Environments`. The in-memory store tracks files, not empty
+  `CodeMySpec.ExecutionContexts`. The in-memory store tracks files, not empty
   directories, so the "local/ is empty" expectation is observed as "no
   framework files leaked into local/".
   """
@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @framework_dir ".code_my_spec/credo_checks/framework"
   @local_dir ".code_my_spec/credo_checks/local"
@@ -45,7 +45,10 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
         # only `{:ok, []}` meant this passed while an empty directory happened
         # to be lying around and failed once it was not, which is a statement
         # about the fixture rather than about install.
-        assert Environments.list_directory(context.environment, ".code_my_spec/credo_checks") in [
+        assert ExecutionContexts.list_directory(
+                 context.execution_context,
+                 ".code_my_spec/credo_checks"
+               ) in [
                  {:ok, []},
                  {:error, :enoent}
                ],
@@ -70,7 +73,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
       then_ "spex_denied_calls.ex exists under credo_checks/framework/", context do
         path = Path.join(@framework_dir, "spex_denied_calls.ex")
 
-        assert Environments.file_exists?(context.environment, path),
+        assert ExecutionContexts.file_exists?(context.execution_context, path),
                "expected framework check at `#{path}` after install"
 
         {:ok, context}
@@ -79,7 +82,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
       and_ "no_direct_send_in_spex.ex exists under credo_checks/framework/", context do
         path = Path.join(@framework_dir, "no_direct_send_in_spex.ex")
 
-        assert Environments.file_exists?(context.environment, path),
+        assert ExecutionContexts.file_exists?(context.execution_context, path),
                "expected framework check at `#{path}` after install"
 
         {:ok, context}
@@ -93,7 +96,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5753Spex do
         # directory that was ensured and holds nothing is indistinguishable from
         # one that never existed. `install/1` does call `ensure_dir` on
         # `local/`; there is simply nowhere for that to be recorded here.
-        assert Environments.list_directory(context.environment, @local_dir) in [
+        assert ExecutionContexts.list_directory(context.execution_context, @local_dir) in [
                  {:ok, []},
                  {:error, :enoent}
                ],

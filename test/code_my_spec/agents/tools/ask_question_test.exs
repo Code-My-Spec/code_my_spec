@@ -89,7 +89,7 @@ defmodule CodeMySpec.Agents.Tools.AskQuestionTest do
              question["options"]
   end
 
-  test "one question with no options uses the free-text form", %{scope: scope} do
+  test "a question with no options is refused without creating a form", %{scope: scope} do
     response =
       ToolLibrary.run(
         "ask_question",
@@ -97,11 +97,12 @@ defmodule CodeMySpec.Agents.Tools.AskQuestionTest do
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
 
-    assert match?({:ok, _}, response)
-    assert [%{"question" => "Thoughts?", "options" => []}] = latest(scope).questions
+    assert {:error, message} = response
+    assert message =~ "ordinary chat"
+    assert latest(scope) == nil
   end
 
-  test "free-text questions must be asked individually", %{scope: scope} do
+  test "free-text questions cannot be mixed with structured questions", %{scope: scope} do
     response =
       ToolLibrary.run(
         "ask_question",

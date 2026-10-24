@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
         proposal = Fixtures.proposal_with_context("MyApp", "Existing", "An existing context")
 
         {:ok, _result} =
-          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+          Fixtures.with_executed_proposal(context.scope, context.execution_context, proposal)
 
         # A real existing architecture has its context covered by a story. An
         # uncovered authored context is an orphan whether or not it has code
@@ -181,7 +181,10 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
 
       then_ "the pre-existing proposal.md is unchanged on disk", context do
         {:ok, content} =
-          CodeMySpec.Environments.read_file(context.environment, Fixtures.proposal_path())
+          CodeMySpec.ExecutionContexts.read_file(
+            context.execution_context,
+            Fixtures.proposal_path()
+          )
 
         refute content =~ "MyApp.NewFeature",
                "expected proposal.md to remain unchanged (no MyApp.NewFeature added), got: #{inspect(content)}"

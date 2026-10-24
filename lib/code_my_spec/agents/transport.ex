@@ -145,25 +145,43 @@ defmodule CodeMySpec.Agents.Transport do
 
   @doc "Stop the agent's running turn for a message sent now (story 1051)."
   def interrupt_turn(copy_id, %Agent{} = agent) do
-    if function_exported?(impl(), :interrupt_turn, 2),
-      do: impl().interrupt_turn(copy_id, agent),
+    if function_exported?(implementation(agent), :interrupt_turn, 2),
+      do: implementation(agent).interrupt_turn(copy_id, agent),
       else: {:error, :unsupported}
   end
 
   @doc "Launch, unless the agent is off or retired."
   def start_agent(copy_id, %Agent{} = agent, timeout),
-    do: gated(agent, fn -> impl().start_agent(copy_id, agent, timeout) end)
+    do: gated(agent, fn -> implementation(agent).start_agent(copy_id, agent, timeout) end)
 
   @doc "Dispatch a message, unless the agent is off or retired."
   def dispatch_message(copy_id, %Agent{} = agent, ref, text, timeout),
-    do: gated(agent, fn -> impl().dispatch_message(copy_id, agent, ref, text, timeout) end)
+    do:
+      gated(agent, fn ->
+        implementation(agent).dispatch_message(copy_id, agent, ref, text, timeout)
+      end)
 
   @doc "Offer a work turn, unless the agent is off or retired."
   def request_work_turn(copy_id, %Agent{} = agent, ref, text, timeout) do
     if Mailbox.pending?(agent.id),
       do: {:error, :busy},
-      else: gated(agent, fn -> impl().request_work_turn(copy_id, agent, ref, text, timeout) end)
+      else:
+        gated(agent, fn ->
+          implementation(agent).request_work_turn(copy_id, agent, ref, text, timeout)
+        end)
   end
+
+  @doc "Stop on the execution host that owns this agent."
+  def stop_agent(copy_id, %Agent{} = agent, timeout),
+    do: implementation(agent).stop_agent(copy_id, agent, timeout)
+
+  defp implementation(%Agent{execution_mode: :detached}) do
+    if Application.get_env(:code_my_spec, :env) == :desktop,
+      do: Application.fetch_env!(:code_my_spec, :desktop_agent_transport),
+      else: impl()
+  end
+
+  defp implementation(_agent), do: impl()
 
   defp gated(agent, deliver) do
     with :ok <- deliverable(agent), do: deliver.()

@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,11 +29,11 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
   spex "The admin surface renders parse status from the local snapshot only", criterion: 472 do
     scenario "Admin LiveView renders parse status without hitting the SaaS" do
       given_ "a snapshot of five success rows and one error row from a sync", context do
-        env = context.environment
+        env = context.execution_context
 
         for n <- 1..5 do
           :ok =
-            Environments.write_file(env, "#{@source}/blog/post-#{n}.md", """
+            ExecutionContexts.write_file(env, "#{@source}/blog/post-#{n}.md", """
             ---
             title: Post #{n}
             slug: post-#{n}
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
         end
 
         :ok =
-          Environments.write_file(env, "#{@source}/blog/bad.md", """
+          ExecutionContexts.write_file(env, "#{@source}/blog/bad.md", """
           ---
           : : not : valid
           ---

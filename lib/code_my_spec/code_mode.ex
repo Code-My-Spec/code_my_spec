@@ -290,12 +290,8 @@ defmodule CodeMySpec.CodeMode do
 
   defp interpret(%Result{} = result), do: result
 
-  defp interpret({:error, :timeout}) do
-    Result.error(
-      :timeout,
-      "the script ran longer than it is allowed to. A tool it called may be waiting on " <>
-        "something that will not answer."
-    )
+  defp interpret({:error, {:timeout, what}}) do
+    Result.error(:timeout, "the script ran longer than it is allowed to.\n" <> what)
   end
 
   defp interpret({:error, {:crashed, reason}}) do

@@ -17,14 +17,14 @@ defmodule CodeMySpec.Workspaces.AWorkspaceBootsOnItsOwnToolchainTest do
   The error only ever appeared in the workspace's own `run.log`, which nobody
   was reading.
 
-  `Environments.merge_clean_env/1` exists for exactly this and its own comment
+  `ExecutionContexts.merge_clean_env/1` exists for exactly this and its own comment
   names the situation. `Runner.Local` was a caller that needed it and did not
   use it.
   """
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Workspaces.Runner.Local
 
   test "the launch environment sets PATH rather than inheriting it" do
@@ -63,7 +63,7 @@ defmodule CodeMySpec.Workspaces.AWorkspaceBootsOnItsOwnToolchainTest do
   defp check_shim_order([]) do
     # No version manager here, so there is no ordering to get wrong. Recorded
     # rather than skipped so a reader knows why this said nothing.
-    assert Environments.merge_clean_env([])[:env] != []
+    assert ExecutionContexts.merge_clean_env([])[:env] != []
   end
 
   defp check_shim_order([first | _]) do

@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2004Spex do
             acceptance_criteria: ["It works"]
           )
 
-        fixture_context = %{scope: scope, environment: context.environment}
+        fixture_context = %{scope: scope, execution_context: context.execution_context}
 
         %{persona_id: persona_id} = ProjectStateFixtures.apply_persona(fixture_context)
 

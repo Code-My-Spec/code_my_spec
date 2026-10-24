@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4674Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -26,8 +26,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4674Spex do
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @first,
             CriterionScript.spex_naming(number, "First")
           )
@@ -39,8 +39,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion4674Spex do
 
       when_ "a second spec naming the same criterion syncs", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @second,
             CriterionScript.spex_naming(context.number, "Second")
           )

@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion4672Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.CriterionScript
   alias CodeMySpecSpex.Fixtures
 
@@ -29,7 +29,11 @@ defmodule CodeMySpecSpex.Story1077.Criterion4672Spex do
 
       when_ "a spec naming criterion: 9999 syncs", context do
         :ok =
-          Environments.write_file(context.environment, @path, CriterionScript.spex_naming(9999))
+          ExecutionContexts.write_file(
+            context.execution_context,
+            @path,
+            CriterionScript.spex_naming(9999)
+          )
 
         Fixtures.deliver_manifest(context.scope)
         {:ok, context}

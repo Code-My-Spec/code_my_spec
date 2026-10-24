@@ -123,6 +123,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.Components.Copy do
       data-test={if @size == :small, do: "copy-preview-marker", else: "working-copy-app-status"}
       data-state={@state}
       data-app-status={@harness.app_status || @harness.preview_status}
+      data-app-instance-id={@harness.app_instance_id}
       data-tip={@tip}
       aria-label={@tip}
       class={[

@@ -13,8 +13,8 @@ defmodule CodeMySpecSpex.Story1143.Criterion2374Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias CmsHarnessTest.LiveHarness
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story1143.Criterion2374Spex do
             ".code_my_spec/internal/callers",
             ".code_my_spec/internal/agent_test_events.json"
           ]
-          |> Enum.filter(&Environments.file_exists?(Environment.new(:local, root), &1))
+          |> Enum.filter(&ExecutionContexts.file_exists?(ExecutionContext.new(:local, root), &1))
 
         {:ok, Map.put(context, :found, found)}
       end

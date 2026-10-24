@@ -15,7 +15,7 @@ defmodule CodeMySpec.MixProject do
       # compiles under :dev instead of :test, missing test/support paths.
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_cli_env: [spex: :test],
+      preferred_cli_env: [spex: :test, reset_onboarding: :desktop],
       spex: [pattern: "test/spex/**/*_spex.exs", boundary: CodeMySpecSpex],
       # _spex.exs files are a separate suite run by `mix spex` (which loads
       # them via Path.wildcard, not these filters). Declare them ignored so
@@ -103,12 +103,17 @@ defmodule CodeMySpec.MixProject do
     ErlangError -> nil
   end
 
-  # `client_utils` is checked out beside the main checkout. Every worktree
-  # shares that checkout's git dir, wherever the worktree itself lives.
-  defp client_utils_path do
+  # `client_utils` is checked out beside the main checkout on a dev machine.
+  # Every worktree shares that checkout's git dir, wherever the worktree itself
+  # lives. A machine without it (CI, a release build) takes it from GitHub.
+  defp client_utils do
     args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
     {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
-    Path.expand("../../client_utils", String.trim(common))
+    path = Path.expand("../../client_utils", String.trim(common))
+
+    if File.dir?(path),
+      do: {:client_utils, path: path},
+      else: {:client_utils, github: "Code-My-Spec/client_utils", branch: "main"}
   end
 
   defp from_describe(described) do
@@ -220,7 +225,7 @@ defmodule CodeMySpec.MixProject do
       # partitions and `TestDatabase.partition_for/2` uses them; a release
       # boundary between the two means a window where the harness runs a suite
       # against a database nothing told anyone to create.
-      {:client_utils, path: client_utils_path()},
+      client_utils(),
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},
@@ -229,7 +234,7 @@ defmodule CodeMySpec.MixProject do
       # `cms_gen.*` reference in this repo is a string — prompt text in
       # `AgentTasks.CodeGeneration`, the scaffold script, docs — and the one
       # place that shells a generator (`Provisioning.Widget`) runs it through
-      # `Environments.cmd/4` in the *provisioned* project, which carries its
+      # `ExecutionContexts.cmd/4` in the *provisioned* project, which carries its
       # own copy. Depending on it here bought nothing and dragged the whole
       # web stack forward on every resolve.
 
@@ -429,7 +434,13 @@ defmodule CodeMySpec.MixProject do
     [
       # `cms.eval` is `mix spex` with one tag included, so it needs the same
       # environment for the same reason.
-      preferred_envs: [spex: :test, agent_test: :test, "cms.eval": :test, "cms.spex": :test]
+      preferred_envs: [
+        spex: :test,
+        agent_test: :test,
+        "cms.eval": :test,
+        "cms.spex": :test,
+        reset_onboarding: :desktop
+      ]
     ]
   end
 

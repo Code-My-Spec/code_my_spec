@@ -29,8 +29,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1960Spex do
         # provisioned because nothing has provisioned it; the project starts
         # that way and this scenario never runs setup.
         :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.write_file(
+            context.execution_context,
             "lib/story841_generated.ex",
             "defmodule Story841.Generated do\n  def run, do: :ok\nend\n"
           )

@@ -3,7 +3,7 @@ defmodule CodeMySpec.Architecture.Tools.ExecuteProposal do
   @behaviour CodeMySpec.Tools.Tool
 
   alias CodeMySpec.AgentTasks.ArchitectureDesign
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Architecture.Tools.Responses, as: ArchitectureMapper
 
   @impl true
@@ -57,7 +57,7 @@ defmodule CodeMySpec.Architecture.Tools.ExecuteProposal do
   # read it. Answering "unexpected evaluator result" would send the architect
   # looking for a defect in a proposal the server never opened (074b7c83).
   defp handle_evaluate({:error, reason}, _context) do
-    if Environments.unobservable?(reason) do
+    if ExecutionContexts.unobservable?(reason) do
       ArchitectureMapper.error("""
       The proposal could not be read: this server holds no working copy, so \
       every file operation answers #{inspect(reason)}.

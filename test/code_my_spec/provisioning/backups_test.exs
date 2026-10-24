@@ -27,7 +27,7 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.{Backups, Sops}
 
   @moduletag :sops
@@ -42,7 +42,7 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
 
   defp build_context(true) do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    env = Environment.new(:local, tmp)
+    env = ExecutionContext.new(:local, tmp)
 
     {:ok, {pub, priv}} = Sops.generate_key()
     :ok = Sops.write_config(env, %{"prod" => pub})

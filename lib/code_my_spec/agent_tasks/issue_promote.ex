@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.IssuePromote do
   @moduledoc """
-  Land the fix for a team's issue on main, once QA has passed it (story 1091,
+  Land the fix for a team's issue on the remote development branch, once QA has passed it (story 1091,
   promote-queue 2026-10-04). `PromoteWork`'s twin for an issue.
 
   Completing it queues the copy's HEAD as the issue's fix (`PromotionQueue`
@@ -14,7 +14,7 @@ defmodule CodeMySpec.AgentTasks.IssuePromote do
   alias CodeMySpec.PromotionQueue
 
   def dispatch(_node) do
-    "Land your team's QA-passed fix on main through the promotion queue: " <>
+    "Land your team's QA-passed fix on the remote development branch through the promotion queue: " <>
       "complete this task to queue it."
   end
 
@@ -29,9 +29,15 @@ defmodule CodeMySpec.AgentTasks.IssuePromote do
   @doc "Whether the issue is resolved, queueing nothing."
   def evaluate(scope, task) do
     case Issues.get_issue(scope, task.issue_id) do
-      %{status: :resolved} -> {:ok, :valid}
-      nil -> {:ok, :invalid, "Issue #{task.issue_id} no longer exists."}
-      issue -> {:ok, :invalid, "The fix for issue #{issue.id} has not landed on main yet."}
+      %{status: :resolved} ->
+        {:ok, :valid}
+
+      nil ->
+        {:ok, :invalid, "Issue #{task.issue_id} no longer exists."}
+
+      issue ->
+        {:ok, :invalid,
+         "The fix for issue #{issue.id} has not landed on the remote development branch yet."}
     end
   end
 
@@ -70,7 +76,7 @@ defmodule CodeMySpec.AgentTasks.IssuePromote do
 
     QA has passed your team's fix. Commit everything, then call `evaluate_task` \
     with task_id "#{task.id}" to queue this copy's HEAD for promotion. The queue \
-    gates it with the candidates ahead of it and lands it on main; the landing \
+    gates it with the candidates ahead of it and lands it on the remote development branch; the landing \
     resolves the issue and frees your team. You are told when it lands, or why \
     it was taken out — then fix what it names, commit, and complete this task again.
     """

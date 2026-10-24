@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -48,7 +48,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
       end
 
       when_ "someone with the repo but not the key opens the environment file", context do
-        {:ok, contents} = Environments.read_file(context.environment, "envs/prod.enc.env")
+        {:ok, contents} =
+          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
 
         {:ok, Map.put(context, :contents, contents)}
       end
@@ -64,7 +65,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
       end
 
       then_ "the key itself is not sitting in the repo beside the ciphertext", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        {:ok, entries} = ExecutionContexts.list_directory(context.execution_context, ".")
 
         key_files =
           Enum.filter(entries, fn path ->

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_v1_path "lib/example_context.ex"
   @impl_v2_path "lib/renamed_context.ex"
@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
     criterion: 86 do
     scenario "renaming a module re-derives the component after sync" do
       given_ "the agent has written v1 code and the engineer has synced", context do
-        :ok = Environments.write_file(context.environment, @impl_v1_path, impl_v1())
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_v1_path, impl_v1())
 
         {:ok, files_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -62,8 +62,8 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
       end
 
       given_ "the agent has renamed the module", context do
-        :ok = Environments.delete_file(context.environment, @impl_v1_path)
-        :ok = Environments.write_file(context.environment, @impl_v2_path, impl_v2())
+        :ok = ExecutionContexts.delete_file(context.execution_context, @impl_v1_path)
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_v2_path, impl_v2())
         {:ok, context}
       end
 

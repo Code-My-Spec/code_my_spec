@@ -16,7 +16,7 @@ defmodule CmsHarness.Projects.Generator.Runner do
   @callback cmd(cwd :: String.t(), command :: String.t(), args :: [String.t()]) ::
               {:ok, String.t()} | {:error, term()}
 
-  @doc "The configured runner. Defaults to the real one, via `Environments.cmd/4`."
+  @doc "The configured runner. Defaults to the real one, via `ExecutionContexts.cmd/4`."
   @spec impl() :: module()
   def impl, do: Application.get_env(:code_my_spec, :generator_runner, __MODULE__.Real)
 end

@@ -2,10 +2,10 @@ defmodule CodeMySpec.Knowledge.ProjectKnowledgeSelectedCopyTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures,
-    only: [fixture_environment: 1, full_scope_fixture: 0, put_fixture_environment: 2]
+    only: [fixture_execution_context: 1, full_scope_fixture: 0, put_fixture_execution_context: 2]
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Knowledge
   alias CodeMySpec.Repo
   alias CodeMySpec.TempFile
@@ -15,13 +15,13 @@ defmodule CodeMySpec.Knowledge.ProjectKnowledgeSelectedCopyTest do
     :ok = Sandbox.checkout(Repo)
 
     scope = full_scope_fixture()
-    stale_environment = fixture_environment(scope)
+    stale_environment = fixture_execution_context(scope)
     selected_root = TempFile.owned_dir("knowledge_selected_copy")
-    selected_environment = Environment.new(:local, selected_root)
-    scope = put_fixture_environment(scope, selected_environment)
+    selected_environment = ExecutionContext.new(:local, selected_root)
+    scope = put_fixture_execution_context(scope, selected_environment)
 
     :ok =
-      Environments.write_file(
+      ExecutionContexts.write_file(
         selected_environment,
         ".code_my_spec/knowledge/README.md",
         "# Selected checkout knowledge\n"

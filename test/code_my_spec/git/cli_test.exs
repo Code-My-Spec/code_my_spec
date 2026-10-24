@@ -4,7 +4,7 @@ defmodule CodeMySpec.Git.CLITest do
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
 
   alias CodeMySpec.Git.CLI
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Users.Scope
 
   # ============================================================================
@@ -102,7 +102,7 @@ defmodule CodeMySpec.Git.CLITest do
       end
 
       assert {:error, :invalid_url} =
-               CLI.pull(scope, explicit_repo, Environment.new(:local, explicit_repo))
+               CLI.pull(scope, explicit_repo, ExecutionContext.new(:local, explicit_repo))
 
       {remote, 0} = System.cmd("git", ["remote", "get-url", "origin"], cd: explicit_repo)
       assert String.trim(remote) == "git@github.com:owner/repo.git"
@@ -205,7 +205,12 @@ defmodule CodeMySpec.Git.CLITest do
       File.write!(Path.join(clone_path, "existing_file.txt"), "content")
 
       result =
-        CLI.clone(scope, test_repo_url(), clone_path, Environment.new(:local, System.tmp_dir!()))
+        CLI.clone(
+          scope,
+          test_repo_url(),
+          clone_path,
+          ExecutionContext.new(:local, System.tmp_dir!())
+        )
 
       assert {:error, {:clone_failed, _reason}} = result
       cleanup_path(clone_path)
@@ -217,7 +222,12 @@ defmodule CodeMySpec.Git.CLITest do
       clone_path = "/nonexistent/parent/directory/repo"
 
       result =
-        CLI.clone(scope, test_repo_url(), clone_path, Environment.new(:local, System.tmp_dir!()))
+        CLI.clone(
+          scope,
+          test_repo_url(),
+          clone_path,
+          ExecutionContext.new(:local, System.tmp_dir!())
+        )
 
       assert {:error, {:clone_failed, _reason}} = result
     end
@@ -236,7 +246,7 @@ defmodule CodeMySpec.Git.CLITest do
       on_exit(fn -> cleanup_path(clone_path) end)
 
       # Clone and pull
-      environment = Environment.new(:local, System.tmp_dir!())
+      environment = ExecutionContext.new(:local, System.tmp_dir!())
       {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path, environment)
       _result = CLI.pull(scope, clone_path, environment)
 
@@ -269,7 +279,7 @@ defmodule CodeMySpec.Git.CLITest do
           cd: clone_path
         )
 
-      result = CLI.pull(scope, clone_path, Environment.new(:local, clone_path))
+      result = CLI.pull(scope, clone_path, ExecutionContext.new(:local, clone_path))
 
       assert {:error, :not_connected} = result
     end
@@ -280,7 +290,11 @@ defmodule CodeMySpec.Git.CLITest do
       {scope, _token} = scope_with_github_integration()
 
       result =
-        CLI.pull(scope, "/nonexistent/path/to/repo", Environment.new(:local, System.tmp_dir!()))
+        CLI.pull(
+          scope,
+          "/nonexistent/path/to/repo",
+          ExecutionContext.new(:local, System.tmp_dir!())
+        )
 
       assert {:error, :no_remote} = result
     end
@@ -293,7 +307,7 @@ defmodule CodeMySpec.Git.CLITest do
 
       on_exit(fn -> cleanup_path(non_repo_path) end)
 
-      result = CLI.pull(scope, non_repo_path, Environment.new(:local, System.tmp_dir!()))
+      result = CLI.pull(scope, non_repo_path, ExecutionContext.new(:local, System.tmp_dir!()))
 
       assert {:error, :no_remote} = result
     end
@@ -328,7 +342,7 @@ defmodule CodeMySpec.Git.CLITest do
       on_exit(fn -> cleanup_path(clone_path) end)
 
       # Clone the repository
-      environment = Environment.new(:local, System.tmp_dir!())
+      environment = ExecutionContext.new(:local, System.tmp_dir!())
       {:ok, _path} = CLI.clone(scope, test_repo_url(), clone_path, environment)
 
       readme_path = Path.join(clone_path, "README.md")

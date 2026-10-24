@@ -52,7 +52,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @callback seed(root :: String.t()) :: :ok
 
   @doc "Drop `database`. Never called on anything but this feature's own clone."
-  @callback drop_database(database :: String.t()) :: :ok
+  @callback drop_database(database :: String.t()) :: :ok | {:error, term()}
 
   @doc "The commit `root`'s checkout is on, or `nil`."
   @callback current_commit(root :: String.t()) :: String.t() | nil
@@ -111,7 +111,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @callback probe(port :: pos_integer()) :: :serving | :erroring | :down
 
   @doc "Take the whole process tree rooted at `os_pid` down."
-  @callback stop_process(os_pid :: pos_integer()) :: :ok
+  @callback stop_process(os_pid :: pos_integer()) :: :ok | {:error, term()}
 
   @doc """
   The `os_pid` of whatever is listening on `port` right now, or `nil` if
@@ -173,7 +173,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec seed(String.t()) :: :ok
   def seed(root), do: impl().seed(root)
 
-  @spec drop_database(String.t()) :: :ok
+  @spec drop_database(String.t()) :: :ok | {:error, term()}
   def drop_database(database), do: impl().drop_database(database)
 
   @spec current_commit(String.t()) :: String.t() | nil
@@ -225,7 +225,7 @@ defmodule CmsHarness.AppInstance.Runner do
   @spec probe(pos_integer()) :: :serving | :erroring | :down
   def probe(port), do: impl().probe(port)
 
-  @spec stop_process(pos_integer()) :: :ok
+  @spec stop_process(pos_integer()) :: :ok | {:error, term()}
   def stop_process(os_pid), do: impl().stop_process(os_pid)
 
   @spec listener_pid(pos_integer()) :: pos_integer() | nil

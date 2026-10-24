@@ -77,9 +77,9 @@ defmodule CodeMySpec.Agents.AnIdleQaWithAStaleResumeIsStillOfferedQaWorkTest do
       )
 
     scope =
-      Fixtures.put_fixture_environment(
+      Fixtures.put_fixture_execution_context(
         %{ctx.scope | active_working_copy_id: copy.id},
-        ctx.environment
+        ctx.execution_context
       )
 
     ctx = %{ctx | scope: scope}

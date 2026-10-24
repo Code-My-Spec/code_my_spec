@@ -21,14 +21,15 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
   spex "Every prerequisite on an ARM Mac is installed for ARM", criterion: 2318 do
     scenario "Sam adds a Local box on an Apple Silicon Mac" do
       given_ "Sam adds a Local box on an Apple Silicon Mac", context do
-        {:ok, view, _html} = live(context.conn, "/app")
-        {:ok, Map.put(context, :view, view)}
+        # given: already true — setup :fresh_machine creates this isolated machine.
+        {:ok, context}
       end
 
       when_ "setup runs", context do
-        context.view |> element("[data-test='check-prerequisites']") |> render_click()
-        render_async(context.view, 10_000)
-        {:ok, context}
+        {:ok, snapshot} =
+          CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+
+        {:ok, Map.put(context, :snapshot, snapshot)}
       end
 
       then_ "every prerequisite is installed for ARM", context do
@@ -42,14 +43,14 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
       end
 
       then_ "the box is ready", context do
-        assert has_element?(context.view, "[data-test='create-project']:not([disabled])")
+        assert CmsHarness.Setup.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end
   end
 
   defp read_machine_file!(context, path) do
-    {:ok, contents} = CodeMySpec.Environments.read_file(context.machine_environment, path)
+    {:ok, contents} = CodeMySpec.ExecutionContexts.read_file(context.machine_environment, path)
     contents
   end
 end

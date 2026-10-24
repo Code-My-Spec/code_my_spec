@@ -62,6 +62,13 @@ defmodule CodeMySpec.Agents.Tools.ListAgents do
   # running though turned off. An agent asked for that never came up is listed,
   # so it can be found and cancelled (criterion 975); listing only present ones
   # (v2.0.372) hid exactly those.
-  defp listed(scope),
-    do: Enum.uniq_by(Agents.list_on_duty(scope) ++ Agents.list_running(scope), & &1.id)
+  defp listed(scope) do
+    (Agents.list_on_duty(scope) ++ Agents.list_running(scope))
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.map(fn agent ->
+      if agent.status == :running and not Agents.present?(scope, agent),
+        do: %{agent | status: :stopped},
+        else: agent
+    end)
+  end
 end

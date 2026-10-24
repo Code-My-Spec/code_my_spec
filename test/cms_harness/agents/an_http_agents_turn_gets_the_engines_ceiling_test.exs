@@ -41,6 +41,7 @@ defmodule CmsHarness.Agents.AnHttpAgentsTurnGetsTheEnginesCeilingTest do
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, id})
     config = Config.from_opts(:sys.get_state(engine).alloy_opts)
 
+    assert config.tool_timeout == :timer.hours(1) + 5_000
     assert config.timeout_ms >= :timer.hours(24)
     assert config.provider_config.req_options[:receive_timeout] == :timer.minutes(10)
   end

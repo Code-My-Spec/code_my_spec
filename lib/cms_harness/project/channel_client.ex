@@ -61,7 +61,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Sync
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarness.WorkingCopies.SyncToMain
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
@@ -77,7 +77,8 @@ defmodule CmsHarness.Project.ChannelClient do
   # Kept in step with `CodeMySpecWeb.HarnessProjectChannel`'s copy. Bump only
   # on a change to the join payload, the `handle_in` set, or their shapes.
   # See knowledge/harness/channel, "Contract version".
-  @contract_version 2
+  # v3 requires UUID instance descriptors, instance-tagged replies, and confirmed discard_app.
+  @contract_version 3
 
   @doc """
   The channel contract version this harness speaks.
@@ -218,11 +219,13 @@ defmodule CmsHarness.Project.ChannelClient do
        # `state.json`. A reply or push lost to a restart or reconnect leaves the
        # server holding a stale commit; the join is where it converges. `nil`
        # when this copy never ran an app.
-       "app" => CmsHarness.AppInstance.reported(project.root),
+       "app" => CmsHarness.AppInstance.legacy_reported(project.root),
+       "app_instances" => CmsHarness.AppInstance.reported_for_root(project.root),
        # App verbs newer than the contract version. The server pushes one only
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
+       "attachment_operations" => true,
        # Lets the server name a contract mismatch outright. Absent means a
        # harness that predates the field.
        "contract_version" => @contract_version
@@ -749,19 +752,40 @@ defmodule CmsHarness.Project.ChannelClient do
   # No `ref` and no reply: an offboard must not fail because the machine is
   # slow or unreachable. Stopped from another process because the subtree being
   # stopped contains this one; `Task.start/1` lets the callback return first.
-  def handle_message(_topic, "offboard", _payload, socket) do
+  def handle_message(_topic, "offboard", payload, socket) do
     root = socket.assigns.project.root
+    instances = CmsHarness.AppInstance.descriptors_for_root(root)
 
-    Logger.info("[CmsHarness] server offboarded #{root} — releasing its channel and watchers")
+    case {instances, payload["instance_disposition"]} do
+      {[], _} ->
+        Task.start(fn -> CmsHarness.Projects.stop_serving(root) end)
 
-    # The copy's own app and cloned database are disposable artifacts, unlike
-    # the user's checkout. Discard first, in one task: stopping the copy takes
-    # its app with it, and a discard that lost that race never dropped the
-    # database. Best-effort; nothing here holds up the offboard.
-    Task.start(fn ->
-      CmsHarness.AppInstance.discard(root)
-      CmsHarness.Projects.stop_serving(root)
-    end)
+      {instances, "discard"} ->
+        Task.start(fn ->
+          result =
+            Enum.reduce_while(instances, :ok, fn descriptor, :ok ->
+              case CmsHarness.AppInstance.discard(descriptor) do
+                :ok -> {:cont, :ok}
+                {:error, reason} -> {:halt, {:error, descriptor["instance_id"], reason}}
+              end
+            end)
+
+          case result do
+            :ok ->
+              CmsHarness.Projects.stop_serving(root)
+
+            {:error, id, reason} ->
+              Logger.warning(
+                "[CmsHarness] offboarding #{root} refused: instance #{id} cleanup failed: #{inspect(reason)}"
+              )
+          end
+        end)
+
+      _ ->
+        Logger.warning(
+          "[CmsHarness] offboarding #{root} refused: dispose its app instances explicitly first"
+        )
+    end
 
     {:ok, socket}
   end
@@ -823,11 +847,30 @@ defmodule CmsHarness.Project.ChannelClient do
     {:ok, socket}
   end
 
+  # Attachment work runs off the channel so a disconnect can cancel it.
+  def handle_message(
+        _topic,
+        "fs_request",
+        %{"ref" => ref, "op" => "attachment_" <> _ = op} = msg,
+        socket
+      ) do
+    client = self()
+    topic = socket.assigns.topic
+    root = socket.assigns.project.root
+
+    Task.start(fn ->
+      result = CmsHarness.Attachments.request(root, op, msg["payload"] || %{})
+      GenServer.cast(client, {:promotion_result, topic, ref, result})
+    end)
+
+    {:ok, socket}
+  end
+
   # A filesystem operation the server cannot perform, scoped to this channel's
-  # own root, applied with the same `Environments` API and answered inline.
+  # own root, applied with the same `ExecutionContexts` API and answered inline.
   def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
     payload = msg["payload"] || %{}
-    env = Environment.new(:local, socket.assigns.project.root)
+    env = ExecutionContext.new(:local, socket.assigns.project.root)
 
     result = apply_fs(env, op, payload)
 
@@ -948,45 +991,36 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # Bring this copy's own app up, restart it, or stop it. Answered from a task:
   # a first start can clone a database, which would stall this channel.
-  def handle_message(_topic, "ensure_app_running", %{"ref" => ref} = msg, socket) do
-    dispatch_app_call(socket, ref, "ensure_app_running_result", fn ->
-      CmsHarness.AppInstance.ensure_running(
-        socket.assigns.project.root,
-        [main?: msg["main"] == true] ++ tunnel_opt(msg)
-      )
-    end)
+  def handle_message(_topic, event, %{"ref" => ref} = msg, socket)
+      when event in ["ensure_app_running", "restart_app", "reload_app", "stop_app", "discard_app"] do
+    dispatch_app_call(socket, ref, "#{event}_result", fn ->
+      with {:ok, descriptor} <- app_descriptor(msg["instance"], socket.assigns.project) do
+        result =
+          case event do
+            "ensure_app_running" ->
+              CmsHarness.AppInstance.ensure_running(descriptor, tunnel_opt(msg))
 
-    {:ok, socket}
-  end
+            "restart_app" ->
+              CmsHarness.AppInstance.restart(descriptor, tunnel_opt(msg))
 
-  def handle_message(_topic, "restart_app", %{"ref" => ref} = msg, socket) do
-    dispatch_app_call(socket, ref, "restart_app_result", fn ->
-      CmsHarness.AppInstance.restart(
-        socket.assigns.project.root,
-        [main?: msg["main"] == true] ++ tunnel_opt(msg)
-      )
-    end)
+            "reload_app" ->
+              CmsHarness.AppInstance.reload(descriptor, tunnel_opt(msg))
 
-    {:ok, socket}
-  end
+            "discard_app" ->
+              case CmsHarness.AppInstance.discard(descriptor) do
+                :ok -> {:ok, %{instance_id: descriptor["instance_id"], status: "down", url: nil}}
+                error -> error
+              end
 
-  # A promote's default: reload main's app in place rather than restart it.
-  # Answers `reload_app_result`; `AppInstance.reload/2` restarts instead when
-  # it cannot reload, and says so.
-  def handle_message(_topic, "reload_app", %{"ref" => ref} = msg, socket) do
-    dispatch_app_call(socket, ref, "reload_app_result", fn ->
-      CmsHarness.AppInstance.reload(
-        socket.assigns.project.root,
-        [main?: msg["main"] == true] ++ tunnel_opt(msg)
-      )
-    end)
+            "stop_app" ->
+              case CmsHarness.AppInstance.stop_app(descriptor) do
+                :ok -> {:ok, %{instance_id: descriptor["instance_id"], status: "down", url: nil}}
+                error -> error
+              end
+          end
 
-    {:ok, socket}
-  end
-
-  def handle_message(_topic, "stop_app", %{"ref" => ref}, socket) do
-    dispatch_app_call(socket, ref, "stop_app_result", fn ->
-      CmsHarness.AppInstance.stop_app(socket.assigns.project.root)
+        {:instance_result, descriptor["instance_id"], result}
+      end
     end)
 
     {:ok, socket}
@@ -1026,6 +1060,16 @@ defmodule CmsHarness.Project.ChannelClient do
   # `stop_app` all answer through this, and the project's own `Task.Supervisor`
   # (started beside this channel under `Project.Supervisor`) already exists
   # for exactly this, the same one `Sync.start/2` and the analysis server use.
+  defp app_descriptor(descriptor, project) do
+    with {:ok, descriptor} <- CmsHarness.AppInstance.validate_descriptor(descriptor),
+         true <- descriptor["root"] == CodeMySpec.Paths.expand(project.root),
+         true <- descriptor["working_copy_id"] == project.working_copy_id do
+      {:ok, descriptor}
+    else
+      _ -> {:error, :instance_source_mismatch}
+    end
+  end
+
   defp dispatch_app_call(socket, ref, event, fun) do
     topic = socket.assigns.topic
     root = socket.assigns.project.root
@@ -1065,14 +1109,85 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # One clause per named operation, and deliberately no general `cmd`: analysis
   # owns command execution here. App restarts go through the app verbs.
+  defp apply_promotion("promotion_publication_status", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publication_status(
+             ExecutionContext.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_remote_head", %{"root" => root, "branch" => branch}),
+    do:
+      with_served_root(
+        root,
+        &CodeMySpec.Promotion.RemoteSteps.remote_head(
+          ExecutionContext.new(:local, &1),
+          &1,
+          branch
+        )
+      )
+
+  defp apply_promotion("promotion_publish", %{
+         "root" => root,
+         "branch" => branch,
+         "base" => base,
+         "head" => head,
+         "promotion_id" => id
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.publish(
+             ExecutionContext.new(:local, &1),
+             &1,
+             branch,
+             base,
+             head,
+             id
+           )
+         )
+
+  defp apply_promotion("promotion_sync_remote", %{
+         "root" => root,
+         "branch" => branch,
+         "head" => head
+       }),
+       do:
+         with_served_root(
+           root,
+           &CodeMySpec.Promotion.RemoteSteps.sync_remote(
+             ExecutionContext.new(:local, &1),
+             &1,
+             branch,
+             head
+           )
+         )
+
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
-    do: with_served_root(root, &Steps.precheck(Environment.new(:local, &1), &1, payload["main"]))
+    do:
+      with_served_root(
+        root,
+        &Steps.precheck(ExecutionContext.new(:local, &1), &1, payload["main"])
+      )
 
   defp apply_promotion("promotion_current", %{"root" => root}),
-    do: with_served_root(root, &Steps.current(Environment.new(:local, &1), &1))
+    do: with_served_root(root, &Steps.current(ExecutionContext.new(:local, &1), &1))
 
   defp apply_promotion("promotion_merge", %{"root" => root, "branch" => branch}),
-    do: with_served_root(root, &Steps.merge(Environment.new(:local, &1), &1, branch))
+    do: with_served_root(root, &Steps.merge(ExecutionContext.new(:local, &1), &1, branch))
 
   defp apply_promotion(
          "promotion_build_batch",
@@ -1082,7 +1197,7 @@ defmodule CmsHarness.Project.ChannelClient do
        do:
          with_served_root(
            root,
-           &Steps.build_batch(Environment.new(:local, &1), &1, base, commits)
+           &Steps.build_batch(ExecutionContext.new(:local, &1), &1, base, commits)
          )
 
   defp apply_promotion(
@@ -1093,7 +1208,7 @@ defmodule CmsHarness.Project.ChannelClient do
        do:
          with_served_root(
            root,
-           &Steps.contained(Environment.new(:local, &1), &1, base, commits)
+           &Steps.contained(ExecutionContext.new(:local, &1), &1, base, commits)
          )
 
   # Healed like an analyzer run: a candidate that moves `mix.lock` leaves the
@@ -1111,7 +1226,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: with_served_root(root, &build_assets/1)
 
   defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
-    do: with_served_root(root, &Steps.changed(Environment.new(:local, &1), &1, from, to))
+    do: with_served_root(root, &Steps.changed(ExecutionContext.new(:local, &1), &1, from, to))
 
   defp apply_promotion("promotion_submodule", %{"root" => root, "source" => source} = payload) do
     merge = %{
@@ -1123,7 +1238,7 @@ defmodule CmsHarness.Project.ChannelClient do
     with_served_root(root, fn root ->
       with_served_root(
         source,
-        &Steps.sync_submodule(Environment.new(:local, root), root, &1, merge)
+        &Steps.sync_submodule(ExecutionContext.new(:local, root), root, &1, merge)
       )
     end)
   end
@@ -1132,7 +1247,7 @@ defmodule CmsHarness.Project.ChannelClient do
     do: {:error, %{reason: "this harness does not implement #{op}"}}
 
   defp reset_test_databases(root) do
-    env = Environment.new(:local, root)
+    env = ExecutionContext.new(:local, root)
 
     reset = fn ->
       Steps.reset_test_databases(env, root, CmsHarness.TestDatabase.partitions(root))
@@ -1144,7 +1259,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   defp build_assets(root) do
-    env = Environment.new(:local, root)
+    env = ExecutionContext.new(:local, root)
 
     env
     |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.build_assets(env, root)) end)
@@ -1152,7 +1267,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   defp format(root, check) do
-    env = Environment.new(:local, root)
+    env = ExecutionContext.new(:local, root)
 
     env
     |> CmsHarness.Analysis.heal(fn -> reset_as_text(Steps.format(env, root, check: check)) end)
@@ -1180,20 +1295,25 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
+  defp apply_fs(env, "read_file", %{"path" => p}),
+    do: CodeMySpec.ExecutionContexts.read_file(env, p)
 
   defp apply_fs(env, "write_file", %{"path" => p, "content" => c}),
-    do: CodeMySpec.Environments.write_file(env, p, c)
+    do: CodeMySpec.ExecutionContexts.write_file(env, p, c)
 
   defp apply_fs(env, "delete_file", %{"path" => p}),
-    do: CodeMySpec.Environments.delete_file(env, p)
+    do: CodeMySpec.ExecutionContexts.delete_file(env, p)
 
   defp apply_fs(env, "list_directory", %{"path" => p}),
-    do: CodeMySpec.Environments.list_directory(env, p)
+    do: CodeMySpec.ExecutionContexts.list_directory(env, p)
 
-  defp apply_fs(env, "ensure_dir", %{"path" => p}), do: CodeMySpec.Environments.ensure_dir(env, p)
-  defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.Environments.stat(env, p)
-  defp apply_fs(env, "glob", %{"pattern" => p}), do: {:ok, CodeMySpec.Environments.glob(env, p)}
+  defp apply_fs(env, "ensure_dir", %{"path" => p}),
+    do: CodeMySpec.ExecutionContexts.ensure_dir(env, p)
+
+  defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.ExecutionContexts.stat(env, p)
+
+  defp apply_fs(env, "glob", %{"pattern" => p}),
+    do: {:ok, CodeMySpec.ExecutionContexts.glob(env, p)}
 
   # 8f5ebfb2: the fs_request round trip already reaches a specific working
   # copy's own harness by id, which is exactly what bringing a stale copy
@@ -1600,8 +1720,12 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # Absent fields are omitted rather than sent as `nil`: the server's
   # `decode_app_result/1` reads absence as "unchanged".
+  defp encode_app_result({:instance_result, id, result}),
+    do: Map.put(encode_app_result(result), "instance_id", id)
+
   defp encode_app_result({:ok, %{status: status} = info}) do
     %{"status" => "ok", "app_status" => status}
+    |> maybe_put("instance_id", Map.get(info, :instance_id))
     |> maybe_put("app_url", Map.get(info, :url))
     |> maybe_put("app_commit", Map.get(info, :commit))
     |> maybe_put("app_serving_commit", Map.get(info, :serving_commit))
@@ -1793,7 +1917,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_info({:app_call_result, topic, ref, "stop_app_result" = event, result}, socket) do
-    push(socket, topic, event, Map.put(encode_stop_result(result), "ref", ref))
+    push(socket, topic, event, Map.put(encode_app_result(result), "ref", ref))
     {:noreply, socket}
   end
 

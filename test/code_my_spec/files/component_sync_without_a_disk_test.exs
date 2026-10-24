@@ -7,7 +7,7 @@ defmodule CodeMySpec.Files.ComponentSyncWithoutADiskTest do
   would make "the server has no disk" and "delete the components" the same
   event. The identity is extracted during the scan, where the bytes are, and
   travels in the File record. These tests drive the sync with
-  `environment: nil` to prove nothing reopens a file.
+  `execution_context: nil` to prove nothing reopens a file.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Files.ComponentSyncWithoutADiskTest do
 
   setup do
     scope = full_scope_fixture()
-    %{scope: put_fixture_environment(scope, nil)}
+    %{scope: put_fixture_execution_context(scope, nil)}
   end
 
   defp scanned_code(scope, path, module_name) do

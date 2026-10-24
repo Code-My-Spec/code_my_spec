@@ -12,7 +12,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   See knowledge/provisioning, "Backups".
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Storage
 
   @default_retention_days 14
@@ -55,7 +55,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   Returns `{:ok, %{key: key, proof: proof, ...}}` only when the restore
   succeeded.
   """
-  @spec run(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec run(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def run(env, environment, opts) do
     with {:ok, bucket} <- fetch(opts, :bucket),
@@ -77,7 +77,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   The script names the key, because the script is what writes it. The key
   carries the environment and a timestamp so a listing reads as a history.
   """
-  @spec take_dump(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec take_dump(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           {:ok, String.t(), non_neg_integer() | nil} | {:error, String.t()}
   def take_dump(env, environment, opts \\ []) do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
@@ -106,7 +106,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   Restoring into the live database would be a destructive test, so the
   restore targets a scratch database and carries `rows`.
   """
-  @spec restore_proof(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec restore_proof(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           {:ok, Proof.t()} | {:error, String.t()}
   def restore_proof(env, key, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
@@ -147,7 +147,7 @@ defmodule CodeMySpec.Provisioning.Backups do
 
   Necessary, but not treated as evidence.
   """
-  @spec install_schedule(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec install_schedule(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           :ok | {:error, String.t()}
   def install_schedule(env, environment, opts \\ []) do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
@@ -273,12 +273,12 @@ defmodule CodeMySpec.Provisioning.Backups do
 
   # Where the script runs, which is not where the caller runs: `:run` executes
   # on the server (it takes `[command]`, returns `{output, status}`, like
-  # `Registry` and `Database`). Without it, `Environments.cmd/4` runs locally,
+  # `Registry` and `Database`). Without it, `ExecutionContexts.cmd/4` runs locally,
   # for tests. See knowledge/provisioning, "Backups".
   defp run_script(env, script, args, opts) do
     case Keyword.get(opts, :run) do
       nil ->
-        Environments.cmd(env, script, args, stderr_to_stdout: true, env: script_env(opts))
+        ExecutionContexts.cmd(env, script, args, stderr_to_stdout: true, env: script_env(opts))
 
       run ->
         # The relative name: `resolve_script/2`'s path exists only locally.

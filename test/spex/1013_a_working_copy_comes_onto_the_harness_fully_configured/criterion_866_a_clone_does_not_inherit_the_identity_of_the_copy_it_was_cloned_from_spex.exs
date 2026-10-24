@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -46,16 +46,16 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
   spex "Identity does not travel with the repository", criterion: 866 do
     scenario "A clone does not inherit the identity of the copy it was cloned from" do
       given_ "a working copy onboarded on this machine", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2353"}, pretty: true)
           )
 
-        :ok = Environments.write_file(context.environment, @tracked, "{}\n")
+        :ok = ExecutionContexts.write_file(context.execution_context, @tracked, "{}\n")
 
         Mix.Task.reenable("cms.harness.onboard")
         report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
@@ -64,8 +64,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
       end
 
       when_ "the tracked files that a clone would receive are read", context do
-        {:ok, tracked} = Environments.read_file(context.environment, @tracked)
-        {:ok, untracked} = Environments.read_file(context.environment, @untracked)
+        {:ok, tracked} = ExecutionContexts.read_file(context.execution_context, @tracked)
+        {:ok, untracked} = ExecutionContexts.read_file(context.execution_context, @untracked)
 
         {:ok, context |> Map.put(:tracked, tracked) |> Map.put(:untracked, untracked)}
       end

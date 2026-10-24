@@ -22,7 +22,7 @@ defmodule CodeMySpec.Git do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Integrations,
       CodeMySpec.LocalScope,
       CodeMySpec.Users.Scope,

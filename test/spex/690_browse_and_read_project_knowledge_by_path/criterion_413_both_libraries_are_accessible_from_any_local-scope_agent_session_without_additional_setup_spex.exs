@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,8 +24,8 @@ defmodule CodeMySpecSpex.Story690.Criterion5968Spex do
         # via scope.environment — write through the in-memory env so the
         # directory check and listing both see the entry.
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/knowledge/README.md",
             "# Project Knowledge\n\nTest fixture for criterion 5968.\n"
           )

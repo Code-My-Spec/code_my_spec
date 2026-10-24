@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,11 +32,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
   spex "Running onboarding a second time changes nothing", criterion: 869 do
     scenario "Onboarding twice is the same as onboarding once" do
       given_ "a working copy already onboarded, since edited by hand", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2356"}, pretty: true)
           )
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
         Mix.Task.reenable("cms.harness.onboard")
         first = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
-        {:ok, after_first} = Environments.read_file(context.environment, @settings)
+        {:ok, after_first} = ExecutionContexts.read_file(context.execution_context, @settings)
 
         # A realistic hand edit: still valid JSON. An engineer adding their own
         # key is the case this criterion is about. Corrupting the file is a
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
           |> put_in(["env", "EDITOR"], "vim")
           |> Jason.encode!(pretty: true)
 
-        :ok = Environments.write_file(context.environment, @settings, edited)
+        :ok = ExecutionContexts.write_file(context.execution_context, @settings, edited)
 
         {:ok, Map.merge(context, %{first: first, edited: edited})}
       end
@@ -79,7 +79,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
       end
 
       then_ "the settings the engineer edited are left alone", context do
-        assert {:ok, after_second} = Environments.read_file(context.environment, @settings)
+        assert {:ok, after_second} =
+                 ExecutionContexts.read_file(context.execution_context, @settings)
 
         assert after_second == context.edited,
                "the second run overwrote settings edited after the first. An " <>

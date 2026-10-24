@@ -80,7 +80,11 @@ defmodule CodeMySpec.AgentTasks.ComponentTest do
   defp get_test_rules(scope, component) do
     component_type = component.type
 
-    Rules.find_matching_rules(component_type, "test", CodeMySpec.AgentTasks.environment(scope))
+    Rules.find_matching_rules(
+      component_type,
+      "test",
+      CodeMySpec.AgentTasks.execution_context(scope)
+    )
     |> case do
       rules when is_list(rules) -> {:ok, rules}
     end

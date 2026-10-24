@@ -13,26 +13,26 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
 
   use CodeMySpecTest.DataCase, async: false
 
-  alias CodeMySpec.Environments.{Environment, Local}
+  alias CodeMySpec.ExecutionContexts.{ExecutionContext, Local}
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.Users.Scope
 
   setup do
-    previous = Application.get_env(:code_my_spec, :environment)
-    Application.put_env(:code_my_spec, :environment, Local)
-    on_exit(fn -> Application.put_env(:code_my_spec, :environment, previous) end)
+    previous = Application.get_env(:code_my_spec, :execution_context_adapter)
+    Application.put_env(:code_my_spec, :execution_context_adapter, Local)
+    on_exit(fn -> Application.put_env(:code_my_spec, :execution_context_adapter, previous) end)
 
     dir = CodeMySpec.TempFile.owned_dir("test")
     {_, 0} = System.cmd("git", ["init", "-q"], cd: dir)
 
     scope = %Scope{active_project_id: nil}
-    %{scope: scope, dir: dir, environment: Environment.new(:local, dir)}
+    %{scope: scope, dir: dir, execution_context: ExecutionContext.new(:local, dir)}
   end
 
   test "an .env not excluded from either git or docker still fails", %{
     scope: scope,
     dir: dir,
-    environment: env
+    execution_context: env
   } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
 
@@ -42,7 +42,7 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
   test "an .env gitignored but not dockerignored still fails", %{
     scope: scope,
     dir: dir,
-    environment: env
+    execution_context: env
   } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env\n")
@@ -53,7 +53,7 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
   test "an .env dockerignored but not gitignored still fails", %{
     scope: scope,
     dir: dir,
-    environment: env
+    execution_context: env
   } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".dockerignore"), ".env*\n")
@@ -64,7 +64,7 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
   test "an .env excluded from both git and docker does not fail", %{
     scope: scope,
     dir: dir,
-    environment: env
+    execution_context: env
   } do
     File.write!(Path.join(dir, ".env"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env\n")
@@ -76,7 +76,7 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
   test "a .dockerignore wildcard pattern matches the real filename", %{
     scope: scope,
     dir: dir,
-    environment: env
+    execution_context: env
   } do
     File.write!(Path.join(dir, ".env.local"), "SECRET=1\n")
     File.write!(Path.join(dir, ".gitignore"), ".env*\n")
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Generators.PlaintextEnvFilesTest do
     assert DeployBoilerplate.plaintext_env_files(scope, env) == []
   end
 
-  test "no plaintext env files present is fine", %{scope: scope, environment: env} do
+  test "no plaintext env files present is fine", %{scope: scope, execution_context: env} do
     assert DeployBoilerplate.plaintext_env_files(scope, env) == []
   end
 end

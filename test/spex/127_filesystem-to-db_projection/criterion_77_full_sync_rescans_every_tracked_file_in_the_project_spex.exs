@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5920Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @impl_path "lib/example_context.ex"
   @test_path "test/example_context_test.exs"
@@ -26,9 +26,12 @@ defmodule CodeMySpecSpex.Story127.Criterion5920Spex do
     scenario "files in lib/, test/, and .code_my_spec/ all materialize in the Files table" do
       given_ "the agent has written files spanning all three tracked roots",
              context do
-        :ok = Environments.write_file(context.environment, @impl_path, impl_content())
-        :ok = Environments.write_file(context.environment, @test_path, test_content())
-        :ok = Environments.write_file(context.environment, @rule_path, "# Example rules\n")
+        :ok = ExecutionContexts.write_file(context.execution_context, @impl_path, impl_content())
+        :ok = ExecutionContexts.write_file(context.execution_context, @test_path, test_content())
+
+        :ok =
+          ExecutionContexts.write_file(context.execution_context, @rule_path, "# Example rules\n")
+
         {:ok, context}
       end
 

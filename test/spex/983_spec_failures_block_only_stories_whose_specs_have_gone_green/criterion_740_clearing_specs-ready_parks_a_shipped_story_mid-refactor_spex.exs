@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
   alias CodeMySpecSpex.StoryHelpers
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
       given_ "the agent writes the story's BDD spec file", context do
         {path, content} = story_spec(context.scope, context.story.id, :passing)
-        :ok = Environments.write_file(context.environment, path, content)
+        :ok = ExecutionContexts.write_file(context.execution_context, path, content)
         {:ok, Map.put(context, :spec_path, path)}
       end
 
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
       then_ "failing specs on that story no longer block the agent's stop", context do
         {_path, failing} = story_spec(context.scope, context.story.id, :failing)
-        :ok = Environments.write_file(context.environment, context.spec_path, failing)
+        :ok = ExecutionContexts.write_file(context.execution_context, context.spec_path, failing)
         :ok = record_edit(context, context.spec_path)
 
         jsonl = Fixtures.spex_run_report([{context.spec_path, "mid-refactor, expected red"}])
@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
       end
 
       then_ "the story keeps its BDD spec files", context do
-        assert Environments.file_exists?(context.environment, context.spec_path),
+        assert ExecutionContexts.file_exists?(context.execution_context, context.spec_path),
                "parking a story must not remove its BDD spec files"
 
         {:ok, context}

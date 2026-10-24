@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
 
   Surface: `InstallRules` MCP tool. The tool writes through
   `scope.environment`, so the spec seeds and reads rule files via
-  `CodeMySpec.Environments`.
+  `CodeMySpec.ExecutionContexts`.
   """
 
   use CodeMySpecSpex.Case
@@ -19,7 +19,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   @rules_dir ".code_my_spec/rules"
@@ -34,7 +34,9 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
       given_ "elixir.md in the project's rules dir holds user-written content distinct from the framework default",
              context do
         user_rule_path = Path.join(@rules_dir, "elixir.md")
-        :ok = Environments.write_file(context.environment, user_rule_path, @user_marker)
+
+        :ok =
+          ExecutionContexts.write_file(context.execution_context, user_rule_path, @user_marker)
 
         # Pick a framework rule we expect to land on this re-install. Any
         # .md file in priv/rules other than elixir.md will do.
@@ -68,7 +70,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
 
       then_ "elixir.md still holds the user-written content", context do
         assert {:ok, contents} =
-                 Environments.read_file(context.environment, context.user_rule_path)
+                 ExecutionContexts.read_file(context.execution_context, context.user_rule_path)
 
         assert contents == @user_marker,
                "expected user-modified elixir.md to be preserved, got:\n#{contents}"
@@ -79,7 +81,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
       and_ "other framework rules absent before the call are now present", context do
         other_path = Path.join(@rules_dir, context.other_framework_rule)
 
-        assert Environments.file_exists?(context.environment, other_path),
+        assert ExecutionContexts.file_exists?(context.execution_context, other_path),
                "expected framework rule `#{context.other_framework_rule}` at `#{other_path}` after install"
 
         {:ok, context}

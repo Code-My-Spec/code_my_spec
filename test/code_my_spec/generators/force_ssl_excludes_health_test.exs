@@ -13,16 +13,16 @@ defmodule CodeMySpec.Generators.ForceSslExcludesHealthTest do
 
   use CodeMySpecTest.DataCase, async: false
 
-  alias CodeMySpec.Environments.{Environment, Local}
+  alias CodeMySpec.ExecutionContexts.{ExecutionContext, Local}
   alias CodeMySpec.Generators.DeployBoilerplate
 
   setup do
-    previous = Application.get_env(:code_my_spec, :environment)
-    Application.put_env(:code_my_spec, :environment, Local)
-    on_exit(fn -> Application.put_env(:code_my_spec, :environment, previous) end)
+    previous = Application.get_env(:code_my_spec, :execution_context_adapter)
+    Application.put_env(:code_my_spec, :execution_context_adapter, Local)
+    on_exit(fn -> Application.put_env(:code_my_spec, :execution_context_adapter, previous) end)
 
     dir = CodeMySpec.TempFile.owned_dir("test")
-    %{env: Environment.new(:local, dir), dir: dir}
+    %{env: ExecutionContext.new(:local, dir), dir: dir}
   end
 
   defp write_runtime_exs(dir, contents) do

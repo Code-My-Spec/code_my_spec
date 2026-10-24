@@ -26,10 +26,10 @@ The scripts here *are* the behaviour. Where they run is configuration:
 
 | | target | how |
 | --- | --- | --- |
-| dev | a Docker container | `Environments.Container`, local daemon |
+| dev | a Docker container | `ExecutionContexts.Container`, local daemon |
 | prod | a Hetzner box | same environment, `DOCKER_HOST=ssh://user@box` |
 
-`CodeMySpec.Host` runs them through `Environments.cmd/4` either way and never
+`CodeMySpec.Host` runs them through `ExecutionContexts.cmd/4` either way and never
 branches on which. That means the scripts rehearsed in `./drill.sh` are
 byte-for-byte the ones that run on the box — a drill that exercised a
 different code path would be reassurance rather than evidence.

@@ -28,7 +28,9 @@ defmodule CmsHarness.AppInstanceReloadTest do
         reload_result: :ok
       )
 
-    assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("ensure_app_running")
+    assert %{"status" => "ok", "app_status" => "serving"} =
+             push_app_event_as_main("ensure_app_running")
+
     rig
   end
 

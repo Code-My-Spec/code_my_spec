@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
     scenario "Retrofit developer's customized phoenix.md survives the auto-write pass" do
       given_ "phoenix.md already exists with the team's retrofit rationale", context do
         Fixtures.with_custom_adr(
-          context.environment,
+          context.execution_context,
           "phoenix",
           "We chose Phoenix because of internal expertise on the platform team"
         )
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5271Spex do
       end
 
       then_ "phoenix.md still contains the retrofit rationale", context do
-        content = Fixtures.read_adr(context.environment, "phoenix")
+        content = Fixtures.read_adr(context.execution_context, "phoenix")
 
         assert is_binary(content), "expected phoenix.md to still exist"
 

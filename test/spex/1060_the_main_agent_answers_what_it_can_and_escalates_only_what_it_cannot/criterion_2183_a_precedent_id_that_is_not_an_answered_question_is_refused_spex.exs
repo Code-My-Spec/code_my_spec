@@ -46,7 +46,15 @@ defmodule CodeMySpecSpex.Story1060.Criterion2183Spex do
             "ask_question",
             %{
               title: "a question with no real precedent",
-              questions: [%{"question" => "Should this feature exist?", "options" => []}]
+              questions: [
+                %{
+                  "question" => "Should this feature exist?",
+                  "options" => [
+                    %{"label" => "Keep current behavior"},
+                    %{"label" => "Change behavior"}
+                  ]
+                }
+              ]
             },
             Map.put(asking.assigns, :scope, asking.assigns[:current_scope])
           )

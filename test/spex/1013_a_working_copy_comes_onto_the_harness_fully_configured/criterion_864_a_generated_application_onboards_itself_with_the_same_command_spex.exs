@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,16 +35,19 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
   spex "Onboarding is portable to any application that depends on client_utils", criterion: 864 do
     scenario "A generated application onboards itself with the same command" do
       given_ "a working copy with nothing CodeMySpec-specific in it", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2351"}, pretty: true)
           )
 
-        refute Environments.file_exists?(context.environment, ".code_my_spec/config.yml"),
+        refute ExecutionContexts.file_exists?(
+                 context.execution_context,
+                 ".code_my_spec/config.yml"
+               ),
                "the premise failed: this working copy carries CodeMySpec's own " <>
                  "configuration, so onboarding it proves nothing about a generated app"
 
@@ -59,7 +62,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
       end
 
       then_ "it is configured the same way CodeMySpec's own copies are", context do
-        assert {:ok, settings} = Environments.read_file(context.environment, @settings),
+        assert {:ok, settings} = ExecutionContexts.read_file(context.execution_context, @settings),
                "onboarding produced no configuration for a working copy that is not " <>
                  "CodeMySpec's own. A generated application is then left to be " <>
                  "onboarded by hand, which is the state this story exists to end."

@@ -2,7 +2,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallAgentsMd do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Content
   alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
 
@@ -25,7 +25,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallAgentsMd do
 
   @impl true
   def call(_params, context) do
-    env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+    env = CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
     case install(env) do
       :ok ->
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallAgentsMd do
   """
   # No working copy here. Refusing is the whole point: the previous behaviour
   # was to root a `:local` environment at the server's own checkout and write
-  # there, reporting success. See `WorkingCopies.tool_environment/1`.
+  # there, reporting success. See `WorkingCopies.tool_execution_context/1`.
   def install(nil), do: {:error, :no_working_copy}
 
   def install(env) do
@@ -58,12 +58,12 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallAgentsMd do
          app_name <- Content.extract_app_name_from_source(mix_exs),
          content <- Content.agents_md_content(app_name),
          agents_path <- Path.join(CodeMySpec.Paths.base_dir(), "AGENTS.md") do
-      Environments.write_file(env, agents_path, content)
+      ExecutionContexts.write_file(env, agents_path, content)
     end
   end
 
   defp read_mix_exs(env) do
-    case Environments.read_file(env, "mix.exs") do
+    case ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} -> {:ok, content}
       {:error, :enoent} -> {:error, :no_mix_exs}
       {:error, reason} -> {:error, reason}

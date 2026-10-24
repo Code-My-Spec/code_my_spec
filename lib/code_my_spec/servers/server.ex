@@ -19,7 +19,7 @@ defmodule CodeMySpec.Servers.Server do
   one he breaks before lunch — and nothing but a label can tell them apart.
 
   A free string, because `prod` is a value and not a concept the code branches
-  on. `provisioning_environments` exists precisely to stop `["prod", "uat"]`
+  on. `environments` exists precisely to stop `["prod", "uat"]`
   being a literal repeated through the steps; an enum here would put it back,
   and could not hold `qa-story-812` at all.
 

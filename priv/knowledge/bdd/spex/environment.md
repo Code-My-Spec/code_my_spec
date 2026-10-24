@@ -10,9 +10,9 @@ A spec's "world" is three things glued together:
 
 ## The in-memory environment
 
-`test/support/in_memory_environment.ex` implements
-`<App>.Environments.EnvironmentsBehaviour`. Each call to
-`Environments.create(:memory, ...)` spawns an isolated `Agent` whose
+`test/support/in_memory_execution_context.ex` implements
+`<App>.ExecutionContexts.ExecutionContextsBehaviour`. Each call to
+`ExecutionContexts.create(:memory, ...)` spawns an isolated `Agent` whose
 state is `%{path => {content, mtime}}`.
 
 Key properties:
@@ -29,8 +29,8 @@ Key properties:
 
 ```elixir
 env = Fixtures.memory_environment_fixture(working_dir: "/memfs/env-42")
-:ok = Environments.write_file(env, "lib/foo.ex", "...")
-{:ok, "..."} = Environments.read_file(env, "lib/foo.ex")
+:ok = ExecutionContexts.write_file(env, "lib/foo.ex", "...")
+{:ok, "..."} = ExecutionContexts.read_file(env, "lib/foo.ex")
 ```
 
 `setup_active_project` does all the wiring for you — the env it creates
@@ -64,7 +64,7 @@ have all three.
 | Change | How to trigger it | What to observe |
 |---|---|---|
 | Engineer clicks a button | `render_click/1`, `render_submit/1` on a LiveView | Re-render, `has_element?/2`, subsequent LiveView navigation |
-| Agent writes a file | `Environments.write_file/3` + run the real sync flow through the UI (e.g. the `/sync` page's button) | The synced row via `Fixtures.get_component_by_module_name/2` or a rendered graph page |
+| Agent writes a file | `ExecutionContexts.write_file/3` + run the real sync flow through the UI (e.g. the `/sync` page's button) | The synced row via `Fixtures.get_component_by_module_name/2` or a rendered graph page |
 | Agent signals a hook | `post_hook(context, "/api/hooks/stop", payload)` | JSON response body |
 
 ## Cassettes for CLI-driven steps

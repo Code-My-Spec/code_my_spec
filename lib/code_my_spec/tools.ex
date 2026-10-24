@@ -33,7 +33,14 @@ defmodule CodeMySpec.Tools do
 
   @doc "Casts and checks arguments against the tool's parameters."
   @spec validate(module(), map()) :: {:ok, map()} | {:error, term()}
-  def validate(tool, args), do: Peri.validate(tool.params(), args)
+  def validate(tool, args) do
+    preflight =
+      if Code.ensure_loaded?(tool) and function_exported?(tool, :validate_input, 1),
+        do: tool.validate_input(args),
+        else: :ok
+
+    with :ok <- preflight, do: Peri.validate(tool.params(), args)
+  end
 
   @doc "Validates `args` and calls the tool."
   @spec run(module(), map(), context()) :: Tool.result()
@@ -174,6 +181,8 @@ defmodule CodeMySpec.Tools do
   defp field_hint(_, _), do: nil
 
   defp describe(errors) when is_list(errors), do: Enum.map_join(errors, "; ", &describe/1)
+
+  defp describe(%{errors: [_ | _] = errors}), do: describe(errors)
 
   defp describe(%{path: [_ | _] = path, message: message}),
     do: "#{Enum.join(path, ".")} #{message}"

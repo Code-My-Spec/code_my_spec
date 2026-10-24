@@ -68,6 +68,7 @@ defmodule CmsHarness.Agents do
       # agent reaches none of the project's tools. Falls back to the copy's
       # own config.
       working_copy_id: request["working_copy_id"] || copy_id(request["working_copy"]),
+      project_id: request["project_id"],
       model: request["model"],
       # The transcript to resume from: an agent dies with its harness and
       # the transcript is its state.

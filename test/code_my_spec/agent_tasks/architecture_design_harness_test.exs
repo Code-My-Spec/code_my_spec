@@ -18,18 +18,18 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignHarnessTest do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.AgentTasks.ArchitectureDesign
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpecWeb.HarnessProjectChannel
 
   setup do
     tmp = CodeMySpec.TempFile.owned_dir("test")
     id = a_harness_serving(tmp)
 
-    env = %Environment{type: :harness, cwd: tmp, ref: %{"harness_id" => id}}
+    env = %ExecutionContext{type: :harness, cwd: tmp, ref: %{"harness_id" => id}}
 
-    scope = put_fixture_environment(%{working_copy_scope_fixture() | cwd: tmp}, env)
-    :ok = register_working_copy_environment(scope, env)
+    scope = put_fixture_execution_context(%{working_copy_scope_fixture() | cwd: tmp}, env)
+    :ok = register_working_copy_execution_context(scope, env)
     %{scope: scope}
   end
 
@@ -55,7 +55,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignHarnessTest do
       spawn_link(fn ->
         {:ok, _} = Registry.register(HarnessRegistry, id, {"test", root})
         send(test, {:registered, id})
-        serve(Environment.new(:local, root))
+        serve(ExecutionContext.new(:local, root))
       end)
 
     assert_receive {:registered, ^id}, 2_000
@@ -79,11 +79,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignHarnessTest do
     end
   end
 
-  defp apply_op(env, "stat", %{"path" => p}), do: Environments.stat(env, p)
-  defp apply_op(env, "read_file", %{"path" => p}), do: Environments.read_file(env, p)
-  defp apply_op(env, "delete_file", %{"path" => p}), do: Environments.delete_file(env, p)
-  defp apply_op(env, "list_directory", %{"path" => p}), do: Environments.list_directory(env, p)
+  defp apply_op(env, "stat", %{"path" => p}), do: ExecutionContexts.stat(env, p)
+  defp apply_op(env, "read_file", %{"path" => p}), do: ExecutionContexts.read_file(env, p)
+  defp apply_op(env, "delete_file", %{"path" => p}), do: ExecutionContexts.delete_file(env, p)
+
+  defp apply_op(env, "list_directory", %{"path" => p}),
+    do: ExecutionContexts.list_directory(env, p)
 
   defp apply_op(env, "write_file", %{"path" => p, "content" => c}),
-    do: Environments.write_file(env, p, c)
+    do: ExecutionContexts.write_file(env, p, c)
 end

@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5751Spex do
   spex "Empty fixtures bridge file still passes the checker", criterion: 357 do
     scenario "all four artifacts present, bridge is an empty module → evaluator returns pass" do
       given_ "all four spex boundary artifacts exist with minimal content", context do
-        :ok = Artifacts.write_baseline_artifacts(context.environment)
+        :ok = Artifacts.write_baseline_artifacts(context.execution_context)
         {:ok, context}
       end
 

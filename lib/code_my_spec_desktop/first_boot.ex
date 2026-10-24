@@ -1,14 +1,13 @@
 defmodule CodeMySpecDesktop.FirstBoot do
   @moduledoc """
   Every desktop boot, after the Repo and before anything reads it (bb8bc042
-  step 6): migrate and ensure the desktop user and an account it owns.
+  step 6): migrate and ensure the desktop user. The user creates and names
+  their account during /app onboarding.
   The harness obtains its own credential through device authorization.
   Idempotent; returns `:ignore` so it occupies no process.
   """
 
-  alias CodeMySpec.Accounts
   alias CodeMySpec.Repo
-  alias CodeMySpec.UserPreferences
   alias CodeMySpec.UserPreferences.DesktopUser
   alias CodeMySpec.Users
   alias CodeMySpec.Users.User
@@ -17,8 +16,7 @@ defmodule CodeMySpecDesktop.FirstBoot do
 
   def run do
     CodeMySpec.Release.migrate()
-    user = ensure_user()
-    ensure_account(user)
+    ensure_user()
     :ignore
   end
 
@@ -40,12 +38,5 @@ defmodule CodeMySpecDesktop.FirstBoot do
       {:ok, user} = Users.register_user(%{email: DesktopUser.email()})
       user |> User.confirm_changeset() |> Repo.update!()
     end
-  end
-
-  defp ensure_account(user) do
-    scope = UserPreferences.scope_for(user)
-
-    if Accounts.list_accounts(scope) == [],
-      do: {:ok, _} = Accounts.create_account(scope, %{name: "Local"})
   end
 end

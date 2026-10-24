@@ -10,12 +10,12 @@ defmodule CodeMySpec.Promotion.AnUnreachableGateHarnessIsMarkedTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Analysis.HarnessRegistry
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Runner
 
   test "a batch build on a copy whose harness is not registered says it was unreachable" do
     copy_id = Ecto.UUID.generate()
-    env = Environment.new(:harness, "/nowhere")
+    env = ExecutionContext.new(:harness, "/nowhere")
 
     assert {:error, %{unreachable: true, reason: reason}} =
              Runner.build_batch(env, "/nowhere", "main", ["abc"], copy_id)
@@ -40,7 +40,7 @@ defmodule CodeMySpec.Promotion.AnUnreachableGateHarnessIsMarkedTest do
 
     assert {:error, %{unreachable: true, reason: reason}} =
              Runner.build_batch(
-               Environment.new(:harness, "/nowhere"),
+               ExecutionContext.new(:harness, "/nowhere"),
                "/nowhere",
                "main",
                ["abc"],

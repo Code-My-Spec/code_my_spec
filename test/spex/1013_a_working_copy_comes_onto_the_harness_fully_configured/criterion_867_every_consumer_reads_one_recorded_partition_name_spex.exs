@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2354Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,11 +32,11 @@ defmodule CodeMySpecSpex.Story1013.Criterion2354Spex do
   spex "One partition name, recorded and read", criterion: 867 do
     scenario "Every consumer reads one recorded partition name" do
       given_ "a working copy with no partition recorded", context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".cms_harness.json",
             Jason.encode!(%{working_copy_id: "spex-harness-2354"}, pretty: true)
           )
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2354Spex do
       end
 
       then_ "that same name is what the working copy's configuration carries", context do
-        assert {:ok, settings} = Environments.read_file(context.environment, @settings)
+        assert {:ok, settings} = ExecutionContexts.read_file(context.execution_context, @settings)
 
         assert settings =~ context.report.partition,
                "the recorded partition and the one in #{@settings} are different " <>

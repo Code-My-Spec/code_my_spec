@@ -37,8 +37,8 @@ defmodule CmsHarness.Analysis do
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.StaticAnalysis.SobelowRun
 
@@ -65,7 +65,7 @@ defmodule CmsHarness.Analysis do
   def run(project, source, args \\ [], run_id \\ nil, opts \\ [])
       when is_binary(source) and is_list(args) do
     env =
-      Environment.new(:local, project.root,
+      ExecutionContext.new(:local, project.root,
         metadata: %{output_capture: Keyword.get(opts, :output_capture), run_id: run_id}
       )
 
@@ -128,14 +128,14 @@ defmodule CmsHarness.Analysis do
   refused because `deps/` is behind `mix.lock`, fetch once and run it again.
   For the promotion gate's test-database reset.
   """
-  @spec heal(Environment.t(), (-> term())) :: term()
+  @spec heal(ExecutionContext.t(), (-> term())) :: term()
   def heal(env, run), do: heal_stale_deps(run, fn -> deps_get(env) end)
 
   # The checkout's own `deps/`. MIX_ENV set: the harness runs as `harness`,
   # which a project's config need not define.
   defp deps_get(env) do
     serialize_deps_get(env.cwd, fn ->
-      case Environments.cmd(env, "mix", ["deps.get"],
+      case ExecutionContexts.cmd(env, "mix", ["deps.get"],
              stderr_to_stdout: true,
              env: [{"MIX_ENV", "dev"}]
            ) do
@@ -160,20 +160,20 @@ defmodule CmsHarness.Analysis do
   only, submodules ignored), so a run's clean tree and a promotion's clean tree
   are the same fact. Nil for whatever `git` could not answer.
   """
-  @spec tree_state(Environment.t()) :: %{commit: String.t() | nil, dirty: boolean() | nil}
+  @spec tree_state(ExecutionContext.t()) :: %{commit: String.t() | nil, dirty: boolean() | nil}
   def tree_state(env) do
     %{commit: head_commit(env), dirty: tree_dirty(env)}
   end
 
   defp head_commit(env) do
-    case Environments.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+    case ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
       {sha, 0} -> String.trim(sha)
       _ -> nil
     end
   end
 
   defp tree_dirty(env) do
-    case Environments.cmd(
+    case ExecutionContexts.cmd(
            env,
            "git",
            ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"],
@@ -221,7 +221,7 @@ defmodule CmsHarness.Analysis do
   defp execute("compiler", env, args) do
     result =
       Compile.execute(
-        environment: env,
+        execution_context: env,
         extra_env: AnalyzerEnv.extra_env(env, "compiler"),
         force: "--force" in args
       )
@@ -275,7 +275,7 @@ defmodule CmsHarness.Analysis do
 
     # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
 
-    case CodeMySpec.Tests.execute(args, environment: env, extra_env: extra_env) do
+    case CodeMySpec.Tests.execute(args, execution_context: env, extra_env: extra_env) do
       {:ok, test_run} ->
         {:ok,
          %{
@@ -344,7 +344,7 @@ defmodule CmsHarness.Analysis do
   def compiler_exit_status(%{exit_code: exit_code}), do: max(exit_code, 1)
 
   defp run_spex(env, args) do
-    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
+    case Spex.execute(args, execution_context: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
       {:ok, failures, exit_code, output} ->
         {:ok,
          %{

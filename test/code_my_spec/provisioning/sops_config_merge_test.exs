@@ -13,8 +13,8 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
   """
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.Sops
 
   @moduletag :sops
@@ -37,7 +37,7 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
 
   defp build_context(context, true) do
     tmp = CodeMySpec.TempFile.owned_dir("test")
-    env = Environment.new(:local, tmp)
+    env = ExecutionContext.new(:local, tmp)
     {:ok, {prod_pub, _priv}} = Sops.generate_key()
 
     Map.merge(context, %{env: env, tmp: tmp, prod_pub: prod_pub})
@@ -49,14 +49,14 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
   describe "write_config/2" do
     test "keeps a rule it does not own that was already committed to the file", ctx do
       :ok =
-        Environments.write_file(ctx.env, ".sops.yaml", """
+        ExecutionContexts.write_file(ctx.env, ".sops.yaml", """
         creation_rules:
         #{@foreign_rule}
         """)
 
       :ok = Sops.write_config(ctx.env, %{"prod" => ctx.prod_pub})
 
-      {:ok, contents} = Environments.read_file(ctx.env, ".sops.yaml")
+      {:ok, contents} = ExecutionContexts.read_file(ctx.env, ".sops.yaml")
       assert contents =~ "envs/(dev|test)"
 
       assert {:ok, %{"creation_rules" => rules}} = YamlElixir.read_from_string(contents)
@@ -66,7 +66,7 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
 
     test "keeps the foreign rule across repeated runs, not just the first one", ctx do
       :ok =
-        Environments.write_file(ctx.env, ".sops.yaml", """
+        ExecutionContexts.write_file(ctx.env, ".sops.yaml", """
         creation_rules:
         #{@foreign_rule}
         """)
@@ -75,7 +75,7 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
       {:ok, {prod_pub_2, _priv}} = Sops.generate_key()
       :ok = Sops.write_config(ctx.env, %{"prod" => prod_pub_2})
 
-      {:ok, contents} = Environments.read_file(ctx.env, ".sops.yaml")
+      {:ok, contents} = ExecutionContexts.read_file(ctx.env, ".sops.yaml")
       {:ok, %{"creation_rules" => rules}} = YamlElixir.read_from_string(contents)
 
       assert Enum.count(rules, &(&1["path_regex"] == "envs/(dev|test)\\.")) == 1
@@ -89,7 +89,7 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
       {:ok, {prod_pub_2, _priv}} = Sops.generate_key()
       :ok = Sops.write_config(ctx.env, %{"prod" => prod_pub_2})
 
-      {:ok, contents} = Environments.read_file(ctx.env, ".sops.yaml")
+      {:ok, contents} = ExecutionContexts.read_file(ctx.env, ".sops.yaml")
       {:ok, %{"creation_rules" => rules}} = YamlElixir.read_from_string(contents)
 
       own_rules = Enum.filter(rules, &(&1["path_regex"] == "envs/prod\\.enc\\.env$"))
@@ -101,24 +101,24 @@ defmodule CodeMySpec.Provisioning.SopsConfigMergeTest do
       {:ok, {foreign_pub, foreign_priv}} = Sops.generate_key()
 
       :ok =
-        Environments.write_file(ctx.env, ".sops.yaml", """
+        ExecutionContexts.write_file(ctx.env, ".sops.yaml", """
         creation_rules:
           - path_regex: envs/dev\\.local\\.env$
             age: #{foreign_pub}
         """)
 
       :ok =
-        Environments.write_file(ctx.env, "envs/dev.local.env", "LOCAL_ONLY=test-dev-value\n")
+        ExecutionContexts.write_file(ctx.env, "envs/dev.local.env", "LOCAL_ONLY=test-dev-value\n")
 
       {_out, 0} =
-        Environments.cmd(ctx.env, "sops", ["encrypt", "-i", "envs/dev.local.env"],
+        ExecutionContexts.cmd(ctx.env, "sops", ["encrypt", "-i", "envs/dev.local.env"],
           cd: ctx.env.cwd
         )
 
       :ok = Sops.write_config(ctx.env, %{"prod" => ctx.prod_pub})
 
       {out, 0} =
-        Environments.cmd(ctx.env, "sops", ["decrypt", "envs/dev.local.env"],
+        ExecutionContexts.cmd(ctx.env, "sops", ["decrypt", "envs/dev.local.env"],
           cd: ctx.env.cwd,
           env: [{"SOPS_AGE_KEY", foreign_priv}]
         )

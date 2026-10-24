@@ -12,8 +12,8 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   that answered every request the same way could not tell any of them apart
   from their opposite.
 
-  Copies join the server's real harness channel from a named device, and report
-  their app serving the way a harness does (`ensure_app_running_result`). The
+  Copies join the server's real harness channel from a named device, and their
+  per-instance serving status is reported over that same channel. The
   address is turned on and off through the agent tools, and read back off the
   Working Copies page, which is where a developer sees it.
   """
@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   import Phoenix.LiveViewTest
   import CodeMySpecSpex.WorkingCopyHelpers, only: [join_working_copy_socket: 4]
 
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.ToolLibrary
   alias CodeMySpec.Workspaces.PreviewTunnel
   alias Req.Test
@@ -274,18 +275,13 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     {reply, socket} =
       join_working_copy_socket(context, root, Path.basename(root), device_id: device_id)
 
-    ref =
-      Phoenix.ChannelTest.push(socket, "ensure_app_running_result", %{
-        "ref" => "spex-1117-#{System.unique_integer([:positive])}",
-        "status" => "ok",
-        "app_status" => "serving",
-        "app_url" => app_url
-      })
+    instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
 
-    Phoenix.ChannelTest.assert_reply(ref, :ok)
+    :ok = report_serving(socket, instance.id, app_url)
 
     %{
       id: reply.working_copy_id,
+      instance_id: instance.id,
       socket: socket,
       device_id: device_id,
       app_url: app_url,
@@ -293,12 +289,49 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     }
   end
 
+  @doc "Report serving health through the owning harness's authenticated channel."
+  def report_serving(socket, instance_id, app_url) do
+    ref =
+      Phoenix.ChannelTest.push(socket, "app_status", %{
+        "instance_id" => instance_id,
+        "status" => "serving",
+        "url" => app_url
+      })
+
+    Phoenix.ChannelTest.assert_reply(ref, :ok, _payload, 5_000)
+    :ok
+  end
+
+  @doc "Configure the designated main instance with the persistent policies written by onboarding."
+  def configure_persistent_main(scope, working_copy_id) do
+    instance = AppInstances.for_working_copy(scope, working_copy_id)
+
+    {:ok, _instance} =
+      AppInstances.update(scope, instance, %{
+        persistent: true,
+        after_promote: true,
+        port_mode: :configured,
+        database_mode: :configured
+      })
+
+    :ok
+  end
+
   @doc "A copy at `root` on `device_id` whose app is not serving."
   def idle_copy(context, root, device_id) do
     {reply, socket} =
       join_working_copy_socket(context, root, Path.basename(root), device_id: device_id)
 
-    %{id: reply.working_copy_id, socket: socket, device_id: device_id, app_url: nil, root: root}
+    instance = AppInstances.for_working_copy(context.scope, reply.working_copy_id)
+
+    %{
+      id: reply.working_copy_id,
+      instance_id: instance.id,
+      socket: socket,
+      device_id: device_id,
+      app_url: nil,
+      root: root
+    }
   end
 
   @doc "The same copy rejoining, the way a restarted harness does. Answers the join reply."
@@ -345,7 +378,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   end
 
   @doc "The hostname a copy's address has, whatever the tool replied."
-  def address_host(copy), do: "preview-#{copy.id}.codemyspec.com"
+  def address_host(copy), do: CodeMySpec.Workspaces.PreviewAddress.host(copy.instance_id)
 
   @doc "A machine, announced the way its harness announces itself at boot. Answers its device id."
   def machine(context), do: CodeMySpecSpex.Fixtures.device_fixture(context.scope).id
@@ -359,8 +392,54 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
   def turn_off(context, copy), do: tool("unshare_copy_app", %{}, as_copy(context, copy))
 
   @doc "Offboard a copy, as an operator does."
-  def offboard(context, copy),
-    do: tool("offboard_working_copy", %{working_copy_id: copy.id}, context.scope)
+  def offboard(context, %{socket: socket} = copy) do
+    task =
+      Task.async(fn ->
+        tool("offboard_working_copy", %{working_copy_id: copy.id}, context.scope)
+      end)
+
+    try do
+      answer_offboard_requests(task, socket, System.monotonic_time(:millisecond) + 10_000)
+    after
+      Task.shutdown(task, :brutal_kill)
+    end
+  end
+
+  defp answer_offboard_requests(%Task{ref: ref} = task, socket, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      {^ref, response} ->
+        Process.demonitor(ref, [:flush])
+        response
+
+      {:DOWN, ^ref, :process, _pid, reason} ->
+        flunk("Offboard task exited before replying: #{inspect(reason)}")
+
+      %Phoenix.Socket.Message{event: event, payload: payload}
+      when event in ["stop_app", "discard_app"] ->
+        answer_app_request(socket, event, payload)
+        answer_offboard_requests(task, socket, deadline)
+    after
+      remaining -> flunk("Offboard did not finish after answering runtime cleanup requests")
+    end
+  end
+
+  defp answer_app_request(socket, event, %{
+         "ref" => ref,
+         "instance" => %{"instance_id" => instance_id}
+       }) do
+    result_event = event <> "_result"
+
+    reply =
+      Phoenix.ChannelTest.push(socket, result_event, %{
+        "ref" => ref,
+        "instance_id" => instance_id,
+        "status" => "ok"
+      })
+
+    Phoenix.ChannelTest.assert_reply(reply, :ok, _payload, 5_000)
+  end
 
   defp as_copy(context, copy), do: %{context.scope | active_working_copy_id: copy.id}
 
@@ -374,7 +453,7 @@ defmodule CodeMySpecSpex.MachineTunnelHelpers do
     |> Floki.parse_document!()
     |> Floki.find("[data-test='working-copy-preview']")
     |> Enum.map(&(&1 |> Floki.attribute("href") |> List.first()))
-    |> Enum.find(&(&1 && String.contains?(&1, copy.id)))
+    |> Enum.find(&(&1 && String.contains?(&1, copy.instance_id)))
   end
 
   @doc "The host a URL names."

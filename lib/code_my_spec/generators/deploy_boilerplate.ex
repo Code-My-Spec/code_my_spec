@@ -13,8 +13,8 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   nowhere near the cause.
   """
 
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Users.Scope
 
@@ -105,7 +105,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   An empty list means the project carries everything the setup routine assumes
   it can find. Checks use the supplied environment.
   """
-  @spec missing(Scope.t(), Environment.t() | nil) :: [artifact()]
+  @spec missing(Scope.t(), ExecutionContext.t() | nil) :: [artifact()]
   def missing(%Scope{} = scope, env) do
     Enum.reject(@files, &present?(scope, &1.path, env))
   end
@@ -114,7 +114,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   Returns the encrypted environment files a project is missing, using the
   supplied environment.
   """
-  @spec missing_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  @spec missing_env_files(Scope.t(), ExecutionContext.t() | nil) :: [String.t()]
   def missing_env_files(%Scope{} = scope, env) do
     Enum.reject(@env_files, &present?(scope, &1, env))
   end
@@ -128,7 +128,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   is no `envs/dev.enc.env`). Both, not either: one alone still ships it to git
   history or the image. Checks use the supplied environment.
   """
-  @spec plaintext_env_files(Scope.t(), Environment.t() | nil) :: [String.t()]
+  @spec plaintext_env_files(Scope.t(), ExecutionContext.t() | nil) :: [String.t()]
   def plaintext_env_files(%Scope{} = scope, env) do
     @plaintext_env_names
     |> Enum.filter(&present?(scope, &1, env))
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   # runs without a checkout to run in.
   defp excluded_from_shipping?(nil, _path), do: false
 
-  defp excluded_from_shipping?(%Environment{cwd: cwd}, _path)
+  defp excluded_from_shipping?(%ExecutionContext{cwd: cwd}, _path)
        when not is_binary(cwd) or cwd == "",
        do: false
 
@@ -150,11 +150,11 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   end
 
   defp git_ignores?(env, path) do
-    match?({_, 0}, Environments.cmd(env, "git", ["check-ignore", "-q", path]))
+    match?({_, 0}, ExecutionContexts.cmd(env, "git", ["check-ignore", "-q", path]))
   end
 
   defp docker_ignores?(env, path) do
-    case Environments.read_file(env, ".dockerignore") do
+    case ExecutionContexts.read_file(env, ".dockerignore") do
       {:ok, body} ->
         body |> String.split("\n") |> Enum.any?(&dockerignore_pattern_matches?(&1, path))
 
@@ -194,10 +194,10 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   header, so an unexcluded `force_ssl` answers 301, the proxy reads the
   container as unhealthy, and the swap never completes.
   """
-  @spec force_ssl_excludes_health(Environments.Environment.t(), String.t()) ::
+  @spec force_ssl_excludes_health(ExecutionContexts.ExecutionContext.t(), String.t()) ::
           :ok | {:error, {:force_ssl_without_health_exclusion, String.t()}}
   def force_ssl_excludes_health(env, config_path \\ "config/runtime.exs") do
-    case Environments.read_file(env, config_path) do
+    case ExecutionContexts.read_file(env, config_path) do
       {:ok, body} -> check_force_ssl(body, config_path)
       _ -> :ok
     end
@@ -237,12 +237,12 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   pipeline). The fallback is deliberately loose — a textual mention — because
   an atom plug is usually implemented by a `defp` further down the module.
   """
-  @spec health_route_unpiped(Environments.Environment.t(), String.t()) ::
+  @spec health_route_unpiped(ExecutionContexts.ExecutionContext.t(), String.t()) ::
           :ok
           | {:error, {:no_health_route, String.t()}}
           | {:error, {:health_route_piped, String.t()}}
   def health_route_unpiped(env, router_path) do
-    case Environments.read_file(env, router_path) do
+    case ExecutionContexts.read_file(env, router_path) do
       {:ok, body} ->
         case check_health_route(body, router_path) do
           {:error, {:no_health_route, _}} -> endpoint_health_plug(env, router_path)
@@ -256,7 +256,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
 
   defp endpoint_health_plug(env, router_path) do
     with path when not is_nil(path) <- endpoint_path(router_path),
-         {:ok, body} <- Environments.read_file(env, path),
+         {:ok, body} <- ExecutionContexts.read_file(env, path),
          true <- String.contains?(body, "\"/health\"") do
       :ok
     else
@@ -282,7 +282,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   and fails only at the migration step on a real box. The supplied
   environment determines where the check reads.
   """
-  @spec release_module_exists?(Scope.t(), String.t() | nil, Environment.t() | nil) ::
+  @spec release_module_exists?(Scope.t(), String.t() | nil, ExecutionContext.t() | nil) ::
           :ok | {:error, {:missing_release_module, String.t()}}
   def release_module_exists?(_scope, nil, _env), do: :ok
 
@@ -309,7 +309,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   # caller whose environment has no working directory to check.
   # See knowledge/infrastructure, "Deploy readiness audit".
   defp present?(%Scope{} = scope, path, env) do
-    Environments.file_exists?(env, path) == true or synced?(scope, path)
+    ExecutionContexts.file_exists?(env, path) == true or synced?(scope, path)
   end
 
   # Checked first: `Files.get_by_path/2` would raise on a nil project id.

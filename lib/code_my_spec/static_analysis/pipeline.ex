@@ -17,7 +17,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   alias CodeMySpec.Compile
   alias CodeMySpec.Documents
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -63,7 +63,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   def compile(%Scope{} = scope, opts) do
     cwd = opts[:cwd] || scope.cwd
-    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+    environment = StaticAnalysis.resolve_execution_context(opts, scope, cwd)
 
     if is_nil(environment) do
       {:error, :no_environment}
@@ -75,7 +75,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   defp compile_in_environment(scope, opts, environment) do
     start = System.monotonic_time(:millisecond)
 
-    execute_opts = [environment: environment]
+    execute_opts = [execution_context: environment]
 
     execute_opts =
       case Keyword.get(opts, :compile_output_file) do
@@ -244,14 +244,14 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   def run_analyzers(scope, analyzers, changed_files, config, opts) do
     cwd = Keyword.get(opts, :cwd) || scope.cwd
-    environment = StaticAnalysis.resolve_environment(opts, scope, cwd)
+    environment = StaticAnalysis.resolve_execution_context(opts, scope, cwd)
 
     if is_nil(environment) do
       {:error, :no_environment}
     else
       execution_opts =
         opts
-        |> Keyword.put(:environment, environment)
+        |> Keyword.put(:execution_context, environment)
         |> Keyword.put(:cwd, Keyword.get(opts, :cwd) || environment.cwd)
 
       run_analyzer_set(scope, analyzers, changed_files, config, execution_opts)
@@ -271,7 +271,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
     all_problems =
       (run_static_analyzers(scope, static_analyzers, file_paths, config, opts) ++
-         run_validators(scope, validators, files, opts[:environment]))
+         run_validators(scope, validators, files, opts[:execution_context]))
       |> Enum.map(&stamp_component_id(&1, component_map))
 
     source_scopes = source_scopes_for(static_analyzers, validators, file_paths, config)
@@ -306,7 +306,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
       analyzer_files = files_for_analyzer(atom, file_paths, config)
 
       runner_opts =
-        [files: analyzer_files, environment: opts[:environment], cwd: opts[:cwd]]
+        [files: analyzer_files, execution_context: opts[:execution_context], cwd: opts[:cwd]]
         |> with_test_output(atom, opts)
 
       start = System.monotonic_time(:millisecond)
@@ -388,7 +388,7 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   end
 
   defp validate_document(scope, environment, file, source, document_type_fn) do
-    case Environments.read_file(environment, file.path) do
+    case ExecutionContexts.read_file(environment, file.path) do
       {:ok, content} ->
         run_document_validation(scope, file, source, document_type_fn.(file, content), content)
 

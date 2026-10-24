@@ -61,8 +61,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # it nothing to render. `type: blog` is load-bearing: without it the
         # row has no content type and parses as an error rather than a post.
         :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.write_file(
+            context.execution_context,
             "content/posts/hello.md",
             "---\ntitle: Hello\ntype: blog\n---\n\nProven end to end.\n"
           )

@@ -9,7 +9,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.SobelowRun
@@ -28,10 +28,11 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
     # the `mix` that would actually run, and on a remote environment that is not
     # this machine's disk. Raw File calls would inspect the wrong host and answer
     # false, which skips the analyzer silently instead of failing.
-    env = StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+    env =
+      StaticAnalysis.resolve_execution_context(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
 
-    not is_nil(env) and Environments.exec_file_exists?(env, "mix.exs") and
-      Environments.exec_file_exists?(env, "deps/sobelow")
+    not is_nil(env) and ExecutionContexts.exec_file_exists?(env, "mix.exs") and
+      ExecutionContexts.exec_file_exists?(env, "deps/sobelow")
   end
 
   @impl true
@@ -56,7 +57,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
           {:ok, [Problem.t()], String.t()} | {:error, String.t() | :no_environment}
   def run_with_output(%Scope{} = scope, opts \\ []) do
     environment =
-      StaticAnalysis.resolve_environment(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
+      StaticAnalysis.resolve_execution_context(opts, scope, Keyword.get(opts, :cwd) || scope.cwd)
 
     cwd = opts[:cwd] || (environment && environment.cwd)
 
@@ -71,7 +72,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
         read_from_output_file(opts[:output_file], scope)
 
       true ->
-        opts = Keyword.put(opts, :environment, environment)
+        opts = Keyword.put(opts, :execution_context, environment)
         temp_file = CodeMySpec.TempFile.path("sobelow_output", ".json")
         result = execute_and_parse(cwd, temp_file, scope, opts)
         CodeMySpec.TempFile.cleanup(temp_file)
@@ -114,7 +115,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
   defp execute_sobelow(code_repo, temp_file, opts, scope) do
     args = build_sobelow_args(opts)
-    environment = StaticAnalysis.resolve_environment(opts, scope, code_repo)
+    environment = StaticAnalysis.resolve_execution_context(opts, scope, code_repo)
 
     # `cd:` stays explicit — opts may carry a :cwd override distinct from the
     # environment's root. clean_otp_env is applied by the environment
@@ -134,7 +135,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
       )
     end
 
-    case CodeMySpec.Environments.cmd(environment, "mix", args, cmd_opts) do
+    case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
       {output, exit_code} when exit_code in [0, 1] ->
         # Sobelow exit codes: 0 = no issues, 1 = issues found
         # We write stdout to temp file for reliable parsing

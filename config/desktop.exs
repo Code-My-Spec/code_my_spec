@@ -7,7 +7,12 @@ import Config
 import_config "prod.exs"
 import_config "harness_base.exs"
 
-config :code_my_spec, env: :desktop
+config :code_my_spec,
+  env: :desktop,
+  desktop_project_setup: {CodeMySpecDesktop.ProjectSetup, :run},
+  desktop_agent_transport: CodeMySpecDesktop.AgentTransport,
+  desktop_device_associator:
+    {CodeMySpecWeb.DeviceController.DesktopAssociation, :associate_current}
 
 # Ports of its own, so the desktop app runs beside a Phoenix app on 4000, a
 # dev harness on 4004 and a brew `cms` on 4003 — a developer's machine has all

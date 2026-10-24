@@ -12,7 +12,7 @@ Two independent fixture systems exist, and they do not meet on their own:
 | System | What it moves | What it does NOT do |
 |---|---|---|
 | `ProjectStateFixtures` | The **requirement graph** — DB rows advancing the project through its serial chain | Writes no files. A project can be `architecture_designed` with an empty filesystem |
-| `InMemoryEnvironment` + `Fakes.Shell` | The **filesystem** — a memfs the real sync code reads | Moves no requirements by itself. Files can exist that nothing has noticed |
+| `InMemoryExecutionContext` + `Fakes.Shell` | The **filesystem** — a memfs the real sync code reads | Moves no requirements by itself. Files can exist that nothing has noticed |
 
 Most spec bugs at this layer come from assuming one implies the other. It
 does not. If your claim is "the graph reacted to a file", you must write
@@ -46,7 +46,7 @@ test is supposed to produce.
 
 ```elixir
 env = Fixtures.memory_environment_fixture(working_dir: "/memfs/env-42")
-:ok = Environments.write_file(env, "lib/foo.ex", "...")
+:ok = ExecutionContexts.write_file(env, "lib/foo.ex", "...")
 ```
 
 `setup_active_project` wires the env onto the scope, so LiveViews that
@@ -62,8 +62,8 @@ This is the layer worth understanding, because it is the one people get
 wrong. Writing a file changes nothing on its own. Something has to read it:
 
 ```elixir
-:ok = Environments.write_file(env, @spec_path, spec_file_content())
-:ok = Environments.write_file(env, @impl_path, impl_file_content())
+:ok = ExecutionContexts.write_file(env, @spec_path, spec_file_content())
+:ok = ExecutionContexts.write_file(env, @impl_path, impl_file_content())
 
 {:ok, sync_live, _html} = live(context.conn, "/projects/#{project.name}/sync")
 sync_live |> element("button[phx-click='sync']") |> render_click()

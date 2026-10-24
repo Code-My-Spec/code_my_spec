@@ -3,7 +3,7 @@ defmodule CodeMySpec.Analysis.RequestRescanTest do
   Asking the harness holding a working copy to rescan it.
 
   The server cannot walk a checkout on another machine —
-  `Environments.Harness.stream_files/3` refuses on purpose, because bulk reads
+  `ExecutionContexts.Harness.stream_files/3` refuses on purpose, because bulk reads
   are the manifest's job rather than a round trip per file. So `sync_project`
   had nothing to do on a harness-held project and said so: "the graph is already
   current, there is no sync step to run."

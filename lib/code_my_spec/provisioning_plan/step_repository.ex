@@ -99,7 +99,7 @@ defmodule CodeMySpec.ProvisioningPlan.StepRepository do
   can change it announces, or a deploy stays unoffered after setup completes.
   """
   @spec setup_changed(Scope.t()) :: :ok
-  defdelegate setup_changed(scope), to: CodeMySpec.Provisioning.EnvironmentRepository
+  defdelegate setup_changed(scope), to: CodeMySpec.Environments
 
   @doc "Delete one environment's row for a step, if it exists. A no-op otherwise."
   @spec delete(Scope.t(), atom(), String.t()) :: :ok

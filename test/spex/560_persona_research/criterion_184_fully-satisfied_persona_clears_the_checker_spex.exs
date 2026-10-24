@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -35,8 +35,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
       given_ "summary.md is written with all required sections", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_persona_summary()
           )
@@ -46,8 +46,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
 
       given_ "sources.md is written with one cited source", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             minimal_sources()
           )

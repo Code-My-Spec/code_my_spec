@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.RealDisk do
   server action must never touch, a device identity file a machine writes for
   itself.
 
-  `CodeMySpec.Environments` is the sanctioned in-memory abstraction and stays
+  `CodeMySpec.ExecutionContexts` is the sanctioned in-memory abstraction and stays
   the first choice for everything else. This exists for the minority of
   criteria where the assertion *is* the real directory — `PathReportHelpers`'s
   own moduledoc makes the same case for `checkout/1` and `remove/1`: "the

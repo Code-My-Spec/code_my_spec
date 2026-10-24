@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8187Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -47,15 +47,15 @@ defmodule CodeMySpecSpex.Story987.Criterion8187Spex do
         slug = context.persona.slug
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.persona_summary_path(slug),
             persona_summary()
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.persona_sources_path(slug),
             "- https://example.com/study — A study — 2026-01-15\n"
           )

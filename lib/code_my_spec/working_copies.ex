@@ -16,10 +16,11 @@ defmodule CodeMySpec.WorkingCopies do
     top_level?: true,
     deps: [
       CodeMySpec.Agents.RoleProfile,
+      CodeMySpec.AppInstances,
       CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Devices,
       CodeMySpec.Encrypted.Binary,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
@@ -31,11 +32,13 @@ defmodule CodeMySpec.WorkingCopies do
 
   require Logger
 
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.AppInstances.AppInstance
   alias CodeMySpec.Agents.RoleProfile
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Devices.Device
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -213,7 +216,7 @@ defmodule CodeMySpec.WorkingCopies do
   def fetch(_), do: {:error, :invalid_id}
 
   @doc """
-  Resolves the environment for the exact working copy selected by `scope`.
+  Resolves the execution context for the exact working copy selected by `scope`.
 
   Both active ids must be present, and the fetched copy must belong to the
   active project. For a rooted copy, resolution prefers its id-specific
@@ -224,40 +227,40 @@ defmodule CodeMySpec.WorkingCopies do
   environment override. Invalid, missing, mismatched, or unrooted copies
   return `nil`.
   """
-  @spec environment(Scope.t()) :: Environment.t() | nil
-  def environment(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
+  @spec execution_context(Scope.t()) :: ExecutionContext.t() | nil
+  def execution_context(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
       when is_binary(project_id) and is_binary(copy_id) do
     case fetch(copy_id) do
       {:ok, %{project_id: ^project_id, root: root}}
       when is_binary(root) and root != "" ->
-        Environments.lookup_registered({:working_copy, copy_id}) ||
-          Environments.lookup_registered({:root, root}) ||
-          Environment.new(:harness, root, ref: %{"harness_id" => copy_id})
+        ExecutionContexts.lookup_registered({:working_copy, copy_id}) ||
+          ExecutionContexts.lookup_registered({:root, root}) ||
+          ExecutionContext.new(:harness, root, ref: %{"harness_id" => copy_id})
 
       _ ->
         nil
     end
   end
 
-  def environment(_scope), do: nil
+  def execution_context(_scope), do: nil
 
   @doc """
-  The environment a tool that touches files uses: the caller's working copy,
+  The execution context a tool that touches files uses: the caller's working copy,
   else the directory a stdio server was started in, else nil. Nil means the
   tool must not touch a filesystem; see `McpServers.Validators.mcp_working_dir/1`
   for why guessing is worse than refusing.
   """
-  @spec tool_environment(Scope.t() | nil, String.t() | nil) :: Environment.t() | nil
-  def tool_environment(scope, working_dir \\ nil)
+  @spec tool_execution_context(Scope.t() | nil, String.t() | nil) :: ExecutionContext.t() | nil
+  def tool_execution_context(scope, working_dir \\ nil)
 
-  def tool_environment(%Scope{active_working_copy_id: id} = scope, _working_dir)
+  def tool_execution_context(%Scope{active_working_copy_id: id} = scope, _working_dir)
       when not is_nil(id),
-      do: environment(scope)
+      do: execution_context(scope)
 
-  def tool_environment(_scope, working_dir) do
+  def tool_execution_context(_scope, working_dir) do
     case working_dir || configured_working_dir() do
       nil -> nil
-      dir -> Environment.new(:local, dir)
+      dir -> ExecutionContext.new(:local, dir)
     end
   end
 
@@ -483,55 +486,22 @@ defmodule CodeMySpec.WorkingCopies do
 
   def record_browser_status(_harness, _status, _error), do: :ok
 
-  @doc """
-  Record whether the application this checkout runs is answering.
+  @doc "Record a legacy copy-scoped report on its default app instance."
+  def record_preview_status(%WorkingCopy{} = copy, status) do
+    scope = %Scope{active_project_id: copy.project_id}
 
-  Reported by the machine that holds the disk, on every sync: the server
-  cannot reach a checkout's preview itself. `Promotion` also claims `"serving"`
-  when it dispatches a deployment.
-
-  Three states: `erroring` (a 500, the app is up — a QA finding) is not `down`
-  (nothing answering).
-  """
-  @spec record_preview_status(WorkingCopy.t(), String.t()) ::
-          {:ok, WorkingCopy.t()} | {:error, term()}
-  def record_preview_status(%WorkingCopy{} = harness, status)
-      when status in ~w(serving erroring down) do
-    harness
-    |> save(%{preview_status: status, preview_checked_at: DateTime.utc_now()})
-    |> announce_graph_change(harness)
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      AppInstances.record_preview_status(scope, instance, status)
+    end
   end
 
-  @doc """
-  Record whether *this copy's own* app is answering. Every copy reports this:
-  each runs its own instance (own port and database), so QA can test a story's
-  branch before it is promoted. `record_preview_status/2` is the main copy's
-  tunnel address instead.
+  @doc "Record a legacy copy-scoped runtime report on its default instance."
+  def record_app_status(%WorkingCopy{} = copy, info) do
+    scope = %Scope{active_project_id: copy.project_id}
 
-  `attrs` may include `:url`, `:commit` and `:serving_commit`; omitted ones
-  keep their stored value. `"down"` always clears `app_url` (a stopped copy has
-  no address). `"starting"` — a cold first start still running in the
-  background — keeps `app_url`, since the address is real.
-  """
-  @spec record_app_status(WorkingCopy.t(), map()) ::
-          {:ok, WorkingCopy.t()} | {:error, term()}
-  def record_app_status(%WorkingCopy{} = harness, %{status: status} = attrs)
-      when status in ~w(serving erroring down starting) do
-    url = if status == "down", do: nil, else: Map.get(attrs, :url, harness.app_url)
-
-    harness
-    |> save(%{
-      app_status: status,
-      app_checked_at: DateTime.utc_now(),
-      app_url: url,
-      app_commit: Map.get(attrs, :commit, harness.app_commit),
-      # A harness older than reloads names no serving commit; a launch serves
-      # the commit it launched from.
-      app_serving_commit:
-        Map.get(attrs, :serving_commit) ||
-          Map.get(attrs, :commit, harness.app_serving_commit)
-    })
-    |> announce_graph_change(harness)
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      AppInstances.record_status(scope, instance, info)
+    end
   end
 
   # No git state is stored here: the promote gate runs git itself.
@@ -557,98 +527,53 @@ defmodule CodeMySpec.WorkingCopies do
     |> announce_graph_change(harness)
   end
 
-  @doc """
-  Record where this checkout's preview answers.
+  @doc "Record the default instance's preview endpoint."
+  def record_preview_url(%WorkingCopy{main: true} = copy, url) do
+    scope = %Scope{active_project_id: copy.project_id}
 
-  Only for the main copy: the project's preview has one address. Refused
-  (`:not_the_main_copy`) rather than ignored, so a person setting it on a
-  worktree is told.
-  """
-  @spec record_preview_url(WorkingCopy.t(), String.t() | nil) ::
-          {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
-  def record_preview_url(%WorkingCopy{main: true} = harness, url) do
-    harness |> save(%{preview_url: url}) |> announce_graph_change(harness)
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      AppInstances.update(scope, instance, %{preview_url: url})
+    end
   end
 
   def record_preview_url(%WorkingCopy{}, _url), do: {:error, :not_the_main_copy}
 
-  @doc """
-  Record the tunnel that carries this copy's preview, and the address it
-  carries it to.
+  @doc "Record preview routing on the default app instance."
+  def record_preview_tunnel(%WorkingCopy{} = copy, attrs) do
+    scope = %Scope{active_project_id: copy.project_id}
 
-  One write, so an address without its credential (or the reverse) cannot be
-  recorded.
-
-  Refused on a copy that is neither main nor running an app of its own (no
-  `app_url`): nothing would be served there. Which tunnel such a copy gets is
-  `PreviewTunnel.ensure/1`'s decision; this refuses only on identity.
-  """
-  @spec record_preview_tunnel(WorkingCopy.t(), map()) ::
-          {:ok, WorkingCopy.t()} | {:error, :not_the_main_copy} | {:error, term()}
-  def record_preview_tunnel(%WorkingCopy{main: true} = harness, attrs) do
-    do_record_preview_tunnel(harness, attrs)
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      AppInstances.record_preview_tunnel(scope, instance, attrs)
+    end
   end
 
-  def record_preview_tunnel(%WorkingCopy{app_url: url} = harness, attrs)
-      when is_binary(url) and url != "" do
-    do_record_preview_tunnel(harness, attrs)
+  def clear_preview_tunnel(%WorkingCopy{} = copy) do
+    scope = %Scope{active_project_id: copy.project_id}
+
+    with {:ok, instance} <- AppInstances.ensure_default(scope, copy) do
+      AppInstances.clear_preview_tunnel(scope, instance)
+    end
   end
 
-  def record_preview_tunnel(%WorkingCopy{}, _attrs), do: {:error, :not_the_main_copy}
-
-  @doc """
-  Takes a copy's preview address and tunnel credential off it. Never refused,
-  unlike recording one: a copy whose app has since stopped (no `app_url`) must
-  still be able to give its address up, and `PreviewTunnel.release/1` calls
-  this after Cloudflare has already dropped the route.
-  """
-  @spec clear_preview_tunnel(WorkingCopy.t()) :: {:ok, WorkingCopy.t()} | {:error, term()}
-  def clear_preview_tunnel(%WorkingCopy{} = harness),
-    do:
-      do_record_preview_tunnel(harness, %{
-        preview_url: nil,
-        preview_tunnel_id: nil,
-        preview_tunnel_secret: nil
-      })
-
-  defp do_record_preview_tunnel(harness, attrs) do
-    harness
-    |> save(Map.take(attrs, [:preview_url, :preview_tunnel_id, :preview_tunnel_secret]))
-    |> announce_graph_change(harness)
-  end
-
-  @doc """
-  Whether any working copy still names `tunnel_id` as the tunnel carrying its
-  address — what decides a replaced tunnel may be deleted.
-  """
-  @spec tunnel_in_use?(String.t()) :: boolean()
+  @doc "Whether any instance still references a shared tunnel."
   def tunnel_in_use?(tunnel_id) when is_binary(tunnel_id),
-    do: Repo.exists?(from w in WorkingCopy, where: w.preview_tunnel_id == ^tunnel_id)
+    do: Repo.exists?(from i in AppInstance, where: i.preview_tunnel_id == ^tunnel_id)
 
-  @doc """
-  Where this project's preview answers, or nothing.
-
-  Nothing is an ordinary state (no main copy, or none with an address); the
-  panel says so rather than showing an empty frame.
-  """
-  @spec preview_url(Scope.t()) :: String.t() | nil
+  @doc "The default workspace's instance preview, when available."
   def preview_url(%Scope{} = scope) do
-    case main(scope) do
-      %WorkingCopy{preview_url: url} when is_binary(url) and url != "" -> url
+    with %WorkingCopy{} = copy <- main(scope),
+         %AppInstance{} = instance <- AppInstances.for_working_copy(scope, copy) do
+      instance.preview_url
+    else
       _ -> nil
     end
   end
 
-  @doc """
-  Whether this project's preview is actually answering, or nothing.
-
-  `nil` means never reported, not "down": a URL is minted before the app that
-  answers it has booted, and a preview still coming up must not read as broken.
-  """
-  @spec preview_status(Scope.t()) :: String.t() | nil
   def preview_status(%Scope{} = scope) do
-    case main(scope) do
-      %WorkingCopy{preview_status: status} -> status
+    with %WorkingCopy{} = copy <- main(scope),
+         %AppInstance{} = instance <- AppInstances.for_working_copy(scope, copy) do
+      instance.preview_status
+    else
       _ -> nil
     end
   end
@@ -674,7 +599,7 @@ defmodule CodeMySpec.WorkingCopies do
       from h in WorkingCopy,
         where: h.project_id == ^project_id,
         order_by: [desc_nulls_last: h.last_seen_at, desc: h.inserted_at],
-        preload: [:device]
+        preload: [:device, :default_app_instance]
     )
   end
 
@@ -797,7 +722,7 @@ defmodule CodeMySpec.WorkingCopies do
   # The working-copy fields the requirement graph reads (the preloader's
   # working-copy gate inputs and `Promotion.running_copy_check/2`), and
   # nothing else.
-  @graph_fields [:main, :preview_status, :preview_url]
+  @graph_fields [:main]
 
   # Announced only when one of them actually moved: a health poll confirming
   # an unchanged status is not a change. See knowledge/promotion, "Lessons".
@@ -941,8 +866,8 @@ defmodule CodeMySpec.WorkingCopies do
   """
   @spec serving_projects_by_device([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Ecto.UUID.t()]}
   def serving_projects_by_device(device_ids) when is_list(device_ids) do
-    from(w in WorkingCopy,
-      where: w.device_id in ^device_ids and w.app_status == "serving",
+    from(w in AppInstance,
+      where: w.device_id in ^device_ids and w.status == "serving",
       distinct: true,
       select: {w.device_id, w.project_id}
     )

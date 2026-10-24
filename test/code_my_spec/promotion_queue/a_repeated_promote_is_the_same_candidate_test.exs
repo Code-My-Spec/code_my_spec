@@ -31,6 +31,38 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
 
   defp open(ctx), do: Repository.queued(ctx.scope.active_project_id, 10)
 
+  test "completion retry reopens the published candidate without losing its receipt", ctx do
+    {:ok, entry} = enqueue(ctx, "candidate-a")
+    publication = %{"id" => Ecto.UUID.generate(), "head" => "certified", "sequence" => 7}
+
+    {:ok, _} =
+      Repository.move(entry, :landed, %{
+        result: %{"assignment_held" => true, "publication" => publication}
+      })
+
+    assert {:ok, reopened} =
+             Repository.reopen_held(%{
+               project_id: ctx.scope.active_project_id,
+               working_copy_id: ctx.copy.id,
+               commit: "candidate-a"
+             })
+
+    assert reopened.id == entry.id
+    assert reopened.status == :queued
+    assert reopened.result["publication"] == publication
+  end
+
+  test "a certified publication survives restart and cannot be retargeted", ctx do
+    {:ok, entry} = enqueue(ctx, "candidate-a")
+    publication = %{"id" => Ecto.UUID.generate(), "base" => "base", "head" => "certified"}
+    {:ok, _} = Repository.move(entry, :gating, %{result: %{"publication" => publication}})
+    Repository.requeue_gating(ctx.scope.active_project_id)
+    assert Repository.get(entry.id).result["publication"] == publication
+    {:ok, replacement} = enqueue(ctx, "candidate-b")
+    refute replacement.id == entry.id
+    assert Repository.get(entry.id).commit == "candidate-a"
+  end
+
   test "the same commit again while it waits is the same entry", ctx do
     {:ok, first} = enqueue(ctx, "c1")
     assert {:ok, %{id: id}} = enqueue(ctx, "c1")

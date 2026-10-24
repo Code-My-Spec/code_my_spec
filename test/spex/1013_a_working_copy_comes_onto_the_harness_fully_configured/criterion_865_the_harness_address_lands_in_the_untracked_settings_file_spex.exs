@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,21 +43,21 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
     scenario "The harness address lands in the untracked settings file" do
       given_ "a working copy with an id, whose tracked settings already have content",
              context do
-        :ok = Environments.register(context.project.id, context.environment)
+        :ok = ExecutionContexts.register(context.project.id, context.execution_context)
 
         # An id already on the copy, written through the same surface the task
         # reads it from. This is the ordinary case — a copy being onboarded again
         # — and it is what keeps the spec off the network: the task mints only
         # when there is no id to find.
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             @harness_config,
             Jason.encode!(%{working_copy_id: "spex-harness-2352"}, pretty: true)
           )
 
         tracked = ~s({\n  "permissions": {\n    "allow": []\n  }\n}\n)
-        :ok = Environments.write_file(context.environment, @tracked, tracked)
+        :ok = ExecutionContexts.write_file(context.execution_context, @tracked, tracked)
 
         {:ok, Map.put(context, :tracked_before, tracked)}
       end
@@ -82,7 +82,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
       end
 
       then_ "the address is in the untracked settings file", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, @untracked),
+        assert {:ok, contents} =
+                 ExecutionContexts.read_file(context.execution_context, @untracked),
                "onboarding wrote no #{@untracked}. The Anthropic base URL carries " <>
                  "this working copy's harness id, and the untracked file is the only " <>
                  "place it can go without being staged for commit."
@@ -100,7 +101,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
       end
 
       then_ "the tracked settings file is byte-for-byte unchanged", context do
-        assert {:ok, after_run} = Environments.read_file(context.environment, @tracked)
+        assert {:ok, after_run} = ExecutionContexts.read_file(context.execution_context, @tracked)
 
         assert after_run == context.tracked_before,
                "onboarding modified #{@tracked}, which git tracks. The URL carries " <>

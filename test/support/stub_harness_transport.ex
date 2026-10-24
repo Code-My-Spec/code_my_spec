@@ -13,12 +13,12 @@ defmodule CodeMySpec.Support.StubHarnessTransport do
   through `__MODULE__.` at every call site.
 
   Named under `CodeMySpec.Support` rather than `CodeMySpecTest`, which is where
-  `InMemoryEnvironment` and `RecordingEnvironment` already sit for the same
+  `InMemoryExecutionContext` and `RecordingExecutionContext` already sit for the same
   reason: the `CodeMySpecTest` boundary may not reference
-  `CodeMySpec.Environments`, and a stub of an Environments behaviour has to.
+  `CodeMySpec.ExecutionContexts`, and a stub of an ExecutionContexts behaviour has to.
   """
 
-  @behaviour CodeMySpec.Environments.HarnessTransport
+  @behaviour CodeMySpec.ExecutionContexts.HarnessTransport
 
   @impl true
   def harness_fs_request(_id, "stat", _payload, _timeout), do: {:ok, %{"size" => 0}}

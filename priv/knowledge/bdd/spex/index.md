@@ -45,7 +45,7 @@ as one of them taking an action:
   `Phoenix.LiveViewTest.{live, form, render_submit, render_click}`.
 - **Coding agent** — interacts by writing files into the working
   directory and by firing harness hooks (stop hook, etc.). Drive this
-  with `Environments.write_file/3` and `post_hook/3`, which sets
+  with `ExecutionContexts.write_file/3` and `post_hook/3`, which sets
   `x-harness-id` and dispatches to the local endpoint. Writing a file
   changes nothing on its own — something has to notice it; see
   [project_fixtures.md](project_fixtures.md).

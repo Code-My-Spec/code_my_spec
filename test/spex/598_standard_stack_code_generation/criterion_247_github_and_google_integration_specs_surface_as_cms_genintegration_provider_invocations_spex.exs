@@ -23,9 +23,9 @@ defmodule CodeMySpecSpex.Story598.Criterion5298Spex do
   spex "Integration providers come from the integrations directory", criterion: 247 do
     scenario "github and google integration specs surface as cms_gen.integration_provider invocations" do
       given_ "integration specs exist for github and google", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_integration_specs(context.environment, ["github", "google"])
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_integration_specs(context.execution_context, ["github", "google"])
         {:ok, context}
       end
 

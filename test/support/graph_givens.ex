@@ -102,7 +102,7 @@ defmodule CodeMySpecSpex.GraphGivens do
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.ComponentHelpers
@@ -499,7 +499,7 @@ defmodule CodeMySpecSpex.GraphGivens do
 
   defp cover_component_with_story(context, module_name) do
     scope = context.scope
-    env = context.environment
+    env = context.execution_context
 
     story =
       StoryHelpers.create_and_link(scope, module_name,
@@ -587,7 +587,7 @@ defmodule CodeMySpecSpex.GraphGivens do
       end
       """
 
-      :ok = Environments.write_file(env, bdd_path, bdd_content)
+      :ok = ExecutionContexts.write_file(env, bdd_path, bdd_content)
     end)
 
     sync_project(context)

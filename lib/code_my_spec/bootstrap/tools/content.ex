@@ -258,7 +258,7 @@ defmodule CodeMySpec.Bootstrap.Tools.Content do
   @doc """
   Extract app name from already-read mix.exs source.
 
-  Lets callers read `mix.exs` through `CodeMySpec.Environments` (so the
+  Lets callers read `mix.exs` through `CodeMySpec.ExecutionContexts` (so the
   in-memory environment works in specs) and pass the content here instead
   of a filesystem path.
   """

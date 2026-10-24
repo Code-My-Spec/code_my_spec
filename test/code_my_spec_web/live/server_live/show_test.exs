@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.ServerLive.ShowTest do
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.AccountSecrets
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Hetzner
 
   setup [:register_log_in_setup_account]
@@ -73,7 +73,7 @@ defmodule CodeMySpecWeb.ServerLive.ShowTest do
 
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Second Project")
     project_scope = %{scope | active_project: project, active_project_id: project.id}
-    {:ok, _env} = EnvironmentRepository.put(project_scope, "uat", %{})
+    {:ok, _env} = Environments.put(project_scope, "uat", %{})
 
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     view |> element("[data-test='link-server'][phx-value-name='shared-box']") |> render_click()
@@ -90,7 +90,7 @@ defmodule CodeMySpecWeb.ServerLive.ShowTest do
 
     assert html =~ "Second Project"
     assert html =~ "uat"
-    assert %{server_id: server_id} = EnvironmentRepository.get(project_scope, "uat")
+    assert %{server_id: server_id} = Environments.get(project_scope, "uat")
     refute is_nil(server_id)
   end
 end

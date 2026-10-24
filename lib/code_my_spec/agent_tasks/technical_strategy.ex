@@ -13,7 +13,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
       "exist but the architecture/decisions.md index isn't on disk yet."
   end
 
-  alias CodeMySpec.{Components, Environments, Paths, Stories}
+  alias CodeMySpec.{Components, ExecutionContexts, Paths, Stories}
 
   # Pre-made technology decisions that are part of the standard CodeMySpec stack.
   # These get written as accepted ADRs before any research begins.
@@ -131,7 +131,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   """
   @spec command(CodeMySpec.Users.Scope.t(), map()) :: {:ok, String.t()}
   def command(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
     project = scope.active_project
 
     ensure_premade_decisions(env)
@@ -167,7 +167,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   @spec evaluate(CodeMySpec.Users.Scope.t(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}
   def evaluate(scope, _task) do
-    env = CodeMySpec.AgentTasks.environment(scope)
+    env = CodeMySpec.AgentTasks.execution_context(scope)
 
     index_exists = decisions_index_exists?(env)
 
@@ -192,7 +192,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
 
   Returns the count of decisions written.
   """
-  @spec ensure_premade_decisions(Environments.Environment.t()) :: non_neg_integer()
+  @spec ensure_premade_decisions(ExecutionContexts.ExecutionContext.t()) :: non_neg_integer()
   def ensure_premade_decisions(env) do
     existing = list_existing_decisions(env)
     missing = missing_premade_decisions(existing)
@@ -221,7 +221,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
       """
       |> String.trim_leading()
 
-    Environments.write_file(env, "#{Paths.decisions_dir()}/#{decision.topic}.md", content)
+    ExecutionContexts.write_file(env, "#{Paths.decisions_dir()}/#{decision.topic}.md", content)
   end
 
   # ============================================================================
@@ -229,14 +229,14 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   # ============================================================================
 
   defp read_mix_exs(env) do
-    case Environments.read_file(env, "mix.exs") do
+    case ExecutionContexts.read_file(env, "mix.exs") do
       {:ok, content} -> content
       _ -> nil
     end
   end
 
   defp list_existing_decisions(env) do
-    case Environments.glob(env, "#{Paths.decisions_dir()}/*.md") do
+    case ExecutionContexts.glob(env, "#{Paths.decisions_dir()}/*.md") do
       files when is_list(files) ->
         files
         |> Enum.map(&Path.basename(&1, ".md"))
@@ -254,7 +254,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategy do
   end
 
   defp decisions_index_exists?(env) do
-    Environments.file_exists?(env, Paths.decisions_index()) == true
+    ExecutionContexts.file_exists?(env, Paths.decisions_index()) == true
   end
 
   defp missing_premade_decisions(existing_decisions) do

@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
 
   Surface: `InstallAgentsMd` MCP tool. The tool reads `mix.exs` and writes
   AGENTS.md through `scope.environment`, so the spec seeds mix.exs and
-  observes AGENTS.md via `CodeMySpec.Environments`.
+  observes AGENTS.md via `CodeMySpec.ExecutionContexts`.
   """
 
   use CodeMySpecSpex.Case
@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
   alias CodeMySpec.ToolLibrary
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
         end
         """
 
-        :ok = Environments.write_file(context.environment, "mix.exs", mix_exs)
+        :ok = ExecutionContexts.write_file(context.execution_context, "mix.exs", mix_exs)
 
         {:ok, context}
       end
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6241Spex do
 
       then_ ".code_my_spec/AGENTS.md exists", context do
         assert {:ok, contents} =
-                 Environments.read_file(context.environment, ".code_my_spec/AGENTS.md"),
+                 ExecutionContexts.read_file(context.execution_context, ".code_my_spec/AGENTS.md"),
                "expected AGENTS.md to exist after install"
 
         {:ok, Map.put(context, :agents_md_contents, contents)}

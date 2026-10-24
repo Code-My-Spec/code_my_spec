@@ -21,12 +21,139 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Teardown}
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.ProvisioningPlan.StepRepository
 
   setup do
     scope = full_scope_fixture()
     {:ok, scope: scope}
+  end
+
+  test "provider teardown refuses a harness-managed environment", %{scope: scope} do
+    {:ok, environment} = Environments.put(scope, "development", %{management: :harness})
+
+    assert {:error, :not_provisioned_environment} =
+             Teardown.environment(scope, "development", teardown: recorder())
+
+    assert Environments.get(scope, "development").id == environment.id
+    assert drain() == []
+  end
+
+  test "confirmed provider removal deletes its runtime receipt and environment", %{scope: scope} do
+    {:ok, environment} =
+      Environments.put(scope, "uat", %{host: "uat.example.com", server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{
+        confirmed_at: DateTime.utc_now(),
+        image: "registry/app:release"
+      })
+
+    assert {:ok, removed} = Teardown.environment(scope, "uat", teardown: recorder())
+    assert Enum.map(removed, & &1.kind) == ["dns_record", "server"]
+    assert drain() == ["dns_record", "server"]
+    assert AppInstances.get(scope, instance.id) == nil
+    assert Environments.get(scope, "uat") == nil
+  end
+
+  test "failed provider removal preserves its runtime receipt and environment", %{scope: scope} do
+    {:ok, environment} = Environments.put(scope, "uat", %{server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{
+        confirmed_at: DateTime.utc_now(),
+        image: "registry/app:release"
+      })
+
+    assert {:error, {:left_behind, [_]}, []} =
+             Teardown.environment(scope, "uat",
+               teardown: fn _scope, resource -> {:error, resource} end
+             )
+
+    assert Environments.get(scope, "uat").id == environment.id
+    assert AppInstances.get(scope, instance.id).status == "serving"
+    assert AppInstances.get(scope, instance.id).deployment_image == "registry/app:release"
+  end
+
+  test "an attached harness instance refuses removal before provider side effects", %{
+    scope: scope
+  } do
+    {:ok, environment} = Environments.put(scope, "uat", %{server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.create(scope, %{
+        environment_id: environment.id,
+        source_root: "/tmp/checkout",
+        port_mode: :configured,
+        database_mode: :configured
+      })
+
+    assert {:error, :environment_in_use} =
+             Teardown.environment(scope, "uat", teardown: recorder())
+
+    assert drain() == []
+    assert AppInstances.get(scope, instance.id)
+    assert Environments.get(scope, "uat")
+  end
+
+  test "a skipped provider resource does not certify removal of a deployed runtime", %{
+    scope: scope
+  } do
+    {:ok, environment} = Environments.put(scope, "uat", %{server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{confirmed_at: DateTime.utc_now()})
+
+    assert {:error, {:left_behind, [_]}, []} =
+             Teardown.environment(scope, "uat",
+               teardown: fn _scope, resource -> {:skipped, resource} end
+             )
+
+    assert AppInstances.get(scope, instance.id).status == "serving"
+    assert Environments.get(scope, "uat")
+  end
+
+  test "a runtime without a recorded server cannot be confirmed destroyed", %{scope: scope} do
+    {:ok, environment} = Environments.put(scope, "uat", %{host: "uat.example.com"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{confirmed_at: DateTime.utc_now()})
+
+    assert {:error, :deployment_removal_unconfirmed} =
+             Teardown.environment(scope, "uat", teardown: recorder())
+
+    assert drain() == []
+    assert AppInstances.get(scope, instance.id).status == "serving"
+    assert Environments.get(scope, "uat")
+  end
+
+  test "a newer deployment during provider teardown keeps its receipt", %{scope: scope} do
+    {:ok, environment} = Environments.put(scope, "uat", %{server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{
+        confirmed_at: DateTime.utc_now(),
+        image: "registry/app:old"
+      })
+
+    teardown = fn _scope, resource ->
+      {:ok, _} =
+        AppInstances.record_deployment(scope, environment.id, %{
+          confirmed_at: DateTime.utc_now(),
+          image: "registry/app:new"
+        })
+
+      {:ok, resource}
+    end
+
+    assert {:error, :deployment_receipt_changed, [_]} =
+             Teardown.environment(scope, "uat", teardown: teardown)
+
+    assert AppInstances.get(scope, instance.id).deployment_image == "registry/app:new"
+    assert AppInstances.get(scope, instance.id).status == "serving"
+    assert Environments.get(scope, "uat")
   end
 
   defp recorder do
@@ -49,7 +176,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
   describe "removing an environment that has a server and a record" do
     test "takes the DNS record before the server", %{scope: scope} do
       {:ok, _} =
-        EnvironmentRepository.put(scope, "qa2", %{
+        Environments.put(scope, "qa2", %{
           host: "qa2.example.com",
           server_name: "proj-qa2",
           ip: "5.161.213.9"
@@ -62,17 +189,17 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
              "the record has to go before the address is released, or it points at somebody else's box"
 
       assert length(removed) == 2
-      refute EnvironmentRepository.get(scope, "qa2")
+      refute Environments.get(scope, "qa2")
     end
   end
 
   describe "removing an environment with nothing provisioned" do
     test "deletes the row and reports nothing removed", %{scope: scope} do
-      {:ok, _} = EnvironmentRepository.put(scope, "qa3", %{})
+      {:ok, _} = Environments.put(scope, "qa3", %{})
 
       assert {:ok, []} = Teardown.environment(scope, "qa3", teardown: recorder())
       assert drain() == []
-      refute EnvironmentRepository.get(scope, "qa3")
+      refute Environments.get(scope, "qa3")
     end
   end
 
@@ -83,7 +210,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
     # than kept.
     test "still deletes the row and names what survived", %{scope: scope} do
       {:ok, _} =
-        EnvironmentRepository.put(scope, "qa4", %{host: "qa4.example.com", server_name: "p-qa4"})
+        Environments.put(scope, "qa4", %{host: "qa4.example.com", server_name: "p-qa4"})
 
       # Refuses everything, so there is no branch anywhere in the stub and no
       # ordering to depend on. What the claim needs is that the row goes even
@@ -95,7 +222,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
                Teardown.environment(scope, "qa4", teardown: refuse)
 
       assert Enum.map(left, & &1.kind) == ["dns_record", "server"]
-      refute EnvironmentRepository.get(scope, "qa4")
+      refute Environments.get(scope, "qa4")
     end
   end
 
@@ -132,7 +259,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
         ]
       })
 
-      EnvironmentRepository.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
+      Environments.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
 
       :ok
     end
@@ -175,7 +302,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
         ]
       })
 
-      EnvironmentRepository.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
+      Environments.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
 
       :ok
     end

@@ -3,7 +3,7 @@ defmodule CodeMySpec.McpServers.Validators do
   Validation functions for MCP servers.
   """
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
 
@@ -157,16 +157,16 @@ defmodule CodeMySpec.McpServers.Validators do
   Returns nil when there is no working directory to root one at. See
   `mcp_working_dir/1` for why guessing is worse than refusing.
   """
-  @spec mcp_environment(map()) :: Environment.t() | nil
-  def mcp_environment(frame) do
+  @spec mcp_execution_context(map()) :: ExecutionContext.t() | nil
+  def mcp_execution_context(frame) do
     case frame.assigns[:current_scope] do
       %Scope{active_working_copy_id: id} = scope when not is_nil(id) ->
-        WorkingCopies.environment(scope)
+        WorkingCopies.execution_context(scope)
 
       _ ->
         case mcp_working_dir(frame) do
           nil -> nil
-          dir -> Environment.new(:local, dir)
+          dir -> ExecutionContext.new(:local, dir)
         end
     end
   end

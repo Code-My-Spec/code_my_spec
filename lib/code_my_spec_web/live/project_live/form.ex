@@ -39,6 +39,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
         phx-submit="save"
       >
         <.input field={@form[:name]} type="text" label="Name" />
+        <.input field={@form[:development_branch]} type="text" label="Development branch" />
         <.input field={@form[:module_name]} type="text" label="Module Name" />
         <.input
           field={@form[:code_repo]}

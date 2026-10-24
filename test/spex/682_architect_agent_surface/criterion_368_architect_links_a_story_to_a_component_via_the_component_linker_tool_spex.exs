@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5831Spex do
           Fixtures.proposal_with_context("MyApp", "Notifications", "Notifications domain context")
 
         {:ok, _result} =
-          Fixtures.with_executed_proposal(context.scope, context.environment, proposal)
+          Fixtures.with_executed_proposal(context.scope, context.execution_context, proposal)
 
         {:ok, Map.put(context, :module_name, "MyApp.Notifications")}
       end

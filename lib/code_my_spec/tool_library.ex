@@ -17,6 +17,9 @@ defmodule CodeMySpec.ToolLibrary do
     top_level?: true,
     deps: [
       CodeMySpec.WorkingCopies.Tools,
+      CodeMySpec.AppInstances.Tools,
+      CodeMySpec.Environments.Tools,
+      CodeMySpec.Projects.Tools,
       CodeMySpec.Stories.Tools,
       CodeMySpec.Provisioning.Tools,
       CodeMySpec.Components.Tools,
@@ -25,6 +28,7 @@ defmodule CodeMySpec.ToolLibrary do
       CodeMySpec.Requirements.Tools,
       CodeMySpec.Bootstrap.Tools,
       CodeMySpec.Agents.Tools,
+      CodeMySpec.AgentAttachments.Tools,
       CodeMySpec.Qa.Tools,
       CodeMySpec.BddRules.Tools,
       CodeMySpec.AgentPerformance,
@@ -45,7 +49,9 @@ defmodule CodeMySpec.ToolLibrary do
   def tools,
     do:
       CodeMySpec.Personas.Tools.all() ++
+        CodeMySpec.Projects.Tools.all() ++
         CodeMySpec.Agents.Tools.all() ++
+        CodeMySpec.AgentAttachments.Tools.all() ++
         CodeMySpec.Knowledge.Tools.all() ++
         CodeMySpec.Embeddings.Tools.all() ++
         CodeMySpec.Problems.Tools.all() ++
@@ -54,6 +60,8 @@ defmodule CodeMySpec.ToolLibrary do
         CodeMySpec.Analysis.Tools.all() ++
         CodeMySpec.AgentPerformance.Tools.all() ++
         CodeMySpec.WorkingCopies.Tools.all() ++
+        CodeMySpec.AppInstances.Tools.all() ++
+        CodeMySpec.Environments.Tools.all() ++
         CodeMySpec.Stories.Tools.all() ++
         CodeMySpec.Provisioning.Tools.all() ++
         CodeMySpec.Components.Tools.all() ++

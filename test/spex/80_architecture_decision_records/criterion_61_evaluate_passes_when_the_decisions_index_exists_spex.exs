@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5275Spex do
   spex "Validation gates on the decisions index", criterion: 61 do
     scenario "Evaluate passes when the decisions index exists" do
       given_ "the env is reset for this scenario", context do
-        Fixtures.reset_setup_env(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
         {:ok, context}
       end
 
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story80.Criterion5275Spex do
       end
 
       given_ "the decisions index file exists", context do
-        Fixtures.with_decisions_index(context.environment)
+        Fixtures.with_decisions_index(context.execution_context)
         {:ok, context}
       end
 

@@ -1,0 +1,271 @@
+defmodule CodeMySpec.ExecutionContexts.Cli do
+  @moduledoc """
+  Server-side filesystem environment for the CLI binary path.
+
+  Reads, writes, and stats files on the local filesystem with paths
+  resolved against an optional working directory carried on the
+  environment struct.
+
+  `create/1` and `destroy/1` are kept as no-op lifecycle hooks for
+  symmetry with other environment implementations — the CLI environment
+  has no external resources (windows, panes, etc.) to allocate or
+  release.
+  """
+
+  @behaviour CodeMySpec.ExecutionContexts.ExecutionContextsBehaviour
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
+  require Logger
+
+  @doc """
+  Create an environment for filesystem operations.
+
+  ## Options
+
+  - `:session_id` - Used for the environment `ref` (e.g., "session-123")
+  - `:working_dir` - Current working directory for the environment
+  - `:metadata` - Optional metadata to include in ExecutionContext struct
+
+  ## Returns
+
+  - `{:ok, %ExecutionContext{}}` - ExecutionContext created successfully
+  """
+  @spec create(opts :: keyword()) :: {:ok, ExecutionContext.t()}
+  def create(opts \\ []) do
+    session_id = Keyword.get(opts, :session_id, :rand.uniform(10_000))
+    ref = "session-#{session_id}"
+    working_dir = Keyword.get(opts, :working_dir)
+    metadata = Keyword.get(opts, :metadata, %{})
+
+    {:ok,
+     %ExecutionContext{
+       type: :cli,
+       ref: ref,
+       cwd: working_dir,
+       metadata: metadata
+     }}
+  end
+
+  @doc """
+  No-op destroy. The CLI environment owns no external resources so
+  there's nothing to release. Returns `:ok` for behaviour symmetry.
+  """
+  @spec destroy(env :: ExecutionContext.t()) :: :ok
+  def destroy(%ExecutionContext{}), do: :ok
+
+  @doc """
+  Run a command. Delegates to `Local` — both environments are the local
+  filesystem on the local host, so they share one shell. They differ in how
+  paths are resolved, not in where commands run.
+  """
+  @spec cmd(ExecutionContext.t(), String.t(), [String.t()], keyword()) ::
+          {String.t(), non_neg_integer()}
+  # Execution is delegated to Local, so the execution filesystem is Local's
+  # — same filesystem, same host.
+  defdelegate exec_file_exists?(env, path), to: CodeMySpec.ExecutionContexts.Local
+
+  defdelegate cmd(env, command, args, opts), to: CodeMySpec.ExecutionContexts.Local
+
+  @doc """
+  Read a file from the server-side file system.
+
+  Resolves paths relative to the environment's working directory if set.
+  """
+  @spec read_file(env :: ExecutionContext.t(), path :: String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def read_file(env, path) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.read(resolved_path)
+    end
+  end
+
+  @doc """
+  List contents of a directory from the server-side file system.
+
+  The environment reference is not used since file operations are server-side.
+  """
+  @spec list_directory(env :: ExecutionContext.t(), path :: String.t()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def list_directory(env, path) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.ls(resolved_path)
+    end
+  end
+
+  @doc """
+  Write content to a file on the server-side file system.
+
+  Creates parent directories if they don't exist.
+  Resolves paths relative to the environment's working directory if set.
+  """
+  @spec write_file(env :: ExecutionContext.t(), path :: String.t(), content :: String.t()) ::
+          :ok | {:error, term()}
+  def write_file(env, path, content) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      Logger.info("write file called")
+
+      with :ok <- ensure_parent_directory(resolved_path) do
+        Logger.info("parent directory ensured")
+        File.write(resolved_path, content)
+      end
+    end
+  end
+
+  @doc """
+  Delete a file from the server-side file system.
+
+  Idempotent - returns :ok even if file doesn't exist.
+  Resolves paths relative to the environment's working directory if set.
+  """
+  @spec delete_file(env :: ExecutionContext.t(), path :: String.t()) ::
+          :ok | {:error, term()}
+  def delete_file(env, path) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.rm(resolved_path) do
+        :ok -> :ok
+        # File doesn't exist, that's fine
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Check if a file exists on the server-side file system.
+
+  Resolves paths relative to the environment's working directory if set.
+  """
+  @spec file_exists?(env :: ExecutionContext.t(), path :: String.t()) :: boolean()
+  def file_exists?(env, path) do
+    # No working directory is not evidence either way — see Local.file_exists?/2.
+    case resolve_path(path, env.cwd) do
+      {:ok, resolved_path} -> File.exists?(resolved_path)
+      {:error, :no_working_directory} -> false
+    end
+  end
+
+  @doc """
+  Stat a file on the server-side file system.
+  """
+  @spec stat(env :: ExecutionContext.t(), path :: String.t()) ::
+          {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
+  def stat(env, path) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      case File.stat(resolved_path, time: :posix) do
+        {:ok, %File.Stat{type: :regular, size: size, mtime: mtime_posix}} ->
+          # Whole seconds, at the microsecond precision the column stores.
+          mtime = DateTime.from_unix!(mtime_posix * 1_000_000, :microsecond)
+          {:ok, %{mtime: mtime, size: size}}
+
+        {:ok, _} ->
+          {:error, :not_regular}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
+  Find files matching a glob pattern relative to the environment's working directory.
+  """
+  @spec glob(env :: ExecutionContext.t(), pattern :: String.t()) :: [String.t()]
+  def glob(env, pattern) do
+    # No working directory means nothing to glob — see Local.glob/2.
+    case resolve_path(pattern, env.cwd) do
+      {:ok, resolved_pattern} -> Path.wildcard(resolved_pattern)
+      {:error, :no_working_directory} -> []
+    end
+  end
+
+  def ensure_dir(env, path) do
+    with {:ok, resolved_path} <- resolve_path(path, env.cwd) do
+      File.mkdir_p(resolved_path)
+    end
+  end
+
+  @doc """
+  Stream files under a whitelisted set of roots.
+
+  Delegates to DirWalker, pruning to the given subtrees only.
+  """
+  @spec stream_files(env :: ExecutionContext.t(), roots :: [String.t()], opts :: keyword()) ::
+          Enumerable.t()
+  def stream_files(env, roots, _opts \\ []) do
+    # Same rule as `Local.stream_files/3`, and for the same reason: globbing the
+    # caller's tree answers about a different project's files. 9770cea7 closed
+    # this in `Local` and left the identical fallback here, which is how a fix
+    # applied to one implementation of a behaviour goes stale — the hazard moves
+    # to whichever one the next caller happens to use.
+    #
+    # Measured the same way before changing it: no call in the suite reaches here
+    # without a cwd.
+    base = env.cwd || raise(ArgumentError, "this environment has no working directory to scan")
+
+    existing =
+      roots
+      |> Enum.map(&Path.join(base, &1))
+      |> Enum.filter(&File.exists?/1)
+
+    case existing do
+      [] ->
+        Stream.map([], & &1)
+
+      paths ->
+        paths
+        |> DirWalker.stream()
+        |> Stream.map(&Path.relative_to(&1, base))
+    end
+  end
+
+  def environment_setup_command(_, _) do
+    "pass"
+  end
+
+  def docs_environment_teardown_command(_, _) do
+    "pass"
+  end
+
+  def test_environment_teardown_command(_, _) do
+    "pass"
+  end
+
+  def code_environment_teardown_command(_, _) do
+    "pass"
+  end
+
+  # Private functions
+
+  defp ensure_parent_directory(path) do
+    path
+    |> Path.dirname()
+    |> File.mkdir_p()
+  end
+
+  # Resolve path relative to working_dir if it's a relative path
+  # A relative path against no working directory is not "relative to nothing" —
+  # `File.read/1` and `File.write/2` resolve it against whatever directory this
+  # OS process is in, which on a server is its own checkout. Returning the path
+  # unchanged is what made that silent.
+  #
+  # `{:error, :no_working_directory}`, not a raise — see `Local.resolve_path/2`
+  # for the incident this duplicated implementation shared with it (9770cea7
+  # already named this pattern of a fix landing in one and going stale in the
+  # other). Every caller here already has a well-defined answer for "cannot
+  # resolve": `false` for `file_exists?/2`, `[]` for `glob/2`, a clean
+  # `{:error, ...}` everywhere else.
+  defp resolve_path(path, nil) do
+    if Path.type(path) == :relative do
+      {:error, :no_working_directory}
+    else
+      {:ok, path}
+    end
+  end
+
+  defp resolve_path(path, working_dir) do
+    if Path.type(path) == :relative do
+      {:ok, Path.join(working_dir, path) |> Path.absname()}
+    else
+      {:ok, path}
+    end
+  end
+end

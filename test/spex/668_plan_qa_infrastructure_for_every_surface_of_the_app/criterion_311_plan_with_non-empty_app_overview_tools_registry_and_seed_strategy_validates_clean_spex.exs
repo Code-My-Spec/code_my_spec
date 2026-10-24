@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
@@ -37,8 +37,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
 
       given_ "a complete plan exists at .code_my_spec/qa/plan.md", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/qa/plan.md",
             valid_plan()
           )

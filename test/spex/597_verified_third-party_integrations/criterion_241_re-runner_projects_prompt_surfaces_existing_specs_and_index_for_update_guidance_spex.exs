@@ -23,9 +23,9 @@ defmodule CodeMySpecSpex.Story597.Criterion5288Spex do
   spex "The prompt grounds itself in real project state", criterion: 241 do
     scenario "Re-runner project's prompt surfaces existing specs and index for update guidance" do
       given_ "a twilio spec and integrations index already exist", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_verified_integration(context.environment, "twilio")
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_verified_integration(context.execution_context, "twilio")
         {:ok, context}
       end
 

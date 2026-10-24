@@ -20,7 +20,7 @@ defmodule CmsHarness.AppInstanceDatabaseNameStatusTest do
       %{root: root} = app_instance_rig(database_exists?: true)
       assert %{"status" => "ok", "app_status" => "serving"} = push_app_event("ensure_app_running")
 
-      state = :sys.get_state(GenServer.whereis(AppInstance.via(root)))
+      state = :sys.get_state(GenServer.whereis(AppInstance.via(instance(root))))
       path = Path.join(root, ".code_my_spec/status/database_name")
 
       assert File.read!(path) == state.database

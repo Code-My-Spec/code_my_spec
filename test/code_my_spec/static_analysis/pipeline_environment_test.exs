@@ -3,11 +3,11 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis.Pipeline
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
 
   setup do
     %{scope: full_scope_fixture()}
@@ -18,7 +18,7 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     assert {:ok, [_]} = Problems.create_problems(scope, [finding])
 
     assert {:error, :no_environment} =
-             Pipeline.compile(%{scope | cwd: nil}, environment: nil)
+             Pipeline.compile(%{scope | cwd: nil}, execution_context: nil)
 
     assert [persisted] = Problems.list_project_problems(scope, source: "compiler")
     assert persisted.message == finding.message
@@ -29,7 +29,9 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     assert {:ok, [_]} = Problems.create_problems(scope, [finding])
 
     assert {:error, :no_environment} =
-             Pipeline.run_analyzers(%{scope | cwd: nil}, [:credo], [], %{}, environment: nil)
+             Pipeline.run_analyzers(%{scope | cwd: nil}, [:credo], [], %{},
+               execution_context: nil
+             )
 
     assert [persisted] = Problems.list_project_problems(scope, source: "credo")
     assert persisted.message == finding.message
@@ -37,7 +39,7 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
 
   test "compile uses an explicit environment when scope cwd is nil", %{scope: scope} do
     cwd = CodeMySpec.TempFile.owned_dir("pipeline_explicit_environment")
-    environment = Environment.new(:local, cwd)
+    environment = ExecutionContext.new(:local, cwd)
     output_file = Path.join(cwd, "diagnostics.jsonl")
 
     File.write!(Path.join(cwd, "mix.exs"), """
@@ -53,17 +55,18 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     """)
 
     assert :ok =
-             Pipeline.compile(put_fixture_environment(scope, nil),
-               environment: environment,
+             Pipeline.compile(put_fixture_execution_context(scope, nil),
+               execution_context: environment,
                compile_output_file: output_file
              )
 
     assert File.read!(Path.join(cwd, "compiled-in-explicit-environment")) == "yes"
   end
 
-  test "QA validator reads from the selected environment, not fixture_environment(scope)", %{
-    scope: scope
-  } do
+  test "QA validator reads from the selected environment, not fixture_execution_context(scope)",
+       %{
+         scope: scope
+       } do
     path = ".code_my_spec/qa/1012/brief.md"
 
     local_content = """
@@ -79,21 +82,21 @@ defmodule CodeMySpec.StaticAnalysis.PipelineEnvironmentTest do
     .code_my_spec/qa/1012/result.md
     """
 
-    File.mkdir_p!(Path.dirname(Path.join(fixture_environment(scope).cwd, path)))
-    File.write!(Path.join(fixture_environment(scope).cwd, path), local_content)
+    File.mkdir_p!(Path.dirname(Path.join(fixture_execution_context(scope).cwd, path)))
+    File.write!(Path.join(fixture_execution_context(scope).cwd, path), local_content)
 
     {1, [file]} =
       Files.upsert_files(scope, [
         %{path: path, role: :qa_brief, fingerprint: "qa-brief", valid: true}
       ])
 
-    {:ok, selected_environment} = InMemoryEnvironment.create(working_dir: "/selected-copy")
-    on_exit(fn -> InMemoryEnvironment.destroy(selected_environment) end)
-    :ok = InMemoryEnvironment.write_file(selected_environment, path, "not a QA brief")
+    {:ok, selected_environment} = InMemoryExecutionContext.create(working_dir: "/selected-copy")
+    on_exit(fn -> InMemoryExecutionContext.destroy(selected_environment) end)
+    :ok = InMemoryExecutionContext.write_file(selected_environment, path, "not a QA brief")
 
     assert :ok =
              Pipeline.run_analyzers(scope, [:validate_qa], [file], %{},
-               environment: selected_environment
+               execution_context: selected_environment
              )
 
     assert [%{source: "qa_validation", severity: :error}] =

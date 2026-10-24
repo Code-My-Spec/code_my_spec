@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -53,8 +53,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
     scenario "a publish whose trigger cannot land reports the failure" do
       given_ "Sam publishes while his site cannot be reached", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             "content/posts/hello.md",
             "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )

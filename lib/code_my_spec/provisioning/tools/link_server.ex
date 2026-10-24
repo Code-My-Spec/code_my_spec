@@ -2,7 +2,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Resources
   alias CodeMySpec.Servers
 
@@ -14,7 +14,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
     """
     Point a project's environment at a server the account already owns.
 
-    `provisioning_environments` used to only ever get a server the setup step
+    `environments` used to only ever get a server the setup step
     created for it — `server_name`/`ip` filled in as it went. An account-level
     server (`/app/servers`, story 879) can predate any project that ends up on
     it, or serve more than one at once, and nothing connected the two. This is
@@ -52,7 +52,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
          scope <- Resources.project_scope(scope, project),
          {:ok, server} <- find_linked_server(scope, server_name) do
       scope
-      |> EnvironmentRepository.put(environment, %{server_id: server.id})
+      |> Environments.put_deployment(environment, %{server_id: server.id})
       |> reply(environment, server_name, context)
     else
       {:error, reason} -> error(reason)

@@ -42,7 +42,7 @@ defmodule CodeMySpec.StaticAnalysis.AnalyzerBehaviour do
   ## Parameters
 
   - `scope` - The scope containing project context
-  - `opts` - Runtime options shared with execution, including `:environment`
+  - `opts` - Runtime options shared with execution, including `:execution_context`
 
   ## Returns
 

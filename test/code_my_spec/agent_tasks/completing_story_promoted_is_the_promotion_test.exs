@@ -30,12 +30,12 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecTest.RecordingAgentTransport
   alias Ecto.Adapters.SQL.Sandbox
@@ -132,9 +132,9 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     {:ok, copy} = WorkingCopies.report_root(copy, @agent)
     a_harness(copy.id)
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script(git))
-    :ok = Environments.register({:working_copy, copy.id}, env)
-    :ok = Environments.register({:working_copy, running.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script(git))
+    :ok = ExecutionContexts.register({:working_copy, copy.id}, env)
+    :ok = ExecutionContexts.register({:working_copy, running.id}, env)
     scope = %{scope | active_working_copy_id: copy.id}
 
     {:ok, coder} =

@@ -3,7 +3,7 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.ClickHouse.Credentials
   alias CodeMySpec.Provisioning.Sops
@@ -11,8 +11,8 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
 
   test "publication encrypts owner credentials and preserves the scoped platform reader" do
     directory = CodeMySpec.TempFile.owned_dir("test")
-    environment = Environment.new(:local, directory)
-    scope = put_fixture_environment(full_scope_fixture(), environment)
+    environment = ExecutionContext.new(:local, directory)
+    scope = put_fixture_execution_context(full_scope_fixture(), environment)
     {:ok, {public, private}} = Sops.generate_key()
     assert :ok = Sops.write_config(environment, %{"prod" => public})
     assert {:ok, _} = Steps.import_age_key(scope, "prod", private)
@@ -38,7 +38,7 @@ defmodule CodeMySpec.Telemetry.CredentialsTest do
     refute password == credentials.owner.password
 
     assert {:ok, ciphertext} =
-             CodeMySpec.Environments.read_file(environment, "envs/prod.enc.env")
+             CodeMySpec.ExecutionContexts.read_file(environment, "envs/prod.enc.env")
 
     assert ciphertext =~ "ENC["
     refute ciphertext =~ credentials.owner.password

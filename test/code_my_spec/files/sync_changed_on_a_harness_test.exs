@@ -2,7 +2,7 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
   @moduledoc """
   `sync_changed/2` against an environment that has no filesystem to walk.
 
-  `Environments.Harness.stream_files/3` answers `{:error, :not_supported_on_harness}`
+  `ExecutionContexts.Harness.stream_files/3` answers `{:error, :not_supported_on_harness}`
   rather than an empty stream, and it is right to: scanning is the harness's own
   job — it sends a manifest up, and the server has nothing local to compare.
 
@@ -46,7 +46,7 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
     {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
     {:ok, copy} = WorkingCopies.report_root(copy, "/somewhere/else")
 
-    # A rooted selected copy synthesizes a harness environment: the type is the
+    # A rooted selected copy synthesizes a harness execution_context: the type is the
     # whole point, and its cwd is on a machine this server cannot read.
     {:ok, scope: WorkingCopies.put_scope(scope, copy)}
   end

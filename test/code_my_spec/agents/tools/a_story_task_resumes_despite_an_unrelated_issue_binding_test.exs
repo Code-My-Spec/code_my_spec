@@ -85,7 +85,21 @@ defmodule CodeMySpec.Agents.Tools.AStoryTaskResumesDespiteAnUnrelatedIssueBindin
         "ask_question",
         %{
           task_id: task.id,
-          questions: [%{question: "Which criteria first?", options: []}]
+          questions: [
+            %{
+              question: "Which criteria first?",
+              options: [
+                %{
+                  label: "Keep current criteria",
+                  description: "Implement the current acceptance criteria"
+                },
+                %{
+                  label: "Revise criteria",
+                  description: "Ask Product to revise the acceptance criteria"
+                }
+              ]
+            }
+          ]
         },
         Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )

@@ -7,7 +7,7 @@ defmodule CodeMySpec.Provisioning.CommitGeneratedConfigurationUnreachableEnviron
   than `image_tag/2` — this runs first, so it is what actually crashed with
   `cannot run "git": this environment has no working directory` even after
   `head_commit/1` learned to fall back cleanly: `work_tree?/1` called `git`
-  through the same `Environments.cmd/4` with no reachability check at all.
+  through the same `ExecutionContexts.cmd/4` with no reachability check at all.
   The server has no real way to write to a harness-only project's checkout in
   the first place, so there is nothing for it to commit there — the fix is to
   recognise that shape and do nothing, not to find something else to fall
@@ -32,7 +32,7 @@ defmodule CodeMySpec.Provisioning.CommitGeneratedConfigurationUnreachableEnviron
 
   test "still commits setup's generated files when the environment is reachable" do
     scope = provisioning_scope_fixture()
-    tmp = CodeMySpec.UsersFixtures.fixture_environment(scope).cwd
+    tmp = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
 
     System.cmd("git", ["init"], cd: tmp)
     System.cmd("git", ["config", "user.email", "test@example.com"], cd: tmp)

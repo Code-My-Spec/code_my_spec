@@ -1,0 +1,76 @@
+defmodule Mix.Tasks.ResetOnboardingTest do
+  use CodeMySpecTest.DataCase, async: false
+
+  alias CodeMySpec.{Agents, UserPreferences}
+  alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Projects.Project
+  alias Mix.Tasks.ResetOnboarding
+
+  defp owner_scope do
+    scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+
+    Repo.update_all(from(m in CodeMySpec.Accounts.Member, where: m.user_id == ^scope.user.id),
+      set: [role: :owner]
+    )
+
+    scope
+  end
+
+  test "no argument resets to models and invalid steps are rejected" do
+    assert ResetOnboarding.parse_step!([]) == 1
+    assert ResetOnboarding.parse_step!(["1"]) == 1
+    assert_raise Mix.Error, fn -> ResetOnboarding.parse_step!(["4"]) end
+  end
+
+  for step <- 1..3 do
+    test "step #{step} clears that step and later steps, preserving earlier choices" do
+      scope = owner_scope()
+      other = CodeMySpec.UsersFixtures.full_scope_fixture()
+      device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+      {:ok, _} = UserPreferences.select_active_account(scope, scope.active_account_id)
+      {:ok, _} = UserPreferences.select_active_project(scope, scope.active_project_id)
+      {:ok, _} = Agents.put_model_setting(scope, :main, "claude-code", "claude-opus-5-5")
+      assert {:ok, :ok} = ResetOnboarding.reset(Repo, scope.user.id, unquote(step))
+      refute Repo.get(Project, scope.active_project_id)
+      refreshed = UserPreferences.scope_for(scope.user)
+      assert refreshed.active_project_id == nil
+      assert Agents.models_configured?(refreshed) == unquote(step) > 1
+      assert !!Repo.get(Account, scope.active_account_id) == (unquote(step) == 3)
+
+      assert refreshed.active_account_id ==
+               Map.get(%{3 => scope.active_account_id}, unquote(step))
+
+      assert Repo.get(Project, other.active_project_id)
+      assert Repo.get(Account, other.active_account_id)
+      assert Repo.get(CodeMySpec.Users.User, scope.user.id)
+      device = Repo.reload!(device)
+      assert device.account_id == Map.get(%{3 => scope.active_account_id}, unquote(step))
+    end
+  end
+
+  test "shared accounts abort without deleting model settings or projects" do
+    scope = owner_scope()
+    other = CodeMySpec.UsersFixtures.user_fixture()
+    CodeMySpec.AccountsFixtures.member_fixture(other, scope.active_account)
+    assert {:error, :shared_accounts} = ResetOnboarding.reset(Repo, scope.user.id, 1)
+    assert Repo.get(Project, scope.active_project_id)
+  end
+
+  test "a running detached product must be stopped before its conversation is deleted" do
+    scope = owner_scope()
+
+    {:ok, agent} =
+      CodeMySpec.Agents.AgentsRepository.create_agent(scope, %{
+        role: :product,
+        engine: :alloy,
+        provider: "claude-code",
+        execution_mode: :detached,
+        working_copy: System.tmp_dir!(),
+        status: :running
+      })
+
+    assert {:error, :stop_agents_before_reset} = ResetOnboarding.reset(Repo, scope.user.id, 1)
+    assert Repo.get(Project, scope.active_project_id)
+    assert Repo.get(CodeMySpec.Agents.Agent, agent.id)
+  end
+end

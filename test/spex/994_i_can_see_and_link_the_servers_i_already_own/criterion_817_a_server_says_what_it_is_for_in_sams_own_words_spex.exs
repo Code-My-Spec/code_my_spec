@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
   be his answer, recorded against the server.
 
   The label is a **string, not an enum**. `prod` is a value here and never a
-  branch. `provisioning_environments` exists because `["prod", "uat"]` had
+  branch. `environments` exists because `["prod", "uat"]` had
   been a literal repeated through seven places in `Steps`, and a fixed set on
   this record would put it straight back — while still having nowhere to keep
   `qa-story-812`.

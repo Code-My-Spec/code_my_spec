@@ -3,16 +3,21 @@ defmodule CodeMySpecWeb.AppLive.DesktopSetupResults do
   use Phoenix.Component
 
   def load(project_id) do
-    with :desktop <- Application.get_env(:code_my_spec, :env),
-         {:ok, snapshot} <- CmsHarness.Setup.status(),
-         %{
-           "operations" => %{
-             "connect" => %{"state" => "done", "result" => %{"id" => ^project_id}}
-           }
-         } <- snapshot do
-      snapshot
-    else
-      _ -> nil
+    if Application.get_env(:code_my_spec, :env) == :desktop do
+      case CmsHarness.Setup.project_status(project_id) do
+        {:ok, snapshot} -> snapshot
+        _ -> legacy_snapshot(project_id)
+      end
+    end
+  end
+
+  defp legacy_snapshot(project_id) do
+    case CmsHarness.Setup.status() do
+      {:ok, %{"operations" => %{"connect" => %{"result" => %{"id" => ^project_id}}}} = snapshot} ->
+        snapshot
+
+      _ ->
+        nil
     end
   end
 

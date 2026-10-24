@@ -9,7 +9,7 @@ defmodule CodeMySpec.Promotion.APromoteRefusesABadSubmodulePointerTest do
 
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Steps
 
   setup do
@@ -50,7 +50,7 @@ defmodule CodeMySpec.Promotion.APromoteRefusesABadSubmodulePointerTest do
       main: main,
       first: first,
       second: second,
-      env: Environment.new(:local, root)
+      env: ExecutionContext.new(:local, root)
     }
   end
 

@@ -10,7 +10,7 @@ defmodule CmsHarness.OnboardIdentityConfirmationTest do
   c1b2d03a: that confirmation used to resolve the project to confirm against
   via `project_for(root, nil)`, ignoring any `--project` flag already given
   to this same onboard call -- with no `--root`, `root` defaults to
-  `File.cwd!()`, so a spec driving this through an in-memory `Environments`
+  `File.cwd!()`, so a spec driving this through an in-memory `ExecutionContexts`
   fixture got confirmation resolved against *this checkout's own real
   project* instead of the fixture's. That produced a mismatched 404 and an
   unwanted re-mint, which is exactly why `project_id` is now threaded all

@@ -18,6 +18,7 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AppInstances
   alias CodeMySpec.Staffing
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -30,18 +31,23 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
 
     {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device)
     {:ok, main} = WorkingCopies.report_root(main, "/tmp/offboard_release_main")
+    {:ok, main} = WorkingCopies.designate_main(scope, main.id)
+    {:ok, main_instance} = AppInstances.ensure_default(scope, main)
 
     {:ok, _main} =
-      WorkingCopies.record_preview_tunnel(main, %{
-        preview_url: "https://preview-#{main.id}.astralbi.com",
+      AppInstances.record_preview_tunnel(scope, main_instance, %{
+        preview_url: "https://preview-#{main_instance.id}.astralbi.com",
         preview_tunnel_id: tunnel_id,
         preview_tunnel_secret: "s3cret"
       })
 
     {:ok, sibling} = WorkingCopies.issue(scope, nil, label: "worktree", device: device)
+    {:ok, sibling} = WorkingCopies.report_root(sibling, "/tmp/offboard_release_sibling")
+    sibling_id = sibling.id
+    {:ok, sibling} = AppInstances.ensure_default(scope, sibling)
 
     {:ok, sibling} =
-      WorkingCopies.record_app_status(sibling, %{
+      AppInstances.record_status(scope, sibling, %{
         status: "serving",
         url: "http://127.0.0.1:41234"
       })
@@ -49,18 +55,28 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
     host = PreviewAddress.host(sibling.id)
 
     {:ok, sibling} =
-      WorkingCopies.record_preview_tunnel(sibling, %{
+      AppInstances.record_preview_tunnel(scope, sibling, %{
         preview_url: PreviewAddress.url(sibling.id),
         preview_tunnel_id: tunnel_id,
         preview_tunnel_secret: "s3cret"
       })
 
-    %{scope: scope, sibling: sibling, tunnel_id: tunnel_id, host: host}
+    {:ok, sibling} = AppInstances.record_status(scope, sibling, %{status: "down"})
+
+    %{
+      scope: scope,
+      main: main,
+      main_instance: main_instance,
+      sibling: sibling,
+      sibling_id: sibling_id,
+      tunnel_id: tunnel_id,
+      host: host
+    }
   end
 
   test "removes the ingress rule and the DNS record before the row goes", %{
     scope: scope,
-    sibling: sibling,
+    sibling_id: sibling_id,
     host: host
   } do
     test_pid = self()
@@ -69,7 +85,8 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
       cloudflare_response(conn, test_pid, host, existing_dns_record: true)
     end)
 
-    assert {:ok, _counts} = Staffing.offboard(scope, sibling)
+    {:ok, source} = WorkingCopies.fetch(sibling_id)
+    assert {:ok, _counts} = Staffing.offboard(scope, source)
 
     assert_receive {:put_config, ingress}
 
@@ -78,25 +95,87 @@ defmodule CodeMySpec.OffboardingReleasesASharedPreviewTest do
 
     assert_receive {:dns_deleted, _path}
 
-    assert {:error, :not_found} = WorkingCopies.fetch(sibling.id)
+    assert {:error, :not_found} = WorkingCopies.fetch(sibling_id)
   end
 
   test "a Cloudflare failure refuses the offboard and leaves the row in place", %{
     scope: scope,
     sibling: sibling,
+    sibling_id: sibling_id,
     host: host
   } do
     Test.stub(CodeMySpec.Workspaces.PreviewTunnel, fn conn ->
       cloudflare_failure_response(conn, host)
     end)
 
-    assert {:error, {:preview_not_released, _reason}} = Staffing.offboard(scope, sibling)
+    {:ok, source} = WorkingCopies.fetch(sibling_id)
+    assert {:error, {:instance_not_disposed, _, _reason}} = Staffing.offboard(scope, source)
 
-    assert {:ok, still_there} = WorkingCopies.fetch(sibling.id)
+    still_there = AppInstances.get(scope, sibling.id)
 
     assert still_there.preview_tunnel_id,
            "the row was cleared even though releasing the preview failed — the one " <>
              "record of a hostname Cloudflare may still be serving is now gone"
+  end
+
+  test "persistent instances require an explicit discard disposition", %{scope: scope} do
+    device = device_fixture(scope)
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "persistent", device: device)
+    {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/persistent_offboard")
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+    {:ok, instance} = AppInstances.update(scope, instance, %{persistent: true, status: "down"})
+
+    assert instance.persistent
+
+    assert {:error, :persistent_instances_require_explicit_discard} =
+             Staffing.offboard(scope, copy)
+
+    assert {:ok, _counts} = Staffing.offboard(scope, copy, instance_disposition: :discard)
+    assert AppInstances.get(scope, instance.id) == nil
+    assert {:error, :not_found} = WorkingCopies.fetch(copy.id)
+  end
+
+  test "an unreachable running instance keeps its source checkout", %{scope: scope} do
+    device = device_fixture(scope)
+    {:ok, copy} = WorkingCopies.issue(scope, nil, label: "still-running", device: device)
+    {:ok, copy} = WorkingCopies.report_root(copy, "/tmp/unreachable_running")
+    {:ok, instance} = AppInstances.ensure_default(scope, copy)
+
+    {:ok, _instance} =
+      AppInstances.update(scope, instance, %{persistent: false, status: "serving"})
+
+    assert {:error, {:instance_not_disposed, instance_id, :harness_not_connected}} =
+             Staffing.offboard(scope, copy)
+
+    assert instance_id == instance.id
+    assert {:ok, _copy} = WorkingCopies.fetch(copy.id)
+  end
+
+  test "re-ensuring the main default refreshes its root but preserves instance policies", %{
+    scope: scope,
+    main: copy,
+    main_instance: instance
+  } do
+    assert instance.persistent
+    assert instance.after_promote
+
+    {:ok, configured} =
+      AppInstances.update(scope, instance, %{
+        persistent: false,
+        after_promote: false,
+        port_mode: :allocated,
+        database_mode: :clone
+      })
+
+    {:ok, moved} = WorkingCopies.report_root(copy, "/tmp/main_root_refreshed")
+    {:ok, refreshed} = AppInstances.ensure_default(scope, moved)
+
+    assert refreshed.source_root == Path.expand("/tmp/main_root_refreshed")
+    assert refreshed.id == configured.id
+    refute refreshed.persistent
+    refute refreshed.after_promote
+    assert refreshed.port_mode == :allocated
+    assert refreshed.database_mode == :clone
   end
 
   defp cloudflare_response(conn, test_pid, host, existing_dns_record: has_record?) do

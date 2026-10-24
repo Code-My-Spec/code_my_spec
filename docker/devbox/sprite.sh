@@ -160,10 +160,10 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ] && [ ! -f "${APP
 
   log "Installing harness files"
   CMS_APP_DIR="${APP_DIR}" /opt/cms/bin/cms_harness eval '
-    alias CodeMySpec.Environments.Environment
+    alias CodeMySpec.ExecutionContexts.ExecutionContext
     alias CodeMySpec.McpServers.Bootstrap.Installers
 
-    env = Environment.new(:local, System.fetch_env!("CMS_APP_DIR"))
+    env = ExecutionContext.new(:local, System.fetch_env!("CMS_APP_DIR"))
     {installed, failures} = Installers.install_all(env)
 
     IO.puts("installed: " <> Enum.join(installed, ", "))

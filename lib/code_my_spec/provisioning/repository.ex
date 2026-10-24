@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   See knowledge/provisioning, "Repository".
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.GitHub
   alias CodeMySpec.Users.Scope
 
@@ -212,19 +212,19 @@ defmodule CodeMySpec.Provisioning.Repository do
   @doc """
   Push the working tree to the remote and return the commit that landed.
 
-  Runs through `Environments.cmd/4` so it executes on whichever device the
+  Runs through `ExecutionContexts.cmd/4` so it executes on whichever device the
   environment names.
 
   Inits when absent (a just-generated project has no git yet), commits when
   there is no HEAD, and sets the remote whether or not `origin` exists. Every
   git invocation captures stderr, so a failure says more than its exit code.
   """
-  @spec push(Environments.Environment.t(), String.t(), keyword()) ::
+  @spec push(ExecutionContexts.ExecutionContext.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
   def push(env, remote_url, opts \\ []) do
     branch = Keyword.get(opts, :branch, "main")
     git = Keyword.get(opts, :git_bin, "git")
-    run = fn args -> Environments.cmd(env, git, args, stderr_to_stdout: true) end
+    run = fn args -> ExecutionContexts.cmd(env, git, args, stderr_to_stdout: true) end
 
     with :ok <- ensure_repo(run, branch),
          :ok <- patch_ci_owner(env, opts),
@@ -251,7 +251,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   end
 
   defp substitute_owner(env, owner) do
-    case Environments.read_file(env, @ci_workflow_path) do
+    case ExecutionContexts.read_file(env, @ci_workflow_path) do
       {:ok, content} ->
         if String.contains?(content, @github_owner_placeholder) do
           write_owner(env, String.replace(content, @github_owner_placeholder, owner))
@@ -265,7 +265,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   end
 
   defp write_owner(env, content) do
-    case Environments.write_file(env, @ci_workflow_path, content) do
+    case ExecutionContexts.write_file(env, @ci_workflow_path, content) do
       :ok -> :ok
       {:ok, _} -> :ok
       other -> {:error, "could not patch #{@ci_workflow_path}: #{inspect(other)}"}
@@ -397,7 +397,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   Returns a result whose `pushed_at` is set only when a push actually landed.
   There is no field claiming success independently of the proof.
   """
-  @spec run(Scope.t(), Environments.Environment.t(), map(), keyword()) :: result()
+  @spec run(Scope.t(), ExecutionContexts.ExecutionContext.t(), map(), keyword()) :: result()
   def run(%Scope{} = scope, env, project, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     push_fun = Keyword.get(opts, :push, &push/3)

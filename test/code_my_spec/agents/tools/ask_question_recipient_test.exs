@@ -34,7 +34,14 @@ defmodule CodeMySpec.Agents.Tools.AskQuestionRecipientTest do
     response =
       ToolLibrary.run(
         "ask_question",
-        %{questions: [%{question: "Which storage backend?", options: []}]},
+        %{
+          questions: [
+            %{
+              question: "Which storage backend?",
+              options: [%{label: "SQLite"}, %{label: "PostgreSQL"}]
+            }
+          ]
+        },
         Map.put(frame(scope).assigns, :scope, frame(scope).assigns[:current_scope])
       )
 

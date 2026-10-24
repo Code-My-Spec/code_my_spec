@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5757Spex do
     scenario "all four artifacts present, including a markdown file under bdd/spex/ → evaluator returns pass" do
       given_ "all four spex boundary artifacts exist, with the project BDD plan at index.md",
              context do
-        :ok = Artifacts.write_baseline_artifacts(context.environment)
+        :ok = Artifacts.write_baseline_artifacts(context.execution_context)
         {:ok, context}
       end
 

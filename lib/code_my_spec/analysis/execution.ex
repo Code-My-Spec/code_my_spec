@@ -10,7 +10,7 @@ defmodule CodeMySpec.Analysis.Execution do
   require Logger
 
   alias CodeMySpec.Analysis.{Reconciler, Run, Runners, RunsRepository}
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Users.Scope
@@ -37,8 +37,8 @@ defmodule CodeMySpec.Analysis.Execution do
   defp run_and_reconcile(scope, run, opts) do
     start = System.monotonic_time(:millisecond)
     args = run_args(run)
-    environment = resolve_environment(scope, opts)
-    opts = Keyword.put(opts, :environment, environment)
+    environment = resolve_execution_context(scope, opts)
+    opts = Keyword.put(opts, :execution_context, environment)
     run = record_start(run, environment)
 
     case Runners.run(run.source, scope, args, runner_opts(environment, run, opts)) do
@@ -130,7 +130,7 @@ defmodule CodeMySpec.Analysis.Execution do
   # A run executed here on a real checkout records the tree it starts on, as
   # the harness reports one for a run it executes, so a run under way at a
   # clean commit can answer a second request there (story 1143).
-  defp record_start(run, %Environments.Environment{type: :local} = env) do
+  defp record_start(run, %ExecutionContexts.ExecutionContext{type: :local} = env) do
     status =
       git(env, ["status", "--porcelain", "--untracked-files=no", "--ignore-submodules=all"])
 
@@ -144,16 +144,16 @@ defmodule CodeMySpec.Analysis.Execution do
   defp record_start(run, _environment), do: run
 
   defp git(env, args) do
-    case Environments.cmd(env, "git", args, stderr_to_stdout: true) do
+    case ExecutionContexts.cmd(env, "git", args, stderr_to_stdout: true) do
       {out, 0} -> String.trim(out)
       _ -> nil
     end
   end
 
-  defp resolve_environment(scope, opts) do
+  defp resolve_execution_context(scope, opts) do
     cwd = opts[:cwd] || scope.cwd
 
-    StaticAnalysis.resolve_environment(opts, scope, cwd)
+    StaticAnalysis.resolve_execution_context(opts, scope, cwd)
   end
 
   # Cassette escape hatch: spex inject pre-recorded tool output per source,
@@ -162,7 +162,7 @@ defmodule CodeMySpec.Analysis.Execution do
     key = :"#{output_key(source)}_output_file"
     opts = Keyword.put(opts, :run_id, run_id)
 
-    output_file = Keyword.get(opts, key) || Environments.recorded_output(environment, source)
+    output_file = Keyword.get(opts, key) || ExecutionContexts.recorded_output(environment, source)
     if output_file, do: Keyword.put(opts, :output_file, output_file), else: opts
   end
 

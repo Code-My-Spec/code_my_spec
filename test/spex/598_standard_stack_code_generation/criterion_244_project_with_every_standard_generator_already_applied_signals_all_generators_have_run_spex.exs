@@ -22,12 +22,12 @@ defmodule CodeMySpecSpex.Story598.Criterion5295Spex do
   spex "Generators run in dependency order with detection-based skipping", criterion: 244 do
     scenario "Project with every standard generator already applied signals all generators have run" do
       given_ "every standard generator's detection file is present", context do
-        Fixtures.reset_setup_env(context.environment)
-        Fixtures.with_baseline_project(context.environment)
-        Fixtures.with_all_generators_applied(context.environment)
+        Fixtures.reset_setup_env(context.execution_context)
+        Fixtures.with_baseline_project(context.execution_context)
+        Fixtures.with_all_generators_applied(context.execution_context)
 
         for id <- Fixtures.generator_ids() do
-          assert Fixtures.generator_applied?(context.environment, id),
+          assert Fixtures.generator_applied?(context.execution_context, id),
                  "expected #{id} detection file to be present"
         end
 

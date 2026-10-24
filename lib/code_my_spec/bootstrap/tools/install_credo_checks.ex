@@ -2,7 +2,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallCredoChecks do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Bootstrap.Tools.Responses, as: BootstrapMapper
 
   @impl true
@@ -27,7 +27,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallCredoChecks do
 
   @impl true
   def call(_params, context) do
-    env = CodeMySpec.WorkingCopies.tool_environment(context[:scope], context[:working_dir])
+    env = CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
     case install(env) do
       :ok ->
@@ -61,7 +61,7 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallCredoChecks do
   """
   # No working copy here. Refusing is the whole point: the previous behaviour
   # was to root a `:local` environment at the server's own checkout and write
-  # there, reporting success. See `WorkingCopies.tool_environment/1`.
+  # there, reporting success. See `WorkingCopies.tool_execution_context/1`.
   def install(nil), do: {:error, :no_working_copy}
 
   def install(env) do
@@ -69,8 +69,8 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallCredoChecks do
     local_dir = CodeMySpec.Paths.credo_checks_local_dir()
     source_dir = Application.app_dir(:code_my_spec, "priv/credo_checks")
 
-    with :ok <- Environments.ensure_dir(env, framework_dir),
-         :ok <- Environments.ensure_dir(env, local_dir) do
+    with :ok <- ExecutionContexts.ensure_dir(env, framework_dir),
+         :ok <- ExecutionContexts.ensure_dir(env, local_dir) do
       copy_framework_files(env, source_dir, framework_dir)
     end
   end
@@ -100,14 +100,14 @@ defmodule CodeMySpec.Bootstrap.Tools.InstallCredoChecks do
   defp copy_entry(env, src, dst) do
     cond do
       not File.regular?(src) -> {:cont, :ok}
-      Environments.file_exists?(env, dst) -> {:cont, :ok}
+      ExecutionContexts.file_exists?(env, dst) -> {:cont, :ok}
       true -> do_copy(env, src, dst)
     end
   end
 
   defp do_copy(env, src, dst) do
     with {:ok, content} <- File.read(src),
-         :ok <- Environments.write_file(env, dst, content) do
+         :ok <- ExecutionContexts.write_file(env, dst, content) do
       {:cont, :ok}
     else
       {:error, reason} -> {:halt, {:error, reason}}

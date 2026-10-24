@@ -171,7 +171,12 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   # goes to agents without a story, and does not hold a bound agent's story.
   describe "a project-level requirement the story waits on" do
     setup ctx do
-      :ok = CodeMySpec.Environments.delete_file(ctx.environment, ".code_my_spec/qa/plan.md")
+      :ok =
+        CodeMySpec.ExecutionContexts.delete_file(
+          ctx.execution_context,
+          ".code_my_spec/qa/plan.md"
+        )
+
       CodeMySpecSpex.GraphGivens.sync(ctx)
       %{qa: reload(ctx.qa)}
     end

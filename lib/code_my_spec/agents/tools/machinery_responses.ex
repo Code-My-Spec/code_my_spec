@@ -103,11 +103,14 @@ defmodule CodeMySpec.Agents.Tools.MachineryResponses do
     "preview:\n" <> Enum.map_join(copies, "\n", &preview_line/1) <> "\n"
   end
 
-  defp preview_line(%{preview_status: nil} = copy),
+  defp preview_line(%{app_status: nil, preview_status: nil} = copy),
     do: "  #{copy.root} — none reported"
 
-  defp preview_line(copy),
-    do: "  #{copy.root} — #{copy.preview_status}#{at(copy.preview_url)}"
+  defp preview_line(copy) do
+    status = copy.app_status || copy.preview_status
+    url = copy.preview_url || copy.app_url
+    "  #{copy.root} — #{status}#{at(url)}"
+  end
 
   defp at(nil), do: ""
   defp at(url), do: " at #{url}"

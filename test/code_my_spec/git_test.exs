@@ -12,7 +12,7 @@ defmodule CodeMySpec.GitTest do
   import Mox
 
   alias CodeMySpec.Git
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Users.Scope
 
   setup :verify_on_exit!
@@ -49,7 +49,7 @@ defmodule CodeMySpec.GitTest do
                  scope,
                  "https://github.com/test/repo.git",
                  "/tmp/test",
-                 Environment.new(:local, "/tmp")
+                 ExecutionContext.new(:local, "/tmp")
                )
     end
   end
@@ -168,7 +168,7 @@ defmodule CodeMySpec.GitTest do
 
       # Test clone
       test_repo = "https://github.com/Code-My-Spec/test_phoenix_project.git"
-      environment = Environment.new(:local, System.tmp_dir!())
+      environment = ExecutionContext.new(:local, System.tmp_dir!())
       assert {:ok, ^clone_path} = Git.clone(scope, test_repo, clone_path, environment)
       assert File.exists?(clone_path)
       assert File.exists?(Path.join(clone_path, "mix.exs"))

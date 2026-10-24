@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Workspaces.PreviewTunnel do
   @moduledoc """
-  A named Cloudflare tunnel per working copy, so a preview reaches an app we
+  A named Cloudflare preview route per app instance, so a preview reaches an app we
   are not running.
 
   `PreviewAddress` covers an app *we* host; a tunnel covers one we cannot
@@ -29,6 +29,9 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   require Logger
 
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.AppInstances.AppInstance
+  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Devices
   alias CodeMySpec.WorkingCopies
   alias CodeMySpec.WorkingCopies.WorkingCopy
@@ -43,6 +46,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   """
   @type credentials :: %{
           hostname: String.t(),
+          preview_url: String.t(),
           tunnel_id: String.t(),
           account_tag: String.t(),
           tunnel_secret: String.t(),
@@ -86,9 +90,16 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   holding a tunnel id and secret; whether to run a connector for it is the
   caller's decision.
   """
-  @spec stored_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
+  @spec stored_credentials(AppInstance.t() | WorkingCopy.t()) :: {:ok, credentials()} | :error
+  def stored_credentials(%WorkingCopy{} = copy) do
+    case AppInstances.for_working_copy(scope(copy), copy) do
+      nil -> :error
+      instance -> stored_credentials(instance)
+    end
+  end
+
   def stored_credentials(
-        %WorkingCopy{
+        %AppInstance{
           preview_tunnel_id: id,
           preview_tunnel_secret: secret
         } = copy
@@ -96,7 +107,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
       when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
     {:ok,
      %{
-       hostname: PreviewAddress.host(copy.id),
+       hostname: hostname(copy),
        tunnel_id: id,
        tunnel_secret: secret,
        account_tag: account_tag() || "",
@@ -104,7 +115,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
      }}
   end
 
-  def stored_credentials(%WorkingCopy{}), do: :error
+  def stored_credentials(%AppInstance{}), do: :error
 
   @doc """
   The tunnel a copy's harness should run: its machine's, once the machine
@@ -114,13 +125,20 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   Every copy on a machine is handed the same tunnel, and the harness keeps one
   connector per tunnel, so a machine runs one however many copies it carries.
   """
-  @spec machine_credentials(WorkingCopy.t()) :: {:ok, credentials()} | :error
-  def machine_credentials(%WorkingCopy{device_id: device_id} = copy) do
+  @spec machine_credentials(AppInstance.t() | WorkingCopy.t()) :: {:ok, credentials()} | :error
+  def machine_credentials(%WorkingCopy{} = copy) do
+    case AppInstances.for_working_copy(scope(copy), copy) do
+      nil -> :error
+      instance -> machine_credentials(instance)
+    end
+  end
+
+  def machine_credentials(%AppInstance{device_id: device_id} = copy) do
     case Devices.tunnel(device_id) do
       {:ok, %{tunnel_id: id, tunnel_secret: secret}} ->
         {:ok,
          %{
-           hostname: PreviewAddress.host(copy.id),
+           hostname: hostname(copy),
            tunnel_id: id,
            tunnel_secret: secret,
            account_tag: account_tag() || "",
@@ -128,7 +146,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
          }}
 
       :error ->
-        if copy.main, do: stored_credentials(copy), else: :error
+        if copy.persistent, do: stored_credentials(copy), else: :error
     end
   end
 
@@ -137,45 +155,56 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   exist if the machine has none.
 
   Adds the copy's route (when it has an `app_url`) and a DNS record pointing
-  its address at the tunnel, records both on the working copy, and returns
+  its address at the tunnel, records both on the app instance, and returns
   what the checkout needs to run it. Main is eligible before its app serves;
   any other copy once it has an `app_url`.
 
   Idempotent: route and record are re-asserted, not assumed. A tunnel the copy
   held before is deleted once no copy names it.
   """
-  @spec ensure(WorkingCopy.t()) :: {:ok, credentials()} | {:error, term()}
+  @spec ensure(AppInstance.t() | WorkingCopy.t()) :: {:ok, credentials()} | {:error, term()}
   def ensure(%WorkingCopy{} = copy) do
+    with {:ok, instance} <- AppInstances.ensure_default(scope(copy), copy), do: ensure(instance)
+  end
+
+  def ensure(%AppInstance{} = copy) do
     with :ok <- eligible(copy),
          {:ok, account} <- account_id(),
          {:ok, tunnel} <- machine_tunnel(copy, account),
-         host = PreviewAddress.host(copy.id),
+         host = hostname(copy),
          :ok <- route(account, tunnel.tunnel_id, host, copy),
          :ok <- point(host, tunnel.tunnel_id),
-         {:ok, _copy} <- record(copy, host, tunnel) do
+         {:ok, recorded} <- record(copy, host, tunnel) do
       retire_replaced(copy.preview_tunnel_id, tunnel.tunnel_id, account)
-      {:ok, Map.merge(tunnel, %{hostname: host, account_tag: account, embedder: embedder()})}
+
+      {:ok,
+       Map.merge(tunnel, %{
+         hostname: host,
+         preview_url: recorded.preview_url,
+         account_tag: account,
+         embedder: embedder()
+       })}
     end
   end
 
   # Main is eligible before its app first serves (onboarding asks for its
   # address up front); any other copy once it has an app to point at.
-  defp eligible(%WorkingCopy{main: true}), do: :ok
-  defp eligible(%WorkingCopy{app_url: url}) when is_binary(url) and url != "", do: :ok
-  defp eligible(%WorkingCopy{}), do: {:error, :not_the_main_copy}
+  defp eligible(%AppInstance{persistent: true}), do: :ok
+  defp eligible(%AppInstance{url: url}) when is_binary(url) and url != "", do: :ok
+  defp eligible(%AppInstance{}), do: {:error, :not_the_main_copy}
 
   # A route needs somewhere to send traffic. Main asked for its address at
   # onboarding has no app yet; it gets its route when it is shared again with
   # an app serving.
-  defp route(account, tunnel_id, host, %WorkingCopy{app_url: url})
+  defp route(account, tunnel_id, host, %AppInstance{url: url})
        when is_binary(url) and url != "",
        do: add_ingress(account, tunnel_id, host, url)
 
-  defp route(_account, _tunnel_id, _host, %WorkingCopy{}), do: :ok
+  defp route(_account, _tunnel_id, _host, %AppInstance{}), do: :ok
 
   # The machine's tunnel, or a new one recorded on the machine. A copy that
   # names no machine keeps the per-copy tunnel it always had.
-  defp machine_tunnel(%WorkingCopy{device_id: device_id}, account) when is_binary(device_id) do
+  defp machine_tunnel(%AppInstance{device_id: device_id}, account) when is_binary(device_id) do
     case Devices.tunnel(device_id) do
       {:ok, tunnel} ->
         {:ok, tunnel}
@@ -188,7 +217,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  defp machine_tunnel(%WorkingCopy{} = copy, account), do: tunnel_for(copy, account)
+  defp machine_tunnel(%AppInstance{} = copy, account), do: tunnel_for(copy, account)
 
   # The tunnel a copy held before, deleted once no copy names it. Best-effort:
   # a failed delete must not take the copy's new address down.
@@ -224,12 +253,12 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
   end
 
   # A stored credential wins over anything Cloudflare would say (see moduledoc).
-  defp tunnel_for(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret}, _account)
+  defp tunnel_for(%AppInstance{preview_tunnel_id: id, preview_tunnel_secret: secret}, _account)
        when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
     {:ok, %{tunnel_id: id, tunnel_secret: secret}}
   end
 
-  defp tunnel_for(%WorkingCopy{} = copy, account), do: create("preview-" <> copy.id, account)
+  defp tunnel_for(%AppInstance{} = copy, account), do: create("preview-" <> copy.id, account)
 
   # 32 bytes, base64, generated here rather than left to Cloudflare: the
   # secret is what the harness's connector authenticates with, and Cloudflare
@@ -280,16 +309,22 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
 
   A no-op on a copy holding no tunnel credential.
   """
-  @spec release(WorkingCopy.t()) :: :ok | {:error, term()}
-  def release(%WorkingCopy{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
+  @spec release(AppInstance.t() | WorkingCopy.t()) :: :ok | {:error, term()}
+  def release(%WorkingCopy{} = copy) do
+    case AppInstances.for_working_copy(scope(copy), copy) do
+      nil -> :ok
+      instance -> release(instance)
+    end
+  end
+
+  def release(%AppInstance{preview_tunnel_id: id, preview_tunnel_secret: secret} = copy)
       when is_binary(id) and id != "" and is_binary(secret) and secret != "" do
-    host = PreviewAddress.host(copy.id)
+    host = hostname(copy)
 
     with {:ok, account} <- account_id(),
          :ok <- remove_ingress(account, id, host),
          :ok <- delete_dns_record(host) do
-      copy
-      |> WorkingCopies.clear_preview_tunnel()
+      AppInstances.clear_preview_tunnel(scope(copy), copy)
       |> case do
         {:ok, _copy} -> :ok
         error -> error
@@ -297,7 +332,7 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
-  def release(%WorkingCopy{}), do: :ok
+  def release(%AppInstance{}), do: :ok
 
   # The CNAME `point/2` wrote, looked up by name (its id is not stored).
   defp delete_dns_record(host) do
@@ -468,9 +503,18 @@ defmodule CodeMySpec.Workspaces.PreviewTunnel do
     end
   end
 
+  defp scope(record), do: %Scope{active_project_id: record.project_id}
+
+  defp hostname(%AppInstance{preview_url: url} = instance) do
+    case url && URI.parse(url).host do
+      host when is_binary(host) and host != "" -> host
+      _ -> PreviewAddress.host(instance.id)
+    end
+  end
+
   defp record(copy, host, tunnel) do
-    WorkingCopies.record_preview_tunnel(copy, %{
-      preview_url: PreviewAddress.url(copy.id),
+    AppInstances.record_preview_tunnel(scope(copy), copy, %{
+      preview_url: copy.preview_url || PreviewAddress.url(copy.id),
       preview_tunnel_id: tunnel.tunnel_id,
       preview_tunnel_secret: tunnel.tunnel_secret,
       hostname: host

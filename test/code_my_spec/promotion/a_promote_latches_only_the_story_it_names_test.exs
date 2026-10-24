@@ -20,11 +20,11 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.AnalysisFixtures
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files
   alias CodeMySpec.Promotion
   alias CodeMySpec.Stories
-  alias CodeMySpec.Support.InMemoryEnvironment
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.WorkingCopies
 
   @main "/promote-story/main"
@@ -84,9 +84,9 @@ defmodule CodeMySpec.Promotion.APromoteLatchesOnlyTheStoryItNamesTest do
     {:ok, agent} = WorkingCopies.issue(scope, nil, label: "agent", device: device_fixture(scope))
     {:ok, agent} = WorkingCopies.report_root(agent, @agent)
 
-    {:ok, env} = InMemoryEnvironment.create(shell: script())
-    :ok = Environments.register({:working_copy, running.id}, env)
-    :ok = Environments.register({:working_copy, agent.id}, env)
+    {:ok, env} = InMemoryExecutionContext.create(shell: script())
+    :ok = ExecutionContexts.register({:working_copy, running.id}, env)
+    :ok = ExecutionContexts.register({:working_copy, agent.id}, env)
 
     %{
       scope: %{scope | active_working_copy_id: agent.id},

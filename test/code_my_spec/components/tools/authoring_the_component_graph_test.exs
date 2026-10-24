@@ -140,7 +140,7 @@ defmodule CodeMySpec.Components.Tools.AuthoringTheComponentGraphTest do
       ToolLibrary.run(
         "create_component",
         %{name: "Billing", module_name: "MyApp.Billing", type: "context"},
-        %{scope: put_fixture_environment(ctx.scope, nil)}
+        %{scope: put_fixture_execution_context(ctx.scope, nil)}
       )
 
     assert [%{provenance: :authored}] = Components.list_dependencies(ctx.scope)

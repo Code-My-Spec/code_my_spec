@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
   use CodeMySpecSpex.Case
   use ExCliVcr
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.ComponentGraphHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1085.Criterion1733Spex do
         billing = ComponentGraphHelpers.design!(context, "#{app}.Billing")
 
         :ok =
-          Environments.write_file(context.environment, @impl_path, """
+          ExecutionContexts.write_file(context.execution_context, @impl_path, """
           defmodule #{app}.Billing do
             @moduledoc false
           end

@@ -82,6 +82,36 @@ defmodule CodeMySpec.Devices do
     end
   end
 
+  @doc """
+  Associates an accountless local device with an authorized account.
+
+  Only for trusted desktop callers that have already verified the desktop
+  singleton and matched `device_id` against the server's recorded local identity.
+  A client-supplied UUID alone is not proof of machine ownership. This does not
+  move existing ownership, and must not be exposed as a generic claim API.
+  """
+  def associate_trusted_local_device(
+        %Scope{user: %{id: _}, active_account_id: account_id} = scope,
+        device_id
+      )
+      when is_binary(account_id) and is_binary(device_id) do
+    with true <- Authorization.authorize(:read_account, scope, account_id),
+         {:ok, id} <- Ecto.UUID.cast(device_id) do
+      Repo.update_all(
+        from(d in Device,
+          where: d.id == ^id and is_nil(d.account_id) and d.kind == :local
+        ),
+        set: [account_id: account_id, updated_at: DateTime.utc_now()]
+      )
+
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  def associate_trusted_local_device(_scope, _device_id), do: {:error, :forbidden}
+
   # One machine carries copies from every account its user belongs to, but the
   # row sits in whichever announced first. A token scoped to the user's other
   # account must still recognise it, or each heartbeat mints a fresh device with
@@ -293,6 +323,16 @@ defmodule CodeMySpec.Devices do
 
   def box_joined(_device_id), do: :ok
 
+  @doc "Notify the device page after one of its runtime instances changes."
+  def runtime_changed(device_id) when is_binary(device_id) do
+    case Repo.get(Device, device_id) do
+      %Device{} = device -> broadcast(device, {:device_runtime_changed, device.id})
+      nil -> :ok
+    end
+  end
+
+  def runtime_changed(_device_id), do: :ok
+
   @doc """
   Give a cloud box the routine that starts it (story 1136). Owners and admins
   only. The token is stored encrypted and never shown again.
@@ -367,6 +407,19 @@ defmodule CodeMySpec.Devices do
   end
 
   def list_devices(%Scope{}), do: []
+
+  @doc "Devices accessible to a user's harness across their account memberships."
+  def list_harness_devices(%Scope{user_id: user_id}) when is_integer(user_id) do
+    accounts = from(m in Member, where: m.user_id == ^user_id, select: m.account_id)
+
+    from(d in Device,
+      where: d.account_id in subquery(accounts),
+      order_by: [desc_nulls_last: d.last_seen_at]
+    )
+    |> Repo.all()
+  end
+
+  def list_harness_devices(%Scope{} = scope), do: list_devices(scope)
 
   @doc "One device on this account, or nil. Never an unscoped lookup by id."
   @spec get_device(Scope.t(), String.t()) :: Device.t() | nil

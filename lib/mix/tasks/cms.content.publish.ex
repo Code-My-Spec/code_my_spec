@@ -83,7 +83,7 @@ defmodule Mix.Tasks.Cms.Content.Publish do
       |> override_deploy_key(opts[:deploy_key])
 
     scope = build_scope!(project)
-    environment = LocalScope.environment(project)
+    environment = LocalScope.execution_context(project)
 
     print_target(project)
     sync!(scope, environment)
@@ -107,12 +107,12 @@ defmodule Mix.Tasks.Cms.Content.Publish do
     Application.ensure_all_started(:ecto_sql)
     Application.ensure_all_started(:req)
 
-    # Environments.Registry too: LocalScope.for_local_project/1 resolves the project's
+    # ExecutionContexts.Registry too: LocalScope.for_local_project/1 resolves the project's
     # working directory through it.
     children = [
       CodeMySpec.Vault,
       CodeMySpec.Repo,
-      CodeMySpec.Environments.registry_child_spec()
+      CodeMySpec.ExecutionContexts.registry_child_spec()
     ]
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: __MODULE__.Supervisor) do

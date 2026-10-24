@@ -1,7 +1,8 @@
-defmodule CodeMySpec.WorkingCopies.Tools.ShareCopyAppTest do
+defmodule CodeMySpec.AppInstances.Tools.ShareCopyAppTest do
   use ExUnit.Case, async: true
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.AppInstances
 
   alias Anubis.Server.Frame
   alias CodeMySpec.WorkingCopies
@@ -29,10 +30,11 @@ defmodule CodeMySpec.WorkingCopies.Tools.ShareCopyAppTest do
 
       {:ok, main} = WorkingCopies.issue(scope, nil, label: "main", device: device)
       {:ok, main} = WorkingCopies.report_root(main, "/tmp/share_tool_main")
+      {:ok, main_instance} = AppInstances.ensure_default(scope, main)
 
       {:ok, _main} =
-        WorkingCopies.record_preview_tunnel(main, %{
-          preview_url: "https://preview-#{main.id}.astralbi.com",
+        AppInstances.record_preview_tunnel(scope, main_instance, %{
+          preview_url: "https://preview-#{main_instance.id}.astralbi.com",
           preview_tunnel_id: tunnel_id,
           preview_tunnel_secret: "s3cret"
         })
@@ -45,9 +47,11 @@ defmodule CodeMySpec.WorkingCopies.Tools.ShareCopyAppTest do
         })
 
       {:ok, sibling} = WorkingCopies.issue(scope, nil, label: "worktree", device: device)
+      {:ok, sibling} = WorkingCopies.report_root(sibling, "/tmp/share_tool_sibling")
+      {:ok, sibling_instance} = AppInstances.ensure_default(scope, sibling)
 
-      {:ok, sibling} =
-        WorkingCopies.record_app_status(sibling, %{
+      {:ok, sibling_instance} =
+        AppInstances.record_status(scope, sibling_instance, %{
           status: "serving",
           url: "http://127.0.0.1:41234"
         })
@@ -65,7 +69,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.ShareCopyAppTest do
 
       assert match?({:ok, _}, response)
 
-      {:ok, saved} = WorkingCopies.fetch(sibling.id)
+      saved = AppInstances.get(scope, sibling_instance.id)
       assert saved.preview_tunnel_id == tunnel_id
     end
 

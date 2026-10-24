@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story560.Criterion5129Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -26,15 +26,15 @@ defmodule CodeMySpecSpex.Story560.Criterion5129Spex do
 
       given_ "summary.md and sources.md are written", context do
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/summary.md",
             minimal_summary()
           )
 
         :ok =
-          Environments.write_file(
-            context.environment,
+          ExecutionContexts.write_file(
+            context.execution_context,
             ".code_my_spec/personas/#{context.persona_slug}/sources.md",
             "# Sources\n\n- https://example.com — Source — 2026-04-23\n"
           )

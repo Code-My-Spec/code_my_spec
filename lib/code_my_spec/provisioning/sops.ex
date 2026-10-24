@@ -17,7 +17,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   See knowledge/provisioning, "Secrets (sops)".
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.TempFile
 
   @sops_config ".sops.yaml"
@@ -115,10 +115,10 @@ defmodule CodeMySpec.Provisioning.Sops do
   `recipients` -- but any other rule already in the file is read back and
   kept as data, not replaced.
   """
-  @spec write_config(Environments.Environment.t(), %{env_name() => String.t()}) ::
+  @spec write_config(ExecutionContexts.ExecutionContext.t(), %{env_name() => String.t()}) ::
           :ok | {:error, term()}
   def write_config(env, recipients) when is_map(recipients) do
-    Environments.write_file(env, @sops_config, render_config(env, recipients))
+    ExecutionContexts.write_file(env, @sops_config, render_config(env, recipients))
   end
 
   defp render_config(env, recipients) do
@@ -164,7 +164,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   # not assume its own output is the only shape this file ever takes. A
   # missing file, or one sops has never written to, has nothing to keep.
   defp foreign_rules(env) do
-    with {:ok, contents} <- Environments.read_file(env, @sops_config),
+    with {:ok, contents} <- ExecutionContexts.read_file(env, @sops_config),
          {:ok, %{"creation_rules" => rules}} when is_list(rules) <-
            YamlElixir.read_from_string(contents) do
       rules
@@ -217,7 +217,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   than depending on an ambient `SOPS_AGE_KEY`.
   """
   @spec put_secret(
-          Environments.Environment.t(),
+          ExecutionContexts.ExecutionContext.t(),
           env_name(),
           String.t(),
           String.t(),
@@ -243,7 +243,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   The key is passed through `SOPS_AGE_KEY` rather than a file, mirroring how
   it reaches the server.
   """
-  @spec decrypt(Environments.Environment.t(), env_name(), String.t()) ::
+  @spec decrypt(ExecutionContexts.ExecutionContext.t(), env_name(), String.t()) ::
           {:ok, %{String.t() => String.t()}} | error()
   def decrypt(env, environment, private_key) when is_binary(private_key) do
     with :ok <- ensure_available() do
@@ -262,10 +262,10 @@ defmodule CodeMySpec.Provisioning.Sops do
   Read from the file itself rather than `.sops.yaml`: the file governs who can
   decrypt it. The status page renders these as each environment's key.
   """
-  @spec recipients(Environments.Environment.t(), env_name()) ::
+  @spec recipients(ExecutionContexts.ExecutionContext.t(), env_name()) ::
           {:ok, [String.t()]} | {:error, term()}
   def recipients(env, environment) do
-    with {:ok, contents} <- Environments.read_file(env, env_file(environment)) do
+    with {:ok, contents} <- ExecutionContexts.read_file(env, env_file(environment)) do
       {:ok, Regex.scan(~r/age1[a-z0-9]+/, contents) |> List.flatten() |> Enum.uniq()}
     end
   end
@@ -279,10 +279,12 @@ defmodule CodeMySpec.Provisioning.Sops do
   generator's plain-text scaffold: "sops metadata not found"), carries
   nothing, so everything required is missing. Neither is an error.
   """
-  @spec missing_secrets(Environments.Environment.t(), env_name(), String.t(), [String.t()]) ::
+  @spec missing_secrets(ExecutionContexts.ExecutionContext.t(), env_name(), String.t(), [
+          String.t()
+        ]) ::
           {:ok, [String.t()]} | error()
   def missing_secrets(env, environment, private_key, required) do
-    if Environments.file_exists?(env, env_file(environment)) do
+    if ExecutionContexts.file_exists?(env, env_file(environment)) do
       case decrypt(env, environment, private_key) do
         {:ok, present} ->
           {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
@@ -320,12 +322,12 @@ defmodule CodeMySpec.Provisioning.Sops do
     # Encrypted, not merely present: an interruption between writing and
     # encrypting leaves plaintext at the `.enc.env` path, so ask sops and
     # repair rather than trusting the filename.
-    case Environments.file_exists?(env, path) do
+    case ExecutionContexts.file_exists?(env, path) do
       true ->
         ensure_encrypted(env, path)
 
       _ ->
-        with :ok <- Environments.write_file(env, path, "SOPS_INITIALIZED=true\n") do
+        with :ok <- ExecutionContexts.write_file(env, path, "SOPS_INITIALIZED=true\n") do
           ensure_encrypted(env, path)
         end
     end
@@ -351,9 +353,9 @@ defmodule CodeMySpec.Provisioning.Sops do
 
   # `cd` matters: sops resolves `.sops.yaml` from the working directory, so it
   # runs from the project root with relative paths. Through
-  # `Environments.cmd/4`, so it runs wherever the environment says.
+  # `ExecutionContexts.cmd/4`, so it runs wherever the environment says.
   defp sops(env, args, opts) do
-    Environments.cmd(env, "sops", args, [stderr_to_stdout: true] ++ opts)
+    ExecutionContexts.cmd(env, "sops", args, [stderr_to_stdout: true] ++ opts)
   end
 
   @doc """

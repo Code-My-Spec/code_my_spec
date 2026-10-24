@@ -19,8 +19,11 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   require Logger
 
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Hetzner, Resend, Storage}
+  alias CodeMySpec.AppInstances
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage}
   alias CodeMySpec.ProvisioningPlan.{Sequence, StepRepository}
+  alias CodeMySpec.Repo
 
   alias CodeMySpec.Users.Scope
 
@@ -79,33 +82,123 @@ defmodule CodeMySpec.Provisioning.Teardown do
   takeover.
 
   Returns `{:ok, removed}`, or `{:error, {:left_behind, remaining}, removed}`.
-  The environment row is deleted either way, and every step's resources
-  tagged with this environment are forgotten.
+  Without attached runtime receipts, legacy removal reports leftovers and
+  removes the plan row. With deployment receipts, the row and receipts remain
+  until provider removal is confirmed. Harness-backed instances must first be
+  disposed of separately; this path never sends them lifecycle commands.
   """
   @spec environment(Scope.t(), String.t(), keyword()) ::
-          {:ok, [map()]} | {:error, {:left_behind, [map()]}, [map()]}
+          {:ok, [map()]} | {:error, term()} | {:error, term(), [map()]}
   def environment(%Scope{} = scope, name, opts \\ []) do
     # Injectable so the ordering can be tested without a real server and DNS
     # record.
     teardown = Keyword.get(opts, :teardown, &__MODULE__.resource/2)
 
-    case EnvironmentRepository.get(scope, name) do
+    case Environments.get(scope, name) do
       nil ->
         {:ok, []}
 
+      %{management: :harness} ->
+        {:error, :not_provisioned_environment}
+
       environment ->
-        outcomes = Enum.map(environment_resources(environment), &teardown.(scope, &1))
-        EnvironmentRepository.delete(scope, name)
-        forget_environment(scope, name)
+        remove_environment(scope, environment, teardown)
+    end
+  end
 
-        removed = for {:ok, r} <- outcomes, do: r
-        left = for {:error, r} <- outcomes, do: r
-        _skipped = for {:skipped, r} <- outcomes, do: r
+  defp remove_environment(scope, environment, teardown) do
+    instances = AppInstances.list_for_environment(scope, environment.id)
+    resources = environment_resources(environment)
 
-        case left do
-          [] -> {:ok, removed}
-          _ -> {:error, {:left_behind, left}, removed}
+    cond do
+      Enum.any?(instances, &(not deployment_receipt?(&1))) ->
+        {:error, :environment_in_use}
+
+      instances != [] and not Enum.any?(resources, &(&1.kind == "server")) ->
+        {:error, :deployment_removal_unconfirmed}
+
+      true ->
+        outcomes = Enum.map(resources, &teardown.(scope, &1))
+        finish_environment_removal(scope, environment, instances, outcomes)
+    end
+  end
+
+  defp deployment_receipt?(instance) do
+    instance.persistent and not instance.default and is_nil(instance.working_copy_id) and
+      is_nil(instance.device_id) and is_nil(instance.source_root)
+  end
+
+  defp finish_environment_removal(scope, environment, instances, outcomes) do
+    removed = for {:ok, resource} <- outcomes, do: resource
+    left = for {status, resource} <- outcomes, status in [:error, :skipped], do: resource
+
+    if instances != [] and left != [] do
+      {:error, {:left_behind, left}, removed}
+    else
+      case delete_environment_records(scope, environment, instances) do
+        :ok -> removal_result(outcomes, removed)
+        {:error, reason} -> {:error, reason, removed}
+      end
+    end
+  end
+
+  defp removal_result(outcomes, removed) do
+    case for({:error, resource} <- outcomes, do: resource) do
+      [] -> {:ok, removed}
+      left -> {:error, {:left_behind, left}, removed}
+    end
+  end
+
+  defp delete_environment_records(scope, environment, instances) do
+    result =
+      Repo.transaction(fn ->
+        Repo.lock!("deployment-instance:#{environment.id}")
+        Enum.each(instances, &delete_deployment_receipt(scope, &1))
+
+        case Environments.delete(scope, environment.name) do
+          :ok -> forget_environment(scope, environment.name)
+          {:error, reason} -> Repo.rollback(reason)
         end
+      end)
+
+    case result do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp delete_deployment_receipt(scope, instance) do
+    with :ok <- unchanged_deployment_receipt(scope, instance),
+         {:ok, stopped} <- AppInstances.record_status(scope, instance, %{status: "down"}),
+         {:ok, _} <- AppInstances.delete(scope, stopped) do
+      :ok
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp unchanged_deployment_receipt(scope, instance) do
+    fields = [
+      :environment_id,
+      :checked_at,
+      :deployment_image,
+      :commit,
+      :serving_commit,
+      :device_id,
+      :working_copy_id,
+      :source_root,
+      :persistent,
+      :default
+    ]
+
+    case AppInstances.get(scope, instance.id) do
+      nil ->
+        {:error, :deployment_receipt_changed}
+
+      current ->
+        if Map.take(current, fields) == Map.take(instance, fields),
+          do: :ok,
+          else: {:error, :deployment_receipt_changed}
     end
   end
 
@@ -414,7 +507,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
   defp project_environments(scope, opts) do
     case Keyword.fetch(opts, :project_environments) do
       {:ok, environments} -> environments
-      :error -> EnvironmentRepository.list_existing(scope)
+      :error -> Environments.list_existing_deployment(scope)
     end
   end
 

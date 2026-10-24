@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story677.Criterion5756Spex do
     scenario "framework checks and BDD plan present, bridge absent → response names the bridge path" do
       given_ "framework checks and project BDD plan are present, but the fixtures bridge is missing",
              context do
-        :ok = Artifacts.write_baseline_artifacts(context.environment, skip: [:bridge])
+        :ok = Artifacts.write_baseline_artifacts(context.execution_context, skip: [:bridge])
         {:ok, context}
       end
 

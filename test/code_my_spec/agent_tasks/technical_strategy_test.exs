@@ -6,7 +6,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.TechnicalStrategy
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # ============================================================================
   # Test Helpers
@@ -15,8 +15,8 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("technical_strategy")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_environment(scope, Environment.new(:local, tmp_dir))
-    :ok = register_working_copy_environment(scope, Environment.new(:local, tmp_dir))
+    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
+    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
     %{scope: scope, tmp_dir: tmp_dir}
   end
 
@@ -147,14 +147,14 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     end
 
     test "includes deps context when mix.exs exists", %{scope: scope, task: task} do
-      write_mix_exs(fixture_environment(scope))
+      write_mix_exs(fixture_execution_context(scope))
 
       assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
       assert prompt =~ "Current Dependencies"
     end
 
     test "lists existing decisions in prompt", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_existing_decision(env, "wallaby")
 
       assert {:ok, prompt} = TechnicalStrategy.command(scope, task)
@@ -173,7 +173,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_existing_decision(env, "elixir")
       write_existing_decision(env, "phoenix")
 
@@ -186,7 +186,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     end
 
     test "does not overwrite pre-existing decision files", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_existing_decision(env, "elixir")
 
       assert {:ok, _prompt} = TechnicalStrategy.command(scope, task)
@@ -271,7 +271,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_all_premade_decisions(env)
       write_decisions_index(env)
 
@@ -287,7 +287,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       # evaluate/2 only checks for the decisions index — pre-made decision
       # validation is handled by the `ensure_premade_decisions` side effect
       # in command/2.
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_decisions_index(env)
 
       capture_log(fn ->
@@ -299,7 +299,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_all_premade_decisions(env)
 
       capture_log(fn ->
@@ -312,7 +312,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
       scope: scope,
       task: task
     } do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_all_premade_decisions(env)
 
       capture_log(fn ->
@@ -322,7 +322,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     end
 
     test "does NOT check for knowledge entries", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_all_premade_decisions(env)
       write_existing_decision(env, "wallaby")
       write_decisions_index(env)
@@ -333,7 +333,7 @@ defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
     end
 
     test "does NOT check for research prompt files", %{scope: scope, task: task} do
-      env = fixture_environment(scope)
+      env = fixture_execution_context(scope)
       write_all_premade_decisions(env)
       write_decisions_index(env)
 

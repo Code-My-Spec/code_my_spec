@@ -12,7 +12,7 @@ defmodule CmsHarness.OnboardPreviewTest do
   has lost its credential, with nothing in the output naming either.
 
   `HarnessConfig.write/2` merges for this reason. This path cannot call it —
-  the copy may be on another machine and it writes through `Environments` — so
+  the copy may be on another machine and it writes through `ExecutionContexts` — so
   the merge is reimplemented, and reimplemented behaviour is what a test is
   for.
 
@@ -25,7 +25,7 @@ defmodule CmsHarness.OnboardPreviewTest do
   use ExUnit.Case, async: true
 
   alias CmsHarness.HarnessConfig
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias Mix.Tasks.Cms.Harness.Onboard
 
   @config ".cms_harness.json"
@@ -36,7 +36,7 @@ defmodule CmsHarness.OnboardPreviewTest do
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
 
-    {:ok, env} = Environments.create(:local, working_dir: root)
+    {:ok, env} = ExecutionContexts.create(:local, working_dir: root)
 
     %{root: root, env: env, config_file: Path.join(root, @config)}
   end

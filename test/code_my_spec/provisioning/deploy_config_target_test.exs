@@ -20,10 +20,11 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Sops, Steps}
 
   @domain "drill.example.com"
 
@@ -47,26 +48,28 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
     tmp = CodeMySpec.TempFile.owned_dir("deploy_config_target")
 
     scope =
-      CodeMySpec.UsersFixtures.put_fixture_environment(
+      CodeMySpec.UsersFixtures.put_fixture_execution_context(
         provisioning_scope_fixture(),
-        Environment.new(:local, tmp)
+        ExecutionContext.new(:local, tmp)
       )
 
     {:ok, project} =
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
 
     scope = %{scope | active_project: project}
-    {:ok, _} = EnvironmentRepository.put(scope, "uat", %{})
+    {:ok, _} = Environments.put(scope, "uat", %{})
 
     {:ok, {public, private}} = Sops.generate_key()
     ProjectSecrets.put_value(scope, "age_private_key_uat", private)
 
     :ok =
-      Sops.write_config(CodeMySpec.UsersFixtures.fixture_environment(scope), %{"uat" => public})
+      Sops.write_config(CodeMySpec.UsersFixtures.fixture_execution_context(scope), %{
+        "uat" => public
+      })
 
     :ok =
       Sops.put_secret(
-        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        CodeMySpec.UsersFixtures.fixture_execution_context(scope),
         "uat",
         "SECRET_KEY_BASE",
         "x",
@@ -75,7 +78,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
 
     :ok =
       Sops.put_secret(
-        CodeMySpec.UsersFixtures.fixture_environment(scope),
+        CodeMySpec.UsersFixtures.fixture_execution_context(scope),
         "uat",
         "DATABASE_URL",
         "ecto://x",

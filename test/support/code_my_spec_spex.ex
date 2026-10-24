@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex do
       # `CodeMySpec.AgentTasks` above.
       CodeMySpec.Embeddings,
       CodeMySpec.EpicDispatch,
-      CodeMySpec.Environments,
+      CodeMySpec.ExecutionContexts,
       CodeMySpec.Faults,
       CodeMySpec.Hooks,
       # "The agent cannot be reached" is external system state, and the shaper
@@ -92,6 +92,7 @@ defmodule CodeMySpecSpex do
       CodeMySpec.Telemetry,
       CodeMySpec.Utils,
       CodeMySpec.WorkingCopies,
+      CodeMySpec.AppInstances,
       # Criteria 1586/1587 call `PreviewTunnel.ensure/1` and `PreviewAddress.host/1`
       # directly — `PreviewTunnel` is the module under test (this story's own
       # declared component), the same reasoning as `CodeMySpec.AgentTasks` and

@@ -1,481 +1,267 @@
 defmodule CodeMySpec.Environments do
-  @moduledoc """
-  Execution primitives — commands and file operations — over an opaque
-  `Environment`, delegating to the implementation for its type (`:cli`,
-  `:local`, `:container`, `:harness`, `:memory`).
+  @moduledoc "Durable project destinations, independently of their running app instances."
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Repo, CodeMySpec.Requirements.GraphInputs, CodeMySpec.Users.Scope],
+    exports: :all
 
-  Its own Boundary so spex can write into the `:memory` environment
-  (`CodeMySpec.Support.InMemoryEnvironment`) the case setup handed them.
-
-  ## No environment is a configuration, not a bug
-
-  Every file operation accepts `nil` (the server has no local working copy) and
-  answers instead of raising: `{:error, :no_environment}` where a result was
-  expected, `[]` for a search, `false` for existence. So "no disk" and "not
-  there" are the same reply for `file_exists?/2` — fine for rendering a prompt,
-  not for deciding a requirement is unmet; use `unobservable?/1` or
-  `CodeMySpec.AgentTasks.Setup.Context.dir_status/2` for that.
-  See knowledge/infrastructure, "Execution environments".
-  """
-
-  use Boundary, top_level?: true, deps: [], exports: :all
-
+  import Ecto.Query
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.GraphInputs
+  alias CodeMySpec.Users.Scope
 
-  @registry __MODULE__.Registry
+  @doc "All existing destinations. Reading never creates an environment."
+  def list(scope) do
+    case project_id(scope) do
+      nil ->
+        []
 
-  @doc """
-  Child spec for the environment registry (keyed by project_id).
-
-  Start this in your application supervision tree to enable test-time
-  environment overrides. Production projects have no registered override
-  and fall back to `Environment.new(:local, project.local_path)`.
-  """
-  def registry_child_spec do
-    {Registry, keys: :unique, name: @registry}
-  end
-
-  @doc """
-  Whether an error means "could not look" rather than "not there".
-
-  A checker that flattens these into a requirement failure tells an agent to
-  redo work that is very likely already done.
-  """
-  @spec unobservable?(term()) :: boolean()
-  def unobservable?(:no_environment), do: true
-  def unobservable?({:error, reason}), do: unobservable?(reason)
-  def unobservable?(_), do: false
-
-  # Release vars that, inherited, point a child `erl` at our ERTS ("cannot get
-  # bootfile"). See knowledge/infrastructure, "Child process environment".
-  @otp_release_vars ~w(
-    ROOTDIR BINDIR EMU PROGNAME ERL_LIBS
-    RELEASE_ROOT RELEASE_SYS_CONFIG RELEASE_TMP RELEASE_NODE RELEASE_VSN
-    RELEASE_COOKIE RELEASE_MODE RELEASE_DISTRIBUTION RELEASE_BOOT_SCRIPT
-    RELEASE_BOOT_SCRIPT_CLEAN RELEASE_COMMAND RELEASE_PROG RELEASE_NAME
-    RELEASE_VM_ARGS RELEASE_REMOTE_VM_ARGS RELEASE_DISTRIBUTION_FLAG
-    ERTS_BIN ERTS_VSN ERLEXEC_DIR ERL_CONSOLE_MODE ELIXIR_VERSION
-    REL_VSN_DIR REL_EXEC REL_EXTRA REL_GOTO SCRIPT_PATH
-    beforeExtra parsErlang endLoop
-  )
-
-  # Our Mix environment would change which of the child project's deps exist.
-  # Separate from the release vars because a caller may choose the child's
-  # (`merge_clean_env/1` lets an explicit `:env` entry win).
-  @mix_env_vars ~w(MIX_ENV MIX_TARGET MIX_BUILD_PATH MIX_DEPS_PATH MIX_HOME MIX_ARCHIVES)
-
-  @doc """
-  Env entries (`{var, nil}`) that clear the inherited BEAM/release variables,
-  for the `:env` option of `System.cmd/3` when shelling out to host tools
-  (`mix`, `git`, …) from inside the packaged binary. Clearing lets the child
-  derive its own OTP from PATH. Safe off Burrito — clearing an unset var is a
-  no-op.
-  """
-  @spec clean_otp_env() :: [{String.t(), String.t() | nil}]
-  def clean_otp_env do
-    Enum.map(@otp_release_vars ++ @mix_env_vars, fn var -> {var, nil} end) ++
-      path_without_release_dirs()
-  end
-
-  # Version-manager shims first, so a child resolves the toolchain its own
-  # directory pins rather than ours. Only for `merge_clean_env/1`, never
-  # `clean_otp_env/0`, which is a scrub and adds nothing.
-  # See knowledge/infrastructure, "Child process environment".
-  defp path_for_children do
-    case path_without_release_dirs() do
-      [{"PATH", path}] -> [{"PATH", prepend_shims(path)}]
-      [] -> shim_path_entry()
+      id ->
+        Repo.all(
+          from e in Environment,
+            where: e.project_id == ^id,
+            order_by: [asc: e.inserted_at, asc: e.name]
+        )
     end
   end
 
-  defp shim_path_entry do
-    case System.get_env("PATH") do
-      path when is_binary(path) -> [{"PATH", prepend_shims(path)}]
-      _ -> []
+  def list_existing(scope), do: list(scope)
+
+  def list_existing_deployment(scope),
+    do: Enum.filter(list(scope), &(&1.management == :provisioned))
+
+  @doc "Deployment destinations, initializing the legacy prod/uat pair when none exists."
+  def list_deployment(scope) do
+    case project_id(scope) do
+      nil ->
+        []
+
+      id ->
+        {:ok, environments} =
+          Repo.transaction(fn ->
+            Repo.lock!("environments:#{id}")
+
+            existing_or_seed_deployment(scope, id)
+          end)
+
+        environments
     end
   end
 
-  # asdf and mise, only where the directory exists. **Moved** to the front, not
-  # added: the shims are usually on PATH already, behind the resolved bin dir.
-  defp prepend_shims(path) do
-    sep = path_separator()
-    existing = String.split(path, sep, trim: true)
-
-    shims =
-      ["~/.asdf/shims", "~/.local/share/mise/shims"]
-      |> Enum.map(&Path.expand/1)
-      |> Enum.filter(&File.dir?/1)
-
-    Enum.join(shims ++ (existing -- shims), sep)
-  end
-
-  @doc """
-  `clean_otp_env/0` with the caller's own `:env` entries left standing.
-
-  The scrub is appended last so it wins, which is right for the release
-  variables — no caller sets those, and a child that inherits them cannot
-  boot. It is wrong for `MIX_ENV`: a caller that named one meant it.
-  """
-  @spec merge_clean_env(keyword()) :: keyword()
-  def merge_clean_env(opts) do
-    chosen = opts |> Keyword.get(:env, []) |> Enum.map(&elem(&1, 0)) |> MapSet.new()
-
-    # String keys, so not a keyword list despite the shape — `Keyword.delete/2`
-    # raises on one.
-    scrub =
-      clean_otp_env()
-      |> Enum.reject(&(elem(&1, 0) == "PATH"))
-      |> Kernel.++(path_for_children())
-      |> Enum.reject(&MapSet.member?(chosen, elem(&1, 0)))
-
-    Keyword.update(opts, :env, scrub, &(&1 ++ scrub))
-  end
-
-  # Clearing ROOTDIR is not enough: the release's `erts-*/bin` is on PATH, so a
-  # child would still find our `erl`. Drop every PATH entry inside RELEASE_ROOT;
-  # off a release PATH passes through untouched.
-  # See knowledge/infrastructure, "Child process environment".
-  defp path_without_release_dirs do
-    with root when is_binary(root) <- System.get_env("RELEASE_ROOT"),
-         path when is_binary(path) <- System.get_env("PATH"),
-         sep = path_separator(),
-         kept when kept != "" <-
-           path
-           |> String.split(sep, trim: true)
-           |> Enum.reject(&under_root?(&1, root))
-           |> Enum.join(sep) do
-      [{"PATH", kept}]
-    else
-      # Not in a release, no PATH, or stripping would empty it — in every case
-      # the inherited PATH is the better answer than a broken one.
-      _ -> []
+  defp existing_or_seed_deployment(scope, project_id) do
+    case list_existing_deployment(scope) do
+      [] -> seed_deployment(scope, project_id)
+      environments -> environments
     end
   end
 
-  defp path_separator do
-    case :os.type() do
-      {:win32, _} -> ";"
-      _ -> ":"
+  def deployment_names(scope), do: Enum.map(list_deployment(scope), & &1.name)
+
+  def get(scope, name), do: fetch(scope, name: name)
+
+  def get_by_id(scope, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> fetch(scope, id: uuid)
+      :error -> nil
     end
   end
 
-  defp under_root?(entry, root), do: String.starts_with?(normalize(entry), normalize(root))
-
-  # Windows mixes separators and is case-insensitive; unix is neither.
-  defp normalize(path) do
-    normalized = path |> String.replace("\\", "/") |> String.trim_trailing("/")
-
-    case :os.type() do
-      {:win32, _} -> String.downcase(normalized)
-      _ -> normalized
-    end
-  end
-
-  @doc """
-  Register an environment override for a project.
-
-  After registration, any caller resolving a scope for `project_id` via
-  `lookup_registered/1` gets this env back. Registration is scoped to the
-  calling process — when the process exits, the registration is cleared
-  automatically (Registry monitors the caller).
-
-  Used by spex test setup to inject in-memory environments without global
-  config changes.
-  """
-  @spec register(any(), Environment.t()) :: :ok
-  def register(project_id, %Environment{} = env) do
-    case Registry.register(@registry, project_id, env) do
-      {:ok, _} -> :ok
-      {:error, {:already_registered, _pid}} -> :ok
-    end
-  end
-
-  @doc "Unregister a project's environment override. Idempotent."
-  @spec unregister(any()) :: :ok
-  def unregister(project_id) do
-    Registry.unregister(@registry, project_id)
-    :ok
-  end
-
-  @doc """
-  Look up a registered environment override for a project.
-
-  Returns `nil` when no override is registered — the caller should fall
-  back to its default env construction.
-
-  Also `nil` when the registry itself is not running (a caller outside a
-  started application, such as a mix task that starts only `:req`), so the
-  caller reports the absence in its own words.
-  """
-  @spec lookup_registered(any()) :: Environment.t() | nil
-  def lookup_registered(project_id) do
-    if running?(@registry), do: registered(project_id), else: nil
-  end
-
-  defp registered(project_id) do
-    case Registry.lookup(@registry, project_id) do
-      [{_pid, env}] -> env
-      [] -> nil
-    end
-  end
-
-  # Asked, not rescued: a rescue cannot tell "not running" from any other
-  # `ArgumentError`, such as a wrong registry name.
-  defp running?(registry), do: is_pid(Process.whereis(registry))
-
-  @doc """
-  Create a new execution context and return an opaque Environment struct.
-
-  ## Parameters
-
-  - `type` - Environment type (`:cli`, `:local`, `:container`)
-  - `opts` - Options passed to the implementation's `create/1` function
-
-  ## Returns
-
-  - `{:ok, %Environment{}}` - Environment created successfully
-  - `{:error, reason}` - Failed to create environment
-
-  ## Examples
-
-      # Create CLI environment
-      {:ok, env} = Environments.create(:cli, session_id: 123)
-
-      # Create local environment
-      {:ok, env} = Environments.create(:local)
-  """
-  @spec create(type :: atom(), opts :: keyword()) ::
-          {:ok, Environment.t()} | {:error, term()}
-  def create(type, opts \\ []) do
-    impl(type).create(opts)
-  end
-
-  @doc """
-  Destroy an execution context and clean up resources.
-
-  This function is idempotent - it should succeed even if the context
-  has already been destroyed.
-  """
-  @spec destroy(env :: Environment.t()) :: :ok | {:error, term()}
-  def destroy(%Environment{type: type} = env) do
-    impl(type).destroy(env)
-  end
-
-  @doc """
-  Read a file from the execution environment's file system.
-  """
-  @spec read_file(env :: Environment.t(), path :: String.t()) ::
-          {:ok, String.t()} | {:error, term()}
-  def read_file(nil, _path), do: {:error, :no_environment}
-
-  def read_file(%Environment{type: type} = env, path) do
-    impl(type).read_file(env, path)
-  end
-
-  @doc """
-  The real OTP app name for this environment's checkout, read straight out of
-  its `mix.exs` — the one place it is never ambiguous, since it is what `mix
-  release` and `mix phx.gen` themselves resolve every `lib/<app>(_web)/...`
-  path from.
-
-  `nil` when `mix.exs` cannot be read (no environment, or one server-side code
-  cannot reach) or does not contain a plain `app: :name` — a clean absence to
-  fall back from, not a wrong guess.
-  """
-  @spec mix_exs_app_name(env :: Environment.t() | nil) :: String.t() | nil
-  def mix_exs_app_name(env) do
-    with {:ok, content} <- read_file(env, "mix.exs"),
-         [_, app] <- Regex.run(~r/app:\s*:([a-zA-Z_][a-zA-Z0-9_]*)/, content) do
-      app
-    else
+  def get_deployment(scope, name) do
+    case get(scope, name) do
+      %Environment{management: :provisioned} = environment -> environment
       _ -> nil
     end
   end
 
-  @doc """
-  List contents of a directory in the execution environment.
-  """
-  @spec list_directory(env :: Environment.t(), path :: String.t()) ::
-          {:ok, [String.t()]} | {:error, term()}
-  def list_directory(nil, _path), do: {:error, :no_environment}
-
-  def list_directory(%Environment{type: type} = env, path) do
-    impl(type).list_directory(env, path)
+  defp fetch(scope, filters) do
+    case project_id(scope) do
+      nil -> nil
+      id -> Repo.get_by(Environment, [{:project_id, id} | filters])
+    end
   end
 
-  @doc """
-  Write content to a file in the execution environment's file system.
-  """
-  @spec write_file(env :: Environment.t(), path :: String.t(), content :: String.t()) ::
-          :ok | {:error, term()}
-  def write_file(nil, _path, _content), do: {:error, :no_environment}
+  @doc "Create or update a destination within the active project. Management is immutable."
+  def put(scope, name, attrs) do
+    case project_id(scope) do
+      nil ->
+        {:error, :no_active_project}
 
-  def write_file(%Environment{type: type} = env, path, content) do
-    impl(type).write_file(env, path, content)
+      id ->
+        existing = get(scope, name) || %Environment{}
+        attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
+        attrs = Map.merge(attrs, %{"name" => name, "project_id" => id})
+        result = existing |> Environment.changeset(attrs) |> Repo.insert_or_update()
+        if is_nil(existing.id) and match?({:ok, _}, result), do: setup_changed(scope)
+        result
+    end
   end
 
-  @doc """
-  Delete a file from the execution environment's file system.
-  """
-  @spec delete_file(env :: Environment.t(), path :: String.t()) ::
-          :ok | {:error, term()}
-  def delete_file(nil, _path), do: {:error, :no_environment}
+  @doc "Write a provider-managed deployment without repurposing a harness destination."
+  def put_deployment(scope, name, attrs) do
+    management = Map.get(attrs, :management, Map.get(attrs, "management", :provisioned))
 
-  def delete_file(%Environment{type: type} = env, path) do
-    impl(type).delete_file(env, path)
+    case {get(scope, name), management} do
+      {%Environment{management: :harness}, _} -> {:error, :not_provisioned_environment}
+      {_, management} when management in [:provisioned, "provisioned"] -> put(scope, name, attrs)
+      _ -> {:error, :not_provisioned_environment}
+    end
   end
 
-  @doc """
-  The recorded analyzer output `env` carries for `source`, if any.
+  @doc "Ensure the local development destination without creating cloud deployment defaults."
+  def ensure_development(scope) do
+    case project_id(scope) do
+      nil ->
+        {:error, :no_active_project}
 
-  See `c:CodeMySpec.Environments.EnvironmentsBehaviour.recorded_output/2`.
-  """
-  @spec recorded_output(Environment.t() | nil, String.t()) :: String.t() | nil
-  def recorded_output(%Environment{type: type} = env, source) do
-    module = impl(type)
+      id ->
+        Repo.transaction(fn ->
+          Repo.lock!("environments:#{id}")
 
-    if Code.ensure_loaded?(module) and function_exported?(module, :recorded_output, 2),
-      do: module.recorded_output(env, source)
+          Enum.find(list(scope), &development_environment?/1) || create_development(scope)
+        end)
+    end
   end
 
-  def recorded_output(_env, _source), do: nil
-
-  # Private functions
-
-  defp impl(:cli),
-    do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Cli)
-
-  defp impl(:local),
-    do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Local)
-
-  defp impl(:container),
-    do:
-      Application.get_env(
-        :code_my_spec,
-        :container_environment,
-        CodeMySpec.Environments.Container
-      )
-
-  defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
-
-  # A working copy on another machine, reached over its harness channel. Not
-  # configurable like the others: there is no alternative implementation of
-  # "ask the harness", and swapping it would mean swapping the transport.
-  defp impl(:harness), do: CodeMySpec.Environments.Harness
-
-  # No catch-all on purpose: an unknown type raises FunctionClauseError, which
-  # names the problem, where an `{:error, _}` here would crash the caller's
-  # `impl(type).fun(...)` with a confusing undefined-function error.
-
-  def environment_setup_command(environment, attrs) do
-    impl(environment).environment_setup_command(environment, attrs)
+  defp development_environment?(%Environment{management: :harness, name: name}) do
+    name in ["dev", "dev-local"] or
+      Regex.match?(~r/^dev-local-(?:[2-9]|[1-9][0-9]+)$/, name)
   end
 
-  def docs_environment_teardown_command(environment, attrs) do
-    impl(environment).docs_environment_teardown_command(environment, attrs)
+  defp development_environment?(_environment), do: false
+
+  defp create_development(scope) do
+    case put(scope, development_name(scope), %{management: :harness}) do
+      {:ok, environment} -> environment
+      {:error, reason} -> Repo.rollback(reason)
+    end
   end
 
-  def test_environment_teardown_command(environment, attrs) do
-    impl(environment).test_environment_teardown_command(environment, attrs)
+  defp development_name(scope) do
+    names = MapSet.new(list(scope), & &1.name)
+
+    Stream.iterate(0, &(&1 + 1))
+    |> Stream.map(fn
+      0 -> "dev"
+      1 -> "dev-local"
+      suffix -> "dev-local-#{suffix}"
+    end)
+    |> Enum.find(&(not MapSet.member?(names, &1)))
   end
 
-  def code_environment_teardown_command(environment, attrs) do
-    impl(environment).code_environment_teardown_command(environment, attrs)
+  def mark_first_deployed(scope, name) do
+    case get(scope, name) do
+      nil ->
+        :ok
+
+      environment ->
+        now = DateTime.utc_now()
+
+        Repo.update_all(
+          from(e in Environment, where: e.id == ^environment.id and is_nil(e.first_deployed_at)),
+          set: [first_deployed_at: now, updated_at: now]
+        )
+    end
+
+    :ok
   end
 
-  def file_exists?(nil, _path), do: false
-
-  def file_exists?(%Environment{type: type} = env, path) do
-    impl(type).file_exists?(env, path)
+  @doc "Remove a destination only when no app instance still belongs to it."
+  def delete(scope, name) do
+    case get(scope, name) do
+      nil -> :ok
+      environment -> delete_environment(scope, environment)
+    end
   end
 
-  @doc """
-  Stat a file, returning its mtime and size.
-  """
-  @spec stat(env :: Environment.t(), path :: String.t()) ::
-          {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
-  def stat(nil, _path), do: {:error, :no_environment}
+  defp delete_environment(scope, environment) do
+    # A table query keeps ownership validation independent of AppInstances,
+    # which depends on this context when assigning an instance's destination.
+    if Repo.exists?(
+         from i in "app_instances", where: i.environment_id == type(^environment.id, :binary_id)
+       ) do
+      {:error, :environment_in_use}
+    else
+      changeset = Ecto.Changeset.change(environment)
 
-  def stat(%Environment{type: type} = env, path) do
-    impl(type).stat(env, path)
-  end
+      changeset =
+        Ecto.Changeset.foreign_key_constraint(changeset, :id,
+          name: :app_instances_environment_id_fkey
+        )
 
-  @doc """
-  Ensure a directory exists, creating it and any parents if needed.
-  """
-  @spec ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
-  def ensure_dir(nil, _path), do: {:error, :no_environment}
-
-  def ensure_dir(%Environment{type: type} = env, path) do
-    impl(type).ensure_dir(env, path)
-  end
-
-  @doc """
-  Find files matching a glob pattern relative to the environment's working directory.
-  """
-  @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
-  def glob(nil, _pattern), do: []
-
-  def glob(%Environment{type: type} = env, pattern) do
-    impl(type).glob(env, pattern)
-  end
-
-  @doc """
-  Stream files under a whitelisted set of roots, pruning to those subtrees only.
-
-  Roots are resolved relative to `env.cwd`; missing roots are skipped. Emitted
-  paths are relative to `env.cwd`.
-  """
-  @spec stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
-          Enumerable.t()
-  def stream_files(env, roots, opts \\ [])
-
-  def stream_files(nil, _roots, _opts), do: []
-
-  def stream_files(%Environment{type: type} = env, roots, opts) do
-    impl(type).stream_files(env, roots, opts)
-  end
-
-  @doc """
-  Run a command in the environment.
-
-  Defaults to `env.cwd`; pass `:cd` to override. See
-  `c:CodeMySpec.Environments.EnvironmentsBehaviour.cmd/4`.
-  """
-  @spec cmd(Environment.t(), String.t(), [String.t()], keyword()) ::
-          {String.t(), non_neg_integer()}
-  def cmd(env, command, args, opts \\ [])
-
-  def cmd(nil, _command, _args, _opts), do: {"no environment", 1}
-
-  def cmd(%Environment{type: type} = env, command, args, opts),
-    do: impl(type).cmd(env, command, args, opts)
-
-  @doc """
-  Whether `path` exists in the filesystem `cmd/4` runs in.
-
-  See `c:CodeMySpec.Environments.EnvironmentsBehaviour.exec_file_exists?/2` for
-  why this is not `file_exists?/2`.
-  """
-  @spec exec_file_exists?(Environment.t(), String.t()) :: boolean()
-  def exec_file_exists?(nil, _path), do: false
-
-  def exec_file_exists?(%Environment{type: type} = env, path),
-    do: impl(type).exec_file_exists?(env, path)
-
-  @doc """
-  Whether the project's justfile declares the recipe `name`.
-
-  How a project runs its own suites is the project's to say: a runner that
-  finds `spex` or `test` here runs `just <name> …` instead of `mix <name> …`,
-  with the same arguments, so the recipe must pass them through.
-  """
-  @spec recipe?(Environment.t() | nil, String.t()) :: boolean()
-  def recipe?(env, name) do
-    exec_file_exists?(env, "justfile") and
-      case cmd(env, "just", ["--list"], []) do
-        {out, 0} -> Regex.match?(~r/^\s*#{Regex.escape(name)}(\s|$)/m, out)
-        _ -> false
+      case Repo.delete(changeset) do
+        {:ok, _} -> setup_changed(scope)
+        {:error, changeset} -> {:error, changeset}
       end
+    end
   end
+
+  def assign_deployment_hosts(scope, domain) when is_binary(domain) and domain != "" do
+    Enum.map(list_deployment(scope), fn
+      %Environment{host: nil} = environment ->
+        host = if environment.name == "prod", do: domain, else: "#{environment.name}.#{domain}"
+        {:ok, updated} = put(scope, environment.name, %{host: host})
+        updated
+
+      environment ->
+        environment
+    end)
+  end
+
+  def assign_deployment_hosts(scope, _domain), do: list_deployment(scope)
+
+  defp seed_deployment(scope, project_id) do
+    domain =
+      case scope do
+        %Scope{active_project: %{id: ^project_id, domain: domain}} -> domain
+        _ -> nil
+      end
+
+    now = DateTime.utc_now()
+
+    rows =
+      for name <- ["prod", "uat"] do
+        %{
+          id: Ecto.UUID.generate(),
+          name: name,
+          management: :provisioned,
+          project_id: project_id,
+          host: seed_host(name, domain),
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    Repo.insert_all(Environment, rows,
+      on_conflict: :nothing,
+      conflict_target: [:project_id, :name]
+    )
+
+    list_existing_deployment(scope)
+  end
+
+  defp seed_host(_name, domain) when domain in [nil, ""], do: nil
+  defp seed_host("prod", domain), do: domain
+  defp seed_host(name, domain), do: "#{name}.#{domain}"
+
+  def setup_changed(scope) do
+    case project_id(scope) do
+      nil ->
+        :ok
+
+      id ->
+        GraphInputs.event(
+          %{scope | active_project_id: id},
+          "Provisioning",
+          "devops_setup_changed",
+          %{},
+          [],
+          :project_wide
+        )
+    end
+  end
+
+  defp project_id(%Scope{active_project_id: id}) when is_binary(id), do: id
+  defp project_id(%Scope{active_project: %{id: id}}) when is_binary(id), do: id
+  defp project_id(_), do: nil
 end

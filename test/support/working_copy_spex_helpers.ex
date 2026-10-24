@@ -93,6 +93,48 @@ defmodule CodeMySpecSpex.WorkingCopyHelpers do
     end
   end
 
+  @doc "Run an action while the joined harness acknowledges app stop and discard requests."
+  @spec with_app_cleanup(Phoenix.Socket.t(), (-> result)) :: result when result: term()
+  def with_app_cleanup(socket, fun) do
+    task = Task.async(fun)
+
+    try do
+      answer_app_cleanup(socket, task, System.monotonic_time(:millisecond) + 10_000)
+    after
+      Task.shutdown(task, :brutal_kill)
+    end
+  end
+
+  defp answer_app_cleanup(socket, %Task{ref: task_ref} = task, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
+    receive do
+      %Phoenix.Socket.Message{
+        event: event,
+        payload: %{"ref" => ref, "instance" => %{"instance_id" => instance_id}}
+      }
+      when event in ["stop_app", "discard_app"] ->
+        reply =
+          push(socket, event <> "_result", %{
+            "ref" => ref,
+            "instance_id" => instance_id,
+            "status" => "ok"
+          })
+
+        assert_reply(reply, :ok, _payload, 5_000)
+        answer_app_cleanup(socket, task, deadline)
+
+      {^task_ref, result} ->
+        Process.demonitor(task_ref, [:flush])
+        result
+
+      {:DOWN, ^task_ref, :process, _pid, reason} ->
+        flunk("Action exited while answering app cleanup requests: #{inspect(reason)}")
+    after
+      remaining -> flunk("Action did not finish after answering app cleanup requests")
+    end
+  end
+
   # The device the harness is announcing from.
   #
   # Named explicitly when a criterion is about which machine a checkout is on,

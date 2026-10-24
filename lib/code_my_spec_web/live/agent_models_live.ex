@@ -71,62 +71,11 @@ defmodule CodeMySpecWeb.AgentModelsLive do
               </.link>
             </div>
 
-            <form phx-submit="save" data-test="agent-models-form" class="mt-4 space-y-6">
-              <div
-                :for={row <- @settings}
-                data-test={"agent-type-#{row.role}"}
-                class="border-b border-base-300 pb-4"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold">{row.role}</span>
-                  <span :if={row.source == :default} class="badge badge-ghost badge-sm">
-                    default
-                  </span>
-                </div>
-
-                <div class="grid gap-2 sm:grid-cols-2 mt-2">
-                  <label class="form-control">
-                    <span class="label-text">Provider</span>
-                    <select name={"#{row.role}[provider]"} class="select w-full text-base-content">
-                      <%!-- The way to leave a type alone, and the way back to
-                            leaving it alone. Without this the select renders the
-                            resolved default as its value, so an untouched row
-                            posts that value and Save writes it down as a
-                            deliberate choice — issue c6f5acce, where one click
-                            froze all four types at that day's defaults. --%>
-                      <option value="" selected={row.source == :default} data-test="use-default">
-                        Use the default{if row.provider, do: " (#{row.provider})"}
-                      </option>
-                      <option
-                        :for={provider <- @providers}
-                        value={provider}
-                        selected={row.source != :default and provider == row.provider}
-                        disabled={provider not in @connected}
-                        data-test={"provider-#{provider}"}
-                      >
-                        {provider}{if provider not in @connected, do: " — connect it first"}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label class="form-control">
-                    <span class="label-text">Model</span>
-                    <input
-                      type="text"
-                      name={"#{row.role}[model]"}
-                      value={row.model}
-                      class="w-full input text-base-content"
-                    />
-                  </label>
-                </div>
-
-                <p class="text-sm text-base-content/70 mt-2" data-test="model-cost">
-                  {cost_hint(row)}
-                </p>
-              </div>
-
-              <button type="submit" class="btn btn-primary">Save</button>
-            </form>
+            <.live_component
+              module={CodeMySpecWeb.AgentModelsLive.Form}
+              id="agent-models"
+              current_scope={@current_scope}
+            />
           </div>
         </div>
       </div>
@@ -140,67 +89,14 @@ defmodule CodeMySpecWeb.AgentModelsLive do
   end
 
   @impl true
-  def handle_event("save", params, socket) do
-    scope = socket.assigns.current_scope
-
-    # Every type in one submit: the page is a table of four decisions and
-    # saving one at a time would make "QA cheap, coder not" two round trips to
-    # express one thought.
-    # A blank provider is "use the default", which is a real instruction rather
-    # than a missing field — and it is the way back, so a type that was pinned
-    # can go back to resolving. Skipping blanks instead, which is what this did,
-    # made a row one-way and made Save mean "pin everything".
-    results =
-      for role <- Agents.roles(),
-          choice = params[to_string(role)],
-          is_map(choice) do
-        case choice["provider"] do
-          blank when blank in [nil, ""] ->
-            Agents.clear_model_setting(scope, role)
-
-          provider ->
-            Agents.put_model_setting(scope, role, provider, blank_to_nil(choice["model"]))
-        end
-      end
-
-    case Enum.find(results, &match?({:error, _}, &1)) do
-      nil -> {:noreply, socket |> put_flash(:info, "Saved") |> load()}
-      {:error, reason} -> {:noreply, socket |> put_flash(:error, refusal(reason)) |> load()}
-    end
+  def handle_info(:agent_models_saved, socket) do
+    {:noreply, socket |> put_flash(:info, "Saved") |> load()}
   end
 
   defp load(socket) do
     scope = socket.assigns.current_scope
 
     socket
-    |> assign(:settings, Agents.model_settings(scope))
     |> assign(:connected, Agents.connected_providers(scope))
-    |> assign(:providers, Agents.provider_names())
   end
-
-  # The model this account would actually get, not the top of the preference
-  # list. The first version read `Defaults.for_role/1 |> hd()` and named
-  # glm-5.3 on an account that can only connect openai — while the same screen
-  # marked zai "connect it first". Two contradicting statements in one glance,
-  # and the wrong one was the answer.
-  #
-  # `row` already carries what `Agents.resolve_model/2` returned, which is the
-  # question the launcher asks a moment later.
-  defp cost_hint(%{provider: nil}), do: "Nothing to run on until a provider is connected."
-
-  defp cost_hint(%{role: role, model: model, source: :default}),
-    do: "Defaults to #{model} — #{tier(role)}."
-
-  defp cost_hint(%{role: role, model: model}), do: "Set to #{model} — #{tier(role)}."
-
-  defp tier(:qa), do: "the cheapest that can follow instructions, because it runs constantly"
-  defp tier(_role), do: "a stronger model, because this one is reasoning rather than checking"
-
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(value), do: value
-
-  defp refusal(:unknown_provider),
-    do: "That provider is not connected, so nothing was saved for it."
-
-  defp refusal(_reason), do: "That could not be saved."
 end

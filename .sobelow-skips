@@ -11,7 +11,7 @@ Traversal.FileModule: Directory Traversal in `File.read!`,lib/code_my_spec/compo
 Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/code_my_spec/agent_tasks/develop_context.ex:644,E92642
 Traversal.FileModule: Directory Traversal in `File.cp!`,lib/code_my_spec/agent_tasks/project_setup.ex:1266,76DC33A
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/rules.ex:51,8CBB6B
-Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/environments/local.ex:40,1438448
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/execution_contexts/local.ex:40,1438448
 Traversal.FileModule: Directory Traversal in `File.read!`,lib/code_my_spec/utils/data.ex:26,5B25361
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/static_analysis/analyzers/credo.ex:172,2B8A53C
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/transcripts/replayer.ex:123,4A2D574
@@ -21,8 +21,8 @@ Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/code_my_spec/agent
 DOS.StringToAtom: Unsafe `String.to_atom`,lib/code_my_spec/static_analysis/analyzers/spec_alignment.ex:201,3AEF016
 Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/local_server/controllers/bootstrap_controller.ex:391,55E737E
 Traversal.FileModule: Directory Traversal in `File.read!`,lib/code_my_spec/transcripts/replayer.ex:75,263FB39
-Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/environments/local.ex:18,3F5EB5B
-Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/environments/cli.ex:75,3779BD1
+Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/execution_contexts/local.ex:18,3F5EB5B
+Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/execution_contexts/cli.ex:75,3779BD1
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/transcripts/replayer.ex:107,29E7469
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/agent_tasks/write_bdd_specs.ex:192,6E3AC3D
 SQL.Query: SQL injection,lib/code_my_spec/utils/data.ex:73,7658708
@@ -40,7 +40,7 @@ Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/auth/o
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/local_server/controllers/bootstrap_controller.ex:383,5C58DAB
 Traversal.FileModule: Directory Traversal in `File.chmod!`,lib/code_my_spec/auth/oauth_client.ex:360,4A391C9
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/tests.ex:60,1002650
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:31,3E8A15F
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/local.ex:31,3E8A15F
 Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/static_analysis/analyzers/sobelow.ex:94,42B3AE
 Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/static_analysis/analyzers/credo.ex:92,72343C1
 Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/agent_tasks/project_setup.ex:1241,7A5DEDF
@@ -49,13 +49,13 @@ Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/agent
 XSS.SendResp: XSS in `send_resp`,lib/code_my_spec/local_server/controllers/bootstrap_controller.ex:493,9C221A
 Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/code_my_spec/sessions/sessions_repository.ex:105,4EB4C7F
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/local_server/controllers/bootstrap_controller.ex:500,761AE64
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/cli.ex:168,23B127A
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/cli.ex:168,23B127A
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/sessions/sessions_repository.ex:170,22B33F6
 Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/code_my_spec/agent_tasks/develop_live_view.ex:623,DDA5FD
-Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/environments/cli.ex:104,6A80808
+Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/execution_contexts/cli.ex:104,6A80808
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/agent_tasks/project_setup.ex:451,67F1371
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/bdd_specs/spex.ex:77,F4B240
-Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/environments/local.ex:32,1E1CA7B
+Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/execution_contexts/local.ex:32,1E1CA7B
 Traversal.FileModule: Directory Traversal in `File.mkdir_p!`,lib/code_my_spec/agent_tasks/write_bdd_specs.ex:221,3F0881
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/code/elixir_ast.ex:48,129E677
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/bdd_specs/spex.ex:115,327A2F2
@@ -71,7 +71,7 @@ Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/agent
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/code_my_spec/transcripts/replayer.ex:77,5919FED
 Traversal.FileModule: Directory Traversal in `File.read!`,lib/code_my_spec_web/live/story_live/import.ex:138,7833E50
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/agent_tasks/develop_controller.ex:552,561676C
-Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/environments/cli.ex:119,297ABFE
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/execution_contexts/cli.ex:119,297ABFE
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/code_my_spec/auth/oauth_client.ex:351,5F2BF58
 Traversal.FileModule: Directory Traversal in `File.read!`,lib/code_my_spec/content_sync/sync.ex:215,63E1696
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/content_sync/meta_data_parser.ex:76,53848D8
@@ -86,7 +86,7 @@ Traversal.FileModule: Directory Traversal in `File.write!`,lib/code_my_spec/arch
 Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/project_coordinator.ex:532,1BE5D3D
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/validation/pipeline.ex:470,465A4C7
 Traversal.FileModule: Directory Traversal in `File.rm_rf`,lib/code_my_spec/sessions/sessions_repository.ex:109,14A4B4
-CI.System: Command Injection via `System` function,lib/code_my_spec/environments/local.ex:113,10141FC
+CI.System: Command Injection via `System` function,lib/code_my_spec/execution_contexts/local.ex:113,10141FC
 Traversal.FileModule: Directory Traversal in `File.write!`,lib/code_my_spec/agent_tasks/write_bdd_specs.ex:263,6E3B56
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/agent_tasks/project_setup.ex:506,388CB66
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/agent_tasks/project_setup.ex:392,40BE666
@@ -115,13 +115,13 @@ Traversal.FileModule: Directory Traversal in `File.cp_r`,lib/code_my_spec/agent_
 Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/agent_tasks/project_setup.ex:1305,6BC0026
 Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/agent_tasks/project_setup.ex:429,701B342
 Traversal.FileModule: Directory Traversal in `File.cp!`,lib/code_my_spec/agent_tasks/project_setup.ex:1270,7A349F1
-CI.System: Command Injection via `System` function,lib/code_my_spec/environments/local.ex:119,23ECBE2
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:57,244182A
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/cli.ex:149,75D4C3F
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/cli.ex:173,997F6A
-Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/environments/local.ex:33,2BF39A4
-CI.System: Command Injection via `System` function,lib/code_my_spec/environments/local.ex:120,4098027
-Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/environments/local.ex:19,4261097
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:32,46B5D9D
-Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/environments/local.ex:58,48E1B37
-Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/environments/local.ex:41,73C4FFC
+CI.System: Command Injection via `System` function,lib/code_my_spec/execution_contexts/local.ex:119,23ECBE2
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/local.ex:57,244182A
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/cli.ex:149,75D4C3F
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/cli.ex:173,997F6A
+Traversal.FileModule: Directory Traversal in `File.write`,lib/code_my_spec/execution_contexts/local.ex:33,2BF39A4
+CI.System: Command Injection via `System` function,lib/code_my_spec/execution_contexts/local.ex:120,4098027
+Traversal.FileModule: Directory Traversal in `File.read`,lib/code_my_spec/execution_contexts/local.ex:19,4261097
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/local.ex:32,46B5D9D
+Traversal.FileModule: Directory Traversal in `File.mkdir_p`,lib/code_my_spec/execution_contexts/local.ex:58,48E1B37
+Traversal.FileModule: Directory Traversal in `File.rm`,lib/code_my_spec/execution_contexts/local.ex:41,73C4FFC

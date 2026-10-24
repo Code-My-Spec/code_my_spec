@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
       end
 
       given_ "a live harness serves the checkout", context do
-        {:ok, HarnessHooks.ensure_live_harness(context, environment: :in_memory)}
+        {:ok, HarnessHooks.ensure_live_harness(context, execution_context: :in_memory)}
       end
 
       given_ "the agent has signalled session start", context do
@@ -96,8 +96,8 @@ defmodule CodeMySpecSpex.Story70.Criterion5291Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(
-            context.environment,
+          CodeMySpec.ExecutionContexts.write_file(
+            context.execution_context,
             Fixtures.proposal_path(),
             proposal
           )

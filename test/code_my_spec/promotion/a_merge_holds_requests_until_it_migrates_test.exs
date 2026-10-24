@@ -6,7 +6,7 @@ defmodule CodeMySpec.Promotion.AMergeHoldsRequestsUntilItMigratesTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Promotion.Steps
 
   defp repo do
@@ -32,7 +32,8 @@ defmodule CodeMySpec.Promotion.AMergeHoldsRequestsUntilItMigratesTest do
     {_, 0} = git.(["commit", "-m", "side"])
     {_, 0} = git.(["checkout", "main"])
 
-    assert {:ok, %{changed: [_ | _]}} = Steps.merge(Environment.new(:local, root), root, "side")
+    assert {:ok, %{changed: [_ | _]}} =
+             Steps.merge(ExecutionContext.new(:local, root), root, "side")
 
     assert File.exists?(hold(root))
     assert hold(root) |> File.read!() |> String.trim() |> String.to_integer() > 0
@@ -44,7 +45,7 @@ defmodule CodeMySpec.Promotion.AMergeHoldsRequestsUntilItMigratesTest do
   test "a merge that moves nothing takes the hold down itself" do
     {root, _git} = repo()
 
-    assert {:ok, _} = Steps.merge(Environment.new(:local, root), root, "main")
+    assert {:ok, _} = Steps.merge(ExecutionContext.new(:local, root), root, "main")
 
     refute File.exists?(hold(root))
   end
@@ -52,7 +53,7 @@ defmodule CodeMySpec.Promotion.AMergeHoldsRequestsUntilItMigratesTest do
   test "a refused merge takes the hold down itself" do
     {root, _git} = repo()
 
-    assert {:error, _} = Steps.merge(Environment.new(:local, root), root, "no-such-branch")
+    assert {:error, _} = Steps.merge(ExecutionContext.new(:local, root), root, "no-such-branch")
 
     refute File.exists?(hold(root))
   end

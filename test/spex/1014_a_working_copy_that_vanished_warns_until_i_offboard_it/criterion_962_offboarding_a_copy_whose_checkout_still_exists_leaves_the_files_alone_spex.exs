@@ -47,8 +47,10 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
 
         root = checkout("placeholder")
 
-        joined =
-          join_working_copy(context, root, "the copy I am finished with", device_id: device)
+        {joined, socket} =
+          join_working_copy_socket(context, root, "the copy I am finished with",
+            device_id: device
+          )
 
         working_copy_id = joined.working_copy_id
 
@@ -68,6 +70,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
          |> Map.put(:root, root)
          |> Map.put(:config, config)
          |> Map.put(:source, source)
+         |> Map.put(:harness_socket, socket)
          |> Map.put(:working_copy_id, working_copy_id)}
       end
 
@@ -75,9 +78,11 @@ defmodule CodeMySpecSpex.Story1014.Criterion2865Spex do
         {:ok, live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/working-copies")
 
-        live
-        |> element("#offboard-#{context.working_copy_id} [data-role='confirm-confirm']")
-        |> render_click()
+        with_app_cleanup(context.harness_socket, fn ->
+          live
+          |> element("#offboard-#{context.working_copy_id} [data-role='confirm-confirm']")
+          |> render_click()
+        end)
 
         {:ok, Map.put(context, :live, live)}
       end

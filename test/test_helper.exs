@@ -324,7 +324,9 @@ case System.get_env("LOG_LEVEL") do
 end
 
 # Define mock for environments in tests
-Mox.defmock(CodeMySpec.MockEnvironment, for: CodeMySpec.Environments.EnvironmentsBehaviour)
+Mox.defmock(CodeMySpec.MockExecutionContext,
+  for: CodeMySpec.ExecutionContexts.ExecutionContextsBehaviour
+)
 
 # Define mock for Git operations in tests
 Mox.defmock(CodeMySpec.MockGit, for: CodeMySpec.Git.Behaviour)
@@ -348,8 +350,12 @@ Mox.defmock(CodeMySpec.MockGit, for: CodeMySpec.Git.Behaviour)
 # Use TestAdapter as default Git implementation for tests
 Application.put_env(:code_my_spec, :git_impl_module, CodeMySpec.Support.TestAdapter)
 
-# Use RecordingEnvironment as default for local environment in tests
-Application.put_env(:code_my_spec, :environment, CodeMySpec.Support.RecordingEnvironment)
+# Use RecordingExecutionContext as default for local environment in tests
+Application.put_env(
+  :code_my_spec,
+  :execution_context_adapter,
+  CodeMySpec.Support.RecordingExecutionContext
+)
 
 # Own the embedding TestBackend ETS table from a long-lived agent so it
 # survives across async tests. Without a stable owner the table dies with

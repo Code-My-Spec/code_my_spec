@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   models the mechanics that get you there.
   """
 
-  alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fakes.Storage
 
   # What `dump` says went in and `restore` says came back. One number, because
@@ -51,8 +51,13 @@ defmodule CodeMySpecSpex.Fakes.Shell do
         {"", 0}
 
       path ->
-        Environments.write_file(env, path, "-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n")
-        Environments.write_file(env, path <> ".pub", "ssh-ed25519 AAAAC3Nz#{hash(path)} spex")
+        ExecutionContexts.write_file(env, path, "-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n")
+
+        ExecutionContexts.write_file(
+          env,
+          path <> ".pub",
+          "ssh-ed25519 AAAAC3Nz#{hash(path)} spex"
+        )
 
         {"Your identification has been saved in #{path}\n", 0}
     end
@@ -89,7 +94,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
         {"", 0}
 
       path ->
-        case Environments.read_file(env, path) do
+        case ExecutionContexts.read_file(env, path) do
           {:ok, contents} ->
             sops_command(env, args, path, contents)
 
@@ -157,7 +162,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     # skips the generator when it is already there, so writing it is both the
     # effect and what makes a second run a no-op rather than a re-generation.
     for entry <- web_dirs(env) do
-      Environments.write_file(
+      ExecutionContexts.write_file(
         env,
         "lib/#{entry}/live/support_widget_live.ex",
         "defmodule SupportWidgetLive do\n  # data-cms-widget\nend\n"
@@ -193,7 +198,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   end
 
   defp web_dirs(env) do
-    case Environments.list_directory(env, "lib") do
+    case ExecutionContexts.list_directory(env, "lib") do
       {:ok, entries} -> Enum.filter(entries, &String.ends_with?(&1, "_web"))
       _ -> []
     end
@@ -343,13 +348,13 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     cond do
       match = Regex.run(~r/docker run -d --name (\S+)/, command) ->
         [_, name] = match
-        Environments.write_file(env, container_marker(name), image_from_run(command))
+        ExecutionContexts.write_file(env, container_marker(name), image_from_run(command))
         ""
 
       match = Regex.run(~r/docker ps -q -f name=\^\/(\S+)\$/, command) ->
         [_, name] = match
 
-        if Environments.file_exists?(env, container_marker(name)) do
+        if ExecutionContexts.file_exists?(env, container_marker(name)) do
           "#{hash(name)}\n"
         else
           ""
@@ -358,7 +363,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       match = Regex.run(~r/docker inspect --format '\{\{\.Config\.Image\}\}' (\S+)/, command) ->
         [_, name] = match
 
-        case Environments.read_file(env, container_marker(name)) do
+        case ExecutionContexts.read_file(env, container_marker(name)) do
           {:ok, image} -> image
           _ -> ""
         end
@@ -441,7 +446,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     # `put_secret/5` encodes them.
     with {:ok, [name]} <- Jason.decode(key),
          {:ok, plain} <- Jason.decode(value) do
-      Environments.write_file(env, path, put_line(contents, name, plain))
+      ExecutionContexts.write_file(env, path, put_line(contents, name, plain))
       {"", 0}
     else
       _ -> {"Error: could not parse #{key} #{value}\n", 1}
@@ -457,7 +462,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       {"Error: file is already being encrypted: it has a top-level entry called 'sops'\n", 1}
     else
       recipients = recipients_for(env, path)
-      Environments.write_file(env, path, contents <> "# sops:age:#{recipients}\n")
+      ExecutionContexts.write_file(env, path, contents <> "# sops:age:#{recipients}\n")
       {"", 0}
     end
   end
@@ -468,7 +473,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # file — so a spex that never wrote a config gets a file with no recipient,
   # exactly as it would in the world.
   defp recipients_for(env, path) do
-    with {:ok, config} <- Environments.read_file(env, ".sops.yaml"),
+    with {:ok, config} <- ExecutionContexts.read_file(env, ".sops.yaml"),
          [_ | _] = rules <- String.split(config, "- path_regex: ", trim: true) do
       rules
       |> Enum.find(fn rule -> String.contains?(rule, Path.basename(path)) end)
@@ -496,7 +501,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     do: :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 16)
 
   defp listing(env) do
-    case Environments.list_directory(env, ".") do
+    case ExecutionContexts.list_directory(env, ".") do
       {:ok, entries} -> entries
       other -> other
     end

@@ -1,47 +1,31 @@
 defmodule CodeMySpecSpex.Story1039.Criterion3012Spex do
   @moduledoc """
-  Story 1039 — I choose which model each agent runs on
-  Criterion 3012 — The cheap one is identifiable as the cheap one
-
-  The reason the setting exists is to run QA on something cheap, and nobody can
-  make that choice from model names. `glm-4.6` against `claude-sonnet-5` says
-  nothing about which costs more, so a screen that lists only names has not
-  given anybody the decision it exists to offer.
+  The compact model form preserves role-specific defaults in editable fields.
+  Pricing prose under each field was removed by the onboarding redesign.
   """
-
   use CodeMySpecSpex.Case
-
   @endpoint CodeMySpecWeb.Endpoint
-
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
-  spex "I choose which model each agent runs on", criterion: 1087 do
-    scenario "The cheap one is identifiable as the cheap one" do
-      given_ "an account that can choose between providers", context do
-        Fixtures.connect_provider(context.scope, "zai")
-        Fixtures.connect_provider(context.scope, "anthropic")
+  spex "The compact form exposes the cheaper QA default", criterion: 1087 do
+    scenario "Codex models are balanced by role" do
+      given_ "Codex is connected", context do
+        Fixtures.connect_provider(context.scope, :openai)
         {:ok, context}
       end
 
-      when_ "the choices for the QA type are looked at", context do
-        {:ok, view, html} = live(context.conn, "/app/agent-models")
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+      when_ "the user opens model settings", context do
+        {:ok, view, _} = live(context.conn, "/app/agent-models")
+        {:ok, Map.put(context, :view, view)}
       end
 
-      then_ "each choice says what it costs", context do
-        assert has_element?(context.view, "[data-test='model-cost']"),
-               "the choice this screen exists for cannot be made from model names"
-
-        {:ok, context}
-      end
-
-      then_ "and the screen renders the types it is for", context do
-        # Anchor: without it the refute-shaped assertion above would pass on a
-        # page that failed to render anything at all.
-        assert context.html =~ "qa"
+      then_ "QA uses Luna and coding uses Sol in editable model fields", context do
+        assert has_element?(context.view, "input[name='qa[model]'][value='gpt-6-luna']")
+        assert has_element?(context.view, "input[name='coding[model]'][value='gpt-6.1-sol']")
+        refute has_element?(context.view, "[data-test='model-cost']")
         {:ok, context}
       end
     end

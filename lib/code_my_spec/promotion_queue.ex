@@ -1,26 +1,14 @@
 defmodule CodeMySpec.PromotionQueue do
   @moduledoc """
-  Promotions, queued and landed in batches (promote-queue step 2, John
-  2026-10-04).
+  Serializes project promotions against origin's configured development branch.
+  Each candidate is prepared and certified on its source device; publishing the
+  exact certified commit does not require a destination desktop to be online.
+  Publication receipts make recovery idempotent, and device synchronization is
+  tracked independently. Story and issue QA remain admission and landing gates.
 
-  An agent's `promote` no longer merges. It records the working copy and the
-  commit it is at and answers with its place in the queue, in seconds. The
-  project's worker (`Worker`) gates candidates in batches in the project's gate
-  copy and lands each green batch on main as an exact, tagged commit
-  (`Promotion.land/6`). A red batch, findings or a run that failed at its
-  commit, is bisected until the candidate whose change is red is ejected.
-  Nothing is re-run or excused: a flake is fixed as an issue, and main's own
-  red by main. Each candidate's requester is told what happened to it.
-
-  A candidate is certified against the queue head — main plus everything ahead
-  of it — which is what the gate copy's batch is, so it does not have to merge
-  main itself first.
-
-  A candidate promotes a story, an issue's fix, or neither: the story named, or
-  else the issue assigned to the copy's team. Either must have passed QA first.
-  A landed issue fix resolves the issue once its QA has passed.
-
-  Generic: nothing here knows about any project's own release or tooling.
+  Local-only fixtures explicitly opt into the legacy checkout landing path.
+  A production repository without origin is refused, never silently redirected
+  to a desktop checkout.
   """
 
   use Boundary,
@@ -41,6 +29,7 @@ defmodule CodeMySpec.PromotionQueue do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion
+  alias CodeMySpec.Promotion.DeviceSync
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
@@ -55,15 +44,16 @@ defmodule CodeMySpec.PromotionQueue do
   @supervisor CodeMySpec.PromotionQueue.Supervisor
 
   @doc """
-  What `promote` does now: queue the scope's copy, unless it is the main copy
-  itself. Main has nothing to merge — its promotion is a restart — so it goes
-  straight through `Promotion.promote/3` as before.
+  Queue the scope's current commit for source-side certification and publication.
+  Main working copies use the same publication gate as other source copies.
   """
   @spec promote(Scope.t(), integer() | nil, keyword()) :: {:ok, map()} | {:error, map()}
   def promote(%Scope{} = scope, story_number, opts \\ []) do
-    case promoting_copy(scope) do
-      {:ok, %WorkingCopy{main: true}} -> Promotion.promote(scope, story_number, opts)
-      _ -> enqueue(scope, story_number, opts)
+    if Worker.local_only?(scope) and
+         match?({:ok, %WorkingCopy{main: true}}, promoting_copy(scope)) do
+      Promotion.promote(scope, story_number, opts)
+    else
+      enqueue(scope, story_number, opts)
     end
   end
 
@@ -129,24 +119,38 @@ defmodule CodeMySpec.PromotionQueue do
          {:ok, copy} <- promoting_copy(scope),
          {:ok, head} <- clean_head(scope, copy),
          {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id), head),
-         :ok <- qa_passed(scope, subject, head),
-         :ok <- assigned_issues_clear(scope, copy, subject),
-         :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
-         {:ok, entry} <-
-           Repository.enqueue(
-             Map.merge(subject_attrs(subject), %{
-               project_id: scope.active_project_id,
-               working_copy_id: copy.id,
-               commit: head,
-               requested_by_agent_id: Keyword.get(opts, :notify),
-               restart: Keyword.get(opts, :restart, false)
-             })
-           ) do
+         {:ok, entry} <- queue_or_resume(scope, copy, head, subject, opts) do
       ensure_worker(scope)
       {:ok, %{queued: entry, position: Repository.position(entry)}}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         {:error, %{reason: "could not queue the promotion: #{inspect(changeset.errors)}"}}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp queue_or_resume(scope, copy, head, subject, opts) do
+    attrs =
+      Map.merge(subject_attrs(subject), %{
+        project_id: scope.active_project_id,
+        working_copy_id: copy.id,
+        commit: head,
+        requested_by_agent_id: Keyword.get(opts, :notify),
+        restart: Keyword.get(opts, :restart, false)
+      })
+
+    case Repository.reopen_held(attrs) do
+      {:ok, entry} ->
+        {:ok, entry}
+
+      :none ->
+        with :ok <- qa_passed(scope, subject, head),
+             :ok <- assigned_issues_clear(scope, copy, subject),
+             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head) do
+          Repository.enqueue(attrs)
+        end
 
       {:error, _} = error ->
         error
@@ -282,7 +286,14 @@ defmodule CodeMySpec.PromotionQueue do
   """
   @spec copy_joined(Scope.t(), WorkingCopy.t()) :: :ok
   def copy_joined(%Scope{active_project_id: project_id}, %WorkingCopy{label: label}) do
-    tell_worker(project_id, if(label == Worker.gate_label(), do: :gate_copy_joined, else: :kick))
+    tell_worker(
+      project_id,
+      if(is_binary(label) and String.starts_with?(label, Worker.gate_label()),
+        do: :gate_copy_joined,
+        else: :kick
+      )
+    )
+
     :ok
   end
 
@@ -296,6 +307,8 @@ defmodule CodeMySpec.PromotionQueue do
   @doc "Resume every project with candidates still open. Called at boot."
   @spec resume_all() :: :ok
   def resume_all do
+    DeviceSync.resume_all()
+
     for project_id <- Repository.open_projects(),
         %{} = project <- [CodeMySpec.Repo.get(CodeMySpec.Projects.Project, project_id)] do
       ensure_worker(%Scope{
@@ -468,7 +481,7 @@ defmodule CodeMySpec.PromotionQueue do
 
   # A clean, committed checkout, read where it lives.
   defp clean_head(scope, copy) do
-    environment = WorkingCopies.environment(%{scope | active_working_copy_id: copy.id})
+    environment = WorkingCopies.execution_context(%{scope | active_working_copy_id: copy.id})
 
     case Runner.precheck(environment, copy.root, copy.id, nil) do
       {:ok, %{head: head}} when is_binary(head) -> {:ok, head}

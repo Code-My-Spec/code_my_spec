@@ -107,6 +107,31 @@
         "scenarios": {
           "description": "Structured scenarios: %{name: string, status: 'pass'|'partial'|'fail'|'blocked', observation: string, blocker_issue_id: UUID}. Required fields in each entry: name, status, observation. Use 'blocked' for a check that could not run; blocker_issue_id is required for blocked scenarios and must also appear in issue_ids. An overall pass cannot contain failed or blocked scenarios; submit partial when checks remain blocked.",
           "items": {
+            "properties": {
+              "blocker_issue_id": {
+                "description": "Required when status is blocked; must also appear in issue_ids.",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "observation": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pass",
+                  "partial",
+                  "fail",
+                  "blocked"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "status",
+              "observation"
+            ],
             "type": "object"
           },
           "type": "array"
@@ -123,8 +148,8 @@
       "required": [
         "status",
         "scenarios",
-        "task_id",
-        "issue_id"
+        "issue_id",
+        "task_id"
       ],
       "type": "object"
     }
@@ -144,6 +169,31 @@
         "scenarios": {
           "description": "Structured scenarios: %{name: string, status: 'pass'|'partial'|'fail'|'blocked', observation: string, blocker_issue_id: UUID}. Use 'blocked' for a check that could not run; blocker_issue_id is required for blocked scenarios and must also appear in issue_ids. An overall pass cannot contain failed or blocked scenarios; submit partial when checks remain blocked.",
           "items": {
+            "properties": {
+              "blocker_issue_id": {
+                "description": "Required when status is blocked; must also appear in issue_ids.",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "observation": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "pass",
+                  "partial",
+                  "fail",
+                  "blocked"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "status",
+              "observation"
+            ],
             "type": "object"
           },
           "type": "array"

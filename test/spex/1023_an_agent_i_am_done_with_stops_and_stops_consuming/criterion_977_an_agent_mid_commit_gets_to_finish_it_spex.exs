@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story1023.Criterion977Spex do
 
   Drives a real bash tool call against a real git checkout, the way the
   agent's own tool would, rather than a memfs stand-in: a commit is exactly
-  the kind of real OS-level side effect `Environments.write_file/3` does not
+  the kind of real OS-level side effect `ExecutionContexts.write_file/3` does not
   reach.
   """
 

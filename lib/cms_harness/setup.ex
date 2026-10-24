@@ -9,6 +9,38 @@ defmodule CmsHarness.Setup do
 
   alias CmsHarness.Setup.{Command, Prerequisites, Step, Store}
 
+  @doc "The same project-specific record used by desktop tools and setup UI."
+  def project_options(project_id), do: [directory: Path.join(Store.directory(), project_id)]
+
+  def project_status(project_id), do: status(project_options(project_id))
+
+  @doc "Persist orchestration results alongside the prerequisite and checkout operation records."
+  def record_job(project_id, result) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.put(snapshot, "job", json_map(result)), [])
+      end
+    end)
+  end
+
+  @doc "Reuse this device's recorded checks for a checkout, without moving checkout operations."
+  def use_machine_checks(project_id, machine) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- existing_or_new(directory, []) do
+        persist(directory, Map.merge(snapshot, Map.take(machine, ["steps", "state"])), [])
+      end
+    end)
+  end
+
+  @doc "Records the one-time transition from successful setup to continuous project work."
+  def mark_team_activated(project_id) do
+    locked(project_options(project_id), fn directory ->
+      with {:ok, snapshot} <- Store.load(directory) do
+        persist(directory, Map.put(snapshot, "team_activated", true), [])
+      end
+    end)
+  end
+
   @spec status(keyword()) :: {:ok, map()} | :none | {:error, term()}
   def status(opts \\ []), do: Store.load(directory(opts))
 
@@ -115,6 +147,18 @@ defmodule CmsHarness.Setup do
   end
 
   defp perform_operation(
+         %{"state" => "done", "request" => request} = completed,
+         key,
+         request,
+         snapshot,
+         directory,
+         opts,
+         _execute
+       )
+       when key == "connect",
+       do: maybe_run_dev_setup(key, completed, snapshot, directory, opts)
+
+  defp perform_operation(
          %{"state" => "done", "request" => request},
          _key,
          request,
@@ -124,6 +168,19 @@ defmodule CmsHarness.Setup do
          _execute
        ),
        do: {:ok, snapshot}
+
+  # A pending join may have lost its local supervisor (for example a missing
+  # file watcher). Reconnect the same identity without regenerating the app.
+  defp perform_operation(
+         %{"state" => "pending", "request" => request} = pending,
+         "connect",
+         request,
+         snapshot,
+         directory,
+         opts,
+         execute
+       ),
+       do: finish_operation(execute.(), directory, snapshot, "connect", pending, opts)
 
   defp perform_operation(previous, _key, _request, _snapshot, _directory, _opts, _execute)
        when is_map(previous), do: {:error, :operation_already_attempted_start_new_run}

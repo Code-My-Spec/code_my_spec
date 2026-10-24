@@ -93,7 +93,24 @@ defmodule CodeMySpec.Agents.Tools.AStaleBlockedTaskIsCancelledRatherThanStuckTes
     asked =
       ToolLibrary.run(
         "ask_question",
-        %{task_id: task.id, questions: [%{question: "Which criteria first?", options: []}]},
+        %{
+          task_id: task.id,
+          questions: [
+            %{
+              question: "Which criteria first?",
+              options: [
+                %{
+                  label: "Keep current criteria",
+                  description: "Implement the current acceptance criteria"
+                },
+                %{
+                  label: "Revise criteria",
+                  description: "Ask Product to revise the acceptance criteria"
+                }
+              ]
+            }
+          ]
+        },
         Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
       )
 
