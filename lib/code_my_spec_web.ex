@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.AgentPerformance,
       CodeMySpec.Agents.Agent,
       CodeMySpec.PromotionQueue,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.Accounts,

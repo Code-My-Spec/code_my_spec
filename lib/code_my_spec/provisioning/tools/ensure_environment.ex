@@ -2,7 +2,7 @@ defmodule CodeMySpec.Provisioning.Tools.EnsureEnvironment do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Resources
 
   @impl true
@@ -11,40 +11,36 @@ defmodule CodeMySpec.Provisioning.Tools.EnsureEnvironment do
   @impl true
   def description do
     """
-    Create or update a deployment environment row for a project.
-
-    `provisioning_environments` are rows, not an enum — a project starts with
-    none and gets `prod`/`uat`/whatever it needs added. `EnvironmentRepository.
-    list/1` only seeds the initial `prod`+`uat` pair when a project's row set is
-    completely empty, so a project that already has one legacy row (adopted
-    before its devops level was set, or left over from an earlier drill) never
-    gets a later-needed one created automatically — `permitted_environment_rows/1`
-    then filters that lone row out for a devops level it doesn't match, and every
-    step that fans out over environments finds none (`402f9439`).
-
-    This is the manual escape hatch: name the environment a project needs and
-    it exists, the same shape `ProvisioningLive`'s own environment form writes.
-    Host/server/IP are filled in by the domain/server steps as they provision,
-    not required here — an empty environment is a valid starting point.
+    Create or update a durable environment for this project.
+    Choose management "harness" for a destination run by a connected device,
+    such as local development, or "provisioned" for a provider-managed deployment,
+    such as UAT or production. Defaults to "provisioned" for existing callers.
+    An existing environment's management cannot be changed. This does not
+    provision infrastructure or start an app. Use list_environments to inspect
+    destinations and assign_app_instance_environment to bind an app instance.
     """
   end
 
   @impl true
   def params do
     %{
+      management:
+        {:meta, {:enum, ~w(harness provisioned)},
+         [description: "How this destination is managed; defaults to provisioned."]},
       name:
         {:required,
-         {:meta, :string, [description: "Environment name, e.g. \"uat\" or \"prod\"."]}}
+         {:meta, :string,
+          [description: "Environment name, e.g. \"development\", \"uat\" or \"prod\"."]}}
     }
   end
 
   @impl true
-  def call(%{name: name}, context) do
+  def call(%{name: name} = params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, project} <- CodeMySpec.Tools.connected_project(scope) do
       scope
       |> Resources.project_scope(project)
-      |> EnvironmentRepository.put(name, %{})
+      |> Environments.put(name, %{management: Map.get(params, :management, "provisioned")})
       |> reply(name)
     else
       {:error, reason} -> error(reason)

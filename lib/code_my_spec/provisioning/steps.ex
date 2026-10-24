@@ -29,6 +29,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   alias CodeMySpec.{
     AccountSecrets,
+    AppInstances,
     Conversations,
     Deploys,
     ExecutionContexts,
@@ -45,6 +46,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.TempFile
   alias CodeMySpec.Utils.MapAccess
 
+  alias CodeMySpec.Environments
+
   alias CodeMySpec.Provisioning.{
     Backups,
     Builder,
@@ -54,7 +57,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     Database,
     Deploy,
     Dns,
-    EnvironmentRepository,
     Hetzner,
     HostBaseline,
     Registry,
@@ -1051,7 +1053,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Sending domains at Resend for prod rows the devops level no longer
   # permits — left behind when the level narrowed after a run.
   defp mail_orphans(scope, base) do
-    for environment <- EnvironmentRepository.names(scope),
+    for environment <- Environments.deployment_names(scope),
         environment in ["prod", "production"],
         sending = Resend.sending_domain(base, environment),
         match?({:ok, _}, Resend.find_domain(scope, sending)) do
@@ -2001,7 +2003,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Tells `Deploy.run/3` whether a failing health check protects something
   # live (see `Deploy.skip_health?/3`). Unknown reads as `true`.
   defp previously_deployed?(scope, environment) do
-    case EnvironmentRepository.get(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
       %{first_deployed_at: nil} -> false
       %{first_deployed_at: %DateTime{}} -> true
       _ -> true
@@ -2103,7 +2105,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp environment_architecture(scope, environment) do
-    case EnvironmentRepository.get(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
       %{server_name: name} when is_binary(name) -> server_architecture(scope, name)
       _ -> {:error, "cannot build for #{environment}: it has no server yet"}
     end
@@ -2839,7 +2841,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The environment's own hostname — not the project's domain except for
   # production. `nil` when unset; callers fall back to `domain/1`.
   defp environment_host(scope, environment) do
-    case EnvironmentRepository.get(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
       %{host: host} when is_binary(host) and host != "" -> host
       _ -> nil
     end
@@ -2884,9 +2886,18 @@ defmodule CodeMySpec.Provisioning.Steps do
               deploy_record_attrs(image, version)
             )
 
+          environment_row = Environments.get_deployment(scope, environment)
+
+          {:ok, _instance} =
+            AppInstances.record_deployment(scope, environment_row.id, %{
+              confirmed_at: result.swapped_at,
+              url: "https://#{host}",
+              image: deployed_image_reference(image)
+            })
+
           # On the environment too: `Deploys` is keyed by story, and
           # `previously_deployed?/2` needs an answer without one.
-          :ok = EnvironmentRepository.mark_first_deployed(scope, environment)
+          :ok = Environments.mark_first_deployed(scope, environment)
 
           {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
 
@@ -2895,6 +2906,9 @@ defmodule CodeMySpec.Provisioning.Steps do
       end
     end
   end
+
+  defp deployed_image_reference(%{reference: reference}), do: reference
+  defp deployed_image_reference(_image), do: nil
 
   # A build already ran the deploy on its box (`with_deploy_execution/4`), so
   # its result is reused. Only an unbuilt image (explicit `:image` or
@@ -2948,7 +2962,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     permitted = MapSet.new(permitted_environments(scope))
 
     scope
-    |> EnvironmentRepository.assign_hosts(domain)
+    |> Environments.assign_deployment_hosts(domain)
     |> Enum.filter(&MapSet.member?(permitted, &1.name))
   end
 
@@ -2977,7 +2991,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp linked_server_name(scope, environment_name) do
     with %{server_id: server_id} when is_binary(server_id) <-
-           EnvironmentRepository.get(scope, environment_name),
+           Environments.get_deployment(scope, environment_name),
          %Server{name: name} <- Repo.get(Server, server_id) do
       name
     else
@@ -3341,7 +3355,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # missing after a recorded ip (it existed once) pauses instead.
   # See knowledge/provisioning/steps, "Account servers and networks".
   defp server_creation_gate(scope, environment, name) do
-    record = EnvironmentRepository.get(scope, environment.name)
+    record = Environments.get_deployment(scope, environment.name)
     linked? = linked_server_name(scope, environment.name) != nil
     ever_succeeded? = is_binary(record && record.ip)
 
@@ -3396,10 +3410,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   # when it differs, since every page load verifies.
   defp reconcile_environment_server(scope, environment, name, server) do
     ip = get_in(server, ["public_net", "ipv4", "ip"])
-    recorded = EnvironmentRepository.get(scope, environment)
+    recorded = Environments.get_deployment(scope, environment)
 
     if is_binary(ip) and (recorded == nil or recorded.ip != ip or recorded.server_name != name) do
-      EnvironmentRepository.put(scope, environment, %{server_name: name, ip: ip})
+      Environments.put_deployment(scope, environment, %{server_name: name, ip: ip})
     end
 
     server_resource(server, environment)
@@ -3410,7 +3424,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp record_environment_server(scope, environment, name, server, acc) do
     ip = get_in(server, ["public_net", "ipv4", "ip"])
 
-    case EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip}) do
+    case Environments.put_deployment(scope, environment.name, %{server_name: name, ip: ip}) do
       {:ok, _environment} ->
         {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
 
@@ -3861,7 +3875,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp environment_row(scope, environment) do
-    EnvironmentRepository.get(scope, environment) || %{name: environment}
+    Environments.get_deployment(scope, environment) || %{name: environment}
   end
 
   defp awaiting_first_message(site) do
@@ -3927,7 +3941,7 @@ defmodule CodeMySpec.Provisioning.Steps do
        when is_binary(secret) and secret != "" do
     resources =
       scope
-      |> EnvironmentRepository.names()
+      |> Environments.deployment_names()
       |> Enum.flat_map(fn environment ->
         case put_secret(scope, environment, "RESEND_WEBHOOK_SECRET", secret) do
           {:ok, _} ->
@@ -4132,7 +4146,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # environment's rule. Derived from `ProjectSecrets`, so a key with no file
   # yet is kept too.
   defp with_other_environment_recipients(scope, recipients) do
-    names = EnvironmentRepository.names(scope) -- Map.keys(recipients)
+    names = Environments.deployment_names(scope) -- Map.keys(recipients)
 
     Enum.reduce(names, recipients, fn environment, acc ->
       with {:ok, private} <- fetch_age_key(scope, environment),

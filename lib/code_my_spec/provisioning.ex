@@ -21,6 +21,7 @@ defmodule CodeMySpec.Provisioning do
     deps: [
       CodeMySpec.AccountSecrets,
       CodeMySpec.AppTokens,
+      CodeMySpec.AppInstances,
       CodeMySpec.Content,
       CodeMySpec.ContentPublishing,
       CodeMySpec.Conversations,
@@ -33,7 +34,7 @@ defmodule CodeMySpec.Provisioning do
       CodeMySpec.LocalScope,
       CodeMySpec.ProjectSecrets,
       CodeMySpec.Projects,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.ProvisioningPlan,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Repo,
@@ -51,7 +52,9 @@ defmodule CodeMySpec.Provisioning do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
 
-  alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository, RunLock, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Provisioning.{QaFixture, RunLock, Steps}
   alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.ProvisioningPlan.{Sequence, Step, StepRepository}
 
@@ -146,7 +149,7 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec environment_names(Scope.t()) :: [String.t()]
   def environment_names(%Scope{} = scope),
-    do: EnvironmentRepository.names(scope)
+    do: Environments.deployment_names(scope)
 
   @doc """
   The project's environments, in full.
@@ -157,17 +160,17 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec environments(Scope.t()) :: [Environment.t()]
   def environments(%Scope{} = scope),
-    do: EnvironmentRepository.list(scope)
+    do: Environments.list_deployment(scope)
 
   @doc """
   A project's environments, seeding none.
 
   The read for anything that is only looking. See
-  `EnvironmentRepository.list_existing/1`.
+  `Environments.list_existing_deployment/1`.
   """
   @spec existing_environments(Scope.t()) :: [Environment.t()]
   def existing_environments(%Scope{} = scope),
-    do: EnvironmentRepository.list_existing(scope)
+    do: Environments.list_existing_deployment(scope)
 
   @doc """
   Add an environment, or update one that is already there.
@@ -181,7 +184,7 @@ defmodule CodeMySpec.Provisioning do
     domain = Map.get(project || %{}, :domain)
     host = Map.get(attrs, :host) || derived_host(name, domain)
 
-    EnvironmentRepository.put(scope, name, Map.put(attrs, :host, host))
+    Environments.put_deployment(scope, name, Map.put(attrs, :host, host))
   end
 
   defp derived_host(_name, domain) when domain in [nil, ""], do: nil
@@ -301,7 +304,7 @@ defmodule CodeMySpec.Provisioning do
   @spec run_step(Scope.t(), atom(), String.t() | nil, keyword()) ::
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
   def run_step(%Scope{} = scope, key, environment, opts) do
-    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts, environment)
+    opts = QaFixture.options(scope, opts, environment)
     execute = Keyword.get(opts, :execute, &execute_step/3)
     scope = reread_project(scope)
     previous = StepRepository.get(scope, key, environment)
@@ -544,7 +547,7 @@ defmodule CodeMySpec.Provisioning do
   @spec verify(Scope.t(), atom(), keyword()) ::
           {:ok, :satisfied, [map()]} | {:ok, :absent} | {:error, term()}
   def verify(%Scope{} = scope, key, opts \\ []) do
-    opts = CodeMySpec.Provisioning.QaFixture.options(scope, opts)
+    opts = QaFixture.options(scope, opts)
 
     case Keyword.get(opts, :verify) do
       nil -> Steps.verify(key, scope, opts)

@@ -14,7 +14,7 @@ defmodule CodeMySpec.Provisioning.Tools do
       CodeMySpec.Integrations,
       CodeMySpec.LocalScope,
       CodeMySpec.Provisioning,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.ProvisioningPlan,
       CodeMySpec.Resources,
       CodeMySpec.Servers,

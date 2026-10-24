@@ -35,6 +35,8 @@ defmodule CodeMySpec.WorkingCopiesAnnounceTest do
       WorkingCopies.issue(scope, nil, device: device_fixture(scope), root: "/a/checkout")
 
     {:ok, copy} = WorkingCopies.report_root(copy, "/a/checkout")
+    # Establish the runtime and development destination before observing polls.
+    {:ok, _instance} = AppInstances.ensure_default(scope, copy)
     drain(scope)
 
     %{scope: scope, copy: copy}

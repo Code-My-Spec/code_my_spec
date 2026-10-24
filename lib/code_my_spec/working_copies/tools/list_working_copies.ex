@@ -84,6 +84,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.ListWorkingCopies do
   defp instance_row(instance) do
     AppInstances.descriptor(instance)
     |> Map.merge(%{
+      "environment_id" => instance.environment_id,
       "status" => instance.status,
       "url" => instance.url,
       "commit" => instance.commit,

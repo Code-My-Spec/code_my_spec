@@ -18,7 +18,7 @@ defmodule CodeMySpec.Telemetry do
   answer (a spec, a resumed run) can supply its own instead.
 
   Setup refuses to run ahead of the environment's own server -- there is
-  nowhere to run a collector otherwise, the same `EnvironmentRepository`
+  nowhere to run a collector otherwise, the same `Environments`
   address check `Steps.on_the_environments_box/3` makes before backups.
   """
 

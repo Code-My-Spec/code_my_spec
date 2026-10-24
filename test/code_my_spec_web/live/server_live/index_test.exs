@@ -14,7 +14,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.AccountSecrets
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Hetzner
 
   setup [:register_log_in_setup_account]
@@ -100,14 +100,14 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Metric Flow")
     project_scope = project_scope(scope, project)
-    {:ok, _env} = EnvironmentRepository.put(project_scope, "prod", %{})
-    assert %{server_id: nil} = EnvironmentRepository.get(project_scope, "prod")
+    {:ok, _env} = Environments.put(project_scope, "prod", %{})
+    assert %{server_id: nil} = Environments.get(project_scope, "prod")
 
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     link_and_edit(view, "fuellytics-prod")
     save_environment(view, "prod")
 
-    assert %{server_id: server_id} = EnvironmentRepository.get(project_scope, "prod")
+    assert %{server_id: server_id} = Environments.get(project_scope, "prod")
     refute is_nil(server_id)
 
     html = reload(conn)
@@ -136,13 +136,13 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Metric Flow")
     project_scope = project_scope(scope, project)
-    {:ok, _env} = EnvironmentRepository.put(project_scope, "uat", %{})
+    {:ok, _env} = Environments.put(project_scope, "uat", %{})
 
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     link_and_edit(view, "fuellytics")
     save_environment(view, "uat")
 
-    assert %{server_id: server_id} = EnvironmentRepository.get(project_scope, "uat")
+    assert %{server_id: server_id} = Environments.get(project_scope, "uat")
     refute is_nil(server_id)
     assert reload(conn) =~ "Metric Flow / uat"
 
@@ -152,7 +152,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     save_environment(view, "")
 
-    assert %{server_id: nil} = EnvironmentRepository.get(project_scope, "uat")
+    assert %{server_id: nil} = Environments.get(project_scope, "uat")
     assert reload(conn) =~ "not used by any project"
   end
 
@@ -164,12 +164,12 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope, name: "Metric Flow")
     project_scope = project_scope(scope, project)
-    {:ok, _env} = EnvironmentRepository.put(project_scope, "uat", %{})
+    {:ok, _env} = Environments.put(project_scope, "uat", %{})
 
     {:ok, view, _html} = live(conn, ~p"/app/servers")
     link_and_edit(view, "fuellytics")
     save_environment(view, "uat")
-    assert %{server_id: uat_server_id} = EnvironmentRepository.get(project_scope, "uat")
+    assert %{server_id: uat_server_id} = Environments.get(project_scope, "uat")
     refute is_nil(uat_server_id)
 
     view
@@ -178,7 +178,7 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
 
     save_environment(view, "staging")
 
-    assert %{server_id: nil} = EnvironmentRepository.get(project_scope, "uat")
+    assert %{server_id: nil} = Environments.get(project_scope, "uat")
   end
 
   describe "in the project's console" do

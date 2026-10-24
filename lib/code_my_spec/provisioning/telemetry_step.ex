@@ -7,8 +7,8 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
   Telemetry reads and checks what this sets up, and sits below Provisioning.
   """
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.ClickHouse
-  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Telemetry
   alias CodeMySpec.Users.Scope
 
@@ -36,7 +36,7 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
   ## -- Private --
 
   defp require_server(scope, environment) do
-    case EnvironmentRepository.get(scope, environment) do
+    case Environments.get_deployment(scope, environment) do
       %{ip: ip} when is_binary(ip) and ip != "" ->
         :ok
 

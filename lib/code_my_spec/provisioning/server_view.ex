@@ -10,7 +10,7 @@ defmodule CodeMySpec.Provisioning.ServerView do
   machine", which is what someone looking at a box actually asks.
 
   The join already exists and is exact, so no guessing is involved:
-  `provisioning_environments.server_name` names the box, and every step that
+  `environments.server_name` names the box, and every step that
   fans out tags its resources `environment=<name>`. An environment row gives
   the (project, environment) pairs a server carries; the tag says which of that
   project's resources belong to each.

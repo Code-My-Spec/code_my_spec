@@ -7,7 +7,7 @@ defmodule CodeMySpec.Provisioning.Tools.ReadRegistryCredentialTest do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Registry
   alias CodeMySpec.Servers.Server
@@ -73,7 +73,7 @@ defmodule CodeMySpec.Provisioning.Tools.ReadRegistryCredentialTest do
   defp link_environment(scope, environment, name) do
     {:ok, _} = Server.link(scope, %{name: name})
     linked = Server.get_linked(scope, name)
-    {:ok, _} = EnvironmentRepository.put(scope, environment, %{server_id: linked.id})
+    {:ok, _} = Environments.put(scope, environment, %{server_id: linked.id})
   end
 
   defp record_server_and_network(owner) do

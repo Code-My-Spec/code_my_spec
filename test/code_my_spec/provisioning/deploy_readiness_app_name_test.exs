@@ -44,7 +44,9 @@ defmodule CodeMySpec.Provisioning.DeployReadinessAppNameTest do
           """
         )
 
+      {:ok, destination} = CodeMySpec.Environments.put(scope, "uat", %{})
       assert {:error, reason} = Steps.run(:deploy, scope, [])
+      assert CodeMySpec.AppInstances.list_for_environment(scope, destination.id) == []
 
       assert reason =~ "lib/market_my_spec_web/router.ex"
       assert reason =~ "lib/market_my_spec/release.ex"
@@ -56,7 +58,9 @@ defmodule CodeMySpec.Provisioning.DeployReadinessAppNameTest do
     test "falls back to module_name rather than the literal \"App\"", %{} do
       scope = provisioning_scope_fixture(%{module_name: "MarketMySpec"})
 
+      {:ok, destination} = CodeMySpec.Environments.put(scope, "uat", %{})
       assert {:error, reason} = Steps.run(:deploy, scope, [])
+      assert CodeMySpec.AppInstances.list_for_environment(scope, destination.id) == []
 
       assert reason =~ "lib/market_my_spec_web/router.ex"
       refute reason =~ "lib/app_web", "the unsubstituted generator template path leaked through"

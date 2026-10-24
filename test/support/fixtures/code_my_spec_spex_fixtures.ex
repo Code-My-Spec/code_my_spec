@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Embeddings,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Provisioning.Hetzner,
       CodeMySpec.Stories,
       CodeMySpec.AccountSecrets,
@@ -5741,9 +5741,9 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec seed_environment_ip(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def seed_environment_ip(%Scope{} = scope, name, ip) do
-    alias CodeMySpec.Provisioning.EnvironmentRepository
+    alias CodeMySpec.Environments
 
-    EnvironmentRepository.put(scope, name, %{ip: ip})
+    Environments.put(scope, name, %{ip: ip})
   end
 
   @doc """
@@ -5771,13 +5771,13 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec link_environment_to_server(Scope.t(), String.t(), String.t()) ::
           {:ok, map()} | {:error, term()}
   def link_environment_to_server(%Scope{} = scope, environment_name, server_name) do
-    alias CodeMySpec.Provisioning.EnvironmentRepository
+    alias CodeMySpec.Environments
     alias CodeMySpec.Servers
     alias CodeMySpec.Servers.Server
 
     with {:ok, _} <- Server.link(scope, %{name: server_name}),
          %{id: server_id} <- Servers.get_linked(scope, server_name) do
-      EnvironmentRepository.put(scope, environment_name, %{server_id: server_id})
+      Environments.put(scope, environment_name, %{server_id: server_id})
     else
       nil -> {:error, :not_found}
       error -> error
@@ -5840,9 +5840,9 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec environments(Scope.t()) :: [map()]
   def environments(%Scope{} = scope) do
-    alias CodeMySpec.Provisioning.EnvironmentRepository
+    alias CodeMySpec.Environments
 
-    EnvironmentRepository.list(scope)
+    Environments.list_deployment(scope)
   end
 
   @doc """
@@ -5855,11 +5855,12 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec set_environments(Scope.t(), [String.t()]) :: [String.t()]
   def set_environments(%Scope{active_project: %{id: project_id}} = scope, names) do
-    alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository}
+    alias CodeMySpec.Environments
+    alias CodeMySpec.Environments.Environment
 
     # Seed first, so the initial rows exist and can be pruned to the set asked
     # for rather than racing whatever creates them lazily.
-    EnvironmentRepository.list(scope)
+    Environments.list_deployment(scope)
 
     for environment <- CodeMySpec.Repo.all(Environment),
         environment.project_id == project_id,
@@ -5867,9 +5868,9 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Repo.delete!(environment)
     end
 
-    for name <- names, do: EnvironmentRepository.put(scope, name, %{})
+    for name <- names, do: Environments.put(scope, name, %{})
 
-    EnvironmentRepository.names(scope)
+    Environments.deployment_names(scope)
   end
 
   # The throwaway organisation spex repositories belong in — never a personal

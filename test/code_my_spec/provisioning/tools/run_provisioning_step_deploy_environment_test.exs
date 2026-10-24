@@ -15,12 +15,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepDeployEnvironmentTest
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
 
   setup do
     scope = full_scope_fixture()
-    {:ok, _} = EnvironmentRepository.put(scope, "prod", %{})
-    {:ok, _} = EnvironmentRepository.put(scope, "uat", %{})
+    {:ok, _} = Environments.put(scope, "prod", %{})
+    {:ok, _} = Environments.put(scope, "uat", %{})
     %{scope: scope}
   end
 

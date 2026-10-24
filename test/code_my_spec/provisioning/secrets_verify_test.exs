@@ -24,7 +24,8 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Sops, Steps}
 
   @moduletag :sops
 
@@ -343,8 +344,8 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
 
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "uat", %{})
+      {:ok, _} = Environments.put(ctx.scope, "prod", %{})
+      {:ok, _} = Environments.put(ctx.scope, "uat", %{})
       {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
 
       %{prod_public: prod_public}

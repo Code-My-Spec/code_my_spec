@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
+defmodule CodeMySpec.Environments.EnvironmentServersTest do
   @moduledoc """
   One box per environment, which is what having environments is for.
 
@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Steps
@@ -155,7 +155,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   # The case "opted out of prod" above stops short of: a project can opt out
   # of every environment it has a row for, not just one of two. `uat` here
-  # was never seeded — `EnvironmentRepository.put/3` creates exactly the row
+  # was never seeded — `Environments.put/3` creates exactly the row
   # it is given, unlike `list/1`, which seeds both on first read — so this is
   # a `prod` row with `devops: :uat` filtering it out, leaving nothing.
   # `ensure_environment_servers/3` used to fan out over that empty list with
@@ -173,7 +173,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     {:ok, _} = Server.link(ctx.scope, %{name: "fuellytics-prod"})
     linked = Server.get_linked(ctx.scope, "fuellytics-prod")
-    {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{server_id: linked.id})
+    {:ok, _} = Environments.put(ctx.scope, "prod", %{server_id: linked.id})
 
     # uat too — the escape hatch that used to let an unlinked environment
     # through with a derived name is gone, so uat needs its own grant to
@@ -492,7 +492,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     do: json(conn, %{"network" => %{"id" => 1, "name" => payload["name"]}})
 
   test "refuses instead of reporting done when every environment is filtered out", ctx do
-    {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+    {:ok, _} = Environments.put(ctx.scope, "prod", %{})
     {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
     record_requests(self(), :always_available)
 
@@ -546,7 +546,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   # Grants the account's link for one environment, the same way the account
   # side of the hard line does it for real (`CodeMySpec.Servers.Server.link/2`
-  # then `EnvironmentRepository.put/3`). `confirm_new_server` used to let a
+  # then `Environments.put/3`). `confirm_new_server` used to let a
   # project-scoped call reach the provider for a name nobody had approved —
   # removed along with the outage it caused — so every test asserting a
   # server actually gets created now has to grant that first, same as a
@@ -555,7 +555,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   defp link_environment(scope, environment, name) do
     {:ok, _} = Server.link(scope, %{name: name})
     linked = Server.get_linked(scope, name)
-    {:ok, _} = EnvironmentRepository.put(scope, environment, %{server_id: linked.id})
+    {:ok, _} = Environments.put(scope, environment, %{server_id: linked.id})
   end
 
   # Links each environment to the exact derived name `Steps.server_name/3`
@@ -782,5 +782,18 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     after
       0 -> Enum.sort(acc)
     end
+  end
+
+  test "provisioning cannot claim a harness-managed destination" do
+    scope = CodeMySpec.UsersFixtures.full_scope_fixture()
+    {:ok, environment} = Environments.put(scope, "development", %{management: :harness})
+
+    assert {:error, :not_provisioned_environment} =
+             CodeMySpec.Provisioning.put_environment(scope, "development", %{
+               host: "dev.example.com"
+             })
+
+    assert Environments.get(scope, "development").id == environment.id
+    assert Environments.get(scope, "development").host == nil
   end
 end

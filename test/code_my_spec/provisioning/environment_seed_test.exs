@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Provisioning.EnvironmentSeedTest do
+defmodule CodeMySpec.Environments.EnvironmentSeedTest do
   @moduledoc """
   Seeding a project's environments is all-or-nothing, under concurrency.
 
@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentSeedTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias Ecto.Adapters.SQL.Sandbox
 
   setup do
@@ -28,10 +28,22 @@ defmodule CodeMySpec.Provisioning.EnvironmentSeedTest do
     {:ok, scope: full_scope_fixture()}
   end
 
+  test "a harness development environment does not suppress or join deployment seeding", ctx do
+    {:ok, development} = Environments.put(ctx.scope, "development", %{management: :harness})
+
+    assert Enum.map(Environments.list_deployment(ctx.scope), & &1.name) == ["prod", "uat"]
+    assert Environments.get(ctx.scope, "development").id == development.id
+
+    assert Enum.all?(
+             Environments.list_existing_deployment(ctx.scope),
+             &(&1.management == :provisioned)
+           )
+  end
+
   test "every concurrent reader sees the whole initial set", ctx do
     readers =
       for _ <- 1..12 do
-        Task.async(fn -> EnvironmentRepository.list(ctx.scope) end)
+        Task.async(fn -> Environments.list_deployment(ctx.scope) end)
       end
 
     results = Task.await_many(readers, 5_000)
@@ -46,23 +58,23 @@ defmodule CodeMySpec.Provisioning.EnvironmentSeedTest do
 
   test "concurrent readers do not create duplicate rows", ctx do
     for _ <- 1..12 do
-      Task.async(fn -> EnvironmentRepository.list(ctx.scope) end)
+      Task.async(fn -> Environments.list_deployment(ctx.scope) end)
     end
     |> Task.await_many(5_000)
 
-    names = EnvironmentRepository.list_existing(ctx.scope) |> Enum.map(& &1.name)
+    names = Environments.list_existing_deployment(ctx.scope) |> Enum.map(& &1.name)
 
     assert Enum.sort(names) == ["prod", "uat"], "seeded #{inspect(names)}"
   end
 
   test "reading again returns the same rows rather than seeding a second set", ctx do
-    first = EnvironmentRepository.list(ctx.scope)
-    second = EnvironmentRepository.list(ctx.scope)
+    first = Environments.list_deployment(ctx.scope)
+    second = Environments.list_deployment(ctx.scope)
 
     assert Enum.map(first, & &1.id) == Enum.map(second, & &1.id)
   end
 
   test "production comes first, which is the order the steps fan out in", ctx do
-    assert EnvironmentRepository.list(ctx.scope) |> Enum.map(& &1.name) == ["prod", "uat"]
+    assert Environments.list_deployment(ctx.scope) |> Enum.map(& &1.name) == ["prod", "uat"]
   end
 end

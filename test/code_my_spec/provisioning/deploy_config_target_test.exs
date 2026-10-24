@@ -23,7 +23,8 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
   alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.ProjectSecrets
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Sops, Steps}
 
   @domain "drill.example.com"
 
@@ -56,7 +57,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
 
     scope = %{scope | active_project: project}
-    {:ok, _} = EnvironmentRepository.put(scope, "uat", %{})
+    {:ok, _} = Environments.put(scope, "uat", %{})
 
     {:ok, {public, private}} = Sops.generate_key()
     ProjectSecrets.put_value(scope, "age_private_key_uat", private)

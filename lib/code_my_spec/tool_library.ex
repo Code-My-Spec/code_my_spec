@@ -18,6 +18,7 @@ defmodule CodeMySpec.ToolLibrary do
     deps: [
       CodeMySpec.WorkingCopies.Tools,
       CodeMySpec.AppInstances.Tools,
+      CodeMySpec.Environments.Tools,
       CodeMySpec.Projects.Tools,
       CodeMySpec.Stories.Tools,
       CodeMySpec.Provisioning.Tools,
@@ -58,6 +59,7 @@ defmodule CodeMySpec.ToolLibrary do
         CodeMySpec.AgentPerformance.Tools.all() ++
         CodeMySpec.WorkingCopies.Tools.all() ++
         CodeMySpec.AppInstances.Tools.all() ++
+        CodeMySpec.Environments.Tools.all() ++
         CodeMySpec.Stories.Tools.all() ++
         CodeMySpec.Provisioning.Tools.all() ++
         CodeMySpec.Components.Tools.all() ++

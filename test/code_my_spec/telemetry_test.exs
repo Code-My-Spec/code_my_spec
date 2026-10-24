@@ -2,7 +2,7 @@ defmodule CodeMySpec.TelemetryTest do
   use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.ProjectsFixtures
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.TelemetryStep
   alias CodeMySpec.Telemetry
   alias CodeMySpec.UsersFixtures
@@ -24,7 +24,7 @@ defmodule CodeMySpec.TelemetryTest do
     test "proves the collector and returns its resources once the server exists", %{
       scope: scope
     } do
-      EnvironmentRepository.put(scope, "uat", %{ip: "203.0.113.10"})
+      Environments.put(scope, "uat", %{ip: "203.0.113.10"})
 
       probe = fn _opts -> {:ok, %{logs: 1, traces: 1}} end
 
@@ -38,7 +38,7 @@ defmodule CodeMySpec.TelemetryTest do
     end
 
     test "surfaces the probe's own error", %{scope: scope} do
-      EnvironmentRepository.put(scope, "uat", %{ip: "203.0.113.10"})
+      Environments.put(scope, "uat", %{ip: "203.0.113.10"})
 
       probe = fn _opts -> {:error, "the collector is not running"} end
 

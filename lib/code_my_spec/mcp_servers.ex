@@ -17,7 +17,7 @@ defmodule CodeMySpec.McpServers do
       CodeMySpec.AgentPerformance,
       CodeMySpec.Agents.Agent,
       CodeMySpec.PromotionQueue,
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Stories,
       CodeMySpec.ToolLibrary,
       CodeMySpec.Tools,

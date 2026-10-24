@@ -20,7 +20,8 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Steps
 
   @apex "example.com"
   @live_ip "172.64.80.1"
@@ -33,7 +34,7 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @apex})
 
     scope = %{scope | active_project: project}
-    {:ok, _} = EnvironmentRepository.put(scope, "prod", %{host: @apex, ip: @new_ip})
+    {:ok, _} = Environments.put(scope, "prod", %{host: @apex, ip: @new_ip})
 
     {:ok, scope: scope}
   end
@@ -104,7 +105,7 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
     # This run's to move. The apex is the valuable hostname and the one a
     # person did not necessarily choose to give us.
     test "does not pause", %{scope: scope} do
-      {:ok, _} = EnvironmentRepository.put(scope, "uat", %{host: "uat.#{@apex}", ip: @new_ip})
+      {:ok, _} = Environments.put(scope, "uat", %{host: "uat.#{@apex}", ip: @new_ip})
       existing = [%{"name" => "uat.#{@apex}", "type" => "A", "content" => @live_ip}]
 
       refute match?({:paused, _}, Steps.run(:dns, scope, opts(existing)))

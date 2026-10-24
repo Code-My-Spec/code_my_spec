@@ -17,7 +17,8 @@ defmodule CodeMySpec.Provisioning.DnsVerifyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Steps}
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.{Cloudflare, Steps}
 
   setup do
     scope = provisioning_scope_fixture()
@@ -57,7 +58,7 @@ defmodule CodeMySpec.Provisioning.DnsVerifyTest do
 
   defp seed_uat(scope, ip) do
     {:ok, _} =
-      EnvironmentRepository.put(scope, "uat", %{
+      Environments.put(scope, "uat", %{
         host: "uat.astralbi.com",
         server_name: "p-uat",
         ip: ip
@@ -102,7 +103,7 @@ defmodule CodeMySpec.Provisioning.DnsVerifyTest do
     # unsatisfied would be right but useless — this is the state every project
     # is in before the server step runs.
     test "reads absent when no environment has an address", %{scope: scope} do
-      {:ok, _} = EnvironmentRepository.put(scope, "uat", %{host: "uat.astralbi.com"})
+      {:ok, _} = Environments.put(scope, "uat", %{host: "uat.astralbi.com"})
       stub([])
 
       assert {:ok, :absent} = Steps.verify(:dns, scope, [])

@@ -5,7 +5,51 @@ defmodule CodeMySpec.AppInstancesTest do
   import CodeMySpec.DevicesFixtures
 
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.Environments
   alias CodeMySpec.WorkingCopies
+
+  test "main runtime belongs to development while disposable copies remain unassigned" do
+    scope = full_scope_fixture()
+    device = device_fixture(scope)
+    {:ok, main} = WorkingCopies.issue(scope, nil, device: device, root: "/tmp/durable-main")
+    {:ok, main} = WorkingCopies.report_root(main, "/tmp/durable-main")
+    {:ok, instance} = AppInstances.ensure_default(scope, main)
+    environment = Environments.get_by_id(scope, instance.environment_id)
+    assert environment.management == :harness
+    assert environment.name == "dev"
+    assert Environments.list_existing_deployment(scope) == []
+    assert {:ok, again} = AppInstances.ensure_default(scope, main)
+    assert again.environment_id == environment.id
+
+    {:ok, copy} = WorkingCopies.issue(scope, nil, device: device, root: "/tmp/ephemeral-qa")
+    {:ok, temporary} = AppInstances.ensure_default(scope, copy)
+    assert is_nil(temporary.environment_id)
+
+    assert Enum.map(AppInstances.list_for_environment(scope, environment.id), & &1.id) == [
+             instance.id
+           ]
+  end
+
+  test "environment assignment is project scoped and survives instance replacement" do
+    scope = full_scope_fixture()
+    other_scope = full_scope_fixture()
+    {:ok, environment} = Environments.put(scope, "uat", %{})
+    {:ok, foreign} = Environments.put(other_scope, "prod", %{})
+    attrs = %{port_mode: :configured, database_mode: :configured, environment_id: environment.id}
+    {:ok, instance} = AppInstances.create(scope, attrs)
+
+    assert {:error, :environment_not_found} =
+             AppInstances.update(scope, instance, %{environment_id: foreign.id})
+
+    assert {:error, :environment_not_found} = AppInstances.create(other_scope, attrs)
+    assert AppInstances.list_for_environment(other_scope, environment.id) == []
+    assert {:error, :environment_in_use} = Environments.delete(scope, "uat")
+    assert {:ok, _} = AppInstances.delete(scope, instance.id)
+    assert Environments.get(scope, "uat").id == environment.id
+    assert {:ok, replacement} = AppInstances.create(scope, attrs)
+    assert replacement.id != instance.id
+    assert replacement.environment_id == environment.id
+  end
 
   test "default instance follows copy root while retaining its initial policy" do
     scope = full_scope_fixture()

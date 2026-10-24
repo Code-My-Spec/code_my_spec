@@ -13,7 +13,7 @@ defmodule CodeMySpec.Deploys do
   use Boundary,
     top_level?: true,
     deps: [
-      CodeMySpec.Provisioning.EnvironmentRepository,
+      CodeMySpec.Environments,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Repo,
       CodeMySpec.Requirements.GraphInputs,
@@ -24,7 +24,7 @@ defmodule CodeMySpec.Deploys do
   import Ecto.Query
 
   alias CodeMySpec.Deploys.Deploy
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.GraphInputs
@@ -200,7 +200,7 @@ defmodule CodeMySpec.Deploys do
   @spec deployed_environments(Scope.t()) :: [String.t()]
   def deployed_environments(%Scope{} = scope) do
     scope
-    |> EnvironmentRepository.list_existing()
+    |> Environments.list_existing_deployment()
     |> Enum.map(& &1.name)
     |> Enum.filter(&environment_deployed?(scope, &1))
   end
@@ -218,7 +218,7 @@ defmodule CodeMySpec.Deploys do
   def server_deployed?(%Scope{} = scope, server_name) do
     environments =
       scope
-      |> EnvironmentRepository.list_existing()
+      |> Environments.list_existing_deployment()
       |> Enum.filter(&(&1.server_name == server_name))
 
     case environments do

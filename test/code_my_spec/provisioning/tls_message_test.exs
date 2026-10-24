@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
 
   alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
-  alias CodeMySpec.Provisioning.EnvironmentRepository
+  alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Steps
 
   setup do
@@ -340,7 +340,7 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
     # `uat` and `prod` on first read — so this reproduces the gap without a
     # real Hetzner project.
     test "names the filtered environment instead of blaming the domain", ctx do
-      {:ok, _} = EnvironmentRepository.put(ctx.scope, "prod", %{})
+      {:ok, _} = Environments.put(ctx.scope, "prod", %{})
       {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
 
       assert {:error, message} = Steps.run(:tls, ctx.scope, [])
