@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
 
       when_ "setup runs", context do
         {:ok, snapshot} =
-          CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+          CodeMySpecSpex.Fixtures.check_platform_machine_prerequisites()
 
         {:ok, Map.put(context, :snapshot, snapshot)}
       end
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2318Spex do
       end
 
       then_ "the box is ready", context do
-        assert CmsHarness.Setup.prerequisites_passed?(context.snapshot)
+        assert CodeMySpecSpex.Fixtures.machine_prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end

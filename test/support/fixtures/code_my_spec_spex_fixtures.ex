@@ -1178,6 +1178,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
 
+  def check_platform_machine_prerequisites do
+    CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+  end
+
+  defdelegate machine_prerequisites_passed?(snapshot),
+    to: CmsHarness.Setup,
+    as: :prerequisites_passed?
+
+  defdelegate machine_setup_status(), to: CmsHarness.Setup, as: :status
+
   defdelegate without_setup_postgres(context),
     to: CmsHarnessTest.SetupFixture,
     as: :without_postgres
