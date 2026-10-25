@@ -16,6 +16,27 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
+  test "discovery answers during a restart rebuild and recovers once the writer is ready" do
+    scope = full_scope_fixture()
+    alias CodeMySpec.Requirements.IncrementalGraph
+
+    {:ok, pid} = IncrementalGraph.ensure_projecting(scope)
+    :ok = IncrementalGraph.settle(scope.active_project_id)
+
+    CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
+      started = System.monotonic_time(:millisecond)
+      assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
+      assert System.monotonic_time(:millisecond) - started < 3_000
+      assert text =~ "retry in 5 s"
+      refute text =~ "requirement_name=`"
+      refute text =~ "All requirements satisfied"
+    end)
+
+    :ok = IncrementalGraph.settle(scope.active_project_id)
+    assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
+    refute text =~ "retry in 5 s"
+  end
+
   describe "execute/2" do
     # A session that names no checkout has nothing to answer for, and answering
     # it with the project's work hands an agent a queue it has no tree to build
