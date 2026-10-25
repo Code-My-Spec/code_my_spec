@@ -20,14 +20,16 @@ defmodule CodeMySpec.Requirements.AProjectorThatDiedIsRestartedByTheNextReadTest
     stop(pid)
 
     on_exit(fn ->
-      case Registry.lookup(CodeMySpec.Requirements.Registry, {scope.active_project_id, :graph}) do
-        [{pid, _}] -> stop(pid)
-        [] -> :ok
-      end
+      CodeMySpec.Requirements.Registry
+      |> Registry.lookup({scope.active_project_id, :graph})
+      |> stop_registered()
     end)
 
     %{scope: scope}
   end
+
+  defp stop_registered([{pid, _}]), do: stop(pid)
+  defp stop_registered([]), do: :ok
 
   defp stop(pid),
     do: DynamicSupervisor.terminate_child(CodeMySpec.Requirements.WatcherSupervisor, pid)

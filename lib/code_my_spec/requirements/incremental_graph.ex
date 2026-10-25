@@ -87,9 +87,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   @doc """
   Whether this project's projector died without being stopped, so nothing
   consumes its marks and its rows are going stale. Its supervisor gives up on
-  a projector whose restarts fail too, as they do while its module recompiles:
-  1148's triage requirement read "1 untriaged" through 44 offers that way
-  (issue 2c76a860).
+  a projector whose restarts fail too, as they do while its module recompiles.
   """
   @spec orphaned?(Ecto.UUID.t()) :: boolean()
   def orphaned?(project_id) when is_binary(project_id),
@@ -309,7 +307,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       owner_gone(state, Exception.message(error))
 
     error ->
-      # 09fd73a4: this swallows any recompute failure other than a sandbox
+      # This swallows any recompute failure other than a sandbox
       # owner going away, leaving the cached graph exactly as stale as before
       # the attempt -- a satisfied requirement (ready_for_qa, qa_complete)
       # can then be re-offered forever if the recompute that would clear it
