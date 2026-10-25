@@ -86,6 +86,7 @@ defmodule CodeMySpec.Agents.Main.WorkRepository do
         agent_id: agent.id,
         role: agent.role,
         agent_status: Agents.lifecycle(agent, present),
+        external?: agent.engine in [:claude_code, :codex],
         working_copy_id: agent.working_copy_id,
         working_copy_root: copy && copy.root,
         issue_id: agent.issue_id,
