@@ -123,8 +123,8 @@ defmodule CmsHarness.Agents.ProviderTest do
 
       assert config.persist_session
       assert config.workdir == "/tmp/copy"
-      assert "features.shell_tool=false" in config.config_overrides
-      assert "features.unified_exec=false" in config.config_overrides
+      # Codex's own shell and other native tools are switched off by Alloy's
+      # provider on every run (its own test, "Codex's own tools are off").
     end
 
     # Issue 199e6ac1: told its sandbox was read-only, a Codex coder refused to

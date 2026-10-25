@@ -51,10 +51,10 @@ defmodule CmsHarness.Agents.Provider do
   # working copy, which `persist_session` requires. `persist_session` resumes
   # Codex's own thread instead of resending the transcript every turn; the
   # engine changes `:session_generation` after a turn that failed or was
-  # stopped. `config_overrides` turn off Codex's own shell: the outer loop's
-  # tools run commands, and left on, Codex answered for them inside its
-  # read-only sandbox and the loop never saw a tool call. They also drop the
-  # permissions instructions: Alloy runs Codex read-only, and Codex told the
+  # stopped. Alloy turns off Codex's own shell and other native tools: the
+  # outer loop's tools run commands, and left on, Codex answered for them
+  # inside its read-only sandbox and the loop never saw a tool call. The
+  # override here drops the permissions instructions: Alloy runs Codex read-only, and Codex told the
   # model "`sandbox_mode` is `read-only`: The sandbox only permits reading
   # files", so it refused to ask for the outer Edit/Write tools that do the
   # writing, scoped to the checkout. Codex's own process stays read-only. See
@@ -66,11 +66,9 @@ defmodule CmsHarness.Agents.Provider do
         workdir: Keyword.get(opts, :working_copy),
         codex_home: codex_home(credential),
         persist_session: true,
-        config_overrides: [
-          "features.shell_tool=false",
-          "features.unified_exec=false",
-          "include_permissions_instructions=false"
-        ],
+        # Codex's own tools are switched off in Alloy itself (its provider's
+        # native-tools list); this drops only the permissions instructions.
+        config_overrides: ["include_permissions_instructions=false"],
         timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
       }
       |> with_command_runner()
