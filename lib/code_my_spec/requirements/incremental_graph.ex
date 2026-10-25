@@ -75,10 +75,25 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   """
   @spec running?(Ecto.UUID.t() | nil) :: boolean()
   def running?(project_id) when is_binary(project_id) do
-    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) != []
+    # Alive, not only registered: Registry drops a dead process's entry later.
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
+      [{pid, _}] -> Process.alive?(pid)
+      [] -> false
+    end
   end
 
   def running?(_no_project), do: false
+
+  @doc """
+  Whether this project's projector died without being stopped, so nothing
+  consumes its marks and its rows are going stale. Its supervisor gives up on
+  a projector whose restarts fail too, as they do while its module recompiles:
+  1148's triage requirement read "1 untriaged" through 44 offers that way
+  (issue 2c76a860).
+  """
+  @spec orphaned?(Ecto.UUID.t()) :: boolean()
+  def orphaned?(project_id) when is_binary(project_id),
+    do: :persistent_term.get(expected_key(project_id), false) and not running?(project_id)
 
   @doc """
   Handle everything pending now, before the caller compares.
@@ -196,6 +211,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     Process.flag(:trap_exit, true)
 
     GraphInputs.subscribe(project_id)
+    :persistent_term.put(expected_key(project_id), true)
 
     # Establish every vantage on arrival: a vantage with rows is trusted (rows
     # and marks are durable), one without is seeded whole. Sent rather than done
@@ -261,6 +277,19 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   def handle_info({:graph_inputs_changed, _project_id}, state), do: {:noreply, drain(state)}
 
   def handle_info(_other, state), do: {:noreply, state}
+
+  # Only a stop clears the mark. A crash keeps it, and one whose module was gone
+  # (`:4000` recompiling under it after a landing) never reaches here at all.
+  @impl true
+  def terminate(reason, %{project_id: project_id})
+      when reason in [:normal, :shutdown] or
+             (is_tuple(reason) and elem(reason, 0) == :shutdown) do
+    :persistent_term.erase(expected_key(project_id))
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  defp expected_key(project_id), do: {__MODULE__, :expected, project_id}
 
   # Nothing pending, seeded, and every requested vantage established is the
   # common case and costs one query. Otherwise it computes: an unseeded
