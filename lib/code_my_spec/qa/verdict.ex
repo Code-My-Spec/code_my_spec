@@ -136,6 +136,12 @@ defmodule CodeMySpec.Qa.Verdict do
 
   defp blocking_issue(_scope, _story, _attempt), do: nil
 
+  # Only a possible product defect holds the story: an `app` issue. QA cites
+  # the environment it could not test in (a harness restart, a dying MCP
+  # session) as `framework` or `qa`; recorded, but it is not the story's to
+  # wait on, and holding on it withheld 1157 four times in a day.
+  defp cross_story_blocker?(%{scope: scope}, _story) when scope != :app, do: false
+
   defp cross_story_blocker?(%{status: status, story_id: issue_story_id}, %{id: story_id})
        when status in [:incoming, :accepted],
        do: issue_story_id != story_id

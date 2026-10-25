@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
 
   alias CodeMySpec.Provisioning.QaFixture
   alias CodeMySpecWeb.QaEnvironments
+  alias ExOauth2Provider.AccessTokens
 
   def create(conn, params) do
     with {:ok, scope} <- authenticate(params),
@@ -138,7 +139,9 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   project, copy or agent and every call answers "no working copy". This
   records the checkout this app runs in as a project and working copy, with a
   local environment so analysis runs here, and a terminal agent per role in
-  `roles`. Each agent's headers address `/mcp/harness` as that agent.
+  `roles`. Each agent's headers address `/mcp/harness` as that agent, bearer
+  token included: `/mcp/harness` refuses a call without one, and a copy's
+  cloned database holds only the seed user's expired tokens.
   """
   def qa_agents(conn, params) do
     root = File.cwd!()
@@ -146,7 +149,8 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
 
     with {:ok, scope} <- authenticate(params),
          {:ok, scope} <- qa_copy(scope, root),
-         {:ok, agents} <- qa_terminals(scope, roles) do
+         {:ok, agents} <- qa_terminals(scope, roles),
+         {:ok, token} <- qa_token(scope) do
       json(conn, %{
         project_id: scope.active_project_id,
         working_copy_id: scope.active_working_copy_id,
@@ -156,7 +160,11 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
             %{
               agent_id: agent.id,
               role: agent.role,
-              headers: %{"X-Project-ID" => scope.active_project_id, "X-Agent-Id" => agent.id}
+              headers: %{
+                "Authorization" => "Bearer " <> token.token,
+                "X-Project-ID" => scope.active_project_id,
+                "X-Agent-Id" => agent.id
+              }
             }
           end)
       })
@@ -168,6 +176,15 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
         refuse(conn)
     end
   end
+
+  # Long enough for a QA session; nothing refreshes it.
+  @qa_token_seconds 12 * 60 * 60
+
+  defp qa_token(scope),
+    do:
+      AccessTokens.create_token(scope.user, %{expires_in: @qa_token_seconds},
+        otp_app: :code_my_spec
+      )
 
   defp qa_copy(scope, root) do
     with {:ok, project} <- qa_project(scope, root),

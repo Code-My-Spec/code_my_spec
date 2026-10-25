@@ -95,17 +95,21 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     Enum.filter(digest.work, fn entry ->
       MapSet.member?(stalled, entry.agent_id) or entry.problems != [] or
         entry.blocked_reasons != [] or entry.task_status == :blocked or
-        entry.agent_status in [:starting, :pending] or
-        AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
+        starting?(entry) or AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
         AgentWork.timing_out?(entry)
     end)
   end
+
+  # A startup to watch: one a harness launches. An external session reads
+  # `:starting` until a person drives it, and naming it every check-in cried wolf.
+  defp starting?(%AgentWork{external?: true}), do: false
+  defp starting?(entry), do: entry.agent_status in [:starting, :pending]
 
   defp waiting_elsewhere?(entry, questions) do
     Enum.any?(questions, &(&1.agent_id == entry.agent_id and &1.holder != "main_agent")) and
       entry.problems == [] and not AgentWork.toolless?(entry) and
       not AgentWork.provider_blocked?(entry) and not AgentWork.timing_out?(entry) and
-      entry.agent_status not in [:starting, :pending]
+      not starting?(entry)
   end
 
   defp question_line(%OpenQuestion{} = question) do
@@ -137,7 +141,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       entry.blocked_reasons != [] or entry.task_status == :blocked ->
         "blocked; inspect the waiting work"
 
-      entry.agent_status in [:starting, :pending] ->
+      starting?(entry) ->
         "starting; inspect startup progress"
 
       entry.problems != [] ->

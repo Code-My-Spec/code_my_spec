@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story839.Criterion3447Spex do
 
       then_ "it is still killed on its timeout, counted from when it actually started",
             context do
-        result = await_result(1, 5_000)
+        result = await_result(1)
 
         assert result["status"] == "error",
                "a hung analyzer must be answered, not left silent forever. " <>

@@ -21,6 +21,31 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
     %{scope: scope, credentials: %{email: scope.user.email, password: password}}
   end
 
+  # Its headers alone got 401 from /mcp/harness, and a copy's cloned database
+  # held only the seed user's expired tokens: QA of 1148 and 1157 stalled.
+  test "qa-agents headers carry a token /mcp/harness accepts", %{credentials: credentials} do
+    start_supervised!({CodeMySpecWeb.QaEnvironments, root: File.cwd!()})
+
+    %{"agents" => [%{"headers" => headers}]} =
+      build_conn()
+      |> post("/dev/qa-agents", Map.put(credentials, :roles, ["qa"]))
+      |> json_response(200)
+
+    assert "Bearer " <> token = headers["Authorization"]
+    assert ExOauth2Provider.AccessTokens.get_by_token(token, otp_app: :code_my_spec)
+
+    # The check `/mcp/harness`'s `:mcp_protected` pipeline makes.
+    conn =
+      headers
+      |> Enum.reduce(build_conn(), fn {k, v}, conn ->
+        put_req_header(conn, String.downcase(k), v)
+      end)
+      |> CodeMySpecWeb.UserAuth.require_oauth_token([])
+
+    refute conn.halted, "the token was refused (#{conn.status})"
+    assert conn.assigns.current_scope.user.email == credentials.email
+  end
+
   test "creates a fresh disposable project and exposes provider controls", %{
     conn: conn,
     scope: scope,

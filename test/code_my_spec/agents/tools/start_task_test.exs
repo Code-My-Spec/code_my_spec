@@ -17,6 +17,26 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
     :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
+  # cc785e7e: "Requirement submitted not found for issue …" read as a broken
+  # claim for an issue that existed and simply was not this agent's to take.
+  test "an issue that is not offered says what state it is in, by key or id" do
+    scope = full_scope_fixture()
+    agent = durable_agent(scope)
+    issue = CodeMySpec.IssuesFixtures.issue_fixture(scope, %{status: :incoming})
+    key = String.slice(issue.id, 0, 8)
+
+    response =
+      ToolLibrary.run(
+        "start_task",
+        %{requirement_name: "submitted", entity_type: "issue", entity_id: key},
+        %{scope: scope, current_scope: scope, agent_id: agent.id}
+      )
+
+    assert match?({:error, _}, response)
+    assert response_text(response) =~ "is not offered to you now. The issue is incoming"
+    refute response_text(response) =~ "not found"
+  end
+
   test "authenticated agents cannot redirect a claim to another durable agent" do
     {scope, _agent, _component, params} = setup_requirement()
     caller = durable_agent(scope)

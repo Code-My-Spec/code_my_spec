@@ -234,7 +234,8 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
 
   test "resolving a partial review's unlinked blocker reoffers the same certification", ctx do
     story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
-    blocker = accept(ctx, %{scope: :qa})
+    # An app issue: one QA cites from the environment does not hold.
+    blocker = accept(ctx, %{scope: :app})
 
     %CodeMySpec.Qa.QaAttempt{}
     |> CodeMySpec.Qa.QaAttempt.changeset(%{
@@ -272,7 +273,8 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
 
   test "resolving a cited blocker cannot release QA after the certified HEAD moved", ctx do
     story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
-    blocker = accept(ctx, %{scope: :qa})
+    # An app issue: one QA cites from the environment does not hold.
+    blocker = accept(ctx, %{scope: :app})
 
     %CodeMySpec.Qa.QaAttempt{}
     |> CodeMySpec.Qa.QaAttempt.changeset(%{

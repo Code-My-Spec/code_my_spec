@@ -40,9 +40,13 @@ defmodule CmsHarnessTest.AnalysisResults do
   @doc """
   Block until `run_id`'s result arrives, draining unrelated ones so they
   cannot be mistaken for the answer.
+
+  `timeout` is a ceiling, not the expected wait: the result returns as soon
+  as it lands. Five seconds failed under parallel gates while every run did
+  finish; a minute only bounds a run that never answers.
   """
   @spec await_result(integer(), timeout()) :: map()
-  def await_result(run_id, timeout \\ 5_000) do
+  def await_result(run_id, timeout \\ 60_000) do
     receive do
       {:analysis_result, _project_id, %{"run_id" => ^run_id} = payload} -> payload
       {:analysis_result, _project_id, _other} -> await_result(run_id, timeout)

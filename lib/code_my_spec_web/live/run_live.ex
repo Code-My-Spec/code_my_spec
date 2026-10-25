@@ -142,6 +142,12 @@ defmodule CodeMySpecWeb.RunLive do
   defp totals(%{source: "credo"}, live, _tests, _failures),
     do: plural(length(findings(live)), "finding")
 
+  # A run that reported nothing live (a scoped run, or one from before story
+  # 1141) still recorded its counts: it read "0 tests" after five passed.
+  defp totals(%{stats: %{"tests" => count} = stats}, _live, [], _failures)
+       when is_integer(count),
+       do: "#{plural(count, "test")}, #{plural(stats["failures"] || 0, "failure")}"
+
   defp totals(_run, _live, tests, failures),
     do: "#{plural(length(tests), "test")}, #{plural(failures, "failure")}"
 

@@ -2,6 +2,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysisTest do
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Tools.StartAnalysis
 
   import CodeMySpec.UsersFixtures
@@ -36,6 +37,33 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysisTest do
     run = RunsRepository.get_run_in_project(scope, run_id)
     assert run.status == :running
     assert run.requested_by["tool"] == "start_analysis"
+  end
+
+  # A /dev/qa-agents agent is a terminal agent QA drives over MCP: no session
+  # of its own receives the result, and QA waited five hours for it.
+  test "a terminal agent is told how to read its result itself", %{scope: scope, frame: frame} do
+    assert :ok = HarnessRegistry.register_executor(scope.active_working_copy_id)
+
+    {:ok, terminal} =
+      AgentsRepository.create_agent(scope, %{
+        provider: "anthropic",
+        engine: :claude_code,
+        role: "qa",
+        status: :running,
+        engine_session_id: "qa-#{Ecto.UUID.generate()}",
+        working_copy: "/tmp/qa-terminal",
+        working_copy_id: scope.active_working_copy_id
+      })
+
+    response =
+      ToolLibrary.run(
+        "start_analysis",
+        %{source: "compiler", paths: ["lib/a.ex"]},
+        frame.assigns |> Map.put(:scope, scope) |> Map.put(:agent_id, terminal.id)
+      )
+
+    assert_receive {:run_analysis, [%{"run_id" => run_id}]}
+    assert text(response) =~ "get_analysis_output({run_id = #{run_id}})"
   end
 
   test "paths scopes the run to specific files instead of the full suite", %{

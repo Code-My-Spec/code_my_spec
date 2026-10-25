@@ -108,8 +108,7 @@ defmodule CodeMySpec.Agents.OperatingRules do
   you as a message when it lands. Do not wait for it, do not poll, and do not
   re-run them. Stop when you have nothing else to do; you will be woken.
 
-  **Only `error` severity blocks you.** Gates refuse on `error` alone. Fix
-  those; leave `warning` and `info` unless someone asks.
+  **`error` and `warning` block you; fix both.** Leave `info` unless asked.
 
   **Never change a rule to clear a gate.** Lowering a check's severity, editing
   analyzer configuration, deleting a failing assertion or marking a test
