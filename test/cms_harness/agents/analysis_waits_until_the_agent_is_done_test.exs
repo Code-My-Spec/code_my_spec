@@ -255,6 +255,27 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     end
   end
 
+  test "stopping an agent while its execution exits completes without cleanup errors", %{
+    root: root
+  } do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "exit-race", "first")
+    assert_receive {:holding_turn, execution}, 5_000
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    monitor = Process.monitor(engine)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        Process.exit(execution, :kill)
+        assert :ok = Machine.stop_agent(agent)
+        assert_receive {:DOWN, ^monitor, :process, ^engine, _reason}, 5_000
+      end)
+
+    refute log =~ "[error]"
+    refute Process.alive?(execution)
+    refute Machine.running?(agent)
+  end
+
   # A turned-off Claude Code agent's `claude -p` kept editing its copy for ten
   # minutes: stopping an agent closed its ports, which does not end the
   # programs behind them, and its loop ran on in a task nothing linked.
