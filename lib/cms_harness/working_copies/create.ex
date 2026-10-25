@@ -38,7 +38,7 @@ defmodule CmsHarness.WorkingCopies.Create do
     # with its name so siblings from other repositories do not collide.
     target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
-    with :ok <- refuse_existing(target),
+    with :ok <- claim_target(root, target),
          {:ok, setup} <- add_worktree(root, target, name),
          base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
@@ -143,26 +143,99 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
   end
 
-  # A directory that is already there is not ours to take. It may hold somebody's
-  # work, and adopting it would give two copies one path.
-  #
-  # 68d37919: one holding `.cms_harness.json` is not just "somebody's work" in
-  # the ordinary sense -- it is our own identity marker, left by an earlier
-  # create this machine made. Naming that possibility is the difference
-  # between "already exists" (true of any stray directory) and "this looks
-  # like an orphan from a create the server never acknowledged", which tells
-  # whoever reads the refusal what actually happened instead of leaving them
-  # to work it out from a bare path.
-  defp refuse_existing(target) do
+  # A directory that is already there is not ours to take: it may hold somebody's
+  # work, and adopting it would give two copies one path. One holding our own
+  # markers was left by a create on this machine that did not finish (an
+  # unacknowledged reply, a restart mid-create); refusing it names that. When
+  # nothing in it can be lost (no tracked change, no commit the source lacks)
+  # it is reclaimed instead, since a refused gate copy wedges the promotion
+  # queue until a person removes it.
+  @doc """
+  `:ok` when `target` is free to make a copy at: absent, or an orphan of ours
+  with nothing in it to lose (removed here). Otherwise the refusal.
+  """
+  @spec claim_target(String.t(), String.t()) :: :ok | {:error, term()}
+  def claim_target(root, target) do
     cond do
       not File.exists?(target) ->
         :ok
 
-      File.exists?(Path.join(target, ".cms_harness.json")) ->
+      ours?(target) and reclaimable?(root, target) ->
+        reclaim(root, target)
+
+      ours?(target) ->
         {:error, {:orphaned_from_failed_create, target}}
 
       true ->
         {:error, {:already_exists, target}}
+    end
+  end
+
+  defp ours?(target),
+    do: Enum.any?([".cms_harness.json", @preparing], &File.exists?(Path.join(target, &1)))
+
+  # A checkout whose HEAD the source already contains and with nothing changed,
+  # or a directory holding nothing but our markers (a create cut off before its
+  # worktree existed).
+  defp reclaimable?(root, target) do
+    if checkout?(target) do
+      head = git_head(target)
+      head != nil and git_clean?(target) and contained?(root, head)
+    else
+      only_markers?(target)
+    end
+  end
+
+  # Its own `.git`, not one found by walking up from it.
+  defp checkout?(target), do: File.exists?(Path.join(target, ".git"))
+
+  defp only_markers?(target) do
+    case File.ls(target) do
+      {:ok, names} -> Enum.all?(names, &(&1 in [".cms_harness.json", @preparing]))
+      _ -> false
+    end
+  end
+
+  defp contained?(root, head),
+    do:
+      match?(
+        {_, 0},
+        System.cmd("git", ["-C", root, "merge-base", "--is-ancestor", head, "HEAD"],
+          stderr_to_stdout: true
+        )
+      )
+
+  defp reclaim(root, target) do
+    branch = checkout?(target) && git_branch(target)
+
+    with :ok <- remove_or_clear(root, target) do
+      if branch,
+        do: System.cmd("git", ["-C", root, "branch", "-D", branch], stderr_to_stdout: true)
+
+      Logger.info("[CmsHarness] reclaimed #{target}, left by a create that did not finish")
+      :ok
+    end
+  end
+
+  defp remove_or_clear(root, target) do
+    if checkout?(target) do
+      case remove_worktree(root, target) do
+        :ok -> :ok
+        {:error, _} -> {:error, {:orphaned_from_failed_create, target}}
+      end
+    else
+      File.rm_rf!(target)
+      :ok
+    end
+  end
+
+  defp git_branch(target) do
+    case System.cmd("git", ["-C", target, "rev-parse", "--abbrev-ref", "HEAD"],
+           stderr_to_stdout: true
+         ) do
+      {"HEAD\n", 0} -> nil
+      {name, 0} -> String.trim(name)
+      _ -> nil
     end
   end
 

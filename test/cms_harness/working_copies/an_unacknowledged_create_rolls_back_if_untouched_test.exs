@@ -96,12 +96,56 @@ defmodule CmsHarness.WorkingCopies.AnUnacknowledgedCreateRollsBackIfUntouchedTes
     assert File.exists?(target)
   end
 
-  test "refuse_existing names an orphan from a failed create rather than a bare already_exists",
+  test "an orphan with work in it is refused, named as an orphan from a failed create",
        %{root: root, target: target} do
     File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+    File.write!(Path.join(target, "work.ex"), "defmodule Work do end\n")
+    git!(target, ["add", "work.ex"])
+    git!(target, ["commit", "-q", "-m", "work"])
 
     assert {:error, {:orphaned_from_failed_create, ^target}} =
              Create.run(root, %{"label" => "x", "root" => target})
+  end
+
+  # 2de5dc77: a harness restarted mid-create left the gate copy behind and the
+  # promotion queue wedged on the refusal.
+  test "an untouched orphan is reclaimed, branch and all", %{root: root, target: target} do
+    File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+    File.write!(Path.join(target, ".cms_harness_preparing"), "preparing\n")
+
+    assert :ok = Create.claim_target(root, target)
+    refute File.exists?(target)
+    refute git!(root, ["branch", "--list", "a-copy"]) =~ "a-copy"
+  end
+
+  test "an orphan with an uncommitted change to a tracked file is refused", %{
+    root: root,
+    target: target
+  } do
+    File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+    File.write!(Path.join(target, "README.md"), "changed\n")
+
+    assert {:error, {:orphaned_from_failed_create, ^target}} = Create.claim_target(root, target)
+    assert File.exists?(target)
+  end
+
+  test "a create cut off before its worktree existed leaves only markers, which are cleared",
+       %{root: root, target: target} do
+    git!(root, ["worktree", "remove", "--force", target])
+    File.mkdir_p!(target)
+    File.write!(Path.join(target, ".cms_harness_preparing"), "preparing\n")
+
+    assert :ok = Create.claim_target(root, target)
+    refute File.exists?(target)
+  end
+
+  test "markers beside anything else are refused", %{root: root, target: target} do
+    git!(root, ["worktree", "remove", "--force", target])
+    File.mkdir_p!(target)
+    File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+    File.write!(Path.join(target, "notes.txt"), "mine\n")
+
+    assert {:error, {:orphaned_from_failed_create, ^target}} = Create.claim_target(root, target)
   end
 
   test "a directory with no identity marker still refuses as a bare already_exists", %{

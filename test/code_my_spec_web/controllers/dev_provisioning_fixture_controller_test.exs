@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.{Projects, UserPreferences, Users}
+  alias CodeMySpec.{AgentAttachments, Projects, UserPreferences, Users}
 
   setup do
     scope = full_scope_fixture()
@@ -44,6 +44,40 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
     refute conn.halted, "the token was refused (#{conn.status})"
     assert conn.assigns.current_scope.user.email == credentials.email
+  end
+
+  # 1148's QA could not tell an offline device or a foreign copy id apart from
+  # anything else: the fixture made neither.
+  test "attachment fixtures give Main an offline copy and a copy it may not attach", %{
+    scope: scope,
+    credentials: credentials
+  } do
+    start_supervised!({CodeMySpecWeb.QaEnvironments, root: File.cwd!()})
+
+    %{"project_id" => project_id, "agents" => [%{"agent_id" => main_id}]} =
+      reply =
+      build_conn()
+      |> post(
+        "/dev/qa-agents",
+        Map.merge(credentials, %{roles: ["main"], attachment_fixtures: true})
+      )
+      |> json_response(200)
+
+    %{"offline" => offline, "unauthorized_working_copy_id" => foreign_id} =
+      reply["attachment_fixtures"]
+
+    assert offline["device_id"]
+
+    assert File.read!(Path.join(offline["root"], ".cms_harness.json")) =~
+             offline["working_copy_id"]
+
+    main = %{scope | active_project_id: project_id}
+
+    assert {:error, :harness_unreachable} =
+             AgentAttachments.connect(main, main_id, offline["working_copy_id"])
+
+    assert {:error, :working_copy_not_found} =
+             AgentAttachments.connect(main, main_id, foreign_id)
   end
 
   test "creates a fresh disposable project and exposes provider controls", %{

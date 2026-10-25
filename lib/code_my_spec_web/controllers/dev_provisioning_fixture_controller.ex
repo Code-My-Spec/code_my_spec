@@ -142,6 +142,12 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   `roles`. Each agent's headers address `/mcp/harness` as that agent, bearer
   token included: `/mcp/harness` refuses a call without one, and a copy's
   cloned database holds only the seed user's expired tokens.
+
+  With `attachment_fixtures: true` it also answers `attachment_fixtures`, for
+  Main's attachment tools: a copy on a second device that no harness answers
+  for (`offline`), and the id of a copy in another project
+  (`unauthorized_working_copy_id`). Each has a root and identity file under
+  the system temp directory.
   """
   def qa_agents(conn, params) do
     root = File.cwd!()
@@ -150,30 +156,88 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     with {:ok, scope} <- authenticate(params),
          {:ok, scope} <- qa_copy(scope, root),
          {:ok, agents} <- qa_terminals(scope, roles),
-         {:ok, token} <- qa_token(scope) do
-      json(conn, %{
-        project_id: scope.active_project_id,
-        working_copy_id: scope.active_working_copy_id,
-        root: root,
-        agents:
-          Enum.map(agents, fn agent ->
-            %{
-              agent_id: agent.id,
-              role: agent.role,
-              headers: %{
-                "Authorization" => "Bearer " <> token.token,
-                "X-Project-ID" => scope.active_project_id,
-                "X-Agent-Id" => agent.id
+         {:ok, token} <- qa_token(scope),
+         {:ok, fixtures} <- attachment_fixtures(scope, params["attachment_fixtures"] == true) do
+      json(
+        conn,
+        %{
+          project_id: scope.active_project_id,
+          working_copy_id: scope.active_working_copy_id,
+          root: root,
+          agents:
+            Enum.map(agents, fn agent ->
+              %{
+                agent_id: agent.id,
+                role: agent.role,
+                headers: %{
+                  "Authorization" => "Bearer " <> token.token,
+                  "X-Project-ID" => scope.active_project_id,
+                  "X-Agent-Id" => agent.id
+                }
               }
-            }
-          end)
-      })
+            end)
+        }
+        |> Map.merge(fixtures)
+      )
     else
       {:error, reason} when reason not in [:unauthorized, :select_account_first] ->
         conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
 
       _ ->
         refuse(conn)
+    end
+  end
+
+  defp attachment_fixtures(_scope, false), do: {:ok, %{}}
+
+  defp attachment_fixtures(scope, true) do
+    with {:ok, offline} <- fixture_copy(scope, "offline"),
+         {:ok, elsewhere} <- elsewhere_project(scope),
+         {:ok, unauthorized} <- fixture_copy(elsewhere, "unauthorized") do
+      {:ok,
+       %{
+         attachment_fixtures: %{
+           offline: offline,
+           unauthorized_working_copy_id: unauthorized.working_copy_id
+         }
+       }}
+    end
+  end
+
+  # A copy on its own device with a reported root and identity file, and no
+  # harness: nothing registers for it, so it is offline.
+  defp fixture_copy(scope, name) do
+    root = Path.join([System.tmp_dir!(), "cms-qa-#{scope.active_project_id}", name])
+    device_name = "qa-#{name}-#{Ecto.UUID.generate()}"
+
+    with :ok <- File.mkdir_p(root),
+         {:ok, device} <- Devices.announce(scope, nil, %{hostname: device_name, kind: :local}),
+         {:ok, copy} <-
+           WorkingCopies.issue(scope, nil, device: device.id, root: root, label: name),
+         {:ok, copy} <- WorkingCopies.report_root(copy, root),
+         :ok <- write_identity(root, copy, scope.active_project_id) do
+      {:ok, %{working_copy_id: copy.id, device_id: device.id, root: root}}
+    end
+  end
+
+  defp write_identity(root, copy, project_id) do
+    body = %{
+      "working_copy_id" => copy.id,
+      "harness_id" => copy.id,
+      "project_id" => project_id,
+      "root" => root
+    }
+
+    File.write(Path.join(root, ".cms_harness.json"), Jason.encode!(body, pretty: true) <> "\n")
+  end
+
+  defp elsewhere_project(scope) do
+    with {:ok, project} <-
+           Projects.create_project(scope, %{
+             name: "QA elsewhere #{Ecto.UUID.generate()}",
+             module_name: "QaElsewhere"
+           }) do
+      {:ok, %{scope | active_project: project, active_project_id: project.id}}
     end
   end
 
