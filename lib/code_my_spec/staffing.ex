@@ -135,7 +135,9 @@ defmodule CodeMySpec.Staffing do
       "prepare" => true
     }
 
-    case Transport.impl().create_working_copy(candidates, request, 60_000) do
+    # A gate copy's checkout, submodules, copied deps and onboarding took 86s
+    # under load; at 60s the server gave up on a copy the harness then finished.
+    case Transport.impl().create_working_copy(candidates, request, :timer.minutes(5)) do
       {:ok, made} -> register(scope, candidates, made, opts)
       {:error, _reason} = error -> error
     end

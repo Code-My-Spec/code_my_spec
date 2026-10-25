@@ -38,18 +38,35 @@ defmodule CmsHarness.WorkingCopies.Create do
     # with its name so siblings from other repositories do not collide.
     target = request["root"] || Path.join(Path.dirname(root), "#{Path.basename(root)}-#{name}")
 
-    with :ok <- claim_target(root, target),
+    with :ok <- hold(target, request),
+         :ok <- claim_target(root, target),
          {:ok, setup} <- add_worktree(root, target, name),
          base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
       onboard(root, target, id, request)
-      prepare_later(target, request["prepare"] == true)
+      prepare_later(target, request["prepare"] == true, lock(target, request))
       Logger.info("[CmsHarness] made a working copy at #{target}")
       {:ok, %{root: target, working_copy_id: id, setup: setup, base_head: base_head}}
     end
   end
 
   def run(_root, _request), do: {:error, :no_repository}
+
+  # One create at a time per target, held by the create and the prepare it
+  # starts (same requester), released when both have exited. A retry arriving
+  # while either still runs is refused rather than reclaiming the copy from
+  # under it: the server gave up on a gate copy at 60s, and its retry found
+  # the copy mid-prepare.
+  @doc false
+  # Public so a test can hold a target the way a running create does.
+  def hold(target, request) do
+    if :global.set_lock(lock(target, request), [node()], 0),
+      do: :ok,
+      else: {:error, {:create_in_progress, target}}
+  end
+
+  defp lock(target, request),
+    do: {{__MODULE__, Path.expand(target)}, request["working_copy_id"] || make_ref()}
 
   @prepare_recipe "gate-setup"
   @preparing ".cms_harness_preparing"
@@ -64,11 +81,17 @@ defmodule CmsHarness.WorkingCopies.Create do
   # A copy that must build and test before use (the promotion gate) runs the
   # project's `gate-setup` recipe in the background and is not served until it
   # succeeds; its join tells the queue it is ready.
-  defp prepare_later(_target, false), do: :ok
+  defp prepare_later(_target, false, _lock), do: :ok
 
-  defp prepare_later(target, true) do
+  defp prepare_later(target, true, lock) do
     File.write!(Path.join(target, @preparing), "preparing\n")
-    {:ok, _pid} = Task.start(fn -> prepare(target) end)
+
+    {:ok, _pid} =
+      Task.start(fn ->
+        true = :global.set_lock(lock, [node()])
+        prepare(target)
+      end)
+
     :ok
   end
 
@@ -196,7 +219,22 @@ defmodule CmsHarness.WorkingCopies.Create do
     end
   end
 
-  defp contained?(root, head),
+  # Nothing of its own: its HEAD is on a remote branch, or in the source's
+  # HEAD. A gate copy is made at the landed main, which the copy it was made
+  # from may not have merged yet; told "the source lacks this", a clean,
+  # untouched gate copy was refused every retry.
+  defp contained?(root, head), do: on_a_remote?(root, head) or in_head?(root, head)
+
+  defp on_a_remote?(root, head) do
+    case System.cmd("git", ["-C", root, "branch", "-r", "--contains", head],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} -> String.trim(out) != ""
+      _ -> false
+    end
+  end
+
+  defp in_head?(root, head),
     do:
       match?(
         {_, 0},
