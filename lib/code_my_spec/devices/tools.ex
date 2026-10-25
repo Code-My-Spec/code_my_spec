@@ -15,14 +15,14 @@ defmodule CodeMySpec.Devices.Tools do
 
   def all, do: [__MODULE__.ListDevices, __MODULE__.GetDevice]
 
-  @doc false
+  @doc "Group the current project's working-copy IDs by their device UUID."
   def copies_by_device(scope) do
     scope
     |> WorkingCopies.list_harnesses()
     |> Enum.group_by(& &1.device_id, & &1.id)
   end
 
-  @doc false
+  @doc "Public device metadata and live connection observations for the supplied project copies."
   def describe(device, copies_by_device) do
     copy_ids = Map.get(copies_by_device, device.id, [])
 

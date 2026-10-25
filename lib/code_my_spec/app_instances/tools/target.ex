@@ -3,8 +3,8 @@ defmodule CodeMySpec.AppInstances.Tools.Target do
 
   alias CodeMySpec.AgentAttachments
   alias CodeMySpec.Agents
-  alias CodeMySpec.Environments
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.Environments
   alias CodeMySpec.WorkingCopies
 
   @doc "Resolve the caller's working copy to its default app instance."
