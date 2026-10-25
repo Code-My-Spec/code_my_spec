@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2317Spex do
 
       when_ "setup runs", context do
         {:ok, snapshot} =
-          CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+          CmsHarnessTest.Setup.check_prerequisites(platform: CmsHarnessTest.Setup.platform())
 
         {:ok, Map.put(context, :snapshot, snapshot)}
       end
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2317Spex do
       end
 
       then_ "the box is ready", context do
-        assert CmsHarness.Setup.prerequisites_passed?(context.snapshot)
+        assert CmsHarnessTest.Setup.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end
