@@ -117,9 +117,7 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
   @spec await_present(map(), String.t()) :: :ok
   def await_present(context, agent_id) do
     CodeMySpecSpex.Case.eventually(fn ->
-      ExUnit.Assertions.assert(
-        MapSet.member?(CodeMySpec.Agents.present_ids(context.scope), agent_id)
-      )
+      assert MapSet.member?(CodeMySpec.Agents.present_ids(context.scope), agent_id)
     end)
 
     :ok
