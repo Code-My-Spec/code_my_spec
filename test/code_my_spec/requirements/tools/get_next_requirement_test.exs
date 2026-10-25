@@ -22,18 +22,15 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
 
     {:ok, pid} = IncrementalGraph.ensure_projecting(scope)
     :ok = IncrementalGraph.settle(scope.active_project_id)
-    :ok = :sys.suspend(pid)
 
-    try do
+    CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
       started = System.monotonic_time(:millisecond)
       assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
       assert System.monotonic_time(:millisecond) - started < 3_000
       assert text =~ "retry in 5 s"
       refute text =~ "requirement_name=`"
       refute text =~ "All requirements satisfied"
-    after
-      :sys.resume(pid)
-    end
+    end)
 
     :ok = IncrementalGraph.settle(scope.active_project_id)
     assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})

@@ -124,9 +124,8 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     alias CodeMySpec.Requirements.IncrementalGraph
     {:ok, pid} = IncrementalGraph.ensure_projecting(ctx.scope)
     :ok = IncrementalGraph.settle(ctx.scope.active_project_id)
-    :ok = :sys.suspend(pid)
 
-    try do
+    CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
       ref = Phoenix.ChannelTest.push(ctx.socket, "agents_to_restore", %{})
 
       assert_reply ref,
@@ -138,9 +137,7 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
       assert unchanged.turn_started_at == agent.turn_started_at
       agent_id = agent.id
       refute_received {:agent_dispatch, ^agent_id, _, _}
-    after
-      :sys.resume(pid)
-    end
+    end)
 
     restart(ctx.socket, [agent])
     agent_id = agent.id
