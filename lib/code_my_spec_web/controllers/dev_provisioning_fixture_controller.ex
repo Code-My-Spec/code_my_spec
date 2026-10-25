@@ -144,10 +144,10 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   cloned database holds only the seed user's expired tokens.
 
   With `attachment_fixtures: true` it also answers `attachment_fixtures`, for
-  Main's attachment tools: a copy on a second device that no harness answers
-  for (`offline`), and the id of a copy in another project
-  (`unauthorized_working_copy_id`). Each has a root and identity file under
-  the system temp directory.
+  Main's attachment tools: two copies on devices of their own, each with the
+  command that starts a harness for it (`online`); a copy on another device
+  that no harness answers for (`offline`); and the id of a copy in another
+  project (`unauthorized_working_copy_id`).
   """
   def qa_agents(conn, params) do
     root = File.cwd!()
@@ -157,7 +157,8 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
          {:ok, scope} <- qa_copy(scope, root),
          {:ok, agents} <- qa_terminals(scope, roles),
          {:ok, token} <- qa_token(scope),
-         {:ok, fixtures} <- attachment_fixtures(scope, params["attachment_fixtures"] == true) do
+         {:ok, fixtures} <-
+           attachment_fixtures(scope, origin(conn), params["attachment_fixtures"] == true) do
       json(
         conn,
         %{
@@ -188,15 +189,18 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     end
   end
 
-  defp attachment_fixtures(_scope, false), do: {:ok, %{}}
+  defp attachment_fixtures(_scope, _origin, false), do: {:ok, %{}}
 
-  defp attachment_fixtures(scope, true) do
-    with {:ok, offline} <- fixture_copy(scope, "offline"),
+  defp attachment_fixtures(scope, origin, true) do
+    with {:ok, online_a} <- fixture_copy(scope, "device-a"),
+         {:ok, online_b} <- fixture_copy(scope, "device-b"),
+         {:ok, offline} <- fixture_copy(scope, "offline"),
          {:ok, elsewhere} <- elsewhere_project(scope),
          {:ok, unauthorized} <- fixture_copy(elsewhere, "unauthorized") do
       {:ok,
        %{
          attachment_fixtures: %{
+           online: Enum.map([online_a, online_b], &with_harness(&1, origin)),
            offline: offline,
            unauthorized_working_copy_id: unauthorized.working_copy_id
          }
@@ -204,32 +208,84 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     end
   end
 
-  # A copy on its own device with a reported root and identity file, and no
-  # harness: nothing registers for it, so it is offline.
+  # A copy on a device of its own, with a reported root, an identity file and
+  # the device's id where a harness serving it reads it. Offline until a
+  # harness is started on it.
   defp fixture_copy(scope, name) do
-    root = Path.join([System.tmp_dir!(), "cms-qa-#{scope.active_project_id}", name])
+    # The parent is the device: a harness serving `root` keeps its state there,
+    # its key socket included, so short (a Unix socket path is at most 104
+    # bytes on macOS, and its temp dir alone is 49).
+    root =
+      Path.join([
+        fixture_base(),
+        "cmsqa-#{String.slice(scope.active_project_id, 0, 8)}",
+        name,
+        "copy"
+      ])
+
     device_name = "qa-#{name}-#{Ecto.UUID.generate()}"
 
-    with :ok <- File.mkdir_p(root),
+    with :ok <- File.mkdir_p(Path.join(root, "lib")),
+         :ok <- File.write(Path.join([root, "lib", "fixture.ex"]), "defmodule Fixture do\nend\n"),
          {:ok, device} <- Devices.announce(scope, nil, %{hostname: device_name, kind: :local}),
+         :ok <- write_json(Path.join(Path.dirname(root), "device.json"), %{device_id: device.id}),
          {:ok, copy} <-
            WorkingCopies.issue(scope, nil, device: device.id, root: root, label: name),
          {:ok, copy} <- WorkingCopies.report_root(copy, root),
-         :ok <- write_identity(root, copy, scope.active_project_id) do
+         {:ok, project} <- Projects.ensure_deploy_key(scope, scope.active_project),
+         :ok <- write_identity(root, copy, project) do
       {:ok, %{working_copy_id: copy.id, device_id: device.id, root: root}}
     end
   end
 
-  defp write_identity(root, copy, project_id) do
-    body = %{
-      "working_copy_id" => copy.id,
-      "harness_id" => copy.id,
-      "project_id" => project_id,
-      "root" => root
-    }
+  # How to bring the copy online: a harness from this checkout on a port of its
+  # own, against this app. QA starts it and stops it by its pid.
+  defp with_harness(copy, origin) do
+    port = free_port()
 
-    File.write(Path.join(root, ".cms_harness.json"), Jason.encode!(body, pretty: true) <> "\n")
+    command =
+      "CMS_HARNESS=1 CMS_HARNESS_PORT=#{port} CMS_SERVER_URL=#{origin} " <>
+        "CMS_PROJECT_DIR=#{copy.root} CMS_ANALYSIS_SLOTS=1 MIX_ENV=harness " <>
+        "MIX_BUILD_PATH=_build/qa_harness elixir -S mix run --no-halt"
+
+    Map.put(copy, :harness, %{
+      port: port,
+      cwd: File.cwd!(),
+      command: command,
+      ready: "http://127.0.0.1:#{port}/health"
+    })
   end
+
+  defp origin(conn),
+    do: URI.to_string(%URI{scheme: to_string(conn.scheme), host: conn.host, port: conn.port})
+
+  defp free_port do
+    {:ok, socket} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
+  end
+
+  defp fixture_base do
+    case :os.type() do
+      {:win32, _} -> System.tmp_dir!()
+      _ -> "/tmp"
+    end
+  end
+
+  # With the project's deploy key: a harness started on it has no other
+  # credential for this app.
+  defp write_identity(root, copy, project) do
+    write_json(Path.join(root, ".cms_harness.json"), %{
+      working_copy_id: copy.id,
+      harness_id: copy.id,
+      project_id: project.id,
+      root: root,
+      deploy_key: project.deploy_key
+    })
+  end
+
+  defp write_json(path, body), do: File.write(path, Jason.encode!(body, pretty: true) <> "\n")
 
   defp elsewhere_project(scope) do
     with {:ok, project} <-

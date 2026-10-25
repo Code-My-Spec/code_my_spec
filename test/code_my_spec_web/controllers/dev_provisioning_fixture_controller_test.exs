@@ -63,13 +63,30 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
       )
       |> json_response(200)
 
-    %{"offline" => offline, "unauthorized_working_copy_id" => foreign_id} =
+    %{"online" => online, "offline" => offline, "unauthorized_working_copy_id" => foreign_id} =
       reply["attachment_fixtures"]
 
-    assert offline["device_id"]
+    on_exit(fn -> File.rm_rf(Path.dirname(Path.dirname(offline["root"]))) end)
 
-    assert File.read!(Path.join(offline["root"], ".cms_harness.json")) =~
-             offline["working_copy_id"]
+    # Each on a device of its own, which a harness serving it presents.
+    assert [_, _] = online
+    assert length(Enum.uniq(Enum.map([offline | online], & &1["device_id"]))) == 3
+
+    for copy <- [offline | online] do
+      assert File.read!(Path.join(copy["root"], ".cms_harness.json")) =~ copy["working_copy_id"]
+
+      assert %{"device_id" => copy["device_id"]} ==
+               copy["root"]
+               |> Path.dirname()
+               |> Path.join("device.json")
+               |> File.read!()
+               |> Jason.decode!()
+    end
+
+    for %{"root" => root, "harness" => harness} <- online do
+      assert harness["command"] =~ "CMS_PROJECT_DIR=#{root} "
+      assert harness["command"] =~ "CMS_HARNESS_PORT=#{harness["port"]} "
+    end
 
     main = %{scope | active_project_id: project_id}
 
