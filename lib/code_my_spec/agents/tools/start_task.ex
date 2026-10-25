@@ -142,12 +142,13 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   end
 
   defp resolve_from_graph(scope, name, entity_type, entity_id, owner, entity_ref) do
-    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+    graph_scope = Work.requirement_scope(scope, owner)
+    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(graph_scope)
 
     found =
       Enum.find(all_nodes, fn n ->
         n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
-      end) || placed(scope, owner, name, entity_type, entity_id)
+      end) || placed(graph_scope, owner, name, entity_type, entity_id)
 
     case found do
       nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_ref}"}

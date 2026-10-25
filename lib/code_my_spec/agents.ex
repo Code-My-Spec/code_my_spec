@@ -1756,7 +1756,9 @@ defmodule CodeMySpec.Agents do
   @spec ensure_main_agent(Scope.t()) ::
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
   def ensure_main_agent(%Scope{} = scope) do
-    case {WorkingCopies.main(scope), main_agent(scope)} do
+    agent = main_agent(scope) || off_in_seat(scope, nil, :main)
+
+    case {WorkingCopies.main(scope), agent} do
       {nil, %Agent{execution_mode: :detached} = agent} ->
         ensure_detached_running(scope, agent)
 
@@ -1764,15 +1766,21 @@ defmodule CodeMySpec.Agents do
         {:error, :no_main_working_copy}
 
       {copy, %Agent{execution_mode: :detached} = agent} ->
-        if copy_connected?(copy),
-          do: attach_setup_working_copy(scope, copy),
-          else: ensure_detached_running(scope, agent)
+        ensure_detached_main(scope, agent, copy)
 
       {_copy, %Agent{} = agent} ->
         {:ok, agent}
 
       {copy, nil} ->
         main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
+    end
+  end
+
+  defp ensure_detached_main(scope, agent, copy) do
+    with {:ok, running} <- ensure_detached_running(scope, agent) do
+      if not Agent.off?(running) and copy_connected?(copy),
+        do: attach_main(scope, running, copy),
+        else: {:ok, running}
     end
   end
 

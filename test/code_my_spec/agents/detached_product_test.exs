@@ -291,6 +291,67 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert target == copy.id
   end
 
+  test "reopening Main on a connected copy restores only a missing runtime", %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+    {:ok, _, main} = Agents.start_project_setup(scope)
+    {:ok, conversation} = Agents.conversation_id(scope, main.id)
+    copy = connected_onboarding_copy(scope)
+    {:ok, _} = Agents.attach_setup_working_copy(scope, copy)
+    [original_attachment] = CodeMySpec.AgentAttachments.list(scope, main.id)
+    assert_received {:agent_runtime_started, id}
+    assert id == main.id
+    Presence.untrack(self(), Presence.topic(scope.active_project_id), main.id)
+    refute Agents.present?(scope, main)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, RefusingTransport)
+    assert {:error, :no_credential} = Agents.ensure_main_agent(scope)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, Transport)
+    assert {:ok, restored} = Agents.ensure_main_agent(scope)
+    assert restored.id == main.id
+    assert restored.execution_mode == :detached
+    assert restored.working_copy == main.working_copy
+    assert restored.working_copy_id == nil
+    assert Agents.present?(scope, restored)
+    refute restored.mailbox_generation == main.mailbox_generation
+    assert {:ok, ^conversation} = Agents.conversation_id(scope, main.id)
+    assert_received {:agent_runtime_started, ^id}
+    assert {:ok, reopened} = Agents.ensure_main_agent(scope)
+    assert reopened.id == main.id
+    refute_received {:agent_runtime_started, _}
+    refute_received {:agent_runtime_stopped, _}
+    assert [^original_attachment] = CodeMySpec.AgentAttachments.list(scope, main.id)
+    assert length(Agents.list_agents(scope)) == 1
+  end
+
+  test "reopening an explicitly off detached Main neither restarts nor replaces it", %{
+    scope: scope
+  } do
+    {:ok, _} = ready_for_setup(scope)
+    {:ok, _, main} = Agents.start_project_setup(scope)
+    connected_onboarding_copy(scope)
+    main |> Ecto.Changeset.change(off_at: DateTime.utc_now(), off_by: "user") |> Repo.update!()
+    Presence.untrack(self(), Presence.topic(scope.active_project_id), main.id)
+    assert_received {:agent_runtime_started, _}
+    assert {:ok, off} = Agents.ensure_main_agent(scope)
+    assert off.id == main.id
+    assert Agent.off?(off)
+    refute Agents.present?(scope, off)
+    refute_received {:agent_runtime_started, _}
+    assert CodeMySpec.AgentAttachments.list(scope, main.id) == {:error, :unauthorized_agent}
+    assert length(Agents.list_agents(scope)) == 1
+  end
+
+  defp connected_onboarding_copy(scope) do
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+
+    copy =
+      copy
+      |> Ecto.Changeset.change(main: true, root: "/tmp/connected-onboarding")
+      |> Repo.update!()
+
+    :ok = CodeMySpec.Analysis.HarnessRegistry.register_executor(copy.id)
+    copy
+  end
+
   test "incomplete choices do not create Main or unlock stories", %{scope: scope} do
     assert {:error, :incomplete_onboarding} = Agents.start_project_setup(scope)
     assert Agents.list_agents(scope) == []
