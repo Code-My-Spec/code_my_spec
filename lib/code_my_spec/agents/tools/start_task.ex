@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Components
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
@@ -106,12 +107,14 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
        )
        when is_binary(name) and is_binary(id) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
+    issue = Issues.fetch_issue(scope, id)
+    full_id = with {:ok, %{id: full}} <- issue, do: full, else: (_ -> id)
 
     case Enum.find(
            Work.actionable(scope, role, owner, claim: true),
-           &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == id)
+           &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == full_id)
          ) do
-      nil -> {:error, "Requirement #{name} not found for issue #{id}"}
+      nil -> {:error, not_offered(name, id, issue)}
       node -> {:ok, node}
     end
   end
@@ -139,6 +142,25 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   defp resolve_requirement(_scope, _params, _owner) do
     {:error,
      "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
+  end
+
+  # "Not found" read as a broken claim for an issue that existed and simply was
+  # not this agent's to take now: its fix already submitted and waiting on the
+  # story's QA, or held by another team (issue cc785e7e).
+  defp not_offered(_name, id, :not_found), do: "There is no issue #{id}."
+
+  defp not_offered(_name, id, {:ambiguous, ids}),
+    do: "`#{id}` matches more than one issue (#{Enum.join(ids, ", ")}). Pass the full id."
+
+  defp not_offered(name, id, {:ok, issue}) do
+    "`#{name}` for issue #{id} is not offered to you now. The issue is #{issue.status}" <>
+      submitted_note(issue) <> ". `get_next_requirement` lists the work you can claim."
+  end
+
+  defp submitted_note(issue) do
+    if Issues.story_issue_submitted?(issue),
+      do: ", and its fix is already submitted: it waits on the story's QA, not on a new claim",
+      else: ""
   end
 
   defp resolve_from_graph(scope, name, entity_type, entity_id, owner, entity_ref) do
