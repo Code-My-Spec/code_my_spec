@@ -12,6 +12,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Agents.Main.OpenQuestion
+  alias CodeMySpec.Agents.Main.TokenBurn
 
   @work_offer "Your work: eligible work is waiting. Call get_next_requirement, then " <>
                 "claim with start_task; nothing has been selected or assigned for you."
@@ -22,7 +23,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   def needs_attention?(%Digest{} = digest) do
     Enum.any?(digest.questions, &(&1.holder == "main_agent")) or
       Enum.any?(attention_agents(digest), &(not waiting_elsewhere?(&1, digest.questions))) or
-      not is_nil(machinery_alarm(digest))
+      not is_nil(machinery_alarm(digest)) or TokenBurn.over_threshold(digest.tokens) != []
   end
 
   @spec render(Digest.t(), keyword()) :: String.t()
@@ -45,7 +46,10 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     "Check-in. #{quiet_verdict(digest.requirements)} " <>
       "#{length(digest.work) - waiting} settled; #{waiting} waiting; #{length(digest.off)} off " <>
       "(leave off). run_script: list_agent_work({}); list_agents({}). " <>
-      question_counts(digest.questions) <> " " <> requirements(digest.requirements)
+      question_counts(digest.questions) <>
+      " " <>
+      requirements(digest.requirements) <>
+      tokens_suffix(digest)
   end
 
   defp render_digest(digest, opts, false) do
@@ -53,7 +57,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     attention = attention_agents(digest)
     new_stalls = Keyword.get(opts, :new_stalls, [])
     needs = Enum.map(mine, &question_line/1) ++ Enum.map(attention, &agent_line(&1, new_stalls))
-    needs = needs ++ List.wrap(machinery_alarm(digest))
+    needs = needs ++ List.wrap(machinery_alarm(digest)) ++ burn_lines(digest)
 
     [
       "Check-in.",
@@ -70,7 +74,8 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       "agents: #{length(digest.work) - length(attention)} settled; #{length(attention)} needing attention; " <>
         "#{length(digest.off)} off (leave off). run_script: list_agent_work({}); list_agents({})",
       question_counts(others),
-      requirements(digest.requirements)
+      requirements(digest.requirements),
+      tokens_line(digest)
     ]
     |> Enum.reject(&is_nil/1)
     |> Enum.join("\n")
@@ -90,17 +95,21 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     Enum.filter(digest.work, fn entry ->
       MapSet.member?(stalled, entry.agent_id) or entry.problems != [] or
         entry.blocked_reasons != [] or entry.task_status == :blocked or
-        entry.agent_status in [:starting, :pending] or
-        AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
+        starting?(entry) or AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
         AgentWork.timing_out?(entry)
     end)
   end
+
+  # A startup to watch: one a harness launches. An external session reads
+  # `:starting` until a person drives it, and naming it every check-in cried wolf.
+  defp starting?(%AgentWork{external?: true}), do: false
+  defp starting?(entry), do: entry.agent_status in [:starting, :pending]
 
   defp waiting_elsewhere?(entry, questions) do
     Enum.any?(questions, &(&1.agent_id == entry.agent_id and &1.holder != "main_agent")) and
       entry.problems == [] and not AgentWork.toolless?(entry) and
       not AgentWork.provider_blocked?(entry) and not AgentWork.timing_out?(entry) and
-      entry.agent_status not in [:starting, :pending]
+      not starting?(entry)
   end
 
   defp question_line(%OpenQuestion{} = question) do
@@ -132,7 +141,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       entry.blocked_reasons != [] or entry.task_status == :blocked ->
         "blocked; inspect the waiting work"
 
-      entry.agent_status in [:starting, :pending] ->
+      starting?(entry) ->
         "starting; inspect startup progress"
 
       entry.problems != [] ->
@@ -186,6 +195,47 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   defp requirements(nil),
     do:
       "Requirements: unavailable. run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+
+  # Every check-in, quiet or not: the top three spenders over the last hour.
+  defp tokens_line(%Digest{tokens: []}), do: nil
+
+  defp tokens_line(%Digest{tokens: burn} = digest) do
+    "tokens (1h): " <>
+      Enum.map_join(Enum.take(burn, 3), "; ", fn entry ->
+        "#{short(entry.agent_id)} #{role_of(digest, entry.agent_id)} " <>
+          "#{millions(entry.tokens)}/#{entry.turns}t"
+      end)
+  end
+
+  defp tokens_suffix(digest) do
+    case tokens_line(digest) do
+      nil -> ""
+      line -> " " <> line
+    end
+  end
+
+  # Spending past the threshold is a Needs-you entry, with the cheapest remedy.
+  defp burn_lines(digest) do
+    digest.tokens
+    |> TokenBurn.over_threshold()
+    |> Enum.map(fn entry ->
+      "#{role_of(digest, entry.agent_id)} agent #{entry.agent_id}: burning tokens — " <>
+        "#{millions(entry.tokens)} in the last hour over #{entry.turns} turns, largest turn " <>
+        "#{millions(entry.largest_turn)}. Turn it off (run_script: turn_off_agent({agent_id = " <>
+        inspect(entry.agent_id) <>
+        "})); if it must keep working, retire it and start a fresh one."
+    end)
+  end
+
+  defp role_of(digest, agent_id) do
+    Enum.find_value(digest.work, "agent", &(&1.agent_id == agent_id && to_string(&1.role)))
+  end
+
+  defp short(agent_id), do: String.slice(agent_id, 0, 8)
+
+  defp millions(:unknown), do: "unknown"
+  defp millions(count) when count >= 1_000_000, do: "#{Float.round(count / 1_000_000, 1)}M"
+  defp millions(count), do: "#{Float.round(count / 1_000_000, 2)}M"
 
   defp summary(text), do: text |> String.replace(~r/\s+/, " ") |> String.slice(0, 160)
 end

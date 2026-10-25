@@ -33,6 +33,7 @@ defmodule CmsHarness.Analysis do
 
   alias CmsHarness.AnalyzerEnv
   alias CmsHarness.RunLink
+  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
@@ -244,7 +245,11 @@ defmodule CmsHarness.Analysis do
   defp execute("credo", env, args) do
     files = if args == [], do: nil, else: args
 
-    case CredoRun.run(env, files: files, extra_env: AnalyzerEnv.extra_env(env, "credo")) do
+    extra_env =
+      AnalyzerEnv.extra_env(env, "credo") ++
+        RunNode.credo_env(RunLink.env(env.cwd, env.metadata[:run_id]))
+
+    case CredoRun.run(env, files: files, extra_env: extra_env) do
       {:ok, issues, output} ->
         {:ok,
          %{

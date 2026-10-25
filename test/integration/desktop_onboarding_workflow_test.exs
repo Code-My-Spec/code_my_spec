@@ -132,7 +132,7 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     %{root: root, user: user}
   end
 
-  test "models → account → active project → Product → Main setup → same team in first checkout",
+  test "models → account → active project → Product → Main setup → same detached team attached to first checkout",
        %{conn: conn, root: root, user: user} do
     {:ok, models, _} = live(conn, "/app?provider=claude-code")
     models |> form("[data-test=agent-models-form]") |> render_submit()
@@ -209,6 +209,7 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     # Retrying/refreshing setup must not undo a deliberate pause.
     assert {:ok, _} = Agents.set_copy_continuous(scope, copy.id, false)
     assert {:ok, _, :paused} = Agents.set_agent_continuous(scope, main.id, false)
+    assert {:ok, _, :paused} = Agents.set_agent_continuous(scope, product.id, false)
     assert run_setup(scope, "refresh").result["ready"] == true
     refute Enum.any?(Agents.list_agents(scope), & &1.continuous)
     assert_team(scope, copy, main, product, main_conversation, product_conversation)
@@ -226,8 +227,11 @@ defmodule CodeMySpec.Integration.DesktopOnboardingWorkflowTest do
     assert saved_main.execution_mode == :detached
     assert saved_main.working_copy_id == nil
     assert saved_main.working_copy == main.working_copy
-    assert saved_product.working_copy_id == copy.id
-    assert saved_product.execution_mode == :working_copy
+    assert saved_product.working_copy_id == nil
+    assert saved_product.execution_mode == :detached
+    assert saved_product.working_copy == product.working_copy
+    assert saved_product.os_pid == product.os_pid
+    assert saved_product.os_boot_id == product.os_boot_id
     assert [attachment] = AgentAttachments.list(scope, main.id)
     assert attachment.working_copy_id == copy.id
 

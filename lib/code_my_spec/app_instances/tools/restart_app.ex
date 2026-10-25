@@ -54,8 +54,11 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
     Restart the caller's own copy of the app, on its current commit.
 
     By default this uses the caller's source checkout's default app instance.
-    `instance_id` may select another instance only when it belongs to that same
-    checkout; ownership is verified before the runtime is contacted.
+    An explicit `instance_id` may select another harness instance from that same
+    checkout, or Main may select one in a working copy it has explicitly connected
+    to. The persisted Main identity and attachment are checked before dispatch.
+    Provisioned deployments are not controlled by this tool. Omitting the ID never
+    switches to an attachment. Detached Main must supply an ID.
 
     ## Returns when the run starts, not when it finishes
 
@@ -76,8 +79,7 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
   @impl true
   def params do
     %{
-      instance_id:
-        {:meta, :string, [description: "App instance UUID from `list_working_copies`."]}
+      instance_id: {:meta, :string, [description: "App instance UUID from `list_app_instances`."]}
     }
   end
 
@@ -90,12 +92,11 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
   end
 
   defp restart(scope, context, instance_id) do
-    with {:ok, instance} <- Target.own_default(scope, context, instance_id) do
+    with {:ok, instance} <- Target.lifecycle(scope, context, instance_id) do
       starter = Starter.new(scope, context, "restart")
       scope |> start_restart_async(instance.id, starter) |> reply(context)
     else
-      _ ->
-        {:error, "This call has no working copy of its own, so there is nothing here to restart."}
+      {:error, reason} -> {:error, Target.error(reason)}
     end
   end
 
@@ -148,7 +149,9 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
   defp do_restart(scope, id, call_timeout) do
     case AppInstances.restart(scope, id, call_timeout) do
       {:ok, %{status: "serving", url: url, commit: commit}} ->
-        Agents.record_app_restart(scope, "Restarted via RestartApp")
+        instance = AppInstances.get!(scope, id)
+        target_scope = %{scope | active_working_copy_id: instance.working_copy_id}
+        Agents.record_app_restart(target_scope, "Restarted via RestartApp")
         {:ok, "Restarted -- serving #{commit || "unknown commit"} at #{url}."}
 
       {:ok, %{status: status, commit: commit}} ->

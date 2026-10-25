@@ -64,6 +64,18 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
     refute Map.has_key?(details, :waiting_on)
   end
 
+  test "a framework issue QA cited is recorded but does not withhold qa_complete", %{
+    scope: scope,
+    story: story,
+    blocker: blocker
+  } do
+    blocker |> Ecto.Changeset.change(story_id: nil, scope: :framework) |> Repo.update!()
+
+    {_satisfied?, details} = Verdict.complete_check(scope, story)
+
+    refute Map.get(details, :waiting_on) == "cross_story_issue_block"
+  end
+
   test "re-triaging the blocker to another story still withholds qa_complete", %{
     scope: scope,
     story: story,

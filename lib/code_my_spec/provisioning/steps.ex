@@ -785,6 +785,21 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc "Repair existing tenant database privileges on an account-owned server."
+  @spec repair_database_isolation(Scope.t(), String.t(), keyword()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def repair_database_isolation(%Scope{} = scope, name, opts \\ []) do
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
+         {:ok, opts} <- with_builder_ssh(scope, opts) do
+      run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts)
+      Database.repair_existing(scope, Keyword.put(opts, :run, run))
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :server_address_missing}
+    end
+  end
+
   # Adopts the box's own network (by id off its `private_net`, never by a
   # guessed name), creating one for its zone only when it has none.
   # `__adopted__` marks the found branch: teardown deletes anything unmarked.

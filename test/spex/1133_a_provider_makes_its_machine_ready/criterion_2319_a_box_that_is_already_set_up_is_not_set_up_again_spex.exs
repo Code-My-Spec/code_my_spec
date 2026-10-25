@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
       end
 
       then_ "the record of yesterday's setup is still readable", context do
-        assert {:ok, snapshot} = CmsHarness.Setup.status()
+        assert {:ok, snapshot} = CmsHarnessTest.SetupFixture.status()
         path = snapshot["results_path"]
 
         assert {:ok, _results} = ExecutionContexts.read_file(context.machine_environment, path)

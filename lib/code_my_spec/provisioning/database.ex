@@ -206,6 +206,55 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  @doc """
+  Repair all existing app-owned tenant databases on a provisioned box.
+
+  Run once per shared box through provisioning with its SSH `:run` runner.
+  Safe to repeat; discovers database owners from PostgreSQL without changing
+  passwords, creating databases, or restarting the shared container.
+  """
+  @spec repair_existing(Scope.t(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  def repair_existing(%Scope{} = scope, opts) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, admin} <- serve_admin_credential(scope, opts),
+         true <- container_running?(run) || {:error, :database_not_provisioned} do
+      discover_and_repair(run, admin)
+    end
+  end
+
+  defp discover_and_repair(run, admin) do
+    sql =
+      "SELECT COALESCE(json_agg(t), '[]'::json) FROM " <>
+        "(SELECT datname AS database, pg_get_userbyid(datdba) AS username " <>
+        "FROM pg_database WHERE NOT datistemplate " <>
+        "AND left(datname, 4) = 'app_' " <>
+        "AND left(pg_get_userbyid(datdba), 4) = 'app_' ORDER BY datname) t"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+        "-d postgres -tAc #{shell_escape(sql)}"
+
+    case run.([command]) do
+      {output, 0} ->
+        with {:ok, tenants} when is_list(tenants) <- Jason.decode(String.trim(output)) do
+          Enum.reduce_while(tenants, {:ok, []}, fn tenant, {:ok, repaired} ->
+            credential = %{database: tenant["database"], username: tenant["username"]}
+
+            case isolate_tenant(run, admin, credential) do
+              :ok -> {:cont, {:ok, repaired ++ [credential.database]}}
+              {:error, reason} -> {:halt, {:error, {credential.database, reason}}}
+            end
+          end)
+        else
+          result -> {:error, {:database_inventory_invalid, result}}
+        end
+
+      {output, status} ->
+        {:error, {:database_inventory_failed, status, String.trim(output)}}
+    end
+  end
+
   defp serve_admin_credential(scope, opts) do
     case Keyword.get(opts, :database_admin_credential) do
       %{username: _, password: _} = admin -> {:ok, admin}
@@ -329,8 +378,33 @@ defmodule CodeMySpec.Provisioning.Database do
   # This project's role and database, created on its first visit to the box.
   defp ensure_tenant(run, admin, credential) do
     with :ok <- ensure_role(run, admin, credential),
-         :ok <- ensure_database(run, admin, credential) do
+         :ok <- ensure_database(run, admin, credential),
+         :ok <- isolate_tenant(run, admin, credential) do
       ensure_vector_extension(run, admin, credential)
+    end
+  end
+
+  # Applied to existing databases too: PostgreSQL grants CONNECT to PUBLIC
+  # at creation, independently of schema/table privileges.
+  defp isolate_tenant(run, admin, credential) do
+    database = sql_identifier(credential.database)
+    username = sql_identifier(credential.username)
+
+    sql =
+      "REVOKE CONNECT ON DATABASE #{database} FROM PUBLIC; " <>
+        "GRANT CONNECT ON DATABASE #{database} TO #{username};"
+
+    schema_sql = "REVOKE ALL ON SCHEMA public FROM PUBLIC"
+
+    with :ok <- run_admin_sql(run, admin, sql, :database_isolation_failed) do
+      command =
+        "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(admin.username)} " <>
+          "-d #{shell_escape(credential.database)} -c #{shell_escape(schema_sql)} > /dev/null"
+
+      case run.([command]) do
+        {_output, 0} -> :ok
+        {output, status} -> {:error, {:database_isolation_failed, status, String.trim(output)}}
+      end
     end
   end
 
@@ -475,9 +549,9 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
-  # A SQL string literal, quoted for Postgres rather than for the shell. The
-  # result is then shell-escaped by the caller, because it travels through
-  # `docker exec … -c`.
+  # Catalog names can contain quotes; quote identifiers before building SQL.
+  defp sql_identifier(value), do: "\"" <> String.replace(value, "\"", "\"\"") <> "\""
+
   defp sql_escape(value), do: "'" <> String.replace(value, "'", "''") <> "'"
 
   defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"

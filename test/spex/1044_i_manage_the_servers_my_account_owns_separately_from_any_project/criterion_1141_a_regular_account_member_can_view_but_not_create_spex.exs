@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3069Spex do
         refute has_element?(context.servers_live, "[data-test='link-server']"),
                "a plain member should not be able to link a server into the account either"
 
-        assert context.html =~ "Servers",
+        assert context.html =~ "Devices",
                "the page itself should still render for a member — this is a view " <>
                  "restriction on actions, not on visibility"
 

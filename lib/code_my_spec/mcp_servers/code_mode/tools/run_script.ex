@@ -25,11 +25,13 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias CodeMySpec.Agents.ToolIndex
   alias CodeMySpec.CodeMode
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.CodeMode.Result
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.LocalServer
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.McpServers.Validators
 
   schema do
@@ -71,7 +73,7 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
                 # it directly" is advice it can take (`bd699695`). `nil` from
                 # `agent_scope/2` means no restriction, the same meaning it has
                 # everywhere else.
-                carried: allowed || :all,
+                carried: carried(allowed),
                 # Every tool on the server, so the refusal can tell "another
                 # role's tool" apart from "no such tool" (`27fb2de3`).
                 direct_names: direct_names(allowed)
@@ -151,6 +153,12 @@ defmodule CodeMySpec.McpServers.CodeMode.Tools.RunScript do
   # `:all` for the unscoped caller, which is `carried`'s own spelling for "no
   # restriction" and has to stay distinguishable from "carries nothing" — the
   # second would put a stub on every tool that exists.
+  # Every agent's engine carries the direct tools whatever its role
+  # (`ToolIndex.carried/1`), so `start_task` refused from a script is one it can
+  # call directly; the role's grant lists only what it may script.
+  defp carried(nil), do: :all
+  defp carried(allowed), do: allowed ++ ToolIndex.carried(ToolRegistry.registry())
+
   defp direct_names(nil), do: :all
 
   defp direct_names(allowed),

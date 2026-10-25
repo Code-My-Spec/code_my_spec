@@ -161,10 +161,22 @@ defmodule CodeMySpec.McpServers.CodeMode do
           scope.active_working_copy_id,
           name,
           args,
-          call_timeout
+          own_timeout(args, call_timeout)
         )
       end
     }
+  end
+
+  # A call that names its own wait (`browser_click({..., timeout = 5000})`)
+  # gets that wait plus the margin, within the script's budget, so a hung click
+  # fails as that click instead of running the whole script out (issues
+  # 97770e7d, 98410523).
+  defp own_timeout(args, call_timeout) do
+    case Map.get(args, "timeout", Map.get(args, :timeout)) do
+      ms when is_integer(ms) and ms > 0 -> min(ms + @machine_call_margin_ms, call_timeout)
+      ms when is_float(ms) and ms > 0 -> min(trunc(ms) + @machine_call_margin_ms, call_timeout)
+      _ -> call_timeout
+    end
   end
 
   # The machine's own words when it sent them; the fallback is for a harness

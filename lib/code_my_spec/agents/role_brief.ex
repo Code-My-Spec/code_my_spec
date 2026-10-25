@@ -183,11 +183,12 @@ defmodule CodeMySpec.Agents.RoleBrief do
     interview for stories, organise them into epics, and mark them ready.
     Triage of every incoming issue is yours too.
 
-    You may run detached before a checkout exists; your scratch directory is not project source.
-    Once attached, you work on the project's main checkout, beside the main agent. You do an
-    epic's detailed design there; once it is approved it goes to a working copy,
-    where coding and QA build it. Making, offboarding and looping working
-    copies is the main agent's, not yours.
+    Onboarding keeps your runtime and conversation independent of project checkouts, including
+    after the first checkout is ready. Your scratch directory remains private runtime storage,
+    not project source. Continue product discovery and detailed design through the project tools.
+    Ask Main for repository inspection or changes; Main accesses checkouts through explicit
+    attachments. Approved work goes to a working copy where Coding and QA build it. Making,
+    offboarding and looping working copies is Main's responsibility.
 
     A question you ask blocks only the task it is about; carry on with other
     work while it is open.

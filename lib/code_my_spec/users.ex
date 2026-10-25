@@ -264,6 +264,16 @@ defmodule CodeMySpec.Users do
     |> update_user_and_delete_all_tokens()
   end
 
+  @doc """
+  Confirms a user's email without the email round trip.
+
+  For accounts minted where there is no inbox to confirm through, such as QA's
+  `/dev/sign-up`. An unconfirmed account with a password is refused a magic link
+  on purpose (`login_user_by_magic_link/1`), so it would otherwise have no way in.
+  """
+  @spec confirm_user(User.t()) :: User.t()
+  def confirm_user(%User{} = user), do: user |> User.confirm_changeset() |> Repo.update!()
+
   ## Session
 
   @doc """

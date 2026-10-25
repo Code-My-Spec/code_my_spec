@@ -59,6 +59,7 @@ defmodule CodeMySpec.Analysis do
     RunsRepository
   }
 
+  alias CodeMySpec.Problems.ProblemConverter
   alias CodeMySpec.Users.Scope
 
   # `:async` (default) runs jobs through the per-copy ProjectServer.
@@ -314,7 +315,8 @@ defmodule CodeMySpec.Analysis do
   @doc """
   Fold one event of a running run into what can be seen of it (story 1141),
   and publish the new state on `"analysis_run:<run_id>"`. A failing test is a
-  problem as soon as it fails; the run's reconcile replaces it when it ends.
+  problem as soon as it fails, and a credo finding as soon as it is found
+  (story 1144); the run's reconcile replaces them when it ends.
   """
   @spec record_live_event(Scope.t(), integer(), map()) :: :ok | {:error, :unknown_run}
   def record_live_event(%Scope{} = scope, run_id, %{} = event) when is_integer(run_id) do
@@ -383,6 +385,23 @@ defmodule CodeMySpec.Analysis do
           line: test["failure_line"] || test["line"],
           message: test["message"] || "#{test["name"]} failed"
         }
+      ])
+
+    :ok
+  end
+
+  defp record_failure(scope, %{"event" => "finding"} = finding) do
+    {:ok, _} =
+      CodeMySpec.Problems.create_problems(scope, [
+        ProblemConverter.from_credo(%{
+          "filename" => finding["file"],
+          "line_no" => finding["line"],
+          "column" => finding["column"],
+          "message" => finding["message"],
+          "check" => finding["check"],
+          "category" => finding["category"],
+          "priority" => finding["priority"]
+        })
       ])
 
     :ok

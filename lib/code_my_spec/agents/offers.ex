@@ -181,6 +181,24 @@ defmodule CodeMySpec.Agents.Offers do
 
   def current_work_offer(_agent_id), do: nil
 
+  @doc "Describe this agent's prior declines for the claimable work in a pull."
+  def decline_notes(agent_id, nodes) do
+    keys =
+      Enum.map(nodes, fn node ->
+        id = CodeMySpec.Requirements.Directives.entity_ref(node)
+        "#{node.entity_type}:#{id}:#{node.name}"
+      end)
+
+    Offer
+    |> where([o], o.agent_id == ^agent_id and o.subject_key in ^keys and o.status == :declined)
+    |> order_by([o], desc: o.inserted_at)
+    |> Repo.all()
+    |> Enum.uniq_by(& &1.subject_key)
+    |> Enum.map_join("", fn offer ->
+      "\n\n#{offer.subject_key}: you declined this at #{offer.outcome_at || offer.inserted_at}: #{offer.reason}. You may still claim it with start_task."
+    end)
+  end
+
   @doc """
   Record a decline directly, with no open offer ever having existed for it:
   `reject_offer` called with no open offer and no id, declining whatever a
@@ -284,6 +302,27 @@ defmodule CodeMySpec.Agents.Offers do
         o.subject_key == ^key and o.status == :declined
     )
     |> Repo.update_all(set: [status: :superseded, updated_at: now])
+
+    :ok
+  end
+
+  @doc "Lift declines predating a material change at this checkout."
+  def lift_copy_declines(scope, copy_id, changed_at, except_agent_id \\ nil)
+
+  def lift_copy_declines(_scope, nil, _changed_at, _except_agent_id), do: :ok
+
+  def lift_copy_declines(scope, copy_id, changed_at, except_agent_id) do
+    Offer
+    |> where(
+      [o],
+      o.project_id == ^scope.active_project_id and
+        o.working_copy_id == ^copy_id and o.status == :declined and
+        o.kind in [:work, :unblocked] and o.outcome_at < ^changed_at
+    )
+    |> then(fn query ->
+      if except_agent_id, do: where(query, [o], o.agent_id != ^except_agent_id), else: query
+    end)
+    |> Repo.update_all(set: [status: :superseded, updated_at: DateTime.utc_now()])
 
     :ok
   end
@@ -743,8 +782,8 @@ defmodule CodeMySpec.Agents.Offers do
   # the row at the last rung stays `:open` (outcome/3 leaves it unsettled,
   # criterion 2169), and `:open` is now included in the query above so that
   # row is still seen here. `declined?` is narrower, an explicit decline
-  # alone: only that closes the offer and holds the work back from
-  # `claimable_work` (get_next_requirement, start_task). An offer merely
+  # alone: it closes the offer but leaves the work visible to pulls and
+  # explicit claims (006b2b56, product correction). An offer merely
   # exhausted by ignoring stays open, escalated to main once (criterion
   # 2169), and a pull still shows and can claim it -- `held?` must not gate
   # that. Each offer is read by the ladder for its own kind, so two kinds
@@ -953,7 +992,7 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   @doc """
-  Close this agent's open work offers on `key` as declined: the work was found
+  Supersede this agent's open work offers on `key`: the work was found
   already done when it tried to take it. The system knows the offer
   is stale, so it does not wait for the agent to say so. Always `:ok`.
   """
@@ -968,7 +1007,7 @@ defmodule CodeMySpec.Agents.Offers do
         o.subject_key == ^key and o.status == :open
     )
     |> Repo.update_all(
-      set: [status: :declined, reason: "already satisfied", outcome_at: now, updated_at: now]
+      set: [status: :superseded, reason: "already satisfied", outcome_at: now, updated_at: now]
     )
 
     :ok

@@ -928,8 +928,11 @@ defmodule CodeMySpec.Agents do
     # An agent that is off is told nothing: nothing reaches it until it is
     # turned on, so the note would only pile up as undelivered.
     if agent.continuous && not Agent.off?(agent) && is_nil(Agent.active_task(agent)) do
+      # Sent before the harness has brought the agent back: kept for the
+      # `agents_present` pump, not failed as undeliverable.
       send_to_agent(agent.id, "The harness restarted.", :own_reply,
-        offer: {:resume, {"restart", nil}}
+        offer: {:resume, {"restart", nil}},
+        until_back: true
       )
     end
 
@@ -1392,8 +1395,9 @@ defmodule CodeMySpec.Agents do
   `event` is what `Wake` is asked about — `:own_reply` for the answer to
   something it asked of us, `:question_answered` for its question's answer.
 
-  Options: `:timeout`, `:async`, and `:offer` — `{kind, subject}` to record the
-  message as an offer (`Offers`).
+  Options: `:timeout`, `:async`, `:offer` — `{kind, subject}` to record the
+  message as an offer (`Offers`) — and `:until_back`, to keep the message for
+  an agent whose process is not up yet rather than fail it.
   """
   @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), keyword()) ::
           {:ok, :started | :queued} | {:error, term()}
@@ -1417,7 +1421,8 @@ defmodule CodeMySpec.Agents do
                  ref,
                  event,
                  opts[:offer],
-                 Keyword.get(opts, :sender_id, "operator")
+                 Keyword.get(opts, :sender_id, "operator"),
+                 Keyword.take(opts, [:until_back])
                ) do
           agent
           |> dispatch_admitted(admission, timeout, message, offered, opts)
@@ -1756,7 +1761,9 @@ defmodule CodeMySpec.Agents do
   @spec ensure_main_agent(Scope.t()) ::
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
   def ensure_main_agent(%Scope{} = scope) do
-    case {WorkingCopies.main(scope), main_agent(scope)} do
+    agent = main_agent(scope) || off_in_seat(scope, nil, :main)
+
+    case {WorkingCopies.main(scope), agent} do
       {nil, %Agent{execution_mode: :detached} = agent} ->
         ensure_detached_running(scope, agent)
 
@@ -1764,15 +1771,21 @@ defmodule CodeMySpec.Agents do
         {:error, :no_main_working_copy}
 
       {copy, %Agent{execution_mode: :detached} = agent} ->
-        if copy_connected?(copy),
-          do: move_main_agent(scope, copy),
-          else: ensure_detached_running(scope, agent)
+        ensure_detached_main(scope, agent, copy)
 
       {_copy, %Agent{} = agent} ->
         {:ok, agent}
 
       {copy, nil} ->
         main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
+    end
+  end
+
+  defp ensure_detached_main(scope, agent, copy) do
+    with {:ok, running} <- ensure_detached_running(scope, agent) do
+      if not Agent.off?(running) and copy_connected?(copy),
+        do: attach_main(scope, running, copy),
+        else: {:ok, running}
     end
   end
 
@@ -1809,10 +1822,15 @@ defmodule CodeMySpec.Agents do
         {:ok, agent}
 
       nil ->
-        case WorkingCopies.main(scope) do
-          nil -> start_detached_agent(scope, :main)
-          _copy -> ensure_main_agent(scope)
-        end
+        start_setup_main(scope)
+    end
+  end
+
+  defp start_setup_main(scope) do
+    case {Application.get_env(:code_my_spec, :env), WorkingCopies.main(scope)} do
+      {:desktop, _copy} -> start_detached_agent(scope, :main)
+      {_, nil} -> start_detached_agent(scope, :main)
+      {_, _copy} -> ensure_main_agent(scope)
     end
   end
 
@@ -1868,12 +1886,6 @@ defmodule CodeMySpec.Agents do
 
   defp product_or_start(scope) do
     case Enum.find(list_agents(scope), &(&1.role == :product and is_nil(&1.retired_at))) do
-      %Agent{execution_mode: :detached} = agent ->
-        case WorkingCopies.main(scope) do
-          nil -> {:ok, agent}
-          copy -> if copy_connected?(copy), do: relocate(scope, agent, copy), else: {:ok, agent}
-        end
-
       %Agent{} = agent ->
         {:ok, agent}
 
@@ -2340,6 +2352,22 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
+  @doc "Attach onboarding Main to a checkout while keeping Main and Product in their runtimes."
+  @spec attach_setup_working_copy(Scope.t(), map()) ::
+          {:ok, Agent.t()} | {:error, term()} | :none
+  def attach_setup_working_copy(%Scope{} = scope, copy) do
+    case main_agent_anywhere(scope) do
+      nil -> :none
+      agent -> attach_main(scope, agent, copy)
+    end
+  end
+
+  defp attach_main(scope, agent, copy) do
+    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
+      {:ok, agent}
+    end
+  end
+
   @doc """
   Move the project's own agent to a different checkout.
 
@@ -2347,14 +2375,17 @@ defmodule CodeMySpec.Agents do
   so it keeps its conversation — the whole reason this is a move rather than a
   replacement.
 
-  Best-effort, as starting is: a copy whose harness is not connected leaves the
-  row `:starting`. Product moves with it.
+  Detached Main attaches without relocating. Existing checkout-bound Main
+  and Product retain the legacy re-designation behavior.
   """
   @spec move_main_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, term()} | :none
   def move_main_agent(%Scope{} = scope, copy) do
     case main_agent_anywhere(scope) do
       nil ->
         :none
+
+      %Agent{execution_mode: :detached} = agent ->
+        attach_main(scope, agent, copy)
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
         with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
@@ -2367,37 +2398,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Main keeps its onboarding runtime. A checkout is a resource attachment,
-  # not a reason to interrupt the conversation and launch another engine.
-  defp relocate(scope, %Agent{role: :main, execution_mode: :detached} = agent, copy) do
-    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
-      {:ok, agent}
-    end
-  end
-
-  defp relocate(scope, %Agent{execution_mode: :detached} = agent, copy) do
-    with {:ok, credential} <- Credential.fetch(scope, agent.provider),
-         :ok <- halt_for_restart(agent),
-         {:ok, moved} <-
-           AgentsRepository.update_agent(scope, agent, %{
-             execution_mode: :working_copy,
-             working_copy_id: copy.id,
-             working_copy: copy.root,
-             status: :starting,
-             turn_started_at: nil,
-             os_pid: nil,
-             os_boot_id: nil
-           }),
-         :ok <- carry_on_if_mid_turn(scope, agent),
-         {:ok, started} <-
-           launch(
-             scope,
-             LaunchRequest.hydrate(scope_for(scope, moved), %{moved | credential: credential})
-           ) do
-      broadcast(scope, {:agent_started, started})
-      {:ok, started}
-    end
-  end
+  # Detached project agents keep their runtime, even when the legacy roster
+  # relocation path is invoked for another agent on the main checkout.
+  defp relocate(_scope, %Agent{execution_mode: :detached} = agent, _copy), do: {:ok, agent}
 
   defp relocate(scope, agent, copy) do
     with {:ok, moved} <-
@@ -2410,7 +2413,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Product lives where main lives, so it moves with it.
+  # Only the legacy checkout-bound roster follows a re-designated main copy.
   defp move_main_copy_roster(scope, from_id, copy) do
     others = RoleProfile.roles_where_home(:main) -- [:main]
 
@@ -2418,8 +2421,8 @@ defmodule CodeMySpec.Agents do
     |> seat_holders()
     |> Enum.filter(
       &(&1.role in others and
-          (&1.execution_mode == :detached or
-             (&1.working_copy_id == from_id and &1.working_copy_id != copy.id)))
+          &1.execution_mode == :working_copy and
+          &1.working_copy_id == from_id and &1.working_copy_id != copy.id)
     )
     |> Enum.reduce_while(:ok, fn agent, :ok ->
       case relocate(scope, agent, copy) do
@@ -2579,16 +2582,32 @@ defmodule CodeMySpec.Agents do
   end
 
   defp admit_if_allowed(agent, message, event, offered, admit_opts) do
-    case Wake.allow_admission?(agent_scope(agent), agent, event) do
-      :ok ->
-        Mailbox.admit(agent, message, event, admit_opts)
-        {message, :ok}
+    agent
+    |> agent_scope()
+    |> Wake.allow_admission?(agent, event)
+    |> admit_or_fail(agent, message, event, offered, admit_opts)
+  end
 
-      hold ->
-        :ok = Offers.undelivered(offered)
-        {:ok, message} = Conversations.set_delivery(message, :failed, broadcast: false)
-        {message, Wake.to_error(hold)}
-    end
+  # `until_back`: the agent is being brought back, so its not running yet is
+  # no reason to fail the message; the `agents_present` pump delivers it.
+  defp admit_or_fail({:hold, :not_running} = hold, agent, message, event, offered, admit_opts) do
+    if admit_opts[:until_back],
+      do: admit_or_fail(:ok, agent, message, event, offered, admit_opts),
+      else: fail_admission(hold, message, offered)
+  end
+
+  defp admit_or_fail(:ok, agent, message, event, _offered, admit_opts) do
+    Mailbox.admit(agent, message, event, admit_opts)
+    {message, :ok}
+  end
+
+  defp admit_or_fail(hold, _agent, message, _event, offered, _admit_opts),
+    do: fail_admission(hold, message, offered)
+
+  defp fail_admission(hold, message, offered) do
+    :ok = Offers.undelivered(offered)
+    {:ok, message} = Conversations.set_delivery(message, :failed, broadcast: false)
+    {message, Wake.to_error(hold)}
   end
 
   defp pump_mailbox(scope, agent_id) do

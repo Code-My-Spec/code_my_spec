@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.DeviceLive.ProviderMachineTest do
     project: project
   } do
     {:ok, device} = Devices.link_provider_machine(scope, %{name: "production-box", id: 123})
-    {:ok, view, _} = live(conn, "/app/projects/#{project.id}/console/dev-boxes")
+    {:ok, view, _} = live(conn, "/app/projects/#{project.id}/console/devices/#{device.id}")
     row = "[data-test=device][data-device-id='#{device.id}']"
     assert has_element?(view, "#{row} [data-test=provider-machine]", "Hetzner")
     assert has_element?(view, "#{row} [data-test=device-presence]", "Harness not connected")
@@ -28,7 +28,7 @@ defmodule CodeMySpecWeb.DeviceLive.ProviderMachineTest do
   } do
     {:ok, device} = Devices.link_provider_machine(scope, %{name: "existing-box", id: 456})
     before_ids = Enum.map(Devices.list_devices(scope), & &1.id)
-    {:ok, view, _} = live(conn, "/app/projects/#{project.id}/console/dev-boxes")
+    {:ok, view, _} = live(conn, "/app/projects/#{project.id}/console/devices/#{device.id}")
 
     view
     |> element("[data-test=device][data-device-id='#{device.id}'] [data-test=enroll-machine]")

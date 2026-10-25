@@ -6,6 +6,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
+  alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Requirements.Tools.Responses, as: RequirementsMapper
 
   @impl true
@@ -46,11 +47,12 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
         execution =
           scope
           |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
-          |> then(&CodeMySpec.Requirements.Directives.number_execution(scope, &1))
+          |> then(&Directives.number_execution(scope, &1))
 
         execution
         |> RequirementsMapper.story_execution_response(%{})
-        |> with_offer_note(ready_offer(agent))
+        |> with_decline_notes(agent, execution)
+        |> with_offer_note(ready_offer(agent, execution.actionable))
 
       {:error, _reason} ->
         # No project linked — return init checklist so the agent can bootstrap
@@ -85,10 +87,31 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   # already holds (issue e6f18e57, product's ruling: only pushed work turns
   # climb the ladder). `reject_offer`'s own fallback handles the case this
   # agent was shown work with no offer behind it at all.
-  defp ready_offer(%{id: agent_id}) when is_binary(agent_id),
-    do: Offers.current_work_offer(agent_id)
+  #
+  # Only an offer for work shown here is named: one recorded before the team
+  # moved story, or before its requirement stopped being actionable, would
+  # send the agent to a `start_task` that refuses it.
+  defp ready_offer(%{id: agent_id}, actionable) when is_binary(agent_id) do
+    case Offers.current_work_offer(agent_id) do
+      %{subject_type: "requirement", subject_key: key} = offer ->
+        if Enum.any?(actionable, &(offer_key(&1) == key)), do: offer
 
-  defp ready_offer(_agent), do: nil
+      offer ->
+        offer
+    end
+  end
+
+  defp ready_offer(_agent, _actionable), do: nil
+
+  # The key `Work` records an offer under: a story by number, else by id.
+  defp offer_key(node), do: "#{node.entity_type}:#{Directives.entity_ref(node)}:#{node.name}"
+
+  defp with_decline_notes(response, nil, _execution), do: response
+
+  defp with_decline_notes({:ok, text}, agent, execution) do
+    notes = Offers.decline_notes(agent.id, execution.wave)
+    {:ok, text <> notes}
+  end
 
   defp with_offer_note(response, nil), do: response
 

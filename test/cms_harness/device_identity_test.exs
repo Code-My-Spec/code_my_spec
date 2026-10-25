@@ -82,6 +82,31 @@ defmodule CmsHarness.DeviceIdentityTest do
     assert :meck.validate(:inet)
   end
 
+  # Several QA harnesses on one machine, each a device of its own.
+  test "a harness with its own state dir is its own device on the same hardware", %{
+    scope: scope,
+    token: token,
+    dir: dir
+  } do
+    existing = device_ids(scope)
+    interfaces = [{~c"en0", [flags: [:up], hwaddr: [148, 5, 187, 209, 94, 222]]}]
+    previous = System.get_env("CMS_PROJECT_DIR")
+    on_exit(fn -> restore_env("CMS_PROJECT_DIR", previous) end)
+
+    ids =
+      for name <- ["device-a", "device-b"] do
+        System.put_env("CMS_PROJECT_DIR", Path.join([dir, name, "copy"]))
+        announce_from(dir, name, token, interfaces)
+      end
+
+    assert [a, b] = ids
+    refute a == b
+    assert Enum.sort(device_ids(scope) -- existing) == Enum.sort(ids)
+  end
+
+  defp restore_env(key, nil), do: System.delete_env(key)
+  defp restore_env(key, value), do: System.put_env(key, value)
+
   defp announce_from(dir, name, token, interfaces) do
     file = Path.join(dir, name <> ".json")
     refute File.exists?(file)

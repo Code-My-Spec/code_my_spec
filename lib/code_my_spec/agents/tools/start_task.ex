@@ -10,6 +10,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Components
+  alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
@@ -106,12 +107,14 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
        )
        when is_binary(name) and is_binary(id) do
     role = if match?(%Agent{}, owner), do: owner.role, else: nil
+    issue = Issues.fetch_issue(scope, id)
+    full_id = with {:ok, %{id: full}} <- issue, do: full, else: (_ -> id)
 
     case Enum.find(
            Work.actionable(scope, role, owner, claim: true),
-           &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == id)
+           &(&1.name == name and &1.entity_type == "issue" and to_string(&1.entity_id) == full_id)
          ) do
-      nil -> {:error, "Requirement #{name} not found for issue #{id}"}
+      nil -> {:error, not_offered(name, id, issue)}
       node -> {:ok, node}
     end
   end
@@ -141,13 +144,33 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
      "Must provide requirement_name + entity_type + entity_id, or requirement_name + module_name"}
   end
 
+  # "Not found" read as a broken claim for an issue that existed and simply was
+  # not this agent's to take now: its fix already submitted and waiting on the
+  # story's QA, or held by another team (issue cc785e7e).
+  defp not_offered(_name, id, :not_found), do: "There is no issue #{id}."
+
+  defp not_offered(_name, id, {:ambiguous, ids}),
+    do: "`#{id}` matches more than one issue (#{Enum.join(ids, ", ")}). Pass the full id."
+
+  defp not_offered(name, id, {:ok, issue}) do
+    "`#{name}` for issue #{id} is not offered to you now. The issue is #{issue.status}" <>
+      submitted_note(issue) <> ". `get_next_requirement` lists the work you can claim."
+  end
+
+  defp submitted_note(issue) do
+    if Issues.story_issue_submitted?(issue),
+      do: ", and its fix is already submitted: it waits on the story's QA, not on a new claim",
+      else: ""
+  end
+
   defp resolve_from_graph(scope, name, entity_type, entity_id, owner, entity_ref) do
-    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+    graph_scope = Work.requirement_scope(scope, owner)
+    {{all_nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(graph_scope)
 
     found =
       Enum.find(all_nodes, fn n ->
         n.name == name and n.entity_type == entity_type and to_string(n.entity_id) == entity_id
-      end) || placed(scope, owner, name, entity_type, entity_id)
+      end) || placed(graph_scope, owner, name, entity_type, entity_id)
 
     case found do
       nil -> {:error, "Requirement #{name} not found for #{entity_type} #{entity_ref}"}
@@ -268,7 +291,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       # branch already gives.
       {:error, :requirement_not_eligible} ->
         TasksMapper.error(
-          "#{requirement.name} for #{requirement.entity_type} #{requirement.entity_id} is " <>
+          "#{requirement.name} for #{requirement.entity_type} #{entity_label(scope, requirement)} is " <>
             "not eligible work right now -- nothing was claimed. Call get_next_requirement " <>
             "for what is actionable now."
         )
@@ -337,7 +360,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
         {:ok, _updated} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
 
         TasksMapper.error(
-          "Task #{task.id} named #{req.name} for #{req.entity_type} #{req.entity_id}, which " <>
+          "Task #{task.id} named #{req.name} for #{req.entity_type} #{entity_label(scope, req)}, which " <>
             "is no longer eligible work -- cancelled rather than left stuck blocked. " <>
             "Call get_next_requirement for what is actionable now."
         )
@@ -421,7 +444,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       {:error,
        "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
          "is already satisfied — there is nothing to do, and the offer of it is closed. " <>
-         "`get_next_requirement` shows what is left."}
+         certified_at(scope, requirement) <> "`get_next_requirement` shows what is left."}
     else
       :ok
     end
@@ -492,6 +515,17 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       )
 
   defp close_stale_offer(_scope, _owner, _requirement), do: :ok
+
+  # Which commit a satisfied certification covers, so a caller who expected
+  # HEAD to have moved past it can see that it has not (issue 9bc6eba3).
+  defp certified_at(scope, %{name: "ready_for_qa", entity_type: "story", entity_id: id}) do
+    case Stories.get_story(scope, id) do
+      %{qa_ready_commit: commit} when is_binary(commit) -> "It is certified at #{commit}. "
+      _ -> ""
+    end
+  end
+
+  defp certified_at(_scope, _requirement), do: ""
 
   defp entity_label(scope, %{entity_type: "story", entity_id: id}) do
     case Stories.get_story(scope, id) do

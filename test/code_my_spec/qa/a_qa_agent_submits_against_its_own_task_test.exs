@@ -25,6 +25,7 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Qa
+  alias CodeMySpec.Qa.Tools.SubmitQaResult
   alias CodeMySpec.Repo
 
   setup do
@@ -153,6 +154,41 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
 
     assert [%{"status" => "blocked", "blocker_issue_id" => exported_blocker}] = row["scenarios"]
     assert exported_blocker == blocker.id
+  end
+
+  # ed0e0e81: QA cites an issue by the key it is shown (an id prefix), and
+  # the tool refused it as an invalid id.
+  test "an issue cited by its key is recorded by its full id", ctx do
+    blocker = CodeMySpec.IssuesFixtures.issue_fixture(ctx.scope, %{severity: :high})
+    key = String.slice(blocker.id, 0, 8)
+
+    params =
+      attrs(ctx.task_id, :partial)
+      |> Map.put(:issue_ids, [key])
+      |> Map.put(:scenarios, [
+        %{
+          "name" => "live check",
+          "status" => "blocked",
+          "observation" => "The test service is unavailable",
+          "blocker_issue_id" => key
+        }
+      ])
+
+    assert {:ok, _text} = SubmitQaResult.call(params, %{scope: ctx.scope})
+    assert [attempt] = Qa.list_qa_attempts(ctx.scope, ctx.story.id)
+    assert attempt.issue_ids == [blocker.id]
+    assert [%{blocker_issue_id: blocker_id}] = Repo.get!(Qa.QaAttempt, attempt.id).scenarios
+    assert blocker_id == blocker.id
+  end
+
+  test "an issue key that matches nothing is refused, saying so", ctx do
+    params = attrs(ctx.task_id, :partial) |> Map.put(:issue_ids, ["ffffffff"])
+
+    assert {:error, message} =
+             SubmitQaResult.call(params, %{scope: ctx.scope})
+
+    assert message =~ "No issue matches `ffffffff`"
+    assert Qa.list_qa_attempts(ctx.scope, ctx.story.id) == []
   end
 
   test "the attempt lands against a task held by the agent", ctx do

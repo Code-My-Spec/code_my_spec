@@ -57,6 +57,10 @@ defmodule CmsHarness.AppInstance.Runner do
   @doc "The commit `root`'s checkout is on, or `nil`."
   @callback current_commit(root :: String.t()) :: String.t() | nil
 
+  @doc "The paths that differ between two commits of `root`, or `nil` if git cannot say."
+  @callback changed_paths(root :: String.t(), from :: String.t(), to :: String.t()) ::
+              [String.t()] | nil
+
   @doc """
   Run `root`'s `after-promote` recipe. Only called once `recipe?/2` has
   already confirmed it exists — a project that declares nothing never
@@ -178,6 +182,9 @@ defmodule CmsHarness.AppInstance.Runner do
 
   @spec current_commit(String.t()) :: String.t() | nil
   def current_commit(root), do: impl().current_commit(root)
+
+  @spec changed_paths(String.t(), String.t(), String.t()) :: [String.t()] | nil
+  def changed_paths(root, from, to), do: impl().changed_paths(root, from, to)
 
   @spec run_after_promote(String.t()) :: :ok | {:error, term()}
   def run_after_promote(root), do: impl().run_after_promote(root)

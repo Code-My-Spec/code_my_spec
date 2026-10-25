@@ -156,6 +156,10 @@ defmodule CodeMySpec.Agents.Tools.AStaleBlockedTaskIsCancelledRatherThanStuckTes
 
     assert text =~ "no longer eligible"
 
+    # Named as the caller named it: by number, not the story's database id.
+    assert text =~ "story #{story.number},"
+    refute story.id != story.number and text =~ "story #{story.id},"
+
     assert [%{id: task_id, status: :cancelled}] = reload(coding).tasks
     assert task_id == task.id
   end

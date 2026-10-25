@@ -13,6 +13,7 @@ defmodule CodeMySpec.Requirements.APullIsBackedByTheSameOfferAPushWouldMakeTest 
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Tools.RejectOffer
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -67,13 +68,34 @@ defmodule CodeMySpec.Requirements.APullIsBackedByTheSameOfferAPushWouldMakeTest 
     declined_key = offer.subject_key
 
     assert after_decline = ToolLibrary.run("get_next_requirement", %{}, tool_context(frame))
-    refute response_text(after_decline) =~ "requirement_name=`#{shown_name}`"
+    # Product correction on 006b2b56: a decline damps pushes only.
+    assert response_text(after_decline) =~ "requirement_name=`#{shown_name}`"
+    assert response_text(after_decline) =~ "you declined this at"
+    assert response_text(after_decline) =~ "not this agent's scope"
 
     refute Enum.any?(
              Offers.list_for_agent(ctx.agent.id),
              &(&1.status == :open and &1.subject_key == declined_key)
            ),
            "the declined work was offered again before main acted on it"
+  end
+
+  # An offer recorded before the team moved story, or before its requirement
+  # stopped being actionable, named work start_task then refused.
+  test "a pull names an open offer only for work it shows", ctx do
+    frame = %Frame{assigns: %{current_scope: ctx.scope, agent_id: ctx.agent.id}}
+
+    {:ok, stale} = Offers.dispatch(ctx.agent, :work, {"requirement", "story:99999:qa_complete"})
+    stale_shown = ToolLibrary.run("get_next_requirement", %{}, tool_context(frame))
+
+    refute response_text(stale_shown) =~ stale.id,
+           "the pull named an offer for work it does not show"
+
+    {kind, subject} = Work.shown_work(ctx.scope, ctx.agent)
+    {:ok, current} = Offers.dispatch(ctx.agent, kind, subject)
+    current_shown = ToolLibrary.run("get_next_requirement", %{}, tool_context(frame))
+
+    assert response_text(current_shown) =~ "backed by offer `#{current.id}`"
   end
 
   test "reject_offer with no open offer and nothing shown refuses rather than inventing one",

@@ -2,6 +2,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.FleetHolds
   alias CodeMySpec.Promotion
@@ -75,7 +76,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
          [run_id | _] <- Analysis.join_running_at_commit(scope, source, head, agent_id) do
       {:ok,
        "Run #{run_id} is already under way at this commit; you are waiting on it.\n\n" <>
-         started(source, agent_id)}
+         started(source, agent_id) <> terminal_note(scope, agent_id, run_id)}
     else
       _ -> :none
     end
@@ -89,7 +90,9 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
         {:error, "#{source} run #{run_id} skipped because of compiler errors."}
 
       {:ok, _admission, run_id} ->
-        {:ok, "Run #{run_id} admitted.\n\n" <> started(source, agent_id)}
+        {:ok,
+         "Run #{run_id} admitted.\n\n" <>
+           started(source, agent_id) <> terminal_note(scope, agent_id, run_id)}
 
       {:error, :no_executor} ->
         {:error,
@@ -152,4 +155,25 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
     it finishes instead, `POST localhost:4004/api/harnesses/<working_copy_id>/analysis/wait`.
     """
   end
+
+  # A terminal agent's result is handed over by its own session's stop hook.
+  # One driven over MCP from somewhere else, such as a `/dev/qa-agents` agent
+  # QA calls through `call_mcp_server`, has no session to hand it to: QA
+  # waited five hours on a run that had long finished.
+  defp terminal_note(scope, agent_id, run_id) when is_binary(agent_id) do
+    case Agents.fetch_agent(scope, agent_id) do
+      {:ok, %{engine: engine}} when engine in [:claude_code, :codex] ->
+        """
+
+        If you are driving this agent over MCP rather than from its own Claude Code or
+        Codex session, nothing delivers the result to you: once it lands, read it with
+        `get_analysis_output({run_id = #{run_id}})`.
+        """
+
+      _ ->
+        ""
+    end
+  end
+
+  defp terminal_note(_scope, _agent_id, _run_id), do: ""
 end

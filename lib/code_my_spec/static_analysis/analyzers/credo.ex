@@ -136,7 +136,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     # clean_otp_env is applied by the environment (see Local.cmd/4).
     case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args,
            cd: code_repo,
-           stderr_to_stdout: true
+           stderr_to_stdout: true,
+           env: Keyword.get(opts, :extra_env, [])
          ) do
       {output, exit_code} when exit_code in 0..127 ->
         handle_credo_output(output, exit_code, temp_file)

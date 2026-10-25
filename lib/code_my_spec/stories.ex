@@ -20,6 +20,19 @@ defmodule CodeMySpec.Stories do
     exports: :all
 
   alias CodeMySpec.Requirements.GraphInputs
+
+  defdelegate add_story_dependency(scope, number, builds_on),
+    to: CodeMySpec.Stories.Dependencies,
+    as: :add
+
+  defdelegate remove_story_dependency(scope, number, builds_on),
+    to: CodeMySpec.Stories.Dependencies,
+    as: :remove
+
+  defdelegate list_story_dependencies(scope, story_id),
+    to: CodeMySpec.Stories.Dependencies,
+    as: :list
+
   alias CodeMySpec.Stories.StoriesRepository
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope

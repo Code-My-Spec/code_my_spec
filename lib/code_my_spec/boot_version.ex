@@ -37,6 +37,57 @@ defmodule CodeMySpec.BootVersion do
     end
   end
 
+  @doc "The checkout this process booted from, or nil."
+  @spec root() :: String.t() | nil
+  def root do
+    case :persistent_term.get(@key, nil) do
+      {root, _sha} when is_binary(root) -> root
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The source files, relative to the boot checkout, of every CodeMySpec and
+  CmsHarness module this process has loaded: what a landing has to change for
+  this process to be running stale code. A hand-kept path list missed
+  `analysis/run_node.ex`, which the harness runs, and a fix stayed inert.
+  `[]` when the boot checkout is unknown.
+  """
+  @spec loaded_sources() :: [String.t()]
+  def loaded_sources do
+    case root() do
+      nil -> []
+      root -> loaded_sources(root)
+    end
+  end
+
+  defp loaded_sources(root) do
+    prefix = String.trim_trailing(root, "/") <> "/"
+
+    for {module, _} <- :code.all_loaded(),
+        app_module?(module),
+        source = source_of(module),
+        is_binary(source) and String.starts_with?(source, prefix),
+        uniq: true do
+      String.replace_prefix(source, prefix, "")
+    end
+    |> Enum.sort()
+  end
+
+  defp app_module?(module) do
+    name = Atom.to_string(module)
+
+    String.starts_with?(name, "Elixir.CodeMySpec") or
+      String.starts_with?(name, "Elixir.CmsHarness")
+  end
+
+  defp source_of(module) do
+    case module.module_info(:compile)[:source] do
+      nil -> nil
+      source -> List.to_string(source)
+    end
+  end
+
   @doc """
   Read-only identity of this serving VM and its boot checkout.
 

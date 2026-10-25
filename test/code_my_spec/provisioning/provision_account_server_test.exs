@@ -49,6 +49,25 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     {:ok, scope: scope}
   end
 
+  test "repairs database isolation through provisioning on an existing box", %{scope: scope} do
+    record_requests(self(), existing: true)
+
+    run = fn
+      ["docker ps" <> _] -> {"c0ffeec0ffee", 0}
+      [_] -> {"[]", 0}
+    end
+
+    assert {:ok, []} =
+             Steps.repair_database_isolation(scope, "acme-box",
+               run: run,
+               ssh_key_path: "unused",
+               database_admin_credential: %{username: "postgres", password: "proof"}
+             )
+
+    assert_received {:ran, "GET", "/v1/servers"}
+    refute_received {:ran, "POST", "/v1/servers"}
+  end
+
   test "adopts an existing box and brings its registry and database up", %{scope: scope} do
     record_requests(self(), existing: true)
 

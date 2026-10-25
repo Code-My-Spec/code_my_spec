@@ -3,7 +3,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.{Projects, UserPreferences, Users}
+  alias CodeMySpec.{AgentAttachments, Projects, UserPreferences, Users}
 
   setup do
     scope = full_scope_fixture()
@@ -19,6 +19,82 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
       UserPreferences.create_user_preferences(scope, %{active_account_id: scope.active_account_id})
 
     %{scope: scope, credentials: %{email: scope.user.email, password: password}}
+  end
+
+  # Its headers alone got 401 from /mcp/harness, and a copy's cloned database
+  # held only the seed user's expired tokens: QA of 1148 and 1157 stalled.
+  test "qa-agents headers carry a token /mcp/harness accepts", %{credentials: credentials} do
+    start_supervised!({CodeMySpecWeb.QaEnvironments, root: File.cwd!()})
+
+    %{"agents" => [%{"headers" => headers}]} =
+      build_conn()
+      |> post("/dev/qa-agents", Map.put(credentials, :roles, ["qa"]))
+      |> json_response(200)
+
+    assert "Bearer " <> token = headers["Authorization"]
+    assert ExOauth2Provider.AccessTokens.get_by_token(token, otp_app: :code_my_spec)
+
+    # The check `/mcp/harness`'s `:mcp_protected` pipeline makes.
+    conn =
+      headers
+      |> Enum.reduce(build_conn(), fn {k, v}, conn ->
+        put_req_header(conn, String.downcase(k), v)
+      end)
+      |> CodeMySpecWeb.UserAuth.require_oauth_token([])
+
+    refute conn.halted, "the token was refused (#{conn.status})"
+    assert conn.assigns.current_scope.user.email == credentials.email
+  end
+
+  # 1148's QA could not tell an offline device or a foreign copy id apart from
+  # anything else: the fixture made neither.
+  test "attachment fixtures give Main an offline copy and a copy it may not attach", %{
+    scope: scope,
+    credentials: credentials
+  } do
+    start_supervised!({CodeMySpecWeb.QaEnvironments, root: File.cwd!()})
+
+    %{"project_id" => project_id, "agents" => [%{"agent_id" => main_id}]} =
+      reply =
+      build_conn()
+      |> post(
+        "/dev/qa-agents",
+        Map.merge(credentials, %{roles: ["main"], attachment_fixtures: true})
+      )
+      |> json_response(200)
+
+    %{"online" => online, "offline" => offline, "unauthorized_working_copy_id" => foreign_id} =
+      reply["attachment_fixtures"]
+
+    on_exit(fn -> File.rm_rf(Path.dirname(Path.dirname(offline["root"]))) end)
+
+    # Each on a device of its own, which a harness serving it presents.
+    assert [_, _] = online
+    assert length(Enum.uniq(Enum.map([offline | online], & &1["device_id"]))) == 3
+
+    for copy <- [offline | online] do
+      assert File.read!(Path.join(copy["root"], ".cms_harness.json")) =~ copy["working_copy_id"]
+
+      assert %{"device_id" => copy["device_id"]} ==
+               copy["root"]
+               |> Path.dirname()
+               |> Path.join("device.json")
+               |> File.read!()
+               |> Jason.decode!()
+    end
+
+    for %{"root" => root, "harness" => harness} <- online do
+      assert harness["command"] =~ "CMS_PROJECT_DIR=#{root} "
+      assert harness["command"] =~ "CMS_HARNESS_PORT=#{harness["port"]} "
+    end
+
+    main = %{scope | active_project_id: project_id}
+
+    assert {:error, :harness_unreachable} =
+             AgentAttachments.connect(main, main_id, offline["working_copy_id"])
+
+    assert {:error, :working_copy_not_found} =
+             AgentAttachments.connect(main, main_id, foreign_id)
   end
 
   test "creates a fresh disposable project and exposes provider controls", %{

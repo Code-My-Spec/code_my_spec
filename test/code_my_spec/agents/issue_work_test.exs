@@ -421,8 +421,70 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
   # 44a4a121, seen twice on 2026-10-19: a coder declined its assigned issue's
   # offer while it waited on main's answer, and its own start_task then
   # answered "Requirement fix_issue not found" with nothing main could do. A
-  # decline keeps the work off the agent's menu; it does not refuse the
-  # agent's own claim of it by name.
+  # decline must leave the work visible and claimable when the agent pulls.
+  # Product clarified this behavior on issue 006b2b56.
+  test "a file change lifts an earlier decline through the graph wake", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    key = "issue:#{ctx.issue.id}:fix_issue"
+    declined = Offers.record_declined(coding, :work, {"requirement", key}, "waiting for changes")
+    Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
+
+    CodeMySpec.Agents.GraphWake.handle_event(
+      CodeMySpec.Agents.GraphWake.event(),
+      %{},
+      %{
+        scope: ctx.scope,
+        changes: [
+          %{
+            kind: "files_synced",
+            working_copy_id: copy_id,
+            inserted_at: NaiveDateTime.add(DateTime.to_naive(declined.outcome_at), 1, :second)
+          }
+        ]
+      },
+      nil
+    )
+
+    :ok = CodeMySpecSpex.Fixtures.drain_background_work()
+    assert Repo.get!(CodeMySpec.Agents.Offer, declined.id).status == :superseded
+  end
+
+  test "a stale change or another checkout does not lift a decline", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    key = "issue:#{ctx.issue.id}:fix_issue"
+    declined = Offers.record_declined(coding, :work, {"requirement", key}, "waiting")
+
+    Offers.lift_copy_declines(ctx.scope, copy_id, DateTime.add(declined.outcome_at, -1, :second))
+    assert Repo.get!(CodeMySpec.Agents.Offer, declined.id).status == :declined
+    Offers.lift_copy_declines(ctx.scope, copy(ctx.scope), DateTime.utc_now())
+    assert Repo.get!(CodeMySpec.Agents.Offer, declined.id).status == :declined
+  end
+
+  test "a teammate completing work lifts a prior decline and permits a fresh offer", ctx do
+    copy_id = copy(ctx.scope)
+    coding = agent(ctx.scope, :coding, copy_id)
+    qa = agent(ctx.scope, :qa, copy_id)
+    {:ok, _} = Agents.assign_issue_to_working_copy(ctx.scope, ctx.issue.id, copy_id)
+    key = "issue:#{ctx.issue.id}:fix_issue"
+    declined = Offers.record_declined(coding, :work, {"requirement", key}, "waiting for teammate")
+    assert %{held?: true} = Offers.standing(coding.id)[key]
+
+    CodeMySpec.Agents.Events.handle_event(
+      [:code_my_spec, :tasks, :completed],
+      %{},
+      %{scope: ctx.scope, working_copy_id: copy_id, except_agent_id: qa.id},
+      nil
+    )
+
+    assert Repo.get!(CodeMySpec.Agents.Offer, declined.id).status == :superseded
+    refute match?(%{held?: true}, Offers.standing(coding.id)[key])
+    assert {:ok, fresh} = Offers.dispatch(coding, :work, {"requirement", key})
+    assert fresh.id != declined.id
+    assert fresh.status == :open
+  end
+
   test "an agent that declined its issue's offer can still claim it by name", ctx do
     %{scope: scope, copy_id: copy_id} = certifiable_copy(ctx.scope)
     coding = agent(scope, :coding, copy_id)
@@ -435,7 +497,16 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
       "waiting on main's answer"
     )
 
-    assert Work.claimable_work(scope, coding) == []
+    assert [%{name: "fix_issue", entity_id: issue_id}] = Work.claimable_work(scope, coding)
+    assert issue_id == ctx.issue.id
+
+    assert {:ok, text} =
+             ToolLibrary.run("get_next_requirement", %{}, %{scope: scope, agent_id: coding.id})
+
+    assert text =~ "fix_issue"
+    assert text =~ "you declined this at"
+    assert text =~ "waiting on main's answer"
+    refute text =~ "held by a teammate"
 
     params = %{requirement_name: "fix_issue", entity_type: "issue", entity_id: ctx.issue.id}
 

@@ -52,6 +52,14 @@ defmodule CmsHarness.Config do
   defdelegate local_state_dir, to: CodeMySpec.Paths
 
   @doc """
+  Whether this harness keeps state of its own, apart from the user's: started
+  for one copy (a workspace, a sprite, one of several QA harnesses on a
+  machine) rather than as the machine's harness.
+  """
+  @spec own_state?() :: boolean()
+  def own_state?, do: local_state_dir() != CodeMySpec.Paths.user_state_dir()
+
+  @doc """
   Where this harness generates a project nobody chose a directory for.
 
   For `CmsHarness.Projects.Generator`, which has nobody to ask. Harness-owned
