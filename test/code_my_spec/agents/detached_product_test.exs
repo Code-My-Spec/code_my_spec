@@ -2,7 +2,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.Agents
-  alias CodeMySpec.Agents.{Agent, Mailbox, Presence}
+  alias CodeMySpec.Agents.{Agent, DefinitionContext, Mailbox, Presence}
   alias CodeMySpec.Conversations.Message
 
   defmodule Transport do
@@ -267,7 +267,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
   end
 
   test "Product guidance forwards constraints and treats pre-checkout discovery as expected" do
-    guidance = CodeMySpec.Agents.DefinitionContext.workflow()
+    guidance = DefinitionContext.workflow()
     assert guidance =~ "top-level instructions field"
     assert guidance =~ "Main does not automatically receive your chat"
     assert guidance =~ "not a framework failure"

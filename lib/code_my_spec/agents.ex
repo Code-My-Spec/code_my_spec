@@ -66,6 +66,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Assignment
   alias CodeMySpec.Agents.Credential
   alias CodeMySpec.Agents.Defaults
+  alias CodeMySpec.Agents.DefinitionContext
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.LaunchRequest
   alias CodeMySpec.Agents.Mailbox
@@ -1859,7 +1860,7 @@ defmodule CodeMySpec.Agents do
           deliver_setup_message(
             agent,
             conversation,
-            CodeMySpec.Agents.DefinitionContext.setup_message(project, instructions),
+            DefinitionContext.setup_message(project, instructions),
             ref
           )
 
@@ -1872,7 +1873,7 @@ defmodule CodeMySpec.Agents do
   defp deliver_setup_instructions(_agent, _conversation, _message, nil), do: :ok
 
   defp deliver_setup_instructions(agent, conversation, original, instructions) do
-    text = CodeMySpec.Agents.DefinitionContext.setup_instructions(instructions)
+    text = DefinitionContext.setup_instructions(instructions)
     digest = :crypto.hash(:sha256, instructions) |> Base.encode16(case: :lower)
     ref = "project-setup-instructions-#{agent.id}-#{digest}"
 
@@ -1995,7 +1996,7 @@ defmodule CodeMySpec.Agents do
            record_admission(
              agent,
              conversation,
-             CodeMySpec.Agents.DefinitionContext.message(scope),
+             DefinitionContext.message(scope),
              ref,
              :operator_message,
              nil,
