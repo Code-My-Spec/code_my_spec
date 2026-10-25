@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias ClientUtils.Harness.Onboarding
   alias CodeMySpec.{AgentAttachments, Projects, UserPreferences, Users}
 
   setup do
@@ -74,6 +75,11 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureControllerTest do
 
     for copy <- [offline | online] do
       assert File.read!(Path.join(copy["root"], ".cms_harness.json")) =~ copy["working_copy_id"]
+      # What Codex Cloud's readiness check and the harness ask of a copy.
+      assert %{onboarded: true} = Onboarding.check(copy["root"])
+
+      assert copy["root"] |> Path.join(".claude/settings.local.json") |> File.read!() =~
+               copy["working_copy_id"]
 
       assert %{"device_id" => copy["device_id"]} ==
                copy["root"]
