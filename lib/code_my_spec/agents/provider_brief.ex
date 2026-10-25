@@ -115,6 +115,23 @@ defmodule CodeMySpec.Agents.ProviderBrief do
   `tool_calls: []` ends the turn having run nothing.
   """
 
+  # `openai-codex` runs the Codex CLI, which offers the model its own tools
+  # beside the harness's: a JavaScript `exec` with a `tools.*` namespace and an
+  # `ALL_TOOLS` registry. The harness's tools arrive only as `available_tools`.
+  # A model that looked for `run_script` in the native registry found nothing
+  # and stopped (issue 8428cef0). This names which surface is the harness's; it
+  # describes no failure, so there is nothing for the model to echo.
+  @codex """
+  ## Your tools are the ones in `available_tools`
+
+  The tools of this harness — `get_next_requirement`, `start_task`, `run_script`,
+  `read`, `write`, `edit`, `bash` and the rest — are the entries in
+  `available_tools`, and you use one by naming it in `tool_calls`. They are not
+  in Codex's own `exec`, its `tools.*` namespace or its `ALL_TOOLS` list, which
+  belong to the Codex CLI and have nothing of this harness in them. Do not use
+  `exec` here.
+  """
+
   @doc """
   The brief for this provider, or `nil` when there is nothing to say.
 
@@ -140,6 +157,9 @@ defmodule CodeMySpec.Agents.ProviderBrief do
       do: String.trim(@claude_code),
       else: nil
   end
+
+  # Measured on, not assumed: see `@codex`.
+  def for("openai-codex"), do: String.trim(@codex)
 
   def for(_provider), do: nil
 end

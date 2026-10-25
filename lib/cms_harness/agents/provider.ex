@@ -69,6 +69,20 @@ defmodule CmsHarness.Agents.Provider do
         config_overrides: [
           "features.shell_tool=false",
           "features.unified_exec=false",
+          # Codex's own tools beside the harness's: given them, the model
+          # searched its native registry for `run_script` and called
+          # `tools.get_next_requirement` in its own `exec`, found neither, and
+          # stopped saying it had no tools (issue 8428cef0). `code_mode_host`
+          # stays on: off, `exec` fails closed with an error item mid-turn.
+          "features.apps=false",
+          "features.plugins=false",
+          "features.browser_use=false",
+          "features.computer_use=false",
+          "features.in_app_browser=false",
+          "features.sleep_tool=false",
+          "features.tool_suggest=false",
+          "features.skill_search=false",
+          "features.multi_agent=false",
           "include_permissions_instructions=false"
         ],
         timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
