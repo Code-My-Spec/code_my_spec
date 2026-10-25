@@ -59,7 +59,8 @@ defmodule CodeMySpec.SpexGivensTest do
   #
   # `LiveRun.start(` (story 1141) starts a live harness on Sam's checkout and
   # has his agent start the suite through `start_analysis`: the run is the
-  # premise, and it holds it open for the scenario to watch.
+  # premise, and it holds it open for the scenario to watch. `LiveRun.start_credo(`
+  # (story 1144) is the same with credo as the run.
   #
   # `Req.Test.stub` is a provider seam, listed by the same precedent as `stage_`
   # and `with_provider_cassette`. A block saying "Z.ai will accept this key" and
@@ -302,11 +303,11 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after ExecutionContexts. File.write File.mkdir
     assign put_session seed_cookies
-    StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
+    StoryHelpers. CriterionScript. Deps. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
-    join_working_copy report_agents LiveRun.start(
+    join_working_copy report_agents LiveRun.start( LiveRun.start_credo(
     H.start( EpicHelpers. given_a_main_checkout given_a_staffed_checkout say_to_main_agent
     given_a_harnessed_checkout checkout( add_criterion(
     given_a_live_harness HarnessHooks.

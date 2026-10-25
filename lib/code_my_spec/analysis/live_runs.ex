@@ -2,7 +2,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
   @moduledoc """
   What a run has reported so far, folded from its events as they arrive
   (story 1141): each test's result, the files it is in now, and whether it
-  reported finishing.
+  reported finishing. A credo run reports findings instead, and its totals
+  when it finishes (story 1144).
 
   Held in memory only. The ledger row records how a run ended; this is what
   can be seen of it while it runs and after. A run's events reach the server
@@ -24,7 +25,19 @@ defmodule CodeMySpec.Analysis.LiveRuns do
           message: String.t() | nil,
           failure_line: integer() | nil
         }
-  @type t :: %{running_files: [String.t()], tests: [test_result()], finished?: boolean()}
+  @type finding :: %{
+          file: String.t() | nil,
+          line: integer() | nil,
+          message: String.t() | nil,
+          check: String.t() | nil
+        }
+  @type t :: %{
+          running_files: [String.t()],
+          tests: [test_result()],
+          findings: [finding()],
+          totals: map() | nil,
+          finished?: boolean()
+        }
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
 
@@ -55,7 +68,7 @@ defmodule CodeMySpec.Analysis.LiveRuns do
 
   defp new(run_id) do
     prune(run_id)
-    %{running_files: [], tests: [], finished?: false}
+    %{running_files: [], tests: [], findings: [], totals: nil, finished?: false}
   end
 
   defp prune(run_id) do
@@ -84,6 +97,19 @@ defmodule CodeMySpec.Analysis.LiveRuns do
     %{live | tests: live.tests ++ [result]}
   end
 
-  defp apply_event(%{"event" => "finished"}, live), do: %{live | finished?: true}
+  defp apply_event(%{"event" => "finding"} = finding, live) do
+    result = %{
+      file: finding["file"],
+      line: finding["line"],
+      message: finding["message"],
+      check: finding["check"]
+    }
+
+    %{live | findings: live.findings ++ [result]}
+  end
+
+  defp apply_event(%{"event" => "finished"} = event, live),
+    do: %{live | finished?: true, totals: Map.take(event, ["files", "findings"])}
+
   defp apply_event(_event, live), do: live
 end

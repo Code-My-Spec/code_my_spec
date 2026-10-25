@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2320Spex do
       end
 
       when_ "setup runs", context do
-        {:ok, snapshot} = CodeMySpecSpex.Fixtures.check_machine_prerequisites()
+        {:ok, snapshot} = CmsHarnessTest.SetupFixture.check_prerequisites()
         {:ok, Map.put(context, :snapshot, snapshot)}
       end
 
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2320Spex do
       end
 
       then_ "the box is not shown as ready", context do
-        refute CodeMySpecSpex.Fixtures.machine_prerequisites_passed?(context.snapshot)
+        refute CmsHarnessTest.SetupFixture.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end

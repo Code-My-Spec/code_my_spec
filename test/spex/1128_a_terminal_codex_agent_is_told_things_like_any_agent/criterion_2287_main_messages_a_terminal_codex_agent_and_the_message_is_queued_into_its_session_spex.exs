@@ -35,6 +35,10 @@ defmodule CodeMySpecSpex.Story1128.Criterion2287Spex do
         session = codex_session_id()
         started = start_codex_session(context, session)
 
+        eventually(fn ->
+          assert MapSet.member?(CodeMySpec.Agents.present_ids(context.scope), started["agent_id"])
+        end)
+
         {:ok, Map.merge(context, %{fake: fake, session: session, agent_id: started["agent_id"]})}
       end
 
@@ -55,7 +59,8 @@ defmodule CodeMySpecSpex.Story1128.Criterion2287Spex do
 
       then_ "main is told it was delivered", context do
         assert {:ok, said} = context.sent
-        assert said =~ "Delivered"
+        assert said =~ "delivered through codex queue"
+        refute said =~ "agent has started its turn"
         {:ok, context}
       end
     end

@@ -1,11 +1,11 @@
 defmodule CodeMySpec.Devices.Device do
   @moduledoc """
-  One machine that runs a harness.
+  One machine, optionally connected through a harness.
 
-  The grain above a working copy. A device runs a harness; that harness serves
-  one or more checkouts; each checkout runs one or more agents. This row is the
-  machine, and it exists because several facts belong to the machine and were
-  being kept — badly — on the checkout instead.
+  The grain above a working copy. A provider-managed machine may exist before
+  any harness connects. When enrolled, its harness serves one or more checkouts;
+  each checkout runs one or more agents. Provider identity and connection
+  credentials belong to the same machine without requiring either to exist.
 
   `hostname` is what the box calls itself and is display only. It is emphatically
   not identity, for the reason the working copy's id is issued rather than
@@ -48,6 +48,9 @@ defmodule CodeMySpec.Devices.Device do
           preview_tunnel_id: String.t() | nil,
           preview_tunnel_secret: String.t() | nil,
           provider: atom() | nil,
+          provider_name: String.t() | nil,
+          provider_resource_id: String.t() | nil,
+          purpose: String.t() | nil,
           token_revoked_at: DateTime.t() | nil,
           fire_routine_id: String.t() | nil,
           token_hash: String.t() | nil,
@@ -109,7 +112,12 @@ defmodule CodeMySpec.Devices.Device do
     # the token the box signs in with: the token itself is shown once, when the box
     # is added, and kept nowhere. `token_last_used_at` is the first and latest
     # sign-in with it; nil is "never connected".
-    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud, :docker, :codex_cloud]
+    field :provider, Ecto.Enum,
+      values: [:local, :claude_code_cloud, :docker, :hetzner, :codex_cloud]
+
+    field :provider_name, :string
+    field :provider_resource_id, :string
+    field :purpose, :string
     field :token_hash, :string
     field :token_last_used_at, :utc_datetime_usec
     # Story 1131: set when Sam revokes the box; the token no longer signs in.
@@ -150,6 +158,40 @@ defmodule CodeMySpec.Devices.Device do
     |> validate_required([:label, :provider, :kind, :account_id, :token_hash])
     |> validate_length(:label, max: 80)
     |> unique_constraint(:token_hash)
+  end
+
+  @doc "Link a provider machine without enrolling a harness or issuing credentials."
+  def provider_machine_changeset(device, attrs) do
+    device
+    |> cast(attrs, [
+      :provider,
+      :provider_name,
+      :provider_resource_id,
+      :purpose,
+      :kind,
+      :account_id
+    ])
+    |> validate_required([:provider, :provider_name, :kind, :account_id])
+    |> unique_constraint([:account_id, :provider, :provider_name])
+    |> unique_constraint([:account_id, :provider, :provider_resource_id])
+    |> foreign_key_constraint(:account_id)
+  end
+
+  @doc "Edit the machine's purpose without changing its provider identity."
+  def purpose_changeset(device, attrs) do
+    device
+    |> cast(attrs, [:purpose])
+    |> update_change(:purpose, fn
+      nil ->
+        nil
+
+      value ->
+        case String.trim(value) do
+          "" -> nil
+          purpose -> purpose
+        end
+    end)
+    |> validate_length(:purpose, max: 255)
   end
 
   @doc "The box signed in with its token."
@@ -227,6 +269,8 @@ defmodule CodeMySpec.Devices.Device do
   def display_name(%__MODULE__{label: label}) when is_binary(label) and label != "", do: label
 
   def display_name(%__MODULE__{hostname: host}) when is_binary(host) and host != "", do: host
+
+  def display_name(%__MODULE__{provider_name: name}) when is_binary(name) and name != "", do: name
 
   def display_name(%__MODULE__{id: id}) when is_binary(id), do: String.slice(id, 0, 8)
 

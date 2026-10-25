@@ -57,10 +57,17 @@ defmodule CmsHarness.Agents.Engine.Execution do
     :ok
   end
 
+  # Gone already (`badarg`), or exiting as it is reached (`internal_error`,
+  # which crashed an engine's own terminate mid-cleanup): either way it is
+  # past needing to be held, and `release/1` kills owners regardless.
   defp suspend(pid) do
     :erlang.suspend_process(pid)
   rescue
-    ArgumentError -> :ok
+    ArgumentError ->
+      :ok
+
+    error in ErlangError ->
+      if error.original == :internal_error, do: :ok, else: reraise(error, __STACKTRACE__)
   end
 
   defp descendant?(pid, root) do

@@ -1,53 +1,85 @@
-defmodule CodeMySpecWeb.ServerLive.Index do
+defmodule CodeMySpecWeb.DeviceLive.ProviderComponent do
   @moduledoc """
-  Every box the account owns, linked or not, at `/app/servers` and in each
-  project's console (`ServerLive.Paths`).
+  Provider inventory within Devices. Discovery remains visible even for machines
+  not linked to the account; provider failures never imply an empty inventory.
 
-  ## Why unlinked servers are collapsed and not omitted
+  | Assign | Type | Required | Description |
+  | --- | --- | --- | --- |
+  | id | string | yes | Component identity |
+  | current_scope | Scope | yes | Account and permission scope |
+  | project_id | UUID or nil | no | Console project |
+  | devices_path | string | yes | Canonical Devices URL |
+  | edit_name | string or nil | no | Provider machine whose purpose is being edited |
+  | connected_device_ids | list | no | Machine UUIDs with live harness connections |
+  | refresh | term | no | Change to refresh provider inventory |
+  | saved_server | Device | no | Partial update after local purpose save; no provider requests |
 
-  A box nobody can see is a box that keeps billing. Linking is how Sam says a
-  server matters to him; it must not become how a server disappears. So the
-  unlinked ones sit behind a count that is always visible, and the count is
-  rendered whether or not anyone expands it.
-
-  ## Why the provisioning form is built from the provider
-
-  `/server_types` is a catalogue, not an inventory — during QA every ARM type
-  was listed and not deprecated while sold out in all six datacenters. Offering
-  from the catalogue offers something nobody can buy, so the form is built from
-  `/datacenters`, which reports what each location can actually supply. A size
-  that cannot be created is not on the screen to be chosen.
-
-  That leaves one real race: a size available when the page loaded and gone by
-  the time Sam confirms. It surfaces as an error naming the size and location,
-  and nothing is retried at a different size — a silent fallback is how you pay
-  for a machine you did not choose.
+  Link, retirement and provisioning events enforce owner/admin permissions.
+  Purpose saves emit `{:server_saved, device}` to the parent LiveView.
   """
 
-  use CodeMySpecWeb, :live_view
+  use CodeMySpecWeb, :live_component
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Servers
-  alias CodeMySpecWeb.ConsoleLive.Components.Shell
   alias CodeMySpecWeb.ServerLive.FormComponent
-  alias CodeMySpecWeb.ServerLive.Paths
 
   @impl true
-  def mount(params, _session, socket) do
+  def update(%{saved_server: device}, socket) do
+    servers =
+      Enum.map(socket.assigns.servers, fn server ->
+        if server.device_id == device.id,
+          do: Map.put(server, :environment, device.purpose),
+          else: server
+      end)
+
     {:ok,
      socket
-     |> assign(:project_id, params["project_id"])
-     |> assign(:servers_path, Paths.base(params))
-     |> assign(:page_title, "Servers")
-     |> assign(:show_unlinked, false)
-     |> assign(:pending, nil)
-     |> assign(:server, nil)
-     |> assign(:provision_error, nil)
-     |> assign(:retire_error, nil)
-     |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
-     |> load_servers()
+     |> assign(:servers, servers)
      |> load_environments()
-     |> load_options()}
+     |> edit_server()}
+  end
+
+  def update(assigns, socket) do
+    reload? =
+      not Map.has_key?(socket.assigns, :servers) or
+        Map.get(assigns, :refresh) != Map.get(socket.assigns, :refresh) or
+        Map.get(assigns, :current_scope, socket.assigns[:current_scope]) !=
+          socket.assigns[:current_scope]
+
+    socket =
+      socket
+      |> assign_new(:show_unlinked, fn -> false end)
+      |> assign_new(:pending, fn -> nil end)
+      |> assign_new(:server, fn -> nil end)
+      |> assign_new(:provision_error, fn -> nil end)
+      |> assign_new(:retire_error, fn -> nil end)
+      |> assign_new(:edit_name, fn -> nil end)
+      |> assign_new(:project_id, fn -> nil end)
+      |> assign_new(:connected_device_ids, fn -> [] end)
+      |> assign(assigns)
+
+    {:ok,
+     socket
+     |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
+     |> refresh_inventory(reload?)
+     |> edit_server()}
+  end
+
+  defp refresh_inventory(socket, false), do: socket
+
+  defp refresh_inventory(socket, true),
+    do: socket |> load_servers() |> load_environments() |> load_options()
+
+  defp edit_server(%{assigns: %{edit_name: nil}} = socket),
+    do: assign(socket, server: nil, edit_error: nil)
+
+  defp edit_server(socket) do
+    server = Servers.get_linked(socket.assigns.current_scope, socket.assigns.edit_name)
+
+    socket
+    |> assign(:server, server)
+    |> assign(:edit_error, if(is_nil(server), do: "That server is not linked to this account."))
   end
 
   # Owner/admin only — story 989's own Three Amigos decision: any member may
@@ -60,34 +92,6 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   defp can_manage?(_scope), do: false
 
-  @impl true
-  def handle_params(params, _url, socket) do
-    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
-  end
-
-  defp apply_action(socket, :edit, %{"name" => name}) do
-    case Servers.get_linked(socket.assigns.current_scope, name) do
-      # Reachable by URL for a box that was unlinked or destroyed since the
-      # link was made. Saying so beats a form bound to nothing.
-      nil ->
-        socket
-        |> put_flash(:error, "That server is not linked to this account.")
-        |> push_patch(to: socket.assigns.servers_path)
-
-      server ->
-        socket |> assign(:server, server) |> assign(:page_title, "Edit #{server.name}")
-    end
-  end
-
-  defp apply_action(socket, _action, _params) do
-    socket |> assign(:server, nil) |> assign(:page_title, "Servers")
-  end
-
-  @impl true
-  def handle_info({:server_saved, _server}, socket) do
-    {:noreply, socket |> load_servers() |> load_environments()}
-  end
-
   defp load_environments(socket) do
     assign(socket, :environments, Servers.known_environments(socket.assigns.current_scope))
   end
@@ -98,8 +102,12 @@ defmodule CodeMySpecWeb.ServerLive.Index do
 
   def handle_event("link", %{"name" => name}, socket) do
     case Servers.link(socket.assigns.current_scope, name) do
-      {:ok, _server} -> {:noreply, load_servers(socket)}
-      {:error, reason} -> {:noreply, assign(socket, :provider_error, describe(reason))}
+      {:ok, _server} ->
+        send(self(), :provider_inventory_changed)
+        {:noreply, load_servers(socket)}
+
+      {:error, reason} ->
+        {:noreply, provider_error(socket, reason)}
     end
   end
 
@@ -109,14 +117,16 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   def handle_event("retire", %{"name" => name}, socket) do
     case Servers.retire(socket.assigns.current_scope, name) do
       :ok ->
+        send(self(), :provider_inventory_changed)
+
         # A patch, not a plain reassign: it is the page's own confirmation
-        # that the action completed without leaving `/app/servers` — the
+        # that the action completed without leaving the Devices inventory — the
         # same trip the edit modal's own close button already makes.
         {:noreply,
          socket
          |> assign(:retire_error, nil)
          |> load_servers()
-         |> push_patch(to: socket.assigns.servers_path)}
+         |> push_patch(to: socket.assigns.devices_path)}
 
       {:error, {:in_use, projects}} ->
         {:noreply,
@@ -127,7 +137,10 @@ defmodule CodeMySpecWeb.ServerLive.Index do
          socket
          |> assign(:retire_error, nil)
          |> load_servers()
-         |> push_patch(to: socket.assigns.servers_path)}
+         |> push_patch(to: socket.assigns.devices_path)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :retire_error, %{name: name, message: describe_retire(reason)})}
     end
   end
 
@@ -178,6 +191,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
            location: pending.location
          }) do
       {:ok, _server} ->
+        send(self(), :provider_inventory_changed)
         {:noreply, socket |> assign(:pending, nil) |> load_servers()}
 
       {:error, reason} ->
@@ -185,12 +199,16 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     end
   end
 
+  defp provider_error(socket, reason) do
+    assign(socket, provider_error: describe(reason), provider_error_reason: reason)
+  end
+
   defp load_servers(socket) do
     case Servers.list(socket.assigns.current_scope) do
       {:ok, servers} ->
         socket
         |> assign(:servers, servers)
-        |> assign(:provider_error, nil)
+        |> assign(provider_error: nil, provider_error_reason: nil)
         |> expand_when_nothing_linked(servers)
 
       # Not an empty list. "You have no servers" and "we could not ask" are
@@ -202,7 +220,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       {:error, reason, linked} ->
         socket
         |> assign(:servers, linked)
-        |> assign(:provider_error, describe(reason))
+        |> provider_error(reason)
         |> expand_when_nothing_linked(linked)
     end
   end
@@ -253,6 +271,9 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   defp describe(:hetzner_not_configured),
     do: "No Hetzner API token is connected for this account. Add one to see your servers."
 
+  defp describe(:provider_identity_conflict),
+    do: "The provider replaced this machine. Review its identity before linking it again."
+
   defp describe(:not_linked),
     do: "That server is not linked to this account, so there is nowhere to record what it is for."
 
@@ -272,6 +293,11 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   defp describe_provision(reason, pending),
     do: "#{pending.size} in #{pending.location} could not be created: #{describe(reason)}"
 
+  defp describe_retire(:in_use),
+    do: "A project still uses this machine. Move its environment first."
+
+  defp describe_retire(reason), do: "Could not retire this machine: #{inspect(reason)}"
+
   defp in_use_message(projects),
     do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
 
@@ -281,100 +307,104 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      current_scope={@current_scope}
-      current_path={@current_path}
-      project={assigns[:project]}
-      projects={assigns[:projects] || []}
-    >
-      <Shell.frame project_id={@project_id} active={:servers}>
-        <div class="mx-auto max-w-5xl w-full">
-          <h1 class="text-2xl font-semibold mb-1">Servers</h1>
-          <p class="text-base-content/70 mb-6">
-            Every box in your account, whether CodeMySpec made it or you did.
-          </p>
+    <section id={@id} class="mt-8" aria-label="Hetzner devices">
+      <h2 class="text-lg font-semibold mb-4">Hetzner devices</h2>
+      <p :if={assigns[:edit_error]} role="alert" class="alert alert-error mb-4">{@edit_error}</p>
+      <div
+        :if={@provider_error}
+        data-test="provider-error"
+        role={if @provider_error_reason == :hetzner_not_configured, do: "status", else: "alert"}
+        class={[
+          "alert alert-soft mb-6",
+          if(@provider_error_reason == :hetzner_not_configured, do: "alert-info", else: "alert-error")
+        ]}
+      >
+        <span>{@provider_error}</span>
+        <.link
+          :if={@provider_error_reason == :hetzner_not_configured && @project_id && @can_manage}
+          navigate={"/app/projects/#{@project_id}/console/credentials"}
+          class="btn btn-sm btn-ghost"
+          data-test="configure-provider"
+        >
+          Connect Hetzner (optional)
+        </.link>
+      </div>
 
-          <div
-            :if={@provider_error}
-            data-test="provider-error"
-            role="alert"
-            class="alert alert-error alert-soft mb-6"
-          >
-            <span>{@provider_error}</span>
-          </div>
+      <div :for={server <- linked(@servers)} class="mb-2">
+        <.server_row
+          server={server}
+          can_manage={@can_manage}
+          retire_error={@retire_error}
+          account_id={@current_scope.active_account_id}
+          devices_path={@devices_path}
+          target={@myself}
+          connected_device_ids={@connected_device_ids}
+        />
+      </div>
 
-          <div :for={server <- linked(@servers)} class="mb-2">
-            <.server_row
-              server={server}
-              can_manage={@can_manage}
-              retire_error={@retire_error}
-              account_id={@current_scope.active_account_id}
-              servers_path={@servers_path}
-            />
-          </div>
+      <p
+        :if={@servers == [] and is_nil(@provider_error)}
+        data-test="no-servers"
+        class="text-base-content/60 my-6"
+      >
+        No servers in this account yet.
+      </p>
 
-          <p
-            :if={@servers == [] and is_nil(@provider_error)}
-            data-test="no-servers"
-            class="text-base-content/60 my-6"
-          >
-            No servers in this account yet.
-          </p>
+      <button
+        :if={unlinked(@servers) != []}
+        type="button"
+        data-test="unlinked-count"
+        data-count={length(unlinked(@servers))}
+        phx-click="toggle-unlinked"
+        phx-target={@myself}
+        class="btn btn-ghost btn-sm my-4"
+      >
+        {if @show_unlinked, do: "Hide", else: "+#{length(unlinked(@servers))} more"} not linked
+      </button>
 
-          <button
-            :if={unlinked(@servers) != []}
-            type="button"
-            data-test="unlinked-count"
-            data-count={length(unlinked(@servers))}
-            phx-click="toggle-unlinked"
-            class="btn btn-ghost btn-sm my-4"
-          >
-            {if @show_unlinked, do: "Hide", else: "+#{length(unlinked(@servers))} more"} not linked
-          </button>
-
-          <div :if={@show_unlinked} data-test="unlinked-servers">
-            <div :for={server <- unlinked(@servers)} class="mb-2">
-              <.server_row
-                server={server}
-                can_manage={@can_manage}
-                retire_error={@retire_error}
-                account_id={@current_scope.active_account_id}
-                servers_path={@servers_path}
-              />
-            </div>
-          </div>
-
-          <.provision_panel
-            :if={@can_manage}
-            options={@options}
-            location={@location}
-            pending={@pending}
-            error={@provision_error}
+      <div :if={@show_unlinked} data-test="unlinked-servers">
+        <div :for={server <- unlinked(@servers)} class="mb-2">
+          <.server_row
+            server={server}
+            can_manage={@can_manage}
+            retire_error={@retire_error}
+            account_id={@current_scope.active_account_id}
+            devices_path={@devices_path}
+            target={@myself}
+            connected_device_ids={@connected_device_ids}
           />
-
-          <dialog
-            :if={@live_action == :edit and @server}
-            id="server-form-modal"
-            class="modal modal-open"
-          >
-            <div class="modal-box max-w-lg">
-              <.live_component
-                module={FormComponent}
-                id={@server.id}
-                server={@server}
-                environments={@environments}
-                current_scope={@current_scope}
-                return_to={@servers_path}
-              />
-            </div>
-            <form method="dialog" class="modal-backdrop">
-              <button phx-click={JS.patch(@servers_path)}>close</button>
-            </form>
-          </dialog>
         </div>
-      </Shell.frame>
-    </Layouts.app>
+      </div>
+
+      <.provision_panel
+        :if={@can_manage && @provider_error_reason != :hetzner_not_configured}
+        options={@options}
+        location={@location}
+        pending={@pending}
+        error={@provision_error}
+        target={@myself}
+      />
+
+      <dialog
+        :if={@edit_name && @server && @can_manage}
+        id="server-form-modal"
+        class="modal modal-open"
+      >
+        <div class="modal-box max-w-lg">
+          <.live_component
+            module={FormComponent}
+            id={@server.id}
+            server={@server}
+            environments={@environments}
+            current_scope={@current_scope}
+            return_to={@devices_path}
+          />
+        </div>
+        <form method="dialog" class="modal-backdrop">
+          <button phx-click={JS.patch(@devices_path)}>close</button>
+        </form>
+      </dialog>
+    </section>
     """
   end
 
@@ -382,7 +412,9 @@ defmodule CodeMySpecWeb.ServerLive.Index do
   attr :can_manage, :boolean, default: false
   attr :retire_error, :map, default: nil
   attr :account_id, :string, default: nil
-  attr :servers_path, :string, required: true
+  attr :devices_path, :string, required: true
+  attr :target, :any, required: true
+  attr :connected_device_ids, :list, default: []
 
   defp server_row(assigns) do
     ~H"""
@@ -402,23 +434,16 @@ defmodule CodeMySpecWeb.ServerLive.Index do
         @server.unverified && "border border-warning"
       ]}
     >
-      <div class="card-body py-3 flex-row items-center justify-between gap-4">
-        <div class="flex items-center gap-2 min-w-0">
-          <%!--
-            The status carries as colour rather than a word. It is the one
-            field that is the same on every row and read at a glance — "running"
-            spelled out on every line is noise you have to read past to find the
-            one that is not. `data-status` still carries the provider's own
-            word for anything reading the page.
-          --%>
+      <div class="card-body py-3 flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center gap-2 min-w-0">
           <span
             data-test="server-status"
-            title={@server.status || "state unknown"}
+            title={"Provider status: #{@server.status || "unknown"}"}
             class={["inline-block size-2.5 rounded-full shrink-0", status_colour(@server)]}
           ></span>
 
           <.link
-            navigate={"#{@servers_path}/#{@server.name}"}
+            navigate={detail_path(@devices_path, @server)}
             data-test="open-server"
             class="font-mono link link-hover"
           >
@@ -440,6 +465,21 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           <span data-test="server-linked-projects" class="text-xs opacity-60">
             {linked_projects_label(@account_id, @server.name)}
           </span>
+          <span class="text-xs" data-test="provider-status-label">
+            Provider: {@server.status || "unknown"}
+          </span>
+          <span :if={@server.linked} class="text-xs" data-test="provider-harness-status">
+            {if @server.device_id in @connected_device_ids,
+              do: "Harness connected",
+              else: "Harness not connected"}
+          </span>
+          <span
+            :if={@server[:identity_conflict]}
+            class="badge badge-error badge-sm"
+            data-test="provider-identity-conflict"
+          >
+            Provider replaced this machine; identity needs review
+          </span>
           <span :if={@server.ip} class="text-xs opacity-70">{@server.ip}</span>
           <span :if={@server.size} class="badge badge-ghost badge-sm">{@server.size}</span>
           <span :if={@server.missing} class="badge badge-error badge-sm">
@@ -455,6 +495,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           type="button"
           data-test="link-server"
           phx-click="link"
+          phx-target={@target}
           phx-value-name={@server.name}
           class="btn btn-sm btn-primary"
         >
@@ -468,7 +509,8 @@ defmodule CodeMySpecWeb.ServerLive.Index do
             same as retiring.
           --%>
           <.link
-            patch={"#{@servers_path}/#{@server.name}/edit"}
+            :if={@can_manage}
+            patch={"#{@devices_path}/provider/#{URI.encode_www_form(@server.name)}/edit"}
             data-test="edit-server"
             class="btn btn-sm btn-ghost"
           >
@@ -480,6 +522,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
             type="button"
             data-test="retire-server"
             phx-click="retire"
+            phx-target={@target}
             phx-value-name={@server.name}
             class="btn btn-sm btn-ghost text-error"
           >
@@ -499,6 +542,9 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     </div>
     """
   end
+
+  defp detail_path(base, %{device_id: id}) when is_binary(id), do: "#{base}/#{id}"
+  defp detail_path(base, server), do: "#{base}/provider/#{URI.encode_www_form(server.name)}"
 
   # Green only when the provider says it is up. Anything mid-flight is amber,
   # anything stopped is red, and a box we could not ask about is grey rather
@@ -531,6 +577,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
     end
   end
 
+  attr :target, :any, required: true
   attr :options, :list, required: true
   attr :location, :string, default: nil
   attr :pending, :map, default: nil
@@ -548,6 +595,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
       <form
         id="provision-form"
         data-test="provision-form"
+        phx-target={@target}
         phx-submit="stage"
         phx-change="choose"
         class="flex flex-wrap gap-3 items-end"
@@ -587,6 +635,7 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           type="button"
           data-test="provision-confirm"
           phx-click="provision"
+          phx-target={@target}
           class="btn btn-primary btn-sm"
         >
           Create it

@@ -30,7 +30,8 @@ defmodule CodeMySpec.Stories.Tools.GetStory do
   def call(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          story when not is_nil(story) <- Stories.get_story_by_number(scope, params.story_number) do
-      StoriesMapper.story_get_response(story)
+      {:ok, summary} = StoriesMapper.story_get_response(story)
+      {:ok, summary <> CodeMySpec.Stories.Tools.DependencySummary.render(scope, story)}
     else
       nil ->
         StoriesMapper.not_found_error()

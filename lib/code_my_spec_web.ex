@@ -38,6 +38,7 @@ defmodule CodeMySpecWeb do
       CodeMySpec.AgentTasks,
       CodeMySpec.Analysis,
       CodeMySpec.Analysis.HarnessRegistry,
+      CodeMySpec.AppRole,
       CodeMySpec.Analytics,
       CodeMySpec.AppHealth,
       CodeMySpec.AppTokens,

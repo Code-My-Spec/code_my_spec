@@ -1,7 +1,11 @@
 defmodule CmsHarnessTest.SetupFixture do
   @moduledoc "Explicit provisioning actions for acceptance specs, independent of desktop startup."
+  def check_prerequisites(), do: CmsHarness.Setup.check_prerequisites()
   defdelegate check_prerequisites(opts), to: CmsHarness.Setup
+  def status(), do: CmsHarness.Setup.status()
   defdelegate status(opts), to: CmsHarness.Setup
+  defdelegate prerequisites_passed?(snapshot), to: CmsHarness.Setup
+  def detect_platform(), do: CmsHarness.Setup.Platform.detect()
   defdelegate connect_project(path, identity, opts), to: CmsHarness.Setup
   defdelegate agent_installations(root), to: CmsHarness.Setup.Prerequisites
 

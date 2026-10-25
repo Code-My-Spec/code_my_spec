@@ -10,7 +10,7 @@ defmodule CodeMySpec.Provisioning.Tools.ReadRegistryCredentialTest do
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Registry
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
 
   setup do
     scope = full_scope_fixture()
@@ -71,9 +71,9 @@ defmodule CodeMySpec.Provisioning.Tools.ReadRegistryCredentialTest do
   end
 
   defp link_environment(scope, environment, name) do
-    {:ok, _} = Server.link(scope, %{name: name})
-    linked = Server.get_linked(scope, name)
-    {:ok, _} = Environments.put(scope, environment, %{server_id: linked.id})
+    {:ok, _} = CodeMySpec.Devices.link_provider_machine(scope, %{name: name})
+    linked = Servers.get_linked(scope, name)
+    {:ok, _} = Environments.put(scope, environment, %{device_id: linked.id})
   end
 
   defp record_server_and_network(owner) do

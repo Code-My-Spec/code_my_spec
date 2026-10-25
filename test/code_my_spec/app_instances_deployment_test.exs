@@ -1,7 +1,52 @@
 defmodule CodeMySpec.AppInstancesDeploymentTest do
   use CodeMySpecTest.DataCase, async: true
   import CodeMySpec.UsersFixtures
-  alias CodeMySpec.{AppInstances, Environments}
+  alias CodeMySpec.{AppInstances, Devices, Environments}
+
+  test "deployment belongs to the destination machine, never the deploying machine" do
+    scope = full_scope_fixture()
+    {:ok, destination} = Devices.link_provider_machine(scope, %{name: "production", id: 123})
+    {:ok, deployer} = Devices.announce(scope, nil, %{kind: :local, hostname: "developer"})
+    {:ok, environment} = Environments.put(scope, "prod", %{device_id: destination.id})
+
+    assert {:ok, instance} =
+             AppInstances.record_deployment(scope, environment.id, %{
+               confirmed_at: DateTime.utc_now(),
+               image: "app:release",
+               device_id: deployer.id
+             })
+
+    assert instance.device_id == destination.id
+    assert instance.working_copy_id == nil
+  end
+
+  test "repeated deployments and destination moves preserve one provider runtime identity" do
+    scope = full_scope_fixture()
+    first_device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+    next_device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+    {:ok, environment} = Environments.put(scope, "uat", %{device_id: first_device.id})
+    receipt = %{confirmed_at: DateTime.utc_now(), image: "registry/app:first"}
+    {:ok, first} = AppInstances.record_deployment(scope, environment.id, receipt)
+    {:ok, repeated} = AppInstances.record_deployment(scope, environment.id, receipt)
+    assert repeated.id == first.id
+    assert repeated.device_id == first_device.id
+
+    assert {:error, :scope_mismatch} =
+             AppInstances.update(scope, repeated, %{device_id: next_device.id})
+
+    {:ok, _} = Environments.put(scope, "uat", %{device_id: next_device.id})
+
+    {:ok, moved} =
+      AppInstances.record_deployment(scope, environment.id, %{
+        receipt
+        | image: "registry/app:next"
+      })
+
+    assert moved.id == first.id
+    assert moved.device_id == next_device.id
+    assert [only] = AppInstances.list_for_environment(scope, environment.id)
+    assert only.id == first.id
+  end
 
   test "confirmed deployments retain one rootless runtime identity and replace its receipt" do
     scope = full_scope_fixture()

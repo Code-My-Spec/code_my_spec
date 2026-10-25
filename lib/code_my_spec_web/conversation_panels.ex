@@ -461,7 +461,8 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
     detached =
       if scope,
-        do: Enum.filter(CodeMySpec.Agents.list_agents(scope), &is_nil(&1.working_copy_id)),
+        do:
+          Enum.filter(CodeMySpec.Agents.list_for_team_status(scope), &is_nil(&1.working_copy_id)),
         else: []
 
     conversations =
@@ -485,21 +486,12 @@ defmodule CodeMySpecWeb.ConversationPanels do
     assigns =
       assigns
       |> assign(:detached, detached)
-      |> assign(:devices, activity_devices(scope))
       |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
       |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
+      |> assign(:devices, device_groups(assigns.copies))
 
     ~H"""
     <div class="space-y-3">
-      <div
-        :for={device <- @devices}
-        data-test="team-device"
-        data-device-id={device.id}
-        class="text-xs opacity-70"
-      >
-        <.icon name="hero-computer-desktop" class="size-3 inline" />
-        {CodeMySpec.Devices.Device.display_name(device)}
-      </div>
       <div
         :for={entry <- @detached}
         data-test="team-detached-agent"
@@ -537,48 +529,61 @@ defmodule CodeMySpecWeb.ConversationPanels do
         </span>
       </div>
 
-      <div :for={copy <- @copies} data-test="team-copy" data-working-copy-id={copy.row.harness.id}>
-        <%!-- `heading`, not the raw `label` field: an unrenamed harness's
+      <section :for={device <- @devices} data-test="team-device" data-device-id={device.id}>
+        <h3 class="flex items-center gap-2 text-sm font-semibold" data-test="team-device-name">
+          <.icon name="hero-computer-desktop" class="size-4 shrink-0" />
+          <span class="min-w-0 break-words">{device.name}</span>
+          <span :if={device.id} class="font-mono text-xs font-normal opacity-60" title={device.id}>
+            {String.slice(device.id, 0, 8)}
+          </span>
+        </h3>
+        <div class="mt-2 space-y-3 border-l border-base-300 pl-3">
+          <div
+            :for={copy <- device.copies}
+            data-test="team-copy"
+            data-working-copy-id={copy.row.harness.id}
+          >
+            <%!-- `heading`, not the raw `label` field: an unrenamed harness's
         label is not blank, it is the auto-generated "the harness at <root>
         on <host>" sentence — `WorkingCopies.display_name/1` is what
         recognizes that shape and shortens it to the root's last segment,
         the same function the working-copy Show page titles itself with. A
         harness someone actually renamed passes straight through unchanged. --%>
-        <div class="flex items-center gap-1.5 text-xs font-medium">
-          <.icon
-            :if={copy.row.harness.main}
-            name="hero-star-solid"
-            class="size-3 shrink-0 text-primary"
-          />
-          <button
-            type="button"
-            phx-click="show_copy"
-            phx-value-id={copy.row.harness.id}
-            class="link link-hover min-w-0 flex-1 truncate text-left"
-            data-test="team-copy-open"
-            title="This copy at a glance"
-          >
-            {copy.row.heading}
-          </button>
-          <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
-          <Copy.problems_marker
-            tally={copy.problems}
-            phx-click="show_problems"
-            phx-value-id={copy.row.harness.id}
-          />
-          <Copy.harness_marker row={copy.row} />
-          <Copy.preview_marker harness={copy.row.harness} />
-        </div>
+            <div class="flex items-center gap-1.5 text-xs font-medium">
+              <.icon
+                :if={copy.row.harness.main}
+                name="hero-star-solid"
+                class="size-3 shrink-0 text-primary"
+              />
+              <button
+                type="button"
+                phx-click="show_copy"
+                phx-value-id={copy.row.harness.id}
+                class="link link-hover min-w-0 flex-1 truncate text-left"
+                data-test="team-copy-open"
+                title="This copy at a glance"
+              >
+                {copy.row.heading}
+              </button>
+              <.copy_assignment copy={copy} scope={@scope} project_id={@project_id} />
+              <Copy.problems_marker
+                tally={copy.problems}
+                phx-click="show_problems"
+                phx-value-id={copy.row.harness.id}
+              />
+              <Copy.harness_marker row={copy.row} />
+              <Copy.preview_marker harness={copy.row.harness} />
+            </div>
 
-        <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
-          <%!-- Line 1 is the agent: who it is and what state it is in, then the
+            <div :for={a <- copy.agents} data-test="team-agent" data-agent-id={a.agent.id}>
+              <%!-- Line 1 is the agent: who it is and what state it is in, then the
           two controls on the right. Line 2 is its work, which opens the issue
           or story show. John, 2026-10-19. --%>
-          <div
-            class={["flex items-center gap-1", dimmed?(a) && "opacity-50"]}
-            title={dimmed?(a) && liveness_title(a.liveness)}
-          >
-            <%!-- `patch`, not `navigate`: this panel is the fastest way to a
+              <div
+                class={["flex items-center gap-1", dimmed?(a) && "opacity-50"]}
+                title={dimmed?(a) && liveness_title(a.liveness)}
+              >
+                <%!-- `patch`, not `navigate`: this panel is the fastest way to a
             different agent, and the panel is part of what a navigate would tear
             down and rebuild — including the preview pane and the widths somebody
             dragged. Patching swaps the transcript and leaves the rest alone.
@@ -587,119 +592,137 @@ defmodule CodeMySpecWeb.ConversationPanels do
             picking between agents should say which one you picked. `aria-current`
             rather than only a background: the same claim, said once, in the way
             assistive tech reads. --%>
-            <.link
-              :if={a.chat}
-              patch={conversation_path(@project_id, a.chat.conversation.id)}
-              data-question={to_string(a.question?)}
-              data-unread={to_string(unread?(a))}
-              data-current={to_string(current_agent?(a, @conversation_id))}
-              aria-current={current_agent?(a, @conversation_id) && "true"}
-              class={[
-                "flex min-w-0 flex-1 items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
-                a.question? && "font-semibold text-warning",
-                current_agent?(a, @conversation_id) && "bg-base-300 font-semibold"
-              ]}
-            >
-              <.icon
-                :if={a.question?}
-                name="hero-question-mark-circle-solid"
-                class="size-3.5 shrink-0"
-              />
-              <span
-                :if={unread?(a)}
-                data-test="unread-dot"
-                class="size-2 shrink-0 rounded-full bg-primary"
-              ></span>
-              <.agent_identity a={a} />
-            </.link>
+                <.link
+                  :if={a.chat}
+                  patch={conversation_path(@project_id, a.chat.conversation.id)}
+                  data-question={to_string(a.question?)}
+                  data-unread={to_string(unread?(a))}
+                  data-current={to_string(current_agent?(a, @conversation_id))}
+                  aria-current={current_agent?(a, @conversation_id) && "true"}
+                  class={[
+                    "flex min-w-0 flex-1 items-center gap-1.5 rounded py-1 pl-4 text-xs hover:bg-base-200",
+                    a.question? && "font-semibold text-warning",
+                    current_agent?(a, @conversation_id) && "bg-base-300 font-semibold"
+                  ]}
+                >
+                  <.icon
+                    :if={a.question?}
+                    name="hero-question-mark-circle-solid"
+                    class="size-3.5 shrink-0"
+                  />
+                  <span
+                    :if={unread?(a)}
+                    data-test="unread-dot"
+                    class="size-2 shrink-0 rounded-full bg-primary"
+                  ></span>
+                  <.agent_identity a={a} />
+                </.link>
 
-            <div
-              :if={!a.chat}
-              class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs"
-            >
-              <.agent_identity a={a} />
-            </div>
+                <div
+                  :if={!a.chat}
+                  class="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-4 text-xs"
+                >
+                  <.agent_identity a={a} />
+                </div>
 
-            <%!-- f096eba2: every agent controllable from here, not only the one
+                <%!-- f096eba2: every agent controllable from here, not only the one
             whose conversation happens to be open — siblings of the link/div
             above rather than nested inside it, since a button inside an `<a>`
             both renders invalid HTML and would fire the patch-navigate on top
             of the toggle. --%>
-            <button
-              type="button"
-              phx-click="toggle_agent_working"
-              phx-value-agent-id={a.agent.id}
-              data-test="team-agent-working"
-              data-working={to_string(a.agent.continuous == true)}
-              class={[
-                "btn btn-ghost btn-xs btn-square shrink-0",
-                a.agent.continuous == true && "text-success"
-              ]}
-              title={
-                if a.agent.continuous == true,
-                  do: "Let this agent stop after its current turn",
-                  else: "Put this agent to work — it picks its own next task"
-              }
-            >
-              <.icon
-                name={if a.agent.continuous == true, do: "hero-pause", else: "hero-play"}
-                class="size-3"
-              />
-            </button>
-            <button
-              :if={!a.agent.retired_at}
-              type="button"
-              phx-click="toggle_agent_power"
-              phx-value-agent-id={a.agent.id}
-              data-test="team-agent-power"
-              data-on={to_string(is_nil(a.agent.off_at))}
-              class={[
-                "btn btn-ghost btn-xs btn-square shrink-0",
-                if(is_nil(a.agent.off_at), do: "text-success", else: "text-error")
-              ]}
-              aria-label={if is_nil(a.agent.off_at), do: "Turn agent off", else: "Turn agent on"}
-              aria-pressed={to_string(is_nil(a.agent.off_at))}
-              title={
-                if is_nil(a.agent.off_at),
-                  do: "On — turn this agent off",
-                  else: "Off — turn this agent on"
-              }
-            >
-              <.icon name="hero-power" class="size-3" />
-            </button>
-          </div>
+                <button
+                  type="button"
+                  phx-click="toggle_agent_working"
+                  phx-value-agent-id={a.agent.id}
+                  data-test="team-agent-working"
+                  data-working={to_string(a.agent.continuous == true)}
+                  class={[
+                    "btn btn-ghost btn-xs btn-square shrink-0",
+                    a.agent.continuous == true && "text-success"
+                  ]}
+                  title={
+                    if a.agent.continuous == true,
+                      do: "Let this agent stop after its current turn",
+                      else: "Put this agent to work — it picks its own next task"
+                  }
+                >
+                  <.icon
+                    name={if a.agent.continuous == true, do: "hero-pause", else: "hero-play"}
+                    class="size-3"
+                  />
+                </button>
+                <button
+                  :if={!a.agent.retired_at}
+                  type="button"
+                  phx-click="toggle_agent_power"
+                  phx-value-agent-id={a.agent.id}
+                  data-test="team-agent-power"
+                  data-on={to_string(is_nil(a.agent.off_at))}
+                  class={[
+                    "btn btn-ghost btn-xs btn-square shrink-0",
+                    if(is_nil(a.agent.off_at), do: "text-success", else: "text-error")
+                  ]}
+                  aria-label={if is_nil(a.agent.off_at), do: "Turn agent off", else: "Turn agent on"}
+                  aria-pressed={to_string(is_nil(a.agent.off_at))}
+                  title={
+                    if is_nil(a.agent.off_at),
+                      do: "On — turn this agent off",
+                      else: "Off — turn this agent on"
+                  }
+                >
+                  <.icon name="hero-power" class="size-3" />
+                </button>
+              </div>
 
-          <div
-            :if={a.task_label}
-            data-test="team-agent-work"
-            class="flex min-w-0 items-center gap-2 pb-1 pl-4 text-[11px]"
-          >
-            <button
-              :if={a.task_label}
-              type="button"
-              phx-click="show_task"
-              phx-value-agent-id={a.agent.id}
-              data-test="team-agent-task"
-              title="What this agent was handed"
-              class="link link-hover truncate text-left opacity-50 hover:opacity-100"
+              <div
+                :if={a.task_label}
+                data-test="team-agent-work"
+                class="flex min-w-0 items-center gap-2 pb-1 pl-4 text-[11px]"
+              >
+                <button
+                  :if={a.task_label}
+                  type="button"
+                  phx-click="show_task"
+                  phx-value-agent-id={a.agent.id}
+                  data-test="team-agent-task"
+                  title="What this agent was handed"
+                  class="link link-hover truncate text-left opacity-50 hover:opacity-100"
+                >
+                  {a.task_label}
+                </button>
+              </div>
+            </div>
+
+            <.link
+              :if={copy.empty_seats != []}
+              navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}"}
+              data-test="team-empty-seats"
+              class="flex items-center gap-1.5 rounded py-1 pl-4 text-xs opacity-70 hover:bg-base-200"
             >
-              {a.task_label}
-            </button>
+              <span class="min-w-0 flex-1 truncate">{Enum.join(copy.empty_seats, ", ")} — empty</span>
+              <span class="shrink-0 text-primary">Staff it</span>
+            </.link>
           </div>
         </div>
-
-        <.link
-          :if={copy.empty_seats != []}
-          navigate={~p"/app/projects/#{@project_id}/working-copies/#{copy.row.harness.id}"}
-          data-test="team-empty-seats"
-          class="flex items-center gap-1.5 rounded py-1 pl-4 text-xs opacity-70 hover:bg-base-200"
-        >
-          <span class="min-w-0 flex-1 truncate">{Enum.join(copy.empty_seats, ", ")} — empty</span>
-          <span class="shrink-0 text-primary">Staff it</span>
-        </.link>
-      </div>
+      </section>
     </div>
     """
+  end
+
+  # Preserve the copy ordering (main first), but identify machines by their
+  # stable ID: two devices can have the same hostname or user-facing label.
+  defp device_groups(copies) do
+    key = fn copy -> copy.row.device && copy.row.device.id end
+    groups = Enum.group_by(copies, key)
+
+    copies
+    |> Enum.map(key)
+    |> Enum.uniq()
+    |> Enum.map(fn id ->
+      copies = Map.fetch!(groups, id)
+      name = if id, do: hd(copies).row.device_name, else: "Device unknown"
+      %{id: id, name: name, copies: copies}
+    end)
   end
 
   attr :copy, :map, required: true
@@ -933,23 +956,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   defp current_agent?(%{chat: %{conversation: %{id: id}}}, id) when is_binary(id), do: true
   defp current_agent?(_agent, _conversation_id), do: false
-
-  defp activity_devices(nil), do: []
-
-  defp activity_devices(scope) do
-    local =
-      if Application.get_env(:code_my_spec, :env) == :desktop do
-        case CmsHarness.Device.recorded_id() do
-          id when is_binary(id) -> CodeMySpec.Devices.get_harness_device(scope, id)
-          _ -> nil
-        end
-      end
-
-    Enum.uniq_by(
-      Enum.reject([local | CodeMySpec.Devices.list_devices(scope)], &is_nil/1),
-      & &1.id
-    )
-  end
 
   # Mirrors the story dot's done/not-yet split, widened to the epic's four
   # states: dispatched is done, proposed is waiting on a person (the same

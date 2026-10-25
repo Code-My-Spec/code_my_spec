@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.LiveRun do
   @moduledoc """
-  Story 1141: Sam's suite running for real on a live harness, so what he sees
-  of it can be watched while it runs.
+  Stories 1141 and 1144: Sam's suite, or credo, running for real on a live
+  harness, so what he sees of it can be watched while it runs.
 
   The checkout is `CmsHarnessTest.ClusteredProject.make_suite/1`'s: a passing
   file, a failing file and a held file. Sam's agent starts the run with
@@ -30,10 +30,25 @@ defmodule CodeMySpecSpex.LiveRun do
   def start(context) do
     context = HarnessHooks.ensure_live_harness(context)
     :ok = ClusteredProject.make_suite(context.harness.root)
+    start_run(context, "exunit")
+  end
+
+  @doc """
+  Story 1144: `start/1` for credo. Sam's checkout is `ClusteredProject.make_credo/1`'s,
+  and the run is held open by its own check until released or killed.
+  """
+  @spec start_credo(map()) :: map()
+  def start_credo(context) do
+    context = HarnessHooks.ensure_live_harness(context)
+    :ok = ClusteredProject.make_credo(context.harness.root)
+    start_run(context, "credo")
+  end
+
+  defp start_run(context, source) do
     agent = Fixtures.running_agent(context.scope, role: "coding")
 
     reply =
-      ToolLibrary.run("start_analysis", %{source: "exunit"}, %{
+      ToolLibrary.run("start_analysis", %{source: source}, %{
         scope: context.scope,
         current_scope: context.scope,
         agent_id: agent.id

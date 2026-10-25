@@ -5,15 +5,15 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   alias CodeMySpec.{
     Agents,
     Devices,
-    ExecutionContexts,
     Projects,
     UserPreferences,
     Users,
     WorkingCopies
   }
 
-  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.QaFixture
+  alias CodeMySpecWeb.QaEnvironments
+  alias ExOauth2Provider.AccessTokens
 
   def create(conn, params) do
     with {:ok, scope} <- authenticate(params),
@@ -139,7 +139,15 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   project, copy or agent and every call answers "no working copy". This
   records the checkout this app runs in as a project and working copy, with a
   local environment so analysis runs here, and a terminal agent per role in
-  `roles`. Each agent's headers address `/mcp/harness` as that agent.
+  `roles`. Each agent's headers address `/mcp/harness` as that agent, bearer
+  token included: `/mcp/harness` refuses a call without one, and a copy's
+  cloned database holds only the seed user's expired tokens.
+
+  With `attachment_fixtures: true` it also answers `attachment_fixtures`, for
+  Main's attachment tools: two copies on devices of their own, each with the
+  command that starts a harness for it (`online`); a copy on another device
+  that no harness answers for (`offline`); and the id of a copy in another
+  project (`unauthorized_working_copy_id`).
   """
   def qa_agents(conn, params) do
     root = File.cwd!()
@@ -147,20 +155,31 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
 
     with {:ok, scope} <- authenticate(params),
          {:ok, scope} <- qa_copy(scope, root),
-         {:ok, agents} <- qa_terminals(scope, roles) do
-      json(conn, %{
-        project_id: scope.active_project_id,
-        working_copy_id: scope.active_working_copy_id,
-        root: root,
-        agents:
-          Enum.map(agents, fn agent ->
-            %{
-              agent_id: agent.id,
-              role: agent.role,
-              headers: %{"X-Project-ID" => scope.active_project_id, "X-Agent-Id" => agent.id}
-            }
-          end)
-      })
+         {:ok, agents} <- qa_terminals(scope, roles),
+         {:ok, token} <- qa_token(scope),
+         {:ok, fixtures} <-
+           attachment_fixtures(scope, origin(conn), params["attachment_fixtures"] == true) do
+      json(
+        conn,
+        %{
+          project_id: scope.active_project_id,
+          working_copy_id: scope.active_working_copy_id,
+          root: root,
+          agents:
+            Enum.map(agents, fn agent ->
+              %{
+                agent_id: agent.id,
+                role: agent.role,
+                headers: %{
+                  "Authorization" => "Bearer " <> token.token,
+                  "X-Project-ID" => scope.active_project_id,
+                  "X-Agent-Id" => agent.id
+                }
+              }
+            end)
+        }
+        |> Map.merge(fixtures)
+      )
     else
       {:error, reason} when reason not in [:unauthorized, :select_account_first] ->
         conn |> put_status(:unprocessable_entity) |> json(%{error: inspect(reason)})
@@ -170,13 +189,134 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     end
   end
 
+  defp attachment_fixtures(_scope, _origin, false), do: {:ok, %{}}
+
+  defp attachment_fixtures(scope, origin, true) do
+    with {:ok, online_a} <- fixture_copy(scope, "device-a"),
+         {:ok, online_b} <- fixture_copy(scope, "device-b"),
+         {:ok, offline} <- fixture_copy(scope, "offline"),
+         {:ok, elsewhere} <- elsewhere_project(scope),
+         {:ok, unauthorized} <- fixture_copy(elsewhere, "unauthorized") do
+      {:ok,
+       %{
+         attachment_fixtures: %{
+           online: Enum.map([online_a, online_b], &with_harness(&1, origin)),
+           offline: offline,
+           unauthorized_working_copy_id: unauthorized.working_copy_id
+         }
+       }}
+    end
+  end
+
+  # A copy on a device of its own, with a reported root, an identity file and
+  # the device's id where a harness serving it reads it. Offline until a
+  # harness is started on it.
+  defp fixture_copy(scope, name) do
+    # The parent is the device: a harness serving `root` keeps its state there,
+    # its key socket included, so short (a Unix socket path is at most 104
+    # bytes on macOS, and its temp dir alone is 49).
+    root =
+      Path.join([
+        fixture_base(),
+        "cmsqa-#{String.slice(scope.active_project_id, 0, 8)}",
+        name,
+        "copy"
+      ])
+
+    device_name = "qa-#{name}-#{Ecto.UUID.generate()}"
+
+    with :ok <- File.mkdir_p(Path.join(root, "lib")),
+         :ok <- File.write(Path.join([root, "lib", "fixture.ex"]), "defmodule Fixture do\nend\n"),
+         {:ok, device} <- Devices.announce(scope, nil, %{hostname: device_name, kind: :local}),
+         :ok <- write_json(Path.join(Path.dirname(root), "device.json"), %{device_id: device.id}),
+         {:ok, copy} <-
+           WorkingCopies.issue(scope, nil, device: device.id, root: root, label: name),
+         {:ok, copy} <- WorkingCopies.report_root(copy, root),
+         {:ok, project} <- Projects.ensure_deploy_key(scope, scope.active_project),
+         :ok <- write_identity(root, copy, project) do
+      {:ok, %{working_copy_id: copy.id, device_id: device.id, root: root}}
+    end
+  end
+
+  # How to bring the copy online: a harness from this checkout on a port of its
+  # own, against this app. QA starts it and stops it by its pid.
+  defp with_harness(copy, origin) do
+    port = free_port()
+
+    command =
+      "CMS_HARNESS=1 CMS_HARNESS_PORT=#{port} CMS_SERVER_URL=#{origin} " <>
+        "CMS_PROJECT_DIR=#{copy.root} CMS_ANALYSIS_SLOTS=1 MIX_ENV=harness " <>
+        "MIX_BUILD_PATH=_build/qa_harness elixir -S mix run --no-halt"
+
+    Map.put(copy, :harness, %{
+      port: port,
+      cwd: File.cwd!(),
+      command: command,
+      ready: "http://127.0.0.1:#{port}/health"
+    })
+  end
+
+  defp origin(conn),
+    do: URI.to_string(%URI{scheme: to_string(conn.scheme), host: conn.host, port: conn.port})
+
+  defp free_port do
+    {:ok, socket} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
+  end
+
+  defp fixture_base do
+    case :os.type() do
+      {:win32, _} -> System.tmp_dir!()
+      _ -> "/tmp"
+    end
+  end
+
+  # With the project's deploy key: a harness started on it has no other
+  # credential for this app.
+  defp write_identity(root, copy, project) do
+    write_json(Path.join(root, ".cms_harness.json"), %{
+      working_copy_id: copy.id,
+      harness_id: copy.id,
+      project_id: project.id,
+      root: root,
+      deploy_key: project.deploy_key
+    })
+  end
+
+  defp write_json(path, body), do: File.write(path, Jason.encode!(body, pretty: true) <> "\n")
+
+  defp elsewhere_project(scope) do
+    with {:ok, project} <-
+           Projects.create_project(scope, %{
+             name: "QA elsewhere #{Ecto.UUID.generate()}",
+             module_name: "QaElsewhere"
+           }) do
+      {:ok, %{scope | active_project: project, active_project_id: project.id}}
+    end
+  end
+
+  # Long enough for a QA session; nothing refreshes it.
+  @qa_token_seconds 12 * 60 * 60
+
+  defp qa_token(scope),
+    do:
+      AccessTokens.create_token(scope.user, %{expires_in: @qa_token_seconds},
+        otp_app: :code_my_spec
+      )
+
   defp qa_copy(scope, root) do
     with {:ok, project} <- qa_project(scope, root),
          scope = %{scope | active_project: project, active_project_id: project.id},
          {:ok, device} <-
            Devices.announce(scope, nil, %{hostname: "qa-#{project.id}", kind: :local}),
          {:ok, copy} <-
-           WorkingCopies.issue(scope, nil, device: device.id, root: root, label: "qa"),
+           WorkingCopies.issue(scope, nil,
+             device: device.id,
+             root: root,
+             label: QaEnvironments.label()
+           ),
          {:ok, copy} <- WorkingCopies.report_root(copy, root) do
       with :ok <- register_local(copy.id, root),
            do: {:ok, %{scope | active_working_copy_id: copy.id, cwd: root}}
@@ -186,14 +326,9 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   # Registered from the long-lived owner a copy's app starts, so the entry
   # outlives this request. Main's app has none: it runs no analysis itself.
   defp register_local(copy_id, root) do
-    case Process.whereis(CodeMySpecWeb.QaEnvironments) do
-      nil ->
-        {:error, :not_a_copy_app}
-
-      owner ->
-        Agent.get(owner, fn _ ->
-          ExecutionContexts.register({:working_copy, copy_id}, ExecutionContext.new(:local, root))
-        end)
+    case Process.whereis(QaEnvironments) do
+      nil -> {:error, :not_a_copy_app}
+      _owner -> QaEnvironments.register(copy_id, root)
     end
   end
 

@@ -127,13 +127,9 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
            "main heard about the refusal twice"
   end
 
-  # Criteria 2160/2163 vs 2169, per product's correction on 3e9a96e9 (which
-  # itself corrects 1ef7cfe3): a decline and a ladder exhausted by ignoring
-  # both stop this agent being pushed the same work again (held? is true
-  # for both, criterion 1741) -- they differ only in whether the work is
-  # held back from a pull. Only an explicit decline (declined?) does that;
-  # an exhausted ladder stays open and claimable until main acts.
-  test "a decline holds the work back from a pull; an exhausted ladder does not", ctx do
+  # Product's correction on 006b2b56: declines and exhausted ladders damp
+  # pushes only. An agent pulling for work can still see and claim either.
+  test "declined and exhausted offers both remain visible to a pull", ctx do
     id = ctx.coder.id
     declined_key = "story:1:declined_spec"
     ignored_key = "story:1:ignored_spec"
@@ -149,8 +145,8 @@ defmodule CodeMySpec.Agents.HeldBackFromAnAgentReachesMainTest do
     assert %{held?: true, declined?: true} = standing[declined_key]
     assert %{held?: true, declined?: false} = standing[ignored_key]
 
-    assert Work.withheld?([ctx.coder], ctx.coder, node_on(declined_key), standing),
-           "a declined offer did not hold its work back from a pull"
+    refute Work.withheld?([ctx.coder], ctx.coder, node_on(declined_key), standing),
+           "an explicit decline must damp pushes without hiding claimable work from a pull"
 
     refute Work.withheld?([ctx.coder], ctx.coder, node_on(ignored_key), standing),
            "an offer merely ignored past its ladder held its work back from a pull like a decline"

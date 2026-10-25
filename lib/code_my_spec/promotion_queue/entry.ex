@@ -31,6 +31,7 @@ defmodule CodeMySpec.PromotionQueue.Entry do
           subject_id: String.t() | nil,
           requested_by_agent_id: Ecto.UUID.t() | nil,
           restart: boolean(),
+          fresh: boolean() | nil,
           status: atom(),
           batch_id: Ecto.UUID.t() | nil,
           result: map() | nil,
@@ -46,6 +47,8 @@ defmodule CodeMySpec.PromotionQueue.Entry do
     field :subject_id, :string
     field :requested_by_agent_id, :binary_id
     field :restart, :boolean
+    # Certify on runs started after this was queued, not ones already at the commit.
+    field :fresh, :boolean
     field :status, Ecto.Enum, values: @statuses
     field :batch_id, :binary_id
     field :result, :map
@@ -63,7 +66,8 @@ defmodule CodeMySpec.PromotionQueue.Entry do
       :subject_type,
       :subject_id,
       :requested_by_agent_id,
-      :restart
+      :restart,
+      :fresh
     ])
     |> put_change(:status, :queued)
     |> validate_required([:project_id, :working_copy_id, :commit, :restart, :status])

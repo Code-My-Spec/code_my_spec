@@ -73,7 +73,7 @@ defmodule CodeMySpec.WorkingCopies.Tools.CreateWorkingCopy do
   def call(params, context) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
-        create(scope, params)
+        create(scope, params, context[:agent_id])
 
       # A sentence, not the bare atom. `inspect(reason)` answered
       # `:no_working_dir`, which names the problem to somebody who already knows
@@ -90,10 +90,48 @@ defmodule CodeMySpec.WorkingCopies.Tools.CreateWorkingCopy do
   #
   # What stays here is the part that is this tool's: turning the answer into
   # something an agent can read.
-  defp create(scope, params) do
+  #
+  # Made while an agent waits, the create outlived `run_script`'s deadline on a
+  # loaded machine and was cut off after the checkout existed and before the
+  # copy was recorded. So an agent is answered at once and told how it ended;
+  # a caller with no agent row to tell waits for it.
+  defp create(scope, params, agent_id) do
     case requested_roles(params[:roles]) do
+      {:ok, roles} when is_binary(agent_id) -> mint_in_background(scope, params, roles, agent_id)
       {:ok, roles} -> mint(scope, params, roles)
       {:error, message} -> {:error, message}
+    end
+  end
+
+  defp mint_in_background(scope, params, roles, agent_id) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        text =
+          case mint(scope, params, roles) do
+            {:ok, report} -> report
+            {:error, refusal} -> "The working copy was not made. " <> refusal
+          end
+
+        tell(scope, agent_id, text)
+      end)
+
+    {:ok,
+     "Making a working copy#{label_note(params[:label])}. It takes a minute or more; " <>
+       "you'll be messaged how it ends. Don't poll; end your turn if nothing else is waiting."}
+  end
+
+  defp label_note(label) when is_binary(label) and label != "", do: " for `#{label}`"
+  defp label_note(_label), do: ""
+
+  defp tell(scope, agent_id, text) do
+    case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
+      {:ok, _disposition, _message} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info(
+          "[WorkingCopies] could not tell agent #{agent_id} how its create ended: #{inspect(reason)}"
+        )
     end
   end
 

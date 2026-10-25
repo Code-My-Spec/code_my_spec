@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
           agent_id: Ecto.UUID.t(),
           role: atom(),
           agent_status: atom(),
+          external?: boolean(),
           working_copy_id: Ecto.UUID.t() | nil,
           working_copy_root: String.t() | nil,
           issue_id: Ecto.UUID.t() | nil,
@@ -74,6 +75,9 @@ defmodule CodeMySpec.Agents.Main.AgentWork do
     :damped,
     :unstarted_turn,
     blocked_reasons: [],
+    # A person's own Claude Code or Codex session, which no harness launches:
+    # it reads `:starting` until it is driven, and that is not a startup to watch.
+    external?: false,
     tapped_out?: false,
     turn_in_flight?: false,
     idle?: false,

@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
       end
 
       when_ "its setup runs", context do
-        {:ok, snapshot} = CodeMySpecSpex.Fixtures.check_machine_prerequisites()
+        {:ok, snapshot} = CmsHarnessTest.SetupFixture.check_prerequisites()
         {:ok, Map.put(context, :snapshot, snapshot)}
       end
 
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1140.Criterion2357Spex do
       end
 
       then_ "the machine prerequisites are ready for project generation", context do
-        assert CodeMySpecSpex.Fixtures.machine_prerequisites_passed?(context.snapshot)
+        assert CmsHarnessTest.SetupFixture.prerequisites_passed?(context.snapshot)
         {:ok, context}
       end
     end

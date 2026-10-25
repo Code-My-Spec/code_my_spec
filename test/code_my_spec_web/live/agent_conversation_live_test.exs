@@ -992,6 +992,55 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     end
   end
 
+  test "activity nests copies under distinct devices even when device names match", %{
+    conn: conn,
+    scope: scope,
+    project: project
+  } do
+    scope = %{scope | active_project_id: project.id}
+    desktop = device_fixture(scope, %{hostname: "Development machine"})
+    cloud = device_fixture(scope, %{hostname: "Development machine"})
+    {:ok, first} = WorkingCopies.issue(scope, nil, device: desktop, label: "main")
+    {:ok, second} = WorkingCopies.issue(scope, nil, device: desktop, label: "maintenance")
+    {:ok, remote} = WorkingCopies.issue(scope, nil, device: cloud, label: "main")
+
+    {:ok, view, _html} = live(conn, path(project))
+    open_team_panel(view)
+
+    for {device, copies} <- [{desktop, [first, second]}, {cloud, [remote]}] do
+      selector = "[data-test='team-device'][data-device-id='#{device.id}']"
+
+      assert has_element?(
+               view,
+               "#{selector} [data-test='team-device-name']",
+               "Development machine"
+             )
+
+      assert has_element?(
+               view,
+               "#{selector} [data-test='team-device-name']",
+               String.slice(device.id, 0, 8)
+             )
+
+      for copy <- copies do
+        assert has_element?(
+                 view,
+                 "#{selector} [data-test='team-copy'][data-working-copy-id='#{copy.id}']"
+               )
+      end
+    end
+
+    refute has_element?(
+             view,
+             "[data-device-id='#{desktop.id}'] [data-working-copy-id='#{remote.id}']"
+           )
+
+    refute has_element?(
+             view,
+             "[data-device-id='#{cloud.id}'] [data-working-copy-id='#{first.id}']"
+           )
+  end
+
   describe "what the agent is assigned" do
     test "the header and the copy's row open the story and issue in a modal", %{
       conn: conn,

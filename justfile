@@ -522,17 +522,25 @@ reload:
 after-promote:
     #!/usr/bin/env bash
     set -euo pipefail
-    built="$(curl -s --max-time 10 http://localhost:4004/health | sed -nE 's/.*"build":"([0-9a-f]+)".*/\1/p')"
-    if [ -n "$built" ] && git cat-file -e "${built}^{commit}" 2>/dev/null; then
-        changed="$(git diff --name-only "$built" HEAD -- lib/cms_harness lib/code_my_spec_web/channels lib/code_my_spec/hooks lib/code_my_spec/promotion lib/code_my_spec/analysis lib/code_my_spec/tests.ex lib/code_my_spec/compile.ex lib/code_my_spec/static_analysis lib/code_my_spec/bdd_specs lib/code_my_spec/execution_contexts mix.exs mix.lock config)"
-        if [ -z "$changed" ]; then
-            echo "→ harness stays up: nothing it runs or speaks changed since $built"
+    # Decided from what the running harness has loaded, not a path list: a list
+    # missed analysis/run_node.ex and a landed fix stayed inert (issue 075d47f0).
+    # Anything unreadable restarts — stale code serving is the worse outcome.
+    loaded_json="$(curl -s --max-time 10 http://localhost:4004/health/loaded-sources || true)"
+    built="$(printf '%s' "$loaded_json" | jq -r '.build // empty' 2>/dev/null || true)"
+    loaded="$(printf '%s' "$loaded_json" | jq -r '.sources[]?' 2>/dev/null || true)"
+    if [ -n "$built" ] && [ -n "$loaded" ] && git cat-file -e "${built}^{commit}" 2>/dev/null; then
+        changed="$(git diff --name-only "$built" HEAD)"
+        stale="$(printf '%s\n' "$changed" | grep -E '^(mix\.exs|mix\.lock|config/)' || true)"
+        stale="$stale$(printf '\n%s' "$(printf '%s\n' "$changed" | grep -Fx -f <(printf '%s\n' "$loaded") || true)")"
+        stale="$(printf '%s\n' "$stale" | sed '/^$/d' | sort -u)"
+        if [ -z "$stale" ]; then
+            echo "→ harness stays up: nothing it has loaded changed since $built"
             exit 0
         fi
-        echo "→ restarting the harness; changed since $built:"
-        echo "$changed" | head -20
+        echo "→ restarting the harness; loaded code changed since $built:"
+        echo "$stale" | head -20
     else
-        echo "→ restarting the harness: could not read the build it is running"
+        echo "→ restarting the harness: could not read what it has loaded"
     fi
     # Run detached by the harness (issue 0597863f), so it outlives the harness it
     # replaces. A harness that does not come back is every agent down with nobody

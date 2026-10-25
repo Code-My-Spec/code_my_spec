@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2243Spex do
         context = HarnessHooks.ensure_live_harness(context)
         inbox = open_inbox()
         started = start_session_on_socket(context, session_id(), inbox.socket)
+        await_present(context, started["agent_id"])
         {:ok, Map.merge(context, %{inbox: inbox, agent_id: started["agent_id"]})}
       end
 

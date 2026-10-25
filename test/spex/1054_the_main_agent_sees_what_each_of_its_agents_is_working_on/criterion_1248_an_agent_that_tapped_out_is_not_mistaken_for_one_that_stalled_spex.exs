@@ -104,7 +104,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3278Spex do
                #{context.view}
                """
 
-        refute context.view =~ ~r/\b(stalled|stuck|dead|not responding|fault)\b/i,
+        refute without_ids(context.view) =~ ~r/\b(stalled|stuck|dead|not responding|fault)\b/i,
                """
                A tapped-out agent is being reported as broken.
 
@@ -120,4 +120,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3278Spex do
       end
     end
   end
+
+  # An agent id is hex, and hyphens are word boundaries: an id with a "dead"
+  # group matched the verdict check and failed the spex at random.
+  defp without_ids(view),
+    do:
+      String.replace(
+        view,
+        ~r/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+        "<id>"
+      )
 end

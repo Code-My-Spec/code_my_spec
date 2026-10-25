@@ -159,7 +159,8 @@ defmodule CmsHarness.AppInstanceIdentityTest do
   test "legacy runtime is claimed once and preserves its process, ports, database and log", %{
     storage: storage
   } do
-    %{root: root} = app_instance_rig()
+    # On the commit the legacy runtime serves, so nothing moved under it.
+    %{root: root} = app_instance_rig(current_commit: "legacy-served")
     descriptor = instance(root)
     hash = :crypto.hash(:sha256, root) |> Base.encode16(case: :lower) |> binary_part(0, 16)
     legacy = Path.join(storage, hash)

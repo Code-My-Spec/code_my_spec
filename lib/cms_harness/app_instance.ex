@@ -48,6 +48,9 @@ defmodule CmsHarness.AppInstance do
     # Monotonic deadline for a first start's background watch; `nil`
     # otherwise. Not persisted: it only drives an in-BEAM timer.
     :first_start_deadline,
+    # The HEAD a moved copy was last brought onto, tried once whatever came
+    # of it, so a failing reload is not retried on every idle check.
+    :brought_to,
     default: false,
     persistent: false,
     port_mode: "allocated",
@@ -356,7 +359,7 @@ defmodule CmsHarness.AppInstance do
     cond do
       running?(state) ->
         new_state = state |> probe() |> ensure_tunnel(after_promote?, tunnel)
-        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
+        {:reply, {:ok, catching_up(new_state)}, new_state, idle_timeout()}
 
       first_start?(state) ->
         start_first_run(state, after_promote?, tunnel)
@@ -394,6 +397,15 @@ defmodule CmsHarness.AppInstance do
           after_promote?,
           tunnel,
           "this project declares no reload recipe"
+        )
+
+      reloader_cannot_take?(state) ->
+        restart_instead(
+          state,
+          from,
+          after_promote?,
+          tunnel,
+          "mix.lock, mix.exs or config changed, which the code reloader cannot pick up"
         )
 
       true ->
@@ -466,6 +478,28 @@ defmodule CmsHarness.AppInstance do
 
   def handle_info(:first_start_check, state), do: {:noreply, state, idle_timeout()}
 
+  # The reload `catching_up/1` asked for, run as the reload a promote asks for,
+  # with this process as the caller; its answer arrives as `:bring_current_reply`.
+  def handle_info(:bring_current, state) do
+    if head_moved?(state) do
+      {:reload, state.after_promote, nil}
+      |> handle_call({self(), :bring_current_reply}, %{state | brought_to: current_commit(state)})
+      |> as_noreply()
+    else
+      {:noreply, state, idle_timeout()}
+    end
+  end
+
+  def handle_info({:bring_current_reply, {:ok, info}}, state) do
+    Logger.info("[CmsHarness] #{state.root} brought current: #{info.status} at #{info.commit}")
+    {:noreply, state, idle_timeout()}
+  end
+
+  def handle_info({:bring_current_reply, {:error, reason}}, state) do
+    Logger.warning("[CmsHarness] could not bring #{state.root} current: #{inspect(reason)}")
+    {:noreply, state, idle_timeout()}
+  end
+
   @impl true
   def handle_info(:timeout, %{persistent: true} = state) do
     # Main's app is never stopped for idling — rule, not a longer timeout.
@@ -476,7 +510,9 @@ defmodule CmsHarness.AppInstance do
   def handle_info(:timeout, state) do
     if running?(state) and recently_active?(state) do
       Process.send_after(self(), :timeout, idle_check_interval())
-      {:noreply, refresh_status(state), :infinity}
+      state = refresh_status(state)
+      _ = catching_up(state)
+      {:noreply, state, :infinity}
     else
       # Stops the app, not this process: one exiting here stays registered until
       # it is gone, so a request landing in between got no reply. The next
@@ -944,6 +980,63 @@ defmodule CmsHarness.AppInstance do
 
   defp current_commit(state), do: Runner.current_commit(state.root)
 
+  # A copy's app serves the code it started on, while merging main into the
+  # copy moves HEAD under it: migrations go unapplied and a changed mix.lock or
+  # config fails the code reloader, and the app stays down until someone
+  # restarts it. Main's app is brought current by its promote, not here.
+  defp head_moved?(%__MODULE__{persistent: true}), do: false
+
+  defp head_moved?(%__MODULE__{serving_commit: serving} = state) when is_binary(serving),
+    do: running?(state) and current_commit(state) not in [nil, serving, state.brought_to]
+
+  defp head_moved?(_state), do: false
+
+  # The result as reported, with the reload under way when HEAD has moved.
+  defp catching_up(state) do
+    if head_moved?(state) do
+      send(self(), :bring_current)
+
+      Map.put(
+        result(state),
+        :action_reason,
+        "HEAD moved past the serving commit #{state.serving_commit}; the app is being " <>
+          "migrated and reloaded (or restarted) onto it now."
+      )
+    else
+      result(state)
+    end
+  end
+
+  # A clause that answers directly rather than through `reply_then_hook/4`.
+  defp as_noreply({:reply, reply, state, timeout}) do
+    send(self(), {:bring_current_reply, reply})
+    {:noreply, state, timeout}
+  end
+
+  defp as_noreply(noreply), do: noreply
+
+  defp reloader_cannot_take?(%__MODULE__{serving_commit: serving} = state)
+       when is_binary(serving) do
+    case current_commit(state) do
+      nil ->
+        false
+
+      ^serving ->
+        false
+
+      head ->
+        state.root
+        |> Runner.changed_paths(serving, head)
+        |> List.wrap()
+        |> Enum.any?(&deps_or_config?/1)
+    end
+  end
+
+  defp reloader_cannot_take?(_state), do: false
+
+  defp deps_or_config?(path),
+    do: path in ["mix.lock", "mix.exs"] or String.starts_with?(path, "config/")
+
   defp launch(state, port, https_port, database, tunnel) do
     Runner.launch(
       state.root,
@@ -1337,6 +1430,17 @@ defmodule CmsHarness.AppInstance do
     else
       _ -> nil
     end
+  end
+
+  @doc """
+  The directories a checkout's own app instance keeps its state and log in:
+  one named for the working copy, one for the checkout's path.
+  """
+  @spec own_dirs(String.t(), String.t() | nil) :: [String.t()]
+  def own_dirs(root, working_copy_id) do
+    [instance_key(root), working_copy_id]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&Path.join(instances_root(), &1))
   end
 
   @doc "Where every app instance keeps its state and log, one directory each."

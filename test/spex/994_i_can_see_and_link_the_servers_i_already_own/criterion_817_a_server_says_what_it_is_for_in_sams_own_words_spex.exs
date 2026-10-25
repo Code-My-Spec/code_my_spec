@@ -37,8 +37,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
         # screen can tell these apart afterwards, it is because Sam said so.
         context =
           stage_servers(context, [
-            provider_server(%{name: "box-a", size: "cpx11", status: "running"}),
-            provider_server(%{name: "box-b", size: "cpx11", status: "running"})
+            provider_server(%{id: 81_701, name: "box-a", size: "cpx11", status: "running"}),
+            provider_server(%{id: 81_702, name: "box-b", size: "cpx11", status: "running"})
           ])
 
         {:ok, view, _html} = live(context.conn, "/app/servers")
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
 
     scenario "a label the platform has never heard of is accepted" do
       given_ "a linked server and a purpose that is not prod or uat", context do
-        context = stage_servers(context, [provider_server(%{name: "story-box"})])
+        context = stage_servers(context, [provider_server(%{id: 81_703, name: "story-box"})])
 
         {:ok, view, html} = live(context.conn, "/app/servers")
 
@@ -114,7 +114,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
         # of them from being the whole world.
         html =
           context.view
-          |> form("[data-test='server-form']", server: %{environment: "__other__"})
+          |> form("[data-test='server-form']", server: %{purpose: "__other__"})
           |> render_change()
 
         assert html =~ "data-test=\"environment-custom\"",
@@ -166,7 +166,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
 
     scenario "a box nobody has claimed says so rather than guessing" do
       given_ "a linked server Sam has never labelled", context do
-        context = stage_servers(context, [provider_server(%{name: "unclaimed"})])
+        context = stage_servers(context, [provider_server(%{id: 81_704, name: "unclaimed"})])
 
         {:ok, view, html} = live(context.conn, "/app/servers")
 
@@ -210,7 +210,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
     open_edit(view, name)
 
     view
-    |> form("[data-test='server-form']", server: %{environment: environment})
+    |> form("[data-test='server-form']", server: %{purpose: environment})
     |> render_submit()
   end
 

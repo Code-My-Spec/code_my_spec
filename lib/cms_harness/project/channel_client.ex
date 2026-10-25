@@ -1435,7 +1435,7 @@ defmodule CmsHarness.Project.ChannelClient do
   defp run_restore(client) do
     case GenServer.call(client, :next_restore, :infinity) do
       {:launch, agent} ->
-        restore_one(agent)
+        restore_one(client, agent)
         run_restore(client)
 
       :done ->
@@ -1443,8 +1443,9 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  defp restore_one(agent) do
-    case CmsHarness.Agents.launch(agent) do
+  # A launch failing for good is reported down, so it never reads as running.
+  defp restore_one(client, agent) do
+    case restore(agent) do
       {:ok, _} ->
         Logger.info("[CmsHarness] restored agent #{agent["agent_id"]}")
 
@@ -1453,8 +1454,52 @@ defmodule CmsHarness.Project.ChannelClient do
           "[CmsHarness] could not restore agent #{agent["agent_id"]} in " <>
             "#{agent["working_copy"]}: #{inspect(reason)}"
         )
+
+        GenServer.cast(client, {:restore_failed, agent["agent_id"], reason})
     end
   end
+
+  @doc """
+  Launch one agent being restored, waiting out an MCP endpoint that is not
+  listening yet: a harness restarted mid-boot restores before the endpoint its
+  agents dial is up, and every launch failed `:mcp_session` unreachable, leaving
+  all twelve agents reading running with no process behind them. Any other
+  failure, or the last wait running out, is answered as it came.
+  """
+  @spec restore(map(), (map() -> {:ok, term()} | {:error, term()}), [non_neg_integer()]) ::
+          {:ok, term()} | {:error, term()}
+  def restore(agent, launch \\ &CmsHarness.Agents.launch/1, backoff \\ restore_backoff_ms()) do
+    case launch.(agent) do
+      {:error, reason} when backoff != [] ->
+        if mcp_unreachable?(reason) do
+          [wait | rest] = backoff
+          Process.sleep(wait)
+          restore(agent, launch, rest)
+        else
+          {:error, reason}
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp mcp_unreachable?({:shutdown, {:failed_to_start_child, :mcp_session, {:mcp_session, why}}}),
+    do: match?({:unreachable, _}, why) or match?(%Req.TransportError{reason: :econnrefused}, why)
+
+  defp mcp_unreachable?(_reason), do: false
+
+  # About a minute in all, doubling.
+  defp restore_backoff_ms,
+    do:
+      Application.get_env(:code_my_spec, :harness_restore_backoff_ms, [
+        1_000,
+        2_000,
+        4_000,
+        8_000,
+        16_000,
+        30_000
+      ])
 
   # A stop for the agent being launched waits for that launch, then stops it.
   # One still queued is dropped and answered stopped: it never runs.
@@ -2297,6 +2342,14 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:agent_up, _agent_id}, socket), do: {:noreply, socket}
+
+  # A restore that could not launch: down for good, the down the server acts on.
+  def handle_cast({:restore_failed, agent_id, reason}, %{assigns: %{joined: true}} = socket) do
+    push_liveness(socket, :gave_up, agent_id, {:restore_failed, reason})
+    {:noreply, socket}
+  end
+
+  def handle_cast({:restore_failed, _agent_id, _reason}, socket), do: {:noreply, socket}
 
   # A fragment of what an agent is writing, flushed on a timer: a push per
   # fragment is a push every few characters.

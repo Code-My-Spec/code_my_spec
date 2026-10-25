@@ -12,20 +12,14 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
   @impl true
   def description do
     """
-    Point a project's environment at a server the account already owns.
+    Legacy provider-name convenience for binding a provisioned environment to
+    an account's existing provider device. Use list_devices and
+    assign_environment_device for canonical UUID-based placement, including
+    harness-managed environments. Provider devices are managed under /app/devices.
 
-    `environments` used to only ever get a server the setup step
-    created for it — `server_name`/`ip` filled in as it went. An account-level
-    server (`/app/servers`, story 879) can predate any project that ends up on
-    it, or serve more than one at once, and nothing connected the two. This is
-    that connection: once linked, the server step resolves this environment's
-    box by the linked server's real name instead of deriving one from the
-    project, so setup finds the box that's actually there rather than one that
-    was never going to exist under a guessed name.
-
-    Link the account's server first (`/app/servers`, or however it's linked)
-    before calling this — it only points an environment at a server this
-    account already has a record of.
+    The named server must already be linked to this account. Creates the
+    provisioned environment if needed. This only changes its device binding;
+    it does not move or deploy app instances or working copies.
     """
   end
 
@@ -52,7 +46,7 @@ defmodule CodeMySpec.Provisioning.Tools.LinkServer do
          scope <- Resources.project_scope(scope, project),
          {:ok, server} <- find_linked_server(scope, server_name) do
       scope
-      |> Environments.put_deployment(environment, %{server_id: server.id})
+      |> Environments.put_deployment(environment, %{device_id: server.id})
       |> reply(environment, server_name, context)
     else
       {:error, reason} -> error(reason)

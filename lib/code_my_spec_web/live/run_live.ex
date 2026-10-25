@@ -1,7 +1,8 @@
 defmodule CodeMySpecWeb.RunLive do
   @moduledoc """
   One analyzer run, watched as it happens (story 1141): each test's result as
-  it finishes, the file it is in now, and whether it finished or died.
+  it finishes, the file it is in now, and whether it finished or died. A
+  credo run shows each finding as credo finds it (story 1144).
 
   Live results come from `Analysis.live_state/1`, updated on
   `"analysis_run:<id>"`; how the run ended comes from its ledger row, reread
@@ -69,6 +70,7 @@ defmodule CodeMySpecWeb.RunLive do
       assign(assigns,
         status: status(assigns.run),
         tests: tests(assigns.live),
+        findings: findings(assigns.live),
         failures: Enum.count(tests(assigns.live), &(&1.state == "failed"))
       )
 
@@ -97,9 +99,15 @@ defmodule CodeMySpecWeb.RunLive do
           Now in <code :for={file <- @live.running_files} class="mr-2">{file}</code>
         </p>
 
-        <p :if={@status == "finished"} id="run-totals">
-          {plural(length(@tests), "test")}, {plural(@failures, "failure")}
-        </p>
+        <p :if={@status == "finished"} id="run-totals">{totals(@run, @live, @tests, @failures)}</p>
+
+        <ul :if={@findings != []} id="run-findings" class="space-y-1">
+          <li :for={finding <- @findings} class="text-sm">
+            <span class="badge badge-sm badge-warning">finding</span>
+            {finding.message}
+            <code class="ml-2">{finding.file}:{finding.line}</code>
+          </li>
+        </ul>
 
         <ul id="run-tests" class="space-y-1">
           <li :for={test <- @tests} class="text-sm">
@@ -123,6 +131,25 @@ defmodule CodeMySpecWeb.RunLive do
 
   defp tests(nil), do: []
   defp tests(live), do: live.tests
+
+  defp findings(nil), do: []
+  defp findings(live), do: live.findings
+
+  # A credo run counts what it checked and found (story 1144).
+  defp totals(%{source: "credo"}, %{totals: %{"files" => files, "findings" => found}}, _, _),
+    do: "#{plural(files, "file")}, #{plural(found, "finding")}"
+
+  defp totals(%{source: "credo"}, live, _tests, _failures),
+    do: plural(length(findings(live)), "finding")
+
+  # A run that reported nothing live (a scoped run, or one from before story
+  # 1141) still recorded its counts: it read "0 tests" after five passed.
+  defp totals(%{stats: %{"tests" => count} = stats}, _live, [], _failures)
+       when is_integer(count),
+       do: "#{plural(count, "test")}, #{plural(stats["failures"] || 0, "failure")}"
+
+  defp totals(_run, _live, tests, failures),
+    do: "#{plural(length(tests), "test")}, #{plural(failures, "failure")}"
 
   defp status_class("running"), do: "badge-info"
   defp status_class("finished"), do: "badge-success"

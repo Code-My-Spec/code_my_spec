@@ -1,9 +1,10 @@
 defmodule CodeMySpec.Devices do
   @moduledoc """
-  The machines this account's working copies sit on.
+  The machines this account uses for development and deployment.
 
-  A device runs a harness; that harness serves one or more working copies; each
-  copy runs one or more agents. This context owns the top level.
+  Provider machines can be linked before a harness exists. An enrolled device's
+  harness serves working copies and agents under the same machine identity.
+  This context owns provider links, enrollment and machine observations.
 
   ## Announcing, not registering
 
@@ -200,6 +201,113 @@ defmodule CodeMySpec.Devices do
   defp scoped(id, account_id) do
     from(d in Device, where: d.id == ^id and d.account_id == ^account_id)
   end
+
+  @doc "Record a provider-owned machine independently of harness enrollment."
+  def link_provider_machine(%Scope{active_account_id: account_id} = scope, %{name: name} = attrs)
+      when is_binary(account_id) and is_binary(name) do
+    changes = %{
+      provider: :hetzner,
+      provider_name: name,
+      provider_resource_id: external_id(attrs[:id]),
+      kind: :cloud,
+      account_id: account_id
+    }
+
+    Repo.transaction(fn ->
+      Repo.lock!("provider-machine:#{account_id}:hetzner:#{name}")
+
+      result =
+        case get_provider_machine(scope, name) do
+          nil -> %Device{} |> Device.provider_machine_changeset(changes) |> Repo.insert()
+          device -> reconcile_provider_identity(device, changes.provider_resource_id)
+        end
+
+      case result do
+        {:ok, device} -> device
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  def link_provider_machine(_scope, _attrs), do: {:error, :no_account}
+
+  defp reconcile_provider_identity(device, nil), do: {:ok, device}
+
+  defp reconcile_provider_identity(%Device{provider_resource_id: nil} = device, id),
+    do: device |> Device.provider_machine_changeset(%{provider_resource_id: id}) |> Repo.update()
+
+  defp reconcile_provider_identity(%Device{provider_resource_id: id} = device, id),
+    do: {:ok, device}
+
+  defp reconcile_provider_identity(_device, _id), do: {:error, :provider_identity_conflict}
+
+  defp external_id(nil), do: nil
+  defp external_id(id), do: to_string(id)
+
+  def get_provider_machine(%Scope{active_account_id: account_id}, name)
+      when is_binary(account_id) and is_binary(name),
+      do: Repo.get_by(Device, account_id: account_id, provider: :hetzner, provider_name: name)
+
+  def get_provider_machine(_scope, _name), do: nil
+
+  def list_provider_machines(%Scope{active_account_id: account_id}) when is_binary(account_id),
+    do: Repo.all(from(d in Device, where: d.account_id == ^account_id and d.provider == :hetzner))
+
+  def list_provider_machines(_scope), do: []
+
+  def change_machine_purpose(%Device{} = device, attrs),
+    do: Device.purpose_changeset(device, attrs)
+
+  def update_machine_purpose(%Device{} = device, attrs),
+    do: device |> change_machine_purpose(attrs) |> Repo.update()
+
+  @doc "Remove the provider link, preserving machine identity, checkouts and credentials."
+  def unlink_provider_machine(scope, id) do
+    case get_device(scope, id) do
+      %Device{provider: :hetzner} = device ->
+        if environment_linked?(device.id) do
+          {:error, :in_use}
+        else
+          device
+          |> Ecto.Changeset.change(
+            provider: nil,
+            provider_name: nil,
+            provider_resource_id: nil,
+            purpose: nil,
+            label: device.label || device.provider_name
+          )
+          |> Repo.update()
+        end
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Enroll a known machine without creating a second device record."
+  def enroll_existing_device(%Scope{active_account_id: account_id} = scope, id)
+      when is_binary(account_id) do
+    with true <- scope.user != nil and Authorization.authorize(:manage_account, scope, account_id),
+         %Device{} = device <- get_device(scope, id),
+         nil <- device.token_hash do
+      token = mint_token()
+
+      query = from(d in Device, where: d.id == ^device.id and is_nil(d.token_hash))
+
+      case Repo.update_all(query,
+             set: [token_hash: hash_token(token), updated_at: DateTime.utc_now()]
+           ) do
+        {1, _} -> {:ok, get_device(scope, device.id), token}
+        {0, _} -> {:error, :already_enrolled}
+      end
+    else
+      false -> {:error, :forbidden}
+      nil -> {:error, :not_found}
+      hash when is_binary(hash) -> {:error, :already_enrolled}
+    end
+  end
+
+  def enroll_existing_device(_scope, _id), do: {:error, :forbidden}
 
   @doc """
   Add a dev box from a provider (story 1130), as `{:ok, device, token}`.
@@ -565,11 +673,23 @@ defmodule CodeMySpec.Devices do
   work done on it — `agents`, `issues`, `problems` — are `SET NULL` and
   survive. Destroying a device with copies attached deletes those copies.
   """
-  @spec destroy(Scope.t(), Device.t()) :: {:ok, Device.t()} | {:error, :not_yours}
-  def destroy(%Scope{active_account_id: account_id}, %Device{account_id: account_id} = device),
-    do: Repo.delete(device)
+  @spec destroy(Scope.t(), Device.t()) ::
+          {:ok, Device.t()} | {:error, :not_yours | :in_use | Ecto.Changeset.t()}
+  def destroy(%Scope{active_account_id: account_id}, %Device{account_id: account_id} = device) do
+    if environment_linked?(device.id) do
+      {:error, :in_use}
+    else
+      device
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.foreign_key_constraint(:id, name: :environments_device_id_fkey)
+      |> Repo.delete()
+    end
+  end
 
   def destroy(%Scope{}, %Device{}), do: {:error, :not_yours}
+
+  defp environment_linked?(id),
+    do: Repo.exists?(from(e in "environments", where: e.device_id == type(^id, Ecto.UUID)))
 
   @doc """
   Give a device a name a person chose.

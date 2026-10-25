@@ -164,6 +164,14 @@ defmodule CmsHarness.AppInstance.Runner.Local do
     end
   end
 
+  @impl true
+  def changed_paths(root, from, to) do
+    case ExecutionContexts.cmd(local(root), "git", ["diff", "--name-only", from, to], []) do
+      {out, 0} -> String.split(out, "\n", trim: true)
+      _ -> nil
+    end
+  end
+
   # The recipe may kill this BEAM (it restarts the harness) and then has to start
   # the new one, so it cannot be a child of this process. As one, it lived in the
   # harness's process tree with its output piped back here: once the old harness

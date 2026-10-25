@@ -58,6 +58,27 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
     assert Environments.get(scope, "uat") == nil
   end
 
+  test "confirmed teardown removes a machine-bound provider receipt without deleting the machine",
+       %{scope: scope} do
+    device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+
+    {:ok, environment} =
+      Environments.put(scope, "uat", %{device_id: device.id, server_name: "project-uat"})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, environment.id, %{
+        confirmed_at: DateTime.utc_now(),
+        image: "registry/app:release"
+      })
+
+    assert instance.device_id == device.id
+
+    assert {:ok, [_]} = Teardown.environment(scope, "uat", teardown: recorder())
+    assert AppInstances.get(scope, instance.id) == nil
+    assert Environments.get(scope, "uat") == nil
+    assert CodeMySpec.Devices.get_device(scope, device.id)
+  end
+
   test "failed provider removal preserves its runtime receipt and environment", %{scope: scope} do
     {:ok, environment} = Environments.put(scope, "uat", %{server_name: "project-uat"})
 

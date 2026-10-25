@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServerTest do
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
 
   setup do
     scope = full_scope_fixture()
@@ -69,7 +69,7 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServerTest do
       # The provider was reached at all — proof the link did not block on it.
       assert_received {:ran, _method, _path}
 
-      assert Server.get_linked(scope, "acme-box"),
+      assert Servers.get_linked(scope, "acme-box"),
              "expected the name linked even though the provider refused"
     end
 
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServerTest do
     end
 
     test "linking the same name twice is not an error", %{scope: scope} do
-      {:ok, _} = Server.link(scope, %{name: "acme-box"})
+      {:ok, _} = CodeMySpec.Devices.link_provider_machine(scope, %{name: "acme-box"})
 
       plug = fn conn -> refuse(conn) end
       Req.Test.stub(Hetzner, plug)

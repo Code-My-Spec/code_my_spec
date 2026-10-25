@@ -16,17 +16,40 @@ defmodule CmsHarnessTest.ClusteredProject do
   import CmsHarnessTest.Projects, only: [write: 3]
 
   @hold_ms 60_000
+  @credo [{:credo, "== 1.7.19", only: [:dev, :test], runtime: false}]
   @poll_ms 10
 
   @doc "Write the project into `root` and compile it where its analyzer builds."
   @spec make(String.t()) :: :ok
   def make(root) do
-    write(root, "mix.exs", mix_exs())
+    write(root, "mix.exs", mix_exs([]))
     write(root, "test/test_helper.exs", "ExUnit.start()\n")
     write(root, "test/held_test.exs", held_test(pid_file(root), release_file(root)))
-    seed_build(root)
+    seed_build(root, [])
     compile!(root)
   end
+
+  @doc """
+  A project for credo to sweep (story 1144): one file with a finding,
+  `finding/0`, and a check of its own that holds the sweep open until
+  released, so credo is provably still running after it has reported.
+  """
+  @spec make_credo(String.t()) :: :ok
+  def make_credo(root) do
+    write(root, "mix.exs", mix_exs(@credo))
+    write(root, ".credo.exs", credo_config())
+    write(root, "checks/held_check.ex", held_check(pid_file(root), release_file(root)))
+    write(root, "lib/demo.ex", inspecting_module())
+    # Where the analyzer looks to see credo is installed; the deps are CodeMySpec's.
+    :ok = File.ln_s(Mix.Project.deps_path(), Path.join(root, "deps"))
+    seed_build(root, @credo)
+    compile!(root)
+  end
+
+  @doc "What `make_credo/1`'s project has credo report: its message, file and line."
+  @spec finding() :: %{message: String.t(), file: String.t(), line: pos_integer()}
+  def finding,
+    do: %{message: "There should be no calls to `IO.inspect/1`.", file: "lib/demo.ex", line: 3}
 
   defp compile!(root) do
     {output, status} =
@@ -133,24 +156,24 @@ defmodule CmsHarnessTest.ClusteredProject do
   defp build_env(root),
     do: [{"MIX_ENV", "test"}, {"MIX_BUILD_PATH", CmsHarness.AnalyzerEnv.build_path(root)}]
 
-  # The copy's build starts as a copy of the template's.
-  defp seed_build(root) do
+  # The copy's build starts as a copy of the template's for the same deps.
+  defp seed_build(root, deps) do
     build = CmsHarness.AnalyzerEnv.build_path(root)
     File.mkdir_p!(Path.dirname(build))
-    {:ok, _} = File.cp_r(template_build(), build)
+    {:ok, _} = File.cp_r(template_build(deps), build)
     :ok
   end
 
-  # Compiled once per BEAM, from scratch, in a project of its own.
-  defp template_build do
-    case :persistent_term.get({__MODULE__, :template}, nil) do
+  # Compiled once per BEAM per set of deps, from scratch, in a project of its own.
+  defp template_build(deps) do
+    case :persistent_term.get({__MODULE__, :template, deps}, nil) do
       nil ->
         root = CodeMySpec.TempFile.dir("clustered_project_template")
         File.mkdir_p!(root)
-        write(root, "mix.exs", mix_exs())
+        write(root, "mix.exs", mix_exs(deps))
         compile!(root)
         build = CmsHarness.AnalyzerEnv.build_path(root)
-        :persistent_term.put({__MODULE__, :template}, build)
+        :persistent_term.put({__MODULE__, :template, deps}, build)
         build
 
       build ->
@@ -182,7 +205,7 @@ defmodule CmsHarnessTest.ClusteredProject do
     end
   end
 
-  defp mix_exs do
+  defp mix_exs(deps) do
     """
     defmodule Demo.MixProject do
       use Mix.Project
@@ -194,7 +217,10 @@ defmodule CmsHarnessTest.ClusteredProject do
           elixir: "~> 1.14",
           deps_path: #{inspect(Mix.Project.deps_path())},
           lockfile: #{inspect(Path.expand("mix.lock"))},
-          deps: [{:client_utils, path: #{inspect(Mix.Project.deps_paths()[:client_utils])}}]
+          deps: [
+            {:client_utils, path: #{inspect(Mix.Project.deps_paths()[:client_utils])}}
+            | #{inspect(deps)}
+          ]
         ]
       end
     end
@@ -233,6 +259,56 @@ defmodule CmsHarnessTest.ClusteredProject do
       test "is held open until released" do
         File.write!(#{inspect(pid_file)}, System.pid())
         wait(#{div(@hold_ms, @poll_ms)})
+      end
+
+      defp wait(0), do: :ok
+
+      defp wait(n) do
+        if File.exists?(#{inspect(release_file)}), do: :ok, else: (Process.sleep(#{@poll_ms}); wait(n - 1))
+      end
+    end
+    """
+  end
+
+  defp credo_config do
+    """
+    %{
+      configs: [
+        %{
+          name: "default",
+          files: %{included: ["lib/"]},
+          requires: ["checks/held_check.ex"],
+          checks: %{
+            enabled: [{Credo.Check.Warning.IoInspect, []}, {Demo.HeldCheck, []}],
+            disabled: []
+          }
+        }
+      ]
+    }
+    """
+  end
+
+  # `finding/0` names this file and line 3, the call's.
+  defp inspecting_module do
+    """
+    defmodule Demo do
+      def ledger(entries) do
+        IO.inspect(entries)
+      end
+    end
+    """
+  end
+
+  defp held_check(pid_file, release_file) do
+    """
+    defmodule Demo.HeldCheck do
+      use Credo.Check, category: :warning, base_priority: :normal
+
+      @impl true
+      def run(_source_file, _params) do
+        File.write!(#{inspect(pid_file)}, System.pid())
+        wait(#{div(@hold_ms, @poll_ms)})
+        []
       end
 
       defp wait(0), do: :ok

@@ -20,7 +20,7 @@ defmodule CodeMySpec.Environments.Environment do
           host: String.t() | nil,
           server_name: String.t() | nil,
           ip: String.t() | nil,
-          server_id: Ecto.UUID.t() | nil,
+          device_id: Ecto.UUID.t() | nil,
           first_deployed_at: DateTime.t() | nil
         }
 
@@ -33,7 +33,7 @@ defmodule CodeMySpec.Environments.Environment do
     field :first_deployed_at, :utc_datetime_usec
 
     belongs_to :project, CodeMySpec.Projects.Project
-    belongs_to :server, CodeMySpec.Servers.Server
+    belongs_to :device, CodeMySpec.Devices.Device
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -41,7 +41,7 @@ defmodule CodeMySpec.Environments.Environment do
   @doc false
   def changeset(environment, attrs) do
     environment
-    |> cast(attrs, [:name, :host, :server_name, :ip, :project_id, :server_id, :management])
+    |> cast(attrs, [:name, :host, :server_name, :ip, :project_id, :device_id, :management])
     |> validate_required([:name, :project_id, :management])
     |> immutable_management()
     # The same constraint the server name, the DNS label and the sops filename
@@ -53,7 +53,7 @@ defmodule CodeMySpec.Environments.Environment do
     )
     |> unique_constraint([:project_id, :name])
     |> foreign_key_constraint(:project_id)
-    |> foreign_key_constraint(:server_id)
+    |> foreign_key_constraint(:device_id)
     |> References.check()
   end
 

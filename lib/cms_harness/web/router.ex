@@ -181,6 +181,10 @@ defmodule CmsHarness.Web.Router do
     # its own is the answer that misled people last time.
     get("/health", HealthController, :index)
 
+    # What a landing must change for this harness to be running stale code:
+    # `just after-promote` restarts it when the landed tree touches any of these.
+    get("/health/loaded-sources", HealthController, :loaded_sources)
+
     # What every project's analyzer queue actually believes right now, plus
     # machine-wide slot usage and load — for the dev dashboard. Unaddressed
     # for the same reason `/health` is: it reports on everything this

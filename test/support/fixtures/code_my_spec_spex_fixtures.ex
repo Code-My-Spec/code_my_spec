@@ -4444,18 +4444,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "Wait for recovery events and verify the public cadence report advanced."
-  def await_recovery_check(read_report, since) when is_function(read_report, 0) do
+  def await_recovery_check(read_report, since, within_ms \\ 5_000)
+      when is_function(read_report, 0) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "cadence:checks")
 
     try do
-      deadline = System.monotonic_time(:millisecond) + 5_000
-      await_recovery_check(read_report, since, deadline)
+      deadline = System.monotonic_time(:millisecond) + within_ms
+      wait_for_recovery_check(read_report, since, deadline)
     after
       Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "cadence:checks")
     end
   end
 
-  defp await_recovery_check(read_report, since, deadline) do
+  defp wait_for_recovery_check(read_report, since, deadline) do
     body = read_report.()
 
     checked_at =
@@ -4472,17 +4473,17 @@ defmodule CodeMySpecSpex.Fixtures do
         checked_at
 
       System.monotonic_time(:millisecond) >= deadline ->
-        raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+        raise "No new recovery check was observable through cadence in time: #{body}"
 
       true ->
         remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
         receive do
           {:recovery_checked, _project_id, _checked_at} ->
-            await_recovery_check(read_report, since, deadline)
+            wait_for_recovery_check(read_report, since, deadline)
         after
           remaining ->
-            raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+            raise "No new recovery check was observable through cadence in time: #{body}"
         end
     end
   end
@@ -5447,6 +5448,13 @@ defmodule CodeMySpecSpex.Fixtures do
       |> Keyword.put(:name, nil)
       |> Keyword.put(:pool, DBConnection.ConnectionPool)
       |> Keyword.put(:pool_size, 2)
+      # The database does not exist when this pool starts, so its connections
+      # go into reconnect backoff. The check must still fail fast on that (it is
+      # how it learns to create the database), but once created, the migration
+      # waited on connections still backing off at the default ceiling and
+      # timed out under gate load. A short ceiling brings them back promptly.
+      |> Keyword.put(:backoff_min, 100)
+      |> Keyword.put(:backoff_max, 500)
 
     {:ok, pid} = CodeMySpec.Repo.start_link(dyn_config)
     previous = CodeMySpec.Repo.get_dynamic_repo()
@@ -5800,11 +5808,10 @@ defmodule CodeMySpecSpex.Fixtures do
   def link_environment_to_server(%Scope{} = scope, environment_name, server_name) do
     alias CodeMySpec.Environments
     alias CodeMySpec.Servers
-    alias CodeMySpec.Servers.Server
 
-    with {:ok, _} <- Server.link(scope, %{name: server_name}),
-         %{id: server_id} <- Servers.get_linked(scope, server_name) do
-      Environments.put(scope, environment_name, %{server_id: server_id})
+    with {:ok, _} <- CodeMySpec.Devices.link_provider_machine(scope, %{name: server_name}),
+         %{id: device_id} <- Servers.get_linked(scope, server_name) do
+      Environments.put(scope, environment_name, %{device_id: device_id})
     else
       nil -> {:error, :not_found}
       error -> error

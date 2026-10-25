@@ -33,6 +33,7 @@ defmodule CodeMySpec.Analysis.Runners do
   """
 
   alias CodeMySpec.Analysis.LocalRunLink
+  alias CodeMySpec.Analysis.RunNode
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Problems.ProblemConverter
@@ -86,7 +87,12 @@ defmodule CodeMySpec.Analysis.Runners do
   # output channel; that also skips its availability check, hence `available?/2`.
   defp run_resolved("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
-    runner_opts = opts |> Keyword.put(:files, files) |> maybe_output_file(opts)
+
+    runner_opts =
+      opts
+      |> Keyword.put(:files, files)
+      |> Keyword.put(:extra_env, RunNode.credo_env(LocalRunLink.env(scope, opts[:run_id])))
+      |> maybe_output_file(opts)
 
     if Analyzers.Credo.available?(scope, runner_opts) do
       case Analyzers.Credo.run_with_output(scope, runner_opts) do
