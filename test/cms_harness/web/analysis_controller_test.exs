@@ -62,9 +62,23 @@ defmodule CmsHarness.Web.AnalysisControllerTest do
     end
   end
 
+  test "a no-match failure explains suite selection without rewriting analyzer output" do
+    output = ~s(Paths given to "mix test" did not match any directory/file: test/spex/new_story\n)
+    conn = request({:ok, %{"status" => "completed", "output" => output, "exit_status" => 1}})
+
+    assert conn.status == 422
+    assert conn.resp_body == output
+    assert Plug.Conn.get_resp_header(conn, "x-exit-status") == ["1"]
+    assert [guidance] = Plug.Conn.get_resp_header(conn, "x-analysis-guidance")
+    assert guidance =~ "including untracked files"
+    assert guidance =~ "mix spex <path>"
+    assert guidance =~ "Committing alone does not change test selection"
+  end
+
   test "an unreadable reply cannot become a passing suite" do
     conn = request({:ok, %{"unexpected" => true}})
     assert conn.status == 502
+    assert Plug.Conn.get_resp_header(conn, "x-analysis-guidance") == []
     assert conn.resp_body =~ "unreadable analysis reply"
     assert Plug.Conn.get_resp_header(conn, "x-exit-status") == []
   end

@@ -11,6 +11,12 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   Lives here, not in a controller, so every harness decides identically. The
   analysis endpoint is local by nature, so the port is a parameter.
+
+  Routed analyzers read the addressed copy's working tree, including untracked
+  and uncommitted files; they do not create a HEAD-only snapshot. Certification
+  separately requires committed work and fresh full runs at that commit.
+  Mix still applies its test patterns and filters: use `mix spex <path>` for
+  `_spex.exs` files excluded from `mix test`.
   """
 
   require Logger
@@ -408,7 +414,7 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     "curl -sS --fail-with-body -X POST '#{url}' -H 'Content-Type: application/json' " <>
       header(endpoint) <>
       "--data #{shell_quote(payload)} " <>
-      "--write-out '\nAnalysis HTTP status: %{http_code}\nAnalyzer exit status (blank if unavailable): %header{x-exit-status}\n'"
+      "--write-out '\nAnalysis HTTP status: %{http_code}\nAnalyzer exit status (blank if unavailable): %header{x-exit-status}\nAnalysis guidance: %header{x-analysis-guidance}\n'"
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"
