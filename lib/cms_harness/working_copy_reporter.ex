@@ -21,6 +21,7 @@ defmodule CmsHarness.WorkingCopyReporter do
 
   require Logger
 
+  alias CmsHarness.Config
   alias CmsHarness.Device
   alias CmsHarness.Projects
   alias CmsHarness.Projects.Generator
@@ -152,12 +153,15 @@ defmodule CmsHarness.WorkingCopyReporter do
   end
 
   # Generate pending projects the server offered, only with a
-  # `CopiesSupervisor` (same guard as `serve/1`). Spawned, not awaited:
-  # generation can take minutes and reports must keep flowing.
+  # `CopiesSupervisor` (same guard as `serve/1`), and only as the machine's
+  # harness: one started for a single copy is not where the account's new
+  # projects go. Spawned, not awaited: generation can take minutes and reports
+  # must keep flowing.
   defp generate(pending, state) do
-    case Process.whereis(CmsHarness.CopiesSupervisor) do
-      nil -> state
-      _pid -> Enum.reduce(pending, state, &generate_one/2)
+    cond do
+      Config.own_state?() -> state
+      Process.whereis(CmsHarness.CopiesSupervisor) == nil -> state
+      true -> Enum.reduce(pending, state, &generate_one/2)
     end
   end
 
