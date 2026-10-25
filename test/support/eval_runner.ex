@@ -51,6 +51,8 @@ defmodule CodeMySpec.Support.EvalRunner do
   def run(opts \\ []) do
     runs = Keyword.get(opts, :runs, 10)
     pattern = Keyword.get(opts, :pattern)
+    # The engine the agent runs in, as a spex starts it.
+    CmsHarnessTest.Machine.ensure_supervisor()
 
     criteria = Enum.filter(criteria(), &matches?(&1, pattern))
 
@@ -81,6 +83,21 @@ defmodule CodeMySpec.Support.EvalRunner do
         deadline_ms: 180_000,
         seed: &seed_coding_work/2,
         judge: &called_in_order(&1, "get_next_requirement", "start_task")
+      },
+      %{
+        # 8428cef0: a Codex agent reached for Codex's own `exec` (its `tools.*`
+        # and `ALL_TOOLS`) instead of the harness's tools, found none of them,
+        # and stopped saying it had no tools. Measured on the same premise as
+        # 3539, on the provider that showed it.
+        id: "codex_uses_the_harness_tools",
+        behaviour:
+          "A Codex agent works through the harness's tools and never claims to lack them",
+        role: "coding",
+        provider: "openai-codex",
+        threshold: 0.9,
+        deadline_ms: 300_000,
+        seed: &seed_coding_work/2,
+        judge: &used_harness_tools?/1
       },
       %{
         id: "criterion_3540",
@@ -357,8 +374,8 @@ defmodule CodeMySpec.Support.EvalRunner do
   # nothing to compute one from, which is the state being measured.
   defp bare_world do
     %Scope{} = scope = fresh_scope()
-    root = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
-    scope = %Scope{scope | cwd: root}
+    scope = on_its_copy(scope)
+    root = scope.cwd
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
 
     Requirements.recompute(scope)
@@ -367,10 +384,19 @@ defmodule CodeMySpec.Support.EvalRunner do
     %{root: root, scope: scope, context: %{scope: scope}}
   end
 
+  # The fixture registers its environment under the project; files are now
+  # read through the working copy (`WorkingCopies.execution_context/1`), which
+  # found none and refused to sync (`:no_environment`). Registered on the copy,
+  # the way the spex Case does.
+  defp on_its_copy(scope) do
+    env = CodeMySpec.UsersFixtures.fixture_execution_context(scope)
+    CodeMySpec.UsersFixtures.put_fixture_execution_context(scope, env)
+  end
+
   defp full_satisfaction_world do
     %Scope{} = scope = fresh_scope()
-    root = CodeMySpec.UsersFixtures.fixture_execution_context(scope).cwd
-    scope = %Scope{scope | cwd: root}
+    scope = on_its_copy(scope)
+    root = scope.cwd
 
     context = %{
       scope: scope,
@@ -491,12 +517,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     import Ecto.Query
 
     account = Ecto.UUID.dump!(account_id)
-    projects = from(p in "projects", where: p.account_id == ^account, select: p.id)
-
     steps = [
-      from(s in "sessions",
-        where: s.account_id == ^account or s.project_id in subquery(projects)
-      ),
       from(r in "rules", where: r.account_id == ^account),
       from(s in "stories", where: s.locked_by == ^user_id),
       from(p in "projects", where: p.account_id == ^account),
@@ -724,7 +745,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     {:ok, agent} =
       AgentsRepository.create_agent(world.scope, %{
         engine: :alloy,
-        provider: "claude-code",
+        provider: Map.get(criterion, :provider, "claude-code"),
         role: criterion.role,
         # What this role may call, written on the row the way
         # `Agents.start_agent/2` writes it via `base_attrs/2`.
@@ -770,10 +791,14 @@ defmodule CodeMySpec.Support.EvalRunner do
     request =
       world.scope
       |> launch_request().hydrate(agent)
-      |> launch_request().for()
+      |> launch_request().for(CodeMySpec.McpServers.ToolRegistry.registry())
       |> Map.merge(%{
         "api_key" => "unused-in-eval",
-        "on_event" => fn _agent_id, event -> record_event(collector, event) end
+        "on_event" => fn _agent_id, event -> record_event(collector, event) end,
+        # No channel here: the engine's mailbox registration and consumption
+        # acknowledgements have nobody to reach, as in the harness's own tests.
+        "on_register" => fn _agent_id, _generation -> :ok end,
+        "on_consume" => fn _agent_id, _ref, _generation -> :ok end
       })
 
     # No channel here to turn the harness's ups and downs into presence, and
@@ -1646,6 +1671,15 @@ defmodule CodeMySpec.Support.EvalRunner do
     else
       _ -> false
     end
+  end
+
+  @claims_no_tools ~r/(do(es)? not include|aren't (available|callable)|are not (available|callable)|not (available|callable) in this|cannot (call|reach|access) (the )?(codemyspec|harness|project) tools|no (codemyspec|harness) tools)/i
+
+  defp used_harness_tools?(%{trace: trace} = record) do
+    said = Enum.map_join(trace, "\n", &to_string(&1.detail))
+
+    called_in_order(record, "get_next_requirement", "start_task") and
+      not (said =~ @claims_no_tools)
   end
 
   # ---------------------------------------------------------------- artifacts

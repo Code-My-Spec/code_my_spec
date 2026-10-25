@@ -32,7 +32,8 @@ defmodule CodeMySpecTest.PresenceRelay do
   def init({agent, caller}) do
     # The bell reads and writes the database, from here, on the caller's
     # behalf. A caller in shared mode owns nothing to allow, and needs nothing.
-    _ = Sandbox.allow(CodeMySpec.Repo, caller, self())
+    # Without the sandbox (the evals run on a real pool) there is nothing to allow.
+    if sandboxed?(), do: Sandbox.allow(CodeMySpec.Repo, caller, self())
     :ok = Liveness.subscribe()
 
     state = %{
@@ -78,4 +79,7 @@ defmodule CodeMySpecTest.PresenceRelay do
   end
 
   defp via(id), do: {:via, Registry, {CmsHarness.Registry, {:presence_relay, id}}}
+
+  defp sandboxed?,
+    do: Application.get_env(:code_my_spec, CodeMySpec.Repo)[:pool] == Sandbox
 end

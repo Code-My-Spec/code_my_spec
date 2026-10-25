@@ -383,8 +383,12 @@ config :code_my_spec, CmsHarness.Mcp.Http, plug: {Req.Test, CmsHarness.Mcp.Http}
 # The CLI providers' answer to the pin above. A project that connected OpenAI
 # launches its agents on `codex exec`, and a spex that talked to one ran it for
 # real on every analysis. Replayed from a recording; an unrecorded call raises.
-config :code_my_spec, CmsHarness.Agents.Provider,
-  command_runner: {CmsHarnessTest.RecordedCli, :run}
+# Not under `mix cms.eval`: an eval measures the real model, and replaying a
+# recording there measured the recording ("ready", every run).
+unless eval? do
+  config :code_my_spec, CmsHarness.Agents.Provider,
+    command_runner: {CmsHarnessTest.RecordedCli, :run}
+end
 
 # Provisioning's pollers back off between reads — waiting for a server to boot,
 # a bucket to appear, a firewall to release. Against stubs and cassettes there
