@@ -1138,12 +1138,7 @@ defmodule CodeMySpecSpex.Fixtures do
   driving it costs nothing and removes the only place the two could disagree.
   """
   def agents_to_restore(%Scope{} = scope) do
-    socket = %Phoenix.Socket{assigns: %{scope: scope}}
-
-    {:reply, {:ok, %{"agents" => agents}}, _socket} =
-      CodeMySpecWeb.HarnessProjectChannel.handle_in("agents_to_restore", %{}, socket)
-
-    agents
+    CodeMySpecTest.RestoreHandshake.agents(scope)
   end
 
   @doc """
