@@ -5,6 +5,8 @@ defmodule CodeMySpec.AppInstances.Tools do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
+      CodeMySpec.AgentAttachments,
+      CodeMySpec.Environments,
       CodeMySpec.AppInstances,
       CodeMySpec.CodeMode,
       CodeMySpec.Tools,
@@ -14,6 +16,8 @@ defmodule CodeMySpec.AppInstances.Tools do
 
   def all do
     [
+      CodeMySpec.AppInstances.Tools.ListAppInstances,
+      CodeMySpec.AppInstances.Tools.GetAppInstance,
       CodeMySpec.AppInstances.Tools.EnsureAppRunning,
       CodeMySpec.AppInstances.Tools.RestartApp,
       CodeMySpec.AppInstances.Tools.ShareCopyApp,

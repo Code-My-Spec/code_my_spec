@@ -10,9 +10,10 @@ defmodule CodeMySpec.Environments.Tools.ListEnvironments do
   def description do
     """
     List this project's durable environments and their assigned app instances.
-    Reports management (harness or provisioned), host, server, device, source,
+    Reports management (harness or provisioned), host, device, source,
     status and revision. Does not create environments or start instances.
-    Use these IDs with assign_app_instance_environment to change a binding.
+    Use these IDs with assign_app_instance_environment or assign_environment_device
+    to change a binding.
     """
   end
 

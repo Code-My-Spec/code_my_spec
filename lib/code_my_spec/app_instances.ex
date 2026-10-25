@@ -135,6 +135,17 @@ defmodule CodeMySpec.AppInstances do
   def get(_, _), do: nil
   def get!(scope, id), do: get(scope, id) || raise(Ecto.NoResultsError, queryable: AppInstance)
 
+  @doc "All recorded runtime instances in the active project, including deployments without checkouts."
+  def list(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    Repo.all(
+      from i in AppInstance,
+        where: i.project_id == ^project_id,
+        order_by: [asc: i.inserted_at, asc: i.id]
+    )
+  end
+
+  def list(_), do: []
+
   def list_for_working_copy(%Scope{active_project_id: project_id}, copy) do
     id = value(copy, :id) || copy
 

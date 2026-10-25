@@ -488,7 +488,7 @@ defmodule CodeMySpecWeb.ConversationPanels do
       |> assign(:detached, detached)
       |> assign(:agent_total, Enum.reduce(assigns.copies, 0, &(length(&1.agents) + &2)))
       |> assign(:needing_you, Enum.count(assigns.copies, & &1.question?))
-      |> assign(:devices, device_groups(assigns.copies, activity_devices(scope)))
+      |> assign(:devices, device_groups(assigns.copies))
 
     ~H"""
     <div class="space-y-3">
@@ -711,26 +711,18 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   # Preserve the copy ordering (main first), but identify machines by their
   # stable ID: two devices can have the same hostname or user-facing label.
-  defp device_groups(copies, devices) do
+  defp device_groups(copies) do
     key = fn copy -> copy.row.device && copy.row.device.id end
     groups = Enum.group_by(copies, key)
 
-    grouped =
-      copies
-      |> Enum.map(key)
-      |> Enum.uniq()
-      |> Enum.map(fn id ->
-        copies = Map.fetch!(groups, id)
-        name = if id, do: hd(copies).row.device_name, else: "Device unknown"
-        %{id: id, name: name, copies: copies}
-      end)
-
-    empty =
-      devices
-      |> Enum.reject(&Map.has_key?(groups, &1.id))
-      |> Enum.map(&%{id: &1.id, name: CodeMySpec.Devices.Device.display_name(&1), copies: []})
-
-    grouped ++ empty
+    copies
+    |> Enum.map(key)
+    |> Enum.uniq()
+    |> Enum.map(fn id ->
+      copies = Map.fetch!(groups, id)
+      name = if id, do: hd(copies).row.device_name, else: "Device unknown"
+      %{id: id, name: name, copies: copies}
+    end)
   end
 
   attr :copy, :map, required: true
@@ -964,23 +956,6 @@ defmodule CodeMySpecWeb.ConversationPanels do
 
   defp current_agent?(%{chat: %{conversation: %{id: id}}}, id) when is_binary(id), do: true
   defp current_agent?(_agent, _conversation_id), do: false
-
-  defp activity_devices(nil), do: []
-
-  defp activity_devices(scope) do
-    local =
-      if Application.get_env(:code_my_spec, :env) == :desktop do
-        case CmsHarness.Device.recorded_id() do
-          id when is_binary(id) -> CodeMySpec.Devices.get_harness_device(scope, id)
-          _ -> nil
-        end
-      end
-
-    Enum.uniq_by(
-      Enum.reject([local | CodeMySpec.Devices.list_devices(scope)], &is_nil/1),
-      & &1.id
-    )
-  end
 
   # Mirrors the story dot's done/not-yet split, widened to the epic's four
   # states: dispatched is done, proposed is waiting on a person (the same

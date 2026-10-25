@@ -93,7 +93,7 @@
   },
   {
     "name": "link_server",
-    "description": "Point a project's environment at a server the account already owns.\n\n`environments` used to only ever get a server the setup step\ncreated for it — `server_name`/`ip` filled in as it went. An account-level\nserver (`/app/servers`, story 879) can predate any project that ends up on\nit, or serve more than one at once, and nothing connected the two. This is\nthat connection: once linked, the server step resolves this environment's\nbox by the linked server's real name instead of deriving one from the\nproject, so setup finds the box that's actually there rather than one that\nwas never going to exist under a guessed name.\n\nLink the account's server first (`/app/servers`, or however it's linked)\nbefore calling this — it only points an environment at a server this\naccount already has a record of.\n",
+    "description": "Legacy provider-name convenience for binding a provisioned environment to\nan account's existing provider device. Use list_devices and\nassign_environment_device for canonical UUID-based placement, including\nharness-managed environments. Provider devices are managed under /app/devices.\n\nThe named server must already be linked to this account. Creates the\nprovisioned environment if needed. This only changes its device binding;\nit does not move or deploy app instances or working copies.\n",
     "input_schema": {
       "properties": {
         "environment": {
