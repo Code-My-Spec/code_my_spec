@@ -61,4 +61,65 @@ defmodule CodeMySpec.AppInstances.Tools.TargetTest do
     assert {:error, :instance_not_owned} =
              Target.own_default(copy_scope, %{scope: copy_scope}, instance.id)
   end
+
+  test "Main controls an explicitly attached instance and loses access when detached" do
+    scope = working_copy_scope_fixture()
+    {:ok, own} = WorkingCopies.fetch(scope.active_working_copy_id)
+    {:ok, foreign} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
+    {:ok, foreign} = WorkingCopies.report_root(foreign, "/tmp/attached-target")
+    {:ok, instance} = AppInstances.ensure_default(scope, foreign)
+
+    agent =
+      Repo.insert!(%CodeMySpec.Agents.Agent{
+        project_id: scope.active_project_id,
+        account_id: scope.active_account_id,
+        working_copy_id: own.id,
+        working_copy: own.root,
+        role: :main,
+        provider: "openai",
+        status: :running
+      })
+
+    context = %{scope: scope, agent_id: agent.id}
+    assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
+
+    attachment =
+      Repo.insert!(%CodeMySpec.AgentAttachments.Attachment{
+        agent_id: agent.id,
+        project_id: scope.active_project_id,
+        account_id: scope.active_account_id,
+        working_copy_id: foreign.id
+      })
+
+    assert {:ok, ^instance} = Target.lifecycle(scope, context, instance.id)
+    detached_scope = %{scope | active_working_copy_id: nil}
+    assert {:ok, ^instance} = Target.lifecycle(detached_scope, context, instance.id)
+    assert {:error, :missing_active_working_copy} = Target.lifecycle(detached_scope, context, nil)
+
+    for role <- [:coding, :qa] do
+      agent |> Ecto.Changeset.change(role: role) |> Repo.update!()
+      assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
+    end
+
+    agent |> Ecto.Changeset.change(role: :main, retired_at: DateTime.utc_now()) |> Repo.update!()
+    assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
+    agent |> Ecto.Changeset.change(role: :main, retired_at: nil) |> Repo.update!()
+    Repo.delete!(attachment)
+    assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
+  end
+
+  test "lifecycle refuses provisioned, foreign and malformed instances" do
+    scope = working_copy_scope_fixture()
+    {:ok, env} = CodeMySpec.Environments.put(scope, "prod", %{})
+
+    {:ok, instance} =
+      AppInstances.record_deployment(scope, env.id, %{
+        confirmed_at: DateTime.utc_now(),
+        image: "example/app:latest"
+      })
+
+    assert {:error, :provisioned_instance} = Target.lifecycle(scope, %{}, instance.id)
+    assert {:error, :not_found} = Target.lifecycle(full_scope_fixture(), %{}, instance.id)
+    assert {:error, :not_found} = Target.lifecycle(scope, %{}, "bad")
+  end
 end

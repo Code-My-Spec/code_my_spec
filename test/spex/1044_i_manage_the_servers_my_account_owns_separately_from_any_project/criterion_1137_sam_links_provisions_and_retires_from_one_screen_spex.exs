@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story1044.Criterion3063Spex do
 
       then_ "all three actions took effect from the one page, with no navigation away",
             context do
-        assert_patched(context.servers_live, "/app/servers")
+        assert_patched(context.servers_live, "/app/devices")
 
         html = render(context.servers_live)
         assert html =~ "cax11", "expected the newly provisioned server's size to render"

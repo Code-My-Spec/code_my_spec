@@ -22,6 +22,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
 
   use CodeMySpecWeb, :live_component
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Servers
 
   # Not a value anyone would type, and never stored — it is the select's
@@ -33,6 +34,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(:can_manage, can_manage?(assigns.current_scope))
      |> assign(:other, @other)
      |> assign(:environments, environments)
      |> assign(:custom?, custom?(server.purpose, environments))
@@ -50,6 +52,9 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
 
     {:noreply, socket |> assign(:custom?, custom?) |> assign_form(changeset)}
   end
+
+  def handle_event("save", _params, %{assigns: %{can_manage: false}} = socket),
+    do: {:noreply, socket}
 
   def handle_event("save", %{"server" => params}, socket) do
     case Servers.update_server(socket.assigns.server, resolve(params, socket.assigns.custom?)) do
@@ -85,6 +90,11 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
   # with whichever option happened to be selected.
   defp custom?(nil, _environments), do: false
   defp custom?(environment, environments), do: environment not in environments
+
+  defp can_manage?(%{active_account_id: account_id} = scope) when is_binary(account_id),
+    do: Accounts.own_role(scope, account_id) in [:owner, :admin]
+
+  defp can_manage?(_scope), do: false
 
   defp notify_parent(server), do: send(self(), {:server_saved, server})
 
@@ -154,7 +164,7 @@ defmodule CodeMySpecWeb.ServerLive.FormComponent do
 
         <div class="modal-action">
           <.link patch={@return_to} data-test="cancel-edit" class="btn">Cancel</.link>
-          <button type="submit" data-test="save-server" class="btn btn-primary">Save</button>
+          <button :if={@can_manage} type="submit" data-test="save-server" class="btn btn-primary">Save</button>
         </div>
       </.form>
     </div>

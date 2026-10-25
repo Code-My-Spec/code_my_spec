@@ -1,6 +1,6 @@
 defmodule CodeMySpecSpex.DevBoxHelpers do
   @moduledoc """
-  The surface story 1130's criteria drive: the Dev boxes page (`/app/projects/:id/console/dev-boxes`,
+  The surface story 1130's criteria drive: the Dev boxes page (`/app/projects/:id/console/devices`,
   `CodeMySpecWeb.DeviceLive.Index`) and a harness signing in with a box's token.
 
   The page's hooks, which the implementation follows:
@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
 
   @doc "Open the Dev boxes page as `conn`'s user."
   def open_dev_boxes(conn, project),
-    do: live(conn, "/app/projects/#{project.id}/console/dev-boxes")
+    do: live(conn, "/app/projects/#{project.id}/console/devices")
 
   @doc "Choose Add, pick `provider`, name the box and submit; the page after adding."
   def add_dev_box(live, name, provider) do

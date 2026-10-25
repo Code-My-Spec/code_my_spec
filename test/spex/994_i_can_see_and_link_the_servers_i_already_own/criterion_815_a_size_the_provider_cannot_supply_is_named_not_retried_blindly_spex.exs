@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
         # have been open since before the last of that size in Singapore went,
         # and the sold-out race is named in the LiveView's own docs.
         html =
-          render_submit(context.view, "stage", %{
+          render_submit(with_target(context.view, "#provider-inventory"), "stage", %{
             "server" => %{"size" => "cpx31", "location" => "sin"}
           })
 

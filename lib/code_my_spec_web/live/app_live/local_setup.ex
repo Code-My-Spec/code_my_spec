@@ -56,7 +56,7 @@ defmodule CodeMySpecWeb.AppLive.LocalSetup do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} project={@project} projects={@projects}>
       <CodeMySpecWeb.ConsoleLive.Components.Shell.frame project_id={@project.id} active={:dev_boxes}>
-        <.link navigate={~p"/app/projects/#{@project.id}/console/dev-boxes"} class="link">Dev boxes</.link>
+        <.link navigate={~p"/app/projects/#{@project.id}/console/devices"} class="link">Devices</.link>
         <h1 class="text-xl font-semibold">Development setup</h1>
         <p :if={@error} role="alert">{@error}</p>
         <div :if={@status} data-test="local-setup-status" class="space-y-3">
