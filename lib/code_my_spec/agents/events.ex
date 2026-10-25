@@ -75,6 +75,13 @@ defmodule CodeMySpec.Agents.Events do
   # caller's process: a missed nudge is the acceptable failure, and the next
   # completion sends it again.
   def handle_event(@task_completed, _measurements, meta, _config) do
+    Offers.lift_copy_declines(
+      meta.scope,
+      meta.working_copy_id,
+      DateTime.utc_now(),
+      meta.except_agent_id
+    )
+
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       Work.consider_copy(meta.scope, meta.working_copy_id, :task_completed, meta.except_agent_id)
     end)
@@ -87,12 +94,15 @@ defmodule CodeMySpec.Agents.Events do
   # A task released from a block. An agent busy on another task is told, not
   # offered (story 1080); `Work` offers it back once that task is done.
   def handle_event(@task_released, _measurements, %{deferred: notice} = meta, _config) do
+    Offers.lift_copy_declines(meta.scope, meta.agent.working_copy_id, DateTime.utc_now())
     Work.note_released(meta.agent, notice)
   catch
     kind, reason -> log(:task_released, kind, reason)
   end
 
   def handle_event(@task_released, _measurements, meta, _config) do
+    Offers.lift_copy_declines(meta.scope, meta.agent.working_copy_id, DateTime.utc_now())
+
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       Work.wake_released(meta.scope, meta.agent, meta.released, meta.header, meta.detail,
         subject: meta.subject,
@@ -107,6 +117,12 @@ defmodule CodeMySpec.Agents.Events do
 
   def handle_event(@issue_finished, _measurements, %{scope: scope, issue: issue}, _config) do
     Offers.supersede_issue(scope, issue.id)
+
+    Offers.lift_copy_declines(
+      scope,
+      issue.assigned_working_copy_id,
+      issue.closed_at || DateTime.utc_now()
+    )
   catch
     kind, reason -> log(:issue_finished, kind, reason)
   end
@@ -251,6 +267,8 @@ defmodule CodeMySpec.Agents.Events do
   # waited on an answered question (2026-10-15). One not in the loop still
   # collects it with `check_answer`.
   def handle_event(@answer_reached, _measurements, meta, _config) do
+    Offers.lift_copy_declines(meta.scope, meta.agent.working_copy_id, DateTime.utc_now())
+
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       deliver =
         case Wake.allow?(meta.scope, meta.agent, :question_answered) do

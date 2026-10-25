@@ -398,7 +398,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # `graph_changed` telemetry. Only when something was consumed.
   defp announce(_state, []), do: :ok
 
-  defp announce(state, _marks) do
+  defp announce(state, marks) do
     Phoenix.PubSub.broadcast(
       CodeMySpec.PubSub,
       GraphInputs.topic(state.project_id),
@@ -409,7 +409,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     :telemetry.execute(
       [:code_my_spec, :requirements, :graph_changed],
       %{},
-      %{scope: state.scope}
+      %{scope: state.scope, changes: marks}
     )
 
     :ok
