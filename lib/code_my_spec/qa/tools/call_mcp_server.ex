@@ -108,7 +108,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     case connect(url, params) do
       {:ok, name} ->
         try do
-          answer(request(name, params))
+          answer(request(name, params), url <> path(params))
         after
           stop(name)
         end
@@ -198,7 +198,7 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
 
   # Named rather than counted. The question this answers is almost always "is
   # <name> there", and a count cannot answer it.
-  defp answer({:listed, []}) do
+  defp answer({:listed, []}, _server) do
     text_response("""
     The server answered and offers no tools at all.
 
@@ -208,20 +208,27 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     """)
   end
 
-  defp answer({:listed, names}) do
-    text_response("#{length(names)} tool(s):\n" <> Enum.map_join(names, "\n", &"  #{&1}"))
+  # Says whose tools these are: an agent read the far server's list as its own
+  # run_script catalog and stopped (issue b9839146).
+  defp answer({:listed, names}, server) do
+    text_response(
+      "#{server} offers this caller #{length(names)} tool(s). These are that server's " <>
+        "tools, not yours; pass `tool` to call one, and reach its code-mode tools by " <>
+        "calling its `run_script` with `tool = \"run_script\"`:\n" <>
+        Enum.map_join(names, "\n", &"  #{&1}")
+    )
   end
 
-  defp answer({:ok, text}), do: text_response(text)
+  defp answer({:ok, text}, _server), do: text_response(text)
 
   # The far side answered and said the call failed. That is a result, not a
   # transport failure, and a QA agent testing error behaviour wants to read it
   # rather than have it raised as this tool's own failure.
-  defp answer({:called_error, text}) do
+  defp answer({:called_error, text}, _server) do
     text_response("The server answered with an error result:\n\n" <> text)
   end
 
-  defp answer({:error, reason}) do
+  defp answer({:error, reason}, _server) do
     {:error, truncate(inspect(reason))}
   end
 

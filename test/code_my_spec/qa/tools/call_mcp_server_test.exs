@@ -139,6 +139,10 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
 
       assert text =~ "ping_tool",
              "a server that answered was not read as one offering a tool named ping_tool:\n#{text}"
+
+      # Whose tools these are: an agent read a list like this as its own catalog.
+      assert text =~ "#{url}/mcp offers this caller 1 tool(s)"
+      assert text =~ "not yours"
     end
 
     test "calls the tool it offers", %{frame: frame, url: url} do
