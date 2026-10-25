@@ -105,8 +105,11 @@ defmodule CmsHarness.Device do
   end
 
   # A hardware fingerprint (recomputable after a lost file), else a random id.
+  # Only for the user's own state dir: a harness given its own (a workspace,
+  # or several QA harnesses on one machine) is its own device, and the
+  # fingerprint would make them all one.
   defp fresh_id do
-    machine_fingerprint() || Ecto.UUID.generate()
+    (not Config.own_state?() && machine_fingerprint()) || Ecto.UUID.generate()
   end
 
   # The lowest non-loopback, non-zero MAC from `:inet.getifaddrs/0` (portable,
