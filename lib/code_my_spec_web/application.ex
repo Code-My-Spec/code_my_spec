@@ -168,7 +168,9 @@ defmodule CodeMySpecWeb.Application do
         RunReconciled.attach()
         AnalysisPush.attach()
         CodeMySpec.Staffing.attach()
-        when_serving(serving?, &CodeMySpec.PromotionQueue.resume_all/0)
+        # A copy's app holds main's open candidates in its cloned database;
+        # resuming them there would gate and publish beside main.
+        when_serving(serving? and main_copy?(), &CodeMySpec.PromotionQueue.resume_all/0)
         GraphWake.attach()
         ok
 
@@ -299,10 +301,9 @@ defmodule CodeMySpecWeb.Application do
     [CodeMySpec.Analysis.Supervisor, CodeMySpec.Analysis.LocalRunLink, qa_environments]
   end
 
-  # `tunnel_config` is main's tunnel; only main may run its connector. Set by
-  # `AppInstance.Runner.Local`; unset (a plain `mix phx.server`) reads as main.
+  # `tunnel_config` is main's tunnel; only main may run its connector.
   # See knowledge/web, "Dev tunnel".
-  defp main_copy?, do: System.get_env("CMS_MAIN_COPY") != "false"
+  defp main_copy?, do: CodeMySpec.AppRole.main_copy?()
 
   # True when the harness runs this copy's (DB-backed) tunnel connector itself.
   # Unset reads as false.

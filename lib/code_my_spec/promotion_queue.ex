@@ -15,6 +15,7 @@ defmodule CodeMySpec.PromotionQueue do
     top_level?: true,
     deps: [
       CodeMySpec.Analysis,
+      CodeMySpec.AppRole,
       CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
@@ -27,6 +28,7 @@ defmodule CodeMySpec.PromotionQueue do
     ],
     exports: [Worker]
 
+  alias CodeMySpec.AppRole
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.DeviceSync
@@ -115,7 +117,8 @@ defmodule CodeMySpec.PromotionQueue do
   """
   @spec enqueue(Scope.t(), integer() | nil, keyword()) :: {:ok, map()} | {:error, map()}
   def enqueue(%Scope{} = scope, story_number, opts \\ []) do
-    with {:ok, story} <- story(scope, story_number),
+    with :ok <- main_copy(),
+         {:ok, story} <- story(scope, story_number),
          {:ok, copy} <- promoting_copy(scope),
          {:ok, head} <- clean_head(scope, copy),
          {:ok, subject} <- subject(scope, story, copy, Keyword.get(opts, :issue_id), head),
@@ -129,6 +132,20 @@ defmodule CodeMySpec.PromotionQueue do
       {:error, _} = error ->
         error
     end
+  end
+
+  # A copy's own app runs on a clone of main's database: a worker started there
+  # would gate and publish beside main's.
+  defp main_copy do
+    if AppRole.main_copy?(),
+      do: :ok,
+      else:
+        {:error,
+         %{
+           reason:
+             "this is a working copy's own app, not main's: promote through main's harness, " <>
+               "which queues it where the promotion runs."
+         }}
   end
 
   defp queue_or_resume(scope, copy, head, subject, opts) do
