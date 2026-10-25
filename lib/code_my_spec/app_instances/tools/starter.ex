@@ -34,11 +34,22 @@ defmodule CodeMySpec.AppInstances.Tools.Starter do
   def then_what(_agent_id),
     do: "call this tool again to check -- a run already in progress answers at once"
 
-  @spec tell(t(), String.t()) :: :ok
-  def tell({_scope, nil, _label}, _text), do: :ok
+  @doc """
+  Tell the agent how a run on app instance `id` ended. A busy agent's notice
+  waits for its turn to end, so an earlier one still waiting is withdrawn:
+  only the newest says how the app is. Five runs while an agent worked once
+  arrived as five notices, the first ones long out of date (issue 543c6d39).
+  """
+  @spec tell(t(), String.t(), String.t()) :: :ok
+  def tell({_scope, nil, _label}, _id, _text), do: :ok
 
-  def tell({scope, agent_id, label}, text) do
+  def tell({scope, agent_id, label}, id, text) do
+    settled({scope, agent_id, label}, id)
+
     case Agents.dispatch_message(scope, agent_id, text, :own_reply) do
+      {:ok, :queued, message} ->
+        :persistent_term.put(key(agent_id, id), message.delivery_ref)
+
       {:ok, _disposition, _message} ->
         :ok
 
@@ -47,5 +58,28 @@ defmodule CodeMySpec.AppInstances.Tools.Starter do
           "[WorkingCopies] could not tell agent #{agent_id} how #{label} ended: #{inspect(reason)}"
         )
     end
+
+    :ok
   end
+
+  @doc """
+  The agent has heard how app instance `id` is from a newer source (a reply
+  it read itself), so a notice still waiting for it is withdrawn.
+  """
+  @spec settled(t(), String.t()) :: :ok
+  def settled({_scope, nil, _label}, _id), do: :ok
+
+  def settled({scope, agent_id, _label}, id) do
+    case :persistent_term.get(key(agent_id, id), nil) do
+      nil ->
+        :ok
+
+      ref ->
+        :persistent_term.erase(key(agent_id, id))
+        _ = Agents.withdraw_message(scope, agent_id, ref)
+        :ok
+    end
+  end
+
+  defp key(agent_id, id), do: {__MODULE__, :waiting, agent_id, id}
 end
