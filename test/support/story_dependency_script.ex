@@ -24,14 +24,18 @@ defmodule CodeMySpecSpex.StoryDependencyScript do
   @doc "Record that story `number` builds on story `builds_on`."
   def link(scope, number, builds_on) do
     CriterionScript.run(scope, """
-    return add_story_dependency({ story_number = #{number}, builds_on = #{builds_on} })
+    local result, err = add_story_dependency({ story_number = #{number}, builds_on = #{builds_on} })
+    if err then error(err.message) end
+    return result
     """)
   end
 
   @doc "Remove the link from story `number` to story `builds_on`."
   def unlink(scope, number, builds_on) do
     CriterionScript.run(scope, """
-    return remove_story_dependency({ story_number = #{number}, builds_on = #{builds_on} })
+    local result, err = remove_story_dependency({ story_number = #{number}, builds_on = #{builds_on} })
+    if err then error(err.message) end
+    return result
     """)
   end
 
