@@ -168,7 +168,7 @@ defmodule CodeMySpecWeb.Layouts do
             <%= if (project = @project) && project.id do %>
               <%!-- Two consoles, each a sidebar over its own pages: DevOps for
                     the infrastructure, Operations (below) for running the live
-                    app. Servers, inventory and dev boxes in DevOps are the
+                    app. Devices and inventory in DevOps are the
                     account's, whichever project's console shows them. --%>
               <li><a href={~p"/app/projects/#{project.id}/console"}>DevOps</a></li>
 

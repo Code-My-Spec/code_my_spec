@@ -305,13 +305,16 @@ defmodule CodeMySpec.Agents.AgentsRepository do
 
   Every agent on duty, plus — for a `(working_copy_id, role)` with nobody on
   duty — its single most recently turned-off agent, so a slot does not vanish
-  from the panel when its agent is stopped. One row per slot by construction.
+  from the panel when its agent is stopped. Agents without a working copy
+  have no slot to preserve: only those starting or running belong here.
+  Off, retired, or stopped orphan records must not appear as onboarding agents.
   """
   @spec list_for_team_status(Scope.t()) :: [Agent.t()]
   def list_for_team_status(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     running =
       Agent
       |> where([a], a.project_id == ^project_id and is_nil(a.off_at) and is_nil(a.retired_at))
+      |> where([a], not is_nil(a.working_copy_id) or a.status in [:starting, :running])
       |> Repo.all()
 
     filled_slots = MapSet.new(running, &{&1.working_copy_id, &1.role})
@@ -319,7 +322,9 @@ defmodule CodeMySpec.Agents.AgentsRepository do
     # A retired agent gave up its seat, so its slot shows empty.
     latest_stopped_per_empty_slot =
       from(a in Agent,
-        where: a.project_id == ^project_id and not is_nil(a.off_at) and is_nil(a.retired_at),
+        where:
+          a.project_id == ^project_id and not is_nil(a.off_at) and is_nil(a.retired_at) and
+            not is_nil(a.working_copy_id),
         order_by: [desc: a.updated_at]
       )
       |> Repo.all()

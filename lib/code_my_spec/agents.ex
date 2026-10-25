@@ -1761,7 +1761,9 @@ defmodule CodeMySpec.Agents do
   @spec ensure_main_agent(Scope.t()) ::
           {:ok, Agent.t()} | {:error, :no_main_working_copy | start_error()}
   def ensure_main_agent(%Scope{} = scope) do
-    case {WorkingCopies.main(scope), main_agent(scope)} do
+    agent = main_agent(scope) || off_in_seat(scope, nil, :main)
+
+    case {WorkingCopies.main(scope), agent} do
       {nil, %Agent{execution_mode: :detached} = agent} ->
         ensure_detached_running(scope, agent)
 
@@ -1769,15 +1771,21 @@ defmodule CodeMySpec.Agents do
         {:error, :no_main_working_copy}
 
       {copy, %Agent{execution_mode: :detached} = agent} ->
-        if copy_connected?(copy),
-          do: move_main_agent(scope, copy),
-          else: ensure_detached_running(scope, agent)
+        ensure_detached_main(scope, agent, copy)
 
       {_copy, %Agent{} = agent} ->
         {:ok, agent}
 
       {copy, nil} ->
         main_or_start(scope, copy, off_in_seat(scope, copy.id, :main))
+    end
+  end
+
+  defp ensure_detached_main(scope, agent, copy) do
+    with {:ok, running} <- ensure_detached_running(scope, agent) do
+      if not Agent.off?(running) and copy_connected?(copy),
+        do: attach_main(scope, running, copy),
+        else: {:ok, running}
     end
   end
 
@@ -1814,10 +1822,15 @@ defmodule CodeMySpec.Agents do
         {:ok, agent}
 
       nil ->
-        case WorkingCopies.main(scope) do
-          nil -> start_detached_agent(scope, :main)
-          _copy -> ensure_main_agent(scope)
-        end
+        start_setup_main(scope)
+    end
+  end
+
+  defp start_setup_main(scope) do
+    case {Application.get_env(:code_my_spec, :env), WorkingCopies.main(scope)} do
+      {:desktop, _copy} -> start_detached_agent(scope, :main)
+      {_, nil} -> start_detached_agent(scope, :main)
+      {_, _copy} -> ensure_main_agent(scope)
     end
   end
 
@@ -1873,12 +1886,6 @@ defmodule CodeMySpec.Agents do
 
   defp product_or_start(scope) do
     case Enum.find(list_agents(scope), &(&1.role == :product and is_nil(&1.retired_at))) do
-      %Agent{execution_mode: :detached} = agent ->
-        case WorkingCopies.main(scope) do
-          nil -> {:ok, agent}
-          copy -> if copy_connected?(copy), do: relocate(scope, agent, copy), else: {:ok, agent}
-        end
-
       %Agent{} = agent ->
         {:ok, agent}
 
@@ -2345,6 +2352,22 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
+  @doc "Attach onboarding Main to a checkout while keeping Main and Product in their runtimes."
+  @spec attach_setup_working_copy(Scope.t(), map()) ::
+          {:ok, Agent.t()} | {:error, term()} | :none
+  def attach_setup_working_copy(%Scope{} = scope, copy) do
+    case main_agent_anywhere(scope) do
+      nil -> :none
+      agent -> attach_main(scope, agent, copy)
+    end
+  end
+
+  defp attach_main(scope, agent, copy) do
+    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
+      {:ok, agent}
+    end
+  end
+
   @doc """
   Move the project's own agent to a different checkout.
 
@@ -2352,14 +2375,17 @@ defmodule CodeMySpec.Agents do
   so it keeps its conversation — the whole reason this is a move rather than a
   replacement.
 
-  Best-effort, as starting is: a copy whose harness is not connected leaves the
-  row `:starting`. Product moves with it.
+  Detached Main attaches without relocating. Existing checkout-bound Main
+  and Product retain the legacy re-designation behavior.
   """
   @spec move_main_agent(Scope.t(), map()) :: {:ok, Agent.t()} | {:error, term()} | :none
   def move_main_agent(%Scope{} = scope, copy) do
     case main_agent_anywhere(scope) do
       nil ->
         :none
+
+      %Agent{execution_mode: :detached} = agent ->
+        attach_main(scope, agent, copy)
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
         with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
@@ -2372,37 +2398,9 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Main keeps its onboarding runtime. A checkout is a resource attachment,
-  # not a reason to interrupt the conversation and launch another engine.
-  defp relocate(scope, %Agent{role: :main, execution_mode: :detached} = agent, copy) do
-    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
-      {:ok, agent}
-    end
-  end
-
-  defp relocate(scope, %Agent{execution_mode: :detached} = agent, copy) do
-    with {:ok, credential} <- Credential.fetch(scope, agent.provider),
-         :ok <- halt_for_restart(agent),
-         {:ok, moved} <-
-           AgentsRepository.update_agent(scope, agent, %{
-             execution_mode: :working_copy,
-             working_copy_id: copy.id,
-             working_copy: copy.root,
-             status: :starting,
-             turn_started_at: nil,
-             os_pid: nil,
-             os_boot_id: nil
-           }),
-         :ok <- carry_on_if_mid_turn(scope, agent),
-         {:ok, started} <-
-           launch(
-             scope,
-             LaunchRequest.hydrate(scope_for(scope, moved), %{moved | credential: credential})
-           ) do
-      broadcast(scope, {:agent_started, started})
-      {:ok, started}
-    end
-  end
+  # Detached project agents keep their runtime, even when the legacy roster
+  # relocation path is invoked for another agent on the main checkout.
+  defp relocate(_scope, %Agent{execution_mode: :detached} = agent, _copy), do: {:ok, agent}
 
   defp relocate(scope, agent, copy) do
     with {:ok, moved} <-
@@ -2415,7 +2413,7 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  # Product lives where main lives, so it moves with it.
+  # Only the legacy checkout-bound roster follows a re-designated main copy.
   defp move_main_copy_roster(scope, from_id, copy) do
     others = RoleProfile.roles_where_home(:main) -- [:main]
 
@@ -2423,8 +2421,8 @@ defmodule CodeMySpec.Agents do
     |> seat_holders()
     |> Enum.filter(
       &(&1.role in others and
-          (&1.execution_mode == :detached or
-             (&1.working_copy_id == from_id and &1.working_copy_id != copy.id)))
+          &1.execution_mode == :working_copy and
+          &1.working_copy_id == from_id and &1.working_copy_id != copy.id)
     )
     |> Enum.reduce_while(:ok, fn agent, :ok ->
       case relocate(scope, agent, copy) do
@@ -2476,6 +2474,7 @@ defmodule CodeMySpec.Agents do
 
     with {:ok, agent} <- AgentsRepository.fetch_agent(scope, id),
          {:ok, agent} <- restore_detached_recipient(scope, agent),
+         :ok <- direct_message_transport(scope, agent, event),
          :ok <- wake(scope, agent, event),
          :ok <- within_turn_cap(scope, agent),
          {:ok, conversation} <- open_conversation(scope, agent),
@@ -2508,6 +2507,24 @@ defmodule CodeMySpec.Agents do
        do: ensure_detached_running(scope, agent)
 
   defp restore_detached_recipient(_scope, agent), do: {:ok, agent}
+
+  # A direct message must reach the external session through its native
+  # transport. An absent adapter is not an invitation to deliver it at Stop.
+  defp direct_message_transport(scope, %{engine: engine, id: id}, :operator_message)
+       when engine in [:claude_code, :codex] do
+    if MapSet.member?(present_ids(scope), id) do
+      :ok
+    else
+      transport = if engine == :codex, do: "codex queue", else: "Claude's messaging API"
+
+      {:error,
+       "Message not sent: #{transport} is unavailable for this session. " <>
+         "Reconnect its harness and enable native messaging, then retry. " <>
+         "The message was not saved for Stop-hook delivery."}
+    end
+  end
+
+  defp direct_message_transport(_scope, _agent, _event), do: :ok
 
   defp report_repeated_instruction(scope, agent, offered) do
     Offers.take_instruction_attention(offered, fn ->

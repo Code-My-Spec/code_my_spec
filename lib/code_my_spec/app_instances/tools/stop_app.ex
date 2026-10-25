@@ -18,9 +18,11 @@ defmodule CodeMySpec.AppInstances.Tools.StopApp do
     Stop the caller's own copy of the app.
 
     By default this uses the caller's source checkout's default app instance.
-    `instance_id` may select another instance only when it belongs to that same
-    checkout; ownership is verified before the runtime is contacted. A copy
-    with nothing running answers success too, same as `AppTransport.stop_app/2`.
+    An explicit `instance_id` may select another harness instance from that same
+    checkout, or Main may select one in a working copy it has explicitly connected
+    to. The persisted Main identity and attachment are checked before dispatch.
+    Provisioned deployments are not controlled by this tool. Omitting the ID never
+    switches to an attachment. Detached Main must supply an ID.
 
     ## Returns when the run starts, not when it finishes
 
@@ -38,8 +40,7 @@ defmodule CodeMySpec.AppInstances.Tools.StopApp do
   @impl true
   def params do
     %{
-      instance_id:
-        {:meta, :string, [description: "App instance UUID from `list_working_copies`."]}
+      instance_id: {:meta, :string, [description: "App instance UUID from `list_app_instances`."]}
     }
   end
 
@@ -52,11 +53,11 @@ defmodule CodeMySpec.AppInstances.Tools.StopApp do
   end
 
   defp stop(scope, context, instance_id) do
-    with {:ok, instance} <- Target.own_default(scope, context, instance_id) do
+    with {:ok, instance} <- Target.lifecycle(scope, context, instance_id) do
       starter = Starter.new(scope, context, "stop")
       instance.id |> start_stop_async(starter, scope) |> reply(context)
     else
-      _ -> {:error, "This call has no working copy of its own, so there is nothing here to stop."}
+      {:error, reason} -> {:error, Target.error(reason)}
     end
   end
 

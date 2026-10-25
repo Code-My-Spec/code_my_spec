@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2245Spex do
         inbox = open_inbox()
         session = session_id()
         started = start_session_on_socket(context, session, inbox.socket)
+        await_present(context, started["agent_id"])
         submit_prompt(context, session)
 
         eventually(fn ->

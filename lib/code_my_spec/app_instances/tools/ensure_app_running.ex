@@ -55,9 +55,11 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
     stays running; restart_app refreshes it explicitly.
 
     By default this uses the caller's source checkout's default app instance.
-    `instance_id` may select another instance only when it belongs to that same
-    checkout; ownership is verified against the caller's project and active
-    working copy before the runtime is contacted.
+    An explicit `instance_id` may select another harness instance from that same
+    checkout, or Main may select one in a working copy it has explicitly connected
+    to. The persisted Main identity and attachment are checked before dispatch.
+    Provisioned deployments are not controlled by this tool. Omitting the ID never
+    switches to an attachment. Detached Main must supply an ID.
 
     ## Returns when the run starts, not when it finishes
 
@@ -75,8 +77,7 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
   @impl true
   def params do
     %{
-      instance_id:
-        {:meta, :string, [description: "App instance UUID from `list_working_copies`."]}
+      instance_id: {:meta, :string, [description: "App instance UUID from `list_app_instances`."]}
     }
   end
 
@@ -89,12 +90,11 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
   end
 
   defp ensure_running(scope, context, instance_id) do
-    with {:ok, instance} <- Target.own_default(scope, context, instance_id) do
+    with {:ok, instance} <- Target.lifecycle(scope, context, instance_id) do
       starter = Starter.new(scope, context, "start")
       instance.id |> start_ensure_async(starter, scope) |> reply(context)
     else
-      _ ->
-        {:error, "This call has no working copy of its own, so there is nothing here to start."}
+      {:error, reason} -> {:error, Target.error(reason)}
     end
   end
 
@@ -219,11 +219,7 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
         "Your"
 
       %{working_copy_id: copy_id} ->
-        case WorkingCopies.fetch(copy_id) do
-          {:ok, %{main: true} = copy} -> "Main copy #{copy.root || copy.label}'s"
-          {:ok, copy} -> "Your copy #{copy.root || copy.label}'s (not main's)"
-          {:error, _} -> "Your copy's"
-        end
+        copy_label(WorkingCopies.fetch(copy_id), scope.active_working_copy_id)
     end
   end
 
@@ -232,4 +228,13 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
   end
 
   defp refusal(reason), do: "This call has no usable project scope (#{inspect(reason)})."
+
+  defp copy_label({:ok, %{main: true} = copy}, _own_id),
+    do: "Main copy #{copy.root || copy.label}'s"
+
+  defp copy_label({:ok, %{id: id} = copy}, id),
+    do: "Your copy #{copy.root || copy.label}'s (not main's)"
+
+  defp copy_label({:ok, copy}, _own_id), do: "Selected copy #{copy.root || copy.label}'s"
+  defp copy_label({:error, _}, _own_id), do: "Your copy's"
 end

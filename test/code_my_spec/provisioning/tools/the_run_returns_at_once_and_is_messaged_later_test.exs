@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.Tools.TheRunReturnsAtOnceAndIsMessagedLaterTes
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecTest.AgentPresence
   alias CodeMySpecTest.RecordingAgentTransport
@@ -83,7 +83,7 @@ defmodule CodeMySpec.Provisioning.Tools.TheRunReturnsAtOnceAndIsMessagedLaterTes
     assert response_text(response) =~ "you'll be messaged how it ends"
     refute response_text(response) =~ "Could not bring up"
 
-    assert Server.get_linked(scope, "acme-box"),
+    assert Servers.get_linked(scope, "acme-box"),
            "expected the name linked synchronously, before the async run even started"
 
     agent_id = agent.id

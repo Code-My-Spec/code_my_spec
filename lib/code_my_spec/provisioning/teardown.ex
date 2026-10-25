@@ -111,7 +111,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
     resources = environment_resources(environment)
 
     cond do
-      Enum.any?(instances, &(not deployment_receipt?(&1))) ->
+      Enum.any?(instances, &(not deployment_receipt?(&1, environment))) ->
         {:error, :environment_in_use}
 
       instances != [] and not Enum.any?(resources, &(&1.kind == "server")) ->
@@ -123,9 +123,9 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  defp deployment_receipt?(instance) do
+  defp deployment_receipt?(instance, environment) do
     instance.persistent and not instance.default and is_nil(instance.working_copy_id) and
-      is_nil(instance.device_id) and is_nil(instance.source_root)
+      instance.device_id == environment.device_id and is_nil(instance.source_root)
   end
 
   defp finish_environment_removal(scope, environment, instances, outcomes) do

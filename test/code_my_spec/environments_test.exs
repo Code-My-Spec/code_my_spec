@@ -26,7 +26,7 @@ defmodule CodeMySpec.EnvironmentsTest do
     assert first.id == again.id
     assert first.management == :harness
     assert first.host == nil
-    assert first.server_id == nil
+    assert first.device_id == nil
     assert Environments.list(scope) == [first]
     assert Environments.list_existing_deployment(scope) == []
   end
@@ -130,6 +130,17 @@ defmodule CodeMySpec.EnvironmentsTest do
     {:ok, _} = Environments.put(scope, "qa", %{})
     assert :ok = Environments.delete(scope, "qa")
     assert Environments.get(scope, "qa") == nil
+  end
+
+  test "environment device assignments stay within the active account", %{scope: scope} do
+    other = full_scope_fixture()
+    {:ok, own} = CodeMySpec.Devices.link_provider_machine(scope, %{name: "own-box"})
+    {:ok, foreign} = CodeMySpec.Devices.link_provider_machine(other, %{name: "foreign-box"})
+    assert {:ok, environment} = Environments.put(scope, "qa", %{device_id: own.id})
+    assert environment.device_id == own.id
+    assert {:error, changeset} = Environments.put(scope, "qa", %{device_id: foreign.id})
+    assert "does not belong to this account" in errors_on(changeset).device_id
+    assert Environments.get(scope, "qa").device_id == own.id
   end
 
   test "first deployment is recorded once", %{scope: scope} do

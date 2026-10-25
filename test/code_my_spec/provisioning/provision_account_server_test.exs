@@ -18,7 +18,7 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers
 
   setup do
     scope = full_scope_fixture()
@@ -47,6 +47,25 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
       )
 
     {:ok, scope: scope}
+  end
+
+  test "repairs database isolation through provisioning on an existing box", %{scope: scope} do
+    record_requests(self(), existing: true)
+
+    run = fn
+      ["docker ps" <> _] -> {"c0ffeec0ffee", 0}
+      [_] -> {"[]", 0}
+    end
+
+    assert {:ok, []} =
+             Steps.repair_database_isolation(scope, "acme-box",
+               run: run,
+               ssh_key_path: "unused",
+               database_admin_credential: %{username: "postgres", password: "proof"}
+             )
+
+    assert_received {:ran, "GET", "/v1/servers"}
+    refute_received {:ran, "POST", "/v1/servers"}
   end
 
   test "adopts an existing box and brings its registry and database up", %{scope: scope} do
@@ -185,13 +204,13 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
       credentials: [access_key_id: "unused", secret_access_key: "unused"]
     ]
 
-    refute Server.get_linked(scope, "never-linked-box")
+    refute Servers.get_linked(scope, "never-linked-box")
     assert {:ok, _server} = Steps.provision_account_server(scope, "never-linked-box", opts)
 
     # provision_account_server/3 only brings the box and containers up — it is
     # ProvisionAccountServer (the MCP tool) that links, same split as
     # Servers.provision/2 vs. Server.link/2 on the human path.
-    refute Server.get_linked(scope, "never-linked-box")
+    refute Servers.get_linked(scope, "never-linked-box")
   end
 
   defp succeeding_run, do: fn [_command] -> {"", 0} end

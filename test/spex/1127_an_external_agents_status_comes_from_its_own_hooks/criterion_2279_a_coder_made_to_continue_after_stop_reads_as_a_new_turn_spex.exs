@@ -58,6 +58,7 @@ defmodule CodeMySpecSpex.Story1127.Criterion2279Spex do
     session = session_id()
     started = start_session_on_socket(context, session, inbox.socket)
     assert {:ok, _} = set_role(context, session, role)
+    await_present(context, started["agent_id"])
     look(started["agent_id"])
 
     Map.merge(context, %{inbox: inbox, session: session, agent_id: started["agent_id"]})

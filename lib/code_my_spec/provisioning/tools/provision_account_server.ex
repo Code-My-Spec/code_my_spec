@@ -5,7 +5,6 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServer do
   alias CodeMySpec.Provisioning.RunLock
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Tools.Starter
-  alias CodeMySpec.Servers.Server
 
   @impl true
   def name, do: "provision_account_server"
@@ -27,7 +26,7 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServer do
 
     Idempotent both ways — a name the provider already has is adopted, not
     duplicated (`Hetzner.ensure_server/3`), and a name this account has already
-    linked stays linked (`Server.link/2`'s own `on_conflict: :nothing`). Safe to
+    linked keeps its machine identity. A conflicting provider resource ID is refused. Safe to
     call again for a box whose registry or database came up short the first
     time; both container checks start from "is this already true" before doing
     anything.
@@ -81,7 +80,7 @@ defmodule CodeMySpec.Provisioning.Tools.ProvisionAccountServer do
   def call(%{name: name}, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, account_id} <- account_id(scope),
-         {:ok, _linked} <- Server.link(scope, %{name: name}) do
+         {:ok, _linked} <- CodeMySpec.Devices.link_provider_machine(scope, %{name: name}) do
       starter = Starter.new(scope, context, name)
 
       scope

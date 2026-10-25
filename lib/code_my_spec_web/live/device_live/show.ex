@@ -1,65 +1,133 @@
-defmodule CodeMySpecWeb.ServerLive.Show do
+defmodule CodeMySpecWeb.DeviceLive.Show do
   @moduledoc """
-  One server at `/app/servers/:name` — what is running on it, and what setup
-  put there.
-
-  ## Two halves, two sources, and the page says which
-
-  The records came from us and are already in the database. The container list
-  comes from the box and requires a machine to be listening. Presenting them as
-  one undifferentiated list would let a stale record sit next to a live reading
-  with nothing to tell them apart.
-
-  ## Why the box is read off the mount
-
-  A box that refuses a connection fails fast. One that accepts a connection and
-  then stops answering does not fail at all, and a mount that waits on it takes
-  down the half of the page that needed no network. So the records render
-  immediately and the container read happens in the background, with
-  `Containers` owning a deadline of its own — a spinner that never resolves is
-  the same failure as a hang with better manners.
-
-  ## Never-run is not failed
-
-  Backups that were never switched on and backups that broke send Sam to
-  different places, and backups is the step nobody notices is off until the day
-  it matters. `provisioning_steps.state` already separates them; this page's
-  job is not to collapse them back together.
+  One account-scoped machine: harness, provider infrastructure and running apps.
+  Provider reads remain asynchronous and independent from recorded setup state.
   """
 
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Devices
   alias CodeMySpec.Provisioning.ServerView
   alias CodeMySpec.Servers
   alias CodeMySpecWeb.ConsoleLive.Components.Shell
-  alias CodeMySpecWeb.ServerLive.Paths
+  alias CodeMySpecWeb.DeviceLive.HarnessComponent
 
   @impl true
-  def mount(%{"name" => name} = params, _session, socket) do
-    socket =
-      assign(socket, project_id: params["project_id"], servers_path: Paths.base(params))
+  def mount(params, _session, socket) do
+    scope = socket.assigns.current_scope
 
-    case Servers.get(socket.assigns.current_scope, name) do
-      {:ok, server} ->
-        {:ok,
-         socket
-         |> assign(:page_title, server.name)
-         |> assign(:server, server)
-         |> assign(:entries, ServerView.for_server(socket.assigns.current_scope, server.name))
-         |> assign(:containers, :loading)
-         |> assign(:containers_error, nil)
-         |> assign(:retire_error, nil)
-         |> assign(:can_manage, can_manage?(socket.assigns.current_scope))
-         |> read_containers(server)}
+    if connected?(socket) and is_binary(scope.active_account_id),
+      do: Devices.subscribe(scope.active_account_id)
+
+    base =
+      if params["project_id"],
+        do: "/app/projects/#{params["project_id"]}/console/devices",
+        else: "/app/devices"
+
+    socket = assign(socket, project_id: params["project_id"], servers_path: base, refresh: 0)
+
+    case resolve_machine(scope, params) do
+      {:ok, device, server} ->
+        title =
+          if device,
+            do: device.label || device.hostname || device.provider_name || "Device",
+            else: server.name
+
+        path =
+          if device,
+            do: "#{base}/#{device.id}",
+            else: "#{base}/provider/#{URI.encode(server.name)}"
+
+        socket =
+          socket
+          |> assign(:page_title, title)
+          |> assign(:device, device)
+          |> assign(:detail_path, path)
+          |> assign(:server, server)
+          |> assign(:entries, if(server, do: ServerView.for_server(scope, server.name), else: []))
+          |> assign(:containers, if(server, do: :loading, else: []))
+          |> assign(:containers_error, nil)
+          |> assign(:retire_error, nil)
+          |> assign(:can_manage, can_manage?(scope))
+
+        {:ok, if(server, do: read_containers(socket, server), else: socket)}
 
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "No server named #{name} in this account.")
-         |> push_navigate(to: socket.assigns.servers_path)}
+         |> put_flash(:error, "No device found in this account.")
+         |> push_navigate(to: base)}
     end
   end
+
+  defp resolve_machine(scope, %{"device_id" => id}) do
+    with {:ok, _} <- Ecto.UUID.cast(id),
+         %{} = device <- Devices.get_device(scope, id) do
+      if device.provider == :hetzner and is_binary(device.provider_name) do
+        case Servers.get(scope, device.provider_name) do
+          {:ok, server} -> {:ok, device, server}
+          error -> error
+        end
+      else
+        {:ok, device, nil}
+      end
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp resolve_machine(scope, %{"name" => name}) do
+    case Servers.get(scope, name) do
+      {:ok, server} -> {:ok, Devices.get_provider_machine(scope, name), server}
+      error -> error
+    end
+  end
+
+  @impl true
+  def handle_info({event, _payload}, socket)
+      when event in [
+             :devices_changed,
+             :device_changed,
+             :device_created,
+             :device_deleted,
+             :dev_box_connected,
+             :dev_box_revoked,
+             :device_runtime_changed
+           ] do
+    case socket.assigns.device do
+      nil ->
+        {:noreply, socket}
+
+      device ->
+        case Devices.get_device(socket.assigns.current_scope, device.id) do
+          nil ->
+            {:noreply, push_navigate(socket, to: socket.assigns.servers_path)}
+
+          current ->
+            {:noreply,
+             socket
+             |> assign(:device, current)
+             |> clear_retired_provider(current)
+             |> assign(
+               :page_title,
+               current.label || current.hostname || current.provider_name || "Device"
+             )
+             |> update(:refresh, &(&1 + 1))}
+        end
+    end
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Removing provider management preserves the machine and its harness. Another
+  # tab can retire it while this detail is open; do not retain retired controls.
+  defp clear_retired_provider(socket, %{provider: :hetzner, provider_name: name})
+       when is_binary(name),
+       do: socket
+
+  defp clear_retired_provider(socket, _device),
+    do: assign(socket, server: nil, entries: [], containers: [], containers_error: nil)
 
   # Same rule as `ServerLive.Index`: any member may view, only owner/admin
   # may retire.
@@ -108,6 +176,9 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   def handle_event("retire", _params, %{assigns: %{can_manage: false}} = socket),
     do: {:noreply, socket}
 
+  def handle_event("retire", _params, %{assigns: %{server: nil}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("retire", _params, socket) do
     case Servers.retire(socket.assigns.current_scope, socket.assigns.server.name) do
       :ok ->
@@ -119,6 +190,14 @@ defmodule CodeMySpecWeb.ServerLive.Show do
       {:error, {:in_use, projects}} ->
         {:noreply, assign(socket, :retire_error, in_use_message(projects))}
 
+      {:error, :in_use} ->
+        {:noreply,
+         assign(
+           socket,
+           :retire_error,
+           "Still assigned to an environment — move it before retiring provider management."
+         )}
+
       {:error, :not_found} ->
         {:noreply,
          socket
@@ -127,7 +206,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     end
   end
 
-  defp server_path(socket), do: "#{socket.assigns.servers_path}/#{socket.assigns.server.name}"
+  defp server_path(socket), do: socket.assigns.detail_path
 
   defp in_use_message(projects),
     do: "Still serving #{Enum.join(projects, ", ")} — point it elsewhere first, then retire it."
@@ -243,11 +322,34 @@ defmodule CodeMySpecWeb.ServerLive.Show do
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
-      <Shell.frame project_id={@project_id} active={:servers}>
+      <Shell.frame project_id={@project_id} active={:devices}>
         <div class="mx-auto max-w-5xl w-full">
-          <.link navigate={@servers_path} class="text-sm opacity-70">← Servers</.link>
+          <.link navigate={@servers_path} class="text-sm opacity-70">← Devices</.link>
 
-          <div data-test="server-detail" data-name={@server.name} class="mt-2 mb-8">
+          <div
+            :if={is_nil(@server)}
+            class="mt-2 mb-8"
+            data-test="device-detail"
+            data-device-id={@device.id}
+          >
+            <h1 class="text-2xl font-semibold">{@page_title}</h1>
+            <p class="text-sm opacity-70">
+              {@device.kind} <span :if={@device.provider}>· {@device.provider}</span>
+            </p>
+          </div>
+
+          <.live_component
+            :if={@device}
+            module={HarnessComponent}
+            id="device-harness"
+            current_scope={@current_scope}
+            project_id={@project_id}
+            device_id={@device.id}
+            show_add={false}
+            refresh={@refresh}
+          />
+
+          <div :if={@server} data-test="server-detail" data-name={@server.name} class="mt-2 mb-8">
             <div class="flex items-center justify-between gap-4">
               <h1 class="text-2xl font-semibold flex items-center gap-2">
                 <span class="font-mono">{@server.name}</span>
@@ -257,7 +359,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
               </h1>
 
               <button
-                :if={@can_manage}
+                :if={@can_manage and @device}
                 type="button"
                 data-test="retire-server"
                 phx-click="retire"
@@ -271,6 +373,16 @@ defmodule CodeMySpecWeb.ServerLive.Show do
               <span :if={@server.size} class="ml-2">{@server.size}</span>
               <span :if={@server.status} class="ml-2">{@server.status}</span>
               <span :if={@server.unverified} class="ml-2 text-warning">state unavailable</span>
+              <span :if={@server.missing} data-test="provider-missing" class="ml-2 text-warning">
+                Missing at provider
+              </span>
+              <span
+                :if={@server[:identity_conflict]}
+                data-test="provider-identity-conflict"
+                class="ml-2 text-error"
+              >
+                Provider replaced this machine; identity needs review
+              </span>
             </p>
 
             <div
@@ -283,7 +395,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             </div>
           </div>
 
-          <section class="mb-10">
+          <section :if={@server} class="mb-10">
             <h2 class="text-lg font-semibold mb-1">Running</h2>
             <p class="text-base-content/70 text-sm mb-4">
               Read from the box each time this page loads — not from what the last deploy recorded.
@@ -365,7 +477,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             </div>
           </section>
 
-          <section>
+          <section :if={@server}>
             <h2 class="text-lg font-semibold mb-1">Set up here</h2>
             <p class="text-base-content/70 text-sm mb-4">
               What setup recorded against this box. These are our records, not a reading of the machine.
@@ -374,13 +486,6 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             <p :if={@entries == []} data-test="no-entries" class="text-base-content/60">
               Nothing points at this server. Nothing deploys to it, and nothing was made for it.
             </p>
-
-            <%!--
-            a654ed04: this used to be where you came to actually point a
-            project's environment at the box, as a second step after setting
-            its label on /app/servers. Now the label on that one screen is
-            the whole link; this page only shows what it produced.
-          --%>
 
             <div :for={entry <- entries_for_app(@entries, @app)} class="mb-8">
               <h3 class="font-medium mb-2">

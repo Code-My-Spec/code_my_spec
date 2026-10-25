@@ -59,8 +59,8 @@ defmodule CodeMySpecWeb.LocalSetupTest do
     device: device,
     scope: scope
   } do
-    path = "/app/projects/#{project.id}/console/dev-boxes/#{device.id}/setup"
-    {:ok, index, _} = live(conn, "/app/projects/#{project.id}/console/dev-boxes")
+    path = "/app/projects/#{project.id}/console/devices/#{device.id}/setup"
+    {:ok, index, _} = live(conn, "/app/projects/#{project.id}/console/devices")
     assert has_element?(index, "a[data-test=device-setup][href='#{path}']")
     {:ok, view, _} = live(conn, path)
     view |> element("button[phx-value-action=check]") |> render_click()
@@ -82,7 +82,7 @@ defmodule CodeMySpecWeb.LocalSetupTest do
     {:ok, other} = Devices.announce(scope, Ecto.UUID.generate(), %{kind: :local})
 
     {:ok, view, html} =
-      live(conn, "/app/projects/#{project.id}/console/dev-boxes/#{other.id}/setup")
+      live(conn, "/app/projects/#{project.id}/console/devices/#{other.id}/setup")
 
     assert html =~ "this desktop"
     refute has_element?(view, "button[phx-value-action=check]")

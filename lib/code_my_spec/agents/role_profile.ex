@@ -117,7 +117,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
-    list_tasks list_notifications list_environments
+    list_tasks list_notifications list_environments list_devices get_device list_app_instances get_app_instance
     check_answer list_user_questions tool_docs search_answers
     list_problems get_analysis_output
     start_analysis
@@ -141,7 +141,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     create_component update_component validate_dependency_graph set_story_component
     add_dependency remove_dependency
     list_requirements show_requirement
-    list_working_copies list_environments
+    list_working_copies list_environments list_devices get_device list_app_instances get_app_instance
     list_rules list_questions withdraw_question ask_question tap_out cancel_task
     check_answer list_user_questions tool_docs
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
@@ -166,7 +166,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
     add_question resolve_question list_rules list_questions
-    list_working_copies list_environments assign_epic_to_working_copy
+    list_working_copies list_environments list_devices get_device list_app_instances get_app_instance assign_epic_to_working_copy
     link_criterion_to_rule start_three_amigos_session start_story_interview
     start_story_review get_story_gherkin show_story_requirements
     list_personas get_persona create_persona update_persona delete_persona

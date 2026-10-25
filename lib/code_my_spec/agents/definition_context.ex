@@ -11,7 +11,10 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{Jason.encode!(%{onboarding: fields(project.onboarding), sources: Enum.map(project.sources, &fields/1)})}
 
     Your current directory may be detached agent scratch, NOT the project's working copy.
-    Do not generate the application there.
+    Do not generate the application there. Creating the first checkout does not move you or
+    Product into it or restart either conversation. Main accesses the checkout through an
+    attachment: inspect list_working_copy_attachments after setup, use connect_working_copy
+    if needed, and use work_in_copy with the attachment ID for source files and commands.
     This setup request is your current work; it does not require claiming a development task.
     Before a working copy exists, do not use get_next_requirement/start_task as a setup prerequisite.
     A no-working-copy response from that queue is expected here, not a setup blocker. Inspect the
@@ -31,7 +34,7 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     already generated checkout at the saved destination call action=connect. Poll status; use
     action=refresh if the connection is pending. These operations use the CodeMySpec generator,
     register this existing project, and record command results in the same setup workflow the page
-    at /app/projects/#{project.id}/console/dev-boxes displays. Do not look for the catalog in your scratch files,
+    at /app/projects/#{project.id}/console/devices displays. Do not look for the catalog in your scratch files,
     hand-write identity files, create another project record, or use production provisioning.
     An accepted background request is not completion: ready=true requires dev setup and a live
     main working-copy connection. The desktop control plane's SQLite database does not waive
@@ -117,7 +120,10 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     #{Jason.encode!(%{onboarding: fields(project.onboarding), sources: Enum.map(project.sources, &fields/1)})}
 
     You are running independently of a project checkout. Your current directory is private agent
-    runtime storage, not the user's project. Do not create a project there or treat it as source code.
+    runtime storage, not the user's project. This stays true after the first checkout is created;
+    neither you nor Main is moved into it by onboarding. Main uses a working-copy attachment
+    for development setup and source access. Do not create a project in your runtime storage
+    or treat it as source code.
     The Project panel saves the user's description, new/existing choice, source and destination.
     Use get_project_onboarding to read the current choices and accessible device IDs. As the user
     agrees on choices, use update_project_onboarding to record them directly; they appear in the

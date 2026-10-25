@@ -56,14 +56,15 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
       end
 
       then_ "nothing is handed to it until its session returns", context do
-        {:ok, said} =
+        # User decision: direct messages use native transports, never the Stop-hook inbox.
+        {:error, said} =
           ToolLibrary.run(
             "message_agent",
             %{"agent_id" => context.agent_id, "message" => "Pick up story 1123."},
             %{scope: context.scope}
           )
 
-        assert said =~ "no live inbox"
+        assert said =~ "Message not sent"
         refute_receive {:inbox, _}, 1_000
         {:ok, context}
       end
