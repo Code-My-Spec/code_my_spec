@@ -268,7 +268,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       # branch already gives.
       {:error, :requirement_not_eligible} ->
         TasksMapper.error(
-          "#{requirement.name} for #{requirement.entity_type} #{requirement.entity_id} is " <>
+          "#{requirement.name} for #{requirement.entity_type} #{entity_label(scope, requirement)} is " <>
             "not eligible work right now -- nothing was claimed. Call get_next_requirement " <>
             "for what is actionable now."
         )
@@ -337,7 +337,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
         {:ok, _updated} = TaskOwner.complete_task(scope, owner, task.id, :cancelled)
 
         TasksMapper.error(
-          "Task #{task.id} named #{req.name} for #{req.entity_type} #{req.entity_id}, which " <>
+          "Task #{task.id} named #{req.name} for #{req.entity_type} #{entity_label(scope, req)}, which " <>
             "is no longer eligible work -- cancelled rather than left stuck blocked. " <>
             "Call get_next_requirement for what is actionable now."
         )
