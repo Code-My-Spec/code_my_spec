@@ -16,6 +16,10 @@ defmodule CmsHarness.Web.HealthController do
   alias CmsHarness.Projects
   alias CodeMySpec.BootVersion
 
+  @doc "The source files of the app modules this harness has loaded (`BootVersion.loaded_sources/0`)."
+  def loaded_sources(conn, _params),
+    do: json(conn, %{build: BootVersion.booted(), sources: BootVersion.loaded_sources()})
+
   def index(conn, _params) do
     # One entry per working copy, never per project.
     projects =
