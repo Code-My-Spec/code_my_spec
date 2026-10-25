@@ -25,6 +25,11 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
           "Omit for work that is not a story's, such as a fix from an issue."
 
     field :restart, :boolean, description: "Restart the app instead of reloading it."
+
+    field :fresh, :boolean,
+      description:
+        "Ignore analyzer runs already recorded at this commit and certify on new ones. " <>
+          "For a path dependency (client_utils) that changed on disk without a commit."
   end
 
   @impl true
@@ -36,7 +41,8 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.Promote do
         result =
           PromotionQueue.promote(scope, params[:story_number],
             notify: frame.assigns[:agent_id],
-            restart: params[:restart] == true
+            restart: params[:restart] == true,
+            fresh: params[:fresh] == true
           )
 
         mark_awaiting(result, frame)
