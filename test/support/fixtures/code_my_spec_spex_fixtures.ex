@@ -4418,18 +4418,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "Wait for recovery events and verify the public cadence report advanced."
-  def await_recovery_check(read_report, since) when is_function(read_report, 0) do
+  def await_recovery_check(read_report, since, within_ms \\ 5_000)
+      when is_function(read_report, 0) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "cadence:checks")
 
     try do
-      deadline = System.monotonic_time(:millisecond) + 5_000
-      await_recovery_check(read_report, since, deadline)
+      deadline = System.monotonic_time(:millisecond) + within_ms
+      wait_for_recovery_check(read_report, since, deadline)
     after
       Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "cadence:checks")
     end
   end
 
-  defp await_recovery_check(read_report, since, deadline) do
+  defp wait_for_recovery_check(read_report, since, deadline) do
     body = read_report.()
 
     checked_at =
@@ -4446,17 +4447,17 @@ defmodule CodeMySpecSpex.Fixtures do
         checked_at
 
       System.monotonic_time(:millisecond) >= deadline ->
-        raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+        raise "No new recovery check was observable through cadence in time: #{body}"
 
       true ->
         remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
         receive do
           {:recovery_checked, _project_id, _checked_at} ->
-            await_recovery_check(read_report, since, deadline)
+            wait_for_recovery_check(read_report, since, deadline)
         after
           remaining ->
-            raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+            raise "No new recovery check was observable through cadence in time: #{body}"
         end
     end
   end
