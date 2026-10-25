@@ -17,6 +17,9 @@ defmodule CodeMySpecSpex.Story1146.Criterion2380Spex do
         |> form("[data-test='add-dev-box-form']", dev_box: %{provider: "codex_cloud"})
         |> render_change()
 
+        assert has_element?(view, "[data-test='codex-cloud-platform']", "x86_64 Linux")
+        assert has_element?(view, "[data-test='codex-cloud-platform']", "cms-linux-x64.tar.gz")
+
         {:ok, Map.put(context, :view, view)}
       end
 
@@ -37,7 +40,12 @@ defmodule CodeMySpecSpex.Story1146.Criterion2380Spex do
           assert has_element?(context.view, "[data-test='copy-#{key}']")
         end
 
-        assert render(context.view) =~ "codex-generation"
+        assert has_element?(context.view, "[data-test='setup-platform']", "x86_64 Linux")
+        assert has_element?(context.view, "[data-test='setup-platform']", "cms-linux-x64.tar.gz")
+        html = render(context.view)
+        refute html =~ "cms-linux-arm64"
+        refute html =~ "linux/aarch64"
+        assert html =~ "codex-generation"
         {:ok, context}
       end
     end

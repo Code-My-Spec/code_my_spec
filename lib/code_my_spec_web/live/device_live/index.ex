@@ -440,6 +440,13 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
                   {provider.label()}
                 </label>
               </fieldset>
+              <p
+                :if={@selected_provider == "codex_cloud"}
+                data-test="codex-cloud-platform"
+                class="text-sm"
+              >
+                Codex Cloud requires an x86_64 Linux image. Setup installs cms-linux-x64.tar.gz.
+              </p>
               <label :if={@selected_provider == "codex_cloud"} class="form-control">
                 <span class="label-text">Generation target</span>
                 <select

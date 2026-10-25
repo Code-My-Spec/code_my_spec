@@ -57,7 +57,16 @@ defmodule CodeMySpec.Workspaces.Runner.CodexCloud do
     state = "${CMS_CLOUD_STATE_DIR:-$HOME/.codemyspec/codex-cloud/#{device}}"
 
     [
-      section("setup-script", "Installation script — Phoenix (CodeMySpec)", installer),
+      section(
+        "setup-platform",
+        "Required platform",
+        "Codex Cloud requires x86_64 Linux. The harness artifact is cms-linux-x64.tar.gz. Choose an x86_64 Linux image before running setup."
+      ),
+      section(
+        "setup-script",
+        "Installation script — Phoenix (CodeMySpec) — x86_64 Linux",
+        installer
+      ),
       section("startup-script", "Startup script", """
       # Run on every fresh or resumed environment, from the generation target's repository.
       python3 "#{state}/codex_cloud.py" start --root "$PWD"
