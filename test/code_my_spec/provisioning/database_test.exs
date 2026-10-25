@@ -275,6 +275,62 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
   end
 
   describe "serve/3" do
+    test "revokes public access and grants the tenant connection access" do
+      assert {:ok, _} = serve()
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ ~s(REVOKE CONNECT ON DATABASE "app_sam_s_app_uat" FROM PUBLIC))
+             )
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ ~s(GRANT CONNECT ON DATABASE "app_sam_s_app_uat" TO "app_sam_s_app";))
+             )
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ "-d 'app_sam_s_app_uat'" and
+                   &1 =~ "REVOKE ALL ON SCHEMA public FROM PUBLIC")
+             )
+    end
+
+    test "repairs privileges even when the tenant database already exists" do
+      owner = self()
+
+      run = fn [command] ->
+        send(owner, {:ran, command})
+
+        cond do
+          String.starts_with?(command, "docker ps") -> {"c0ffeec0ffee", 0}
+          String.contains?(command, "SELECT 1 FROM pg_database") -> {"1", 0}
+          true -> {"", 0}
+        end
+      end
+
+      assert {:ok, _} = serve(run: run)
+      commands = collect_commands()
+      refute Enum.any?(commands, &(&1 =~ "CREATE DATABASE"))
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~ ~s(REVOKE CONNECT ON DATABASE "app_sam_s_app_uat" FROM PUBLIC))
+             )
+    end
+
+    test "an isolation failure prevents successful provisioning" do
+      run = fn [command] ->
+        cond do
+          String.starts_with?(command, "docker ps") -> {"c0ffeec0ffee", 0}
+          String.contains?(command, "REVOKE CONNECT") -> {"permission denied", 1}
+          true -> {"", 0}
+        end
+      end
+
+      assert {:error, {:database_isolation_failed, 1, "permission denied"}} = serve(run: run)
+    end
+
     # A project's own devops step does not get to stand up shared account
     # infrastructure as a side effect of asking for its own tenant — the same
     # shape `Steps.server_creation_gate/3` uses for the server itself.
@@ -375,6 +431,53 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
     defp role_exists_response(true), do: {"1", 0}
     defp role_exists_response(false), do: {"", 0}
+  end
+
+  describe "repair_existing/2" do
+    test "repairs every discovered tenant without creating resources or changing passwords" do
+      owner = self()
+
+      run = fn [command] ->
+        send(owner, {:ran, command})
+
+        cond do
+          String.starts_with?(command, "docker ps") ->
+            {"c0ffeec0ffee", 0}
+
+          String.contains?(command, "json_agg") ->
+            {Jason.encode!([
+               %{database: "app_alpha_prod", username: "app_alpha"},
+               %{database: "app_beta_prod", username: "app_beta"}
+             ]), 0}
+
+          true ->
+            {"", 0}
+        end
+      end
+
+      opts = [run: run, database_admin_credential: admin_credential()]
+      assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(scope(), opts)
+      assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(scope(), opts)
+      commands = collect_commands()
+      assert Enum.count(commands, &String.contains?(&1, "REVOKE CONNECT")) == 4
+      assert Enum.count(commands, &String.contains?(&1, "REVOKE ALL ON SCHEMA public")) == 4
+      refute Enum.any?(commands, &String.contains?(&1, "CREATE DATABASE"))
+      refute Enum.any?(commands, &String.contains?(&1, "PASSWORD"))
+      refute Enum.any?(commands, &String.contains?(&1, "docker run"))
+    end
+
+    test "an unreadable inventory fails instead of claiming all databases were repaired" do
+      run = fn
+        ["docker ps" <> _] -> {"c0ffeec0ffee", 0}
+        [_] -> {"connection refused", 2}
+      end
+
+      assert {:error, {:database_inventory_failed, 2, "connection refused"}} =
+               Database.repair_existing(scope(),
+                 run: run,
+                 database_admin_credential: admin_credential()
+               )
+    end
   end
 
   describe "url/1" do
