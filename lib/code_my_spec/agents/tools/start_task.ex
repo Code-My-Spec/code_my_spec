@@ -422,7 +422,7 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       {:error,
        "`#{requirement.name}` (#{requirement.entity_type} #{entity_label(scope, requirement)}) " <>
          "is already satisfied — there is nothing to do, and the offer of it is closed. " <>
-         "`get_next_requirement` shows what is left."}
+         certified_at(scope, requirement) <> "`get_next_requirement` shows what is left."}
     else
       :ok
     end
@@ -493,6 +493,17 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
       )
 
   defp close_stale_offer(_scope, _owner, _requirement), do: :ok
+
+  # Which commit a satisfied certification covers, so a caller who expected
+  # HEAD to have moved past it can see that it has not (issue 9bc6eba3).
+  defp certified_at(scope, %{name: "ready_for_qa", entity_type: "story", entity_id: id}) do
+    case Stories.get_story(scope, id) do
+      %{qa_ready_commit: commit} when is_binary(commit) -> "It is certified at #{commit}. "
+      _ -> ""
+    end
+  end
+
+  defp certified_at(_scope, _requirement), do: ""
 
   defp entity_label(scope, %{entity_type: "story", entity_id: id}) do
     case Stories.get_story(scope, id) do
