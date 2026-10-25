@@ -42,6 +42,10 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # can act as agents against it; dev routes only.
     "lib/code_my_spec_web/controllers/dev_provisioning_fixture_controller.ex" =>
       "dev-only route: the serving process's cwd is the copy it mirrors for QA",
+    # Restores those same registrations when a copy's own app boots; started
+    # only there (`Application.copy_analysis/1`), not by a request.
+    "lib/code_my_spec_web/qa_environments.ex" =>
+      "copy app only, at boot: the serving process's cwd is the copy QA mirrored",
 
     # Mix tasks and the CLI-only init path run on the machine holding the code.
     "lib/mix/tasks/set_story_component.ex" => "mix task: cwd is the project by definition",

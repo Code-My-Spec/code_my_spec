@@ -44,6 +44,7 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
       clone_result: Keyword.get(opts, :clone_result, Map.get(base, :clone_result, :ok)),
       current_commit:
         Keyword.get(opts, :current_commit, Map.get(base, :current_commit, "abc1234")),
+      changed_paths: Keyword.get(opts, :changed_paths, Map.get(base, :changed_paths, [])),
       after_promote_result:
         Keyword.get(opts, :after_promote_result, Map.get(base, :after_promote_result, :ok)),
       listener_pid: Keyword.get(opts, :listener_pid, Map.get(base, :listener_pid, nil)),
@@ -164,6 +165,12 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   def current_commit(root) do
     record(:current_commit, [root])
     Agent.get(__MODULE__, & &1.current_commit)
+  end
+
+  @impl true
+  def changed_paths(root, from, to) do
+    record(:changed_paths, [root, from, to])
+    Agent.get(__MODULE__, & &1.changed_paths)
   end
 
   @doc "Sets what `run_after_promote/1` answers — `:ok` or `{:error, reason}`."

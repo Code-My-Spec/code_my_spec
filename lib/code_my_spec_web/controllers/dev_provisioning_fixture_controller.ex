@@ -5,15 +5,14 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   alias CodeMySpec.{
     Agents,
     Devices,
-    ExecutionContexts,
     Projects,
     UserPreferences,
     Users,
     WorkingCopies
   }
 
-  alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.Provisioning.QaFixture
+  alias CodeMySpecWeb.QaEnvironments
 
   def create(conn, params) do
     with {:ok, scope} <- authenticate(params),
@@ -176,7 +175,11 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
          {:ok, device} <-
            Devices.announce(scope, nil, %{hostname: "qa-#{project.id}", kind: :local}),
          {:ok, copy} <-
-           WorkingCopies.issue(scope, nil, device: device.id, root: root, label: "qa"),
+           WorkingCopies.issue(scope, nil,
+             device: device.id,
+             root: root,
+             label: QaEnvironments.label()
+           ),
          {:ok, copy} <- WorkingCopies.report_root(copy, root) do
       with :ok <- register_local(copy.id, root),
            do: {:ok, %{scope | active_working_copy_id: copy.id, cwd: root}}
@@ -186,14 +189,9 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
   # Registered from the long-lived owner a copy's app starts, so the entry
   # outlives this request. Main's app has none: it runs no analysis itself.
   defp register_local(copy_id, root) do
-    case Process.whereis(CodeMySpecWeb.QaEnvironments) do
-      nil ->
-        {:error, :not_a_copy_app}
-
-      owner ->
-        Agent.get(owner, fn _ ->
-          ExecutionContexts.register({:working_copy, copy_id}, ExecutionContext.new(:local, root))
-        end)
+    case Process.whereis(QaEnvironments) do
+      nil -> {:error, :not_a_copy_app}
+      _owner -> QaEnvironments.register(copy_id, root)
     end
   end
 
