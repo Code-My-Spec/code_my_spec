@@ -119,7 +119,9 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
       Reconciler.reconcile(scope, run, %{
         problems: problems,
         output: "done",
-        exit_status: 1,
+        # Credo exits 0 when it finds nothing: a non-zero exit with no
+        # findings is announced as not clean.
+        exit_status: if(problems == [], do: 0, else: 1),
         stats: %{}
       })
 
