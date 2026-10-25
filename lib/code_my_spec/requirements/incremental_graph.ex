@@ -125,9 +125,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # the projector's mailbox and is still processed. Giving up at the first
   # timeout served the rows as they were while the projector was seeding every
   # vantage after a reload (about a minute, longer under load), and a reader that
-  # asked again got the same answer for the same reason (issue e3c09c4d: eight
-  # warnings in a minute right after landings, and 1055 reading a stale
-  # story_promoted). So a timeout is waited on again, a bounded number of times;
+  # asked again got the same answer for the same reason (a stale
+  # story_promoted, right after landings). So a timeout is waited on again, a bounded number of times;
   # only a projector that stays silent through all of them is unsettled. The
   # attempts and the per-call timeout are config, for the test that makes a
   # drain slower than the call.
