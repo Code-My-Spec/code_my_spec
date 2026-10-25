@@ -37,6 +37,7 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.AgentWork
   alias CodeMySpec.Agents.Main.Digest
+  alias CodeMySpec.Agents.Main.TokenBurn
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.Requirements
@@ -312,7 +313,8 @@ defmodule CodeMySpec.Agents.Main.Cadence do
         machinery: MainAgent.check_machinery(scope),
         questions: on_duty_questions(scope),
         requirements: requirements_summary(scope),
-        completions: CodeMySpec.Agents.CompletionHandoffs.pending(scope)
+        completions: CodeMySpec.Agents.CompletionHandoffs.pending(scope),
+        tokens: TokenBurn.last_hour(scope)
       }
     end
   end

@@ -26,6 +26,7 @@ defmodule CodeMySpec.Agents.Main.Digest do
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.Machinery
   alias CodeMySpec.Agents.Main.OpenQuestion
+  alias CodeMySpec.Agents.Main.TokenBurn
 
   # `off` is agents somebody turned off. Shown so the main agent leaves them
   # off; never part of `quiet?/1`, because an off agent is settled (39af5611).
@@ -39,6 +40,7 @@ defmodule CodeMySpec.Agents.Main.Digest do
             | {:unavailable, String.t()}
             | nil,
           completions: [struct()],
+          tokens: [TokenBurn.t()],
           failed: String.t() | nil
         }
 
@@ -48,6 +50,8 @@ defmodule CodeMySpec.Agents.Main.Digest do
             questions: [],
             requirements: nil,
             completions: [],
+            # Each agent's token use over the last hour (`TokenBurn`).
+            tokens: [],
             failed: nil
 
   @doc "A digest that could not be assembled, and what stopped it."
@@ -69,7 +73,7 @@ defmodule CodeMySpec.Agents.Main.Digest do
 
   def quiet?(%Digest{} = digest) do
     digest.questions == [] and digest.completions == [] and machinery_ok?(digest.machinery) and
-      Enum.all?(digest.work, &settled?/1)
+      Enum.all?(digest.work, &settled?/1) and TokenBurn.over_threshold(digest.tokens) == []
   end
 
   @doc """
