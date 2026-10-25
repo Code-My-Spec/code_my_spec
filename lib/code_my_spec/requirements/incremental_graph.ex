@@ -75,10 +75,23 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   """
   @spec running?(Ecto.UUID.t() | nil) :: boolean()
   def running?(project_id) when is_binary(project_id) do
-    Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) != []
+    # Alive, not only registered: Registry drops a dead process's entry later.
+    case Registry.lookup(CodeMySpec.Requirements.Registry, {project_id, :graph}) do
+      [{pid, _}] -> Process.alive?(pid)
+      [] -> false
+    end
   end
 
   def running?(_no_project), do: false
+
+  @doc """
+  Whether this project's projector died without being stopped, so nothing
+  consumes its marks and its rows are going stale. Its supervisor gives up on
+  a projector whose restarts fail too, as they do while its module recompiles.
+  """
+  @spec orphaned?(Ecto.UUID.t()) :: boolean()
+  def orphaned?(project_id) when is_binary(project_id),
+    do: :persistent_term.get(expected_key(project_id), false) and not running?(project_id)
 
   @doc """
   Handle everything pending now, before the caller compares.
@@ -110,9 +123,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # the projector's mailbox and is still processed. Giving up at the first
   # timeout served the rows as they were while the projector was seeding every
   # vantage after a reload (about a minute, longer under load), and a reader that
-  # asked again got the same answer for the same reason (issue e3c09c4d: eight
-  # warnings in a minute right after landings, and 1055 reading a stale
-  # story_promoted). So a timeout is waited on again, a bounded number of times;
+  # asked again got the same answer for the same reason (a stale
+  # story_promoted, right after landings). So a timeout is waited on again, a bounded number of times;
   # only a projector that stays silent through all of them is unsettled. The
   # attempts and the per-call timeout are config, for the test that makes a
   # drain slower than the call.
@@ -196,6 +208,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     Process.flag(:trap_exit, true)
 
     GraphInputs.subscribe(project_id)
+    :persistent_term.put(expected_key(project_id), true)
 
     # Establish every vantage on arrival: a vantage with rows is trusted (rows
     # and marks are durable), one without is seeded whole. Sent rather than done
@@ -262,6 +275,19 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   def handle_info(_other, state), do: {:noreply, state}
 
+  # Only a stop clears the mark. A crash keeps it, and one whose module was gone
+  # (`:4000` recompiling under it after a landing) never reaches here at all.
+  @impl true
+  def terminate(reason, %{project_id: project_id})
+      when reason in [:normal, :shutdown] or
+             (is_tuple(reason) and elem(reason, 0) == :shutdown) do
+    :persistent_term.erase(expected_key(project_id))
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  defp expected_key(project_id), do: {__MODULE__, :expected, project_id}
+
   # Nothing pending, seeded, and every requested vantage established is the
   # common case and costs one query. Otherwise it computes: an unseeded
   # projector must establish what is true before deltas mean anything, and a
@@ -281,7 +307,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       owner_gone(state, Exception.message(error))
 
     error ->
-      # 09fd73a4: this swallows any recompute failure other than a sandbox
+      # This swallows any recompute failure other than a sandbox
       # owner going away, leaving the cached graph exactly as stale as before
       # the attempt -- a satisfied requirement (ready_for_qa, qa_complete)
       # can then be re-offered forever if the recompute that would clear it

@@ -171,7 +171,8 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
         """
 
         If you are driving this agent over MCP rather than from its own Claude Code or
-        Codex session, nothing delivers the result to you: once it lands, read it with
+        Codex session, nothing delivers the result to you: watch it with
+        `get_analysis_live({run_id = #{run_id}})`, and once it lands read it with
         `get_analysis_output({run_id = #{run_id}})`.
         """
 
