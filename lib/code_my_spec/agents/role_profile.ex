@@ -162,6 +162,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
   # is coding's. No staffing: that is main's.
   @product_tools ~w(
     get_project_onboarding update_project_onboarding start_project_setup
+    add_story_dependency remove_story_dependency
     list_stories get_story list_story_titles create_story update_story retire_story restore_story
     add_criterion retire_criterion restore_criterion get_criterion move_criterion
     add_rule update_rule delete_rule add_scenario update_scenario
