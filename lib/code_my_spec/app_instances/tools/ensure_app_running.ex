@@ -219,19 +219,7 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
         "Your"
 
       %{working_copy_id: copy_id} ->
-        case WorkingCopies.fetch(copy_id) do
-          {:ok, %{main: true} = copy} ->
-            "Main copy #{copy.root || copy.label}'s"
-
-          {:ok, %{id: id} = copy} when id == scope.active_working_copy_id ->
-            "Your copy #{copy.root || copy.label}'s (not main's)"
-
-          {:ok, copy} ->
-            "Selected copy #{copy.root || copy.label}'s"
-
-          {:error, _} ->
-            "Your copy's"
-        end
+        copy_label(WorkingCopies.fetch(copy_id), scope.active_working_copy_id)
     end
   end
 
@@ -240,4 +228,13 @@ defmodule CodeMySpec.AppInstances.Tools.EnsureAppRunning do
   end
 
   defp refusal(reason), do: "This call has no usable project scope (#{inspect(reason)})."
+
+  defp copy_label({:ok, %{main: true} = copy}, _own_id),
+    do: "Main copy #{copy.root || copy.label}'s"
+
+  defp copy_label({:ok, %{id: id} = copy}, id),
+    do: "Your copy #{copy.root || copy.label}'s (not main's)"
+
+  defp copy_label({:ok, copy}, _own_id), do: "Selected copy #{copy.root || copy.label}'s"
+  defp copy_label({:error, _}, _own_id), do: "Your copy's"
 end
