@@ -5422,6 +5422,13 @@ defmodule CodeMySpecSpex.Fixtures do
       |> Keyword.put(:name, nil)
       |> Keyword.put(:pool, DBConnection.ConnectionPool)
       |> Keyword.put(:pool_size, 2)
+      # The database does not exist when this pool starts, so its connections
+      # go into reconnect backoff. The check must still fail fast on that (it is
+      # how it learns to create the database), but once created, the migration
+      # waited on connections still backing off at the default ceiling and
+      # timed out under gate load. A short ceiling brings them back promptly.
+      |> Keyword.put(:backoff_min, 100)
+      |> Keyword.put(:backoff_max, 500)
 
     {:ok, pid} = CodeMySpec.Repo.start_link(dyn_config)
     previous = CodeMySpec.Repo.get_dynamic_repo()
