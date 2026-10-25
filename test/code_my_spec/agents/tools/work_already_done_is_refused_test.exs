@@ -91,8 +91,10 @@ defmodule CodeMySpec.Agents.Tools.WorkAlreadyDoneIsRefusedTest do
     assert text =~ "already satisfied"
     assert text =~ "the offer of it is closed"
 
-    assert %{status: :declined, reason: "already satisfied"} =
+    assert %{status: :superseded, reason: "already satisfied"} =
              CodeMySpec.Repo.get!(CodeMySpec.Agents.Offer, offered.id)
+
+    refute Map.has_key?(Offers.standing(agent.id), offered.subject_key)
   end
 
   test "work not yet done is started as before", ctx do
