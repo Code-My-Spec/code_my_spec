@@ -13,7 +13,7 @@ defmodule CodeMySpec.Agents.Main.AnAgentBurningTokensIsNamedTest do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main.{AgentWork, CheckInReport, Digest, Machinery, TokenBurn}
 
-  defp turn(scope, agent_id, input, output, minutes_ago, cache \\ nil) do
+  defp turn(scope, agent_id, input, output, minutes_ago, cache \\ nil, fresh \\ nil) do
     at = DateTime.add(DateTime.utc_now(), -minutes_ago * 60, :second)
 
     %AgentTurn{}
@@ -23,7 +23,8 @@ defmodule CodeMySpec.Agents.Main.AnAgentBurningTokensIsNamedTest do
       agent_id: agent_id,
       input_tokens: input,
       output_tokens: output,
-      cache_read_tokens: cache
+      cache_read_tokens: cache,
+      fresh_thread: fresh
     })
     |> Ecto.Changeset.force_change(:inserted_at, at)
     |> Repo.insert!()
@@ -62,6 +63,15 @@ defmodule CodeMySpec.Agents.Main.AnAgentBurningTokensIsNamedTest do
              ] = TokenBurn.last_hour(ctx.scope)
     end
 
+    # Each sent the whole transcript uncached, which is where a burn comes from.
+    test "counts the turns that started a new Codex thread", ctx do
+      codex = agent(ctx.scope)
+      turn(ctx.scope, codex, 9_000_000, 1_000, 5, nil, "history_or_config_changed")
+      turn(ctx.scope, codex, 200_000, 1_000, 3)
+
+      assert [%{fresh_threads: 1, turns: 2}] = TokenBurn.last_hour(ctx.scope)
+    end
+
     test "a turn with no reported usage is unknown, not zero", ctx do
       silent = agent(ctx.scope)
       turn(ctx.scope, silent, nil, nil, 5)
@@ -78,7 +88,8 @@ defmodule CodeMySpec.Agents.Main.AnAgentBurningTokensIsNamedTest do
         turns: 27,
         tokens: tokens,
         largest_turn: largest,
-        cache_read: :unknown
+        cache_read: :unknown,
+        fresh_threads: 0
       }
 
     defp digest(tokens) do
@@ -114,6 +125,14 @@ defmodule CodeMySpec.Agents.Main.AnAgentBurningTokensIsNamedTest do
       report = CheckInReport.render(digest)
       assert report =~ "burning tokens — 363.0M in the last hour over 27 turns"
       assert report =~ "turn_off_agent"
+    end
+
+    test "says how many turns started a new Codex thread" do
+      entry = %{burn(363_000_000, 9_000_000) | fresh_threads: 3}
+      report = CheckInReport.render(digest([entry]))
+
+      assert report =~ "b0c75bbd qa 363.0M/27t 3 new thread(s)"
+      assert report =~ "3 of its turns started a new Codex thread"
     end
 
     test "one turn over the per-turn threshold needs main too" do

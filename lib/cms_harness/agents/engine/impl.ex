@@ -13,6 +13,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   require Logger
 
+  alias Alloy.Provider.CodexSession
+
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.Keeper
@@ -512,12 +514,13 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
+    previous = state.provider_state
     state = absorb(state, result)
     :ok = Keeper.remember(state.agent_id, %{messages: state.messages, in_flight: nil})
 
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
-    announce_turn_end(state, result)
+    announce_turn_end(state, result, fresh_thread(previous, state.provider_state))
 
     {:idle, state} = State.finish(state)
     send(self(), :mailbox_ready)
@@ -554,18 +557,38 @@ defmodule CmsHarness.Agents.Engine.Impl do
     :ok
   end
 
-  defp announce_turn_end(%{on_event: nil}, _result), do: :ok
+  defp announce_turn_end(%{on_event: nil}, _result, _fresh), do: :ok
 
-  defp announce_turn_end(state, result) do
+  defp announce_turn_end(state, result, fresh) do
     state.on_event.(state.agent_id, %{
       event: :turn_ended,
-      usage: usage_of(result),
+      usage: with_fresh_thread(usage_of(result), fresh),
       ref: state.turn && state.turn.ref,
       generation: state.generation
     })
 
     :ok
   end
+
+  @doc """
+  Why this turn started a new Codex thread partway through the conversation
+  (sending the whole transcript uncached), from the provider state before and
+  after it; nil when it did not. Carried with the turn's usage, so the token
+  alert and check-in can say so.
+  """
+  @spec fresh_thread(map() | nil, map() | nil) :: String.t() | nil
+  def fresh_thread(previous, current) do
+    {before, _reason} = CodexSession.fresh_threads(previous)
+
+    case CodexSession.fresh_threads(current) do
+      {count, reason} when count > before -> reason
+      _ -> nil
+    end
+  end
+
+  defp with_fresh_thread(usage, nil), do: usage
+  defp with_fresh_thread(nil, reason), do: %{fresh_thread: reason}
+  defp with_fresh_thread(usage, reason), do: Map.put(usage, :fresh_thread, reason)
 
   # The provider's own usage, carried on `turn_ended`: asking the loop
   # afterwards answers busy while the next turn runs. Nil (not zero) when no
