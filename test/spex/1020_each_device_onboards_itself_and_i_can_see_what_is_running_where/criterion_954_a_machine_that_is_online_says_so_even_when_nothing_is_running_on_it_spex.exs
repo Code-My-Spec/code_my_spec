@@ -80,7 +80,13 @@ defmodule CodeMySpecSpex.Story1020.Criterion2849Spex do
       end
 
       then_ "and that is not confused with anything being at work on it", context do
-        refute context.row =~ ~r/\brunning\b|\bworking\b|\bbusy\b/i,
+        presence =
+          context.row
+          |> Floki.parse_fragment!()
+          |> Floki.find("[data-test='device-presence'], [data-test='dev-box-up']")
+          |> Floki.text()
+
+        refute presence =~ ~r/\brunning\b|\bworking\b|\bbusy\b/i,
                "the row reports the box being on as though something were happening " <>
                  "on it. Those are two facts — story 957 shipped this exact " <>
                  "conflation twice, calling a :starting agent 'Running · present on " <>

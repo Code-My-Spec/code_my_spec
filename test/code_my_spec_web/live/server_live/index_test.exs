@@ -189,16 +189,16 @@ defmodule CodeMySpecWeb.ServerLive.IndexTest do
       project: project
     } do
       stub_hetzner(server("web-1"))
-      base = "/app/projects/#{project.id}/console/servers"
+      base = "/app/projects/#{project.id}/console/devices"
 
       {:ok, view, _html} = live(conn, base)
 
       assert has_element?(
                view,
-               "[data-test='console'] [data-test='console-nav-servers'].menu-active"
+               "[data-test='console'] [data-test='console-nav-devices'].menu-active"
              )
 
-      assert has_element?(view, ~s([data-test='open-server'][href="#{base}/web-1"]))
+      assert has_element?(view, ~s([data-test='open-server'][href="#{base}/provider/web-1"]))
     end
   end
 end

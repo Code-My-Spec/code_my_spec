@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1130.Criterion2298Spex do
             context do
         refute has_element?(context.live, "[data-test='add-dev-box']")
 
-        render_hook(context.live, "add_dev_box", %{
+        render_hook(with_target(context.live, "#device-harnesses"), "add_dev_box", %{
           "dev_box" => %{"name" => "sneaky", "provider" => "local"}
         })
 

@@ -523,10 +523,14 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
 
       # Account-scoped: a box belongs to the account and can serve several projects.
-      live "/servers", ServerLive.Index, :index
+      live "/devices", DeviceLive.Index, :index
+      live "/devices/provider/:name/edit", DeviceLive.Index, :edit
+      live "/devices/provider/:name", DeviceLive.Show, :show
+      live "/devices/:device_id", DeviceLive.Show, :show
+      live "/servers", DeviceLive.Index, :index
 
-      live "/servers/:name/edit", ServerLive.Index, :edit
-      live "/servers/:name", ServerLive.Show, :show
+      live "/servers/:name/edit", DeviceLive.Index, :edit
+      live "/servers/:name", DeviceLive.Show, :show
     end
 
     # Project pages. The project is named in the route; `:assign_project` puts
@@ -541,6 +545,7 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :assign_project}
       ] do
       # Static segments first so they win over `:id`.
+      live "/projects/:project_id/console/devices/:device_id/setup", AppLive.LocalSetup
       live "/projects/:project_id/console/dev-boxes/:device_id/setup", AppLive.LocalSetup
       live "/projects/:project_id/init", InitLive, :index
       live "/projects/:project_id/init/:step", InitLive, :show
@@ -613,10 +618,14 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/console/resources", ConsoleLive, :resources
       live "/projects/:project_id/console/resources/:key", ConsoleLive, :resource_detail
       # The account's servers, in each project's console; `/app/servers` too.
-      live "/projects/:project_id/console/servers", ServerLive.Index, :index
-      live "/projects/:project_id/console/servers/:name/edit", ServerLive.Index, :edit
-      live "/projects/:project_id/console/servers/:name", ServerLive.Show, :show
+      live "/projects/:project_id/console/servers", DeviceLive.Index, :index
+      live "/projects/:project_id/console/servers/:name/edit", DeviceLive.Index, :edit
+      live "/projects/:project_id/console/servers/:name", DeviceLive.Show, :show
       live "/projects/:project_id/console/inventory", ResourceLive.Index, :index
+      live "/projects/:project_id/console/devices", DeviceLive.Index, :index
+      live "/projects/:project_id/console/devices/provider/:name/edit", DeviceLive.Index, :edit
+      live "/projects/:project_id/console/devices/provider/:name", DeviceLive.Show, :show
+      live "/projects/:project_id/console/devices/:device_id", DeviceLive.Show, :show
       live "/projects/:project_id/console/dev-boxes", DeviceLive.Index, :index
       live "/projects/:project_id/console/deploys", ConsoleLive, :deploys
       live "/projects/:project_id/console/secrets", ConsoleLive, :secrets
