@@ -35,6 +35,7 @@ defmodule CodeMySpec.Support.EvalRunner do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.McpServers.ToolRegistry
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
@@ -51,8 +52,9 @@ defmodule CodeMySpec.Support.EvalRunner do
   def run(opts \\ []) do
     runs = Keyword.get(opts, :runs, 10)
     pattern = Keyword.get(opts, :pattern)
-    # The engine the agent runs in, as a spex starts it.
-    CmsHarnessTest.Machine.ensure_supervisor()
+    # The engine the agent runs in, as a spex starts it. Named at runtime, as
+    # `mix cms.eval` names this module: test support, outside the boundaries.
+    Module.concat([CmsHarnessTest, Machine]).ensure_supervisor()
 
     criteria = Enum.filter(criteria(), &matches?(&1, pattern))
 
@@ -791,7 +793,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     request =
       world.scope
       |> launch_request().hydrate(agent)
-      |> launch_request().for(CodeMySpec.McpServers.ToolRegistry.registry())
+      |> launch_request().for(ToolRegistry.registry())
       |> Map.merge(%{
         "api_key" => "unused-in-eval",
         "on_event" => fn _agent_id, event -> record_event(collector, event) end,
