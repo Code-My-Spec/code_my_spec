@@ -116,8 +116,29 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # only a projector that stays silent through all of them is unsettled. The
   # attempts and the per-call timeout are config, for the test that makes a
   # drain slower than the call.
+  @read_deadline {__MODULE__, :read_deadline}
+
+  @doc "Bound graph waits across one discovery call without serving unsettled rows."
+  def with_read_deadline(timeout_ms, fun) do
+    previous = Process.put(@read_deadline, System.monotonic_time(:millisecond) + timeout_ms)
+
+    try do
+      fun.()
+    catch
+      :throw, :graph_rebuilding ->
+        {:error, :graph_rebuilding}
+    after
+      if is_nil(previous),
+        do: Process.delete(@read_deadline),
+        else: Process.put(@read_deadline, previous)
+    end
+  end
+
   defp drained(pid, requested, attempts_left) do
-    GenServer.call(pid, {:drain, requested}, settle_timeout_ms())
+    case Process.get(@read_deadline) do
+      nil -> GenServer.call(pid, {:drain, requested}, settle_timeout_ms())
+      deadline -> drain_before(pid, requested, deadline)
+    end
   catch
     :exit, {:timeout, {GenServer, :call, _}} when attempts_left > 1 ->
       Logger.info(
@@ -126,6 +147,15 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
       )
 
       drained(pid, requested, attempts_left - 1)
+  end
+
+  defp drain_before(pid, requested, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+    if remaining <= 0, do: throw(:graph_rebuilding)
+
+    GenServer.call(pid, {:drain, requested}, remaining)
+  catch
+    :exit, {:timeout, {GenServer, :call, _}} -> throw(:graph_rebuilding)
   end
 
   defp settle_attempts, do: Application.get_env(:code_my_spec, :graph_settle_attempts, 4)
