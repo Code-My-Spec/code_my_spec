@@ -75,6 +75,25 @@ defmodule CmsHarness.Web.AnalysisControllerTest do
     assert guidance =~ "Committing alone does not change test selection"
   end
 
+  test "a dead handler identifies the retained run without inventing an analyzer exit status" do
+    conn =
+      request(
+        {:error,
+         %{
+           "reason" => "handler_died",
+           "run_id" => 42,
+           "status" => "running",
+           "handler_error" => "killed"
+         }}
+      )
+
+    assert conn.status == 502
+    assert Plug.Conn.get_resp_header(conn, "x-analysis-run-id") == ["42"]
+    assert Plug.Conn.get_resp_header(conn, "x-exit-status") == []
+    assert conn.resp_body =~ "Retained run 42 has status running"
+    assert conn.resp_body =~ "get_analysis_output with run_id=42"
+  end
+
   test "an unreadable reply cannot become a passing suite" do
     conn = request({:ok, %{"unexpected" => true}})
     assert conn.status == 502

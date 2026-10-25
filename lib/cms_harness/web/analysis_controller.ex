@@ -161,6 +161,19 @@ defmodule CmsHarness.Web.AnalysisController do
     fail(conn, 409, message)
   end
 
+  defp reply(conn, {:error, %{"reason" => "handler_died", "run_id" => run_id} = failure})
+       when is_integer(run_id) do
+    conn
+    |> put_resp_header("x-analysis-run-id", Integer.to_string(run_id))
+    |> fail(
+      502,
+      "Analysis request handler died: #{failure["handler_error"]}. " <>
+        "Retained run #{run_id} has status #{failure["status"] || "unknown"}. " <>
+        "The handler failure is not an analyzer result. " <>
+        "Read get_analysis_output with run_id=#{run_id} before retrying."
+    )
+  end
+
   defp reply(conn, {:error, reason}) do
     fail(
       conn,
