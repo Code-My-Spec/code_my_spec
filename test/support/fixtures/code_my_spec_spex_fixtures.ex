@@ -1137,6 +1137,10 @@ defmodule CodeMySpecSpex.Fixtures do
   The channel's own handler is two lines of passthrough over that call, so
   driving it costs nothing and removes the only place the two could disagree.
   """
+  def agents_to_restore(%Phoenix.Socket{} = socket) do
+    CodeMySpecSpex.Fixtures.RestoreHandshake.agents_on(socket)
+  end
+
   def agents_to_restore(%Scope{} = scope) do
     CodeMySpecSpex.Fixtures.RestoreHandshake.agents(scope)
   end

@@ -19,6 +19,10 @@ defmodule CodeMySpecSpex.Fixtures.RestoreHandshake do
         }
       )
 
+    agents_on(joined)
+  end
+
+  def agents_on(joined) do
     ref = push(joined, "agents_to_restore", %{})
     assert_reply ref, :ok, %{"agents" => agents}, 5_000
     agents
