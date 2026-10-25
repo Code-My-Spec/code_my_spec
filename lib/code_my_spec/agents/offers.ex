@@ -183,7 +183,11 @@ defmodule CodeMySpec.Agents.Offers do
 
   @doc "Describe this agent's prior declines for the claimable work in a pull."
   def decline_notes(agent_id, nodes) do
-    keys = Enum.map(nodes, &"#{&1.entity_type}:#{&1.entity_id}:#{&1.name}")
+    keys =
+      Enum.map(nodes, fn node ->
+        id = CodeMySpec.Requirements.Directives.entity_ref(node)
+        "#{node.entity_type}:#{id}:#{node.name}"
+      end)
 
     Offer
     |> where([o], o.agent_id == ^agent_id and o.subject_key in ^keys and o.status == :declined)

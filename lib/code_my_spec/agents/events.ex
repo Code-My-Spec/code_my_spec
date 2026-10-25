@@ -94,7 +94,8 @@ defmodule CodeMySpec.Agents.Events do
   # A task released from a block. An agent busy on another task is told, not
   # offered (story 1080); `Work` offers it back once that task is done.
   def handle_event(@task_released, _measurements, %{deferred: notice} = meta, _config) do
-    Offers.lift_copy_declines(meta.scope, meta.agent.working_copy_id, DateTime.utc_now())
+    scope = %CodeMySpec.Users.Scope{active_project_id: meta.agent.project_id}
+    Offers.lift_copy_declines(scope, meta.agent.working_copy_id, DateTime.utc_now())
     Work.note_released(meta.agent, notice)
   catch
     kind, reason -> log(:task_released, kind, reason)
