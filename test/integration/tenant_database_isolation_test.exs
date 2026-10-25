@@ -1,47 +1,30 @@
 defmodule CodeMySpec.TenantDatabaseIsolationTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Database
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.Users.Scope
-
-  @moduletag :docker
-  @moduletag timeout: 120_000
+  alias CodeMySpecSpex.Fakes.Postgres
 
   setup do
-    name = "cms-isolation-#{System.unique_integer([:positive])}"
-    on_exit(fn -> System.cmd("docker", ["rm", "-f", name], stderr_to_stdout: true) end)
-
-    {_, 0} =
-      System.cmd(
-        "docker",
-        ["run", "-d", "--name", name, "-e", "POSTGRES_PASSWORD=proof", "pgvector/pgvector:pg18"],
-        stderr_to_stdout: true
-      )
-
-    ready(name, 60)
-
-    run = fn [command] ->
-      command = String.replace(command, "cms-postgres", name)
-      System.cmd("sh", ["-c", command], stderr_to_stdout: true)
-    end
-
-    %{container: name, run: run}
+    {:ok, env} = InMemoryExecutionContext.create()
+    on_exit(fn -> InMemoryExecutionContext.destroy(env) end)
+    %{env: env, run: fn [command] -> Postgres.run(env, command) end}
   end
 
-  test "fresh tenants and repaired legacy tenants refuse each other's connections", %{
-    container: name,
+  test "tenant setup refuses cross-tenant connections while preserving owner access", %{
+    env: env,
     run: run
   } do
-    scope = %Scope{}
-    alpha = %{username: "app_alpha", password: "alpha", database: "app_alpha_prod"}
-    beta = %{username: "app_beta", password: "beta", database: "app_beta_prod"}
+    seed(env)
+    assert {"1", 0} = Postgres.connect(env, "app_alpha", "app_beta_prod")
 
-    for tenant <- [alpha, beta] do
+    for tenant <- tenants() do
       assert {:ok, _} =
-               Database.serve(scope, "prod",
+               Database.serve(%Scope{}, "prod",
                  run: run,
                  database_admin_credential: %{username: "postgres", password: "proof"},
-                 database_credential: tenant,
+                 database_credential: Map.put(tenant, :password, "proof"),
                  database_restore_credential: %{
                    username: tenant.username <> "_restore",
                    password: "restore"
@@ -49,85 +32,40 @@ defmodule CodeMySpec.TenantDatabaseIsolationTest do
                )
     end
 
-    assert_access(name, alpha, beta)
-    assert_access(name, beta, alpha)
+    assert_isolated(env)
+  end
 
-    {_, 0} =
-      sql(
-        name,
-        "GRANT CONNECT ON DATABASE app_alpha_prod TO PUBLIC; GRANT CONNECT ON DATABASE app_beta_prod TO PUBLIC;"
-      )
-
-    assert {_, 0} = connect(name, alpha, beta.database)
+  test "one-off repair isolates already provisioned databases and is repeatable", %{
+    env: env,
+    run: run
+  } do
+    seed(env)
+    assert {"1", 0} = Postgres.connect(env, "app_alpha", "app_beta_prod")
     opts = [run: run, database_admin_credential: %{username: "postgres", password: "proof"}]
-    assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(scope, opts)
-    assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(scope, opts)
-    assert_access(name, alpha, beta)
-    assert_access(name, beta, alpha)
+    assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(%Scope{}, opts)
+    assert_isolated(env)
+    assert {:ok, ["app_alpha_prod", "app_beta_prod"]} = Database.repair_existing(%Scope{}, opts)
+    assert_isolated(env)
   end
 
-  defp assert_access(name, tenant, other) do
-    assert {_, 0} = connect(name, tenant, tenant.database)
-    {message, status} = connect(name, tenant, other.database)
-    assert status == 2
-    assert message =~ "permission denied for database"
+  defp tenants,
+    do: [
+      %{username: "app_alpha", database: "app_alpha_prod"},
+      %{username: "app_beta", database: "app_beta_prod"}
+    ]
+
+  defp seed(env) do
+    for tenant <- tenants(), do: Postgres.seed(env, tenant.database, tenant.username)
   end
 
-  defp connect(name, tenant, database) do
-    System.cmd(
-      "docker",
-      [
-        "exec",
-        "-e",
-        "PGPASSWORD=#{tenant.password}",
-        name,
-        "psql",
-        "-h",
-        "127.0.0.1",
-        "-U",
-        tenant.username,
-        "-d",
-        database,
-        "-c",
-        "SELECT 1"
-      ],
-      stderr_to_stdout: true
-    )
-  end
+  defp assert_isolated(env) do
+    assert {"1", 0} = Postgres.connect(env, "app_alpha", "app_alpha_prod")
+    assert {"1", 0} = Postgres.connect(env, "app_beta", "app_beta_prod")
 
-  defp sql(name, sql) do
-    System.cmd(
-      "docker",
-      [
-        "exec",
-        name,
-        "psql",
-        "-v",
-        "ON_ERROR_STOP=1",
-        "-U",
-        "postgres",
-        "-d",
-        "postgres",
-        "-c",
-        sql
-      ],
-      stderr_to_stdout: true
-    )
-  end
+    assert {"permission denied for database app_beta_prod", 2} =
+             Postgres.connect(env, "app_alpha", "app_beta_prod")
 
-  defp ready(name, attempts) do
-    case System.cmd("docker", ["exec", name, "pg_isready", "-h", "127.0.0.1"],
-           stderr_to_stdout: true
-         ) do
-      {_, 0} ->
-        :ok
-
-      _ when attempts > 1 ->
-        Process.sleep(1_000)
-        ready(name, attempts - 1)
-
-      result ->
-        flunk("Postgres did not become ready: #{inspect(result)}")
-    end
+    assert {"permission denied for database app_alpha_prod", 2} =
+             Postgres.connect(env, "app_beta", "app_alpha_prod")
   end
 end
