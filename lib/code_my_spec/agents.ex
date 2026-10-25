@@ -928,8 +928,11 @@ defmodule CodeMySpec.Agents do
     # An agent that is off is told nothing: nothing reaches it until it is
     # turned on, so the note would only pile up as undelivered.
     if agent.continuous && not Agent.off?(agent) && is_nil(Agent.active_task(agent)) do
+      # Sent before the harness has brought the agent back: kept for the
+      # `agents_present` pump, not failed as undeliverable.
       send_to_agent(agent.id, "The harness restarted.", :own_reply,
-        offer: {:resume, {"restart", nil}}
+        offer: {:resume, {"restart", nil}},
+        until_back: true
       )
     end
 
@@ -1392,8 +1395,9 @@ defmodule CodeMySpec.Agents do
   `event` is what `Wake` is asked about — `:own_reply` for the answer to
   something it asked of us, `:question_answered` for its question's answer.
 
-  Options: `:timeout`, `:async`, and `:offer` — `{kind, subject}` to record the
-  message as an offer (`Offers`).
+  Options: `:timeout`, `:async`, `:offer` — `{kind, subject}` to record the
+  message as an offer (`Offers`) — and `:until_back`, to keep the message for
+  an agent whose process is not up yet rather than fail it.
   """
   @spec send_to_agent(Ecto.UUID.t(), String.t(), Wake.event(), keyword()) ::
           {:ok, :started | :queued} | {:error, term()}
@@ -1417,7 +1421,8 @@ defmodule CodeMySpec.Agents do
                  ref,
                  event,
                  opts[:offer],
-                 Keyword.get(opts, :sender_id, "operator")
+                 Keyword.get(opts, :sender_id, "operator"),
+                 Keyword.take(opts, [:until_back])
                ) do
           agent
           |> dispatch_admitted(admission, timeout, message, offered, opts)
@@ -2579,16 +2584,32 @@ defmodule CodeMySpec.Agents do
   end
 
   defp admit_if_allowed(agent, message, event, offered, admit_opts) do
-    case Wake.allow_admission?(agent_scope(agent), agent, event) do
-      :ok ->
-        Mailbox.admit(agent, message, event, admit_opts)
-        {message, :ok}
+    agent
+    |> agent_scope()
+    |> Wake.allow_admission?(agent, event)
+    |> admit_or_fail(agent, message, event, offered, admit_opts)
+  end
 
-      hold ->
-        :ok = Offers.undelivered(offered)
-        {:ok, message} = Conversations.set_delivery(message, :failed, broadcast: false)
-        {message, Wake.to_error(hold)}
-    end
+  # `until_back`: the agent is being brought back, so its not running yet is
+  # no reason to fail the message; the `agents_present` pump delivers it.
+  defp admit_or_fail({:hold, :not_running} = hold, agent, message, event, offered, admit_opts) do
+    if admit_opts[:until_back],
+      do: admit_or_fail(:ok, agent, message, event, offered, admit_opts),
+      else: fail_admission(hold, message, offered)
+  end
+
+  defp admit_or_fail(:ok, agent, message, event, _offered, admit_opts) do
+    Mailbox.admit(agent, message, event, admit_opts)
+    {message, :ok}
+  end
+
+  defp admit_or_fail(hold, _agent, message, _event, offered, _admit_opts),
+    do: fail_admission(hold, message, offered)
+
+  defp fail_admission(hold, message, offered) do
+    :ok = Offers.undelivered(offered)
+    {:ok, message} = Conversations.set_delivery(message, :failed, broadcast: false)
+    {message, Wake.to_error(hold)}
   end
 
   defp pump_mailbox(scope, agent_id) do

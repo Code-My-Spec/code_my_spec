@@ -162,6 +162,36 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     refute Offers.in_flight?(idle_id)
   end
 
+  # The notice is sent while the harness asks what to restore, before the agent
+  # is back.
+  test "an idle continuous agent not yet back is told the harness restarted once it is", ctx do
+    {:ok, agent} =
+      AgentsRepository.create_agent(ctx.scope, %{
+        provider: "anthropic",
+        engine: :alloy,
+        role: "coding",
+        continuous: true,
+        status: :running,
+        working_copy: "/tmp/restored-idle-#{System.unique_integer([:positive])}",
+        working_copy_id: ctx.scope.active_working_copy_id
+      })
+
+    AgentPresence.absent(agent)
+    restore(ctx.socket)
+
+    agent_id = agent.id
+    refute_receive {:agent_dispatch, ^agent_id, _ref, _prompt}, 200
+
+    AgentPresence.present(agent)
+    report_present(ctx.socket, [agent])
+
+    assert_receive {:agent_dispatch, ^agent_id, _ref, prompt},
+                   5_000,
+                   "the restart notice was dropped while the agent was still coming back"
+
+    assert prompt =~ "The harness restarted."
+  end
+
   test "a turn that died mid-call leaves the restored agent free, not busy", ctx do
     agent = holder(ctx.scope, %{turn_started_at: DateTime.add(DateTime.utc_now(), -30, :second)})
 
