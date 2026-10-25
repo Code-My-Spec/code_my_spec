@@ -36,6 +36,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,

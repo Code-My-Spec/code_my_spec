@@ -119,6 +119,49 @@ defmodule CodeMySpec.Qa.Verdict do
     end
   end
 
+  @doc """
+  Whether a QA run of `story_id` now could only repeat the last one: its newest
+  attempt is a partial or fail, not invalidated, reviewed at the commit the
+  story is still certified at, and no issue it cited has changed since it was
+  submitted. Pushing `qa_complete` again then asks for the same checks against
+  the same state (issue 9180ef3d: three offers in three minutes at one commit,
+  each answered with the same partial). A new certification or any change to a
+  cited issue (resolved, re-triaged, detached) is something new.
+  """
+  @spec nothing_new_since_last_attempt?(Scope.t(), integer()) :: boolean()
+  def nothing_new_since_last_attempt?(%Scope{active_project_id: nil}, _story_id), do: false
+
+  def nothing_new_since_last_attempt?(%Scope{active_project_id: project_id} = scope, story_id) do
+    QaAttempt
+    |> join(:inner, [a], s in assoc(a, :story),
+      on: s.project_id == ^project_id and s.id == ^story_id
+    )
+    |> where([a], not a.stale)
+    |> order_by([a], desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id)
+    |> limit(1)
+    |> preload([:invalidations, :story])
+    |> Repo.one()
+    |> repeat?(scope)
+  end
+
+  defp repeat?(
+         %QaAttempt{status: status, invalidations: [], submitted_at: %DateTime{} = at} = attempt,
+         scope
+       )
+       when status in [:partial, :fail] do
+    is_binary(attempt.reviewed_commit) and
+      attempt.reviewed_commit == attempt.story.qa_ready_commit and
+      Enum.all?(attempt.issue_ids, &unchanged_since?(Issues.get_issue(scope, &1), at))
+  end
+
+  defp repeat?(_attempt, _scope), do: false
+
+  defp unchanged_since?(nil, _at), do: true
+  defp unchanged_since?(issue, at), do: DateTime.compare(to_utc(issue.updated_at), at) != :gt
+
+  defp to_utc(%DateTime{} = at), do: at
+  defp to_utc(%NaiveDateTime{} = at), do: DateTime.from_naive!(at, "Etc/UTC")
+
   # An invalidated attempt no longer speaks for the story, so neither does
   # what it cited.
   defp blocking_issue(_scope, _story, %QaAttempt{invalidations: [_ | _]}), do: nil
