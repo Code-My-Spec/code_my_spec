@@ -692,10 +692,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     args = List.wrap(payload["args"] || [])
     ref = socket_ref(socket)
     scope = socket.assigns.scope
+    owner = self()
+    request_id = make_ref()
 
     {:noreply,
-     reply_async(socket, ref, {"analysis_run", source}, fn ->
-       run_for_agent(scope, source, args)
+     reply_async(socket, ref, {"analysis_run", source, request_id}, fn ->
+       admitted = fn run_id -> send(owner, {:analysis_admitted, request_id, run_id}) end
+       run_for_agent(scope, source, args, admitted)
      end)}
   end
 
@@ -1283,7 +1286,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
         Phoenix.Channel.reply(
           ref,
-          {:error, %{"reason" => "handler_died", "at" => describe(label)}}
+          {:error, handler_failure(socket.assigns.scope, label, reason)}
         )
 
         assign(socket, :pending_replies, pending)
@@ -1292,6 +1295,30 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp pending_replies(socket), do: socket.assigns[:pending_replies] || %{}
 
+  defp handler_failure(scope, {"analysis_run", _source, _request_id, run_id} = label, reason) do
+    run = Analysis.get_run(scope, run_id)
+
+    %{
+      "reason" => "handler_died",
+      "at" => describe(label),
+      "handler_error" => death_reason(reason),
+      "run_id" => run_id,
+      "status" => if(run, do: to_string(run.status), else: "unknown")
+    }
+  end
+
+  defp handler_failure(_scope, label, reason) do
+    %{
+      "reason" => "handler_died",
+      "at" => describe(label),
+      "handler_error" => death_reason(reason)
+    }
+  end
+
+  defp describe({"analysis_run", source, _request_id, run_id}),
+    do: "analysis_run (#{source}, run #{run_id})"
+
+  defp describe({"analysis_run", source, _request_id}), do: "analysis_run (#{source})"
   defp describe({handler, detail}), do: "#{handler} (#{detail})"
   defp describe(handler), do: handler
 
@@ -1422,6 +1449,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # sent by this process to itself from a stop decision; it lands after that
   # decision, which is made from what is already recorded.
   @impl true
+  # Admission, dispatch and DOWN arrive from the same task in order. Keep the
+  # identity per request: concurrent callers may request the same source.
+  # Losing this waiter must not cancel or fail the independently executing run.
+  def handle_info({:analysis_admitted, request_id, run_id}, socket) do
+    pending =
+      Map.new(pending_replies(socket), fn
+        {task_ref, {ref, {"analysis_run", source, ^request_id}}} ->
+          {task_ref, {ref, {"analysis_run", source, request_id, run_id}}}
+
+        entry ->
+          entry
+      end)
+
+    {:noreply, assign(socket, :pending_replies, pending)}
+  end
+
   def handle_info({:run_analysis, runs}, socket) do
     push(socket, "run_analysis", %{"runs" => runs})
     {:noreply, socket}
@@ -1520,8 +1563,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The agent reads this as test output, so the tool's own text is the body. An
   # error still answers in that shape, never as empty output that reads as a pass.
-  defp run_for_agent(scope, source, args) do
-    case Analysis.await_run(scope, source, args, requested_by: %{kind: "agent_mix_test"}) do
+  defp run_for_agent(scope, source, args, admitted) do
+    case Analysis.await_run(scope, source, args,
+           requested_by: %{kind: "agent_mix_test"},
+           on_admitted: admitted
+         ) do
       {:ok, %{} = run} ->
         {:ok,
          %{
