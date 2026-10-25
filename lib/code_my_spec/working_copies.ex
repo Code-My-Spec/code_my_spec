@@ -127,6 +127,18 @@ defmodule CodeMySpec.WorkingCopies do
 
   def by_root(_scope, _root), do: nil
 
+  @doc """
+  Every working copy with this label at this root, whatever its project.
+
+  For the one caller with no scope to give: a copy's own app re-registering
+  the QA fixtures `/dev/qa-agents` recorded against its checkout.
+  """
+  @spec labelled_at(String.t(), String.t()) :: [WorkingCopy.t()]
+  def labelled_at(root, label) when is_binary(root) and is_binary(label) do
+    root = Path.expand(root)
+    Repo.all(from w in WorkingCopy, where: w.root == ^root and w.label == ^label)
+  end
+
   defp recognised(_project_id, nil, _root), do: nil
   defp recognised(_project_id, _device, nil), do: nil
   defp recognised(_project_id, _device, ""), do: nil

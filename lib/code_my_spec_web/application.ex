@@ -290,15 +290,13 @@ defmodule CodeMySpecWeb.Application do
   defp copy_analysis(true), do: []
 
   defp copy_analysis(false) do
-    # Owns the environments `/dev/qa-agents` registers: a registry entry dies
-    # with the process that made it, and a request's process ends with it.
-    qa_environments = %{
-      id: CodeMySpecWeb.QaEnvironments,
-      start: {Agent, :start_link, [fn -> :ok end, [name: CodeMySpecWeb.QaEnvironments]]}
-    }
-
     # Where the runs it executes report their events as they happen (story 1141).
-    [CodeMySpec.Analysis.Supervisor, CodeMySpec.Analysis.LocalRunLink, qa_environments]
+    # `QaEnvironments` owns, and on boot restores, what `/dev/qa-agents` registers.
+    [
+      CodeMySpec.Analysis.Supervisor,
+      CodeMySpec.Analysis.LocalRunLink,
+      CodeMySpecWeb.QaEnvironments
+    ]
   end
 
   # `tunnel_config` is main's tunnel; only main may run its connector.
