@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2321Spex do
             """
           )
 
-        {:ok, _snapshot} = CmsHarnessTest.Setup.check_prerequisites()
+        {:ok, _snapshot} = CmsHarnessTest.SetupFixture.check_prerequisites()
 
         {:ok,
          Map.merge(context, %{

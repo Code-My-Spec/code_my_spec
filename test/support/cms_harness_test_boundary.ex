@@ -31,7 +31,6 @@ defmodule CmsHarnessTest do
     ],
     exports: [
       SetupFixture,
-      Setup,
       Machine,
       LiveHarness,
       ConnectHeaders,
