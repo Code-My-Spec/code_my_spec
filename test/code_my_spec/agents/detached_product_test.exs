@@ -7,6 +7,8 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
 
   defmodule Transport do
     def start_agent(_, agent, _) do
+      send(self(), {:agent_runtime_started, agent.id})
+
       scope = %CodeMySpec.Users.Scope{
         active_project_id: agent.project_id,
         active_account_id: agent.account_id
@@ -18,6 +20,7 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     end
 
     def stop_agent(_, agent, _) do
+      send(self(), {:agent_runtime_stopped, agent.id})
       Presence.untrack(self(), Presence.topic(agent.project_id), agent.id)
       :ok
     end
@@ -232,14 +235,60 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert [%{working_copy_id: target}] = CodeMySpec.AgentAttachments.list(scope, main.id)
     assert target == copy.id
     assert {:ok, retained_product} = Agents.fetch_agent(scope, product.id)
-    assert retained_product.execution_mode == :working_copy
-    assert retained_product.working_copy_id == copy.id
+    assert retained_product.execution_mode == :detached
+    assert retained_product.working_copy_id == nil
+    assert retained_product.working_copy == product.working_copy
+    assert retained_product.os_pid == product.os_pid
+    assert retained_product.os_boot_id == product.os_boot_id
     assert {:ok, ^main_conversation} = Agents.conversation_id(scope, main.id)
     assert {:ok, ^product_conversation} = Agents.conversation_id(scope, product.id)
-    assert {:ok, same_main} = Agents.move_main_agent(scope, copy)
+    assert_received {:agent_runtime_started, main_id}
+    assert_received {:agent_runtime_started, product_id}
+    assert MapSet.new([main_id, product_id]) == MapSet.new([main.id, product.id])
+    refute_received {:agent_runtime_stopped, _}
+    refute_received {:agent_runtime_started, _}
+    assert :ok = CodeMySpec.Analysis.HarnessRegistry.register_executor(copy.id)
+    assert {:ok, same_main} = Agents.attach_setup_working_copy(scope, copy)
     assert same_main.id == main.id
+    assert {:ok, reopened_main} = Agents.ensure_main_agent(scope)
+    assert reopened_main.id == main.id
+    assert {:ok, reopened_product} = Agents.ensure_product_agent(scope)
+    assert reopened_product.id == product.id
+    assert reopened_product.execution_mode == :detached
+    assert reopened_product.working_copy == product.working_copy
+    assert {:ok, _, retried_main} = Agents.start_project_setup(scope)
+    assert retried_main.id == main.id
+    refute_received {:agent_runtime_stopped, _}
+    refute_received {:agent_runtime_started, _}
     assert length(CodeMySpec.AgentAttachments.list(scope, main.id)) == 1
     assert length(Agents.list_agents(scope)) == 2
+  end
+
+  test "setup starts detached Main when a checkout was already registered", %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+    {:ok, copy} = CodeMySpec.WorkingCopies.fetch(scope.active_working_copy_id)
+
+    copy =
+      copy
+      |> Ecto.Changeset.change(main: true, root: "/tmp/registered-before-setup")
+      |> Repo.update!()
+
+    assert :ok = CodeMySpec.Analysis.HarnessRegistry.register_executor(copy.id)
+    assert {:ok, product} = Agents.ensure_product_agent(scope)
+    assert {:ok, _, main} = Agents.start_project_setup(scope)
+    assert main.execution_mode == :detached
+    assert main.working_copy_id == nil
+    assert {:ok, attached} = Agents.attach_setup_working_copy(scope, copy)
+    assert attached.id == main.id
+    assert {:ok, _, retried} = Agents.start_project_setup(scope)
+    assert retried.id == main.id
+    assert {:ok, reopened_product} = Agents.ensure_product_agent(scope)
+    assert reopened_product.id == product.id
+    assert reopened_product.execution_mode == :detached
+    assert %{started: [], failed: []} = Agents.ensure_copy_agents(scope, copy)
+    assert length(Agents.list_agents(scope)) == 2
+    assert [%{working_copy_id: target}] = CodeMySpec.AgentAttachments.list(scope, main.id)
+    assert target == copy.id
   end
 
   test "incomplete choices do not create Main or unlock stories", %{scope: scope} do
