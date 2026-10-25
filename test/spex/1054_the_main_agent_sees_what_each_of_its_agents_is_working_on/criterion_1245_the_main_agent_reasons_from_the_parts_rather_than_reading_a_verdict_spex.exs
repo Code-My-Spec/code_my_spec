@@ -149,7 +149,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
       end
 
       then_ "and no verdict is offered in place of them", context do
-        refute context.view =~ ~r/\b(stalled|stuck|dead|unhealthy|healthy)\b/i,
+        refute without_ids(context.view) =~ ~r/\b(stalled|stuck|dead|unhealthy|healthy)\b/i,
                """
                The view has drawn its own conclusion about this agent.
 
@@ -172,4 +172,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
       end
     end
   end
+
+  # An agent id is hex, and hyphens are word boundaries: an id with a "dead"
+  # group matched the verdict check and failed the spex at random.
+  defp without_ids(view),
+    do:
+      String.replace(
+        view,
+        ~r/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+        "<id>"
+      )
 end
