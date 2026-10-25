@@ -1178,6 +1178,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
 
+  def check_platform_machine_prerequisites do
+    CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+  end
+
+  defdelegate machine_prerequisites_passed?(snapshot),
+    to: CmsHarness.Setup,
+    as: :prerequisites_passed?
+
+  defdelegate machine_setup_status(), to: CmsHarness.Setup, as: :status
+
   defdelegate without_setup_postgres(context),
     to: CmsHarnessTest.SetupFixture,
     as: :without_postgres
@@ -4002,6 +4012,14 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate put_workspace_healthy(healthy?), to: FakeWorkspaceRunner, as: :put_healthy
 
   @doc """
+  Set whether the fake workspace's container is alive at all -- the one
+  reason `Workspaces.state/1` answers `:down` outright, before `serving/1`
+  is even asked (story 1030, criterion 1115: a container that died after
+  the workspace was already running must stop reading as up).
+  """
+  defdelegate put_workspace_alive(alive?), to: FakeWorkspaceRunner, as: :put_alive
+
+  @doc """
   Puts `project_id`'s workspace into the state the pane has to render.
 
   Story 885's whole point is that these are four different screens, so a spec
@@ -4044,6 +4062,14 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp settle(workspace, _state) do
     {:ok, _} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+    :ok
+  end
+
+  @doc "Starts a workspace with its real boot watcher while the fake app waits to answer."
+  @spec boot_waiting_workspace(Scope.t()) :: :ok
+  def boot_waiting_workspace(%Scope{} = scope) do
+    install_workspace_runner(healthy?: false, alive?: true, serving: :down)
+    {:ok, _workspace} = CodeMySpec.Workspaces.boot(scope)
     :ok
   end
 

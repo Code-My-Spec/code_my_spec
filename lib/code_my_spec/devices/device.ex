@@ -112,7 +112,9 @@ defmodule CodeMySpec.Devices.Device do
     # the token the box signs in with: the token itself is shown once, when the box
     # is added, and kept nowhere. `token_last_used_at` is the first and latest
     # sign-in with it; nil is "never connected".
-    field :provider, Ecto.Enum, values: [:local, :claude_code_cloud, :docker, :hetzner]
+    field :provider, Ecto.Enum,
+      values: [:local, :claude_code_cloud, :docker, :hetzner, :codex_cloud]
+
     field :provider_name, :string
     field :provider_resource_id, :string
     field :purpose, :string

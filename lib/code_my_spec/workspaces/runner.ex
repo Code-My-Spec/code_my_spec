@@ -103,7 +103,12 @@ defmodule CodeMySpec.Workspaces.Runner do
 
   @optional_callbacks id: 0, label: 0, kind: 0, instructions: 1, start: 5
 
-  @dev_boxes [__MODULE__.Local, __MODULE__.ClaudeCodeCloud, __MODULE__.Docker]
+  @dev_boxes [
+    __MODULE__.Local,
+    __MODULE__.ClaudeCodeCloud,
+    __MODULE__.Docker,
+    __MODULE__.CodexCloud
+  ]
 
   @doc "The runners a dev box can be added from."
   @spec dev_boxes() :: [module()]
