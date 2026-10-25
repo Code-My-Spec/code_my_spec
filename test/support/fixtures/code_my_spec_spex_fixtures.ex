@@ -1138,7 +1138,7 @@ defmodule CodeMySpecSpex.Fixtures do
   driving it costs nothing and removes the only place the two could disagree.
   """
   def agents_to_restore(%Scope{} = scope) do
-    CodeMySpecTest.RestoreHandshake.agents(scope)
+    CodeMySpecSpex.Fixtures.RestoreHandshake.agents(scope)
   end
 
   @doc """

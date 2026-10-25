@@ -1,4 +1,4 @@
-defmodule CodeMySpecTest.RestoreHandshake do
+defmodule CodeMySpecSpex.Fixtures.RestoreHandshake do
   @moduledoc "Exercises restoration through a joined channel and its deferred reply."
   import Phoenix.ChannelTest
   import ExUnit.Assertions
