@@ -69,8 +69,11 @@ defmodule CodeMySpecWeb.DevSignInController do
 
   def register(conn, %{"email" => email} = params) when is_binary(email) do
     case Users.register_user(%{email: email}) do
-      {:ok, user} -> user |> set_password(params["password"]) |> respond(conn, nil)
-      {:error, changeset} -> refuse(conn, errors(changeset))
+      {:ok, user} ->
+        user |> Users.confirm_user() |> set_password(params["password"]) |> respond(conn, nil)
+
+      {:error, changeset} ->
+        refuse(conn, errors(changeset))
     end
   end
 

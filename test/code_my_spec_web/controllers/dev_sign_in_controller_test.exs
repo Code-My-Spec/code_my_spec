@@ -92,6 +92,23 @@ defmodule CodeMySpecWeb.DevSignInControllerTest do
       assert CodeMySpec.Users.get_user_by_email_and_password(email, password)
     end
 
+    # 0106d3ff: a password used to leave the account unconfirmed, and
+    # magic-link login refuses that combination, so the link bounced.
+    test "an account minted with a password still signs in through its link",
+         %{conn: conn} do
+      email = "qa-#{System.unique_integer([:positive])}@example.com"
+
+      body =
+        conn
+        |> post(~p"/dev/sign-up", %{email: email, password: "another-long-enough-password"})
+        |> json_response(200)
+
+      assert %URI{path: "/users/log-in/" <> token} = URI.parse(body["sign_in_url"])
+
+      signed_in = get(build_conn(), ~p"/users/log-in/#{token}")
+      assert get_session(signed_in, :user_token)
+    end
+
     test "a duplicate email is refused with the reason", %{conn: conn} do
       user = user_fixture()
 
