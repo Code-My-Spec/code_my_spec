@@ -55,6 +55,15 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
   defp ps_banner_response(_command), do: {"", 0}
 
+  defp matching_response("docker ps" <> _, _needle, _response),
+    do: {"c0ffeec0ffee", 0}
+
+  defp matching_response(command, needle, response),
+    do: matched_response(String.contains?(command, needle), response)
+
+  defp matched_response(true, response), do: response
+  defp matched_response(false, _response), do: {"", 0}
+
   defp credential, do: %{username: "app_sam_s_app", password: "pw", database: "app_sam_s_app_uat"}
   defp admin_credential, do: %{username: "postgres", password: "adminpw"}
   defp restore_credential, do: %{username: "app_sam_s_app_restore", password: "restorepw"}
@@ -302,11 +311,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       run = fn [command] ->
         send(owner, {:ran, command})
 
-        cond do
-          String.starts_with?(command, "docker ps") -> {"c0ffeec0ffee", 0}
-          String.contains?(command, "SELECT 1 FROM pg_database") -> {"1", 0}
-          true -> {"", 0}
-        end
+        matching_response(command, "SELECT 1 FROM pg_database", {"1", 0})
       end
 
       assert {:ok, _} = serve(run: run)
@@ -321,11 +326,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
     test "an isolation failure prevents successful provisioning" do
       run = fn [command] ->
-        cond do
-          String.starts_with?(command, "docker ps") -> {"c0ffeec0ffee", 0}
-          String.contains?(command, "REVOKE CONNECT") -> {"permission denied", 1}
-          true -> {"", 0}
-        end
+        matching_response(command, "REVOKE CONNECT", {"permission denied", 1})
       end
 
       assert {:error, {:database_isolation_failed, 1, "permission denied"}} = serve(run: run)
@@ -440,19 +441,14 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
       run = fn [command] ->
         send(owner, {:ran, command})
 
-        cond do
-          String.starts_with?(command, "docker ps") ->
-            {"c0ffeec0ffee", 0}
-
-          String.contains?(command, "json_agg") ->
-            {Jason.encode!([
-               %{database: "app_alpha_prod", username: "app_alpha"},
-               %{database: "app_beta_prod", username: "app_beta"}
-             ]), 0}
-
-          true ->
-            {"", 0}
-        end
+        matching_response(
+          command,
+          "json_agg",
+          {Jason.encode!([
+             %{database: "app_alpha_prod", username: "app_alpha"},
+             %{database: "app_beta_prod", username: "app_beta"}
+           ]), 0}
+        )
       end
 
       opts = [run: run, database_admin_credential: admin_credential()]

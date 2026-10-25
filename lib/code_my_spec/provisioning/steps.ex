@@ -791,8 +791,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   def repair_database_isolation(%Scope{} = scope, name, opts \\ []) do
     with {:ok, server} <- Hetzner.find_server(scope, name),
          public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
-         {:ok, opts} <- with_builder_ssh(scope, opts),
-         run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts) do
+         {:ok, opts} <- with_builder_ssh(scope, opts) do
+      run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts)
       Database.repair_existing(scope, Keyword.put(opts, :run, run))
     else
       {:error, reason} -> {:error, reason}
