@@ -1339,6 +1339,17 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
+  @doc """
+  The directories a checkout's own app instance keeps its state and log in:
+  one named for the working copy, one for the checkout's path.
+  """
+  @spec own_dirs(String.t(), String.t() | nil) :: [String.t()]
+  def own_dirs(root, working_copy_id) do
+    [instance_key(root), working_copy_id]
+    |> Enum.filter(&is_binary/1)
+    |> Enum.map(&Path.join(instances_root(), &1))
+  end
+
   @doc "Where every app instance keeps its state and log, one directory each."
   def instances_root do
     Application.get_env(
