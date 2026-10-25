@@ -15,6 +15,7 @@ defmodule CodeMySpec.Stories.Tools do
       CodeMySpec.Epics,
       CodeMySpec.Files,
       CodeMySpec.Issues,
+      CodeMySpec.Requirements,
       CodeMySpec.Stories,
       CodeMySpec.Tags,
       CodeMySpec.Tools,
@@ -24,6 +25,8 @@ defmodule CodeMySpec.Stories.Tools do
   def all do
     [
       CodeMySpec.Stories.Tools.AddCriterion,
+      CodeMySpec.Stories.Tools.AddStoryDependency,
+      CodeMySpec.Stories.Tools.RemoveStoryDependency,
       CodeMySpec.Stories.Tools.AnalyzeStoryLinkage,
       CodeMySpec.Stories.Tools.AssignEpicToWorkingCopy,
       CodeMySpec.Stories.Tools.AssignStoryToEpic,

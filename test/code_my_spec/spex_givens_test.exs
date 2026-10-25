@@ -300,7 +300,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after ExecutionContexts. File.write File.mkdir
     assign put_session seed_cookies
-    StoryHelpers. CriterionScript. Artifacts. story_for register_and_log_in_user
+    StoryHelpers. CriterionScript. Deps. Artifacts. story_for register_and_log_in_user
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget join_and_send
     put_env! delete_env!
