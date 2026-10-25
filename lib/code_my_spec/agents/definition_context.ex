@@ -1,7 +1,7 @@
 defmodule CodeMySpec.Agents.DefinitionContext do
   @moduledoc "The saved setup facts product receives when its conversation begins."
 
-  def setup_message(project) do
+  def setup_message(project, instructions \\ nil) do
     """
     Product has handed development environment setup to you, Main. Product remains the user's
     primary conversation and is now free to interview for stories while you handle setup.
@@ -46,6 +46,14 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     team. Notify Product when ready, then let the normal requirement loop proceed. Do not start
     feature implementation during environment setup.
     """
+    |> Kernel.<>(setup_instructions(instructions))
+  end
+
+  def setup_instructions(nil), do: ""
+
+  def setup_instructions(instructions) do
+    "\nAdditional setup instructions agreed with the user (forwarded by Product):\n" <>
+      instructions
   end
 
   defp local_directory_guidance(project) do
@@ -64,7 +72,16 @@ defmodule CodeMySpec.Agents.DefinitionContext do
     """
     Onboarding order is strict: (1) brief project synopsis and audience, (2) new or existing code
     and where the user wants to develop, (3) call start_project_setup to hand setup to Main,
+    including its optional top-level instructions field for agreed special constraints:
+    local generator/archive paths, version requirements, permitted installs, network access,
+    and restrictions on external publishing. Main does not automatically receive your chat.
+    Preserve those instructions verbatim where practical; do not invent permissions.
     (4) only after that tool succeeds, interview for stories and record them while Main sets up.
+    Before the first working copy exists, an unavailable get_next_requirement or a no-working-copy
+    response is expected, not a framework failure. Continue the interview and use story, rule,
+    and example tools. Defer checkout-dependent requirement claims or sealing until setup is
+    ready; do not report the missing checkout alone as a framework issue. Once a checkout exists,
+    detached requirement discovery uses its project read model without moving your runtime.
     Read get_project_onboarding for the current phase. Keep the synopsis short: no feature deep
     dives, personas, acceptance criteria, epics, or story creation before the setup handoff.
     Save agreed answers with update_project_onboarding, including name for a requested rename.

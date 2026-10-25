@@ -28,6 +28,17 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     def dispatch_message(_, _, _, _, _), do: {:error, :busy}
   end
 
+  defmodule DeliveryTransport do
+    defdelegate start_agent(copy, agent, timeout),
+      to: CodeMySpec.Agents.DetachedProductTest.Transport
+
+    defdelegate stop_agent(copy, agent, timeout),
+      to: CodeMySpec.Agents.DetachedProductTest.Transport
+
+    defdelegate dispatch_message(copy, agent, ref, text, timeout),
+      to: CodeMySpecTest.RecordingAgentTransport
+  end
+
   defmodule RefusingTransport do
     def start_agent(_, _, _), do: {:error, :no_credential}
   end
@@ -185,6 +196,82 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert length(messages) == 1
     assert inspect(hd(messages).content) =~ "Product has handed development environment setup"
     assert length(Agents.list_agents(scope)) == 1
+  end
+
+  test "setup forwards agreed instructions into Main's actual delivery and preserves retries", %{
+    scope: scope
+  } do
+    {:ok, _} = ready_for_setup(scope)
+    CodeMySpecTest.RecordingAgentTransport.listen(scope)
+    Application.put_env(:code_my_spec, :desktop_agent_transport, DeliveryTransport)
+
+    instructions =
+      "Use /opt/drill/cms_new.ez. Installs inside this container allowed. Do not publish externally."
+
+    assert {:ok, result} =
+             CodeMySpec.ToolLibrary.data("start_project_setup", %{instructions: instructions}, %{
+               scope: scope
+             })
+
+    id = result.setup_agent_id
+    assert_receive {:agent_dispatch, ^id, _, prompt}, 3_000
+    assert prompt =~ instructions
+    assert prompt =~ "Additional setup instructions agreed with the user"
+    assert {:ok, conversation} = Agents.conversation_id(scope, id)
+    [message] = Repo.all(from(m in Message, where: m.conversation_id == ^conversation))
+    assert Message.text(message) == prompt
+
+    assert {:ok, _} =
+             CodeMySpec.ToolLibrary.data(
+               "start_project_setup",
+               %{instructions: "  " <> instructions <> "  "},
+               %{scope: scope}
+             )
+
+    assert {:ok, _} = CodeMySpec.ToolLibrary.data("start_project_setup", %{}, %{scope: scope})
+
+    assert Repo.aggregate(from(m in Message, where: m.conversation_id == ^conversation), :count) ==
+             1
+
+    refute_received {:agent_dispatch, _, _, _}
+  end
+
+  test "instructions added after the first handoff are persisted once without replacing Main", %{
+    scope: scope
+  } do
+    {:ok, _} = ready_for_setup(scope)
+    assert {:ok, _, main} = Agents.start_project_setup(scope)
+    instructions = "Use only the local cms_new archive; no Hex publishing."
+    assert {:ok, _, same} = Agents.start_project_setup(scope, instructions)
+    assert same.id == main.id
+    assert {:ok, _, _} = Agents.start_project_setup(scope, instructions)
+    assert {:ok, conversation} = Agents.conversation_id(scope, main.id)
+    messages = Repo.all(from(m in Message, where: m.conversation_id == ^conversation))
+    assert length(messages) == 2
+    assert Enum.count(messages, &(Message.text(&1) =~ instructions)) == 1
+    assert length(Agents.list_agents(scope)) == 1
+  end
+
+  test "setup instructions reject invalid values before starting Main", %{scope: scope} do
+    {:ok, _} = ready_for_setup(scope)
+
+    assert {:error, _} =
+             CodeMySpec.ToolLibrary.data(
+               "start_project_setup",
+               %{instructions: %{archive: "x"}},
+               %{scope: scope}
+             )
+
+    assert {:error, :invalid_setup_instructions} = Agents.start_project_setup(scope, ["invalid"])
+    assert Agents.list_agents(scope) == []
+  end
+
+  test "Product guidance forwards constraints and treats pre-checkout discovery as expected" do
+    guidance = CodeMySpec.Agents.DefinitionContext.workflow()
+    assert guidance =~ "top-level instructions field"
+    assert guidance =~ "Main does not automatically receive your chat"
+    assert guidance =~ "not a framework failure"
+    assert guidance =~ "Defer checkout-dependent requirement claims or sealing"
   end
 
   test "opening onboarding conversations keeps the team detached while the main copy is offline",

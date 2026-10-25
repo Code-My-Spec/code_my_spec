@@ -1790,7 +1790,12 @@ defmodule CodeMySpec.Agents do
   end
 
   @doc "Hand environment setup to main after product records the initial choices."
-  def start_project_setup(%Scope{} = scope) do
+  def start_project_setup(scope, instructions \\ nil)
+
+  def start_project_setup(%Scope{} = scope, instructions)
+      when is_nil(instructions) or is_binary(instructions) do
+    instructions = normalize_setup_instructions(instructions)
+
     with {:ok, project} <- CodeMySpec.Projects.Onboarding.fetch(scope) do
       :global.trans({{__MODULE__, :setup, project.id}, self()}, fn ->
         with {:ok, project} <- CodeMySpec.Projects.Onboarding.fetch(scope),
@@ -1800,7 +1805,7 @@ defmodule CodeMySpec.Agents do
              :ok <- if(Agent.off?(agent), do: {:error, :agent_off}, else: :ok),
              {:ok, agent} <- ensure_detached_running(scope, agent),
              true <- present?(scope, agent),
-             :ok <- deliver_setup(scope, project, agent),
+             :ok <- deliver_setup(scope, project, agent, instructions),
              {:ok, project} <- CodeMySpec.Projects.Onboarding.record_handoff(scope, agent.id) do
           {:ok, project, agent}
         else
@@ -1809,6 +1814,17 @@ defmodule CodeMySpec.Agents do
           error -> error
         end
       end)
+    end
+  end
+
+  def start_project_setup(%Scope{}, _instructions), do: {:error, :invalid_setup_instructions}
+
+  defp normalize_setup_instructions(nil), do: nil
+
+  defp normalize_setup_instructions(instructions) do
+    case String.trim(instructions) do
+      "" -> nil
+      text -> text
     end
   end
 
@@ -1834,32 +1850,46 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp deliver_setup(scope, project, agent) do
+  defp deliver_setup(scope, project, agent, instructions) do
     ref = "project-setup-#{agent.id}"
 
     with {:ok, conversation} <- open_conversation(scope, agent) do
       case Repo.get_by(Conversations.Message, conversation_id: conversation.id, delivery_ref: ref) do
         nil ->
-          with {:ok, {message, offered, admission}} <-
-                 record_admission(
-                   agent,
-                   conversation,
-                   CodeMySpec.Agents.DefinitionContext.setup_message(project),
-                   ref,
-                   :operator_message,
-                   nil,
-                   "setup"
-                 ) do
-            case dispatch_admitted(agent, admission, @message_timeout_ms, message, offered,
-                   async: true
-                 ) do
-              {:ok, _, _} -> :ok
-              error -> error
-            end
-          end
+          deliver_setup_message(
+            agent,
+            conversation,
+            CodeMySpec.Agents.DefinitionContext.setup_message(project, instructions),
+            ref
+          )
 
-        _message ->
-          :ok
+        message ->
+          deliver_setup_instructions(agent, conversation, message, instructions)
+      end
+    end
+  end
+
+  defp deliver_setup_instructions(_agent, _conversation, _message, nil), do: :ok
+
+  defp deliver_setup_instructions(agent, conversation, original, instructions) do
+    text = CodeMySpec.Agents.DefinitionContext.setup_instructions(instructions)
+    digest = :crypto.hash(:sha256, instructions) |> Base.encode16(case: :lower)
+    ref = "project-setup-instructions-#{agent.id}-#{digest}"
+
+    if String.ends_with?(Conversations.Message.text(original), String.trim_trailing(text)) or
+         Repo.get_by(Conversations.Message, conversation_id: conversation.id, delivery_ref: ref) do
+      :ok
+    else
+      deliver_setup_message(agent, conversation, text, ref)
+    end
+  end
+
+  defp deliver_setup_message(agent, conversation, text, ref) do
+    with {:ok, {message, offered, admission}} <-
+           record_admission(agent, conversation, text, ref, :operator_message, nil, "setup") do
+      case dispatch_admitted(agent, admission, @message_timeout_ms, message, offered, async: true) do
+        {:ok, _, _} -> :ok
+        error -> error
       end
     end
   end
