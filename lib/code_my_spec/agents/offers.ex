@@ -992,7 +992,7 @@ defmodule CodeMySpec.Agents.Offers do
   end
 
   @doc """
-  Close this agent's open work offers on `key` as declined: the work was found
+  Supersede this agent's open work offers on `key`: the work was found
   already done when it tried to take it. The system knows the offer
   is stale, so it does not wait for the agent to say so. Always `:ok`.
   """
@@ -1007,7 +1007,7 @@ defmodule CodeMySpec.Agents.Offers do
         o.subject_key == ^key and o.status == :open
     )
     |> Repo.update_all(
-      set: [status: :declined, reason: "already satisfied", outcome_at: now, updated_at: now]
+      set: [status: :superseded, reason: "already satisfied", outcome_at: now, updated_at: now]
     )
 
     :ok
