@@ -75,7 +75,8 @@ defmodule CodeMySpec.Hooks.SessionStart do
   defp reached(%{"delivery" => "stop_hook", "why" => why}),
     do:
       " Messages from main and your team cannot reach this session directly, because " <>
-        why <> ", so they are handed to you when you stop."
+        why <>
+        ". Direct messages require native session messaging; reconnect or upgrade before retrying."
 
   defp reached(_messaging), do: ""
 

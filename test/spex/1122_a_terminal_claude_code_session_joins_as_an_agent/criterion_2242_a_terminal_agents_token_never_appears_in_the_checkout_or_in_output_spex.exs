@@ -32,6 +32,8 @@ defmodule CodeMySpecSpex.Story1122.Criterion2242Spex do
         session = session_id()
         started = start_session_on_socket(context, session, inbox.socket)
 
+        await_present(context, started["agent_id"])
+
         {:ok,
          Map.merge(context, %{inbox: inbox, session: session, agent_id: started["agent_id"]})}
       end

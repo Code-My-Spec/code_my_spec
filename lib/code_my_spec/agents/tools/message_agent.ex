@@ -16,6 +16,11 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
     """
     Give a running agent a message and return its delivery disposition.
 
+    Terminal agents use their native transport: `codex queue` for Codex and
+    Claude's messaging API for Claude Code. An unavailable native transport
+    refuses a direct message; it is not handed over through the Stop hook.
+    Delivery to a terminal session does not confirm that a turn has started.
+
     Without this an agent could be started, listed and stopped, and never asked
     to do anything — it came up idle and stayed idle until somebody stopped it.
     It cost nothing, which is why nothing complained, and it also did nothing.
@@ -81,18 +86,34 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
            send_now: MapAccess.get(params, :send_now) == true
          ) do
       {:ok, reply, sent} ->
-        target_id
-        |> AgentsMapper.replied(reply)
+        scope
+        |> delivery_reply(target_id, reply)
         |> withdrawable(reply, sent)
         |> with_pending_question(scope, context[:agent_id], target_id)
         |> not_interruptible(scope, target_id, MapAccess.get(params, :send_now) == true)
-        |> held_for_stop(scope, target_id)
 
       {:error, :harness_not_connected} ->
         harness_not_connected_error(scope, target_id)
 
       {:error, reason} ->
         AgentsMapper.error(reason, nil)
+    end
+  end
+
+  defp delivery_reply(scope, target_id, reply) do
+    case Agents.fetch_agent(scope, target_id) do
+      {:ok, %{engine: engine}} when engine in [:claude_code, :codex] ->
+        transport = if engine == :codex, do: "codex queue", else: "Claude's messaging API"
+
+        outcome =
+          if reply == :started,
+            do: "Message delivered through #{transport}. This does not confirm a turn started.",
+            else: "Message pending native delivery through #{transport}; not yet delivered."
+
+        {:ok, "Agent: #{target_id}\n\n#{outcome}"}
+
+      _ ->
+        AgentsMapper.replied(target_id, reply)
     end
   end
 
@@ -217,24 +238,6 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
   end
 
   defp not_interruptible(response, _scope, _target_id, _send_now), do: response
-
-  # Story 1123: a terminal session with no live inbox — ended, too old a
-  # Claude Code, or holding cross-session messages — is handed this at its
-  # next stop, and the sender hears why it was not delivered now.
-  defp held_for_stop(response, scope, target_id) do
-    with {:ok, %{engine: engine, id: id}} when engine in [:claude_code, :codex] <-
-           Agents.fetch_agent(scope, target_id),
-         false <- MapSet.member?(Agents.present_ids(scope), id) do
-      append(
-        response,
-        "This agent is a terminal session with no live inbox — its session has ended, its " <>
-          "Claude Code or Codex cannot take messages directly, or it holds them — so it " <>
-          "reads this when it next stops."
-      )
-    else
-      _ -> response
-    end
-  end
 
   defp append({:ok, text}, more), do: {:ok, text <> "\n" <> more}
   defp append(other, _more), do: other

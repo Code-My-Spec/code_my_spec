@@ -3,6 +3,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2247Spex do
   Story 1123 — A terminal agent is told things like any agent.
   Criterion 2247 — A terminal agent whose inbound is held or refused, or whose Claude Code is too old, falls back to the stop hook and says why.
   """
+  # User decision: direct messages use native transports, never the Stop-hook inbox.
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.TerminalAgentHelpers
@@ -19,7 +20,7 @@ defmodule CodeMySpecSpex.Story1123.Criterion2247Spex do
     :ok
   end
 
-  spex "A terminal agent its inbox cannot reach is told at its stop, and everyone hears why",
+  spex "A terminal agent without native messaging refuses direct messages",
     criterion: 2247 do
     scenario "a session whose Claude Code names no inbox socket" do
       given_ "a terminal agent whose Claude Code has no inbox socket", context do
@@ -29,10 +30,10 @@ defmodule CodeMySpecSpex.Story1123.Criterion2247Spex do
         {:ok, Map.merge(context, %{session: session, started: started})}
       end
 
-      then_ "the agent is told why messages will reach it when it stops", context do
+      then_ "the agent is told why native messaging is unavailable", context do
         said = context.started["hookSpecificOutput"]["additionalContext"]
         assert said =~ "no messaging socket"
-        assert said =~ "when you stop"
+        assert said =~ "Direct messages require native session messaging"
         {:ok, context}
       end
 
@@ -48,9 +49,9 @@ defmodule CodeMySpecSpex.Story1123.Criterion2247Spex do
       end
 
       then_ "main is told why it was not delivered now", context do
-        assert {:ok, said} = context.sent
-        assert said =~ "no live inbox"
-        assert said =~ "when it next stops"
+        assert {:error, said} = context.sent
+        assert said =~ "messaging API"
+        assert said =~ "Message not sent"
         {:ok, context}
       end
 
@@ -63,9 +64,8 @@ defmodule CodeMySpecSpex.Story1123.Criterion2247Spex do
          )}
       end
 
-      then_ "the message is delivered through the stop hook", context do
-        assert %{"decision" => "block", "reason" => reason} = context.stopped
-        assert reason =~ "Check the failing spex."
+      then_ "the Stop hook does not deliver the rejected direct message", context do
+        refute inspect(context.stopped) =~ "Check the failing spex."
         {:ok, context}
       end
     end

@@ -9,6 +9,8 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
       [%{"role" => "main"}] = agents(context)
   """
 
+  import ExUnit.Assertions, only: [assert: 1]
+
   alias CmsHarnessTest.ClaudeSessions
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
@@ -106,6 +108,19 @@ defmodule CodeMySpecSpex.TerminalAgentHelpers do
       |> put_present("transcript_path", Keyword.get(opts, :transcript))
 
     HarnessHooks.post_hook(context, "session-start", payload)
+  end
+
+  @doc """
+  Waits until a started session is present: direct messages travel only over
+  the native transport, so a message sent before presence is refused.
+  """
+  @spec await_present(map(), String.t()) :: :ok
+  def await_present(context, agent_id) do
+    CodeMySpecSpex.Case.eventually(fn ->
+      assert MapSet.member?(CodeMySpec.Agents.present_ids(context.scope), agent_id)
+    end)
+
+    :ok
   end
 
   # Claude Code's own session registry, in the directory the test config names.

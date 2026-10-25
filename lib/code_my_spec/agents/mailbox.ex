@@ -390,6 +390,9 @@ defmodule CodeMySpec.Agents.Mailbox do
   (story 1123): a terminal session that cannot take socket messages reads them
   when it stops. Each entry is settled delivered as it is taken; the texts come
   back oldest first.
+
+  Direct operator/agent messages are excluded: they require the terminal's
+  native transport, even if its connection disappears after admission.
   """
   @spec take_for_stop(Scope.t(), Ecto.UUID.t()) :: [String.t()]
   def take_for_stop(scope, agent_id) do
@@ -400,6 +403,7 @@ defmodule CodeMySpec.Agents.Mailbox do
 
         from(e in Entry,
           where: e.agent_id == ^agent_id and e.state in [:queued, :claimed],
+          where: e.event != "operator_message",
           order_by: [desc_nulls_last: e.send_now, asc: e.id]
         )
         |> Repo.all()
