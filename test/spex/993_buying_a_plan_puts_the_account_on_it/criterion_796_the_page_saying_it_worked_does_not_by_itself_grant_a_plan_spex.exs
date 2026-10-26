@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story993.Criterion796Spex do
       end
 
       then_ "the page alone has not granted a paid tier", context do
-        assert match?({:error, {:redirect, _}}, context.page_result)
+        assert context.page_result =~ "Payment received. Your plan will be active in a moment."
         assert context.webhook_status == 200
         assert plan_on_page(context.conn) == nil
         {:ok, context}

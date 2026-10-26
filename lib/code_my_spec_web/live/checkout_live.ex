@@ -49,6 +49,7 @@ defmodule CodeMySpecWeb.CheckoutLive do
           pk={@publishable_key}
         />
         <.tier_choice :if={!@client_secret} tiers={@tiers} current_plan={@current_plan} />
+        <p :if={@notice} data-test="payment-notice" class="text-sm mt-3">{@notice}</p>
         <p :if={@error} class="text-error text-sm mt-3">{@error}</p>
       <% end %>
     </div>
@@ -121,7 +122,7 @@ defmodule CodeMySpecWeb.CheckoutLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(tiers: @tiers, client_secret: nil, tier: nil, error: nil)
+     |> assign(tiers: @tiers, client_secret: nil, tier: nil, error: nil, notice: nil)
      |> assign(publishable_key: publishable_key())
      |> assign_current_plan()}
   end
@@ -131,7 +132,7 @@ defmodule CodeMySpecWeb.CheckoutLive do
 
     case Billing.start_subscription(socket.assigns.current_scope, tier) do
       {:ok, %{client_secret: secret}} when is_binary(secret) ->
-        {:noreply, assign(socket, client_secret: secret, tier: tier, error: nil)}
+        {:noreply, assign(socket, client_secret: secret, tier: tier, error: nil, notice: nil)}
 
       # A tier change with nothing to collect — a downgrade, whose proration is
       # a credit rather than a charge. There is no secret because there is no
@@ -154,14 +155,12 @@ defmodule CodeMySpecWeb.CheckoutLive do
   # The browser confirmed the payment. Stripe has it; the webhook has the last
   # word on the tier, so this only tells the user where things stand.
   def handle_event("payment_confirmed", _params, socket) do
-    # Out of the marketing page and into the product. A full redirect rather
-    # than push_navigate: this view is nested in a dead page, so there is no
-    # live session to navigate within.
     {:noreply,
-     socket
-     |> assign(client_secret: nil, error: nil)
-     |> put_flash(:info, "Payment received. Your plan will be active in a moment.")
-     |> redirect(to: ~p"/app")}
+     assign(socket,
+       client_secret: nil,
+       error: nil,
+       notice: "Payment received. Your plan will be active in a moment."
+     )}
   end
 
   def handle_event("payment_failed", %{"message" => message}, socket) do
