@@ -4,9 +4,9 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
   Criterion 2428 — a stop does not launch a subprocess analyzer; findings
   already persisted by an analysis run remain until a newer run lands.
 
-  The fixture uses the same persisted-problem replacement path as a completed
-  analyzer run. The stop itself has no command cassette: attempting to run
-  mix compile, credo, test or spex from that hook fails this specification.
+  The fixture drives the same persisted-problem replacement path as an
+  analyzer reconciliation. The hook is called without a command cassette,
+  so a subprocess launched by the stop fails this specification.
   """
 
   use CodeMySpecSpex.Case
@@ -28,75 +28,55 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
 
   spex "A stop never runs a subprocess analyzer and recorded problems persist until a newer run lands",
     criterion: 2428 do
-    scenario "the stop leaves the last recorded compiler finding intact" do
+    scenario "the old finding survives a stop and only a newer reconciliation clears it" do
       given_ :synced_context_component
       given_ :context_implementation_task_started
 
-      given_ "a completed compiler run recorded a problem for the existing file", context do
+      given_ "the compiler's latest persisted findings include a problem for the existing file",
+             context do
         :ok =
           Fixtures.replace_problems(context.scope, context.component.id, "compiler", [
             %{message: "missing terminator: end", file_path: "lib/example_context.ex", line: 1}
           ])
 
-        assert {:ok, problems} =
-                 ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{
-                   scope: context.scope
-                 })
-
-        assert problems =~ "lib/example_context.ex"
+        assert {:ok, before_stop} = compiler_problems(context.scope)
+        assert before_stop =~ "lib/example_context.ex"
         {:ok, context}
       end
 
-      when_ "the stop hook fires without another analysis run", context do
-        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
-        {:ok, Map.put(context, :stop_response, response)}
-      end
+      when_ "the stop fires, then a clean run reconciles, then the stop fires again", context do
+        first_stop =
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
 
-      then_ "the stop is allowed and the recorded problem is still visible", context do
-        assert context.stop_response == %{}
+        {:ok, after_first_stop} = compiler_problems(context.scope)
 
-        assert {:ok, problems} =
-                 ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{
-                   scope: context.scope
-                 })
-
-        assert problems =~ "lib/example_context.ex"
-        {:ok, context}
-      end
-    end
-
-    scenario "a newer recorded run replaces the old finding" do
-      given_ :synced_context_component
-      given_ :context_implementation_task_started
-
-      given_ "an older compiler run recorded a problem", context do
-        :ok =
-          Fixtures.replace_problems(context.scope, context.component.id, "compiler", [
-            %{message: "missing terminator: end", file_path: "lib/example_context.ex", line: 1}
-          ])
-
-        {:ok, context}
-      end
-
-      when_ "a clean compiler run lands and the stop hook fires", context do
         :ok = Fixtures.replace_problems(context.scope, context.component.id, "compiler", [])
 
-        response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
-        {:ok, Map.put(context, :stop_response, response)}
+        second_stop =
+          HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
+
+        {:ok, after_second_stop} = compiler_problems(context.scope)
+
+        {:ok,
+         Map.merge(context, %{
+           first_stop: first_stop,
+           after_first_stop: after_first_stop,
+           second_stop: second_stop,
+           after_second_stop: after_second_stop
+         })}
       end
 
-      then_ "the newer run has cleared the prior finding without the stop starting analysis",
-            context do
-        assert context.stop_response == %{}
-
-        assert {:ok, problems} =
-                 ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{
-                   scope: context.scope
-                 })
-
-        refute problems =~ "lib/example_context.ex"
+      then_ "both stops are allowed and only the newer run clears the prior finding", context do
+        assert context.first_stop == %{}
+        assert context.after_first_stop =~ "lib/example_context.ex"
+        assert context.second_stop == %{}
+        refute context.after_second_stop =~ "lib/example_context.ex"
         {:ok, context}
       end
     end
+  end
+
+  defp compiler_problems(scope) do
+    ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{scope: scope})
   end
 end
