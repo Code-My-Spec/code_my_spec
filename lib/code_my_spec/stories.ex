@@ -316,6 +316,8 @@ defmodule CodeMySpec.Stories do
       |> maybe_put(:specs_ready_at, Keyword.get(opts, :at))
       |> maybe_put(:specs_ready_commit, Keyword.get(opts, :commit))
       |> maybe_put(:promoted_version, Keyword.get(opts, :promoted_version))
+      |> maybe_put(:promoted_qa_commit, Keyword.get(opts, :promoted_qa_commit))
+      |> maybe_put(:promoted_candidate_commit, Keyword.get(opts, :promoted_candidate_commit))
       |> maybe_put(:promoted_working_copy_id, Keyword.get(opts, :promoted_working_copy_id))
       |> maybe_put(:promoted_at, Keyword.get(opts, :promoted_at))
 
@@ -395,10 +397,12 @@ defmodule CodeMySpec.Stories do
   once a promote named this story, its spex passed on the promoting copy's
   certifying run, and the merge landed. No other story is touched.
 
-  A story already stamped keeps its version: the promote that first carried
-  it is the answer to "which promotion put this on main". `nil` (no version
-  to stamp) latches without stamping. `opts` are `:at`, `:commit`, and
-  `:working_copy_id`. Promotion team and time survive assignment cleanup.
+  A story already stamped keeps its first version for history. Each landing
+  records the latest published candidate and the QA revision it carried, so a
+  later QA pass cannot inherit the old publication verdict. `nil` (no version
+  to stamp) latches without stamping. `opts` include `:at`, `:commit`,
+  `:candidate_commit`, and `:working_copy_id`. Promotion team and time survive
+  assignment cleanup.
   """
   def mark_story_promoted(%Scope{} = scope, %Story{} = story, version, opts \\ []) do
     stamp = story.promoted_version || version
@@ -412,6 +416,11 @@ defmodule CodeMySpec.Stories do
           story.promoted_working_copy_id ||
             Keyword.get(opts, :working_copy_id) || story.working_copy_id ||
             scope.active_working_copy_id
+        )
+        |> Keyword.put(:promoted_qa_commit, story.qa_ready_commit)
+        |> Keyword.put(
+          :promoted_candidate_commit,
+          Keyword.get(opts, :candidate_commit) || Keyword.get(opts, :commit)
         )
         |> Keyword.put(
           :promoted_at,

@@ -232,16 +232,58 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
       refute_received {:git, @main, ["merge" | _]}
 
       # The queue lands it and stamps the story; completing then sees it on main.
-      {:ok, _} = Stories.mark_story_promoted(scope, story, "0.3.3", commit: @head)
+      story = Stories.get_story!(scope, story.id)
+
+      {:ok, _} =
+        Stories.mark_story_promoted(scope, story, "0.3.3",
+          commit: @head,
+          candidate_commit: @head
+        )
+
       assert {:ok, :valid, _} = PromoteWork.evaluate(scope, task)
     end
 
     test "a story already stamped is valid without promoting again" do
       %{scope: scope, coder: coder, story: story, task: task} = a_project()
-      {:ok, _} = Stories.mark_story_promoted(scope, story, "0.3.2", commit: @head)
+      story = Stories.get_story!(scope, story.id)
+
+      {:ok, _} =
+        Stories.mark_story_promoted(scope, story, "0.3.2",
+          commit: @head,
+          candidate_commit: @head
+        )
 
       assert {:ok, :valid, _} = PromoteWork.evaluate(scope, task, coder)
       refute_received {:git, _, _}
+    end
+
+    test "a later QA revision cannot complete from an earlier promotion stamp" do
+      %{scope: scope, coder: coder, story: story, task: task} = a_project(qa: :not_passed)
+      old = "3333333333333333333333333333333333333333"
+      {:ok, story} = Stories.mark_story_promoted(scope, story, "0.3.2", commit: old)
+      qa(scope, story, :passed)
+
+      assert {:ok, :invalid, reason} = PromoteWork.evaluate(scope, task)
+      assert reason =~ "QA-certified revision #{@head} has no tracked publication"
+
+      assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
+      assert text =~ "Queued for promotion"
+      assert [%{commit: @head}] = queued(scope)
+
+      story = Stories.get_story!(scope, story.id)
+
+      assert :ok =
+               Promotion.record_landed_stories(
+                 scope,
+                 [{story, scope.active_working_copy_id, @head}],
+                 "0.3.3",
+                 "merged-head"
+               )
+
+      landed = Stories.get_story!(scope, story.id)
+      assert landed.promoted_qa_commit == @head
+      assert landed.promoted_candidate_commit == @head
+      assert {:ok, :valid, _} = PromoteWork.evaluate(scope, task)
     end
 
     test "a copy behind main is queued: the batch certifies it against main" do

@@ -16,10 +16,10 @@ defmodule CodeMySpec.Promotion.RunningCopy do
   @doc """
   The requirement-graph checker: `{satisfied?, details}`.
 
-  Answers from the story's own `promoted_version` stamp, which
-  `Promotion.record_landed_stories/4` writes when a landing carries that story
-  onto main. Nothing the checkout does afterwards can unsatisfy it; only
-  clearing the stamp, or a story fix submitted after the last promotion, does.
+  Answers from the story's publication stamp and the QA revision that landing
+  carried. `Promotion.record_landed_stories/4` writes both after publication.
+  Later work on the checkout does not change an earlier publication, but a new
+  QA certification or an unshipped story fix requires another landing.
   Whether a checkout is in sync with main is `promote`'s question, answered
   live by git. See knowledge/promotion, "Running-copy verdict".
   """
@@ -70,6 +70,27 @@ defmodule CodeMySpec.Promotion.RunningCopy do
 
   # The story's own stamp, not a read of the checkout it was promoted from.
   defp promoted(entity, copy) do
+    case unpublished_qa_revision(entity) do
+      nil -> promoted_with_fix(entity, copy)
+      reason -> {false, %{reason: reason, promoted: false}}
+    end
+  end
+
+  defp unpublished_qa_revision(%{promoted_version: version, qa_ready_commit: qa_commit} = story)
+       when is_binary(version) and is_binary(qa_commit) do
+    if Map.get(story, :promoted_qa_commit) == qa_commit and
+         is_binary(Map.get(story, :promoted_candidate_commit)) do
+      nil
+    else
+      "the QA-certified revision #{qa_commit} has no tracked publication. " <>
+        "The earlier promotion stamp (version #{version}) does not carry this work. " <>
+        "Promote this story by completing its story_promoted task."
+    end
+  end
+
+  defp unpublished_qa_revision(_entity), do: nil
+
+  defp promoted_with_fix(entity, copy) do
     case {Map.get(entity, :promoted_version), unshipped_fix(entity)} do
       {version, nil} when is_binary(version) ->
         {true, %{status: "Promoted at version #{version}"}}
