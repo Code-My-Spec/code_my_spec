@@ -757,7 +757,11 @@ defmodule CodeMySpec.Files.FileSync do
               # `validate_entry` to populate `validation_errors`, which the
               # Setup.* `check/1` functions read.
               [entry] = Scanner.fingerprint_entries(env, [entry])
-              Scanner.validate_entry(entry, env, %{}, false)
+
+              component_by_id =
+                if role == :architecture, do: Files.read_model(scope).component_by_id, else: %{}
+
+              Scanner.validate_entry(entry, env, component_by_id, false)
 
             true ->
               [entry] = Scanner.fingerprint_entries(env, [entry])
@@ -819,7 +823,8 @@ defmodule CodeMySpec.Files.FileSync do
               :test_support,
               :qa_plan,
               :persona_summary,
-              :persona_sources
+              :persona_sources,
+              :architecture
             ],
        do: true
 
