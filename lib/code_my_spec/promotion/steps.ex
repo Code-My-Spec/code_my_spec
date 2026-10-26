@@ -20,6 +20,52 @@ defmodule CodeMySpec.Promotion.Steps do
 
   @type result :: {:ok, term()} | {:error, map()}
 
+  @doc "Remove a retired promotion gate only when Git identifies it as this source's worktree."
+  def retire_gate_worktree(env, source_root, gate_root) do
+    source = Path.expand(source_root)
+    gate = Path.expand(gate_root)
+
+    cond do
+      same_directory?(source, gate) ->
+        {:error, %{reason: "refusing to remove the source checkout as a gate"}}
+
+      true ->
+        case git(env, source, ["worktree", "list", "--porcelain"]) do
+          {list, 0} ->
+            retire_listed_gate(env, source, gate, list)
+
+          {error, _} ->
+            {:error, %{reason: "cannot inspect source worktrees: #{String.trim(error)}"}}
+        end
+    end
+  end
+
+  defp retire_listed_gate(env, source, gate, list) do
+    roots = for "worktree " <> root <- String.split(list, "\n"), do: Path.expand(root)
+
+    case Enum.find(roots, &same_directory?(&1, gate)) do
+      nil ->
+        {:error, %{reason: "retired gate is not a worktree of the source checkout"}}
+
+      listed_root ->
+        case git(env, source, ["worktree", "remove", "--force", listed_root]) do
+          {_, 0} -> {:ok, %{removed: listed_root}}
+          {error, _} -> {:error, %{reason: "cannot remove retired gate: #{String.trim(error)}"}}
+        end
+    end
+  end
+
+  defp same_directory?(left, right) do
+    with {:ok, left_stat} <- File.stat(left),
+         {:ok, right_stat} <- File.stat(right) do
+      left_stat.inode == right_stat.inode and
+        left_stat.major_device == right_stat.major_device and
+        left_stat.minor_device == right_stat.minor_device
+    else
+      _ -> false
+    end
+  end
+
   @doc """
   Whether this checkout has uncommitted work, and what branch it is on.
 
