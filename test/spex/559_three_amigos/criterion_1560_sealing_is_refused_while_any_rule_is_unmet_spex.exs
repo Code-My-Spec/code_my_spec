@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story559.Criterion168Spex do
               assigns
             )
 
-          refute rule_response.isError
+          assert match?({:ok, _}, rule_response)
         end
 
         for n <- 1..2 do
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story559.Criterion168Spex do
               assigns
             )
 
-          refute scenario_response.isError
+          assert match?({:ok, _}, scenario_response)
         end
 
         {:ok, context}
@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story559.Criterion168Spex do
             assigns
           )
 
-        refute scenario_response.isError
+        assert match?({:ok, _}, scenario_response)
 
         evaluation =
           ToolLibrary.run(

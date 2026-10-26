@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story559.Criterion167Spex do
             assigns
           )
 
-        refute rule_response.isError
+        assert match?({:ok, _}, rule_response)
 
         scenario_response =
           ToolLibrary.run(
@@ -41,12 +41,13 @@ defmodule CodeMySpecSpex.Story559.Criterion167Spex do
               rule_statement: statement,
               title: "Sam sees the project title",
               kind: "happy_path",
-              body: "Given Sam opens the project summary\nWhen the summary loads\nThen the project title is shown"
+              body:
+                "Given Sam opens the project summary\nWhen the summary loads\nThen the project title is shown"
             },
             assigns
           )
 
-        refute scenario_response.isError
+        assert match?({:ok, _}, scenario_response)
         {:ok, context}
       end
 
@@ -66,7 +67,7 @@ defmodule CodeMySpecSpex.Story559.Criterion167Spex do
       end
 
       then_ "the rule's one scenario is sufficient and the task passes", context do
-        refute context.evaluate_response.isError
+        assert match?({:ok, _}, context.evaluate_response)
 
         assert response_text(context.evaluate_response) =~ ~r/passed|complete/i,
                "expected readiness to accept one happy-path scenario for this rule"
