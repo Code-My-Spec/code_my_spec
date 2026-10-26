@@ -1294,19 +1294,20 @@ defmodule CodeMySpec.Promotion do
   `{:error, %{reason:}}` names the migration that raised, so the landing's
   outcome says this server was left unmigrated.
   """
-  @spec migrate_here(String.t() | nil) :: {:ok, [integer()]} | {:error, %{reason: String.t()}}
-  def migrate_here(root) do
+  @spec migrate_here(String.t() | nil, String.t()) ::
+          {:ok, [integer()]} | {:error, %{reason: String.t()}}
+  def migrate_here(root, path \\ Ecto.Migrator.migrations_path(Repo)) do
     if is_binary(root) and root == BootVersion.root(),
-      do: migrate(),
+      do: migrate(path),
       else: {:ok, []}
   end
 
-  defp migrate do
-    {:ok, Ecto.Migrator.run(Repo, :up, all: true)}
+  defp migrate(path) do
+    {:ok, Ecto.Migrator.run(Repo, path, :up, all: true)}
   rescue
     error ->
       failed =
-        Enum.find_value(Ecto.Migrator.migrations(Repo), "a migration", fn
+        Enum.find_value(Ecto.Migrator.migrations(Repo, [path]), "a migration", fn
           {:down, version, name} -> "migration #{version} #{name}"
           _up -> nil
         end)
