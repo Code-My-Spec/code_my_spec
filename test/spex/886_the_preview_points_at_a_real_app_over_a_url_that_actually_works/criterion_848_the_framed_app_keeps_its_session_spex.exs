@@ -13,11 +13,17 @@ defmodule CodeMySpecSpex.Story886.Criterion848Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpecSpex.PreviewSessionApp
 
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+
+  setup do
+    :ok = PreviewSessionApp.configure()
+    :ok
+  end
 
   spex "The framed app keeps its session", criterion: 848 do
     scenario "the app's cookie, form and LiveView work at the framed address" do
@@ -38,14 +44,18 @@ defmodule CodeMySpecSpex.Story886.Criterion848Spex do
         first =
           Phoenix.ConnTest.build_conn()
           |> Map.put(:host, context.preview.host)
-          |> get(context.preview.path || "/")
+          |> Phoenix.ConnTest.dispatch(
+            PreviewSessionApp.Endpoint,
+            :get,
+            context.preview.path || "/"
+          )
 
-        {:ok, app_view, initial} = first |> recycle() |> live(context.preview.path || "/")
+        {:ok, app_view, initial} = live(first)
         {:ok, Map.merge(context, %{first: first, app_view: app_view, initial: initial})}
       end
 
       then_ "the preview is same-site, frameable, and its session cookie is usable", context do
-        page_host = context.conn.host
+        page_host = PreviewSessionApp.embedder_host()
         preview_host = context.preview.host
         assert String.ends_with?(preview_host, "." <> registrable_domain(page_host))
         assert context.page =~ "preview-frame"
@@ -70,7 +80,15 @@ defmodule CodeMySpecSpex.Story886.Criterion848Spex do
         assert cookie =~ "SameSite=Lax"
         if context.preview.scheme == "https", do: assert(cookie =~ "Secure")
 
-        follow_up = context.first |> recycle() |> get(context.preview.path || "/")
+        follow_up =
+          context.first
+          |> recycle()
+          |> Phoenix.ConnTest.dispatch(
+            PreviewSessionApp.Endpoint,
+            :get,
+            context.preview.path || "/"
+          )
+
         assert follow_up.status == 200
         assert follow_up.req_cookies != %{}
         {:ok, Map.put(context, :follow_up, follow_up)}
