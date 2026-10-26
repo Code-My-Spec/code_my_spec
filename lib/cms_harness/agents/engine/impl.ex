@@ -884,6 +884,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
            Provider.options(provider, credential,
              model: Keyword.get(opts, :model),
              base_url: Keyword.get(opts, :base_url),
+             provider_brief: Keyword.get(opts, :provider_brief),
              # Machine-local; nothing on the wire sets it.
              req_options:
                Keyword.put_new(

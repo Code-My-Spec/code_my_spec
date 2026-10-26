@@ -66,6 +66,9 @@ defmodule CmsHarness.Agents.Provider do
         workdir: Keyword.get(opts, :working_copy),
         codex_home: codex_home(credential),
         persist_session: true,
+        # At the very top of every full prompt: in the system prompt it sat
+        # after the transcript, which a long one buries.
+        preamble: Keyword.get(opts, :provider_brief),
         # Codex's own tools are switched off in Alloy itself (its provider's
         # native-tools list); this drops only the permissions instructions.
         config_overrides: ["include_permissions_instructions=false"],
