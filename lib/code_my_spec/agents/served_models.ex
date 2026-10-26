@@ -5,10 +5,13 @@ defmodule CodeMySpec.Agents.ServedModels do
   had stopped serving crash-looped every Codex coder.
 
   Providers run on a machine's own login (Codex, the Claude CLI) are listed by
-  the harness that runs them, reported at join. Anything not listed is
-  `:unknown`: allowed, and said to be unverified, never blocked.
+  the harness that runs them, reported at join; API providers are asked with
+  the account's key (`ProviderModels`). Anything not listed is `:unknown`:
+  allowed, and said to be unverified, never blocked.
   """
 
+  alias CodeMySpec.Agents.Credential
+  alias CodeMySpec.Agents.ProviderModels
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.WorkingCopies
@@ -19,6 +22,25 @@ defmodule CodeMySpec.Agents.ServedModels do
   """
   @spec list(Scope.t(), String.t()) :: {:ok, [String.t()]} | :unknown
   def list(%Scope{} = scope, provider) when is_binary(provider) do
+    if provider in ProviderModels.providers(),
+      do: from_provider(scope, provider),
+      else: from_harness(scope, provider)
+  end
+
+  def list(_scope, _provider), do: :unknown
+
+  # Asked of the provider with the account's own key.
+  defp from_provider(%Scope{active_account_id: account_id} = scope, provider)
+       when is_binary(account_id) do
+    case Credential.fetch(scope, provider) do
+      {:ok, %{"key" => key}} when is_binary(key) -> ProviderModels.list(account_id, provider, key)
+      _ -> :unknown
+    end
+  end
+
+  defp from_provider(_scope, _provider), do: :unknown
+
+  defp from_harness(scope, provider) do
     scope
     |> copy_ids()
     |> HarnessRegistry.served_models(provider)
@@ -27,8 +49,6 @@ defmodule CodeMySpec.Agents.ServedModels do
       models -> {:ok, models}
     end
   end
-
-  def list(_scope, _provider), do: :unknown
 
   defp copy_ids(%Scope{active_project_id: project_id} = scope) when is_binary(project_id),
     do: scope |> WorkingCopies.list_harnesses() |> Enum.map(& &1.id)

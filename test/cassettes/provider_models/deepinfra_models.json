@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "uri": "https://api.deepinfra.com/v1/openai/models",
+        "query_string": "",
+        "headers": {},
+        "body_type": "text",
+        "body": ""
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": [
+            "application/json"
+          ]
+        },
+        "body_type": "json",
+        "body_json": {
+          "object": "list",
+          "data": [
+            {
+              "id": "deepseek-ai/DeepSeek-V3.1",
+              "object": "model",
+              "owned_by": "deepinfra"
+            },
+            {
+              "id": "meta-llama/Llama-4-Maverick",
+              "object": "model",
+              "owned_by": "deepinfra"
+            }
+          ]
+        }
+      },
+      "recorded_at": "2026-10-26T00:00:00Z"
+    }
+  ]
+}
