@@ -11,12 +11,11 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
     @behaviour CodeMySpec.AgentAttachments.Transport
     def request(copy, operation, payload, _) do
       send(self(), {:remote, copy, operation, payload})
-
-      case Process.get(:attachment_transport_result) do
-        nil -> result(operation, payload)
-        override -> override
-      end
+      respond(Process.get(:attachment_transport_result), operation, payload)
     end
+
+    defp respond(nil, operation, payload), do: result(operation, payload)
+    defp respond(override, _operation, _payload), do: override
 
     defp result("attachment_connect", payload),
       do: {:ok, %{attachment_id: payload["attachment_id"]}}
