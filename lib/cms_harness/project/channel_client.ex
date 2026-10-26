@@ -1178,6 +1178,13 @@ defmodule CmsHarness.Project.ChannelClient do
            )
          )
 
+  defp apply_promotion("promotion_retire_gate", %{"root" => root, "gate_root" => gate_root}),
+    do:
+      with_served_root(
+        root,
+        &Steps.retire_gate_worktree(ExecutionContext.new(:local, &1), &1, gate_root)
+      )
+
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do:
       with_served_root(
