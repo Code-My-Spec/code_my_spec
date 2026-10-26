@@ -20,7 +20,12 @@ defmodule CodeMySpec.AgentAttachments do
   alias CodeMySpec.WorkingCopies
 
   @timeout 15_000
-  @operations ~w(read_file list_directory write_file search command)
+  # The agents' own tools (`CmsHarness.Agents.CoreTools`), run in the attached
+  # copy: same tools, separate transport (issue 2394520b).
+  @tools ~w(read write edit bash)
+  # Bash owns a deadline of up to an hour, as an agent's does; the request
+  # outlives it so the tool, not the wire, reports a timeout.
+  @tool_timeout :timer.hours(1) + 15_000
 
   def list(scope, agent_id) do
     with {:ok, agent} <- caller(scope, agent_id) do
@@ -67,24 +72,26 @@ defmodule CodeMySpec.AgentAttachments do
     end)
   end
 
-  def execute(scope, agent_id, attachment_id, operation, payload) when is_map(payload) do
+  @doc "Run one of the agents' own tools (`tool`, with that tool's own `input`) in the attached copy."
+  def execute(scope, agent_id, attachment_id, tool, input) when is_map(input) do
     with {:ok, attachment} <- authorized(scope, agent_id, attachment_id),
-         :ok <- valid_operation(operation),
+         :ok <- valid_tool(tool),
          {:ok, _copy} <- target(scope, attachment.working_copy_id) do
-      payload =
-        payload
-        |> Map.new(fn {key, value} -> {to_string(key), value} end)
-        |> Map.put("attachment_id", attachment.id)
-        |> Map.put("operation", operation)
+      payload = %{
+        "attachment_id" => attachment.id,
+        "working_copy_id" => attachment.working_copy_id,
+        "tool" => tool,
+        "input" => Map.new(input, fn {key, value} -> {to_string(key), value} end)
+      }
 
-      request(attachment.working_copy_id, "attachment_execute", payload, 125_000)
+      request(attachment.working_copy_id, "attachment_execute", payload, @tool_timeout)
     end
   end
 
   def execute(_, _, _, _, _), do: {:error, :invalid_payload}
 
-  defp valid_operation(operation) when operation in @operations, do: :ok
-  defp valid_operation(_), do: {:error, :unsupported_operation}
+  defp valid_tool(tool) when tool in @tools, do: :ok
+  defp valid_tool(_), do: {:error, :unsupported_tool}
 
   defp caller(%Scope{active_project_id: project, active_account_id: account}, id)
        when is_binary(project) and is_binary(account) do

@@ -1,9 +1,12 @@
 defmodule CmsHarness.Attachments do
-  @moduledoc "Ephemeral, copy-addressed execution owned by one agent attachment."
+  @moduledoc """
+  Ephemeral, copy-addressed execution owned by one agent attachment: the
+  agents' own tools run in the attached copy (`Attachments.Operations`).
+  """
 
   use Boundary,
     top_level?: true,
-    deps: [CmsHarness, CmsHarness.Agents, CodeMySpec.ExecutionContexts],
+    deps: [CmsHarness, CmsHarness.Agents],
     exports: :all
 
   alias CmsHarness.Attachments.Session

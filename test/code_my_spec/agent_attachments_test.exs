@@ -86,7 +86,7 @@ defmodule CodeMySpec.AgentAttachmentsTest do
 
     assert :ok = HarnessRegistry.register_executor(c.copy.id)
 
-    assert {:error, :attachment_operations_unsupported} =
+    assert {:error, :attachment_tools_unsupported} =
              Transport.request(c.copy.id, "attachment_connect", %{}, 1)
   end
 
@@ -122,7 +122,7 @@ defmodule CodeMySpec.AgentAttachmentsTest do
     assert Repo.get!(Agent, coding.id).status == :running
 
     assert {:error, :attachment_not_found} =
-             AgentAttachments.execute(c.scope, c.agent.id, one.id, "read_file", %{})
+             AgentAttachments.execute(c.scope, c.agent.id, one.id, "read", %{})
 
     assert {:ok, fresh} = AgentAttachments.connect(c.scope, c.agent.id, c.copy.id)
     refute fresh.id == one.id
@@ -138,14 +138,14 @@ defmodule CodeMySpec.AgentAttachmentsTest do
     assert AgentAttachments.list(c.scope, c.agent.id) == []
   end
 
-  test "execution preserves explicit target and overrides forged attachment fields", c do
+  test "execution names one of the agents' tools and keeps forged fields inside its input", c do
     {:ok, attachment} = AgentAttachments.connect(c.scope, c.agent.id, c.copy.id)
 
     assert {:ok, _} =
-             AgentAttachments.execute(c.scope, c.agent.id, attachment.id, "read_file", %{
-               "path" => "mix.exs",
-               "attachment_id" => "forged",
-               "operation" => "command"
+             AgentAttachments.execute(c.scope, c.agent.id, attachment.id, "read", %{
+               file_path: "mix.exs",
+               attachment_id: "forged",
+               tool: "bash"
              })
 
     assert_received {:attachment_request, copy_id, "attachment_execute", payload}
@@ -153,11 +153,12 @@ defmodule CodeMySpec.AgentAttachmentsTest do
 
     assert payload == %{
              "attachment_id" => attachment.id,
-             "operation" => "read_file",
-             "path" => "mix.exs"
+             "working_copy_id" => c.copy.id,
+             "tool" => "read",
+             "input" => %{"file_path" => "mix.exs", "attachment_id" => "forged", "tool" => "bash"}
            }
 
-    assert {:error, :unsupported_operation} =
+    assert {:error, :unsupported_tool} =
              AgentAttachments.execute(c.scope, c.agent.id, attachment.id, "delete_copy", %{})
 
     assert {:error, :invalid_id} = AgentAttachments.disconnect(c.scope, c.agent.id, "bad")
@@ -171,7 +172,7 @@ defmodule CodeMySpec.AgentAttachmentsTest do
              AgentAttachments.disconnect(c.scope, other.id, attachment.id)
 
     assert {:error, :attachment_not_found} =
-             AgentAttachments.execute(c.scope, other.id, attachment.id, "read_file", %{})
+             AgentAttachments.execute(c.scope, other.id, attachment.id, "read", %{})
 
     assert [^attachment] = AgentAttachments.list(c.scope, c.agent.id)
   end
