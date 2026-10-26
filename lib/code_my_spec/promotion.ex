@@ -1266,7 +1266,7 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp reload_opts(scope, running, opts) do
-    opts = Keyword.put(opts, :loaded, loaded_here(running))
+    opts = Keyword.put(opts, :loaded, loaded_here(running.root))
 
     with {:ok, instance} <- default_instance(scope, running) do
       Keyword.put(opts, :reload_supported, AppInstances.reload_supported?(scope, instance.id))
@@ -1275,8 +1275,12 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  # What this server has loaded, when the app being deployed is this server.
-  defp loaded_here(%WorkingCopy{root: root}) do
+  @doc """
+  The sources this server has loaded when `root` is the checkout it runs from,
+  else `[]`: `deployment_plan/2`'s `:loaded`.
+  """
+  @spec loaded_here(String.t() | nil) :: [String.t()]
+  def loaded_here(root) do
     if is_binary(root) and root == BootVersion.root(), do: BootVersion.loaded_sources(), else: []
   end
 

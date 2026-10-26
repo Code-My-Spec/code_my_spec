@@ -240,15 +240,19 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       if serving?(current, desired["head"]) do
         {:ok, desired["head"]}
       else
-        refresh_revision(app, scope, instance.id, desired, changed_files)
+        refresh_revision(app, scope, instance.id, desired, changed_files, copy.root)
       end
     end
   end
 
-  defp refresh_revision(app, scope, id, desired, changed_files) do
+  # `loaded`: without it, a landing on the checkout this server runs from was
+  # reloaded in place (04:05Z), and the reload's migrate and :4000's code
+  # reloader hung every request for seven minutes.
+  defp refresh_revision(app, scope, id, desired, changed_files, root) do
     plan =
       Promotion.deployment_plan(changed_files,
         restart: desired["restart"],
+        loaded: Promotion.loaded_here(root),
         reload_supported: reload_supported(app, scope, id)
       )
 

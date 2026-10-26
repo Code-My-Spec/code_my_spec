@@ -19,7 +19,10 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
       ensure_app_running(nil, nil)
     end
 
-    def restart_app(id, timeout), do: reload_app(id, timeout)
+    def restart_app(id, timeout) do
+      Process.put(:restarts, Process.get(:restarts, 0) + 1)
+      reload_app(id, timeout)
+    end
   end
 
   setup do
@@ -96,6 +99,29 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
 
     assert {:ok, %{"head" => "two", "status" => "pending"}} =
              DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+  end
+
+  # 04:05Z: a landing on the checkout :4000 runs from was reloaded in place,
+  # and the reload hung every request for seven minutes.
+  test "a landing that touches what this server has loaded restarts it", %{
+    scope: scope,
+    copy: copy
+  } do
+    here = CodeMySpec.BootVersion.root()
+    assert is_binary(here)
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+
+    sync = fn _, _, _, _, _ ->
+      {:ok, %{changed_files: ["lib/code_my_spec/promotion/device_sync.ex"]}}
+    end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:restarts) == 1
   end
 
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}
