@@ -306,6 +306,11 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
+        # The final result and the live end event travel asynchronously. If the
+        # result arrives first, the later event is rejected after this row closes.
+        # Fold the end now so a run with retained live data reads as finished.
+        if LiveRuns.get(run.id), do: LiveRuns.fold(run.id, %{"event" => "finished"})
+
         run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
         run = RunsRepository.record_executed(run, payload)
         result = apply_remote_result(scope, run, payload)

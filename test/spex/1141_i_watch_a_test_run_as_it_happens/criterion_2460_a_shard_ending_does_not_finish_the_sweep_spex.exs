@@ -54,17 +54,8 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
         assert live["live"] == "streaming"
         assert live["tests"]["passed"] == 1
         assert Enum.sort(live["running_files"]) == Enum.sort(tl(context.files))
-        {:ok, context}
-      end
-    end
 
-    scenario "the sweep finishes when cms.spex exits" do
-      given_ "a full spex sweep has run as 4 cms.spex shards", context do
-        context = start_sweep(context)
-
-        Enum.each(context.files, fn file ->
-          report(context, %{"event" => "file_started", "file" => file})
-
+        Enum.each(tl(context.files), fn file ->
           report(context, %{
             "event" => "test",
             "file" => file,
@@ -75,20 +66,13 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
           report(context, %{"event" => "file_finished", "file" => file})
         end)
 
-        {:ok, context}
-      end
-
-      when_ "cms.spex exits", context do
         report(context, %{"event" => "finished"})
-        {:ok, context}
-      end
-
-      then_ "get_analysis_live reports the sweep finished, with all shard results", context do
-        live = read_live(context)
-        assert live["run_id"] == context.run_id
-        assert live["live"] == "finished"
-        assert live["tests"]["passed"] == 4
-        assert live["running_files"] == []
+        finished = read_live(context)
+        assert finished["run_id"] == context.run_id
+        assert finished["live"] == "finished"
+        assert finished["tests"]["passed"] == 4
+        assert finished["running_files"] == []
+        Phoenix.ChannelTest.leave(context.channel)
         {:ok, context}
       end
     end
