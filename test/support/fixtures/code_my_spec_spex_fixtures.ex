@@ -1177,6 +1177,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def check_machine_prerequisites, do: CmsHarness.Setup.check_prerequisites()
 
+  def check_platform_machine_prerequisites do
+    CmsHarness.Setup.check_prerequisites(platform: CmsHarness.Setup.Platform.detect())
+  end
+
+  defdelegate machine_prerequisites_passed?(snapshot),
+    to: CmsHarness.Setup,
+    as: :prerequisites_passed?
+
+  defdelegate machine_setup_status(), to: CmsHarness.Setup, as: :status
+
   defdelegate without_setup_postgres(context),
     to: CmsHarnessTest.SetupFixture,
     as: :without_postgres
@@ -3506,6 +3516,11 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  @doc "Project IDs visible to this spex's database connection, including escaped committed rows."
+  def visible_project_ids do
+    Repo.all(Project) |> Enum.map(& &1.id)
+  end
+
   @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
   def project_named(account_id, name) do
     Repo.get_by(Project, account_id: account_id, name: name)
@@ -4023,6 +4038,14 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate put_workspace_healthy(healthy?), to: FakeWorkspaceRunner, as: :put_healthy
 
   @doc """
+  Set whether the fake workspace's container is alive at all -- the one
+  reason `Workspaces.state/1` answers `:down` outright, before `serving/1`
+  is even asked (story 1030, criterion 1115: a container that died after
+  the workspace was already running must stop reading as up).
+  """
+  defdelegate put_workspace_alive(alive?), to: FakeWorkspaceRunner, as: :put_alive
+
+  @doc """
   Puts `project_id`'s workspace into the state the pane has to render.
 
   Story 885's whole point is that these are four different screens, so a spec
@@ -4065,6 +4088,14 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp settle(workspace, _state) do
     {:ok, _} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+    :ok
+  end
+
+  @doc "Starts a workspace with its real boot watcher while the fake app waits to answer."
+  @spec boot_waiting_workspace(Scope.t()) :: :ok
+  def boot_waiting_workspace(%Scope{} = scope) do
+    install_workspace_runner(healthy?: false, alive?: true, serving: :down)
+    {:ok, _workspace} = CodeMySpec.Workspaces.boot(scope)
     :ok
   end
 
@@ -4145,6 +4176,10 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Every call recorded so far, oldest first."
   @spec recorded_calls(pid()) :: [term()]
   def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
+
+  @doc "Requests observed by the stateful Resend fake, oldest first."
+  @spec resend_requests(pid()) :: [{String.t(), String.t()}]
+  def resend_requests(resend), do: resend |> Agent.get(& &1.requests) |> Enum.reverse()
 
   @doc """
   A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
@@ -4439,18 +4474,19 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "Wait for recovery events and verify the public cadence report advanced."
-  def await_recovery_check(read_report, since) when is_function(read_report, 0) do
+  def await_recovery_check(read_report, since, within_ms \\ 5_000)
+      when is_function(read_report, 0) do
     Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "cadence:checks")
 
     try do
-      deadline = System.monotonic_time(:millisecond) + 5_000
-      await_recovery_check(read_report, since, deadline)
+      deadline = System.monotonic_time(:millisecond) + within_ms
+      wait_for_recovery_check(read_report, since, deadline)
     after
       Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, "cadence:checks")
     end
   end
 
-  defp await_recovery_check(read_report, since, deadline) do
+  defp wait_for_recovery_check(read_report, since, deadline) do
     body = read_report.()
 
     checked_at =
@@ -4467,17 +4503,17 @@ defmodule CodeMySpecSpex.Fixtures do
         checked_at
 
       System.monotonic_time(:millisecond) >= deadline ->
-        raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+        raise "No new recovery check was observable through cadence in time: #{body}"
 
       true ->
         remaining = max(deadline - System.monotonic_time(:millisecond), 0)
 
         receive do
           {:recovery_checked, _project_id, _checked_at} ->
-            await_recovery_check(read_report, since, deadline)
+            wait_for_recovery_check(read_report, since, deadline)
         after
           remaining ->
-            raise "No new recovery check was observable through cadence within 5 seconds: #{body}"
+            raise "No new recovery check was observable through cadence in time: #{body}"
         end
     end
   end
@@ -5442,6 +5478,13 @@ defmodule CodeMySpecSpex.Fixtures do
       |> Keyword.put(:name, nil)
       |> Keyword.put(:pool, DBConnection.ConnectionPool)
       |> Keyword.put(:pool_size, 2)
+      # The database does not exist when this pool starts, so its connections
+      # go into reconnect backoff. The check must still fail fast on that (it is
+      # how it learns to create the database), but once created, the migration
+      # waited on connections still backing off at the default ceiling and
+      # timed out under gate load. A short ceiling brings them back promptly.
+      |> Keyword.put(:backoff_min, 100)
+      |> Keyword.put(:backoff_max, 500)
 
     {:ok, pid} = CodeMySpec.Repo.start_link(dyn_config)
     previous = CodeMySpec.Repo.get_dynamic_repo()

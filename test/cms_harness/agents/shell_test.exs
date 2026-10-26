@@ -105,6 +105,7 @@ defmodule CmsHarness.Agents.ShellTest do
             :gen_tcp.send(socket, [
               "HTTP/1.1 #{status} Result\r\n",
               header,
+              "x-analysis-guidance: Check Mix test filters; use mix spex for specs.\r\n",
               "Content-Length: #{byte_size(body)}\r\nConnection: close\r\n\r\n",
               body
             ])
@@ -125,6 +126,7 @@ defmodule CmsHarness.Agents.ShellTest do
       assert output =~ body
       assert output =~ "Analysis HTTP status: #{status}"
       assert output =~ "Analyzer exit status (blank if unavailable): #{analyzer_status}\n"
+      assert output =~ "Analysis guidance: Check Mix test filters; use mix spex for specs."
       assert output =~ "exit code: #{curl_status}"
     end
   end

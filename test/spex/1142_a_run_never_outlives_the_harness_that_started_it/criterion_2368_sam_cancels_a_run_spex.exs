@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1142.Criterion2368Spex do
       end
 
       then_ "the run stops and is shown as cancelled", context do
-        assert await_result(1, 10_000)["status"] == "cancelled"
+        assert await_result(1)["status"] == "cancelled"
 
         assert ClusteredProject.gone_within?(context.os_pid, 10_000),
                "mix test (os pid #{context.os_pid}) is still running after it was cancelled"

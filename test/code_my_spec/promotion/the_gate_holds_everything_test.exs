@@ -96,6 +96,22 @@ defmodule CodeMySpec.Promotion.TheGateHoldsEverythingTest do
     assert reason =~ "1 credo"
   end
 
+  # c9d61407: a path dependency changed on disk under an unmoved commit, and
+  # the gate answered from a run taken before it.
+  describe "a promote that asked for fresh runs" do
+    test "is not answered by runs recorded at the commit before it", %{scope: scope} do
+      later = DateTime.add(DateTime.utc_now(), 60, :second)
+
+      refute match?({:ok, _}, Promotion.gate(scope, @head, fresh_since: later)),
+             "runs recorded before the promote answered a promote that asked for fresh ones"
+    end
+
+    test "is answered by runs started after it", %{scope: scope} do
+      earlier = DateTime.add(DateTime.utc_now(), -3_600, :second)
+      assert {:ok, _certified} = Promotion.gate(scope, @head, fresh_since: earlier)
+    end
+  end
+
   test "a credo :info does not refuse", %{scope: scope} do
     problem_fixture(scope, %{severity: :info})
 

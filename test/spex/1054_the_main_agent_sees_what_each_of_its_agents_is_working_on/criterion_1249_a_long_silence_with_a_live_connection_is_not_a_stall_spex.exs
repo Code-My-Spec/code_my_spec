@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3279Spex do
                in flight: #{line}
                """
 
-        refute context.view =~ ~r/\b(stalled|stuck|dead|not responding|stopped)\b/i,
+        refute without_ids(context.view) =~ ~r/\b(stalled|stuck|dead|not responding|stopped)\b/i,
                """
                A ten-minute silence with an open turn is being read as a stall.
 
@@ -142,4 +142,14 @@ defmodule CodeMySpecSpex.Story1054.Criterion3279Spex do
 
   defp first_line(nil), do: nil
   defp first_line([line | _]), do: String.trim(line)
+
+  # An agent id is hex, and hyphens are word boundaries: an id with a "dead"
+  # group matched the verdict check and failed the spex at random.
+  defp without_ids(view),
+    do:
+      String.replace(
+        view,
+        ~r/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+        "<id>"
+      )
 end

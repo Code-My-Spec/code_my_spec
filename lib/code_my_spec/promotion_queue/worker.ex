@@ -248,6 +248,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   #
   # Only reused, never run: runs started in the requester's copy are exposed
   # to whoever keeps editing it. Anything still to run goes to the gate copy.
+  # A promote that asked for fresh runs is not answered by its copy's old ones.
+  defp level_with_main(_scope, [%{fresh: true}], _base), do: :no
+
   defp level_with_main(scope, [entry], base) do
     with {:ok, %WorkingCopy{root: root} = copy} when is_binary(root) <-
            WorkingCopies.fetch(entry.working_copy_id),
@@ -486,11 +489,20 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp gate_runs(%{batch: batch} = state) do
-    case Promotion.gate(batch.scope, batch.head) do
-      {:ok, swept} -> assets_build(state, swept)
+    case Promotion.gate(batch.scope, batch.head, fresh_since: fresh_since(batch.entries)) do
+      {:ok, swept} -> state |> note_reused(swept) |> assets_build(swept)
       {:pending, _pending} -> {:noreply, recheck_later(state)}
       {:error, reason} -> red(state, reason)
     end
+  end
+
+  # The earliest a fresh entry in the batch was queued: runs before it answer
+  # for none of them. `nil` when no entry asked.
+  defp fresh_since(entries) do
+    entries
+    |> Enum.filter(&(&1.fresh == true))
+    |> Enum.map(& &1.inserted_at)
+    |> Enum.min(DateTime, fn -> nil end)
   end
 
   # No analyzer runs the asset pipeline, so assets are built here once the
@@ -808,8 +820,38 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     "Your promotion of #{subject(entry)} #{destination}" <>
       if(others > 0, do: " in a batch with #{others} other candidate(s)", else: "") <>
-      ". " <> Promotion.outcome_text(result) <> landed_format_note(batch)
+      ". " <>
+      Promotion.outcome_text(result) <>
+      landed_format_note(batch) <>
+      reused_note(batch)
   end
+
+  # Certified on runs that finished before any entry in the batch was queued:
+  # the commit had not moved, but something outside it (a path dependency) may
+  # have, and the caller should know to ask for fresh runs (issue c9d61407).
+  defp note_reused(%{batch: batch} = state, swept) do
+    queued = batch.entries |> Enum.map(& &1.inserted_at) |> Enum.min(DateTime, fn -> nil end)
+
+    reused =
+      Enum.filter(swept, fn %{finished_at: finished} ->
+        queued && finished && DateTime.compare(finished, queued) == :lt
+      end)
+
+    %{state | batch: Map.put(batch, :reused, reused)}
+  end
+
+  defp reused_note(%{reused: [_ | _] = reused}) do
+    runs =
+      Enum.map_join(reused, ", ", fn %{source: source, finished_at: at} ->
+        "#{source} (finished #{Calendar.strftime(at, "%H:%M:%SZ")})"
+      end)
+
+    " Certified on runs recorded at this commit before you promoted: #{runs}. If anything " <>
+      "outside the commit changed since (a path dependency such as client_utils), promote " <>
+      "again with fresh: true."
+  end
+
+  defp reused_note(_batch), do: ""
 
   defp landed_format_note(%{format: %{commit: commit, files: files}}),
     do:

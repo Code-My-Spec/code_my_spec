@@ -258,7 +258,13 @@ defmodule CodeMySpec.Analysis.Runners do
 
     case {diagnostics(raw), exit_code} do
       {[], code} when code != 0 ->
-        {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
+        case committed_rows_failure(raw["output"]) do
+          nil ->
+            {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
+
+          failure ->
+            {:ok, with_partition(spex_result([failure], code, raw["output"]), raw)}
+        end
 
       {failures, code} ->
         {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
@@ -268,6 +274,24 @@ defmodule CodeMySpec.Analysis.Runners do
   # An exunit payload with no `execution_status`, or an unknown source, is
   # refused: read charitably it would become a clean `:completed` run.
   def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
+
+  defp committed_rows_failure(output) when is_binary(output) do
+    case Regex.run(~r/spex left committed rows outside the sandbox: [^\n]+/, output) do
+      [message] ->
+        %{
+          "spex" => "Committed fixture rows",
+          "scenario" => "after suite",
+          "file" => "test/support/committed_rows_guard.ex",
+          "line" => nil,
+          "message" => message
+        }
+
+      _ ->
+        nil
+    end
+  end
+
+  defp committed_rows_failure(_output), do: nil
 
   defp spex_result(failures, exit_code, output) do
     problems =

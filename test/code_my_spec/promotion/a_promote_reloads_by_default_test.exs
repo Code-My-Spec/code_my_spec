@@ -217,4 +217,16 @@ defmodule CodeMySpec.Promotion.APromoteReloadsByDefaultTest do
     assert %{action: :reload} = Promotion.deployment_plan([])
     assert %{action: :restart} = Promotion.deployment_plan(["lib/x.ex"], reload_supported: false)
   end
+
+  # Reloading :4000's own loaded modules recompiled one under its requirement
+  # graph's writer, which died and was not replaced.
+  test "deployment_plan restarts when the change touches what this server has loaded" do
+    loaded = ["lib/code_my_spec/requirements/incremental_graph.ex"]
+
+    assert %{action: :restart, reason: reason} =
+             Promotion.deployment_plan(loaded, loaded: loaded)
+
+    assert reason =~ "this server has loaded"
+    assert %{action: :reload} = Promotion.deployment_plan(["lib/not_loaded.ex"], loaded: loaded)
+  end
 end

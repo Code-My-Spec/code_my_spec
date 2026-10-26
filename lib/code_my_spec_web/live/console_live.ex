@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.ContentPublishing
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -2152,9 +2153,13 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
-    case Resend.list_domains(scope) do
-      {:ok, domains} when is_list(domains) -> domains
-      _ -> []
+    if ProvisioningPlan.devops_level(scope) == :prod do
+      case Resend.list_domains(scope) do
+        {:ok, domains} when is_list(domains) -> domains
+        _ -> []
+      end
+    else
+      []
     end
   end
 

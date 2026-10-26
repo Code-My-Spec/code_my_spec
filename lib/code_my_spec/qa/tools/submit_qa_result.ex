@@ -2,6 +2,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
+  alias CodeMySpec.Issues
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.EvidenceUpload
   alias CodeMySpec.Qa.QaAttempts
@@ -106,6 +107,13 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
   end
 
   defp submit(scope, params, context) do
+    case resolve_issue_ids(scope, params) do
+      {:ok, params} -> submit_resolved(scope, params, context)
+      {:error, message} -> error_response(message)
+    end
+  end
+
+  defp submit_resolved(scope, params, context) do
     case Qa.submit_qa_result(scope, build_attrs(params)) do
       {:ok, attempt} ->
         story_number = story_number(scope, attempt.story_id)
@@ -203,6 +211,71 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
   # `:status` key onto string-keyed scenario maps, producing a
   # mixed-key map that crashed `Ecto.Changeset.cast/3`.
   defp build_attrs(params), do: params
+
+  # An issue is cited by the key it is shown with (an id prefix such as
+  # `e2924c70`) as often as by its full id; both resolve, as `get_issue` does.
+  # The prefix alone was rejected as an invalid id (issue ed0e0e81).
+  defp resolve_issue_ids(scope, params) do
+    with {:ok, ids} <- resolve_all(scope, Map.get(params, :issue_ids) || []),
+         {:ok, scenarios} <- resolve_blockers(scope, Map.get(params, :scenarios)) do
+      {:ok, params |> put_if(:issue_ids, ids) |> put_if(:scenarios, scenarios)}
+    end
+  end
+
+  defp put_if(params, _key, nil), do: params
+  defp put_if(params, key, value), do: Map.put(params, key, value)
+
+  defp resolve_all(scope, ids) do
+    Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, resolved} ->
+      case resolve_id(scope, id) do
+        {:ok, full} -> {:cont, {:ok, resolved ++ [full]}}
+        error -> {:halt, error}
+      end
+    end)
+  end
+
+  defp resolve_blockers(_scope, nil), do: {:ok, nil}
+
+  defp resolve_blockers(scope, scenarios) when is_list(scenarios) do
+    Enum.reduce_while(scenarios, {:ok, []}, fn scenario, {:ok, resolved} ->
+      case blocker(scenario) do
+        nil ->
+          {:cont, {:ok, resolved ++ [scenario]}}
+
+        {key, id} ->
+          case resolve_id(scope, id) do
+            {:ok, full} -> {:cont, {:ok, resolved ++ [Map.put(scenario, key, full)]}}
+            error -> {:halt, error}
+          end
+      end
+    end)
+  end
+
+  defp resolve_blockers(_scope, scenarios), do: {:ok, scenarios}
+
+  defp blocker(%{blocker_issue_id: id}) when is_binary(id) and id != "",
+    do: {:blocker_issue_id, id}
+
+  defp blocker(%{"blocker_issue_id" => id}) when is_binary(id) and id != "",
+    do: {"blocker_issue_id", id}
+
+  defp blocker(_scenario), do: nil
+
+  defp resolve_id(scope, id) when is_binary(id) do
+    case Issues.fetch_issue(scope, id) do
+      {:ok, issue} ->
+        {:ok, issue.id}
+
+      :not_found ->
+        {:error, "No issue matches `#{id}`. Pass the id `create_issue` returned, or its key."}
+
+      {:ambiguous, ids} ->
+        {:error,
+         "`#{id}` matches more than one issue (#{Enum.join(ids, ", ")}). Pass the full id."}
+    end
+  end
+
+  defp resolve_id(_scope, id), do: {:ok, id}
 
   defp attempt_response(attempt, story_number) do
     issue_ids = attempt.issue_ids || []
@@ -325,6 +398,9 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
 
   defp error_response(reason) when is_atom(reason),
     do: {:error, "submit_qa_result failed: #{reason}"}
+
+  defp error_response(message) when is_binary(message),
+    do: {:error, message <> " No attempt was recorded and the task remains open."}
 
   defp error_response(reason),
     do: {:error, "submit_qa_result failed: #{inspect(reason)}"}

@@ -25,6 +25,7 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
   alias CodeMySpec.Projects
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.{Cloudflare, Resend, Steps}
+  alias CodeMySpec.ProvisioningPlan.{Sequence, StepRepository}
 
   setup do
     {:ok, scope: provisioning_scope_fixture()}
@@ -128,6 +129,8 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
     end
 
     test "verify does not report a stale registered domain satisfied", ctx do
+      record_prior_sending_domain(ctx.scope)
+
       stub_resend_domains(fn ->
         [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}]
       end)
@@ -136,6 +139,8 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
     end
 
     test "run pauses and names the orphan instead of calling it done", ctx do
+      record_prior_sending_domain(ctx.scope)
+
       stub_resend_domains(fn ->
         [%{"id" => "d1", "name" => "astralbi.com", "status" => "failed"}]
       end)
@@ -143,6 +148,21 @@ defmodule CodeMySpec.Provisioning.EmptyEnvironmentsTest do
       assert {:paused, reason} = Steps.run(:email, ctx.scope, [])
       assert reason =~ "astralbi.com"
       assert reason =~ "devops level"
+    end
+
+    defp record_prior_sending_domain(scope) do
+      StepRepository.upsert(scope, :email, nil, %{
+        state: :done,
+        position: Sequence.position(:email),
+        resources: [
+          %{
+            kind: "sending_domain",
+            location: "resend/astralbi.com",
+            identifier: "prod:d1",
+            origin: "created"
+          }
+        ]
+      })
     end
 
     defp stub_resend_domains(list_fun) do

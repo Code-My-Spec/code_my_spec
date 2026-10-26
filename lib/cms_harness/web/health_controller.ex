@@ -16,6 +16,10 @@ defmodule CmsHarness.Web.HealthController do
   alias CmsHarness.Projects
   alias CodeMySpec.BootVersion
 
+  @doc "The source files of the app modules this harness has loaded (`BootVersion.loaded_sources/0`)."
+  def loaded_sources(conn, _params),
+    do: json(conn, %{build: BootVersion.booted(), sources: BootVersion.loaded_sources()})
+
   def index(conn, _params) do
     # One entry per working copy, never per project.
     projects =
@@ -48,6 +52,7 @@ defmodule CmsHarness.Web.HealthController do
       build: BootVersion.describe(),
       build_drift: drift(),
       server_url: Config.server_url(),
+      device_id: CmsHarness.Device.recorded_id(),
       credential: match?({:ok, _}, Config.credential()),
       projects: projects,
       # Explicit, so "serving nothing" is never read off a 200 as fine.

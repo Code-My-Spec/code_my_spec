@@ -155,7 +155,8 @@ defmodule CodeMySpec.PromotionQueue do
         working_copy_id: copy.id,
         commit: head,
         requested_by_agent_id: Keyword.get(opts, :notify),
-        restart: Keyword.get(opts, :restart, false)
+        restart: Keyword.get(opts, :restart, false),
+        fresh: Keyword.get(opts, :fresh, false)
       })
 
     case Repository.reopen_held(attrs) do

@@ -13,13 +13,25 @@ defmodule CodeMySpec.Agents.Tools.StartProjectSetup do
     Read and save these with get_project_onboarding/update_project_onboarding first.
     Starts Main independently of a checkout on desktop, or uses an existing Main on a
     connected execution host. Repeated calls reuse the same agent and setup request.
+    Pass agreed special constraints in instructions (generator/archive paths, allowed installs,
+    versions, and publishing restrictions). New instructions on a retry are forwarded once;
+    identical instructions reuse their recorded message. Main does not receive Product's chat.
     Success unlocks the story interview; it means setup was handed off, not completed.
     If unavailable, explain the blocker and resolve the execution host before interviewing stories.
     """
   end
 
   @impl true
-  def params, do: %{}
+  def params do
+    %{
+      instructions:
+        {:meta, :string,
+         [
+           description:
+             "User-agreed setup constraints to forward to Main, including archive paths and permissions."
+         ]}
+    }
+  end
 
   @impl true
   def call(params, context) do
@@ -30,9 +42,13 @@ defmodule CodeMySpec.Agents.Tools.StartProjectSetup do
   end
 
   @impl true
-  def script_result(_params, context) do
+  def script_result(params, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
-         {:ok, _project, agent} <- CodeMySpec.Agents.start_project_setup(scope) do
+         {:ok, _project, agent} <-
+           CodeMySpec.Agents.start_project_setup(
+             scope,
+             Map.get(params, :instructions, Map.get(params, "instructions"))
+           ) do
       {:ok,
        %{
          phase: :stories,

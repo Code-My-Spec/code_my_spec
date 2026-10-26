@@ -48,7 +48,11 @@ defmodule CodeMySpecTest.RecordingAgentTransport do
   def stop_agent(_working_copy_id, _agent, _timeout), do: :ok
 
   @impl true
-  def call_machine_tool(_working_copy_id, _tool, _arguments, _timeout), do: {:ok, "recorded"}
+  # Told to the caller: a machine tool is invoked in the script's own process.
+  def call_machine_tool(_working_copy_id, tool, arguments, timeout) do
+    send(self(), {:machine_tool_call, tool, arguments, timeout})
+    {:ok, "recorded"}
+  end
 
   @impl true
   def create_working_copy(_candidates, _request, _timeout), do: {:error, :no_harness}

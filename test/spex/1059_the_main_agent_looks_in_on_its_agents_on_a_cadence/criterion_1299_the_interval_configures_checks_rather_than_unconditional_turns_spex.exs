@@ -75,6 +75,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
           )
 
         assert match?({:ok, _}, configured), response_text(configured)
+        # When the 30-second timer would first fire on its own.
+        old_fire_at = DateTime.add(DateTime.utc_now(), 30, :second)
         :ok = Fixtures.start_recovery_timer(context.scope)
 
         timer =
@@ -90,6 +92,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
         {:ok,
          Map.merge(context, %{
            running_ids: Machine.running(),
+           old_fire_at: old_fire_at,
            main_id: main.id,
            coding_id: coding.id,
            coding_conversation: response_text(conversation)
@@ -123,11 +126,15 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
               assert match?({:ok, _}, report), response_text(report)
               response_text(report)
             end,
-            changed_at
+            changed_at,
+            max(DateTime.diff(context.old_fire_at, DateTime.utc_now(), :millisecond), 0)
           )
 
-        assert DateTime.diff(checked_at, changed_at, :second) < 5
-        HeldProvider.await_request(5_000)
+        # Before the old 30-second schedule could have fired: the shorter
+        # interval reached the running timer. A wall-clock bound tighter than
+        # that only measured how loaded the machine was.
+        assert DateTime.compare(checked_at, context.old_fire_at) == :lt
+        HeldProvider.await_request(30_000)
         {:ok, context}
       end
 

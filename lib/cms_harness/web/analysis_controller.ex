@@ -101,6 +101,7 @@ defmodule CmsHarness.Web.AnalysisController do
     case WorkingCopies.root(working_copy_id) do
       {:ok, root} ->
         Logger.info("[CmsHarness] agent run: #{source} #{Enum.join(args, " ")}")
+        conn = put_private(conn, :analysis_source, source)
         reply(conn, Channel.await_analysis(root, source, args))
 
       # Nothing to fall back to: this harness does not serve that working copy,
@@ -131,6 +132,7 @@ defmodule CmsHarness.Web.AnalysisController do
 
     conn
     |> put_resp_header("x-exit-status", Integer.to_string(status))
+    |> selection_guidance(output, status)
     |> put_status(if status == 0, do: 200, else: 422)
     |> text(output || "")
   end
@@ -159,6 +161,19 @@ defmodule CmsHarness.Web.AnalysisController do
     fail(conn, 409, message)
   end
 
+  defp reply(conn, {:error, %{"reason" => "handler_died", "run_id" => run_id} = failure})
+       when is_integer(run_id) do
+    conn
+    |> put_resp_header("x-analysis-run-id", Integer.to_string(run_id))
+    |> fail(
+      502,
+      "Analysis request handler died: #{failure["handler_error"]}. " <>
+        "Retained run #{run_id} has status #{failure["status"] || "unknown"}. " <>
+        "The handler failure is not an analyzer result. " <>
+        "Read get_analysis_output with run_id=#{run_id} before retrying."
+    )
+  end
+
   defp reply(conn, {:error, reason}) do
     fail(
       conn,
@@ -169,6 +184,22 @@ defmodule CmsHarness.Web.AnalysisController do
         "Confirm the existing run's state before retrying."
     )
   end
+
+  # Guidance travels separately: the response body remains the tool's exact output.
+  defp selection_guidance(conn, output, status) when is_binary(output) and status != 0 do
+    if conn.private[:analysis_source] == "exunit" and
+         String.contains?(output, "did not match any directory/file") do
+      put_resp_header(
+        conn,
+        "x-analysis-guidance",
+        "This run reads the working tree, including untracked files. Check the requested path and Mix test filters; _spex.exs files may require mix spex <path> (start_analysis source=spex). Committing alone does not change test selection."
+      )
+    else
+      conn
+    end
+  end
+
+  defp selection_guidance(conn, _output, _status), do: conn
 
   # A run that failed without a tool exit code — a crash, a skip, a timeout —
   # still has to read as failure.

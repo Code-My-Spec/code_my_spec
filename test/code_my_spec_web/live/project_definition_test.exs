@@ -122,6 +122,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
         onboarding: %{description: "Recorded by product", starting_point: :new}
       })
 
+    settle(view)
     assert has_element?(view, "textarea[name='definition[description]']", "Recorded by product")
     refute has_element?(view, "[data-test=definition-updated]")
 
@@ -130,6 +131,7 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     |> render_change()
 
     {:ok, _} = Onboarding.save(scope, %{onboarding: %{description: "A newer saved brief"}})
+    settle(view)
     assert has_element?(view, "textarea[name='definition[description]']", "My unsaved refinement")
 
     assert has_element?(
@@ -392,4 +394,10 @@ defmodule CodeMySpecWeb.ProjectDefinitionTest do
     assert Conversations.list_messages(conversation) == messages
     assert CodeMySpec.Agents.main_agent(scope).id == main.id
   end
+
+  # The view takes a save's broadcast and hands it to the panel with
+  # `send_update/3`, a second message to itself. One render syncs past the
+  # broadcast; by then the update is queued, so the next is after it too.
+  # Asserting after one alone read the panel between the two under load.
+  defp settle(view), do: render(view)
 end

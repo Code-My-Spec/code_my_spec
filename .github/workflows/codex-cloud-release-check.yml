@@ -1,0 +1,49 @@
+name: Codex Cloud release installation check
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Release Extension run containing the candidate archive
+        required: true
+        default: '39999420116'
+  push:
+    branches: [issues-team-4]
+    paths:
+      - .github/workflows/codex-cloud-release-check.yml
+      - scripts/release/**
+permissions:
+  contents: read
+  actions: read
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cms-linux-x64.tar.gz
+          path: candidate
+          run-id: ${{ inputs.run_id || '39999420116' }}
+          github-token: ${{ github.token }}
+      - name: Prepare fresh Linux environment
+        run: docker build -t cms-install-check -f scripts/release/Dockerfile.codex-cloud-check scripts/release
+      - name: Install candidate on fresh Phoenix target
+        shell: bash
+        run: |
+          set -o pipefail
+          cp scripts/release/codex-cloud-install-check.sh candidate/install-check.sh
+          docker run --name cms-install-check --mount type=bind,source="$PWD/candidate",target=/artifacts,readonly --mount type=bind,source="$PWD/priv/dev_boxes",target=/source/priv/dev_boxes,readonly cms-install-check bash /artifacts/install-check.sh 2>&1 | tee install.log
+      - name: Retain evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          cp install.log evidence/ 2>/dev/null || true
+          docker cp cms-install-check:/private-state/validation.json evidence/validation.json || true
+          sha256sum candidate/cms-linux-x64.tar.gz > evidence/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codex-cloud-x64-install-evidence
+          path: evidence
+          retention-days: 30

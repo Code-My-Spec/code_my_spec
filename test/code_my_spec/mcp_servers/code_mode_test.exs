@@ -243,6 +243,22 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
       end
     end
 
+    # 97770e7d, 98410523: a hung click ran the whole script out and read as a
+    # script timeout, not as the click.
+    test "a call that names its own wait gets that wait, within the budget", %{scope: scope} do
+      CodeMySpecTest.RecordingAgentTransport.listen(scope)
+      %{invoke: invoke} = Layer.machine_catalog(scope, nil, 60_000)["browser_wait"]
+
+      invoke.(%{"timeout" => 5_000})
+      assert_received {:machine_tool_call, "browser_wait", _, 7_000}
+
+      invoke.(%{"timeout" => 600_000})
+      assert_received {:machine_tool_call, "browser_wait", _, 58_000}
+
+      invoke.(%{})
+      assert_received {:machine_tool_call, "browser_wait", _, 58_000}
+    end
+
     test "a floor, because a script with almost no budget still gets a real call", %{scope: scope} do
       %{timeout: given} = Layer.machine_catalog(scope, nil, 1_000)["browser_navigate"]
 

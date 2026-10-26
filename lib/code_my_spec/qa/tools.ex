@@ -9,6 +9,7 @@ defmodule CodeMySpec.Qa.Tools do
     deps: [
       CodeMySpec.Agents,
       CodeMySpec.CodeMode,
+      CodeMySpec.Issues,
       CodeMySpec.Projects,
       CodeMySpec.Qa,
       CodeMySpec.Stories,

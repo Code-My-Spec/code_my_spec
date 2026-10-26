@@ -117,7 +117,7 @@ defmodule CodeMySpecWeb.AgentModelsDefaultsTest do
       "openai-codex" => %{
         main: "gpt-6-astra",
         product: "gpt-6-astra",
-        coding: "gpt-6.1-sol",
+        coding: "gpt-6-sol",
         qa: "gpt-6-luna"
       },
       "claude-code" => %{

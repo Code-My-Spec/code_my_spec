@@ -119,7 +119,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     read_project_file write_project_file
     list_tasks list_notifications list_environments list_devices get_device list_app_instances get_app_instance
     check_answer list_user_questions tool_docs search_answers
-    list_problems get_analysis_output
+    list_problems get_analysis_output get_analysis_live
     start_analysis
     web_search web_fetch
     browser
@@ -147,7 +147,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search
     read_project_file write_project_file
-    list_tasks clear_problems list_problems get_analysis_output
+    list_tasks clear_problems list_problems get_analysis_output get_analysis_live
     install_credo_checks
     web_search web_fetch
     browser
@@ -199,7 +199,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
 
   @coding [
     {"anthropic", "claude-sonnet-5"},
-    {"openai-codex", "gpt-6.1-sol"},
+    {"openai-codex", "gpt-6-sol"},
     {"zai", "glm-5.3"},
     {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
     {"claude-code", "claude-sonnet-5"}

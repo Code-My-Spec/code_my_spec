@@ -279,10 +279,12 @@ defmodule CodeMySpec.SpexGivensTest do
   # drives the app -- creates a copy and its team, files and accepts a real
   # issue, assigns it, wakes the team, and declines the resulting offer
   # through the real reject_offer tool.
+  # Story 1146's prepared_cloud/1 creates a real target directory and validation
+  # marker and starts the external harness HTTP boundary used by the shipped CLI.
   # AttachmentHelpers.setup creates Main, its conversation, isolated device
   # roots and copy teams through Fixtures, and starts the device runtime seam.
   @establishes ~w(
-    AttachmentHelpers.setup(
+    prepared_cloud( AttachmentHelpers.setup(
     Bag.team( Bag.promotable( Compact.fleet(
     promote( promote_from( commit_work( another_candidate an_agent_on_the_copy
     the_gate_answers an_issue_assigned_to_the_team the_coder_fixes_it

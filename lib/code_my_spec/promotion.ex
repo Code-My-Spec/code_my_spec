@@ -952,7 +952,7 @@ defmodule CodeMySpec.Promotion do
     with {:ok, scope, named} <- gate_copy(scope, working_copy_id) do
       # Every source, whatever the project's config: config decides what the
       # stop hook sweeps, never what promote demands.
-      {answered, missing} = answers_at(scope, Run.sources(), head)
+      {answered, missing} = answers_at(scope, Run.sources(), head, opts[:fresh_since])
 
       case blocking_problems(scope, Map.keys(answered)) do
         [] -> certify(scope, answered, missing, head, named, opts)
@@ -1046,11 +1046,25 @@ defmodule CodeMySpec.Promotion do
     end
   end
 
-  defp answers_at(scope, sources, head) do
-    runs = Map.new(sources, &{&1, gate_answer(&1, Analysis.answer_at_commit(scope, &1, head))})
+  # `fresh_since`: a promote asked for runs of its own (`fresh: true`), so one
+  # recorded at the commit before then does not answer. A path dependency can
+  # change on disk without the commit moving (issue c9d61407).
+  defp answers_at(scope, sources, head, fresh_since \\ nil) do
+    runs =
+      Map.new(sources, fn source ->
+        run = gate_answer(source, Analysis.answer_at_commit(scope, source, head))
+        {source, since(run, fresh_since)}
+      end)
+
     {answered, missing} = Enum.split_with(runs, fn {_source, run} -> run end)
     {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
   end
+
+  defp since(run, nil), do: run
+  defp since(nil, _fresh_since), do: nil
+
+  defp since(%Run{started_at: started} = run, fresh_since),
+    do: if(started && DateTime.compare(started, fresh_since) != :lt, do: run)
 
   # One run per missing source, unless one is already running at `head` (a
   # second would certify the same commit twice). On a run someone else started,
@@ -1210,6 +1224,11 @@ defmodule CodeMySpec.Promotion do
   so not judged), when the harness cannot reload (`reload_supported: false`),
   or when the caller asks (`restart: true`). A reload that fails restarts
   inside the same deployment.
+
+  Also restart when it touches a source in `loaded` (the deployed app is this
+  server, and these are the files it has loaded): reloading them recompiles
+  modules under running processes, and the requirement graph's writer died
+  that way after a landing and was not replaced.
   """
   @spec deployment_plan([String.t()] | nil, keyword()) ::
           %{action: :reload | :restart, reason: String.t()}
@@ -1230,6 +1249,12 @@ defmodule CodeMySpec.Promotion do
           reason: "the change touches #{describe_paths(touched)}, which a reload cannot pick up"
         }
 
+      (touched = Enum.filter(changed, &(&1 in Keyword.get(opts, :loaded, [])))) != [] ->
+        %{
+          action: :restart,
+          reason: "the change touches #{describe_paths(touched)}, which this server has loaded"
+        }
+
       true ->
         %{action: :reload, reason: "nothing in the change needs a restart"}
     end
@@ -1241,11 +1266,18 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp reload_opts(scope, running, opts) do
+    opts = Keyword.put(opts, :loaded, loaded_here(running))
+
     with {:ok, instance} <- default_instance(scope, running) do
       Keyword.put(opts, :reload_supported, AppInstances.reload_supported?(scope, instance.id))
     else
       _ -> Keyword.put(opts, :reload_supported, false)
     end
+  end
+
+  # What this server has loaded, when the app being deployed is this server.
+  defp loaded_here(%WorkingCopy{root: root}) do
+    if is_binary(root) and root == BootVersion.root(), do: BootVersion.loaded_sources(), else: []
   end
 
   # Dispatched, never awaited: the restart may kill this very BEAM before it
