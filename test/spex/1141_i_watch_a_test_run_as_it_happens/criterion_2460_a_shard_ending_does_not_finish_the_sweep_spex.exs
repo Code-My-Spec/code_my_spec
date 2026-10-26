@@ -7,6 +7,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
   use CodeMySpecSpex.Case, async: false
 
   import Phoenix.ChannelTest
+  require Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -119,7 +120,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
         "event" => event
       })
 
-    assert_reply ref, :ok
+    Phoenix.ChannelTest.assert_reply(ref, :ok)
   end
 
   defp read_live(context) do
