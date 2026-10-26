@@ -259,7 +259,7 @@ defmodule CodeMySpec.Promotion.DeviceSync do
     result =
       case plan.action do
         :restart -> restart(app, scope, id)
-        :reload -> reload(app, scope, id)
+        :reload -> reload(app, scope, id, root)
       end
 
     verify_revision(app, scope, id, desired["head"], result)
@@ -286,6 +286,12 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   defp ensure_running(app, _scope, id), do: app.ensure_app_running(id, @timeout)
   defp restart(AppInstances, scope, id), do: AppInstances.restart(scope, id, @timeout)
   defp restart(app, _scope, id), do: app.restart_app(id, @timeout)
+
+  defp reload(app, scope, id, root) do
+    Promotion.migrate_here(root)
+    reload(app, scope, id)
+  end
+
   defp reload(AppInstances, scope, id), do: AppInstances.reload(scope, id, @timeout)
   defp reload(app, _scope, id), do: app.reload_app(id, @timeout)
 

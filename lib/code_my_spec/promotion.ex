@@ -1284,6 +1284,20 @@ defmodule CodeMySpec.Promotion do
     if is_binary(root) and root == BootVersion.root(), do: BootVersion.loaded_sources(), else: []
   end
 
+  @doc """
+  Runs pending migrations inside this server when `root` is the checkout it
+  runs from, before a reload; elsewhere does nothing. A `mix ecto.migrate`
+  beside the running server waited for the build lock its code reloader held,
+  and every request hung behind it. The reload's `/health` still reports any
+  migration left pending, which restarts the app instead.
+  """
+  @spec migrate_here(String.t() | nil) :: [integer()]
+  def migrate_here(root) do
+    if is_binary(root) and root == BootVersion.root(),
+      do: Ecto.Migrator.run(Repo, :up, all: true),
+      else: []
+  end
+
   # Dispatched, never awaited: the restart may kill this very BEAM before it
   # could answer. `merged/6` reads the result as "merged, restart unconfirmed".
   # `preview_status` is claimed "serving" here, before any confirmation, so the
@@ -1330,6 +1344,8 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp deploy_now(%{action: :reload}, scope, root, instance_id, opts) do
+    migrate_here(root)
+
     scope
     |> Runner.reload(root, instance_id)
     |> reloaded(scope, root, instance_id, opts)
