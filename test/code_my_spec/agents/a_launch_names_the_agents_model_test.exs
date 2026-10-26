@@ -16,11 +16,11 @@ defmodule CodeMySpec.Agents.ALaunchNamesTheAgentsModelTest do
   defp launch(attrs), do: LaunchRequest.for(agent(attrs), ToolRegistry.registry())
 
   test "carries the model the agent was given" do
-    assert launch(provider: "openai-codex", model: "gpt-6-sol")["model"] == "gpt-6-sol"
+    assert launch(provider: "openai-codex", model: "gpt-6.1-sol")["model"] == "gpt-6.1-sol"
   end
 
   test "carries the role's model for its provider when the agent names none" do
-    assert launch(provider: "openai-codex", model: nil)["model"] == "gpt-6-sol"
+    assert launch(provider: "openai-codex", model: nil)["model"] == "gpt-6.1-sol"
   end
 
   test "carries the Claude Code coding default when the agent names none" do

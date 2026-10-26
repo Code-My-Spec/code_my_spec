@@ -71,6 +71,7 @@ defmodule CmsHarness.Agents.Provider do
         config_overrides: ["include_permissions_instructions=false"],
         timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
       }
+      |> with_codex_bin()
       |> with_command_runner()
 
     with :ok <- codex_model_available(config) do
@@ -151,6 +152,15 @@ defmodule CmsHarness.Agents.Provider do
 
   # Replaces the real `codex`/`claude` CLI, from config. Set only in test,
   # where it is pinned to a recording so no test runs a live CLI.
+  # Codex's own self-updating install when it is there, not whichever `codex`
+  # PATH finds first. The models a login serves depend on the client's
+  # version, and an npm copy (0.144.4) ahead of it on PATH refreshed the shared
+  # models cache without the gpt-6 models, so the coding default was refused.
+  defp with_codex_bin(config) do
+    standalone = Path.expand("~/.codex/packages/standalone/current/bin/codex")
+    if File.exists?(standalone), do: Map.put(config, :codex_bin, standalone), else: config
+  end
+
   defp with_command_runner(config) do
     case Application.get_env(:code_my_spec, __MODULE__, [])[:command_runner] do
       {module, function} ->
@@ -174,7 +184,7 @@ defmodule CmsHarness.Agents.Provider do
   defp codex_model_available(%{model: nil}), do: :ok
 
   defp codex_model_available(%{model: model, codex_home: home}) do
-    case served_models(Path.join(home, "models_cache.json")) do
+    case read_served(Path.join(home, "models_cache.json")) do
       [_ | _] = served ->
         if model in served do
           :ok
@@ -191,7 +201,22 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
-  defp served_models(cache) do
+  @doc """
+  What each provider this machine runs from a local login serves, for the join:
+  Codex's cached model list, or "unknown" where nothing lists them (the Claude
+  CLI exposes none, and a Codex home with no cache knows none).
+  """
+  @spec served_models(String.t()) :: %{String.t() => [String.t()] | String.t()}
+  def served_models(codex_home \\ Path.expand("~/.codex")) do
+    codex = codex_home |> Path.join("models_cache.json") |> read_served()
+
+    %{
+      "openai-codex" => if(codex == [], do: "unknown", else: codex),
+      "claude-code" => "unknown"
+    }
+  end
+
+  defp read_served(cache) do
     with {:ok, json} <- File.read(cache),
          {:ok, %{"models" => models}} when is_list(models) <- Jason.decode(json) do
       for %{"slug" => slug} when is_binary(slug) <- models, do: slug

@@ -199,7 +199,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
 
   @coding [
     {"anthropic", "claude-sonnet-5"},
-    {"openai-codex", "gpt-6-sol"},
+    {"openai-codex", "gpt-6.1-sol"},
     {"zai", "glm-5.3"},
     {"deepinfra", "deepseek-ai/DeepSeek-V3.1"},
     {"claude-code", "claude-sonnet-5"}

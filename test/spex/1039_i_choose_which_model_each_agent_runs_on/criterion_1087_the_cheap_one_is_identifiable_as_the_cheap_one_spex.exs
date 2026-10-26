@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1039.Criterion3012Spex do
 
       then_ "QA uses Luna and coding uses Sol in editable model fields", context do
         assert has_element?(context.view, "input[name='qa[model]'][value='gpt-6-luna']")
-        assert has_element?(context.view, "input[name='coding[model]'][value='gpt-6-sol']")
+        assert has_element?(context.view, "input[name='coding[model]'][value='gpt-6.1-sol']")
         refute has_element?(context.view, "[data-test='model-cost']")
         {:ok, context}
       end
