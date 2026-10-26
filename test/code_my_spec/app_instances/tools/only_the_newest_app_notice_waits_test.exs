@@ -35,7 +35,7 @@ defmodule CodeMySpec.AppInstances.Tools.OnlyTheNewestAppNoticeWaitsTest do
     :ok = Starter.tell(ctx.starter, "app-1", "app is serving ee918f40")
     :ok = Starter.tell(ctx.starter, "app-2", "the other app is down")
 
-    texts = ctx |> waiting() |> Enum.map(&inspect/1) |> Enum.join("\n")
+    texts = ctx |> waiting() |> Enum.map_join("\n", &inspect/1)
 
     refute texts =~ "4a285833", "the stale notice still waits:\n#{texts}"
     assert texts =~ "ee918f40"

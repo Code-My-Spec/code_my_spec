@@ -121,7 +121,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
         output: "done",
         # Credo exits 0 when it finds nothing: a non-zero exit with no
         # findings is announced as not clean.
-        exit_status: if(problems == [], do: 0, else: 1),
+        exit_status: exit_status(problems),
         stats: %{}
       })
 
@@ -256,4 +256,7 @@ defmodule CodeMySpec.Analysis.AnUnchangedFindingStopsAnnouncingItselfTest do
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 500
   end
+
+  defp exit_status([]), do: 0
+  defp exit_status(_problems), do: 1
 end

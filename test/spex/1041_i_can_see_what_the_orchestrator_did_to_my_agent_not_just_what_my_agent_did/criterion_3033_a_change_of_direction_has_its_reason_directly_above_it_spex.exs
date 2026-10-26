@@ -130,16 +130,10 @@ defmodule CodeMySpecSpex.Story1041.Criterion1107Spex do
         assert transcript =~ "task #{context.task_id} cancelled",
                "the transcript does not name the task that was cancelled:\n#{transcript}"
 
-        {taken_at, _} = :binary.match(transcript, taken)
+        [above, _below] = String.split(transcript, taken, parts: 2)
 
-        case :binary.match(transcript, "story #{context.second.number}") do
-          {next_at, _} ->
-            assert taken_at < next_at,
-                   "the new story appears above the reason the old one went:\n#{transcript}"
-
-          :nomatch ->
-            :ok
-        end
+        refute above =~ "story #{context.second.number}",
+               "the new story appears above the reason the old one went:\n#{transcript}"
 
         {:ok, context}
       end
