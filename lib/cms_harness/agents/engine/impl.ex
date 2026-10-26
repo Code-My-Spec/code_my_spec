@@ -787,7 +787,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   What an agent of this type carries.
 
-  The four core tools (read, write, edit, bash) plus the launch request's
+  The four core tools (`CoreTools`: read, write, edit, bash) plus the launch request's
   `direct_tools`: the server's `ToolIndex.carried_definitions/1`, each built by
   `direct_tool/1`. Everything else is reached through `run_script`. Tools
   `CodeMode.Catalog` excludes from scripts must be direct here. See
@@ -795,12 +795,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec tools(keyword()) :: [module() | Alloy.Tool.Inline.t()]
   def tools(opts) do
-    [
-      CmsHarness.Agents.Tools.Read,
-      Alloy.Tool.Core.Write,
-      Alloy.Tool.Core.Edit,
-      CmsHarness.Agents.Tools.Bash
-    ] ++
+    CmsHarness.Agents.CoreTools.modules() ++
       Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
   end
 

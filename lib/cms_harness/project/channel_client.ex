@@ -224,7 +224,7 @@ defmodule CmsHarness.Project.ChannelClient do
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
-       "attachment_operations" => true,
+       "attachment_tools" => true,
        # What each provider's local login serves, so the server offers and
        # defaults to models that exist (a retired default crash-looped agents).
        "served_models" => CmsHarness.Agents.Provider.served_models(),

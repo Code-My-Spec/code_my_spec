@@ -22,8 +22,7 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
 
     defp result("attachment_disconnect", _payload), do: :ok
 
-    defp result("attachment_execute", _payload),
-      do: {:ok, %{"output" => "target output", "exit_status" => 0}}
+    defp result("attachment_execute", _payload), do: {:ok, "target output\nexit code: 0"}
   end
 
   setup do
@@ -66,10 +65,10 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
     assert row["agent_id"] == c.agent.id
     assert {:ok, [^row]} = ToolLibrary.data("list_working_copy_attachments", %{}, c.context)
 
-    assert {:ok, %{"output" => "target output", "exit_status" => 0}} =
-             ToolLibrary.data(
+    assert {:ok, "target output\nexit code: 0"} =
+             ToolLibrary.run(
                "work_in_copy",
-               %{attachment_id: row["id"], operation: "command", command: "pwd", args: []},
+               %{attachment_id: row["id"], tool: "bash", command: "pwd"},
                c.context
              )
 
@@ -78,9 +77,9 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
 
     assert payload == %{
              "attachment_id" => row["id"],
-             "operation" => "command",
-             "command" => "pwd",
-             "args" => []
+             "working_copy_id" => c.copy.id,
+             "tool" => "bash",
+             "input" => %{"command" => "pwd"}
            }
 
     assert {:ok, %{"disconnected" => true}} =
@@ -98,7 +97,7 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
     assert {:error, message} =
              ToolLibrary.run(
                "work_in_copy",
-               %{attachment_id: row["id"], operation: "read_file", path: "identity.txt"},
+               %{attachment_id: row["id"], tool: "read", file_path: "identity.txt"},
                c.context
              )
 
@@ -153,7 +152,7 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
       {"connect_working_copy", %{working_copy_id: c.copy.id}},
       {"disconnect_working_copy", %{attachment_id: Ecto.UUID.generate()}},
       {"list_working_copy_attachments", %{}},
-      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), operation: "read_file"}}
+      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), tool: "read"}}
     ]
 
     for {name, params} <- calls do
@@ -169,10 +168,9 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
       {"connect_working_copy", %{}},
       {"connect_working_copy", %{working_copy_id: 42}},
       {"disconnect_working_copy", %{attachment_id: []}},
-      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), operation: "delete_working_copy"}},
-      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), operation: "command", args: [42]}},
-      {"work_in_copy",
-       %{attachment_id: Ecto.UUID.generate(), operation: "write_file", content: %{}}}
+      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), tool: "delete_working_copy"}},
+      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), tool: "bash", timeout: "soon"}},
+      {"work_in_copy", %{attachment_id: Ecto.UUID.generate(), tool: "write", content: %{}}}
     ]
 
     for {name, params} <- calls do
