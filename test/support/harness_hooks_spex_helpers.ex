@@ -679,7 +679,18 @@ defmodule CodeMySpecSpex.HarnessHooks do
         case :sys.get_state(pid, 2_000) do
           %{assigns: assigns} ->
             "channel client: " <>
-              inspect(Map.take(assigns, [:joined, :attempts, :refused, :no_credential?, :topic]))
+              inspect(
+                Map.take(assigns, [
+                  :joined,
+                  :attempts,
+                  :refused,
+                  :no_credential?,
+                  :topic,
+                  :read_model_ref,
+                  :read_model_reason,
+                  :observations_ref
+                ])
+              )
 
           other ->
             "channel client state: #{inspect(other, limit: 20)}"
