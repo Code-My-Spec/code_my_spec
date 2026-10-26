@@ -83,7 +83,9 @@ defmodule CodeMySpec.Agents.Tools.MessageAgent do
 
   defp dispatch(scope, target_id, params, context) do
     case Agents.dispatch_message(scope, target_id, message(params), :operator_message,
-           send_now: MapAccess.get(params, :send_now) == true
+           send_now: MapAccess.get(params, :send_now) == true,
+           # The sending agent, for the stamp its recipient reads.
+           sender_id: context[:agent_id] || "operator"
          ) do
       {:ok, reply, sent} ->
         scope
