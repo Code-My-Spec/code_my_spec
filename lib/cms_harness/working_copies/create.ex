@@ -17,6 +17,7 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Config
+  alias CmsHarness.CopyDatabases
 
   # The project's own recipe for making a copy of itself: what a fresh copy
   # needs is the project's business.
@@ -338,6 +339,7 @@ defmodule CmsHarness.WorkingCopies.Create do
          ) do
       {_out, 0} ->
         Logger.info("[CmsHarness] removed the unacknowledged working copy at #{target}")
+        CopyDatabases.drop_for_root(target)
         :ok
 
       {out, status} ->

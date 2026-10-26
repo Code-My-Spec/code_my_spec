@@ -539,6 +539,10 @@ config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
 # shell-outs rule), so nothing stubs this plug today; it exists so this
 # module is accounted for by `HttpClientsAreStubbableTest` and safe by
 # construction if something ever does call it under test.
+# Removing a checkout drops its databases on the machine's Postgres; under the
+# suite nothing is found or dropped (`CmsHarness.CopyDatabases`).
+config :code_my_spec, CmsHarness.CopyDatabases, runner: CmsHarnessTest.NoCopyDatabases
+
 config :code_my_spec, CmsHarness.AppInstance.Runner.Local,
   plug: {Req.Test, CmsHarness.AppInstance.Runner.Local}
 

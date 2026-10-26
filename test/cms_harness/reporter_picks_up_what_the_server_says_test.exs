@@ -159,6 +159,31 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
              "nothing turns a clean answer into a crash loop."
   end
 
+  # d4747513: nothing dropped a gone checkout's databases.
+  test "a checkout gone from disk has its databases dropped, once", %{dir: dir} do
+    gone = Path.join(dir, "removed-gate-copy")
+    prior = Application.get_env(:code_my_spec, CmsHarness.CopyDatabases)
+
+    Application.put_env(:code_my_spec, CmsHarness.CopyDatabases,
+      runner: CmsHarnessTest.FakeAppInstanceRunner
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, CmsHarness.CopyDatabases, prior) end)
+    start_supervised!(CmsHarnessTest.FakeAppInstanceRunner)
+    Application.put_env(:code_my_spec, :test_server_copies, %{"copy-3" => gone})
+
+    {:ok, pid} = start_supervised({WorkingCopyReporter, name: :drop_gone_test, known: %{}})
+    WorkingCopyReporter.report(pid)
+    WorkingCopyReporter.report(pid)
+    WorkingCopyReporter.report(pid)
+
+    asked =
+      for {:idle_databases_matching, [regex]} <- CmsHarnessTest.FakeAppInstanceRunner.calls(),
+          do: regex
+
+    assert [_once] = asked
+  end
+
   describe "a project the server offers to generate" do
     setup do
       previous = %{
