@@ -12,7 +12,10 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
     def request(copy, operation, payload, _) do
       send(self(), {:remote, copy, operation, payload})
 
-      result(operation, payload)
+      case Process.get(:attachment_transport_result) do
+        nil -> result(operation, payload)
+        override -> override
+      end
     end
 
     defp result("attachment_connect", payload),
@@ -85,6 +88,23 @@ defmodule CodeMySpec.AgentAttachmentToolsTest do
              ToolLibrary.data("disconnect_working_copy", %{attachment_id: row["id"]}, c.context)
 
     assert {:ok, []} = ToolLibrary.data("list_working_copy_attachments", %{}, c.context)
+  end
+
+  test "a stale remote session surfaces a reconnect hint rather than a bare atom", c do
+    assert {:ok, row} =
+             ToolLibrary.data("connect_working_copy", %{working_copy_id: c.copy.id}, c.context)
+
+    Process.put(:attachment_transport_result, {:error, :attachment_not_connected})
+
+    assert {:error, message} =
+             ToolLibrary.run(
+               "work_in_copy",
+               %{attachment_id: row["id"], operation: "read_file", path: "identity.txt"},
+               c.context
+             )
+
+    assert message =~ "connect_working_copy"
+    assert message =~ "idempotent"
   end
 
   test "trusted terminal context resolves Main without model-supplied identity", c do
