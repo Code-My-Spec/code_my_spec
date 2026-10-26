@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story70.Criterion1399Spex do
   import CodeMySpecSpex.ComponentGraphHelpers, only: [architecture_designed: 1]
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpecSpex.ComponentHelpers
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.StoryHelpers
 
@@ -44,6 +45,13 @@ defmodule CodeMySpecSpex.Story70.Criterion1399Spex do
              context do
         app = context.project.module_name || "MyApp"
 
+        removed_context =
+          ComponentHelpers.create(context.scope,
+            name: "RemovedContext",
+            module_name: "#{app}.RemovedContext",
+            type: "context"
+          )
+
         proposal = """
         # Architecture Proposal
 
@@ -71,6 +79,13 @@ defmodule CodeMySpecSpex.Story70.Criterion1399Spex do
           Fixtures.write_env_file(context.execution_context, Fixtures.proposal_path(), proposal)
 
         assert {:ok, _} = Fixtures.deliver_manifest(context.scope)
+
+        assert {:ok, reply} =
+                 ToolLibrary.run("delete_component", %{component_id: removed_context.id}, %{
+                   scope: context.scope
+                 })
+
+        assert reply =~ "Deleted"
         {:ok, context}
       end
 
