@@ -95,7 +95,7 @@ defmodule CodeMySpecSpex.Story70.Criterion1399Spex do
 
       then_ "the requirement is unsatisfied because the proposal is out of date",
             context do
-        assert context.report =~ "**Status:** Unsatisfied"
+        assert context.report =~ "**Status:** Not satisfied"
         assert context.report =~ ~r/out.of.date/i
         refute context.report =~ ~r/orphan/i
         {:ok, context}
