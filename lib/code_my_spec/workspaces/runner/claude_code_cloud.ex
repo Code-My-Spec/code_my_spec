@@ -23,6 +23,9 @@ defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
     hex.pm
     repo.hex.pm
     builds.hex.pm
+    registry.npmjs.org
+    googlechromelabs.github.io
+    storage.googleapis.com
     archive.ubuntu.com
     security.ubuntu.com
     apt.postgresql.org

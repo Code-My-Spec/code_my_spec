@@ -56,11 +56,23 @@ defmodule CodeMySpecSpex.Story1135.Criterion2326Spex do
         {:ok, context}
       end
 
-      then_ "the script needs no deploy key and the hosts carry no probe leftovers", context do
+      then_ "the script installs browser tooling before QA and allows its download hosts",
+            context do
         script = shown_setup_script(context.live)
         refute script =~ "CMS_DEPLOY_KEY", "the script still reads a deploy key"
+        assert script =~ "npm install -g vibium"
+        assert script =~ "vibium install"
+        assert script =~ "vibium ready browser chrome"
+        assert script =~ "VIBIUM_CACHE_DIR=/opt/vibium-cache"
+        assert script =~ "VIBIUM_CACHE_DIR: \"/opt/vibium-cache\""
+        assert script =~ "NO_PROXY=\"$vibium_no_proxy\""
 
         hosts = copy_value(context.live, "copy-setup-hosts")
+
+        for host <- ~w(registry.npmjs.org googlechromelabs.github.io storage.googleapis.com) do
+          assert hosts =~ host, "the copied allowlist omits #{host}"
+        end
+
         refute hosts =~ "echo.websocket.org"
         refute hosts =~ "httpbin.org"
         {:ok, context}

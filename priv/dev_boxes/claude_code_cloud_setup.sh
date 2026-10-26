@@ -4,8 +4,9 @@
 # environment's setup-script box. It runs as root, before Claude starts, and its
 # filesystem result is cached between sessions.
 #
-# It installs the toolchain (OTP, Elixir, sops), installs the published
-# codemyspec plugin, and drops /usr/local/bin/cms-cloud-session, a SessionStart
+# It installs the toolchain (OTP, Elixir, sops), Vibium and its matched
+# Chrome/driver, installs the published codemyspec plugin, and drops
+# /usr/local/bin/cms-cloud-session, a SessionStart
 # hook that onboards this checkout and starts the harness on every session.
 # Nothing in the repo has to change.
 #
@@ -94,6 +95,22 @@ if [ ! -f /etc/apt/sources.list.d/pgdg.list ]; then
 fi
 apt-get install -y -qq postgresql-16-pgvector >/dev/null 2>&1 \
   || echo "WARN: postgresql-16-pgvector did not install"
+
+# The plugin's Vibium MCP wrapper executes `vibium` from PATH. The cloud
+# sandbox puts npm's registry in NO_PROXY, where direct DNS fails, so route
+# npm and Chrome for Testing downloads through the allowed proxy. npm's
+# postinstall only warns when its browser download fails; the explicit install
+# and readiness check make a missing or mismatched Chrome/driver fail setup.
+install -d -m 0755 /opt/vibium-cache
+vibium_no_proxy="$(printf '%s' "${NO_PROXY:-}" | tr ',' '\n' | awk '
+  $0 != "registry.npmjs.org" &&
+  $0 != "googlechromelabs.github.io" &&
+  $0 != "storage.googleapis.com" &&
+  $0 != "" { if (n++) printf ","; printf "%s", $0 }
+')"
+VIBIUM_CACHE_DIR=/opt/vibium-cache NO_PROXY="$vibium_no_proxy" no_proxy="$vibium_no_proxy" npm install -g vibium
+VIBIUM_CACHE_DIR=/opt/vibium-cache NO_PROXY="$vibium_no_proxy" no_proxy="$vibium_no_proxy" vibium install
+VIBIUM_CACHE_DIR=/opt/vibium-cache vibium ready browser chrome
 
 # ort-sys (behind the ortex NIF) fetches its ONNX Runtime build from pyke's
 # own host, which this sandbox blocks outright. Microsoft's own release is on
@@ -194,7 +211,10 @@ for home in /root /home/*; do
   node -e '
     const fs = require("fs"), f = process.argv[1];
     const s = JSON.parse(fs.readFileSync(f, "utf8"));
-    s.env = Object.assign({}, s.env, {CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "__HARNESS_PORT__"});
+    s.env = Object.assign({}, s.env, {
+      CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "__HARNESS_PORT__",
+      VIBIUM_CACHE_DIR: "/opt/vibium-cache"
+    });
     const hook = {hooks: [{type: "command", command: "/usr/local/bin/cms-cloud-session", timeout: 600}]};
     s.hooks = s.hooks || {};
     const list = (s.hooks.SessionStart = s.hooks.SessionStart || []);
