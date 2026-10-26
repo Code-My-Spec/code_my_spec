@@ -271,7 +271,7 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     # (issue 46cbb416). connect_working_copy is idempotent: same copy id
     # back gives the same attachment id, never a second one.
     mode(c.two, :online)
-    reconnected = connect(c, c.two)
+    reconnected = data(c, "connect_working_copy", %{working_copy_id: c.two.id})
     assert reconnected["id"] == a["id"]
     assert work(c, reconnected, "read_file", %{path: "identity.txt"}) == "remote"
     one = connect(c, c.one)
