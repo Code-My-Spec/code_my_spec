@@ -2946,14 +2946,6 @@ defmodule CodeMySpecSpex.Fixtures do
   ]
 
   @doc """
-  Recorded analyzer outputs, landed as completed analysis runs — what
-  `start_analysis` would have produced — before anything stops.
-
-  Takes the opts a stop or turn end was given and returns them without the
-  output files and `:await` (which waits for the runs to land), neither of
-  which a stop accepts.
-  """
-  @doc """
   Retry `check` (a 0-arity fun returning a boolean) until it is true or
   `attempts_left` is exhausted, sleeping 100ms between tries. `:ok` or
   `:timeout`.
@@ -2975,6 +2967,14 @@ defmodule CodeMySpecSpex.Fixtures do
     poll_until(check, attempts_left - 1)
   end
 
+  @doc """
+  Recorded analyzer outputs, landed as completed analysis runs — what
+  `start_analysis` would have produced — before anything stops.
+
+  Takes the opts a stop or turn end was given and returns them without the
+  output files and `:await` (which waits for the runs to land), neither of
+  which a stop accepts.
+  """
   def land_outputs(%Scope{} = scope, opts) do
     {files, rest} = Keyword.split(opts, Keyword.keys(@output_file_sources))
 
