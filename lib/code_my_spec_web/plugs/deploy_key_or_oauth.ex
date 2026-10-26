@@ -53,6 +53,9 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
         |> assign(:current_scope, %CodeMySpec.Users.Scope{active_account_id: box.account_id})
         |> assign(:box_device, box)
 
+      {:refused, reason} ->
+        assign(conn, :box_token_refusal, reason)
+
       :none ->
         authenticate(conn, opts)
     end
@@ -61,18 +64,35 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   # A dev box's own token (story 1130), accepted on the routes a machine
   # announces itself and trades it for an access token on (story 1131), and
   # nowhere else: it resolves to exactly that box.
-  defp box_sign_in(%Plug.Conn{request_path: path} = conn)
-       when path in ["/api/devices", "/api/devices/token"] do
-    with ["Bearer cbt_" <> rest] <- get_req_header(conn, "authorization"),
-         %CodeMySpec.Devices.Device{} = box <-
-           CodeMySpec.Devices.sign_in_with_token("cbt_" <> rest) do
-      {:ok, box}
-    else
-      _ -> :none
+  defp box_sign_in(%Plug.Conn{request_path: "/api/devices/token"} = conn) do
+    case get_req_header(conn, "authorization") do
+      [] -> {:refused, :missing_authorization}
+      ["Bearer cbt_" <> rest] -> sign_in_box_token("cbt_" <> rest)
+      _ -> {:refused, :not_box_token}
+    end
+  end
+
+  defp box_sign_in(%Plug.Conn{request_path: "/api/devices"} = conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer cbt_" <> rest] ->
+        case CodeMySpec.Devices.sign_in_with_token("cbt_" <> rest) do
+          %CodeMySpec.Devices.Device{} = box -> {:ok, box}
+          _ -> :none
+        end
+
+      _ ->
+        :none
     end
   end
 
   defp box_sign_in(_conn), do: :none
+
+  defp sign_in_box_token(token) do
+    case CodeMySpec.Devices.sign_in_with_token(token) do
+      %CodeMySpec.Devices.Device{} = box -> {:ok, box}
+      nil -> {:refused, CodeMySpec.Devices.box_token_refusal(token)}
+    end
+  end
 
   defp authenticate(conn, opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),

@@ -62,21 +62,32 @@ defmodule CmsHarness.Onboarding do
 
       # Named: against a server this machine's database does not back, the
       # truth is "your credential is for another server", not "you have none".
-      {:error, :no_credential} ->
-        {:error,
-         """
-         No credential to mint a harness id for #{root} against #{Config.server_url()}.
+      {:error, {:refused, 401, reason}} ->
+        if Config.dev_box?() do
+          {:error, dev_box_remedy("The server refused the dev box token: #{reason}")}
+        else
+          {:error, "Token exchange refused: #{reason}"}
+        end
 
-         A deploy key reaches exactly one project on exactly one server. This task
-         reads one from this machine's database, which only holds projects for a
-         CodeMySpec running here — so onboarding against anything else needs the
-         key passed in:
+      {:error, :no_credential} ->
+        if Config.dev_box?() do
+          {:error, dev_box_remedy("No dev box credential was available.")}
+        else
+          {:error,
+           """
+           No credential to mint a harness id for #{root} against #{Config.server_url()}.
+
+           A deploy key reaches exactly one project on exactly one server. This task
+           reads one from this machine's database, which only holds projects for a
+           CodeMySpec running here — so onboarding against anything else needs the
+           key passed in:
 
              CMS_DEPLOY_KEY=<a key from that server> \\
                mix cms.harness.onboard #{root} --project <that server's project id>
 
-         Generate one on that server's project page if it has none.
-         """}
+           Generate one on that server's project page if it has none.
+           """}
+        end
 
       other ->
         {:error, "Could not get a harness id for #{root} from the server: #{inspect(other)}"}
@@ -127,6 +138,9 @@ defmodule CmsHarness.Onboarding do
   @spec ensure_local_credential(String.t()) :: {:ok, String.t()} | :none
   def ensure_local_credential(project_id) do
     cond do
+      Config.dev_box?() ->
+        :none
+
       local_server?(Config.server_url()) ->
         case local_project_deploy_key(project_id) do
           key when is_binary(key) and key != "" -> {:ok, key}
@@ -158,6 +172,13 @@ defmodule CmsHarness.Onboarding do
   # `Token.access_token/0` cannot serve this: its credentials are indexed by
   # roots and projects the daemon already serves, and a copy being onboarded
   # is neither.
+  defp dev_box_remedy(reason) do
+    server = String.trim_trailing(Config.server_url(), "/")
+    host = URI.parse(server).host || server
+
+    "#{reason} Add a dev box on #{server}/app/devices and set its token as a network secret for #{host}. Use the bare token, with no 'Bearer ' prefix."
+  end
+
   defp token_for({:ok, key}), do: Token.access_token_for_key(key)
   defp token_for(:none), do: Token.access_token()
 

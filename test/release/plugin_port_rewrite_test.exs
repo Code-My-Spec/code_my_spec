@@ -51,7 +51,10 @@ defmodule CodeMySpec.Release.PluginPortRewriteTest do
   end
 
   defp port_list(content) do
-    ~r/PORTS="([0-9 ]+)"/ |> Regex.run(content) |> split_ports()
+    # init permits an explicit port override while keeping a two-port default.
+    ~r/PORTS="(?:\$\{CMS_HARNESS_PORT:-)?([0-9 ]+)\}?"/
+    |> Regex.run(content)
+    |> split_ports()
   end
 
   defp split_ports([_, list]), do: String.split(list, " ", trim: true)
