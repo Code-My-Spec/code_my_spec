@@ -2153,7 +2153,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
-    if ProvisioningPlan.devops_level(scope) == :prod and sending_domain_recorded?(scope) do
+    if ProvisioningPlan.devops_level(scope) == :prod do
       case Resend.list_domains(scope) do
         {:ok, domains} when is_list(domains) -> domains
         _ -> []
@@ -2164,16 +2164,6 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp list_domains(_scope), do: []
-
-  defp sending_domain_recorded?(scope) do
-    case Provisioning.get_step(scope, :email) do
-      %{resources: resources} when is_list(resources) ->
-        Enum.any?(resources, &(&1.kind == "sending_domain"))
-
-      _ ->
-        false
-    end
-  end
 
   defp mail_domains(scope, domains) do
     scope
