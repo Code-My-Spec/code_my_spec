@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story970.Criterion629Spex do
         router = Module.concat([Macro.camelize(to_string(app)) <> "Web", "Router"])
         conn = Plug.Test.conn(:get, "/health")
         response = router.call(conn, router.init([]))
-        IO.puts("LOCAL_HEALTH_STATUS=#{response.status}")
+        IO.puts("LOCAL_HEALTH_STATUS=\#{response.status}")
         """
 
         {output, status} =
