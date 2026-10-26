@@ -112,7 +112,8 @@ export PATH="/usr/local/bin:$PATH"
 for v in NO_PROXY no_proxy; do
   [ -n "${!v:-}" ] && export "$v=$(echo "${!v}" | tr , '\n' | grep -v crates.io | paste -sd, -)"
 done
-port=4004
+port="${CMS_HARNESS_PORT:-4004}"
+export CMS_HARNESS_PORT="$port"
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
 server="${CMS_SERVER_URL:-https://dev.codemyspec.com}"
 mkdir -p "$HOME/.codemyspec"
@@ -205,6 +206,7 @@ for cloud_user_home in /root /home/*; do
   node -e '
     const fs = require("fs"), f = process.argv[1];
     const s = JSON.parse(fs.readFileSync(f, "utf8"));
+    s.env = Object.assign({}, s.env, {CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "4004"});
     const hook = {hooks: [{type: "command", command: "/usr/local/bin/cms-cloud-session", timeout: 600}]};
     s.hooks = s.hooks || {};
     const list = (s.hooks.SessionStart = s.hooks.SessionStart || []);
