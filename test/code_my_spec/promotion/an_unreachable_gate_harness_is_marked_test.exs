@@ -23,6 +23,18 @@ defmodule CodeMySpec.Promotion.AnUnreachableGateHarnessIsMarkedTest do
     assert reason =~ "harness_not_registered"
   end
 
+  test "a down registry is marked unreachable like a missing harness" do
+    copy_id = Ecto.UUID.generate()
+
+    assert {:error, %{unreachable: true, reason: reason}} =
+             Runner.decode(
+               {:error,
+                {:harness_registry_down, %{working_copy_id: copy_id, op: "promotion_build_batch"}}}
+             )
+
+    assert reason =~ "harness_registry_down"
+  end
+
   test "a harness that goes down mid-build is marked unreachable too" do
     copy_id = Ecto.UUID.generate()
     test = self()
