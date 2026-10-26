@@ -14,13 +14,9 @@ defmodule CodeMySpecSpex.Story1141.Criterion2456Spex do
 
   spex "An agent sees how long a running run has been silent", criterion: 2456 do
     scenario "the tool reports the age of the last streaming event" do
-      given_ "an exunit run is streaming", context do
+      given_ "an exunit run last streamed an event about 5 minutes ago", context do
         run = Fixtures.silent_live_analysis_run(context.scope, "exunit", 300)
         {:ok, Map.put(context, :run_id, run.id)}
-      end
-
-      given_ "its last event arrived about 5 minutes ago", context do
-        {:ok, context}
       end
 
       when_ "an agent calls get_analysis_live for it", context do

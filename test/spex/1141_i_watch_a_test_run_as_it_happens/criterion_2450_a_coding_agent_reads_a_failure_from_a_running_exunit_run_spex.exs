@@ -21,12 +21,8 @@ defmodule CodeMySpecSpex.Story1141.Criterion2450Spex do
 
   spex "A coding agent reads a failure from a running exunit run", criterion: 2450 do
     scenario "live analysis names the failed test while another file is running" do
-      given_ "an exunit run is running on the coding agent's working copy", context do
+      given_ "an exunit run has reported a failure while another test remains running", context do
         {:ok, LiveRun.start(context)}
-      end
-
-      given_ "one test has failed so far", context do
-        {:ok, context}
       end
 
       when_ "the agent calls get_analysis_live with that run's id", context do

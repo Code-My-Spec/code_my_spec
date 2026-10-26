@@ -27,7 +27,21 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
   spex "A shard ending does not finish the sweep", criterion: 2460 do
     scenario "one completed shard leaves the other three and the sweep running" do
       given_ "a full spex sweep runs as 4 cms.spex shards", context do
-        {:ok, start_sweep(context)}
+        {:ok, _reply, channel} =
+          UserSocket
+          |> socket("spex_sweep_harness", %{scope: context.scope})
+          |> subscribe_and_join(
+            HarnessProjectChannel,
+            "harness_project:#{context.scope.active_project_id}",
+            %{
+              "label" => "the harness running cms.spex",
+              "harness_id" => context.scope.active_working_copy_id
+            }
+          )
+
+        run = Fixtures.reporting_analysis_run(context.scope, "spex")
+        files = for shard <- 1..4, do: "test/spex/shard_#{shard}_spex.exs"
+        {:ok, Map.merge(context, %{run_id: run.id, channel: channel, files: files})}
       end
 
       when_ "one shard has run all its tests and the other three are still running",
@@ -76,24 +90,6 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp start_sweep(context) do
-    {:ok, _reply, channel} =
-      UserSocket
-      |> socket("spex_sweep_harness", %{scope: context.scope})
-      |> subscribe_and_join(
-        HarnessProjectChannel,
-        "harness_project:#{context.scope.active_project_id}",
-        %{
-          "label" => "the harness running cms.spex",
-          "harness_id" => context.scope.active_working_copy_id
-        }
-      )
-
-    run = Fixtures.reporting_analysis_run(context.scope, "spex")
-    files = for shard <- 1..4, do: "test/spex/shard_#{shard}_spex.exs"
-    Map.merge(context, %{run_id: run.id, channel: channel, files: files})
   end
 
   defp report(context, event) do

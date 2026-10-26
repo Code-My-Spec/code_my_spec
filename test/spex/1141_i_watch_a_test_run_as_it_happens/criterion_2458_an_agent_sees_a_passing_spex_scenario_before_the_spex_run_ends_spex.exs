@@ -14,15 +14,11 @@ defmodule CodeMySpecSpex.Story1141.Criterion2458Spex do
 
   spex "An agent sees a passing spex scenario before the spex run ends", criterion: 2458 do
     scenario "the first passing scenario is counted in a running one-file spex run" do
-      given_ "a spex run of one spex file is running", context do
+      given_ "a one-file spex run has reported its first passing scenario", context do
         path = "test/spex/sample_spex.exs"
         scenario = "the first scenario passes"
         run = Fixtures.streaming_spex_scenario(context.scope, path, scenario)
         {:ok, Map.merge(context, %{run_id: run.id, path: path, scenario: scenario})}
-      end
-
-      given_ "its first scenario has passed", context do
-        {:ok, context}
       end
 
       when_ "an agent calls get_analysis_live for it", context do

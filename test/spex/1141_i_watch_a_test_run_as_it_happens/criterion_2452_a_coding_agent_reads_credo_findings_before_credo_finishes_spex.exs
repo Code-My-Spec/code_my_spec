@@ -21,12 +21,8 @@ defmodule CodeMySpecSpex.Story1141.Criterion2452Spex do
 
   spex "A coding agent reads Credo findings before Credo finishes", criterion: 2452 do
     scenario "the finding is available through the tool while the check remains held" do
-      given_ "a credo run is running on the coding agent's working copy", context do
+      given_ "a credo run has reported a finding while it remains running", context do
         {:ok, LiveRun.start_credo(context)}
-      end
-
-      given_ "credo has reported one finding so far", context do
-        {:ok, context}
       end
 
       when_ "the agent calls get_analysis_live with source credo", context do
