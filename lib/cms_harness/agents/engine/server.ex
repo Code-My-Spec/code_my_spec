@@ -102,6 +102,14 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   def handle_info({:turn_progress, _messages}, state), do: {:noreply, state}
 
+  def handle_info(
+        {task_ref, {:error, {:turn_execution_exit, reason}}},
+        %{turn: %{task: %Task{ref: task_ref}}} = state
+      ) do
+    Process.demonitor(task_ref, [:flush])
+    Impl.abort_turn(state, {:turn_execution_exit, reason})
+  end
+
   def handle_info({task_ref, result}, %{turn: %{task: %Task{ref: task_ref}}} = state) do
     Process.demonitor(task_ref, [:flush])
     Impl.settle(state, result)

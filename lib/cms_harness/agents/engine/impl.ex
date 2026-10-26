@@ -471,9 +471,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # be found and stopped. A port whose owner has died is closed, and the
   # program behind it keeps running with nothing left that knows its pid.
   defp execute(state, message) do
-    Alloy.TaskSupervisor
-    |> Task.Supervisor.async_nolink(fn -> run_turn(state, message) end)
-    |> Task.await(:infinity)
+    task = Task.Supervisor.async_nolink(Alloy.TaskSupervisor, fn -> run_turn(state, message) end)
+
+    case Task.yield(task, :infinity) do
+      {:ok, result} -> result
+      {:exit, reason} -> {:error, {:turn_execution_exit, reason}}
+    end
   end
 
   # The waiter and everything it started — the execution, its tool tasks, a
