@@ -10,7 +10,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   ## Where the content comes from
 
   `priv/knowledge/devops/hetzner-docker-deploy.md` — the stack this project
-  actually deploys on. The image is built in CI and pushed to GHCR, Kamal pulls
+  actually deploys on. The image is built in CI and pushed to the project's registry, Kamal pulls
   it onto the host by commit SHA, and kamal-proxy terminates TLS and routes by
   hostname. Writing a plausible-looking Dockerfile from memory would produce a
   project that generates cleanly and fails on its first real deploy.
@@ -52,16 +52,30 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   def generate(env, opts \\ []) do
     app = Keyword.get(opts, :app, "app")
     host = Keyword.get(opts, :host, "example.com")
-    registry = Keyword.get(opts, :registry, "ghcr.io")
+    image = Keyword.get(opts, :image)
+    registry = Keyword.get(opts, :registry)
     owner = Keyword.get(opts, :owner, "your-org")
 
+    cond do
+      is_nil(image) or is_nil(registry) or is_nil(opts[:kamal_image]) ->
+        {:error, :registry_image_required}
+
+      image != "#{Keyword.get(opts, :prod_registry) || registry}/#{opts[:kamal_image]}" ->
+        {:error, :registry_image_mismatch}
+
+      true ->
+        generate_with_registry(env, opts, app, host, registry, owner, image)
+    end
+  end
+
+  defp generate_with_registry(env, opts, app, host, registry, owner, image) do
     artifacts =
       files(
         app: app,
         host: host,
         registry: registry,
         owner: owner,
-        image: Keyword.get(opts, :image),
+        image: image,
         kamal_image: Keyword.get(opts, :kamal_image),
         prod_registry: Keyword.get(opts, :prod_registry),
         uat_registry: Keyword.get(opts, :uat_registry),
@@ -106,13 +120,12 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
   Options:
 
-    * `:image` — the exact image reference. Defaults to
-      `<registry>/<owner>/<app>` (ghcr.io naming); a caller deploying to the
-      self-hosted `CodeMySpec.Provisioning.Registry`, which has no owner
-      segment, passes `Registry.image/2`.
+    * `:image` — the exact image reference. Comes from
+      `CodeMySpec.Provisioning.Registry.image/2` and is required by
+      `generate/2`.
     * `:kamal_image` — kamal's `image:`, a bare repository path (kamal reads
       the host from `registry.server`), where CI's `docker build -t` needs the
-      full reference. Defaults to `:image`.
+      full reference. Required by `generate/2`.
     * `:prod_registry` / `:uat_registry` — per-environment registry hosts,
       since two environments may sit on two boxes. Each defaults to
       `:registry`.
@@ -131,7 +144,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
     [
       {"Dockerfile", dockerfile(app)},
-      {".github/workflows/build.yml", ci_workflow(image)},
+      {".github/workflows/build.yml", ci_workflow([prod_registry, uat_registry], kamal_image)},
       {"config/deploy.yml",
        kamal_config(app, kamal_image, host, "prod", prod_registry, telemetry_host)},
       {"config/deploy.uat.yml",
@@ -252,7 +265,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
   # Multi-arch: the box may be ARM (Hetzner's cax range) or amd64, and the
   # wrong one fails at `docker run` with an error that names nothing useful.
-  defp ci_workflow(image) do
+  defp ci_workflow(registries, repository) do
+    registry_hosts = registries |> Enum.uniq() |> Enum.map_join(", ", &~s("#{&1}"))
+
     """
     name: build
 
@@ -265,7 +280,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         runs-on: ubuntu-latest
         permissions:
           contents: read
-          packages: write
+        strategy:
+          matrix:
+            registry: [#{registry_hosts}]
 
         steps:
           - uses: actions/checkout@v4
@@ -275,9 +292,9 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
           - uses: docker/login-action@v3
             with:
-              registry: ghcr.io
-              username: ${{ github.actor }}
-              password: ${{ secrets.GITHUB_TOKEN }}
+              registry: ${{ matrix.registry }}
+              username: ${{ secrets.CMS_REGISTRY_USERNAME }}
+              password: ${{ secrets.CMS_REGISTRY_PASSWORD }}
 
           # Tagged by commit SHA, so what is running is traceable to a commit
           # rather than to whenever `latest` was last pushed.
@@ -287,8 +304,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
               platforms: linux/amd64,linux/arm64
               push: true
               tags: |
-                #{image}:${{ github.sha }}
-                #{image}:latest
+                ${{ matrix.registry }}/#{repository}:${{ github.sha }}
+                ${{ matrix.registry }}/#{repository}:latest
               cache-from: type=gha
               cache-to: type=gha,mode=max
     """

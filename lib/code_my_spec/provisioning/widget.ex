@@ -21,8 +21,6 @@ defmodule CodeMySpec.Provisioning.Widget do
   See knowledge/provisioning, "Widget".
   """
 
-  require Logger
-
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
@@ -193,7 +191,9 @@ defmodule CodeMySpec.Provisioning.Widget do
 
     scope
     |> lookup.()
-    |> Enum.find(&(origin(&1) == "deployed_site"))
+    |> Enum.find(fn message ->
+      origin(message) == "deployed_site" and probe_matches?(message, opts[:probe])
+    end)
     |> case do
       nil -> {:error, :no_message}
       message -> {:ok, %{state: "received", origin: "deployed_site", message: message}}
@@ -203,6 +203,16 @@ defmodule CodeMySpec.Provisioning.Widget do
   defp origin(%{origin: origin}), do: to_string(origin)
   defp origin(%{"origin" => origin}), do: to_string(origin)
   defp origin(_), do: nil
+
+  defp probe_matches?(_message, nil), do: true
+
+  defp probe_matches?(%{body: body}, probe) when is_binary(body),
+    do: String.contains?(body, probe)
+
+  defp probe_matches?(%{"body" => body}, probe) when is_binary(body),
+    do: String.contains?(body, probe)
+
+  defp probe_matches?(_, _), do: false
 
   @doc """
   Install, verify, and prove — in that order.
@@ -248,8 +258,8 @@ defmodule CodeMySpec.Provisioning.Widget do
   (bundle mounts, CORS); `verify_present/2` covers the served markup, and the
   resource records `via=loopback`.
 
-  Failure is not fatal: older applications answer 404 and ones without the
-  widget 501. The poll that follows is the real check.
+  A missing or refused endpoint leaves setup unproven. A successful response
+  must be followed by a matching message received from the deployed site.
   """
   @spec trigger_message(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def trigger_message(site_url, deploy_key, opts \\ []) do
@@ -285,50 +295,53 @@ defmodule CodeMySpec.Provisioning.Widget do
   defp check_proof(scope, install, presence, opts) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
-    # Ask before looking. Unchecked: a 404/501 is not evidence about the
-    # widget, and a real visitor's message proves it just as well.
-    ask_the_site_to_speak(opts)
+    case ask_the_site_to_speak(opts) do
+      {:ok, probe} ->
+        case message_proof(scope, Keyword.put(opts, :probe, probe)) do
+          {:ok, proof} ->
+            %{
+              blank()
+              | state: :proven,
+                install: install,
+                presence: presence,
+                proof: proof,
+                proven_at: now.()
+            }
 
-    case message_proof(scope, opts) do
-      {:ok, proof} ->
-        %{
-          blank()
-          | state: :proven,
-            install: install,
-            presence: presence,
-            proof: proof,
-            proven_at: now.()
-        }
+          {:error, :no_message} ->
+            not_proven(
+              install,
+              presence,
+              "The deployed app accepted the widget check, but its probe message did not arrive in CodeMySpec."
+            )
+        end
 
-      {:error, :no_message} ->
-        %{
-          blank()
-          | state: :not_proven,
-            install: install,
-            presence: presence,
-            reason:
-              "The widget is installed and openable, but no message has travelled from the " <>
-                "deployed site yet. Markup can be right while the socket, credential or CORS is not."
-        }
+      {:error, reason} ->
+        not_proven(
+          install,
+          presence,
+          "The deployed app refused widget verification: #{inspect(reason)}"
+        )
     end
   end
 
-  # The trigger, then a settle: the endpoint answers 202 before the message
-  # makes its round trip.
+  defp not_proven(install, presence, reason) do
+    %{blank() | state: :not_proven, install: install, presence: presence, reason: reason}
+  end
+
+  # The endpoint acknowledges before its socket message completes the round trip.
   defp ask_the_site_to_speak(opts) do
     with url when is_binary(url) <- Keyword.get(opts, :site_url),
          key when is_binary(key) <- Keyword.get(opts, :deploy_key),
-         {:ok, _accepted} <- trigger_message(url, key, opts) do
+         {:ok, %{probe: probe}} <- trigger_message(url, key, opts) do
       Wait.sleep(Keyword.get(opts, :loopback_settle_ms, 3_000))
+      {:ok, probe}
+    else
+      nil -> {:error, :missing_site_url_or_deploy_key}
+      {:error, reason} -> {:error, reason}
     end
-
-    :ok
   rescue
-    # Optional by construction: never fail the step for it (a cassette
-    # recorded without this request raises on the miss).
-    error ->
-      Logger.debug("[Widget] loopback trigger skipped: #{inspect(error)}")
-      :ok
+    error -> {:error, Exception.message(error)}
   end
 
   defp blank do

@@ -100,7 +100,19 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   end
 
   def next(context, assigns \\ %{}) do
-    call(context, "get_next_requirement", %{}, assigns)
+    next_when_graph_ready(context, assigns, 3)
+  end
+
+  defp next_when_graph_ready(context, assigns, retries) do
+    response = call(context, "get_next_requirement", %{}, assigns)
+
+    if retries > 0 and
+         String.starts_with?(response, "The requirement graph is being rebuilt or updated;") do
+      Process.sleep(5_000)
+      next_when_graph_ready(context, assigns, retries - 1)
+    else
+      response
+    end
   end
 
   def topology(context, triples) do
