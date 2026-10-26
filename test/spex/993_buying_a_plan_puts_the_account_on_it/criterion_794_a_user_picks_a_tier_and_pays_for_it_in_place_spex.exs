@@ -39,6 +39,8 @@ defmodule CodeMySpecSpex.Story993.Criterion794Spex do
   spex "A buyer pays for the light harness tier on the pricing page", criterion: 794 do
     scenario "card payment stays in place and card fields belong to Stripe" do
       given_ "a signed-in user on a free account looking at pricing", context do
+        # given: already true — `setup :register_log_in_setup_account` creates
+        # the signed-in free account; this block opens its pricing page.
         pricing_html = context.conn |> get("/pricing") |> html_response(200)
         {:ok, checkout, _html} = live_isolated(context.conn, CodeMySpecWeb.CheckoutLive)
 
