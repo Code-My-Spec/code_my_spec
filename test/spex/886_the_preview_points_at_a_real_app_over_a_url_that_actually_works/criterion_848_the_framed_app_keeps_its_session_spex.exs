@@ -78,7 +78,8 @@ defmodule CodeMySpecSpex.Story886.Criterion848Spex do
 
         [cookie | _] = Plug.Conn.get_resp_header(context.first, "set-cookie")
         assert cookie =~ "SameSite=Lax"
-        if context.preview.scheme == "https", do: assert(cookie =~ "Secure")
+        assert context.preview.scheme == "https"
+        assert cookie =~ "Secure"
 
         follow_up =
           context.first
