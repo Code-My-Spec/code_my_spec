@@ -12,6 +12,14 @@ HOOK = ROOT / 'plugins/claude/hooks/post-hook.cjs'
 
 
 class HookTests(unittest.TestCase):
+    def test_generated_session_scripts_parse(self):
+        for relative in ('priv/dev_boxes/claude_code_cloud_setup.sh', 'scripts/cloud/setup.sh'):
+            with self.subTest(script=relative):
+                setup = (ROOT / relative).read_text()
+                session = setup.split("<<'SESSION'\n", 1)[1].split('\nSESSION\n', 1)[0]
+                result = subprocess.run(['bash', '-n'], input=session.encode(), capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+
     def test_port_override_and_response(self):
         received = []
         answer = b'{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"ready"}}'

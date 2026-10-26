@@ -136,7 +136,7 @@ setsid bash -e -c '
   cd "$root" || exit 1
   export CMS_PROJECT_DIR="$root"
   # Run as a dev box: onboarding and the harness trade the box token (which the
-  # environment's proxy supplies) for an access token. No deploy key.
+  # environment proxy supplies) for an access token. No deploy key.
   export CMS_DEV_BOX=1
   # This sandbox exempts index.crates.io from the proxy and then 403s it
   # directly; routing it back through the proxy like everything else fixes
@@ -173,6 +173,7 @@ setsid bash -e -c '
 ' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
 exit 0
 SESSION
+bash -n /usr/local/bin/cms-cloud-session
 chmod +x /usr/local/bin/cms-cloud-session
 
 # The published plugin uses CMS_HARNESS_PORT from the settings below. Installed for every

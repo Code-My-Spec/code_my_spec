@@ -186,6 +186,7 @@ setsid bash -c '
 ' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
 exit 0
 SESSION
+bash -n /usr/local/bin/cms-cloud-session
 chmod +x /usr/local/bin/cms-cloud-session
 
 # The published plugin: hooks and MCP on localhost:4004. Installed for every
