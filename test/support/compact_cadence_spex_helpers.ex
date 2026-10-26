@@ -29,6 +29,14 @@ defmodule CodeMySpecSpex.CompactCadenceHelpers do
     Map.put(context, :report, response_text(result))
   end
 
+  @doc "The Needs-you entries of a check-in, or \"\" when it has none."
+  def needs_you(report) do
+    case String.split(report, "Needs you:\n", parts: 2) do
+      [_, rest] -> rest |> String.split(~r/\n(?!- )/, parts: 2) |> hd()
+      _ -> ""
+    end
+  end
+
   # A library tool by name (`ToolLibrary`); an MCP component by module.
   def call(context, name, params) when is_binary(name) do
     frame = frame(context)

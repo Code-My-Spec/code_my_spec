@@ -20,6 +20,7 @@ defmodule CodeMySpec.PromotionQueue do
       CodeMySpec.Projects,
       CodeMySpec.Promotion,
       CodeMySpec.PromotionQueue.Entry,
+      CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,

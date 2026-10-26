@@ -27,6 +27,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
   alias CodeMySpec.PromotionQueue.Repository
+  alias CodeMySpec.PromotionQueue.Waits
   alias CodeMySpec.Qa
   alias CodeMySpec.Repo.SandboxAllowance
   alias CodeMySpec.Stories
@@ -167,15 +168,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         _ ->
           case ready(scope) do
             {:ok, base} ->
+              :ok = Waits.clear_blocked(state.project_id)
               reserve_and_build(state, entry, base)
 
             {:error, reason} ->
               Logger.warning("[PromotionQueue] source unavailable: #{describe(reason)}")
+              :ok = Waits.record_blocked(state.project_id, describe(reason))
               {:noreply, recheck_later(idle(state), :next)}
           end
       end
     else
       [] ->
+        :ok = Waits.clear_blocked(state.project_id)
         {:noreply, idle(state)}
     end
   end
