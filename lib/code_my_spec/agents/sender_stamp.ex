@@ -29,10 +29,17 @@ defmodule CodeMySpec.Agents.SenderStamp do
     |> binary_part(0, 12)
   end
 
-  @doc "`text` as delivered to `agent`, from `sender` (see `sender/2`)."
+  @doc """
+  `text` as delivered to `agent`, from `sender` (see `sender/2`). A terminal
+  session is not ours to brief, so it never learns a marker: it gets the text
+  as sent.
+  """
   @spec stamp(String.t(), Agent.t(), String.t()) :: String.t()
-  def stamp(text, %Agent{} = agent, sender) when is_binary(text),
-    do: "⟦cms #{marker(agent)} · from #{sender}⟧\n" <> text
+  def stamp(text, %Agent{} = agent, sender) when is_binary(text) do
+    if Agent.terminal?(agent),
+      do: text,
+      else: "⟦cms #{marker(agent)} · from #{sender}⟧\n" <> text
+  end
 
   @doc "A delivered text as `{stamp_line, body}`; `{nil, text}` when it carries none."
   @spec split(String.t()) :: {String.t() | nil, String.t()}
