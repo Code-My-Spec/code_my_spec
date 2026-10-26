@@ -1068,11 +1068,23 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Sending domains at Resend for prod rows the devops level no longer
   # permits — left behind when the level narrowed after a run.
   defp mail_orphans(scope, base) do
-    for environment <- Environments.deployment_names(scope),
-        environment in ["prod", "production"],
-        sending = Resend.sending_domain(base, environment),
-        match?({:ok, _}, Resend.find_domain(scope, sending)) do
-      sending
+    # A project that has only ever selected UAT has no sending domain to
+    # reconcile. Its owned domain alone is not a reason to query Resend.
+    case StepRepository.get(scope, :email) do
+      %{resources: resources} when is_list(resources) ->
+        if Enum.any?(resources, &(&1.kind == "sending_domain")) do
+          for environment <- Environments.deployment_names(scope),
+              environment in ["prod", "production"],
+              sending = Resend.sending_domain(base, environment),
+              match?({:ok, _}, Resend.find_domain(scope, sending)) do
+            sending
+          end
+        else
+          []
+        end
+
+      _ ->
+        []
     end
   end
 

@@ -157,6 +157,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"envs/prod.enc.env", env_scaffold("prod")},
       {"envs/uat.enc.env", env_scaffold("uat")},
       {"lib/#{app}_web/router.ex", router(app)},
+      {"lib/#{app}_web/controllers/health_controller.ex", health_controller(app)},
       {"lib/#{app}/release.ex", release_module(app)},
       {"config/runtime.exs", runtime_config(app)}
     ]
@@ -978,6 +979,18 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
         get "/", PageController, :home
       end
+    end
+    """
+  end
+
+  defp health_controller(app) do
+    web = Macro.camelize(app) <> "Web"
+
+    """
+    defmodule #{web}.HealthController do
+      use #{web}, :controller
+
+      def show(conn, _params), do: Plug.Conn.send_resp(conn, 200, "ok")
     end
     """
   end

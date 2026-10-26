@@ -106,7 +106,9 @@ defmodule CodeMySpec.Analysis.RecordedOutputReplayTest do
     assert {message, 1} = ExecutionContexts.cmd(env, "mix", ["spex", "--jsonl=x"])
     assert message =~ "no recorded analyzer output for spex"
 
-    assert {:error, {:spex_suite_did_not_run, 1, ^message}} = run(scope, env, "spex")
+    assert {:error, {:spex_suite_did_not_run, 1, excerpt}} = run(scope, env, "spex")
+    assert excerpt =~ message
+    assert excerpt =~ ~s([Spex] argv=["mix", "spex")
     assert local_calls() == 0
   end
 

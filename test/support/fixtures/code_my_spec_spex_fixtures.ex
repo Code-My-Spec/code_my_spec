@@ -3542,6 +3542,11 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  @doc "Project IDs visible to this spex's database connection, including escaped committed rows."
+  def visible_project_ids do
+    Repo.all(Project) |> Enum.map(& &1.id)
+  end
+
   @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
   def project_named(account_id, name) do
     Repo.get_by(Project, account_id: account_id, name: name)
@@ -4197,6 +4202,10 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Every call recorded so far, oldest first."
   @spec recorded_calls(pid()) :: [term()]
   def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
+
+  @doc "Requests observed by the stateful Resend fake, oldest first."
+  @spec resend_requests(pid()) :: [{String.t(), String.t()}]
+  def resend_requests(resend), do: resend |> Agent.get(& &1.requests) |> Enum.reverse()
 
   @doc """
   A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
@@ -5115,6 +5124,15 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok,
      project
      |> Ecto.Changeset.change(local_path: path)
+     |> CodeMySpec.Repo.update!()}
+  end
+
+  @doc "Align a generated project's module name with its actual checkout."
+  @spec set_project_module_name(Project.t(), String.t()) :: {:ok, Project.t()}
+  def set_project_module_name(project, module_name) do
+    {:ok,
+     project
+     |> Ecto.Changeset.change(module_name: module_name)
      |> CodeMySpec.Repo.update!()}
   end
 

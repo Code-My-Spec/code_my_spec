@@ -40,6 +40,7 @@ defmodule CodeMySpec.Agents.TheTeamFinishesAStoryTogetherTest do
       |> Slice.activate()
       |> Slice.waiting()
 
+    :ok = CodeMySpecSpex.Fixtures.settle_graph(ctx.scope)
     coding = Slice.next(ctx, %{agent_id: ctx.coding.id})
 
     assert coding =~ "# Story #{ctx.story.number}:"

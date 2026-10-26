@@ -74,6 +74,18 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
   end
 
+  test "generates the health controller referenced by its router" do
+    path = "lib/my_app_web/controllers/health_controller.ex"
+    body = file(path)
+
+    assert file("lib/my_app_web/router.ex") =~ "MyAppWeb.HealthController"
+    assert body =~ "defmodule MyAppWeb.HealthController"
+    assert body =~ "def show(conn, _params)"
+    assert body =~ "Plug.Conn.send_resp(conn, 200, \"ok\")"
+    refute body =~ "Repo"
+    refute body =~ "fetch_session"
+  end
+
   describe "the release overlays" do
     test "boot decrypts the environment before starting the app" do
       body = file("rel/overlays/bin/boot")

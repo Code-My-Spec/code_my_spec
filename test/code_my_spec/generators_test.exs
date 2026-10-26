@@ -71,6 +71,13 @@ defmodule CodeMySpec.GeneratorsTest do
     end
 
     write(dir, @router, good_router())
+
+    write(
+      dir,
+      "lib/my_app_web/controllers/health_controller.ex",
+      "defmodule MyAppWeb.HealthController do\nend\n"
+    )
+
     write(dir, "config/runtime.exs", good_runtime())
   end
 
@@ -103,6 +110,22 @@ defmodule CodeMySpec.GeneratorsTest do
   end
 
   describe "missing artifacts" do
+    test "a router with a health route needs its controller before deploy is ready", %{
+      env: env,
+      dir: dir
+    } do
+      deployable_project(dir)
+      path = "lib/my_app_web/controllers/health_controller.ex"
+      File.rm!(Path.join(dir, path))
+
+      assert {:missing_health_controller, path} in Generators.audit_environment(env, @router)
+      refute Generators.deploy_ready?(%CodeMySpec.Users.Scope{}, @router, env)
+      assert Generators.explain({:missing_health_controller, path}) =~ "/health"
+
+      write(dir, path, "defmodule MyAppWeb.HealthController do\nend\n")
+      assert Generators.audit_environment(env, @router) == []
+    end
+
     test "names each missing file with the reason it matters", %{env: env, dir: dir} do
       deployable_project(dir)
       File.rm!(Path.join(dir, "Dockerfile"))

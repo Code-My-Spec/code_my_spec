@@ -171,6 +171,7 @@ defmodule CodeMySpecSpex.Case do
 
       use CodeMySpecWeb, :verified_routes
       use SexySpex, async: unquote(async)
+      CodeMySpecSpex.CommittedRowsGuard.install!()
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs
       # this import — is reachable from every spex rather than from the ones
@@ -2498,10 +2499,52 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
+  @doc "Generate a fresh application with dependencies for a real local startup probe."
+  def bootable_drill_working_directory(context) do
+    context = drill_working_directory(context)
+
+    if not recording?() and is_nil(persistent_application_dir()) do
+      mix_in(context.project.local_path, ["deps.get"])
+    end
+
+    context
+  end
+
+  @doc "Generate a bootable project whose metadata names the generated OTP app."
+  def bootable_deploy_working_directory(context) do
+    context = bootable_drill_working_directory(context)
+
+    module_name =
+      context.project.local_path
+      |> Path.basename()
+      |> Macro.camelize()
+
+    {:ok, project} = Fixtures.set_project_module_name(context.project, module_name)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{context.scope | active_project: project})
+  end
+
+  @doc "Run the generated application's Mix task on its pinned toolchain."
+  def run_generated_application(context, code), do: run_generated_application(context, code, [])
+
+  def run_generated_application(context, code, run_options) do
+    path = context.project.local_path
+
+    System.cmd("mix", ["run"] ++ run_options ++ ["-e", code],
+      cd: path,
+      stderr_to_stdout: true,
+      env: child_mix_env(path)
+    )
+  end
+
   # A name the generator accepts and the provider resources can carry: lowercase
   # letters, digits and underscores, starting with a letter.
   defp generated_app_name(project) do
-    "cms_drill_" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
+    # Keep a letter before the UUID so Macro.camelize/underscore round-trips
+    # the OTP app name used by deploy generation.
+    "cms_drill_a" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
   end
 
   # The generators a real project gets, in the order a project gets them.
