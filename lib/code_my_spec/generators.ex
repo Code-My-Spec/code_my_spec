@@ -54,6 +54,7 @@ defmodule CodeMySpec.Generators do
           | {:force_ssl_without_health_exclusion, String.t()}
           | {:no_health_route, String.t()}
           | {:health_route_piped, String.t()}
+          | {:missing_health_controller, String.t()}
           | {:missing_release_module, String.t()}
 
   @doc """
@@ -110,6 +111,9 @@ defmodule CodeMySpec.Generators do
     do:
       "#{path} declares the health route inside a pipeline — session and CSRF plugs can fail the proxy's probe for reasons unrelated to the app"
 
+  def explain({:missing_health_controller, path}),
+    do: "missing #{path} — the router's /health route cannot answer without its controller"
+
   def explain({:missing_release_module, path}),
     do:
       "missing #{path} — the migrate overlay calls <App>.Release.migrate inside the released binary, and without this module the migration crashes on a real box instead of failing setup here"
@@ -140,12 +144,26 @@ defmodule CodeMySpec.Generators do
     [
       DeployBoilerplate.force_ssl_excludes_health(env),
       health_route_finding(scope, env, router_path),
+      health_controller_finding(scope, env, router_path),
       DeployBoilerplate.release_module_exists?(scope, release_module_path(router_path), env)
     ]
     |> Enum.flat_map(fn
       :ok -> []
       {:error, finding} -> [finding]
     end)
+  end
+
+  defp health_controller_finding(scope, env, router_path) do
+    with {:ok, router} <- ExecutionContexts.read_file(env, router_path),
+         true <-
+           Regex.match?(~r/get\s+"\/health"\s*,\s*(?:[A-Z]\w*\.)*HealthController\b/, router),
+         path <-
+           String.replace_suffix(router_path, "router.ex", "controllers/health_controller.ex"),
+         false <- DeployBoilerplate.present?(scope, path, env) do
+      {:error, {:missing_health_controller, path}}
+    else
+      _ -> :ok
+    end
   end
 
   # The one content check that no longer only takes the environment: the

@@ -308,7 +308,9 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
   # Live first; the synced `Files` table is the fallback for a harness-scoped
   # caller whose environment has no working directory to check.
   # See knowledge/infrastructure, "Deploy readiness audit".
-  defp present?(%Scope{} = scope, path, env) do
+  @doc "Whether a generated artifact exists locally or in the project's synced file list."
+  @spec present?(Scope.t(), String.t(), ExecutionContext.t() | nil) :: boolean()
+  def present?(%Scope{} = scope, path, env) do
     ExecutionContexts.file_exists?(env, path) == true or synced?(scope, path)
   end
 

@@ -2447,10 +2447,12 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc "Run the generated application's Mix task on its pinned toolchain."
-  def run_generated_application(context, code) do
+  def run_generated_application(context, code), do: run_generated_application(context, code, [])
+
+  def run_generated_application(context, code, run_options) do
     path = context.project.local_path
 
-    System.cmd("mix", ["run", "-e", code],
+    System.cmd("mix", ["run"] ++ run_options ++ ["-e", code],
       cd: path,
       stderr_to_stdout: true,
       env: child_mix_env(path)

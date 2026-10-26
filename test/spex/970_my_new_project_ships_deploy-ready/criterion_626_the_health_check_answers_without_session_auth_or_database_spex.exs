@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
   # A real directory on disk, shared with the page. The generator writes
   # through the project's registered environment; a spex holding its own
   # in-memory one reads an empty tree and concludes nothing was generated.
-  setup :real_working_directory
+  setup :bootable_drill_working_directory
 
   spex "The health check answers without session, auth or database", criterion: 626 do
     scenario "the health route is declared outside all pipelines" do
@@ -55,7 +55,22 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
 
         {:ok, body} = ExecutionContexts.read_file(context.execution_context, router_path)
 
-        {:ok, context |> Map.put(:router, body) |> Map.put(:router_path, router_path)}
+        code = """
+        app = Mix.Project.config()[:app]
+        router = Module.concat([Macro.camelize(to_string(app)) <> "Web", "Router"])
+        conn = Plug.Test.conn(:get, "/health")
+        response = router.call(conn, router.init([]))
+        IO.puts("HEALTH_STATUS=\#{response.status}")
+        """
+
+        {output, status} = run_generated_application(context, code, ["--no-start"])
+
+        {:ok,
+         context
+         |> Map.put(:router, body)
+         |> Map.put(:router_path, router_path)
+         |> Map.put(:health_output, output)
+         |> Map.put(:health_exit_status, status)}
       end
 
       then_ "the health route is declared", context do
@@ -81,6 +96,14 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
         refute health_scope =~ ~r/pipe_through/,
                "expected the health route's scope to pipe through nothing, got:\n#{health_scope}"
 
+        {:ok, context}
+      end
+
+      then_ "the generated health endpoint answers 200 without starting the app or database",
+            context do
+        assert context.health_exit_status == 0, context.health_output
+        assert context.health_output =~ "HEALTH_STATUS=200", context.health_output
+        refute context.health_output =~ "HealthController.init/1 is undefined"
         {:ok, context}
       end
     end
