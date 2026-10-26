@@ -37,7 +37,9 @@ defmodule CodeMySpecSpex.Story970.Criterion629Spex do
         """
 
         {output, status} =
-          Fixtures.env_cmd(context.execution_context, "mix", ["run", "-e", code])
+          Fixtures.env_cmd(context.execution_context, "mix", ["run", "-e", code],
+            stderr_to_stdout: true
+          )
 
         {:ok, Map.merge(context, %{output: output, exit_status: status})}
       end

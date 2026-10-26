@@ -5262,6 +5262,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Run a command in an environment (bridge to ExecutionContexts)."
   def env_cmd(env, command, args), do: ExecutionContexts.cmd(env, command, args)
+  def env_cmd(env, command, args, opts), do: ExecutionContexts.cmd(env, command, args, opts)
 
   def set_code_repo(project, url) do
     project
