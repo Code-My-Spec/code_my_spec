@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story1018.Criterion979Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.AgentProcessHelpers,
-    only: [start_agent_with_provider: 2, begin_turn: 1, finish_turn: 1]
+    only: [start_agent_with_provider: 2, begin_turn: 1]
 
   alias CmsHarnessTest.HeldProvider
   alias CodeMySpecSpex.Fixtures
@@ -41,8 +41,9 @@ defmodule CodeMySpecSpex.Story1018.Criterion979Spex do
             then: :hold
           )
 
+        # The follow-up model request arrives only after the real write tool
+        # has returned. Leave that request held until test teardown.
         :ok = HeldProvider.await_request()
-        :ok = finish_turn(agent_id)
         {:ok, Map.put(context, :written_path, path)}
       end
 
