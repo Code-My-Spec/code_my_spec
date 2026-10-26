@@ -256,13 +256,19 @@ defmodule CodeMySpec.Promotion.DeviceSync do
         reload_supported: reload_supported(app, scope, id)
       )
 
-    result =
-      case plan.action do
-        :restart -> restart(app, scope, id)
-        :reload -> reload(app, scope, id, root)
-      end
+    case plan.action do
+      :restart -> verify_revision(app, scope, id, desired["head"], restart(app, scope, id))
+      :reload -> reload(app, scope, id, root, desired["head"])
+    end
+  end
 
-    verify_revision(app, scope, id, desired["head"], result)
+  # A failed migration is the outcome: the app still answers on the new head,
+  # and verifying would read the landing as clean.
+  defp reload(app, scope, id, root, head) do
+    case Promotion.migrate_here(root) do
+      {:ok, _versions} -> verify_revision(app, scope, id, head, reload(app, scope, id))
+      {:error, %{reason: reason}} -> {:error, {:migration_failed, reason}}
+    end
   end
 
   defp verify_revision(app, scope, id, head, result) do
@@ -286,11 +292,6 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   defp ensure_running(app, _scope, id), do: app.ensure_app_running(id, @timeout)
   defp restart(AppInstances, scope, id), do: AppInstances.restart(scope, id, @timeout)
   defp restart(app, _scope, id), do: app.restart_app(id, @timeout)
-
-  defp reload(app, scope, id, root) do
-    Promotion.migrate_here(root)
-    reload(app, scope, id)
-  end
 
   defp reload(AppInstances, scope, id), do: AppInstances.reload(scope, id, @timeout)
   defp reload(app, _scope, id), do: app.reload_app(id, @timeout)

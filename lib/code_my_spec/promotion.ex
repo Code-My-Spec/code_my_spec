@@ -1290,12 +1290,28 @@ defmodule CodeMySpec.Promotion do
   beside the running server waited for the build lock its code reloader held,
   and every request hung behind it. The reload's `/health` still reports any
   migration left pending, which restarts the app instead.
+
+  `{:error, %{reason:}}` names the migration that raised, so the landing's
+  outcome says this server was left unmigrated.
   """
-  @spec migrate_here(String.t() | nil) :: [integer()]
+  @spec migrate_here(String.t() | nil) :: {:ok, [integer()]} | {:error, %{reason: String.t()}}
   def migrate_here(root) do
     if is_binary(root) and root == BootVersion.root(),
-      do: Ecto.Migrator.run(Repo, :up, all: true),
-      else: []
+      do: migrate(),
+      else: {:ok, []}
+  end
+
+  defp migrate do
+    {:ok, Ecto.Migrator.run(Repo, :up, all: true)}
+  rescue
+    error ->
+      failed =
+        Enum.find_value(Ecto.Migrator.migrations(Repo), "a migration", fn
+          {:down, version, name} -> "migration #{version} #{name}"
+          _up -> nil
+        end)
+
+      {:error, %{reason: "#{failed} failed in the running server: #{Exception.message(error)}"}}
   end
 
   # Dispatched, never awaited: the restart may kill this very BEAM before it
@@ -1343,11 +1359,12 @@ defmodule CodeMySpec.Promotion do
     {"restart", outcome}
   end
 
+  # A migration that fails here fails the reload, as a pending one failing
+  # `/health` would.
   defp deploy_now(%{action: :reload}, scope, root, instance_id, opts) do
-    migrate_here(root)
-
-    scope
-    |> Runner.reload(root, instance_id)
+    with {:ok, _versions} <- migrate_here(root) do
+      Runner.reload(scope, root, instance_id)
+    end
     |> reloaded(scope, root, instance_id, opts)
   end
 
@@ -1505,12 +1522,13 @@ defmodule CodeMySpec.Promotion do
 
   # By here `verify_unconfirmed/3` has settled a lost acknowledgement, so a
   # correction is a real failure or an app verified still on the old commit.
-  defp tell_the_agent({:failed, reason} = outcome, scope, root, _done, agent_id) do
+  # `done` carries why a reload became a restart, such as a migration that failed.
+  defp tell_the_agent({:failed, reason} = outcome, scope, root, done, agent_id) do
     text =
       "Correction on the promotion I just reported. The merge landed, but the " <>
         "deployment that followed it failed, so the application at #{root} is NOT " <>
         "serving your work — disregard the part of that message saying QA can " <>
-        "start.\n\nWhat went wrong: #{reason}\n\nNothing was rolled back; the merge " <>
+        "start.\n\nWhat went wrong: the #{done} failed: #{reason}\n\nNothing was rolled back; the merge " <>
         "is still on the running copy. Fix what broke the restart and promote again."
 
     deliver(scope, agent_id, text, "restart failure")

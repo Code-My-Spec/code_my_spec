@@ -124,6 +124,25 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     assert Process.get(:restarts) == 1
   end
 
+  # The reload's own `mix ecto.migrate` waited for the build lock :4000's code
+  # reloader held; this server migrates itself before reloading instead.
+  test "a reload of this server's checkout migrates in the server, then reloads", %{
+    scope: scope,
+    copy: copy
+  } do
+    {:ok, _} = copy |> Ecto.Changeset.change(root: CodeMySpec.BootVersion.root()) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+    sync = fn _, _, _, _, _ -> {:ok, %{changed_files: ["test/example_test.exs"]}} end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:reloads) == 1
+    assert Process.get(:restarts, 0) == 0
+  end
+
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}
 
   test "replaying an older publication cannot regress durable intent", %{scope: scope, copy: copy} do
