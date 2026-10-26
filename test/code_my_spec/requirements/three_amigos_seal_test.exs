@@ -81,7 +81,7 @@ defmodule CodeMySpec.Requirements.ThreeAmigosSealTest do
 
       questions =
         for n <- 1..Keyword.get(opts, :open_questions, 0)//1,
-            do: %{id: n, status: :open}
+            do: %{id: n, status: :open, text: "Question #{n} about rule one?"}
 
       %{
         personas_by_story: %{story.id => [%{id: 1}]},
@@ -107,7 +107,8 @@ defmodule CodeMySpec.Requirements.ThreeAmigosSealTest do
                "question was never asked again by anything, and the story got built " <>
                "on top of it."
 
-      assert reason =~ "open question", "the reason should name the red card"
+      assert reason =~ "open question", "the reason should identify the red card"
+      assert reason =~ "Question 1 about rule one?", "the reason should name it"
     end
 
     test "five scenarios do not settle three questions either", %{scope: scope, story: story} do
