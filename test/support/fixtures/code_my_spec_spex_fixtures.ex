@@ -6198,6 +6198,13 @@ defmodule CodeMySpecSpex.Fixtures do
     run
   end
 
+  @doc "A run whose harness has reported that execution began."
+  def reporting_analysis_run(%Scope{} = scope, source) do
+    run = start_analysis_run(scope, source)
+    {:ok, started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
+    started
+  end
+
   @doc "A one-file spex run whose first scenario has reported passing."
   def streaming_spex_scenario(%Scope{} = scope, path, scenario) do
     {:ok, run} =
@@ -6207,6 +6214,7 @@ defmodule CodeMySpecSpex.Fixtures do
         args: %{"args" => [path]}
       })
 
+    {:ok, _started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
     CodeMySpec.Analysis.LiveRuns.fold(run.id, %{"event" => "file_started", "file" => path})
 
     CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
@@ -6221,7 +6229,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "A running analysis run whose last live event was `seconds` ago."
   def silent_live_analysis_run(%Scope{} = scope, source, seconds) do
-    run = start_analysis_run(scope, source)
+    run = reporting_analysis_run(scope, source)
 
     live =
       CodeMySpec.Analysis.LiveRuns.fold(run.id, %{

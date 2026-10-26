@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2451Spex do
       given_ "a spex run is running on the QA agent's working copy", context do
         qa = Fixtures.running_agent(context.scope, role: "qa")
         older = Fixtures.completed_analysis_run(context.scope, "spex")
-        current = Fixtures.start_analysis_run(context.scope, "spex")
+        current = Fixtures.reporting_analysis_run(context.scope, "spex")
         {:ok, Map.merge(context, %{qa: qa, older_run_id: older.id, run_id: current.id})}
       end
 

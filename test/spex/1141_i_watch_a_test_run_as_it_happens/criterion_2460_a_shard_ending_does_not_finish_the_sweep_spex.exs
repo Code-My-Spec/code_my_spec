@@ -95,8 +95,6 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
   end
 
   defp start_sweep(context) do
-    run = Fixtures.start_analysis_run(context.scope, "spex")
-
     {:ok, _reply, channel} =
       UserSocket
       |> socket("spex_sweep_harness", %{scope: context.scope})
@@ -109,6 +107,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
         }
       )
 
+    run = Fixtures.reporting_analysis_run(context.scope, "spex")
     files = for shard <- 1..4, do: "test/spex/shard_#{shard}_spex.exs"
     Map.merge(context, %{run_id: run.id, channel: channel, files: files})
   end

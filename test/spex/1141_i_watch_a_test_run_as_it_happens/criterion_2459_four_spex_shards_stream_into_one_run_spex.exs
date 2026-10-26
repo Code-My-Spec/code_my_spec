@@ -27,8 +27,6 @@ defmodule CodeMySpecSpex.Story1141.Criterion2459Spex do
   spex "Four spex shards stream into one run", criterion: 2459 do
     scenario "the live tool retains a passing test and running file from every shard" do
       given_ "a full spex sweep runs as 4 cms.spex shards", context do
-        run = Fixtures.start_analysis_run(context.scope, "spex")
-
         {:ok, _reply, channel} =
           UserSocket
           |> socket("sharded_spex_harness", %{scope: context.scope})
@@ -41,6 +39,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2459Spex do
             }
           )
 
+        run = Fixtures.reporting_analysis_run(context.scope, "spex")
         files = for shard <- 1..4, do: "test/spex/shard_#{shard}_spex.exs"
         {:ok, Map.merge(context, %{run_id: run.id, channel: channel, files: files})}
       end

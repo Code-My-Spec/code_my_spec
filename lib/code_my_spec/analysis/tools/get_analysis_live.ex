@@ -66,7 +66,7 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
   def describe(run, live, now) do
     run
     |> ledger()
-    |> Map.merge(live_part(live, now))
+    |> Map.merge(live_part(run, live, now))
   end
 
   defp ledger(run) do
@@ -82,9 +82,15 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
     }
   end
 
-  defp live_part(nil, _now), do: %{live: "not_retained"}
+  defp live_part(%Run{} = run, nil, _now) do
+    if Run.queued?(run) do
+      %{live: "no_events"}
+    else
+      %{live: "not_retained", hint: "Read get_analysis_output for retained output."}
+    end
+  end
 
-  defp live_part(live, now) do
+  defp live_part(_run, live, now) do
     failures = Enum.filter(live.tests, &(&1.state == "failed"))
 
     %{

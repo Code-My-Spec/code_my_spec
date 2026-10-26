@@ -59,7 +59,8 @@ defmodule CodeMySpecSpex.Story1141.Criterion2450Spex do
             assert live["tests"]["failed"] == 1
 
             assert Enum.any?(live["failures"], fn failure ->
-                     failure["file"] == file and failure["line"] == line and
+                     failure["file"] == file and
+                       (failure["failure_line"] || failure["line"]) == line and
                        String.contains?(failure["message"], message)
                    end)
 
