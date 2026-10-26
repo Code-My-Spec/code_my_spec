@@ -41,6 +41,7 @@ defmodule CmsHarness.WorkingCopies.Create do
 
     with :ok <- hold(target, request),
          :ok <- claim_target(root, target),
+         :ok <- clear_leftover_branch(root, name),
          {:ok, setup} <- add_worktree(root, target, name),
          base_head = git_head(target),
          {:ok, id} <- write_identity(target, request) do
@@ -53,13 +54,14 @@ defmodule CmsHarness.WorkingCopies.Create do
 
   def run(_root, _request), do: {:error, :no_repository}
 
-  # One create at a time per target, held by the create and the prepare it
-  # starts (same requester), released when both have exited. A retry arriving
-  # while either still runs is refused rather than reclaiming the copy from
-  # under it: the server gave up on a gate copy at 60s, and its retry found
-  # the copy mid-prepare.
-  @doc false
-  # Public so a test can hold a target the way a running create does.
+  # The server gave up on a gate copy at 60s, and its retry found the copy
+  # mid-prepare and reclaimed it from under it.
+  @doc """
+  Hold `target` for one create at a time: held by the create and the prepare it
+  starts (same requester), released when both have exited. A retry arriving
+  while either still runs is refused with `{:create_in_progress, target}`.
+  """
+  @spec hold(String.t(), map()) :: :ok | {:error, {:create_in_progress, String.t()}}
   def hold(target, request) do
     if :global.set_lock(lock(target, request), [node()], 0),
       do: :ok,
@@ -253,6 +255,44 @@ defmodule CmsHarness.WorkingCopies.Create do
 
       Logger.info("[CmsHarness] reclaimed #{target}, left by a create that did not finish")
       :ok
+    end
+  end
+
+  # Left by copies removed without their branches, it made every
+  # `worktree add -b` fail ("a branch named … already exists"). Git refuses to
+  # delete one a worktree has checked out; prune first drops the records of
+  # worktrees already gone.
+  @doc """
+  Clear a leftover branch named `name` before a copy of that name is made:
+  deleted when it has nothing of its own, otherwise kept and refused with
+  `{:leftover_branch_has_commits, name}`.
+  """
+  @spec clear_leftover_branch(String.t(), String.t()) :: :ok | {:error, term()}
+  def clear_leftover_branch(root, name) do
+    case System.cmd(
+           "git",
+           ["-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/" <> name],
+           stderr_to_stdout: true
+         ) do
+      {head, 0} ->
+        delete_leftover_branch(root, name, String.trim(head))
+
+      _none ->
+        :ok
+    end
+  end
+
+  defp delete_leftover_branch(root, name, head) do
+    System.cmd("git", ["-C", root, "worktree", "prune"], stderr_to_stdout: true)
+
+    with true <- contained?(root, head),
+         {_out, 0} <-
+           System.cmd("git", ["-C", root, "branch", "-D", name], stderr_to_stdout: true) do
+      Logger.info("[CmsHarness] deleted the leftover branch #{name} at #{head}")
+      :ok
+    else
+      false -> {:error, {:leftover_branch_has_commits, name}}
+      {out, _status} -> {:error, {:leftover_branch, name, String.trim(out)}}
     end
   end
 
