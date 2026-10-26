@@ -2802,6 +2802,15 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
   defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
+
+  @doc "Observe whether a specific persona-story link persisted after a tool call."
+  def persona_story_link_exists?(persona_id, story_id) do
+    Repo.exists?(
+      from ps in CodeMySpec.Personas.PersonaStory,
+        where: ps.persona_id == ^persona_id and ps.story_id == ^story_id
+    )
+  end
+
   defdelegate list_components(scope), to: CodeMySpec.Components
 
   @doc """
