@@ -42,8 +42,18 @@ defmodule CodeMySpec.Agents.GraphWake do
   # handler that raises, permanently, so one bad wake would silently end every
   # later one. Logged at error each time, not swallowed.
   @doc false
-  def handle_event(@event, _measurements, %{scope: scope}, _config) do
+  def handle_event(@event, _measurements, %{scope: scope} = meta, _config) do
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      for change <- Map.get(meta, :changes, []),
+          change.kind in ["files_synced", "qa_attempt_submitted"],
+          is_binary(change.working_copy_id) do
+        CodeMySpec.Agents.Offers.lift_copy_declines(
+          scope,
+          change.working_copy_id,
+          DateTime.from_naive!(change.inserted_at, "Etc/UTC")
+        )
+      end
+
       Work.consider_project(scope, :graph_changed)
     end)
 

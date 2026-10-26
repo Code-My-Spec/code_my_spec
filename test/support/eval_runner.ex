@@ -519,6 +519,7 @@ defmodule CodeMySpec.Support.EvalRunner do
     import Ecto.Query
 
     account = Ecto.UUID.dump!(account_id)
+
     steps = [
       from(r in "rules", where: r.account_id == ^account),
       from(s in "stories", where: s.locked_by == ^user_id),

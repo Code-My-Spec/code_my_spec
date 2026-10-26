@@ -158,9 +158,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # Names the address each attempt dials, so a harness aimed at the
         # wrong server is distinguishable from one being refused. Token redacted.
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
-
-        {:noreply,
-         socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
+        {:noreply, socket |> connect!(connect_options(socket, uri)) |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop: waiting produces no credential.
@@ -545,6 +543,10 @@ defmodule CmsHarness.Project.ChannelClient do
         root = socket.assigns.project.root
         Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
+
+      {:error, %{"reason" => "graph_rebuilding"}} ->
+        Process.send_after(self(), :retry_restore_after_graph, 5_000)
+        {:ok, socket}
 
       other ->
         # Not fatal, but said out loud so agents do not silently never return.
@@ -1884,6 +1886,14 @@ defmodule CmsHarness.Project.ChannelClient do
   # The startup result, handed back by the task that launched the engine.
   # Pushed from here rather than from that task, because this process owns the
   # socket.
+  def handle_info(:retry_restore_after_graph, socket) do
+    if socket.assigns[:joined] && is_nil(socket.assigns[:restore_ref]) do
+      {:noreply, ask_what_to_restore(socket, socket.assigns.topic)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:agent_start_result, topic, ref, id, result}, socket) do
     transport().push(
       socket,
@@ -2664,6 +2674,11 @@ defmodule CmsHarness.Project.ChannelClient do
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
   defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
 
+  defp connect_options(socket, uri) do
+    [uri: uri, headers: connect_headers(socket)] ++
+      Application.get_env(:code_my_spec, :harness_socket_options, [])
+  end
+
   defp transport, do: Transport.impl()
 
   # This working copy is already being served, usually by the process this one
@@ -2730,7 +2745,7 @@ defmodule CmsHarness.Project.ChannelClient do
   defp dial(socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
+        {:ok, socket} = connect(socket, connect_options(socket, uri))
         {:noreply, arm_join_deadline(socket)}
 
       {:error, _} ->

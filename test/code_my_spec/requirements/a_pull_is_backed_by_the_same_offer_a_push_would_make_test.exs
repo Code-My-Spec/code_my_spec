@@ -68,7 +68,10 @@ defmodule CodeMySpec.Requirements.APullIsBackedByTheSameOfferAPushWouldMakeTest 
     declined_key = offer.subject_key
 
     assert after_decline = ToolLibrary.run("get_next_requirement", %{}, tool_context(frame))
-    refute response_text(after_decline) =~ "requirement_name=`#{shown_name}`"
+    # Product correction on 006b2b56: a decline damps pushes only.
+    assert response_text(after_decline) =~ "requirement_name=`#{shown_name}`"
+    assert response_text(after_decline) =~ "you declined this at"
+    assert response_text(after_decline) =~ "not this agent's scope"
 
     refute Enum.any?(
              Offers.list_for_agent(ctx.agent.id),

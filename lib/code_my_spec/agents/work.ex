@@ -760,8 +760,7 @@ defmodule CodeMySpec.Agents.Work do
   # And not held back: this is push-subject selection, not `claimable_work`
   # -- a released task this agent explicitly declined, or ignored to the
   # end of its own ladder, is not pushed again (criterion 1741's throttle).
-  # Declining still holds the work back from `claimable_work` too; merely
-  # ignoring it does not (see `withheld?/4`).
+  # Both remain visible through a pull (see `withheld?/4`).
   defp released_tasks(%Agent{tasks: tasks} = agent, nodes) do
     standing = Offers.standing(agent.id)
 
@@ -1085,8 +1084,8 @@ defmodule CodeMySpec.Agents.Work do
   # feeds `graph_work/2`, the push-subject selection `offer/2` and
   # `admit_turn/4` act on, so it reads the combined `held?` -- a decline
   # or a ladder exhausted by ignoring both stop the push (criterion 1741).
-  # `claimable_work/2` itself stays open to a pull (`withheld?/4` reads the
-  # narrower `declined?`), so an exhausted offer still shows there.
+  # `claimable_work/2` stays open to a pull for both declined and exhausted
+  # offers; only ownership and unresolved blockers withhold its nodes.
   defp offerable(scope, agent) do
     standing = Offers.standing(agent.id)
 
@@ -1272,12 +1271,11 @@ defmodule CodeMySpec.Agents.Work do
 
   def requirement_scope(scope, _owner), do: scope
 
-  # `claim: true` is an agent naming the work itself: its own decline keeps
-  # the work off its menu, but does not refuse the claim.
+  # A decline only damps pushed offers. Pulls and explicit claims share the
+  # same task ownership and unresolved blocker checks.
   defp withholding(scope, %Agent{} = agent, opts) do
     owners = Keyword.get(opts, :owners) || AgentsRepository.list_agents(scope)
-    standing = if Keyword.get(opts, :claim), do: %{}, else: Offers.standing(agent.id)
-    &withheld?(owners, agent, &1, standing)
+    &withheld?(owners, agent, &1)
   end
 
   defp withholding(_scope, _owner, _opts), do: fn _node -> false end
@@ -1317,36 +1315,19 @@ defmodule CodeMySpec.Agents.Work do
   end
 
   @doc """
-  Whether a task at `agent`'s checkout withholds `node` from it: another
-  agent's live task, its own blocked on an unresolved blocker, or its own
-  open offer for the same work that `Offers.standing/1` reads as declined.
-
-  The last half is criterion 2163: a declined offer holds the work back
-  from the agent that declined it, alone, until main acts -- reassigns it,
-  gives the agent other work, or offers it again. This reads `standing`'s
-  narrower `declined?`, not `held?` -- `held?` also covers an offer merely
-  ignored to the end of its own ladder, which is not a decline (criterion
-  2169, product's correction on 3e9a96e9, itself correcting 1ef7cfe3).
-  That case stops being pushed (`offerable/2` reads `held?` for that, so
-  criterion 1741's throttle still holds), but it stays open and claimable:
-  a pull (`get_next_requirement`) still shows it, and `start_task` or
-  `reject_offer` still act on it, until main does.
+  Whether task ownership or an unresolved blocker withholds this node.
+  A decline damps pushed offers only; pulls still show claimable work.
 
   Its own active task is not withheld -- `start_task` resumes that.
   """
   @spec withheld?([Agent.t()], Agent.t(), map(), map()) :: boolean()
-  def withheld?(owners, agent, node, standing \\ %{}) do
-    held_back?(agent, node, standing) or
-      owners
-      |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
-      |> Enum.any?(fn owner ->
-        mine? = owner.id == agent.id
-        Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
-      end)
-  end
-
-  defp held_back?(agent, node, standing) do
-    match?(%{declined?: true}, standing[node_key(agent, node)])
+  def withheld?(owners, agent, node, _standing \\ %{}) do
+    owners
+    |> Enum.filter(&(&1.working_copy_id == agent.working_copy_id))
+    |> Enum.any?(fn owner ->
+      mine? = owner.id == agent.id
+      Enum.any?(owner.tasks || [], &holds_node?(&1, mine?, node))
+    end)
   end
 
   defp holds_node?(task, mine?, node) do

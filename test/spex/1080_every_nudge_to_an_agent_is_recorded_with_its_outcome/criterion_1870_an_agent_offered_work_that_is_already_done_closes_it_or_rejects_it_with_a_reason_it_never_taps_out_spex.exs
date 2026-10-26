@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
 
   `StartTask`'s `not_already_done/3`: when the requirement is found already
   satisfied, the system itself calls `Offers.close_stale/2` (status:
-  declined, reason: "already satisfied") -- its own comment: "the system
+  superseded, reason: "already satisfied"), without a decline hold -- its own comment: "the system
   knows the offer is stale, so it does not wait for the agent to say so."
   The agent never has to call `reject_offer` or `tap_out` for this to happen.
 
@@ -72,10 +72,13 @@ defmodule CodeMySpecSpex.Story1080.Criterion1870Spex do
         {:ok, context}
       end
 
-      then_ "the offer settles declined with that reason, not left open", context do
-        assert [%{status: "declined", reason: "already satisfied"}] =
+      then_ "the offer settles superseded with that reason and no decline hold", context do
+        assert [%{status: "superseded", reason: "already satisfied", subject: subject}] =
                  offers(context, context.coder, %{kind: "work"}),
                listing(context)
+
+        subject_key = String.replace_prefix(subject, "requirement:", "")
+        refute Map.has_key?(CodeMySpec.Agents.Offers.standing(context.coder), subject_key)
 
         {:ok, context}
       end

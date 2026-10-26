@@ -33,6 +33,19 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
 
   @impl true
   def call(params, context) do
+    case CodeMySpec.Requirements.IncrementalGraph.with_read_deadline(1_000, fn ->
+           discover(params, context)
+         end) do
+      {:error, :graph_rebuilding} ->
+        {:ok,
+         "The requirement graph is being rebuilt or updated; retry in 5 s. No work was offered."}
+
+      result ->
+        result
+    end
+  end
+
+  defp discover(params, context) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
         # One normalisation rather than two lookups: the schema declares atom
@@ -51,6 +64,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
 
         execution
         |> RequirementsMapper.story_execution_response(%{})
+        |> with_decline_notes(agent, execution)
         |> with_offer_note(ready_offer(agent, execution.actionable))
 
       {:error, _reason} ->
@@ -104,6 +118,13 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
 
   # The key `Work` records an offer under: a story by number, else by id.
   defp offer_key(node), do: "#{node.entity_type}:#{Directives.entity_ref(node)}:#{node.name}"
+
+  defp with_decline_notes(response, nil, _execution), do: response
+
+  defp with_decline_notes({:ok, text}, agent, execution) do
+    notes = Offers.decline_notes(agent.id, execution.wave)
+    {:ok, text <> notes}
+  end
 
   defp with_offer_note(response, nil), do: response
 
