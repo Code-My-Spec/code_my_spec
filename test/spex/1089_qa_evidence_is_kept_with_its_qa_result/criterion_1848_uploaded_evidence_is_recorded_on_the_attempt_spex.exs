@@ -27,13 +27,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1848Spex do
   spex "Uploaded evidence is recorded on the attempt", criterion: 1848 do
     scenario "the attempt's own row names the file that was uploaded" do
       given_ "a screenshot sits in the story's screenshot directory", context do
-        dir =
-          Path.join([
-            ".code_my_spec/qa",
-            to_string(context.story.number),
-            "screenshots",
-            context.task_id
-          ])
+        dir = Path.join([".code_my_spec/qa", to_string(context.story.number), "screenshots"])
 
         :ok =
           ExecutionContexts.write_file(

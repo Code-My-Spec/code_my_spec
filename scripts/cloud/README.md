@@ -17,15 +17,9 @@ comes from the cloud environment's settings.
 - **Environment variables:**
 
       CMS_SERVER_URL=https://dev.codemyspec.com
-      CMS_HARNESS_PORT=4004
       CMS_DEPLOY_KEY=<the code_my_spec project's deploy key>
 
 - **Setup script:** paste `setup.sh` in full.
-
-The script in this directory is the repository-development setup using a project
-deploy key. The device UI generates a separate setup using a proxy network secret.
-Both pass `CMS_HARNESS_PORT` to the harness and Claude settings. Use a plugin version
-that supports this override; older published plugins have a fixed port of 4003.
 
 `dev.codemyspec.com` is the local `mix phx.server` on :4000 behind the Cloudflare
 tunnel, so the Mac has to be up and serving for the cloud harness to join.

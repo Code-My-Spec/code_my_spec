@@ -87,33 +87,6 @@ defmodule CmsHarness.DevBoxTokenExchangeTest do
     assert_receive {:exchange, "/api/devices/token", []}
   end
 
-  test "a dev box 401 includes the server refusal and setup remedy" do
-    Application.put_env(:code_my_spec, :harness_dev_box, true)
-
-    Req.Test.stub(Token, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(
-        401,
-        Jason.encode!(%{
-          error: "missing_authorization",
-          error_description: "No Authorization header reached the server."
-        })
-      )
-    end)
-
-    log =
-      ExUnit.CaptureLog.capture_log(fn ->
-        assert {:error, {:refused, 401, reason}} = Token.access_token()
-        assert reason =~ "No Authorization header"
-      end)
-
-    assert log =~ "Add a dev box"
-    assert log =~ "network secret"
-    assert log =~ "no 'Bearer ' prefix"
-    refute log =~ "CMS_DEPLOY_KEY"
-  end
-
   test "a token mounted as a file is read from it, never from the environment" do
     path = Path.join(System.tmp_dir!(), "cms_token_#{System.unique_integer([:positive])}")
     File.write!(path, "cbt_from_file\n")

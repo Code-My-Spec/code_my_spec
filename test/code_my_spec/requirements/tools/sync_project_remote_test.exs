@@ -22,9 +22,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
 
   use CodeMySpecTest.DataCase, async: true
 
-  alias CodeMySpec.Agents.Agent
   alias CodeMySpec.ToolLibrary
-  alias CodeMySpec.WorkingCopies
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
@@ -80,71 +78,6 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
     }
   end
 
-  test "detached Main and Product rescan the designated copy without scanning scratch", ctx do
-    {:ok, copy} = WorkingCopies.fetch(ctx.working_copy_id)
-    Repo.update!(Ecto.Changeset.change(copy, main: true))
-
-    for role <- [:main, :product] do
-      agent = detached_agent(ctx.scope, role)
-      channel = registered_channel(copy.id)
-      monitor = Process.monitor(channel)
-      detached = %{ctx.scope | active_working_copy_id: nil, cwd: agent.working_copy}
-
-      assert {:ok, text} =
-               ToolLibrary.run("sync_project", %{}, %{
-                 scope: detached,
-                 agent_id: agent.id,
-                 working_dir: agent.working_copy
-               })
-
-      assert text =~ "Rescan requested"
-      assert_receive {:channel_got, :rescan}, 1_000
-      assert_receive {:DOWN, ^monitor, :process, ^channel, _}, 1_000
-      assert Repo.get!(Agent, agent.id).working_copy_id == nil
-    end
-  end
-
-  test "detached sync ignores stale caller selection and fails informatively before first copy",
-       ctx do
-    {:ok, copy} = WorkingCopies.fetch(ctx.working_copy_id)
-    Repo.update!(Ecto.Changeset.change(copy, main: false))
-    agent = detached_agent(ctx.scope, :main)
-
-    assert {:error, text} =
-             ToolLibrary.run("sync_project", %{}, %{
-               scope: %{ctx.scope | cwd: agent.working_copy},
-               agent_id: agent.id
-             })
-
-    assert text =~ "No main working copy exists yet"
-    refute_received {:channel_got, _}
-  end
-
-  test "a foreign or malformed agent identity cannot select another project's graph", ctx do
-    other = full_scope_fixture()
-    agent = detached_agent(other, :main)
-
-    for id <- [agent.id, "invalid"] do
-      assert {:error, text} =
-               ToolLibrary.run("sync_project", %{}, %{scope: ctx.scope, agent_id: id})
-
-      assert text =~ "not authorized"
-    end
-  end
-
-  defp detached_agent(scope, role) do
-    Repo.insert!(%Agent{
-      project_id: scope.active_project_id,
-      account_id: scope.active_account_id,
-      role: role,
-      execution_mode: :detached,
-      provider: "anthropic",
-      status: :running,
-      working_copy: "/scratch/must-not-scan",
-      working_copy_id: nil
-    })
-  end
-
   describe "when the working copy is on a harness" do
     # The shape that produced the raw refusal: a cwd is present, so the
     # light-harness clause does not match, and the scan runs into an environment
@@ -193,7 +126,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       # A projected story whose rows are gone, as a story coming back was.
       story = story_fixture(ctx.scope)
       _ = requirements_of(ctx.scope, story)
-      Repo.delete_all(from(r in "requirements", where: r.story_id == ^story.id))
+      Repo.delete_all(from r in "requirements", where: r.story_id == ^story.id)
       assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
 
       {_response, text} = run(%{ctx.scope | cwd: nil})

@@ -41,9 +41,7 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
       "the two continuous toggles — the 'toggle an agent's loop' remedy",
     "lib/code_my_spec/requirements/requirement_graph.ex" =>
       "a read of a project with no rows at all — the 'read it once' remedy, " <>
-        "which is only a remedy for a project nothing has ever projected",
-    "lib/code_my_spec_web/channels/harness_project_channel.ex" =>
-      "the restore handshake after a harness restart establishes its graph before restoring agents"
+        "which is only a remedy for a project nothing has ever projected"
   }
 
   @excluded [
@@ -65,7 +63,7 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
     end)
   end
 
-  test "watcher startup routes match the documented recovery remedies" do
+  test "nothing outside GraphWatcher starts a watcher except the continuous toggles and a first read" do
     callers =
       "lib/**/*.ex"
       |> Path.wildcard()
@@ -100,6 +98,5 @@ defmodule CodeMySpec.TheUnwatchedDiagnosticNamesARealRemedyTest do
 
     assert sentence =~ "toggle"
     assert sentence =~ "restart"
-    assert sentence =~ "reconnect a harness after its restart"
   end
 end

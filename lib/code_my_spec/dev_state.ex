@@ -401,7 +401,7 @@ defmodule CodeMySpec.DevState do
         [
           "project #{project.name} has agents in the loop and no graph writer — work " <>
             "appearing will not update the graph. Reading a graph that has rows does not " <>
-            "start one; restart the server, reconnect a harness after its restart, or toggle an agent's loop to start its graph worker."
+            "start one; restart the server or toggle an agent's loop to start its graph worker."
         ]
       else
         []

@@ -28,13 +28,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1846Spex do
   spex "QA evidence binaries stay out of git", criterion: 1846 do
     scenario "a pass with a screenshot on disk names no git command" do
       given_ "a screenshot sits in the story's screenshot directory", context do
-        dir =
-          Path.join([
-            ".code_my_spec/qa",
-            to_string(context.story.number),
-            "screenshots",
-            context.task_id
-          ])
+        dir = Path.join([".code_my_spec/qa", to_string(context.story.number), "screenshots"])
 
         :ok =
           ExecutionContexts.write_file(

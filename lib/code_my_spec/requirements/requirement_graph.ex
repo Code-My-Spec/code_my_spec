@@ -99,26 +99,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp settle_owner(%Scope{active_project_id: project_id} = scope) do
-    # Why: a read starts the writer for a project with no rows at all, or one
-    # whose projector died without being stopped; not one that was stopped, or
+    # Why: a read starts the writer only for a project with no rows at all, or
     # it would resurrect a projector a test's teardown had stopped.
     # See knowledge/requirements_graph, "Writers and readers".
-    cond do
-      never_projected?(project_id) ->
-        start_writers(scope)
-
-      IncrementalGraph.orphaned?(project_id) ->
-        Logger.warning(
-          "[Requirements] the projector for #{project_id} died without stopping; " <>
-            "its rows were not being kept current, restarting it"
-        )
-
-        start_writers(scope)
-
-      true ->
-        :ok
-    end
-
+    if never_projected?(project_id), do: start_writers(scope)
     IncrementalGraph.settle(project_id, [scope.active_working_copy_id])
   end
 

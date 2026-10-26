@@ -66,8 +66,6 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
       "stale" => a.stale,
       "stale_because" => stale_reason(a, story),
       "issue_ids" => a.issue_ids || [],
-      "evidence" => Enum.map(a.evidence, & &1.name),
-      "evidence_corrections" => a.evidence_corrections || [],
       "scenarios" =>
         Enum.map(a.scenarios, fn s ->
           %{
@@ -117,9 +115,7 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
     scenarios (#{length(attempt.scenarios)}):
     #{render_scenarios(attempt.scenarios)}
     issue_ids: #{render_issue_ids(attempt.issue_ids)}
-    tools_used: #{render_tools_used(attempt.tools_used)}
-    evidence: #{render_evidence(attempt.evidence)}
-    evidence_corrections: #{Jason.encode!(attempt.evidence_corrections || [])}#{invalidation}
+    tools_used: #{render_tools_used(attempt.tools_used)}#{invalidation}
     """
     |> String.trim_trailing()
   end
@@ -186,9 +182,6 @@ defmodule CodeMySpec.Qa.Tools.ListQaAttempts do
       "  - #{s.name} [#{s.status}]#{blocker} — #{s.observation}"
     end)
   end
-
-  defp render_evidence([]), do: "(none)"
-  defp render_evidence(evidence), do: Enum.map_join(evidence, ", ", & &1.name)
 
   defp render_issue_ids(nil), do: "(none)"
   defp render_issue_ids([]), do: "(none)"

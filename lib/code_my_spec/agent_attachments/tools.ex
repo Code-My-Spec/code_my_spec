@@ -28,14 +28,6 @@ defmodule CodeMySpec.AgentAttachments.Tools do
 
   def render({:ok, value}), do: {:ok, Jason.encode!(value)}
   def render(:ok), do: {:ok, "ok"}
-
-  def render({:error, :attachment_not_connected}),
-    do:
-      {:error,
-       "This attachment is not connected (the device may have reconnected since it was lost). " <>
-         "Call connect_working_copy with the same working_copy_id to reconnect -- it is " <>
-         "idempotent and returns this same attachment id."}
-
   def render({:error, reason}), do: Tools.error(reason)
 
   def row(attachment) do

@@ -692,13 +692,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     args = List.wrap(payload["args"] || [])
     ref = socket_ref(socket)
     scope = socket.assigns.scope
-    owner = self()
-    request_id = make_ref()
 
     {:noreply,
-     reply_async(socket, ref, {"analysis_run", source, request_id}, fn ->
-       admitted = fn run_id -> send(owner, {:analysis_admitted, request_id, run_id}) end
-       run_for_agent(scope, source, args, admitted)
+     reply_async(socket, ref, {"analysis_run", source}, fn ->
+       run_for_agent(scope, source, args)
      end)}
   end
 
@@ -738,30 +735,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # agent is simply absent.
   def handle_in("agents_to_restore", _payload, socket) do
     scope = socket.assigns.scope
-    ref = socket_ref(socket)
 
-    {:noreply,
-     reply_async(socket, ref, "agents_to_restore", fn ->
-       result =
-         CodeMySpec.Requirements.IncrementalGraph.with_read_deadline(1_000, fn ->
-           with {:ok, _pid} <- CodeMySpec.Requirements.GraphWatcher.ensure_watching(scope),
-                :ok <- CodeMySpec.Requirements.GraphWatcher.settle(scope),
-                %{seeded: true, last_error: nil} <-
-                  CodeMySpec.Requirements.GraphWatcher.status(scope.active_project_id) do
-             restore_agents(scope)
-           else
-             _ -> {:error, :graph_rebuilding}
-           end
-         end)
+    # The same request a fresh start sends, with credential and conversation.
+    # On duty only: an off or retired agent is never brought back.
+    on_duty =
+      scope
+      |> Agents.list_on_duty()
+      |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
 
-       case result do
-         {:error, :graph_rebuilding} ->
-           {:error, %{"reason" => "graph_rebuilding", "retry_after_ms" => 5_000}}
+    # A terminal session is a person's process, never launched here: the
+    # harness re-attaches each one still running (story 1124).
+    {terminals, running} = Enum.split_with(on_duty, &is_binary(&1.engine_session_id))
 
-         reply ->
-           reply
-       end
-     end)}
+    :ok = Agents.account_for_interrupted_turns(scope, running)
+
+    tools = ToolRegistry.registry()
+    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
+
+    reattach =
+      Enum.map(terminals, fn agent ->
+        %{
+          "agent_id" => agent.id,
+          "session_id" => agent.engine_session_id,
+          "engine" => to_string(agent.engine),
+          "transcript_path" => agent.transcript_path
+        }
+      end)
+
+    {:reply, {:ok, %{"agents" => agents, "terminals" => reattach}}, socket}
   end
 
   def handle_in(
@@ -1247,36 +1248,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # `:DOWN`, and a `:DOWN` still holding an entry is answered `handler_died`.
   # One reply per request, decided in one process.
   # See knowledge/harness/channel, "Deferred replies".
-  defp restore_agents(scope) do
-    # The same request a fresh start sends, with credential and conversation.
-    # On duty only: an off or retired agent is never brought back.
-    on_duty =
-      scope
-      |> Agents.list_on_duty()
-      |> Enum.filter(&(&1.working_copy_id == scope.active_working_copy_id))
-
-    # A terminal session is a person's process, never launched here: the
-    # harness re-attaches each one still running (story 1124).
-    {terminals, running} = Enum.split_with(on_duty, &is_binary(&1.engine_session_id))
-
-    :ok = Agents.account_for_interrupted_turns(scope, running)
-
-    tools = ToolRegistry.registry()
-    agents = Enum.map(running, &(scope |> LaunchRequest.hydrate(&1) |> LaunchRequest.for(tools)))
-
-    reattach =
-      Enum.map(terminals, fn agent ->
-        %{
-          "agent_id" => agent.id,
-          "session_id" => agent.engine_session_id,
-          "engine" => to_string(agent.engine),
-          "transcript_path" => agent.transcript_path
-        }
-      end)
-
-    {:ok, %{"agents" => agents, "terminals" => reattach}}
-  end
-
   defp reply_async(socket, ref, label, fun) do
     task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fun)
 
@@ -1312,7 +1283,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
         Phoenix.Channel.reply(
           ref,
-          {:error, handler_failure(socket.assigns.scope, label, reason)}
+          {:error, %{"reason" => "handler_died", "at" => describe(label)}}
         )
 
         assign(socket, :pending_replies, pending)
@@ -1321,30 +1292,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp pending_replies(socket), do: socket.assigns[:pending_replies] || %{}
 
-  defp handler_failure(scope, {"analysis_run", _source, _request_id, run_id} = label, reason) do
-    run = Analysis.get_run(scope, run_id)
-
-    %{
-      "reason" => "handler_died",
-      "at" => describe(label),
-      "handler_error" => death_reason(reason),
-      "run_id" => run_id,
-      "status" => if(run, do: to_string(run.status), else: "unknown")
-    }
-  end
-
-  defp handler_failure(_scope, label, reason) do
-    %{
-      "reason" => "handler_died",
-      "at" => describe(label),
-      "handler_error" => death_reason(reason)
-    }
-  end
-
-  defp describe({"analysis_run", source, _request_id, run_id}),
-    do: "analysis_run (#{source}, run #{run_id})"
-
-  defp describe({"analysis_run", source, _request_id}), do: "analysis_run (#{source})"
   defp describe({handler, detail}), do: "#{handler} (#{detail})"
   defp describe(handler), do: handler
 
@@ -1475,22 +1422,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # sent by this process to itself from a stop decision; it lands after that
   # decision, which is made from what is already recorded.
   @impl true
-  # Admission, dispatch and DOWN arrive from the same task in order. Keep the
-  # identity per request: concurrent callers may request the same source.
-  # Losing this waiter must not cancel or fail the independently executing run.
-  def handle_info({:analysis_admitted, request_id, run_id}, socket) do
-    pending =
-      Map.new(pending_replies(socket), fn
-        {task_ref, {ref, {"analysis_run", source, ^request_id}}} ->
-          {task_ref, {ref, {"analysis_run", source, request_id, run_id}}}
-
-        entry ->
-          entry
-      end)
-
-    {:noreply, assign(socket, :pending_replies, pending)}
-  end
-
   def handle_info({:run_analysis, runs}, socket) do
     push(socket, "run_analysis", %{"runs" => runs})
     {:noreply, socket}
@@ -1589,11 +1520,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # The agent reads this as test output, so the tool's own text is the body. An
   # error still answers in that shape, never as empty output that reads as a pass.
-  defp run_for_agent(scope, source, args, admitted) do
-    case Analysis.await_run(scope, source, args,
-           requested_by: %{kind: "agent_mix_test"},
-           on_admitted: admitted
-         ) do
+  defp run_for_agent(scope, source, args) do
+    case Analysis.await_run(scope, source, args, requested_by: %{kind: "agent_mix_test"}) do
       {:ok, %{} = run} ->
         {:ok,
          %{

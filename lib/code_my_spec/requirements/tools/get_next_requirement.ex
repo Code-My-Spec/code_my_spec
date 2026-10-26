@@ -33,19 +33,6 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
 
   @impl true
   def call(params, context) do
-    case CodeMySpec.Requirements.IncrementalGraph.with_read_deadline(1_000, fn ->
-           discover(params, context)
-         end) do
-      {:error, :graph_rebuilding} ->
-        {:ok,
-         "The requirement graph is being rebuilt or updated; retry in 5 s. No work was offered."}
-
-      result ->
-        result
-    end
-  end
-
-  defp discover(params, context) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
         # One normalisation rather than two lookups: the schema declares atom

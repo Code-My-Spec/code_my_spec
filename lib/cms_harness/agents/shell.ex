@@ -27,7 +27,6 @@ defmodule CmsHarness.Agents.Shell do
   """
 
   alias CmsHarness.Agents.Engine.Execution
-  alias CmsHarness.Agents.Engine.ProcessGroups
   alias CmsHarness.Config
 
   # Greedy on the command so a string with more than one `>` lands the split
@@ -130,7 +129,8 @@ defmodule CmsHarness.Agents.Shell do
 
       case Task.yield(task, timeout) do
         nil ->
-          cleanup = stop_and_drain(task)
+          cleanup = Execution.stop_and_release(task.pid)
+          Task.shutdown(task, :brutal_kill)
           {_, output} = StringIO.contents(capture)
           {:timeout, output, cleanup}
 
@@ -145,48 +145,6 @@ defmodule CmsHarness.Agents.Shell do
     after
       StringIO.close(capture)
     end
-  end
-
-  # Capture ownership while frozen, but keep the System.cmd reader alive while
-  # stopping its OS group. Killing that reader first discards port messages
-  # that have arrived but have not yet been written to StringIO.
-  defp stop_and_drain(task) do
-    ownership = Execution.capture(task.pid)
-    deadline = System.monotonic_time(:millisecond) + 5_000
-
-    try do
-      case ownership.groups do
-        [] ->
-          Execution.release(ownership)
-          Task.shutdown(task, :brutal_kill)
-          :ok
-
-        groups ->
-          term_result = ProcessGroups.signal(groups, "-TERM", deadline)
-          Enum.each(ownership.owners, &resume_reader/1)
-          Process.sleep(min(100, max(deadline - System.monotonic_time(:millisecond), 0)))
-          kill_result = ProcessGroups.signal(groups, "-KILL", deadline)
-          confirmation = ProcessGroups.confirm(groups, deadline)
-
-          # System.cmd consumes data preceding exit_status before returning.
-          # Await that return before reading StringIO, even if cleanup failed.
-          remaining = max(deadline - System.monotonic_time(:millisecond), 0)
-          Task.yield(task, remaining) || Task.shutdown(task, :brutal_kill)
-
-          case confirmation do
-            :ok -> :ok
-            error -> {:error, {:cleanup_incomplete, error, term_result, kill_result}}
-          end
-      end
-    after
-      Execution.release(ownership)
-    end
-  end
-
-  defp resume_reader(pid) do
-    :erlang.resume_process(pid)
-  rescue
-    ArgumentError -> :ok
   end
 
   defp cleanup_status(:ok), do: "Local command subprocess termination confirmed."

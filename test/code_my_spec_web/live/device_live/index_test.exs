@@ -36,38 +36,6 @@ defmodule CodeMySpecWeb.DeviceLive.IndexTest do
     assert has_element?(view, "[data-test=server]", "Harness")
   end
 
-  test "Claude cloud setup confirms the saved box and Done reveals it in the list", %{
-    conn: conn,
-    scope: scope,
-    project: project
-  } do
-    {:ok, view, _} = live(conn, "/app/projects/#{project.id}/console/devices")
-    view |> element("[data-test=add-dev-box]") |> render_click()
-
-    view
-    |> form("#add-dev-box-form", dev_box: %{name: "Claude cloud", provider: "claude_code_cloud"})
-    |> render_submit()
-
-    assert has_element?(view, "[data-test=new-dev-box]", "was added")
-
-    assert has_element?(
-             view,
-             "[data-test=claude-cloud-steps] li:nth-child(1)",
-             "setup script box"
-           )
-
-    assert has_element?(view, "[data-test=claude-cloud-steps] li:nth-child(2)", "allowed hosts")
-    assert has_element?(view, "[data-test=claude-cloud-steps] li:nth-child(3)", "network secret")
-    assert has_element?(view, "[data-test=done-dev-box]", "Done")
-
-    box = Devices.list_devices(scope) |> Enum.find(&(&1.label == "Claude cloud"))
-    assert box
-
-    view |> element("[data-test=done-dev-box]") |> render_click()
-    refute has_element?(view, "[data-test=new-dev-box]")
-    assert has_element?(view, "[data-test=device][data-device-id='#{box.id}']")
-  end
-
   defp provider_response(%{request_path: "/v1/servers"} = conn) do
     provider_json(conn, %{
       "servers" => [

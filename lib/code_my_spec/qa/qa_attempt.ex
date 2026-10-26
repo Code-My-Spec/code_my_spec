@@ -2,8 +2,7 @@ defmodule CodeMySpec.Qa.QaAttempt do
   @moduledoc """
   Schema for a QA attempt on a story.
 
-  Verdict and scenarios are immutable once inserted. Evidence may be corrected
-  with an appended audit record. Each submission creates a new row. The latest
+  Immutable once inserted. Each submission creates a new row. The latest
   attempt with `status: :pass` and no associated invalidation satisfies
   `qa_complete` for the story.
   """
@@ -58,7 +57,6 @@ defmodule CodeMySpec.Qa.QaAttempt do
     # distinguishable.
     field(:tools_used, {:array, :string})
     field(:submitted_at, :utc_datetime_usec)
-    field(:evidence_corrections, {:array, :map}, default: [])
     embeds_many(:scenarios, Scenario, on_replace: :delete)
     embeds_many(:evidence, Evidence, on_replace: :delete)
 

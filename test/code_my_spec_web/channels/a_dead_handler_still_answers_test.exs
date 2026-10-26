@@ -74,49 +74,6 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
     assert at =~ "analysis_run"
   end
 
-  test "a dead waiter retains its run identity and the analyzer can still finish",
-       %{channel: channel, scope: scope} do
-    before = handlers()
-    ref = push(channel, "analysis_run", %{"source" => "exunit"})
-    assert_push "run_analysis", %{"runs" => [%{"run_id" => run_id}]}, 5_000
-
-    kill_the_new_handler(before)
-
-    assert_reply ref,
-                 :error,
-                 %{
-                   "reason" => "handler_died",
-                   "run_id" => ^run_id,
-                   "status" => "running",
-                   "handler_error" => error
-                 },
-                 5_000
-
-    assert error =~ "killed"
-    assert CodeMySpec.Analysis.get_run(scope, run_id).status == :running
-
-    result_ref =
-      push(channel, "analysis_result", %{
-        "run_id" => run_id,
-        "source" => "exunit",
-        "status" => "ok",
-        "result" => %{
-          "exit_status" => 0,
-          "output" => "1 test, 0 failures\n",
-          "execution_status" => "success",
-          "stats" => %{"tests" => 1, "failures" => 0},
-          "diagnostics" => []
-        }
-      })
-
-    assert_reply result_ref, :ok, _, 5_000
-    run = CodeMySpec.Analysis.get_run(scope, run_id)
-    assert run.status == :completed
-    assert run.exit_status == 0
-    assert run.output == "1 test, 0 failures\n"
-    refute_reply ref, :ok, _, 50
-  end
-
   # A handler that succeeds must not also be reported dead.
   #
   # This is the defect the first version of the change shipped with, and it

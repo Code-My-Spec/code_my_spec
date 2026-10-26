@@ -1224,11 +1224,6 @@ defmodule CodeMySpec.Promotion do
   so not judged), when the harness cannot reload (`reload_supported: false`),
   or when the caller asks (`restart: true`). A reload that fails restarts
   inside the same deployment.
-
-  Also restart when it touches a source in `loaded` (the deployed app is this
-  server, and these are the files it has loaded): reloading them recompiles
-  modules under running processes, and the requirement graph's writer died
-  that way after a landing and was not replaced.
   """
   @spec deployment_plan([String.t()] | nil, keyword()) ::
           %{action: :reload | :restart, reason: String.t()}
@@ -1249,12 +1244,6 @@ defmodule CodeMySpec.Promotion do
           reason: "the change touches #{describe_paths(touched)}, which a reload cannot pick up"
         }
 
-      (touched = Enum.filter(changed, &(&1 in Keyword.get(opts, :loaded, [])))) != [] ->
-        %{
-          action: :restart,
-          reason: "the change touches #{describe_paths(touched)}, which this server has loaded"
-        }
-
       true ->
         %{action: :reload, reason: "nothing in the change needs a restart"}
     end
@@ -1266,18 +1255,11 @@ defmodule CodeMySpec.Promotion do
   end
 
   defp reload_opts(scope, running, opts) do
-    opts = Keyword.put(opts, :loaded, loaded_here(running))
-
     with {:ok, instance} <- default_instance(scope, running) do
       Keyword.put(opts, :reload_supported, AppInstances.reload_supported?(scope, instance.id))
     else
       _ -> Keyword.put(opts, :reload_supported, false)
     end
-  end
-
-  # What this server has loaded, when the app being deployed is this server.
-  defp loaded_here(%WorkingCopy{root: root}) do
-    if is_binary(root) and root == BootVersion.root(), do: BootVersion.loaded_sources(), else: []
   end
 
   # Dispatched, never awaited: the restart may kill this very BEAM before it

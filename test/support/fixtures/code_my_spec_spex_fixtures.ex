@@ -1137,12 +1137,13 @@ defmodule CodeMySpecSpex.Fixtures do
   The channel's own handler is two lines of passthrough over that call, so
   driving it costs nothing and removes the only place the two could disagree.
   """
-  def agents_to_restore(%Phoenix.Socket{} = socket) do
-    CodeMySpecSpex.Fixtures.RestoreHandshake.agents_on(socket)
-  end
-
   def agents_to_restore(%Scope{} = scope) do
-    CodeMySpecSpex.Fixtures.RestoreHandshake.agents(scope)
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:reply, {:ok, %{"agents" => agents}}, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in("agents_to_restore", %{}, socket)
+
+    agents
   end
 
   @doc """
@@ -2954,28 +2955,6 @@ defmodule CodeMySpecSpex.Fixtures do
     exunit_output_file: "exunit",
     spex_output_file: "spex"
   ]
-
-  @doc """
-  Retry `check` (a 0-arity fun returning a boolean) until it is true or
-  `attempts_left` is exhausted, sleeping 100ms between tries. `:ok` or
-  `:timeout`.
-
-  For asserting on a result a background task reconciles asynchronously,
-  where nothing in the spec itself ever awaits it.
-  """
-  @spec poll_until((-> boolean()), pos_integer()) :: :ok | :timeout
-  def poll_until(check, attempts_left \\ 200) when is_function(check, 0) do
-    cond do
-      check.() -> :ok
-      attempts_left > 1 -> poll_retry(check, attempts_left)
-      true -> :timeout
-    end
-  end
-
-  defp poll_retry(check, attempts_left) do
-    Process.sleep(100)
-    poll_until(check, attempts_left - 1)
-  end
 
   @doc """
   Recorded analyzer outputs, landed as completed analysis runs — what

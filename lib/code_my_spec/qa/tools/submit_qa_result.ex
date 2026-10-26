@@ -119,12 +119,6 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
         story_number = story_number(scope, attempt.story_id)
         attempt = upload_evidence(scope, context, attempt, story_number)
 
-        EvidenceUpload.clear(
-          CodeMySpec.WorkingCopies.execution_context(scope),
-          story_number,
-          attempt.task_id
-        )
-
         attempt_response(attempt, story_number)
 
       {:error, changeset = %Ecto.Changeset{}} ->
@@ -189,13 +183,7 @@ defmodule CodeMySpec.Qa.Tools.SubmitQaResult do
        when not is_nil(story_number) do
     env = CodeMySpec.WorkingCopies.execution_context(scope)
 
-    case EvidenceUpload.collect(
-           env,
-           scope.active_project_id,
-           attempt.id,
-           story_number,
-           attempt.task_id
-         ) do
+    case EvidenceUpload.collect(env, scope.active_project_id, attempt.id, story_number) do
       [] -> attempt
       evidence -> QaAttempts.attach_evidence(attempt, evidence)
     end

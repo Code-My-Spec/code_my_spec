@@ -14,8 +14,7 @@ defmodule CodeMySpec.Agents.DetachedWorkTest do
 
   defmodule Transport do
     def request_work_turn(copy, agent, ref, text, _timeout) do
-      owner = CodeMySpecTest.AgentTransportRouter.owner(agent.project_id)
-      send(owner, {:detached_work, copy, agent.id, ref, text})
+      send(self(), {:detached_work, copy, agent.id, ref, text})
       {:ok, :started}
     end
   end
@@ -24,8 +23,6 @@ defmodule CodeMySpec.Agents.DetachedWorkTest do
   setup :setup_active_project
 
   setup ctx do
-    :ok = CodeMySpecTest.AgentTransportRouter.route(ctx.scope, Transport)
-
     original =
       for key <- [:env, :desktop_agent_transport],
           do: {key, Application.fetch_env(:code_my_spec, key)}
@@ -57,19 +54,6 @@ defmodule CodeMySpec.Agents.DetachedWorkTest do
 
     AgentPresence.present(agent)
     agent
-  end
-
-  test "detached transport reports deliveries from a background caller", ctx do
-    owner = agent(ctx.scope, :product)
-    target = owner.id
-
-    task =
-      Task.async(fn ->
-        Transport.request_work_turn(nil, owner, "background-ref", "background work", 5_000)
-      end)
-
-    assert {:ok, :started} = Task.await(task)
-    assert_received {:detached_work, nil, ^target, "background-ref", "background work"}
   end
 
   test "detached Main and Product are admitted with a live desktop execution host", ctx do
@@ -163,10 +147,8 @@ defmodule CodeMySpec.Agents.DetachedWorkTest do
 
     assert text =~ head.name
     assert {:ok, _} = Work.request_turn_if_runnable(detached, owner, :continuous_enabled)
-    # A graph wake can dispatch first from its background task. Observe the
-    # same delivery regardless of which caller wins the offer's row lock.
-    target = owner.id
-    assert_receive {:detached_work, nil, ^target, _, _}, 5_000
+    assert_received {:detached_work, nil, target, _, _}
+    assert target == owner.id
 
     assert {:ok, _} =
              ToolLibrary.run(

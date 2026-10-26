@@ -3,7 +3,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
   Story 1089 — QA evidence is kept with its QA result
   Criterion 1850 — QA plan and briefs stay as files.
 
-  `EvidenceUpload.collect/5` only ever lists `<story>/screenshots/<task_id>/` — a
+  `EvidenceUpload.collect/4` only ever lists `<story>/screenshots/` — a
   brief or a plan lives one level up, at `<story>/brief.md`, so it is
   never a candidate to begin with. Proven here rather than assumed: a
   brief sits beside a screenshot in the same submission, and only the
@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1850Spex do
         :ok =
           ExecutionContexts.write_file(
             context.execution_context,
-            Path.join([story_dir, "screenshots", context.task_id, "one.png"]),
+            Path.join([story_dir, "screenshots", "one.png"]),
             "fake-png"
           )
 

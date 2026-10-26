@@ -158,21 +158,5 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
       assert secret =~ "cbt_abc"
       assert secret =~ "no \"Bearer \""
     end
-
-    test "cloud setup carries an explicit harness port into startup and Claude settings" do
-      for port <- [4003, 4004, 47403] do
-        context = %{token: "cbt_abc", server_url: "https://dev.example.com", harness_port: port}
-
-        script =
-          Runner.dev_box("claude_code_cloud").instructions(context) |> hd() |> Map.fetch!(:body)
-
-        assert script =~ ~s(port="${CMS_HARNESS_PORT:-#{port}}")
-        assert script =~ ~s(CMS_HARNESS_PORT: process.env.CMS_HARNESS_PORT || "#{port}")
-        assert script =~ ~s(export CMS_HARNESS_PORT="$port")
-        refute script =~ "__HARNESS_PORT__"
-        {output, status} = System.cmd("bash", ["-n", "-c", script], stderr_to_stdout: true)
-        assert status == 0, output
-      end
-    end
   end
 end

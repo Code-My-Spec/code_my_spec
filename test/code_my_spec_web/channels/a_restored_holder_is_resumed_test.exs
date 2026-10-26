@@ -119,32 +119,6 @@ defmodule CodeMySpecWeb.ARestoredHolderIsResumedTest do
     report_present(socket, agents)
   end
 
-  test "restart defers restoration and its notice until the graph is ready", ctx do
-    agent = holder(ctx.scope, %{turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)})
-    alias CodeMySpec.Requirements.IncrementalGraph
-    {:ok, pid} = IncrementalGraph.ensure_projecting(ctx.scope)
-    :ok = IncrementalGraph.settle(ctx.scope.active_project_id)
-
-    CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
-      ref = Phoenix.ChannelTest.push(ctx.socket, "agents_to_restore", %{})
-
-      assert_reply ref,
-                   :error,
-                   %{"reason" => "graph_rebuilding", "retry_after_ms" => 5_000},
-                   2_000
-
-      {:ok, unchanged} = AgentsRepository.fetch_agent(ctx.scope, agent.id)
-      assert unchanged.turn_started_at == agent.turn_started_at
-      agent_id = agent.id
-      refute_received {:agent_dispatch, ^agent_id, _, _}
-    end)
-
-    restart(ctx.socket, [agent])
-    agent_id = agent.id
-    assert_receive {:agent_dispatch, ^agent_id, _ref, prompt}, 5_000
-    assert prompt =~ "Carry on from your last step"
-  end
-
   test "a restored agent caught mid-turn carries the turn on", ctx do
     agent = holder(ctx.scope, %{turn_started_at: DateTime.add(DateTime.utc_now(), -60, :second)})
 

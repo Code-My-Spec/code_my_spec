@@ -30,7 +30,7 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
   }
 
   @doc """
-  Collect and upload every file under this QA task's screenshot
+  Collect and upload every file under `story_number`'s screenshot
   directory, keyed `qa/<project_id>/<attempt_id>/<filename>` — the same
   prefix-under-owner shape `IssueScreenshotController` already serves from.
 
@@ -42,32 +42,31 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
           ExecutionContext.t() | nil,
           Ecto.UUID.t() | nil,
           Ecto.UUID.t(),
-          integer() | String.t(),
-          String.t()
+          integer() | String.t()
         ) ::
           [map()]
-  def collect(env, project_id, attempt_id, story_number, task_id)
+  def collect(env, project_id, attempt_id, story_number)
 
-  def collect(_env, nil, _attempt_id, _story_number, _task_id), do: []
-  def collect(nil, _project_id, _attempt_id, _story_number, _task_id), do: []
+  def collect(_env, nil, _attempt_id, _story_number), do: []
+  def collect(nil, _project_id, _attempt_id, _story_number), do: []
 
-  def collect(env, project_id, attempt_id, story_number, task_id) do
+  def collect(env, project_id, attempt_id, story_number) do
     if Uploads.configured?() do
       env
-      |> ExecutionContexts.list_directory(screenshot_dir(story_number, task_id))
+      |> ExecutionContexts.list_directory(screenshot_dir(story_number))
       |> case do
         {:ok, names} -> names
         {:error, _reason} -> []
       end
-      |> Enum.map(&upload_one(env, project_id, attempt_id, story_number, task_id, &1))
+      |> Enum.map(&upload_one(env, project_id, attempt_id, story_number, &1))
       |> Enum.reject(&is_nil/1)
     else
       []
     end
   end
 
-  defp upload_one(env, project_id, attempt_id, story_number, task_id, name) do
-    path = Path.join(screenshot_dir(story_number, task_id), name)
+  defp upload_one(env, project_id, attempt_id, story_number, name) do
+    path = Path.join(screenshot_dir(story_number), name)
     content_type = content_type(name)
     key = "qa/#{project_id}/#{attempt_id}/#{name}"
 
@@ -80,25 +79,8 @@ defmodule CodeMySpec.Qa.EvidenceUpload do
     end
   end
 
-  defp screenshot_dir(story_number, task_id),
-    do: Path.join([Paths.qa_dir(), to_string(story_number), "screenshots", task_id])
-
-  @doc "Clear a story's screenshot directory after each submitted attempt."
-  def clear(nil, _story_number, _task_id), do: :ok
-
-  def clear(env, story_number, task_id) do
-    dir = screenshot_dir(story_number, task_id)
-
-    case ExecutionContexts.list_directory(env, dir) do
-      {:ok, names} ->
-        Enum.each(names, fn name ->
-          ExecutionContexts.delete_file(env, Path.join(dir, name))
-        end)
-
-      {:error, _reason} ->
-        :ok
-    end
-  end
+  defp screenshot_dir(story_number),
+    do: Path.join([Paths.qa_dir(), to_string(story_number), "screenshots"])
 
   defp content_type(name) do
     name

@@ -112,34 +112,6 @@ defmodule CmsHarness.OnboardRemoteTest do
 
   defp onboard(root), do: Onboard.run([root, "--server-url", "https://remote-onboarding.invalid"])
 
-  test "dev box onboarding reports the server refusal and its network secret remedy", ctx do
-    previous = Application.fetch_env(:code_my_spec, :harness_dev_box)
-    Application.put_env(:code_my_spec, :harness_dev_box, true)
-    on_exit(fn -> restore(:harness_dev_box, previous) end)
-
-    Req.Test.stub(Token, fn conn ->
-      assert conn.request_path == "/api/devices/token"
-      assert Plug.Conn.get_req_header(conn, "authorization") == []
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(
-        401,
-        Jason.encode!(%{
-          error: "missing_authorization",
-          error_description: "No Authorization header reached the server."
-        })
-      )
-    end)
-
-    assert {:error, message} = Onboarding.mint(ctx.root, ctx.project_id)
-    assert message =~ "No Authorization header reached the server"
-    assert message =~ "Add a dev box"
-    assert message =~ "network secret"
-    assert message =~ "no 'Bearer ' prefix"
-    refute message =~ "CMS_DEPLOY_KEY"
-  end
-
   test "confirmation uses the local project's key despite an unrelated exported key", ctx do
     scope = CodeMySpec.UsersFixtures.full_scope_fixture()
     project = CodeMySpec.ProjectsFixtures.project_fixture(scope)

@@ -541,10 +541,6 @@ defmodule CmsHarness.Project.ChannelClient do
         Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
-      {:error, %{"reason" => "graph_rebuilding"}} ->
-        Process.send_after(self(), :retry_restore_after_graph, 5_000)
-        {:ok, socket}
-
       other ->
         # Not fatal, but said out loud so agents do not silently never return.
         Logger.warning(
@@ -1883,14 +1879,6 @@ defmodule CmsHarness.Project.ChannelClient do
   # The startup result, handed back by the task that launched the engine.
   # Pushed from here rather than from that task, because this process owns the
   # socket.
-  def handle_info(:retry_restore_after_graph, socket) do
-    if socket.assigns[:joined] && is_nil(socket.assigns[:restore_ref]) do
-      {:noreply, ask_what_to_restore(socket, socket.assigns.topic)}
-    else
-      {:noreply, socket}
-    end
-  end
-
   def handle_info({:agent_start_result, topic, ref, id, result}, socket) do
     transport().push(
       socket,

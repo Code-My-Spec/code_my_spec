@@ -60,16 +60,15 @@ defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
   def kind, do: :cloud
 
   @impl true
-  def instructions(%{server_url: server_url, token: token} = context) do
+  def instructions(%{server_url: server_url, token: token}) do
     host = URI.parse(server_url).host || server_url
-    port = Map.get(context, :harness_port, default_harness_port())
 
     [
       %{
         key: "setup-script",
         copy: "copy-setup-script",
         title: "Setup script",
-        body: setup_script(server_url, host, port)
+        body: setup_script(server_url, host)
       },
       %{
         key: "setup-hosts",
@@ -96,15 +95,10 @@ defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
     host |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
   end
 
-  defp default_harness_port do
-    if Application.get_env(:code_my_spec, :env) == :dev, do: 4004, else: 4003
-  end
-
-  defp setup_script(server_url, host, port) when is_integer(port) and port in 1..65535 do
+  defp setup_script(server_url, host) do
     File.read!(script_path())
     |> String.replace("__SERVER_URL__", server_url)
     |> String.replace("__SERVER_HOST__", host)
-    |> String.replace("__HARNESS_PORT__", Integer.to_string(port))
   end
 
   defp script_path do

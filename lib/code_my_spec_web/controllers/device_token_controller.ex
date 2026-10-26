@@ -41,25 +41,12 @@ defmodule CodeMySpecWeb.DeviceTokenController do
   end
 
   def create(conn, _params) do
-    reason = conn.assigns[:box_token_refusal] || :not_box_token
-    Logger.warning("[DeviceToken] exchange refused: #{reason}")
-
-    description =
-      case reason do
-        :missing_authorization ->
-          "No Authorization header reached the server. Check the network secret for this host."
-
-        :not_box_token ->
-          "Authorization must be a dev box cbt_ token without a Bearer prefix in the network secret."
-
-        :unknown_token ->
-          "This dev box token is unknown to this server. Add a dev box on this server and use its token."
-
-        :revoked_token ->
-          "This dev box token was revoked. Add a new dev box and update its network secret."
-      end
-
-    refuse(conn, :unauthorized, to_string(reason), description)
+    refuse(
+      conn,
+      :unauthorized,
+      "invalid_token",
+      "Sign in with a dev box token; this credential is not one."
+    )
   end
 
   defp refuse(conn, status, error, description) do

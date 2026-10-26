@@ -39,16 +39,6 @@ defmodule CmsHarness.Agents.ShellTimeoutTest do
     refute output =~ "exit code:"
   end
 
-  test "timeout retains a burst spanning multiple port messages" do
-    command = "printf '%262144s' x; printf burst-end-marker; sleep 30"
-
-    assert {:error, output} = Shell.run(command, nil, 3_000)
-    assert output =~ "timed out"
-    assert [_, partial] = String.split(output, "Partial output follows:\n", parts: 2)
-    assert partial == String.duplicate(" ", 262_143) <> "xburst-end-marker"
-    refute output =~ "exit code:"
-  end
-
   test "timeout terminates the command's own child process" do
     assert {:error, output} =
              Shell.run("sleep 30 & child=$!; echo child-pid:$child; wait $child", nil, 3_000)

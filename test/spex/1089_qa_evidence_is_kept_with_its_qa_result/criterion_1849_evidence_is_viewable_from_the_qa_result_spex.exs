@@ -36,13 +36,7 @@ defmodule CodeMySpecSpex.Story1089.Criterion1849Spex do
   spex "Evidence is viewable from the QA result", criterion: 1849 do
     scenario "the story page links the upload, and the link serves it back" do
       given_ "a screenshot is uploaded by a passing attempt", context do
-        dir =
-          Path.join([
-            ".code_my_spec/qa",
-            to_string(context.story.number),
-            "screenshots",
-            context.task_id
-          ])
+        dir = Path.join([".code_my_spec/qa", to_string(context.story.number), "screenshots"])
 
         :ok =
           ExecutionContexts.write_file(

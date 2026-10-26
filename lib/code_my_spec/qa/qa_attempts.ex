@@ -213,50 +213,6 @@ defmodule CodeMySpec.Qa.QaAttempts do
     end
   end
 
-  @doc "Remove named evidence from an attempt and append an audit record without changing its verdict."
-  def remove_evidence(scope, attempt_id, names, reason) do
-    with true <- is_list(names) and names != [] and Enum.all?(names, &is_binary/1),
-         true <- is_binary(reason) and String.trim(reason) != "",
-         {:ok, _uuid} <- Ecto.UUID.cast(attempt_id) do
-      Repo.transaction(fn ->
-        attempt =
-          QaAttempt
-          |> where([a], a.id == ^attempt_id)
-          |> by_project(scope)
-          |> lock("FOR UPDATE")
-          |> Repo.one()
-
-        cond do
-          is_nil(attempt) ->
-            Repo.rollback(:attempt_not_found)
-
-          Enum.any?(names, fn name -> not Enum.any?(attempt.evidence, &(&1.name == name)) end) ->
-            Repo.rollback(:evidence_not_found)
-
-          true ->
-            {removed, kept} = Enum.split_with(attempt.evidence, &(&1.name in names))
-
-            correction = %{
-              "removed" => Enum.map(removed, & &1.name),
-              "reason" => String.trim(reason),
-              "by_user_id" => scope.user && scope.user.id,
-              "at" => DateTime.utc_now() |> DateTime.to_iso8601()
-            }
-
-            attempt
-            |> Ecto.Changeset.change(
-              evidence_corrections: attempt.evidence_corrections ++ [correction]
-            )
-            |> Ecto.Changeset.put_embed(:evidence, kept)
-            |> Repo.update!()
-        end
-      end)
-    else
-      false -> {:error, :invalid_correction}
-      :error -> {:error, :attempt_not_found}
-    end
-  end
-
   @doc """
   List QA attempts for a story, most-recent first.
 

@@ -20,11 +20,6 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
     Sources: `spex`, `exunit`, `credo`, `compiler`. Returns as soon as the run is
     opened — it does not wait, and you should not wait for it.
 
-    Runs read this working copy's working tree, including untracked and
-    uncommitted files, rather than a HEAD-only snapshot. Certification separately
-    requires committed work and fresh full runs at that commit. Choose `spex`
-    for `_spex.exs` files; the project's ExUnit filters may exclude them.
-
     `paths` scopes the run to specific files, the same way the PreToolUse hook's
     own `mix test test/foo_test.exs` rewrite does. Scoped runs can never satisfy
     freshness — they cover only what they name — so use this for a focused
@@ -171,8 +166,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
         """
 
         If you are driving this agent over MCP rather than from its own Claude Code or
-        Codex session, nothing delivers the result to you: watch it with
-        `get_analysis_live({run_id = #{run_id}})`, and once it lands read it with
+        Codex session, nothing delivers the result to you: once it lands, read it with
         `get_analysis_output({run_id = #{run_id}})`.
         """
 

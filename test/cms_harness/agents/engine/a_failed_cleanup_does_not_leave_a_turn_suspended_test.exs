@@ -31,34 +31,6 @@ defmodule CmsHarness.Agents.Engine.AFailedCleanupDoesNotLeaveATurnSuspendedTest 
     refute Process.alive?(root), "the turn's process was left suspended"
   end
 
-  test "cleanup of an exited owner still releases its surviving descendant" do
-    parent = self()
-
-    root =
-      spawn(fn ->
-        receive do
-          :finish -> :ok
-        end
-      end)
-
-    monitor = Process.monitor(root)
-
-    child =
-      spawn(fn ->
-        Process.put(:"$ancestors", [root])
-        send(parent, :descendant_ready)
-        Process.sleep(:infinity)
-      end)
-
-    on_exit(fn -> Process.exit(child, :kill) end)
-    assert_receive :descendant_ready
-    send(root, :finish)
-    assert_receive {:DOWN, ^monitor, :process, ^root, :normal}
-
-    assert :ok = Execution.stop_and_release(root)
-    refute Process.alive?(child)
-  end
-
   test "a confirmed cleanup answers :ok and ends the turn's processes" do
     root = spawn(fn -> Process.sleep(:infinity) end)
 

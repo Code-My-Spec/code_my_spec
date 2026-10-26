@@ -22,11 +22,6 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutput do
     the retained text exactly. This cannot recover output discarded before it
     reached the ledger. output_available distinguishes missing output from an
     empty string; neither a missing exit status nor missing output means success.
-
-    A "queued" run also carries queued_seconds (how long it has waited) and
-    harness_connected (whether anything able to run it is even reachable for
-    this working copy right now). harness_connected: false means the wait has
-    no end in sight on its own; it is not evidence that the run will fail.
     """
   end
 
@@ -108,24 +103,21 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutput do
       next = min(offset + limit, total)
 
       {:ok,
-       Map.merge(
-         %{
-           run_id: run.id,
-           source: run.source,
-           status: status_label(run),
-           kind: run.kind,
-           exit_status: run.exit_status,
-           start_commit: run.start_commit,
-           completed_commit: run.completed_commit,
-           output_available: not is_nil(run.output),
-           output: output,
-           offset: offset,
-           total_codepoints: total,
-           next_offset: if(next < total, do: next, else: nil),
-           retention: "Retained ledger output; upstream truncation cannot be recovered here."
-         },
-         Analysis.queue_wait(run) || %{}
-       )}
+       %{
+         run_id: run.id,
+         source: run.source,
+         status: status_label(run),
+         kind: run.kind,
+         exit_status: run.exit_status,
+         start_commit: run.start_commit,
+         completed_commit: run.completed_commit,
+         output_available: not is_nil(run.output),
+         output: output,
+         offset: offset,
+         total_codepoints: total,
+         next_offset: if(next < total, do: next, else: nil),
+         retention: "Retained ledger output; upstream truncation cannot be recovered here."
+       }}
     else
       {:error, "offset exceeds the retained output length."}
     end
