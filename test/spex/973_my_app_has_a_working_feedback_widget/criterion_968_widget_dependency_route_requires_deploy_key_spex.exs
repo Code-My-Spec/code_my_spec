@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story973.Criterion968Spex do
   spex "The widget dependency route is protected and separate from health", criterion: 968 do
     scenario "an authorized check sends a widget message while health stays shallow" do
       given_ "Sam's app has a widget and its deploy key", context do
+        # given: already true — `setup :widget_on_the_fleet` provisions both.
         probe = "cms-verify-#{System.unique_integer([:positive])}"
         health_before = Req.get!(@site <> "/health", retry: false)
         {:ok, Map.merge(context, %{probe: probe, health_before: health_before})}

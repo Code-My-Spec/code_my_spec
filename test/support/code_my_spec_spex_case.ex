@@ -4174,6 +4174,8 @@ defmodule CodeMySpecSpex.Case do
       otherwise the architecture it actually produced (default: matches)
     * `:on_destroy` — called with the shared box's id when `BurstBox.Lifecycle`
       decides to release it
+    * `:now` — the staged lifecycle check time (default 00:58); a second
+      deploy can check the same box before the following billing hour.
     * `:box_release` — what `BurstBox.Lifecycle.check/3` should decide for the
       shared box this build runs on: `:not_due` (default — an ordinary build,
       mid billing-hour, where nothing about release is observable), `:idle`
@@ -4191,6 +4193,7 @@ defmodule CodeMySpecSpex.Case do
     on_destroy = Keyword.get(opts, :on_destroy, fn _id -> :ok end)
     tag = Keyword.get(opts, :tag, "a1b2c3d4e5f6")
     box_release = Keyword.get(opts, :box_release, :not_due)
+    now = Keyword.get(opts, :now, ~U[2026-01-01 00:58:00Z])
 
     context = stage_deploy(context)
 
@@ -4275,7 +4278,7 @@ defmodule CodeMySpecSpex.Case do
         # when `box_release == :idle`, matching what `Lifecycle.check/3`
         # itself would decide.
         busy?: fn _scope, _server -> box_release == :busy end,
-        now: fn -> ~U[2026-01-01 00:58:00Z] end,
+        now: fn -> now end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
         registry_host: "registry.example.com",
