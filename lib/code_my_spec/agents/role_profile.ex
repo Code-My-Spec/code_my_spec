@@ -111,7 +111,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     show_component_requirements show_namespace_hierarchy
     list_requirements show_requirement list_personas get_persona
     list_issues get_issue create_issue accept_issue dismiss_issue resolve_issue update_issue
-    list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt
+    list_qa_attempts submit_qa_result submit_issue_qa_result invalidate_qa_attempt remove_qa_evidence
     withdraw_question ask_question tap_out cancel_task
     call_mcp_server get_local_app_token
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
