@@ -5080,6 +5080,15 @@ defmodule CodeMySpecSpex.Fixtures do
      |> CodeMySpec.Repo.update!()}
   end
 
+  @doc "Align a generated project's module name with its actual checkout."
+  @spec set_project_module_name(Project.t(), String.t()) :: {:ok, Project.t()}
+  def set_project_module_name(project, module_name) do
+    {:ok,
+     project
+     |> Ecto.Changeset.change(module_name: module_name)
+     |> CodeMySpec.Repo.update!()}
+  end
+
   @doc """
   Point a project at the remote it already owns.
 

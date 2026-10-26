@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7977Spex do
   # A real directory on disk, shared with the page. The generator writes
   # through the project's registered environment; a spex holding its own
   # in-memory one reads an empty tree and concludes nothing was generated.
-  setup :bootable_drill_working_directory
+  setup :bootable_deploy_working_directory
 
   spex "The health check answers without session, auth or database", criterion: 626 do
     scenario "the health route is declared outside all pipelines" do

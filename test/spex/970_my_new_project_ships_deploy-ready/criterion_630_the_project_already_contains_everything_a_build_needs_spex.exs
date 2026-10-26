@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story970.Criterion630Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :bootable_drill_working_directory
+  setup :bootable_deploy_working_directory
 
   spex "The project already contains everything a build needs", criterion: 630 do
     scenario "a fresh project carries the build and deploy inputs without manual setup" do

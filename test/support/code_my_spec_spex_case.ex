@@ -2446,6 +2446,22 @@ defmodule CodeMySpecSpex.Case do
     context
   end
 
+  @doc "Generate a bootable project whose metadata names the generated OTP app."
+  def bootable_deploy_working_directory(context) do
+    context = bootable_drill_working_directory(context)
+
+    module_name =
+      context.project.local_path
+      |> Path.basename()
+      |> Macro.camelize()
+
+    {:ok, project} = Fixtures.set_project_module_name(context.project, module_name)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{context.scope | active_project: project})
+  end
+
   @doc "Run the generated application's Mix task on its pinned toolchain."
   def run_generated_application(context, code), do: run_generated_application(context, code, [])
 
