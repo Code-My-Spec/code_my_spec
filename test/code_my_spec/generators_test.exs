@@ -353,7 +353,14 @@ defmodule CodeMySpec.GeneratorsTest do
 
     setup %{env: env, dir: dir} do
       {:ok, _written} =
-        DeployArtifacts.generate(env, app: "my-app", host: "example.com", owner: "acme")
+        DeployArtifacts.generate(env,
+          app: "my-app",
+          host: "example.com",
+          owner: "acme",
+          registry: "registry.example.com",
+          image: "registry.example.com/acme/my-app",
+          kamal_image: "acme/my-app"
+        )
 
       %{dir: dir}
     end
