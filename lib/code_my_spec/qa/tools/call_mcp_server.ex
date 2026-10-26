@@ -242,12 +242,14 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
   defp unreachable(url, params, reason) do
     full = url <> path(params)
 
+    # The diagnosis leads: the client's own exit is `noproc` whatever the
+    # cause, and a 401 under it read as a dead session (issue 3942db94).
     """
     Could not open an MCP session with #{full}.
 
-    #{truncate(inspect(reason))}
-
     #{diagnose(full, params)}
+
+    The MCP client's own exit, which reads the same for every cause: #{truncate(inspect(reason))}
     """
   end
 
@@ -264,10 +266,13 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
         "A plain GET to the same address answered #{status}: it is reachable, so the MCP handshake itself is what failed."
 
       {:ok, %{status: 401}} ->
-        "A plain GET to the same address answered 401: it is reachable but refused this caller's headers."
+        "Refused: HTTP 401. The server is reachable and wants a credential these headers " <>
+          "do not carry, usually `Authorization: Bearer <token>`. (Read from a plain GET to " <>
+          "the same address.)"
 
       {:ok, %{status: 403}} ->
-        "A plain GET to the same address answered 403: it is reachable but refused this caller."
+        "Refused: HTTP 403. The server is reachable and knows this caller, but will not let " <>
+          "it in. (Read from a plain GET to the same address.)"
 
       {:ok, %{status: 404}} ->
         "A plain GET to the same address answered 404: nothing is mounted at this path."
