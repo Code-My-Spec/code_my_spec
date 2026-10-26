@@ -2435,6 +2435,28 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
+  @doc "Generate a fresh application with dependencies for a real local startup probe."
+  def bootable_drill_working_directory(context) do
+    context = drill_working_directory(context)
+
+    if not recording?() and is_nil(persistent_application_dir()) do
+      mix_in(context.project.local_path, ["deps.get"])
+    end
+
+    context
+  end
+
+  @doc "Run the generated application's Mix task on its pinned toolchain."
+  def run_generated_application(context, code) do
+    path = context.project.local_path
+
+    System.cmd("mix", ["run", "-e", code],
+      cd: path,
+      stderr_to_stdout: true,
+      env: child_mix_env(path)
+    )
+  end
+
   # A name the generator accepts and the provider resources can carry: lowercase
   # letters, digits and underscores, starting with a letter.
   defp generated_app_name(project) do

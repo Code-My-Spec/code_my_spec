@@ -10,17 +10,16 @@ defmodule CodeMySpecSpex.Story970.Criterion629Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpecSpex.Fixtures
-
   setup :register_log_in_setup_account
   setup :setup_active_project
-  setup :drill_working_directory
+  setup :bootable_drill_working_directory
 
   spex "Sam can work locally before he owns any infrastructure", criterion: 629 do
     scenario "a fresh project starts and serves a request without provider credentials" do
       given_ "Sam has generated a project and configured no provider credentials", context do
-        # given: already true — `setup :drill_working_directory` generated the
-        # cms.new application; no provider-account setup ran for this project.
+        # given: already true — `setup :bootable_drill_working_directory`
+        # generated the cms.new application and fetched its dependencies; no
+        # provider-account setup ran for this project.
         assert "mix.exs" in project_tree(context.execution_context),
                "expected cms.new to generate a local application"
 
@@ -36,10 +35,7 @@ defmodule CodeMySpecSpex.Story970.Criterion629Spex do
         IO.puts("LOCAL_HEALTH_STATUS=\#{response.status}")
         """
 
-        {output, status} =
-          Fixtures.env_cmd(context.execution_context, "mix", ["run", "-e", code],
-            stderr_to_stdout: true
-          )
+        {output, status} = run_generated_application(context, code)
 
         {:ok, Map.merge(context, %{output: output, exit_status: status})}
       end
