@@ -41,17 +41,22 @@ defmodule CmsHarnessTest.AnalysisResults do
   Block until `run_id`'s result arrives, draining unrelated ones so they
   cannot be mistaken for the answer.
 
-  `timeout` is a ceiling, not the expected wait: the result returns as soon
-  as it lands. Five seconds failed under parallel gates while every run did
-  finish; a minute only bounds a run that never answers.
+  The matching event returns immediately. The ceiling comes from the shared
+  spex gate setting, and unrelated results do not reset that deadline.
   """
   @spec await_result(integer(), timeout()) :: map()
-  def await_result(run_id, timeout \\ 60_000) do
+  def await_result(run_id, timeout \\ CmsHarnessTest.GateWait.event_timeout()) do
+    await_result_until(run_id, timeout, System.monotonic_time(:millisecond) + timeout)
+  end
+
+  defp await_result_until(run_id, timeout, deadline) do
+    remaining = max(deadline - System.monotonic_time(:millisecond), 0)
+
     receive do
       {:analysis_result, _project_id, %{"run_id" => ^run_id} = payload} -> payload
-      {:analysis_result, _project_id, _other} -> await_result(run_id, timeout)
+      {:analysis_result, _project_id, _other} -> await_result_until(run_id, timeout, deadline)
     after
-      timeout -> flunk("no analysis_result for run #{run_id} within #{timeout}ms")
+      remaining -> flunk("no analysis_result for run #{run_id} within #{timeout}ms")
     end
   end
 

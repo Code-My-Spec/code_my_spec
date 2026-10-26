@@ -164,6 +164,14 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     ahead + 1
   end
 
+  @doc "Whether an open publication receipt still names this gate copy."
+  def publication_gate_in_use?(project_id, gate_id) do
+    Repo.all(
+      from e in Entry, where: e.project_id == ^project_id and e.status in ^@open, select: e.result
+    )
+    |> Enum.any?(&(get_in(&1 || %{}, ["publication", "gate_id"]) == gate_id))
+  end
+
   @doc "Projects with candidates not yet landed or ejected."
   @spec open_projects() :: [Ecto.UUID.t()]
   def open_projects do

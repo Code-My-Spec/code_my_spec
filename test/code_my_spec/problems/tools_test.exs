@@ -75,6 +75,29 @@ defmodule CodeMySpec.Problems.ToolsTest do
     refute text =~ "style.ex"
   end
 
+  test "a failed compile's Boundary finding appears in error-filtered results", %{scope: scope} do
+    assert {:ok, %{problems: [finding]}} =
+             CodeMySpec.Analysis.Runners.from_raw("compiler", %{
+               "exit_status" => 1,
+               "diagnostics" => [
+                 %{
+                   "file" => "test/spex/setup_spex.exs",
+                   "line" => 12,
+                   "severity" => "warning",
+                   "message" => "forbidden reference to CmsHarness.Setup"
+                 }
+               ]
+             })
+
+    assert {:ok, [_]} = Problems.create_problems(scope, [finding])
+
+    assert {:ok, [row]} =
+             CodeMode.catalog(scope)["list_problems"].invoke.(%{"severity" => "error"})
+
+    assert row["severity"] == "error"
+    assert row["message"] == "forbidden reference to CmsHarness.Setup"
+  end
+
   test "code mode preserves structured finding rows", %{scope: scope} do
     problem = problem_fixture(scope)
 

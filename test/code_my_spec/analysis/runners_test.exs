@@ -124,6 +124,34 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert {:ok, %{problems: [_]}} = Runners.from_raw("compiler", raw)
     end
 
+    test "a failed compile makes warning-labelled Boundary findings blocking" do
+      diagnostic = %{
+        "file" => "test/spex/setup_spex.exs",
+        "line" => 12,
+        "severity" => "warning",
+        "message" => "forbidden reference to CmsHarness.Setup"
+      }
+
+      assert {:ok, failed} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :error, message: "forbidden reference to CmsHarness.Setup"}] =
+               failed.problems
+
+      assert failed.stats == %{"errors" => 1, "warnings" => 0}
+
+      assert {:ok, clean} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 0,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :warning}] = clean.problems
+    end
+
     test "a compiler error becomes a blocking Problem" do
       raw = %{
         "exit_status" => 1,

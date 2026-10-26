@@ -6,13 +6,13 @@ The Vibium MCP server (`mcp__vibium`) provides browser automation tools that the
 
 The Vibium MCP server must be configured in your Claude Code MCP settings. Once configured, all `mcp__vibium__browser_*` tools are available to the agent automatically.
 
-To start a browser session, call `browser_launch`. The MCP server keeps the browser alive across tool calls within the same session.
+To start a browser session, call `browser_start`. The MCP server keeps the browser alive across tool calls within the same session.
 
 ## Core Workflow
 
 Every browser automation follows this pattern:
 
-1. **Launch**: `browser_launch` (once per session)
+1. **Launch**: `browser_start` (once per session)
 2. **Navigate**: `browser_navigate` with `url`
 3. **Map**: `browser_map` (get element refs like `@e1`, `@e2`)
 4. **Interact**: Use refs or CSS selectors — e.g. `browser_click` with `selector: "@e1"`
@@ -91,14 +91,14 @@ All tools are prefixed with `mcp__vibium__`. Parameter names are listed in paren
 | `vibium download set-dir` | `browser_download_set_dir` | `path` |
 | `vibium dialog accept` | `browser_dialog_accept` | `text` (optional) |
 | `vibium dialog dismiss` | `browser_dialog_dismiss` | |
-| `vibium quit` | `browser_quit` | |
-| `vibium daemon start` | `browser_launch` | `headless` |
+| `vibium quit` | `browser_stop` | |
+| `vibium daemon start` | `browser_start` | `headless` |
 
 ## Key Differences from CLI
 
 | Aspect | CLI | MCP Server |
 |---|---|---|
-| Browser lifecycle | Manual daemon start/stop, stale socket cleanup | `browser_launch` — MCP server manages everything |
+| Browser lifecycle | Manual daemon start/stop, stale socket cleanup | `browser_start` — MCP server manages everything |
 | Command chaining | `&&` between shell commands | Sequential tool calls — no chaining needed |
 | Output | Stdout text | Structured tool results returned to agent |
 | Auth scripts | Shell scripts (`login.sh`, `logout.sh`) | Agent calls MCP tools directly in sequence |

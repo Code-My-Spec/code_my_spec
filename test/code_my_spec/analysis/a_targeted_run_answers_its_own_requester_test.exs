@@ -50,9 +50,14 @@ defmodule CodeMySpec.Analysis.ATargetedRunAnswersItsOwnRequesterTest do
 
     Analysis.record_remote_result(scope, clean(run.id))
 
-    assert_receive {@reported, _ref, _measurements, %{requester: ^asker, source: "exunit"}},
+    assert_receive {@reported, _ref, _measurements,
+                    %{requester: ^asker, source: "exunit"} = meta},
                    1_000,
                    "the targeted run finished and nobody told the agent that asked for it"
+
+    # Its findings are not written to Problems, so the notice must say so (3bbc3a94).
+    run_id = run.id
+    assert %{run: %{id: ^run_id, kind: :partial, listed?: false}} = meta
   end
 
   test "a targeted run nobody asked for stays quiet", %{scope: scope} do

@@ -4,6 +4,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   import CodeMySpec.DevicesFixtures
   alias CodeMySpec.Promotion.DeviceSync
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.BootVersion
   alias CodeMySpec.{Repo, WorkingCopies}
 
   defmodule App do
@@ -19,7 +20,10 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
       ensure_app_running(nil, nil)
     end
 
-    def restart_app(id, timeout), do: reload_app(id, timeout)
+    def restart_app(id, timeout) do
+      Process.put(:restarts, Process.get(:restarts, 0) + 1)
+      reload_app(id, timeout)
+    end
   end
 
   setup do
@@ -96,6 +100,56 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
 
     assert {:ok, %{"head" => "two", "status" => "pending"}} =
              DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+  end
+
+  # 04:05Z: a landing on the checkout :4000 runs from was reloaded in place,
+  # and the reload hung every request for seven minutes.
+  test "a landing that touches what this server has loaded restarts it", %{
+    scope: scope,
+    copy: copy
+  } do
+    here = here()
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+
+    sync = fn _, _, _, _, _ ->
+      {:ok, %{changed_files: ["lib/code_my_spec/promotion/device_sync.ex"]}}
+    end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:restarts) == 1
+  end
+
+  # The reload's own `mix ecto.migrate` waited for the build lock :4000's code
+  # reloader held; this server migrates itself before reloading instead.
+  test "a reload of this server's checkout migrates in the server, then reloads", %{
+    scope: scope,
+    copy: copy
+  } do
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here()) |> Repo.update()
+
+    DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
+    Process.put(:desired, "one")
+    sync = fn _, _, _, _, _ -> {:ok, %{changed_files: ["test/example_test.exs"]}} end
+
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: sync, app: App)
+
+    assert Process.get(:reloads) == 1
+    assert Process.get(:restarts, 0) == 0
+  end
+
+  # Captured at boot, but node-global: another test may have cleared it, and
+  # then nothing here is "this server's checkout" (2026-10-26 ejection).
+  defp here do
+    with nil <- BootVersion.root() do
+      BootVersion.capture(File.cwd!())
+      BootVersion.root()
+    end
   end
 
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}

@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents.Assignment do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.IssueAssignment
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Issues
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
@@ -624,7 +625,7 @@ defmodule CodeMySpec.Agents.Assignment do
           {:error, :story_active_elsewhere}
 
         true ->
-          Stories.update_story(scope, story, %{working_copy_id: target.id})
+          move_to(scope, story, target)
       end
     else
       _ -> {:error, :not_found}
@@ -659,11 +660,53 @@ defmodule CodeMySpec.Agents.Assignment do
           {:error, :story_active_elsewhere}
 
         true ->
+          take_story_off(scope, story, "")
           Stories.release_stories(scope, story.working_copy_id, [story.id])
           {:ok, %{story | working_copy_id: nil}}
       end
     else
       _ -> {:error, :not_found}
     end
+  end
+
+  defp move_to(scope, story, target) do
+    if story.working_copy_id not in [nil, target.id],
+      do: take_story_off(scope, story, " and moved to #{target.label || target.id}")
+
+    Stories.update_story(scope, story, %{working_copy_id: target.id})
+  end
+
+  # Main took `story` off the copy holding it: its open tasks there are
+  # cancelled, and every agent that held one, or held the story, is told on its
+  # own thread, above whatever it is given next, rather than left holding an
+  # open task on work that is no longer its.
+  defp take_story_off(scope, %{working_copy_id: copy_id} = story, where) do
+    for agent <- lock_team(scope, copy_id),
+        cancelled = cancel_story_tasks(scope, agent, story.id),
+        cancelled != [] or agent.story_id == story.id do
+      Conversations.record_sent_to_agent(agent, taken_notice(story, where, cancelled))
+    end
+
+    :ok
+  end
+
+  defp cancel_story_tasks(scope, agent, story_id) do
+    for task <- TaskOwner.tasks(agent),
+        task.story_id == story_id,
+        task.status in [:active, :prepared, :blocked] do
+      {:ok, _} = TaskOwner.complete_task(scope, agent, task.id, :cancelled)
+      task.id
+    end
+  end
+
+  defp taken_notice(story, where, cancelled) do
+    tasks =
+      case cancelled do
+        [] -> "You held no open task on it."
+        ids -> Enum.map_join(ids, "; ", &"task #{&1} cancelled") <> "."
+      end
+
+    "Main took your story #{story.number} away: story #{story.number} was released from " <>
+      "this copy#{where}. #{tasks} Do not carry on with it; what you are given next is your work."
   end
 end

@@ -225,6 +225,9 @@ defmodule CmsHarness.Project.ChannelClient do
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
        "attachment_operations" => true,
+       # What each provider's local login serves, so the server offers and
+       # defaults to models that exist (a retired default crash-looped agents).
+       "served_models" => CmsHarness.Agents.Provider.served_models(),
        # Lets the server name a contract mismatch outright. Absent means a
        # harness that predates the field.
        "contract_version" => @contract_version
@@ -1178,6 +1181,13 @@ defmodule CmsHarness.Project.ChannelClient do
              head
            )
          )
+
+  defp apply_promotion("promotion_retire_gate", %{"root" => root, "gate_root" => gate_root}),
+    do:
+      with_served_root(
+        root,
+        &Steps.retire_gate_worktree(ExecutionContext.new(:local, &1), &1, gate_root)
+      )
 
   defp apply_promotion("promotion_precheck", %{"root" => root} = payload),
     do:

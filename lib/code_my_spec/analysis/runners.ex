@@ -201,7 +201,12 @@ defmodule CodeMySpec.Analysis.Runners do
   """
   @spec from_raw(String.t(), map()) :: {:ok, result()} | {:error, term()}
   def from_raw("compiler", raw) do
-    problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_compiler/1)
+    problems =
+      raw
+      |> diagnostics()
+      |> Enum.map(&ProblemConverter.from_compiler/1)
+      |> mark_failed_compiler_findings(raw["exit_status"])
+
     {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
 
     # A build that failed and said nothing is not a clean build: fail the run
@@ -274,6 +279,20 @@ defmodule CodeMySpec.Analysis.Runners do
   # An exunit payload with no `execution_status`, or an unknown source, is
   # refused: read charitably it would become a clean `:completed` run.
   def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
+
+  # Boundary and warnings-as-errors can fail compilation while their emitted
+  # diagnostics still say warning. If those are the only findings on a failed
+  # run, expose them as blocking so `list_problems(severity: error)` explains
+  # why the gate stopped. Keep ordinary warnings on a successful compile.
+  defp mark_failed_compiler_findings(problems, status) when is_integer(status) and status != 0 do
+    if Enum.any?(problems, &(&1.severity == :error)) do
+      problems
+    else
+      Enum.map(problems, &%{&1 | severity: :error})
+    end
+  end
+
+  defp mark_failed_compiler_findings(problems, _status), do: problems
 
   defp committed_rows_failure(output) when is_binary(output) do
     case Regex.run(~r/spex left committed rows outside the sandbox: [^\n]+/, output) do
