@@ -2956,6 +2956,28 @@ defmodule CodeMySpecSpex.Fixtures do
   ]
 
   @doc """
+  Retry `check` (a 0-arity fun returning a boolean) until it is true or
+  `attempts_left` is exhausted, sleeping 100ms between tries. `:ok` or
+  `:timeout`.
+
+  For asserting on a result a background task reconciles asynchronously,
+  where nothing in the spec itself ever awaits it.
+  """
+  @spec poll_until((-> boolean()), pos_integer()) :: :ok | :timeout
+  def poll_until(check, attempts_left \\ 200) when is_function(check, 0) do
+    cond do
+      check.() -> :ok
+      attempts_left > 1 -> poll_retry(check, attempts_left)
+      true -> :timeout
+    end
+  end
+
+  defp poll_retry(check, attempts_left) do
+    Process.sleep(100)
+    poll_until(check, attempts_left - 1)
+  end
+
+  @doc """
   Recorded analyzer outputs, landed as completed analysis runs — what
   `start_analysis` would have produced — before anything stops.
 

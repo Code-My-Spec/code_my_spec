@@ -52,6 +52,7 @@ defmodule CodeMySpec.Qa.Tools do
       CodeMySpec.Qa.Tools.GetLocalAppToken,
       CodeMySpec.Qa.Tools.InvalidateQaAttempt,
       CodeMySpec.Qa.Tools.ListQaAttempts,
+      CodeMySpec.Qa.Tools.RemoveQaEvidence,
       CodeMySpec.Qa.Tools.SubmitIssueQaResult,
       CodeMySpec.Qa.Tools.SubmitQaResult
     ]
