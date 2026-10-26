@@ -106,9 +106,9 @@ When fixing QA-reported issues that involve UI behavior, use the browser tools f
 
 1. **Read the QA plan** at `.code_my_spec/qa/plan.md` for server startup and auth strategy
 2. **Read the QA evidence** referenced in the issue — screenshots and result files show the original failure
-3. **Launch a browser** with the vibium `browser_launch` MCP tool and reproduce the original issue
+3. **Launch a browser** with the vibium `browser_start` MCP tool and reproduce the original issue
 4. **Verify the fix** — confirm the UI now behaves correctly after your code change
-5. **Quit the browser** with the vibium `browser_quit` MCP tool when done
+5. **Quit the browser** with the vibium `browser_stop` MCP tool when done
 
 Do NOT run `vibium` as a shell command — always use the vibium `browser_*` MCP tools directly.
 
