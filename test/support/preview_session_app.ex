@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.PreviewSessionApp do
       live_view: [signing_salt: "preview-session-test"]
     )
 
+    ExUnit.Callbacks.start_supervised!({endpoint, []})
+
     ExUnit.Callbacks.on_exit(fn ->
       if previous,
         do: Application.put_env(:code_my_spec, endpoint, previous),
