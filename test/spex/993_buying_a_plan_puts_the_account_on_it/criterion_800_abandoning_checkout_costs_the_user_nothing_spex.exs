@@ -66,23 +66,22 @@ defmodule CodeMySpecSpex.Story993.Criterion800Spex do
     end
   end
 
-  defp stripe_response(%{request_path: path} = conn, requests) do
+  defp stripe_response(%{request_path: "/v1/customers"} = conn, requests) do
+    record_and_respond(conn, requests, %{"id" => "cus_abandoned"})
+  end
+
+  defp stripe_response(%{request_path: "/v1/subscriptions"} = conn, requests) do
+    record_and_respond(conn, requests, %{
+      "id" => "sub_abandoned",
+      "latest_invoice" => %{
+        "confirmation_secret" => %{"client_secret" => "pi_abandoned_secret"}
+      }
+    })
+  end
+
+  defp record_and_respond(%{request_path: path} = conn, requests, response) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
     Agent.update(requests, &[{path, body} | &1])
-
-    response =
-      case path do
-        "/v1/customers" ->
-          %{"id" => "cus_abandoned"}
-
-        "/v1/subscriptions" ->
-          %{
-            "id" => "sub_abandoned",
-            "latest_invoice" => %{
-              "confirmation_secret" => %{"client_secret" => "pi_abandoned_secret"}
-            }
-          }
-      end
 
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
