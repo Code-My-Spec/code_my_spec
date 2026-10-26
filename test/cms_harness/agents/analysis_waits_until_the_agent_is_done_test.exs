@@ -4,7 +4,9 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   FIFO delivery are exercised against the database mailbox in story 1051.
   These isolated harness tests use an explicit authority callback, not a queue.
   """
-  use ExUnit.Case, async: true
+  # CaptureLog sees the shared Logger; run alone so other async tests cannot
+  # contribute unrelated errors to the shutdown assertion below.
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
   alias CmsHarnessTest.Machine

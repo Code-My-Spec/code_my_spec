@@ -49,14 +49,16 @@ defmodule CodeMySpec.Provisioning.Tools.GenerateDeployFiles do
     project_scope = Resources.project_scope(scope, project)
     environment = project_environment(project_scope, project)
 
+    prod_registry = registry_address(project_scope, "prod") || Registry.default_host()
+
     DeployArtifacts.generate(environment,
       app: DeployArtifacts.otp_app_name(project),
       host: project.domain || "example.com",
       owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
-      registry: Registry.default_host(),
-      image: registry_image(project_scope),
+      registry: prod_registry,
+      image: registry_image(project_scope, prod_registry),
       kamal_image: registry_repository(project_scope),
-      prod_registry: registry_address(project_scope, "prod"),
+      prod_registry: prod_registry,
       uat_registry: registry_address(project_scope, "uat")
     )
   end
@@ -70,8 +72,8 @@ defmodule CodeMySpec.Provisioning.Tools.GenerateDeployFiles do
   # The registry `:server` actually provisions, not ghcr.io — a generated
   # `image:` composed from `owner`/`app` names a path this registry never
   # served the project at, since it carries no owner segment at all.
-  defp registry_image(scope) do
-    case Registry.image(scope) do
+  defp registry_image(scope, registry_host) do
+    case Registry.image(scope, registry_host: registry_host) do
       {:ok, image} -> image
       _ -> nil
     end

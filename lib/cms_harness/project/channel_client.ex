@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Proxy
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
@@ -2675,8 +2676,10 @@ defmodule CmsHarness.Project.ChannelClient do
   defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
 
   defp connect_options(socket, uri) do
+    configured = Application.get_env(:code_my_spec, :harness_socket_options, [])
+
     [uri: uri, headers: connect_headers(socket)] ++
-      Application.get_env(:code_my_spec, :harness_socket_options, [])
+      Keyword.merge(configured, Proxy.socket_options(uri))
   end
 
   defp transport, do: Transport.impl()
@@ -2808,12 +2811,15 @@ defmodule CmsHarness.Project.ChannelClient do
     }
   end
 
-  # `component_by_id` is only ever read for `.module_name`, by the test-alignment
-  # check. Structs do not survive JSON, so what arrives is a plain map with
-  # string keys; this gives it the one field its reader asks for.
+  # Structs do not survive JSON. Restore the component fields the scanner
+  # needs for test alignment and architecture proposal references.
   defp atomize_components(components) do
     Map.new(components, fn {id, component} ->
-      {id, %{module_name: MapAccess.get(component, :module_name)}}
+      {id,
+       %{
+         module_name: MapAccess.get(component, :module_name),
+         type: MapAccess.get(component, :type)
+       }}
     end)
   end
 

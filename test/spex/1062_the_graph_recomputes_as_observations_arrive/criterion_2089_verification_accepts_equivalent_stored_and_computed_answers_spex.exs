@@ -12,6 +12,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion2089Spex do
     scenario "the engineer checks graph verification" do
       given_ "a settled event projection", context do
         :ok = GraphVerificationFixtures.seed(context.scope)
+
+        assert CodeMySpecSpex.Fixtures.visible_project_ids() == [context.project.id],
+               "a scoped spex must see only the project created by its own setup"
+
         {:ok, context}
       end
 

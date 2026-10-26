@@ -451,7 +451,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # passed here while raising on a real socket. Components have no
     # `@derive Jason.Encoder`, so the harness received no read model at all.
     test "the reply can actually be encoded for the wire", %{scope: scope, topic: topic} do
-      component_fixture(scope)
+      created_component = component_fixture(scope)
 
       {:ok, _reply, channel} = join_as(scope, topic)
 
@@ -461,13 +461,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert {:ok, json} = Jason.encode(payload),
              "the read model has to survive JSON — asserting on the term in-process does not check that"
 
-      # And only the one field its reader asks for: `component_by_id` is read
-      # solely for `.module_name`, so shipping the row was a crash and several
-      # kilobytes per component of fields nobody reads.
+      # Only the fields the scanner reads cross the wire. Shipping the full
+      # component row would crash JSON encoding and waste bandwidth.
       decoded = Jason.decode!(json)
 
       for {_id, component} <- decoded["component_by_id"] do
-        assert Map.keys(component) == ["module_name"]
+        assert Map.keys(component) == ["module_name", "type"]
+        assert component["type"] == created_component.type
       end
     end
   end

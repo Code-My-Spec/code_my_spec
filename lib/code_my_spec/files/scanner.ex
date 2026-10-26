@@ -316,6 +316,52 @@ defmodule CodeMySpec.Files.Scanner do
     end
   end
 
+  # Keep proposal references with the synced file row. The server may have no
+  # access to the working copy when it computes the requirement graph.
+  @proposal_path Paths.proposal_path()
+  def validate_entry(
+        %{role: :architecture, path: @proposal_path} = entry,
+        env,
+        component_by_id,
+        _strict?
+      ) do
+    case ExecutionContexts.read_file(env, @proposal_path) do
+      {:ok, content} ->
+        existing_contexts =
+          component_by_id
+          |> Map.values()
+          |> Enum.filter(&(Map.get(&1, :type) in ["context", "coordination_context"]))
+          |> MapSet.new(& &1.module_name)
+
+        context_names =
+          content
+          |> proposal_context_names()
+          |> Enum.filter(&MapSet.member?(existing_contexts, &1))
+
+        numbers =
+          ~r/^\s*-\s*\*\*Stories:\*\*\s*(.+)$/mi
+          |> Regex.scan(content, capture: :all_but_first)
+          |> Enum.flat_map(fn [references] ->
+            ~r/\d+/ |> Regex.scan(references) |> List.flatten()
+          end)
+          |> Enum.map(&String.to_integer/1)
+          |> Enum.uniq()
+
+        Map.merge(entry, %{
+          valid: true,
+          validation_errors: %{
+            "data" => %{"story_numbers" => numbers, "context_names" => context_names}
+          }
+        })
+
+      {:error, reason} ->
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{"reason" => "Read failed: #{inspect(reason)}"}
+        })
+    end
+  end
+
   @valid_by_existence_roles [
     :test,
     :rule,
@@ -342,6 +388,20 @@ defmodule CodeMySpec.Files.Scanner do
 
   def validate_entry(entry, _env, _component_by_id, _strict?) do
     Map.merge(entry, %{valid: nil, validation_errors: nil})
+  end
+
+  defp proposal_context_names(content) do
+    case Regex.run(~r/^##\s+Contexts\s*$([\s\S]*?)(?=^##\s|\z)/m, content,
+           capture: :all_but_first
+         ) do
+      [section] ->
+        ~r/^###\s+([A-Za-z_][A-Za-z0-9_.]*)\s*$/m
+        |> Regex.scan(section, capture: :all_but_first)
+        |> Enum.map(&hd/1)
+
+      _ ->
+        []
+    end
   end
 
   # -- Setup-artifact validators --

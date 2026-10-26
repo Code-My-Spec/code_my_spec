@@ -50,8 +50,8 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     with {:ok, story_id} <- get_story_id(scope, task) do
       env = CodeMySpec.AgentTasks.execution_context(scope)
       story = Stories.get_story!(scope, story_id)
-      ensure_qa_dirs(env, story.number)
-      {:ok, build_prompt(scope, story)}
+      ensure_qa_dirs(env, story.number, task.id)
+      {:ok, build_prompt(scope, story, task.id)}
     end
   end
 
@@ -333,11 +333,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         end
 
       _ ->
-        screenshot_dir = screenshot_dir(story_number)
-
         {:ok, :invalid,
          "Brief validated. Now execute the test plan from the brief and write the result to `#{path}`. " <>
-           "Save screenshots to `#{screenshot_dir}/`. " <>
+           "Save screenshots to the task-specific directory named in the QA task prompt. " <>
            "Stop the session when done."}
     end
   end
@@ -346,7 +344,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Combined Prompt — slim, points at knowledge docs
   # ============================================================================
 
-  defp build_prompt(scope, story) do
+  defp build_prompt(scope, story, task_id) do
     env = CodeMySpec.AgentTasks.execution_context(scope)
     endpoint_module = endpoint_module_name(scope)
     criteria_text = format_criteria(Map.get(story, :criteria, []))
@@ -360,6 +358,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     sections =
       [
         header_section(scope, story, endpoint_module, criteria_text, specs_text),
+        "Save screenshots for this QA task to `#{screenshot_dir(story.number, task_id)}/`. Only files in this directory are attached to submissions on this task.",
         changed_since_section(scope, story),
         component_section,
         scripts_section,
@@ -777,12 +776,12 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     Path.join([Paths.qa_dir(), to_string(story_number), "result.md"])
   end
 
-  defp screenshot_dir(story_number) do
-    Path.join([Paths.qa_dir(), to_string(story_number), "screenshots"])
+  defp screenshot_dir(story_number, task_id) do
+    Path.join([Paths.qa_dir(), to_string(story_number), "screenshots", task_id])
   end
 
-  defp ensure_qa_dirs(env, story_number) do
-    ExecutionContexts.ensure_dir(env, screenshot_dir(story_number))
+  defp ensure_qa_dirs(env, story_number, task_id) do
+    ExecutionContexts.ensure_dir(env, screenshot_dir(story_number, task_id))
     :ok
   end
 

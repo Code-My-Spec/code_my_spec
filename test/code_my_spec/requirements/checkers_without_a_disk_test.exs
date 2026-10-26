@@ -15,11 +15,15 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.DevicesFixtures
-
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Components
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Support.InMemoryExecutionContext
   alias CodeMySpec.Paths
   alias CodeMySpec.Personas
 
@@ -27,6 +31,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     ArchitectureChecker,
     PersonasChecker,
     Preloader,
+    Profiles,
     Registry,
     RequirementCalculator,
     SpexBoundaryChecker
@@ -114,6 +119,103 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   end
 
   describe "architecture_designed" do
+    test "scanner tracks existing proposal contexts but not proposed future contexts", %{
+      scope: scope
+    } do
+      context = component_fixture(scope, %{module_name: "MyApp.ExistingContext"})
+      {:ok, env} = InMemoryExecutionContext.create()
+
+      proposal = """
+      ## Surface Components
+
+      ### MyAppWeb.FeatureLive
+      - **Stories:** 42
+
+      ## Contexts
+
+      ### MyApp.ExistingContext
+      - **Type:** context
+
+      ### MyApp.FutureContext
+      - **Type:** context
+
+      ## Dependencies
+      """
+
+      :ok = ExecutionContexts.write_file(env, Paths.proposal_path(), proposal)
+
+      entry =
+        Scanner.validate_entry(
+          %{role: :architecture, path: Paths.proposal_path()},
+          env,
+          %{context.id => context},
+          false
+        )
+
+      assert entry.validation_errors["data"] == %{
+               "story_numbers" => [42],
+               "context_names" => ["MyApp.ExistingContext"]
+             }
+    end
+
+    test "scanner accepts an older read model without component types" do
+      {:ok, env} = InMemoryExecutionContext.create()
+
+      :ok =
+        ExecutionContexts.write_file(
+          env,
+          Paths.proposal_path(),
+          "## Contexts\n### MyApp.Accounts\n"
+        )
+
+      entry =
+        Scanner.validate_entry(
+          %{role: :architecture, path: Paths.proposal_path()},
+          env,
+          %{"component-1" => %{module_name: "MyApp.Accounts"}},
+          false
+        )
+
+      assert entry.valid == true
+      assert entry.validation_errors["data"]["context_names"] == []
+    end
+
+    test "a removed context makes a proposal-only plan stale", %{scope: scope} do
+      context = component_fixture(scope, %{module_name: "MyApp.RemovedContext"})
+      file = sync(scope, Paths.proposal_path(), :architecture)
+      references = %{"data" => %{"context_names" => [context.module_name]}}
+      file |> Ecto.Changeset.change(validation_errors: references) |> Repo.update!()
+
+      assert {true, _} = ArchitectureChecker.complete?(scope, nil)
+      assert {:ok, _} = Components.delete_component(scope, context)
+      assert {false, %{reason: reason}} = ArchitectureChecker.complete?(scope, nil)
+      assert reason =~ "out of date"
+      assert reason =~ context.module_name
+      refute reason =~ "orphan"
+
+      files = Profiles.load(scope, :files)
+
+      assert {false, %{reason: ^reason}} =
+               ArchitectureChecker.complete?(scope, nil, %{files: files, authored?: false})
+    end
+
+    test "stale synced story references fail both graph read paths without a disk", %{
+      scope: scope
+    } do
+      file = sync(scope, Paths.proposal_path(), :architecture)
+      references = %{"data" => %{"story_numbers" => [123_456_789]}}
+      file |> Ecto.Changeset.change(validation_errors: references) |> Repo.update!()
+
+      assert {false, %{reason: reason}} = ArchitectureChecker.complete?(scope, nil)
+      assert reason =~ "out of date"
+      assert reason =~ "123456789"
+
+      files = Profiles.load(scope, :files)
+
+      assert {false, %{reason: ^reason}} =
+               ArchitectureChecker.complete?(scope, nil, %{files: files, authored?: false})
+    end
+
     test "an unsynced proposal is missing, and says which path", %{scope: scope} do
       assert {false, %{reason: reason}} = ArchitectureChecker.complete?(scope, nil)
       assert reason =~ Paths.proposal_path()

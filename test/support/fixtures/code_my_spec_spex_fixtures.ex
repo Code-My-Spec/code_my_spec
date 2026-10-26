@@ -418,6 +418,23 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc "Record a message sent by the stand-in deployed app for widget verification."
+  def record_widget_probe(scope, probe, origin) do
+    visitor = "widget-probe-#{System.unique_integer([:positive])}"
+
+    with {:ok, conversation} <-
+           Conversations.find_or_create_conversation(
+             scope.active_account_id,
+             scope.active_project_id,
+             "#{visitor}@example.com",
+             end_user_id: visitor
+           ),
+         {:ok, _message} <-
+           Conversations.add_message(conversation, :user, probe, visitor, [], origin: origin) do
+      :ok
+    end
+  end
+
   @doc """
   An app access token for the project, minted the way the deployed app gets one.
 
@@ -2802,6 +2819,15 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
   defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
+
+  @doc "Observe whether a specific persona-story link persisted after a tool call."
+  def persona_story_link_exists?(persona_id, story_id) do
+    Repo.exists?(
+      from ps in CodeMySpec.Personas.PersonaStory,
+        where: ps.persona_id == ^persona_id and ps.story_id == ^story_id
+    )
+  end
+
   defdelegate list_components(scope), to: CodeMySpec.Components
 
   @doc """
@@ -2954,6 +2980,28 @@ defmodule CodeMySpecSpex.Fixtures do
     exunit_output_file: "exunit",
     spex_output_file: "spex"
   ]
+
+  @doc """
+  Retry `check` (a 0-arity fun returning a boolean) until it is true or
+  `attempts_left` is exhausted, sleeping 100ms between tries. `:ok` or
+  `:timeout`.
+
+  For asserting on a result a background task reconciles asynchronously,
+  where nothing in the spec itself ever awaits it.
+  """
+  @spec poll_until((-> boolean()), pos_integer()) :: :ok | :timeout
+  def poll_until(check, attempts_left \\ 200) when is_function(check, 0) do
+    cond do
+      check.() -> :ok
+      attempts_left > 1 -> poll_retry(check, attempts_left)
+      true -> :timeout
+    end
+  end
+
+  defp poll_retry(check, attempts_left) do
+    Process.sleep(100)
+    poll_until(check, attempts_left - 1)
+  end
 
   @doc """
   Recorded analyzer outputs, landed as completed analysis runs — what
@@ -3493,6 +3541,11 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
+
+  @doc "Project IDs visible to this spex's database connection, including escaped committed rows."
+  def visible_project_ids do
+    Repo.all(Project) |> Enum.map(& &1.id)
+  end
 
   @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
   def project_named(account_id, name) do
@@ -4149,6 +4202,10 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Every call recorded so far, oldest first."
   @spec recorded_calls(pid()) :: [term()]
   def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
+
+  @doc "Requests observed by the stateful Resend fake, oldest first."
+  @spec resend_requests(pid()) :: [{String.t(), String.t()}]
+  def resend_requests(resend), do: resend |> Agent.get(& &1.requests) |> Enum.reverse()
 
   @doc """
   A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
@@ -5067,6 +5124,15 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok,
      project
      |> Ecto.Changeset.change(local_path: path)
+     |> CodeMySpec.Repo.update!()}
+  end
+
+  @doc "Align a generated project's module name with its actual checkout."
+  @spec set_project_module_name(Project.t(), String.t()) :: {:ok, Project.t()}
+  def set_project_module_name(project, module_name) do
+    {:ok,
+     project
+     |> Ecto.Changeset.change(module_name: module_name)
      |> CodeMySpec.Repo.update!()}
   end
 

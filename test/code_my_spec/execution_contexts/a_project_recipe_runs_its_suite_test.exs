@@ -57,9 +57,12 @@ defmodule CodeMySpec.ExecutionContexts.AProjectRecipeRunsItsSuiteTest do
   test "spex runs the project's recipe with the arguments it gives mix" do
     env = a_project(["spex *args"])
 
-    Spex.execute(["test/spex/a_spex.exs"], execution_context: env)
+    assert {:ok, [], 0, output} =
+             Spex.execute(["test/spex/a_spex.exs"], execution_context: env)
 
     assert_received {:ran, "just", ["spex", "test/spex/a_spex.exs", "--jsonl=" <> _]}
+    assert output =~ ~s(files=["test/spex/a_spex.exs"])
+    assert output =~ ~s(argv=["just", "spex", "test/spex/a_spex.exs")
   end
 
   test "spex runs mix when the project declares no recipe" do

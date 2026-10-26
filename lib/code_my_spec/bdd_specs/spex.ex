@@ -98,7 +98,6 @@ defmodule CodeMySpec.BddSpecs.Spex do
     args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
     program = program(environment, "spex")
-    command = program <> " " <> Enum.join(spex_args, " ")
 
     # The scrub keeps the child `mix`/`erl` off our Burrito ERTS (see
     # CodeMySpec.ExecutionContexts.clean_otp_env/0), and `merge_clean_env/1` applies
@@ -114,7 +113,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
         env: [{"MIX_ENV", "test"}] ++ Keyword.get(opts, :extra_env, [])
       )[:env]
 
-    Logger.info("[Spex] Running: #{command}")
+    files = Enum.filter(args, &String.ends_with?(&1, "_spex.exs"))
+    invocation = "[Spex] argv=#{inspect([program | spex_args])} files=#{inspect(files)}"
+    Logger.info(invocation)
 
     # The output is returned, not discarded: an empty JSONL with a nonzero exit
     # means the suite did not run, and the output is the only record of why (as
@@ -124,6 +125,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
            env: cmd_env
          ) do
       {raw_output, exit_code} ->
+        raw_output = invocation <> "\n" <> raw_output
+
         result =
           parse_and_return_failures(
             temp_file,

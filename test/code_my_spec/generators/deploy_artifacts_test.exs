@@ -29,6 +29,63 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     body
   end
 
+  describe "the build workflow" do
+    test "pushes to each registry Kamal pulls from using registry credentials" do
+      opts =
+        Keyword.merge(@opts,
+          image: "10.0.0.2:5000/my-app",
+          kamal_image: "my-app",
+          prod_registry: "10.0.0.2:5000",
+          uat_registry: "10.1.0.2:5000"
+        )
+
+      files = Map.new(DeployArtifacts.files(opts))
+      workflow = files[".github/workflows/build.yml"]
+
+      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
+        config = files[path]
+        [_, registry] = Regex.run(~r/server: ([^\s]+)/, config)
+        [_, repository] = Regex.run(~r/image: ([^\s]+)/, config)
+
+        assert workflow =~ ~s("#{registry}")
+        assert workflow =~ "/#{repository}:"
+      end
+
+      assert workflow =~ "secrets.CMS_REGISTRY_USERNAME"
+      assert workflow =~ "secrets.CMS_REGISTRY_PASSWORD"
+      refute workflow =~ "secrets.GITHUB_TOKEN"
+      refute workflow =~ "registry: ghcr.io"
+    end
+
+    test "generation requires a provisioned registry image instead of defaulting to GitHub" do
+      assert {:error, :registry_image_required} =
+               DeployArtifacts.generate(nil, app: "my_app", host: "example.com")
+    end
+
+    test "generation rejects a build image that differs from the deploy image" do
+      assert {:error, :registry_image_mismatch} =
+               DeployArtifacts.generate(nil,
+                 app: "my_app",
+                 host: "example.com",
+                 registry: "10.0.0.2:5000",
+                 image: "ghcr.io/acme/my_app",
+                 kamal_image: "my_app"
+               )
+    end
+  end
+
+  test "generates the health controller referenced by its router" do
+    path = "lib/my_app_web/controllers/health_controller.ex"
+    body = file(path)
+
+    assert file("lib/my_app_web/router.ex") =~ "MyAppWeb.HealthController"
+    assert body =~ "defmodule MyAppWeb.HealthController"
+    assert body =~ "def show(conn, _params)"
+    assert body =~ "Plug.Conn.send_resp(conn, 200, \"ok\")"
+    refute body =~ "Repo"
+    refute body =~ "fetch_session"
+  end
+
   describe "the release overlays" do
     test "boot decrypts the environment before starting the app" do
       body = file("rel/overlays/bin/boot")

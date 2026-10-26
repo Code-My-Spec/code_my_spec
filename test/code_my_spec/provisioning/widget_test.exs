@@ -17,8 +17,11 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     do:
       ~s(<html><body><div data-cms-widget><button data-cms-widget-toggle></button></div></body></html>)
 
-  defp from_site, do: fn _scope -> [%{origin: "deployed_site", body: "the widget works"}] end
+  defp from_site, do: fn _scope -> [%{origin: "deployed_site", body: "cms-verify-test"}] end
   defp no_messages, do: fn _scope -> [] end
+
+  defp accepted_probe,
+    do: fn _url, _key, probe -> {:ok, %{status: 202, probe: probe, body: %{}}} end
 
   describe "verify_present/2" do
     test "passes when the widget is both present and openable" do
@@ -192,7 +195,10 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
           deploy_key: "dk_live",
           mix_bin: mix,
           fetch: page(installed_page()),
-          lookup: from_site()
+          lookup: from_site(),
+          probe: "cms-verify-test",
+          post: accepted_probe(),
+          loopback_settle_ms: 0
         )
 
       assert result.state == :proven
@@ -211,12 +217,37 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
           deploy_key: "dk_live",
           mix_bin: mix,
           fetch: page(installed_page()),
-          lookup: no_messages()
+          lookup: no_messages(),
+          probe: "cms-verify-test",
+          post: accepted_probe(),
+          loopback_settle_ms: 0
         )
 
       assert result.state == :not_proven
       assert result.proven_at == nil
-      assert result.reason =~ ~r/no message/i
+      assert result.reason =~ ~r/probe message did not arrive/i
+    end
+
+    test "a previous site message cannot satisfy a new verification probe", %{
+      env: env,
+      scope: scope
+    } do
+      result =
+        Widget.run(scope, env,
+          site_url: "https://sams-site.com",
+          deploy_key: "dk_live",
+          mix_bin: "true",
+          installed_markers: ["mix.exs"],
+          fetch: page(installed_page()),
+          lookup: from_site(),
+          probe: "cms-verify-different",
+          post: accepted_probe(),
+          loopback_settle_ms: 0
+        )
+
+      assert result.state == :not_proven
+      assert result.proven_at == nil
+      assert result.reason =~ "probe message did not arrive"
     end
 
     test "a failed generator reports what it said", %{env: env, scope: scope} do
@@ -290,12 +321,8 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     end
   end
 
-  describe "run/3 triggers the loopback before it looks" do
-    # Failure here is deliberately not fatal. An application generated before
-    # the endpoint existed answers 404 and one built without the widget answers
-    # 501; neither is evidence about the widget, and the message lookup is the
-    # real check either way.
-    test "an endpoint that is not there does not fail the step", ctx do
+  describe "run/3 requires operational verification" do
+    test "a missing endpoint cannot mark the widget proven", ctx do
       refusing = fn _url, _key, _probe -> {:error, %{status: 404, body: "not found"}} end
 
       result =
@@ -309,10 +336,12 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
           post: refusing
         )
 
-      assert result.state == :proven
+      assert result.state == :not_proven
+      assert result.proven_at == nil
+      assert result.reason =~ "404"
     end
 
-    test "a raising trigger does not fail the step either", ctx do
+    test "a failed request cannot mark the widget proven", ctx do
       exploding = fn _url, _key, _probe -> raise "cassette miss" end
 
       result =
@@ -326,7 +355,9 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
           post: exploding
         )
 
-      assert result.state == :proven
+      assert result.state == :not_proven
+      assert result.proven_at == nil
+      assert result.reason =~ "cassette miss"
     end
   end
 end
