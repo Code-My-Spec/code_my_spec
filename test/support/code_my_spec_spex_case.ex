@@ -171,6 +171,7 @@ defmodule CodeMySpecSpex.Case do
 
       use CodeMySpecWeb, :verified_routes
       use SexySpex, async: unquote(async)
+      CodeMySpecSpex.CommittedRowsGuard.install!()
 
       # Half of setup is a subprocess, so `with_full_cassette` — which needs
       # this import — is reachable from every spex rather than from the ones
