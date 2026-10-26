@@ -9,19 +9,13 @@ defmodule CodeMySpec.BddSpecs.CommittedRowsGuardTest do
       "guard-test-#{System.unique_integer([:positive])}"
     )
 
-    result =
+    error =
       Task.async(fn ->
-        try do
-          CommittedRowsGuard.check_after_suite!(%{})
-          :clean
-        rescue
-          error -> {:dirty, Exception.message(error)}
-        end
+        assert_raise RuntimeError, fn -> CommittedRowsGuard.check_after_suite!(%{}) end
       end)
       |> Task.await()
 
-    assert {:dirty, message} = result
-    assert message =~ "spex left committed rows outside the sandbox"
-    assert message =~ "projects="
+    assert Exception.message(error) =~ "spex left committed rows outside the sandbox"
+    assert Exception.message(error) =~ "projects="
   end
 end
