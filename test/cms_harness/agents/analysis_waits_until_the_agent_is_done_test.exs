@@ -4,7 +4,9 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
   FIFO delivery are exercised against the database mailbox in story 1051.
   These isolated harness tests use an explicit authority callback, not a queue.
   """
-  use ExUnit.Case, async: true
+  # CaptureLog sees the shared Logger; run alone so other async tests cannot
+  # contribute unrelated errors to the shutdown assertion below.
+  use ExUnit.Case, async: false
 
   alias CmsHarness.Agents.Engine
   alias CmsHarnessTest.Machine
@@ -253,6 +255,27 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
       assert status != 0, "queued delivery began while the old subprocess was still alive"
       assert_receive {:event, %{event: :turn_ended}}, 5_000
     end
+  end
+
+  test "stopping an agent while its execution exits completes without cleanup errors", %{
+    root: root
+  } do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "exit-race", "first")
+    assert_receive {:holding_turn, execution}, 5_000
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    monitor = Process.monitor(engine)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        Process.exit(execution, :kill)
+        assert :ok = Machine.stop_agent(agent)
+        assert_receive {:DOWN, ^monitor, :process, ^engine, _reason}, 5_000
+      end)
+
+    refute log =~ "[error]"
+    refute Process.alive?(execution)
+    refute Machine.running?(agent)
   end
 
   # A turned-off Claude Code agent's `claude -p` kept editing its copy for ten

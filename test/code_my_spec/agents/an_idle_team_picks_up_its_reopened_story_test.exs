@@ -134,6 +134,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
         CodeMySpec.Qa.complete_reviewed_story_issues(ctx.scope, story, "landed-sha", "fix-sha")
 
       {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.16", at: at)
+      :ok = CodeMySpec.Requirements.GraphWatcher.settle(ctx.scope)
 
       Slice.assert_active(Slice.next(ctx, %{agent_id: ctx.coding.id}), ctx, "complete")
       assert reload(ctx.qa).story_id == ctx.story.id

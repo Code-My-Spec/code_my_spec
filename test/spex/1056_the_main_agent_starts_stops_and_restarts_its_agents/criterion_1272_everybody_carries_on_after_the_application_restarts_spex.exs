@@ -46,7 +46,9 @@ defmodule CodeMySpecSpex.Story1056.Criterion3304Spex do
   spex "Agents come back working, not merely running", criterion: 1272 do
     scenario "the application restarts while an agent is part-way through a story" do
       given_ "an agent part-way through work on a checkout", context do
-        reply = join_working_copy(context, "/tmp/spex-3304", "the checkout")
+        {reply, restore_socket} =
+          join_working_copy_socket(context, "/tmp/spex-3304", "the checkout")
+
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
         # The provider these agents run on — `running_agent/2` defaults to zai.
@@ -67,12 +69,16 @@ defmodule CodeMySpecSpex.Story1056.Criterion3304Spex do
 
         :ok = Fixtures.agent_said(scope, agent, "half of the ledger writer is done")
 
-        {:ok, context |> Map.put(:scope, scope) |> Map.put(:agent, agent)}
+        {:ok,
+         context
+         |> Map.put(:scope, scope)
+         |> Map.put(:restore_socket, restore_socket)
+         |> Map.put(:agent, agent)}
       end
 
       when_ "the application comes back up and the harness asks what to run",
             context do
-        {:ok, Map.put(context, :to_restore, Fixtures.agents_to_restore(context.scope))}
+        {:ok, Map.put(context, :to_restore, Fixtures.agents_to_restore(context.restore_socket))}
       end
 
       then_ "that agent is among the ones to run again", context do

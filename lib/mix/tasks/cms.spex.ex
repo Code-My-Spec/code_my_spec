@@ -37,10 +37,10 @@ defmodule Mix.Tasks.Cms.Spex do
     # ceiling that kills a run before it could still legitimately be here.
     CodeMySpec.TempFile.sweep_stale("spex", :timer.hours(1))
     Mix.Task.run("compile")
-    {files, jsonl, rest} = split_args(args)
+    {files, jsonl, formatters, rest} = split_args(args)
 
     if files == [] and rest == [] do
-      run_shards(jsonl)
+      run_shards(jsonl, formatters)
     else
       run_here(args)
     end
@@ -51,13 +51,17 @@ defmodule Mix.Tasks.Cms.Spex do
     Mix.Task.run("spex", args)
   end
 
+  # `--formatter=…` goes to every shard, so a run the harness watches still shards.
   defp split_args(args) do
     {jsonl, others} = Enum.split_with(args, &String.starts_with?(&1, "--jsonl="))
+    {formatters, others} = Enum.split_with(others, &String.starts_with?(&1, "--formatter="))
     {files, rest} = Enum.split_with(others, &String.ends_with?(&1, ".exs"))
-    {files, Enum.map(jsonl, &String.replace_prefix(&1, "--jsonl=", "")) |> List.first(), rest}
+
+    {files, Enum.map(jsonl, &String.replace_prefix(&1, "--jsonl=", "")) |> List.first(),
+     formatters, rest}
   end
 
-  defp run_shards(jsonl) do
+  defp run_shards(jsonl, formatters) do
     # The template has to be current; these are the `spex` alias's own first steps.
     Mix.Task.run("ecto.create", ["--quiet"])
     Mix.Task.run("ecto.migrate", ["--quiet"])
@@ -71,7 +75,10 @@ defmodule Mix.Tasks.Cms.Spex do
     results =
       groups
       |> Enum.with_index(1)
-      |> Task.async_stream(&run_shard(&1, partition), timeout: :infinity, ordered: true)
+      |> Task.async_stream(&run_shard(&1, partition, formatters),
+        timeout: :infinity,
+        ordered: true
+      )
       |> Enum.map(fn {:ok, result} -> result end)
 
     Enum.each(results, fn {i, _status, output, _jsonl} ->
@@ -87,15 +94,16 @@ defmodule Mix.Tasks.Cms.Spex do
     if Enum.any?(results, fn {_, status, _, _} -> status != 0 end), do: exit({:shutdown, 1})
   end
 
-  defp run_shard({files, i}, partition) do
+  defp run_shard({files, i}, partition, formatters) do
     path =
       Path.join(System.tmp_dir!(), "cms_spex_shard_#{System.unique_integer([:positive])}.jsonl")
 
     started = System.monotonic_time(:second)
 
     {output, status} =
-      System.cmd("mix", ["cms.spex" | files] ++ ["--jsonl=#{path}"],
-        env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}],
+      System.cmd("mix", ["cms.spex" | files] ++ formatters ++ ["--jsonl=#{path}"],
+        env:
+          [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", "#{partition}_#{i}"}] ++ run_link_env(i),
         stderr_to_stdout: true
       )
 
@@ -104,6 +112,25 @@ defmodule Mix.Tasks.Cms.Spex do
     )
 
     {i, status, output, path}
+  end
+
+  @doc false
+  # A run the harness watches names this BEAM a node (`ELIXIR_ERL_OPTIONS`).
+  # Each shard joins it as a node of its own, so each needs its own name, and
+  # is told it is a shard: the run finishes when this task exits, not when the
+  # first shard does.
+  def run_link_env(i, options \\ System.get_env("ELIXIR_ERL_OPTIONS")) do
+    case options && Regex.run(~r/-name (\S+)@/, options) do
+      [_, name] ->
+        [
+          {"ELIXIR_ERL_OPTIONS",
+           String.replace(options, "-name #{name}@", "-name #{name}_s#{i}@")},
+          {"CMS_RUN_SHARDS", Integer.to_string(@shards)}
+        ]
+
+      _ ->
+        []
+    end
   end
 
   defp read_jsonl({_, _, _, path}) do

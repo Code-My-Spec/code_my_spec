@@ -52,6 +52,7 @@ defmodule CodeMySpecSpex.Story1030.Criterion1114Spex do
 
         {:ok, context}
       end
+
       when_ "the app begins serving", context do
         Fixtures.put_workspace_serving(:serving)
         Fixtures.put_workspace_healthy(true)

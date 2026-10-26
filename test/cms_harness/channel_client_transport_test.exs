@@ -108,6 +108,33 @@ defmodule CmsHarness.ChannelClientTransportTest do
                      "holds an empty domain for the whole session"
   end
 
+  test "a graph rebuild defers restoration and retries the handshake" do
+    ref = make_ref()
+    sock = socket(%{restore_ref: ref, restored: false})
+
+    assert {:ok, waiting} =
+             ChannelClient.handle_reply(
+               ref,
+               {:error, %{"reason" => "graph_rebuilding", "retry_after_ms" => 5_000}},
+               sock
+             )
+
+    refute waiting.assigns.restored
+    assert is_nil(waiting.assigns.restore_ref)
+    assert_receive :retry_restore_after_graph, 5_500
+    assert {:noreply, retrying} = ChannelClient.handle_info(:retry_restore_after_graph, waiting)
+    assert_receive {:transport_push, "harness_project:p1", "agents_to_restore", %{}, retry_ref}
+    assert retrying.assigns.restore_ref == retry_ref
+
+    assert {:noreply, _} = ChannelClient.handle_info(:retry_restore_after_graph, retrying)
+    refute_received {:transport_push, _, "agents_to_restore", _, _}
+
+    assert {:noreply, _} =
+             ChannelClient.handle_info(:retry_restore_after_graph, socket(%{joined: false}))
+
+    refute_received {:transport_push, _, "agents_to_restore", _, _}
+  end
+
   test "join still asks what to restore, immediately" do
     assert {:ok, _out} =
              ChannelClient.handle_join(
