@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story812.Criterion2427Spex do
     criterion: 2427 do
     scenario "loading an install page leaves page_view and install copy tracking to the browser" do
       given_ "an unauthenticated visitor with no conversion in progress", context do
+        # given: already true — CodeMySpecSpex.Case supplies a fresh, unauthenticated conn.
         {:ok, context}
       end
 
@@ -48,6 +49,7 @@ defmodule CodeMySpecSpex.Story812.Criterion2427Spex do
 
     scenario "the removed server behavior-event route cannot accept a browser event" do
       given_ "a visitor who could send a browser behavior event", context do
+        # given: already true — CodeMySpecSpex.Case supplies a conn able to POST to the web endpoint.
         {:ok, context}
       end
 
