@@ -54,6 +54,7 @@ defmodule CmsHarness.Application do
   def stop(_state), do: :ok
 
   defp start_harness do
+    CmsHarness.Proxy.install!()
     harness_log = prepare_host()
 
     warn_if_no_credential()

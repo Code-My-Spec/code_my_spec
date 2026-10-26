@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Proxy
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
@@ -160,7 +161,9 @@ defmodule CmsHarness.Project.ChannelClient do
         Logger.info("[CmsHarness] connecting to #{redact_token(uri)}")
 
         {:noreply,
-         socket |> connect!(uri: uri, headers: connect_headers(socket)) |> arm_join_deadline()}
+         socket
+         |> connect!([uri: uri, headers: connect_headers(socket)] ++ Proxy.socket_options(uri))
+         |> arm_join_deadline()}
 
       {:error, :no_credential} ->
         # Not a retry loop: waiting produces no credential.
@@ -2739,7 +2742,12 @@ defmodule CmsHarness.Project.ChannelClient do
   defp dial(socket) do
     case Config.socket_url(socket.assigns.project.root) do
       {:ok, uri} ->
-        {:ok, socket} = connect(socket, uri: uri, headers: connect_headers(socket))
+        {:ok, socket} =
+          connect(
+            socket,
+            [uri: uri, headers: connect_headers(socket)] ++ Proxy.socket_options(uri)
+          )
+
         {:noreply, arm_join_deadline(socket)}
 
       {:error, _} ->
