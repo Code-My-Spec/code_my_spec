@@ -158,6 +158,28 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
              }
     end
 
+    test "scanner accepts an older read model without component types" do
+      {:ok, env} = InMemoryExecutionContext.create()
+
+      :ok =
+        ExecutionContexts.write_file(
+          env,
+          Paths.proposal_path(),
+          "## Contexts\n### MyApp.Accounts\n"
+        )
+
+      entry =
+        Scanner.validate_entry(
+          %{role: :architecture, path: Paths.proposal_path()},
+          env,
+          %{"component-1" => %{module_name: "MyApp.Accounts"}},
+          false
+        )
+
+      assert entry.valid == true
+      assert entry.validation_errors["data"]["context_names"] == []
+    end
+
     test "a removed context makes a proposal-only plan stale", %{scope: scope} do
       context = component_fixture(scope, %{module_name: "MyApp.RemovedContext"})
       file = sync(scope, Paths.proposal_path(), :architecture)

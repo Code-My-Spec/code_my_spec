@@ -330,7 +330,7 @@ defmodule CodeMySpec.Files.Scanner do
         existing_contexts =
           component_by_id
           |> Map.values()
-          |> Enum.filter(&(&1.type in ["context", "coordination_context"]))
+          |> Enum.filter(&(Map.get(&1, :type) in ["context", "coordination_context"]))
           |> MapSet.new(& &1.module_name)
 
         context_names =

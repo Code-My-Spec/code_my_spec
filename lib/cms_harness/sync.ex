@@ -61,6 +61,10 @@ defmodule CmsHarness.Sync do
     started = System.monotonic_time(:millisecond)
     env = ExecutionContext.new(:local, project.root)
 
+    report_app_name(env, project.root)
+    report_head_commit(env, project.root)
+    report_preview_health(env, project.root)
+
     case Scanner.observe(env, read_model) do
       {:error, reason} ->
         Logger.error(
@@ -89,16 +93,10 @@ defmodule CmsHarness.Sync do
             "in #{System.monotonic_time(:millisecond) - started}ms"
         )
 
+        log_unclassified(env, project.root)
+
         Channel.deliver_observations(project.root, observations)
     end
-
-    # The first manifest is needed before a fixture or a new checkout can use
-    # the project. These secondary reports may involve subprocesses or another
-    # disk walk, so do them after handing the manifest to the channel.
-    report_app_name(env, project.root)
-    report_head_commit(env, project.root)
-    report_preview_health(env, project.root)
-    log_unclassified(env, project.root)
   end
 
   # The server cannot read this checkout's `mix.exs`; this machine reports the

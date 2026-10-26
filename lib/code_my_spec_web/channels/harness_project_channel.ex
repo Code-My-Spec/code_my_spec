@@ -2037,7 +2037,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp parse_mtime(_), do: nil
 
   # Nothing here may be a struct: `story_ids` crosses as a list, and a
-  # component as its `module_name` only, the one field the harness reads.
+  # component as the fields the harness scanner reads for ownership and
+  # proposal validation.
   defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
     %{
       "component_by_module" => read_model.component_by_module,
@@ -2048,7 +2049,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp serialize_component({id, component}) do
-    {id, %{"module_name" => Map.get(component, :module_name)}}
+    {id,
+     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
   end
 
   # A harness may only hold a project its credential reaches: a deploy key
