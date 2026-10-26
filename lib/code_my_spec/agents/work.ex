@@ -18,6 +18,7 @@ defmodule CodeMySpec.Agents.Work do
   alias CodeMySpec.Conversations
   alias CodeMySpec.Notifications
   alias CodeMySpec.PromotionQueue.Waits
+  alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -1091,7 +1092,14 @@ defmodule CodeMySpec.Agents.Work do
     scope
     |> claimable_work(agent)
     |> Enum.reject(&match?(%{held?: true}, standing[node_key(agent, &1)]))
+    |> Enum.reject(&nothing_new_to_test?(scope, &1))
   end
+
+  # Pushed again it could only repeat the last QA attempt; a pull still shows it.
+  defp nothing_new_to_test?(scope, %{entity_type: "story", entity_id: id, name: "qa_complete"}),
+    do: Verdict.nothing_new_since_last_attempt?(scope, id)
+
+  defp nothing_new_to_test?(_scope, _node), do: false
 
   # The one place an offer's `subject_key` is built. A story node's
   # `entity_id` is the database id; the key uses the public number that

@@ -706,6 +706,32 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert {:ok, %{status: :landed}} = settle(entry)
   end
 
+  # A disk cleanup removed the gate's folder and left its record: the queue took
+  # the record for the gate and refused every batch on its unreadable HEAD.
+  test "a gate copy whose checkout is gone is retired and asked for again", ctx do
+    test = self()
+    handler = {__MODULE__, make_ref()}
+
+    :telemetry.attach(
+      handler,
+      [:code_my_spec, :promotion_queue, :gate_copy_needed],
+      fn _event, _measurements, metadata, _config -> send(test, {:gate_needed, metadata}) end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    :ok = WorkingCopies.observe_paths(ctx.gate.device_id, %{ctx.gate.id => false})
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    queue(ctx, a)
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    assert_receive {:gate_needed, %{label: label}}, 5_000
+    assert label == Worker.gate_label()
+    refute Enum.any?(WorkingCopies.list_harnesses(ctx.scope), &(&1.id == ctx.gate.id))
+  end
+
   # A candidate that stopped short of a verdict used to be requeued, where it
   # headed the queue again and failed the same way every five minutes, holding
   # everything behind it. Once taken, it leaves.

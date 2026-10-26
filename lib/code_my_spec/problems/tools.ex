@@ -155,17 +155,30 @@ defmodule CodeMySpec.Problems.Tools do
   defp partition_line(scope, source) do
     case Analysis.latest_answer(scope, source) do
       %{stats: %{"partition" => partition}} = run when is_binary(partition) ->
-        ["#{source} ran against the `#{partition}` test database#{took(run)}."]
+        [
+          from_line(source, run),
+          "#{source} ran against the `#{partition}` test database#{took(run)}."
+        ]
 
       %{} = run ->
         case took(run) do
-          "" -> []
-          taken -> ["#{source}'s run#{taken}."]
+          "" -> [from_line(source, run)]
+          taken -> [from_line(source, run), "#{source}'s run#{taken}."]
         end
 
       _ ->
         []
     end
+  end
+
+  # Which run these findings are, since only a full run writes them: an agent
+  # told a targeted run's count read this list as that run's.
+  defp from_line(source, run) do
+    at =
+      if is_binary(run.start_commit), do: " at #{String.slice(run.start_commit, 0, 12)}", else: ""
+
+    "#{source} findings are from full run #{run.id}#{at}; a targeted run's are read with " <>
+      "`get_analysis_output({run_id = …})`, not here."
   end
 
   defp took(%{started_at: %DateTime{} = started, finished_at: %DateTime{} = finished}) do

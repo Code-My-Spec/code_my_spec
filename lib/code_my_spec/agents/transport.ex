@@ -29,6 +29,7 @@ defmodule CodeMySpec.Agents.Transport do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Mailbox
+  alias CodeMySpec.Agents.SenderStamp
 
   @doc """
   Ask the machine serving `working_copy_id` to launch this agent.
@@ -167,7 +168,13 @@ defmodule CodeMySpec.Agents.Transport do
       do: {:error, :busy},
       else:
         gated(agent, fn ->
-          implementation(agent).request_work_turn(copy_id, agent, ref, text, timeout)
+          implementation(agent).request_work_turn(
+            copy_id,
+            agent,
+            ref,
+            SenderStamp.stamp(text, agent, "the harness"),
+            timeout
+          )
         end)
   end
 

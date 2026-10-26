@@ -48,6 +48,16 @@ defmodule CmsHarness.Agents.ProviderTest do
     end
   end
 
+  # 8428cef0: the brief in the system prompt sat after a long transcript.
+  describe "the provider brief on codex" do
+    test "opens every full prompt, as Alloy's preamble" do
+      {:ok, opts} = Provider.options("openai-codex", %{}, provider_brief: "## Your tools")
+      {_module, config} = Keyword.fetch!(opts, :provider)
+
+      assert config.preamble == "## Your tools"
+    end
+  end
+
   # eb09b076: `claude -p` compacting a ~1M-token resumed session took about
   # 180s, the old wall clock was 180s, and every retry re-ran the same
   # compaction into the same kill.
@@ -75,6 +85,15 @@ defmodule CmsHarness.Agents.ProviderTest do
              "the transcript can reach #{compacts_at_chars} characters before compacting, " <>
                "leaving too little of codex's 1,048,576-character cap for the system " <>
                "prompt, tool definitions and schema a fresh thread also sends"
+    end
+
+    # b97db538: Codex's own thread compacted only near 455k of a 475k window,
+    # every call resending up to that.
+    test "Codex's own thread compacts at the same budget" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {Alloy.Provider.Codex, codex} = Keyword.fetch!(opts, :provider)
+
+      assert "model_auto_compact_token_limit=#{opts[:max_tokens]}" in codex.config_overrides
     end
   end
 

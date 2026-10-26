@@ -191,6 +191,16 @@ defmodule CodeMySpec.Qa.AQaAgentSubmitsAgainstItsOwnTaskTest do
     assert Qa.list_qa_attempts(ctx.scope, ctx.story.id) == []
   end
 
+  # 1cbfde80: a fix landed during QA, the story's certification went stale,
+  # and every submission answered "submit_qa_result failed: rollback".
+  test "a review the story moved past since it started says so", ctx do
+    ctx.story |> Ecto.Changeset.change(qa_ready_commit: "a-later-revision") |> Repo.update!()
+
+    assert {:ok, text} = SubmitQaResult.call(attrs(ctx.task_id, :pass), %{scope: ctx.scope})
+    assert text =~ "preserved as history; it does not approve the story's newer work"
+    assert [%{stale: true}] = Qa.list_qa_attempts(ctx.scope, ctx.story.id)
+  end
+
   test "the attempt lands against a task held by the agent", ctx do
     assert {:ok, attempt} = Qa.submit_qa_result(ctx.scope, attrs(ctx.task_id, :pass))
 

@@ -71,6 +71,42 @@ defmodule CodeMySpec.Analysis.TheRunReportsBackToTheInternalAgentTest do
     assert message =~ "list_problems"
   end
 
+  # 3bbc3a94: the notice and `list_problems` disagreed in both directions, and
+  # neither said which run it was about.
+  test "the notice names its run, and a full run's findings are in list_problems", ctx do
+    agent(ctx.scope, ctx.copy, :alloy)
+    run = %{id: 61_117, kind: :full, commit: "5edce7faa00012345", exit_status: 2, listed?: true}
+
+    AnalysisReport.deliver(ctx.scope, "exunit", [problem(:error)], nil, run)
+
+    assert_receive {:agent_dispatch, _id, _ref, message}
+    assert message =~ "exunit run finished (run 61117 at 5edce7faa000): 1 blocking problem"
+    assert message =~ "Call `list_problems`"
+  end
+
+  test "a targeted run's findings are read from its output, not list_problems", ctx do
+    agent(ctx.scope, ctx.copy, :alloy)
+    run = %{id: 61_414, kind: :partial, commit: nil, exit_status: 2, listed?: false}
+
+    AnalysisReport.deliver(ctx.scope, "exunit", [problem(:error), problem(:error)], nil, run)
+
+    assert_receive {:agent_dispatch, _id, _ref, message}
+    assert message =~ "not in `list_problems`"
+    assert message =~ "get_analysis_output({run_id = 61414})"
+  end
+
+  test "a run that exited non-zero with nothing parsed is not announced clean", ctx do
+    asker = agent(ctx.scope, ctx.copy, :alloy)
+    run = %{id: 63_229, kind: :full, commit: "48e723257709", exit_status: 1, listed?: true}
+
+    AnalysisReport.deliver(ctx.scope, "spex", [], asker.id, run)
+
+    assert_receive {:agent_dispatch, _id, _ref, message}
+    refute message =~ "no blocking problems"
+    assert message =~ "exit status 1"
+    assert message =~ "get_analysis_output({run_id = 63229})"
+  end
+
   # Criterion 3046. A message wakes a process and costs it a turn, and an agent
   # woken to be told its tree is clean has been charged for no information.
   test "a clean run says nothing", ctx do

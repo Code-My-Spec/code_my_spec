@@ -36,6 +36,7 @@ defmodule CodeMySpec.Agents do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.Provisioning,
+      CodeMySpec.Qa.Verdict,
       CodeMySpec.PromotionQueue.Waits,
       CodeMySpec.Repo,
       CodeMySpec.Requirements,
@@ -78,6 +79,7 @@ defmodule CodeMySpec.Agents do
   alias CodeMySpec.Agents.Providers
   alias CodeMySpec.Agents.RefusalWake
   alias CodeMySpec.Agents.RoleProfile
+  alias CodeMySpec.Agents.ServedModels
   alias CodeMySpec.Agents.StopDecision
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Agents.TurnTimeout
@@ -3696,20 +3698,26 @@ defmodule CodeMySpec.Agents do
 
     scope
     |> AgentsRepository.model_setting(role)
-    |> honour_setting(role, connected)
+    |> honour_setting(scope, role, connected)
   end
 
-  defp honour_setting(%ModelSetting{provider: provider, model: model}, role, connected) do
+  defp honour_setting(%ModelSetting{provider: provider, model: model}, scope, role, connected) do
     if provider in connected,
       do: {:ok, {provider, model}, :set},
-      else: resolved_default(role, connected)
+      else: resolved_default(scope, role, connected)
   end
 
-  defp honour_setting(nil, role, connected), do: resolved_default(role, connected)
+  defp honour_setting(nil, scope, role, connected), do: resolved_default(scope, role, connected)
 
-  defp resolved_default(role, connected) do
-    with {:ok, choice} <- Defaults.resolve(role, connected) do
-      {:ok, choice, :default}
+  # A default model the provider is known not to serve resolves to nil, the
+  # login's own default: a pinned string the provider dropped crash-looped
+  # every Codex coder.
+  defp resolved_default(scope, role, connected) do
+    with {:ok, {provider, model}} <- Defaults.resolve(role, connected) do
+      case ServedModels.served?(scope, provider, model) do
+        false -> {:ok, {provider, nil}, :default}
+        _served_or_unknown -> {:ok, {provider, model}, :default}
+      end
     end
   end
 
@@ -3724,6 +3732,10 @@ defmodule CodeMySpec.Agents do
       nil -> nil
     end
   end
+
+  @doc "The models `provider` serves this project, or `:unknown`: see `ServedModels`."
+  @spec served_models(Scope.t(), String.t()) :: {:ok, [String.t()]} | :unknown
+  defdelegate served_models(scope, provider), to: ServedModels, as: :list
 
   @doc "Whether this user has deliberately chosen agent models."
   def models_configured?(scope), do: AgentsRepository.list_model_settings(scope) != []
@@ -3786,9 +3798,18 @@ defmodule CodeMySpec.Agents do
   def put_model_setting(%Scope{} = scope, role, provider, model) do
     # Refused here: a stored provider the account cannot authenticate yields an
     # agent that fails on its first model call.
-    if provider in connected_providers(scope),
-      do: AgentsRepository.put_model_setting(scope, role, provider, model),
-      else: {:error, :unknown_provider}
+    # And a model the provider is known not to serve: its agents would fail at
+    # start. Unknown (no list reported) is allowed.
+    cond do
+      provider not in connected_providers(scope) ->
+        {:error, :unknown_provider}
+
+      ServedModels.served?(scope, provider, model) == false ->
+        {:error, {:model_not_served, elem(ServedModels.list(scope, provider), 1)}}
+
+      true ->
+        AgentsRepository.put_model_setting(scope, role, provider, model)
+    end
   end
 
   @doc """

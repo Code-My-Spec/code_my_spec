@@ -1,0 +1,40 @@
+{
+  "version": "1.0",
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "uri": "https://api.z.ai/api/coding/paas/v4/models",
+        "query_string": "",
+        "headers": {},
+        "body_type": "text",
+        "body": ""
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": [
+            "application/json"
+          ]
+        },
+        "body_type": "json",
+        "body_json": {
+          "object": "list",
+          "data": [
+            {
+              "id": "glm-5.3",
+              "object": "model",
+              "owned_by": "z-ai"
+            },
+            {
+              "id": "glm-5.2-air",
+              "object": "model",
+              "owned_by": "z-ai"
+            }
+          ]
+        }
+      },
+      "recorded_at": "2026-10-26T00:00:00Z"
+    }
+  ]
+}

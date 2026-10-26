@@ -139,6 +139,49 @@ defmodule CmsHarness.WorkingCopies.AnUnacknowledgedCreateRollsBackIfUntouchedTes
     refute File.exists?(target)
   end
 
+  # A gate copy is made at the landed main, which the copy it was made from
+  # had not merged: told "the source lacks this commit", a clean gate copy was
+  # refused every retry and the queue wedged.
+  test "an orphan whose HEAD is on a remote branch is reclaimed though the source lacks it",
+       %{root: root, target: target} do
+    remote = root <> "-remote.git"
+    git!(root, ["init", "-q", "--bare", remote])
+    git!(root, ["remote", "add", "origin", remote])
+    git!(target, ["commit", "-q", "--allow-empty", "-m", "landed on main"])
+    git!(target, ["push", "-q", "origin", "HEAD:main"])
+    git!(root, ["fetch", "-q", "origin"])
+    File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+
+    assert :ok = Create.claim_target(root, target)
+    refute File.exists?(target)
+  end
+
+  test "a create for a target another create still holds is refused, not reclaimed", %{
+    root: root,
+    target: target
+  } do
+    test = self()
+
+    holder =
+      spawn(fn ->
+        :ok = Create.hold(target, %{"working_copy_id" => "the-first-create"})
+        send(test, :held)
+
+        receive do
+          :done -> :ok
+        end
+      end)
+
+    assert_receive :held
+    File.write!(Path.join(target, ".cms_harness.json"), "{}\n")
+
+    assert {:error, {:create_in_progress, ^target}} =
+             Create.run(root, %{"label" => "x", "root" => target, "working_copy_id" => "a-retry"})
+
+    assert File.exists?(target)
+    send(holder, :done)
+  end
+
   test "markers beside anything else are refused", %{root: root, target: target} do
     git!(root, ["worktree", "remove", "--force", target])
     File.mkdir_p!(target)

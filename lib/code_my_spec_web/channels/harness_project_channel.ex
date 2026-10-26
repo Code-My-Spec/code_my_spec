@@ -2183,6 +2183,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         end
 
         register_app_verbs(harness, payload)
+        register_served_models(harness, payload)
 
       {:error, {:already_registered, pid}} ->
         Logger.warning(
@@ -2215,6 +2216,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp register_app_verbs(_harness, _payload), do: :ok
+
+  # The models each provider serves this harness's logins, where it could read
+  # them; "unknown" (or nothing) leaves a provider unverified.
+  defp register_served_models(harness, %{"served_models" => models}) when is_map(models) do
+    known = for {provider, [_ | _] = ids} <- models, into: %{}, do: {provider, ids}
+    HarnessRegistry.register_served_models(harness.id, known)
+  end
+
+  defp register_served_models(_harness, _payload), do: :ok
 
   defp id_collision(harness, joining_root, held_root) do
     %{

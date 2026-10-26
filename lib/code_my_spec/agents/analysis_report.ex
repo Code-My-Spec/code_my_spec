@@ -51,7 +51,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   def handle_event(@event, _measurements, meta, _config) do
-    deliver(meta.scope, meta.source, meta.problems, askers(meta))
+    deliver(meta.scope, meta.source, meta.problems, askers(meta), Map.get(meta, :run))
   rescue
     e ->
       Logger.error(
@@ -75,21 +75,27 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   """
   @spec deliver(Scope.t(), atom() | String.t(), [struct()], String.t() | [String.t()] | nil) ::
           :ok
-  def deliver(scope, source, problems, requester_id \\ nil)
+  def deliver(scope, source, problems, requester_id \\ nil, run \\ nil)
 
-  def deliver(%Scope{active_working_copy_id: copy_id} = scope, source, problems, requester_id)
+  def deliver(
+        %Scope{active_working_copy_id: copy_id} = scope,
+        source,
+        problems,
+        requester_id,
+        run
+      )
       when is_binary(copy_id) do
     blocking = Blocking.blockable(scope, problems)
     advisory = length(problems) - length(blocking)
-    findings = digest(source, length(blocking), advisory)
+    findings = digest(source, length(blocking), advisory, run)
     askers = agent_uuids(requester_id)
 
     scope
     |> agents_to_tell(copy_id, askers)
-    |> Enum.each(&tell_one(scope, &1, {findings, advisory}, source, askers))
+    |> Enum.each(&tell_one(scope, &1, {findings, advisory, run}, source, askers))
   end
 
-  def deliver(_scope, _source, _problems, _requester_id), do: :ok
+  def deliver(_scope, _source, _problems, _requester_id, _run), do: :ok
 
   @doc """
   Tell the agent that requested a run that it failed.
@@ -149,19 +155,24 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   # silence a clean tree earns them, and hears findings only if `Wake` says
   # its role does (`RoleProfile.wake` naming `:findings`).
   # Findings are a problems offer; a clean answer to the asker is not.
-  defp tell_one(scope, %{id: id} = agent, {findings, advisory}, source, askers) do
+  defp tell_one(scope, %{id: id} = agent, {findings, advisory, run}, source, askers) do
     offer = findings && {:problems, {"analysis", to_string(source)}}
 
     cond do
-      id in askers -> tell(scope, agent, :own_reply, findings || clean(source, advisory), offer)
-      findings -> tell(scope, agent, :findings, findings, offer)
-      true -> :ok
+      id in askers ->
+        tell(scope, agent, :own_reply, findings || clean(source, advisory, run), offer)
+
+      findings ->
+        tell(scope, agent, :findings, findings, offer)
+
+      true ->
+        :ok
     end
   end
 
-  defp clean(source, advisory) do
+  defp clean(source, advisory, run) do
     """
-    Your #{source} run finished: no blocking problems in this working copy#{advisory_note(advisory)}.
+    Your #{source} run finished#{named(run)}: no blocking problems in this working copy#{advisory_note(advisory)}.
 
     This is the answer to the run you started, not a nudge — nothing here needs
     fixing. If a task was waiting on it, dispose of that task now rather than
@@ -201,19 +212,45 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   end
 
   # What landed, by source, and what to do about it; `nil` when nothing blocks.
-  # Counted by `Blocking.blockable/2`, the gate's own definition.
-  defp digest(_source, 0, _advisory), do: nil
-
-  defp digest(source, count, advisory) do
+  # Counted by `Blocking.blockable/2`, the gate's own definition. A run that
+  # exited non-zero with nothing parsed from it is not clean: a sharded spex
+  # run with a failed shard was announced "no blocking problems".
+  defp digest(source, 0, 0, %{exit_status: status, id: id} = run)
+       when is_integer(status) and status != 0 do
     """
-    Your #{source} run finished: #{count} blocking #{noun(count)}#{advisory_note(advisory)} in this working copy.
+    Your #{source} run finished#{named(run)} with exit status #{status} and no findings were parsed from it, so it is not clean.
 
-    Call `list_problems` for the detail. If they are yours, fix them and run
-    the analyzers again; if the run says something you have already fixed,
-    it measured the tree before your edit and the next one will disagree
-    with it.
+    Read why with `get_analysis_output({run_id = #{id}})`.
     """
   end
+
+  defp digest(_source, 0, _advisory, _run), do: nil
+
+  defp digest(source, count, advisory, run) do
+    """
+    Your #{source} run finished#{named(run)}: #{count} blocking #{noun(count)}#{advisory_note(advisory)} in this working copy.
+
+    #{where_to_read(run)} If they are yours, fix them and run the analyzers
+    again; if the run says something you have already fixed, it measured the
+    tree before your edit and the next one will disagree with it.
+    """
+  end
+
+  defp named(%{id: id, commit: commit}) when is_binary(commit),
+    do: " (run #{id} at #{String.slice(commit, 0, 12)})"
+
+  defp named(%{id: id}), do: " (run #{id})"
+  defp named(_run), do: ""
+
+  # A targeted or tied run's findings are not written to Problems: told to
+  # call `list_problems`, an agent read the last full run's list there, or
+  # nothing, and took it for this run's.
+  defp where_to_read(%{listed?: false, id: id}),
+    do:
+      "This run's findings are not in `list_problems`, which holds the last full run's; " <>
+        "read them with `get_analysis_output({run_id = #{id}})`."
+
+  defp where_to_read(_run), do: "Call `list_problems` for the detail."
 
   defp advisory_note(0), do: ""
   defp advisory_note(count), do: " (#{count} advisory)"

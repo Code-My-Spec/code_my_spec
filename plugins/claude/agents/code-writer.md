@@ -5,7 +5,7 @@ tools: >-
   Read, Write, Glob, Grep,
   Bash, Bash(mix test *), Bash(mix spex *), Bash(mix ecto.*),
   Bash(git stash *),
-  mcp__vibium__browser_launch, mcp__vibium__browser_navigate,
+  mcp__vibium__browser_start, mcp__vibium__browser_navigate,
   mcp__vibium__browser_click, mcp__vibium__browser_fill,
   mcp__vibium__browser_type, mcp__vibium__browser_screenshot,
   mcp__vibium__browser_find, mcp__vibium__browser_find_all,
@@ -18,7 +18,7 @@ tools: >-
   mcp__vibium__browser_is_visible, mcp__vibium__browser_is_checked,
   mcp__vibium__browser_is_enabled, mcp__vibium__browser_get_attribute,
   mcp__vibium__browser_get_value, mcp__vibium__browser_map,
-  mcp__vibium__browser_a11y_tree, mcp__vibium__browser_quit,
+  mcp__vibium__browser_a11y_tree, mcp__vibium__browser_stop,
   mcp__plugin_codemyspec_local__run_script,
   mcp__plugin_codemyspec_local__tool_docs,
   mcp__plugin_codemyspec_local__start_task,
@@ -138,9 +138,9 @@ When fixing QA-reported issues that involve UI behavior, use the Vibium browser 
 
 1. **Read the QA plan** at `.code_my_spec/qa/plan.md` for server startup and auth strategy
 2. **Read the QA evidence** referenced in the issue — screenshots and result files show the original failure
-3. **Launch a browser** with `mcp__vibium__browser_launch` and reproduce the original issue
+3. **Launch a browser** with `mcp__vibium__browser_start` and reproduce the original issue
 4. **Verify the fix** — confirm the UI now behaves correctly after your code change
-5. **Quit the browser** with `mcp__vibium__browser_quit` when done
+5. **Quit the browser** with `mcp__vibium__browser_stop` when done
 
 Do NOT run `vibium` as a shell command — always use the `mcp__vibium__browser_*` tool calls directly.
 

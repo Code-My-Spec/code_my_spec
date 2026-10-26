@@ -44,10 +44,14 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
       settings: settings,
       providers: Agents.provider_names(),
       connected: Agents.connected_providers(assigns.current_scope),
+      served: served(assigns.current_scope),
       preset_provider: assigns[:preset_provider],
       error: nil
     )
   end
+
+  # Per provider, what its login reports serving, or `:unknown`.
+  defp served(scope), do: Map.new(Agents.provider_names(), &{&1, Agents.served_models(scope, &1)})
 
   @impl true
   def render(assigns) do
@@ -105,13 +109,30 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
 
             <label class="form-control">
               <span class="label-text">Model</span>
-              <input
-                type="text"
-                name={"#{row.role}[model]"}
-                value={row.model}
-                placeholder={if is_nil(row.provider), do: "Nothing to run on"}
-                class="w-full input input-sm text-base-content"
-              />
+              <%= case @served[row.provider] do %>
+                <% {:ok, models} -> %>
+                  <select
+                    name={"#{row.role}[model]"}
+                    class="select select-sm w-full text-base-content"
+                    data-test={"served-models-#{row.role}"}
+                  >
+                    <option value="" selected={is_nil(row.model)}>The login's default</option>
+                    <option :for={model <- models} value={model} selected={model == row.model}>
+                      {model}
+                    </option>
+                  </select>
+                <% _unknown -> %>
+                  <input
+                    type="text"
+                    name={"#{row.role}[model]"}
+                    value={row.model}
+                    placeholder={if is_nil(row.provider), do: "Nothing to run on"}
+                    class="w-full input input-sm text-base-content"
+                  />
+                  <span :if={row.provider} class="label-text-alt" data-test={"unverified-#{row.role}"}>
+                    Unverified: {row.provider} has not reported which models it serves.
+                  </span>
+              <% end %>
             </label>
           </div>
         </div>
@@ -176,6 +197,11 @@ defmodule CodeMySpecWeb.AgentModelsLive.Form do
 
   defp refusal(:unknown_provider),
     do: "That provider is not connected, so nothing was saved for it."
+
+  defp refusal({:model_not_served, models}),
+    do:
+      "That model is not served by its provider, so nothing was saved. It serves: " <>
+        Enum.join(models, ", ") <> "."
 
   defp refusal(_reason), do: "That could not be saved."
 end

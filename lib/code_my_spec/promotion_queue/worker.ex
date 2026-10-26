@@ -1015,7 +1015,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  defp gate_root?(%WorkingCopy{root: root}), do: is_binary(root) and root != ""
+  # A gate whose checkout its harness reports gone is no gate: kept, its record
+  # stood in for the copy and every batch was refused on its unreadable HEAD
+  # (03:00Z, a disk cleanup removed the folders and left the records). Passed
+  # over, it is asked for again, and `Staffing` retires the gone record.
+  defp gate_root?(%WorkingCopy{root: root} = gate),
+    do: is_binary(root) and root != "" and is_nil(gate.path_missing_since)
 
   defp legacy_gate_label?("promotion-gate:" <> suffix),
     do: not String.starts_with?(suffix, "device:")

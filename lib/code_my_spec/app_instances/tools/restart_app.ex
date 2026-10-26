@@ -94,6 +94,8 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
   defp restart(scope, context, instance_id) do
     with {:ok, instance} <- Target.lifecycle(scope, context, instance_id) do
       starter = Starter.new(scope, context, "restart")
+      # Whatever this answers is newer than a notice still waiting.
+      Starter.settled(starter, instance.id)
       scope |> start_restart_async(instance.id, starter) |> reply(context)
     else
       {:error, reason} -> {:error, Target.error(reason)}
@@ -134,7 +136,7 @@ defmodule CodeMySpec.AppInstances.Tools.RestartApp do
             send(parent, {ref, refused})
 
           finished ->
-            Starter.tell(starter, outcome_message(finished))
+            Starter.tell(starter, id, outcome_message(finished))
         end
       end)
 
