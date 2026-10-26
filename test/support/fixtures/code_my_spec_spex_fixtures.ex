@@ -4156,6 +4156,10 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec recorded_calls(pid()) :: [term()]
   def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
 
+  @doc "Requests observed by the stateful Resend fake, oldest first."
+  @spec resend_requests(pid()) :: [{String.t(), String.t()}]
+  def resend_requests(resend), do: resend |> Agent.get(& &1.requests) |> Enum.reverse()
+
   @doc """
   A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
   Returns the path; it is removed on test exit.

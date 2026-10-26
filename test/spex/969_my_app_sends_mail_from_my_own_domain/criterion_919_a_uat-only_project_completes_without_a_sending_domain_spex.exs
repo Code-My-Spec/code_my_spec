@@ -48,6 +48,9 @@ defmodule CodeMySpecSpex.Story969.Criterion919Spex do
       end
 
       then_ "it registers, publishes, and verifies nothing", context do
+        assert CodeMySpecSpex.Fixtures.resend_requests(fake(context, :resend)) == [],
+               "expected no Resend requests for a UAT-only project"
+
         assert Floki.find(context.parsed, "[data-test='mail-sending-domain']") == [],
                "expected no sending domain for a UAT-only project"
 
