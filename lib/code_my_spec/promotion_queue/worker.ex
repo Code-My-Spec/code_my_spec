@@ -1045,6 +1045,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  # The gate is a worktree of the source checkout, so it must run on that device
+  # to reach Git, dependencies and the build/test environment. The server or
+  # another device cannot assume access to that disk. One gate per device lets
+  # every source copy there reuse it without crossing this boundary.
   defp gate_on_source?(scope, gate) do
     if local_only?(scope) do
       true
