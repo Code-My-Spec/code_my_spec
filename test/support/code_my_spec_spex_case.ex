@@ -1095,6 +1095,37 @@ defmodule CodeMySpecSpex.Case do
       ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "the widget works"})
       Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
 
+      # The setup step sends a fresh probe and accepts only a matching reply.
+      # Drive it through the same widget socket, since cassette replay cannot
+      # create the corresponding database message on its own.
+      previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      post = fn url, deploy_key, probe ->
+        expected_host = URI.parse(unquote(site)).host
+        actual_host = URI.parse(url).host
+
+        if actual_host == expected_host do
+          probe_ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => probe})
+          Phoenix.ChannelTest.assert_reply(probe_ref, :ok, %{}, 1000)
+          {:ok, %{probe: probe}}
+        else
+          case Keyword.get(previous_step_opts, :post) do
+            nil -> raise "widget probe targeted an unstaged site: #{actual_host}"
+            previous_post -> previous_post.(url, deploy_key, probe)
+          end
+        end
+      end
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.put(previous_step_opts, :post, post)
+      )
+
+      ExUnit.Callbacks.on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+      end)
+
       ctx
     end
   end
