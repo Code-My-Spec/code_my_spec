@@ -731,7 +731,7 @@ defmodule CodeMySpecSpex.Case do
     if authorized? do
       {:ok, body, conn} = Conn.read_body(conn)
       %{"probe" => probe} = Jason.decode!(body)
-      :ok = Fixtures.record_widget_probe(context.scope, probe, "http://127.0.0.1:4100")
+      :ok = Fixtures.record_widget_probe(context.scope, probe, "#{conn.scheme}://#{conn.host}")
       send(context.widget_test_owner, {:widget_probe_sent, probe})
 
       conn
