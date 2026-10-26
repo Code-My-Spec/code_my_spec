@@ -36,7 +36,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
           tests: [test_result()],
           findings: [finding()],
           totals: map() | nil,
-          finished?: boolean()
+          finished?: boolean(),
+          last_event_at: DateTime.t() | nil
         }
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, :ok, name: __MODULE__)
@@ -55,7 +56,11 @@ defmodule CodeMySpec.Analysis.LiveRuns do
   @doc "Fold one event into `run_id`'s state, and answer the new state."
   @spec fold(integer(), map()) :: t()
   def fold(run_id, event) do
-    live = event |> apply_event(get(run_id) || new(run_id))
+    live =
+      event
+      |> apply_event(get(run_id) || new(run_id))
+      |> Map.put(:last_event_at, DateTime.utc_now())
+
     :ets.insert(@table, {run_id, live})
     live
   end
@@ -68,7 +73,15 @@ defmodule CodeMySpec.Analysis.LiveRuns do
 
   defp new(run_id) do
     prune(run_id)
-    %{running_files: [], tests: [], findings: [], totals: nil, finished?: false}
+
+    %{
+      running_files: [],
+      tests: [],
+      findings: [],
+      totals: nil,
+      finished?: false,
+      last_event_at: nil
+    }
   end
 
   defp prune(run_id) do

@@ -343,8 +343,23 @@ defmodule CmsHarness.Analysis do
 
   def compiler_exit_status(%{exit_code: exit_code}), do: max(exit_code, 1)
 
+  # Linked like exunit's, so a spex run streams too; the formatter is what sends.
   defp run_spex(env, args) do
-    case Spex.execute(args, execution_context: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
+    {args, link} =
+      case RunLink.env(env.cwd, env.metadata[:run_id]) do
+        [] -> {args, []}
+        link -> {args ++ ["--formatter=ClientUtils.TestFormatter"], link}
+      end
+
+    result =
+      Spex.execute(args,
+        execution_context: env,
+        extra_env: AnalyzerEnv.extra_env(env, "spex") ++ link
+      )
+
+    if link != [], do: RunLink.exited(env.metadata[:run_id])
+
+    case result do
       {:ok, failures, exit_code, output} ->
         {:ok,
          %{

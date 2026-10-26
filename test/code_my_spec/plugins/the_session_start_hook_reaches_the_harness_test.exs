@@ -14,8 +14,14 @@ defmodule CodeMySpec.Plugins.TheSessionStartHookReachesTheHarnessTest do
 
     assert [%{"hooks" => [hook]}] = hooks["hooks"]["SessionStart"]
     assert hook["type"] == "command"
-    assert hook["command"] == "curl"
-    assert "http://localhost:4004/api/hooks/session-start" in hook["args"]
-    assert "@-" in hook["args"]
+
+    assert hook["command"] ==
+             ~s(node "${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.cjs" session-start)
+  end
+
+  test "command hooks post the original payload to the configured port and preserve the response" do
+    script = Path.expand("../../support/claude_cloud_ports_test.py", __DIR__)
+    {output, status} = System.cmd("python3", ["-B", script], stderr_to_stdout: true)
+    assert status == 0, output
   end
 end

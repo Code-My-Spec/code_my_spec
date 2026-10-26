@@ -47,7 +47,9 @@ defmodule CodeMySpecSpex.Story1056.Criterion3305Spex do
   spex "A decision to pause survives the restart", criterion: 1273 do
     scenario "an agent was paused when the application restarted" do
       given_ "a paused agent and a working one on the same checkout", context do
-        reply = join_working_copy(context, "/tmp/spex-3305", "the checkout")
+        {reply, restore_socket} =
+          join_working_copy_socket(context, "/tmp/spex-3305", "the checkout")
+
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
 
         # The provider these agents run on — `running_agent/2` defaults to zai.
@@ -76,13 +78,14 @@ defmodule CodeMySpecSpex.Story1056.Criterion3305Spex do
         {:ok,
          context
          |> Map.put(:scope, scope)
+         |> Map.put(:restore_socket, restore_socket)
          |> Map.put(:paused, paused)
          |> Map.put(:working, working)}
       end
 
       when_ "the application comes back up and the harness asks what to run",
             context do
-        {:ok, Map.put(context, :to_restore, Fixtures.agents_to_restore(context.scope))}
+        {:ok, Map.put(context, :to_restore, Fixtures.agents_to_restore(context.restore_socket))}
       end
 
       then_ "it comes back paused", context do

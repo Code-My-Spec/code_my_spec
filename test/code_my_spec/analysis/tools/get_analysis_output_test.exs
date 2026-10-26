@@ -7,6 +7,7 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutputTest do
   import CodeMySpec.UsersFixtures
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Analysis.RunsRepository
 
   setup do
@@ -119,6 +120,31 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutputTest do
 
     assert result["status"] == "queued"
     assert result["output_available"] == false
+  end
+
+  # 90492d2d: a caller stuck watching a queued run with no harness ever able
+  # to pick it up had no way to tell that apart from one merely waiting its
+  # turn behind load -- both read as the same bare "queued" forever.
+  test "a queued run with no reachable harness says so, not just that it waits", ctx do
+    run = analysis_run_fixture(ctx.scope)
+    result = page(%{run_id: run.id}, ctx.frame)
+
+    assert result["harness_connected"] == false
+    assert is_integer(result["queued_seconds"])
+    assert result["queued_seconds"] >= 0
+  end
+
+  test "a queued run with a connected harness reports it, and a finished run reports neither",
+       ctx do
+    HarnessRegistry.register_executor(ctx.scope.active_working_copy_id, "i", "/tmp/root")
+    run = analysis_run_fixture(ctx.scope)
+    result = page(%{run_id: run.id}, ctx.frame)
+
+    assert result["harness_connected"] == true
+
+    finished_result = page(%{run_id: finished(ctx.scope, "compiler", "ok").id}, ctx.frame)
+    refute Map.has_key?(finished_result, "queued_seconds")
+    refute Map.has_key?(finished_result, "harness_connected")
   end
 
   test "an empty retained result remains available", ctx do

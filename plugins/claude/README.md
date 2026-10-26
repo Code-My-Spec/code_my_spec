@@ -44,6 +44,13 @@ Either installer registers `cms` as a background service listening on
 install and restarts on boot. The plugin only talks to it — it never launches or
 downloads it.
 
+For a development harness, set `CMS_HARNESS_PORT=4004` in the Claude environment.
+MCP, lifecycle hooks, and skills all use this override. Without it, the published
+plugin uses `4003`; the source-tree plugin uses `4004`. The cloud device setup
+script saves the selected port in Claude's settings and uses it for onboarding,
+health checks, and harness startup. Changing `CMS_SERVER_URL` selects the hosted
+server; it does not select the local harness port.
+
 ### 2 · Install the plugin
 
 In Claude Code:

@@ -2,6 +2,8 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
+  alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
@@ -34,11 +36,38 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
 
   @impl true
   def call(_params, context) do
-    case CodeMySpec.Tools.project_scope(context) do
-      {:ok, scope} -> run_sync(scope, context)
-      {:error, reason} -> {:error, "#{reason}"}
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         {:ok, sync_scope} <- sync_scope(scope, context[:agent_id]) do
+      run_sync(sync_scope, Map.put(context, :scope, sync_scope))
+    else
+      {:error, reason} -> CodeMySpec.Tools.error(reason)
     end
   end
+
+  defp sync_scope(scope, nil), do: {:ok, scope}
+
+  defp sync_scope(scope, agent_id) do
+    with {:ok, agent} <- Agents.fetch_agent(scope, agent_id),
+         true <- agent.account_id == scope.active_account_id do
+      sync_agent_scope(scope, agent)
+    else
+      _ -> {:error, "Agent is not authorized for this project and account."}
+    end
+  end
+
+  defp sync_agent_scope(scope, %{execution_mode: :detached, role: role} = agent)
+       when role in [:main, :product] do
+    case Work.requirement_scope(scope, agent) do
+      %{active_working_copy_id: nil} ->
+        {:error,
+         "No main working copy exists yet. Complete project setup before syncing; detached agent scratch is not a project checkout."}
+
+      selected ->
+        {:ok, %{selected | cwd: nil}}
+    end
+  end
+
+  defp sync_agent_scope(scope, _agent), do: {:ok, scope}
 
   # No working copy on this machine. The disk is on a harness, so the scan
   # happens there — see `remote_sync/2`.

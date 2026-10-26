@@ -61,13 +61,15 @@ defmodule CmsHarness.Agents.Engine.Execution do
   # which crashed an engine's own terminate mid-cleanup): either way it is
   # past needing to be held, and `release/1` kills owners regardless.
   defp suspend(pid) do
-    :erlang.suspend_process(pid)
+    if Process.alive?(pid), do: :erlang.suspend_process(pid)
   rescue
     ArgumentError ->
       :ok
 
     error in ErlangError ->
-      if error.original == :internal_error, do: :ok, else: reraise(error, __STACKTRACE__)
+      if error.original in [:internal_error, :exited],
+        do: :ok,
+        else: reraise(error, __STACKTRACE__)
   end
 
   defp descendant?(pid, root) do

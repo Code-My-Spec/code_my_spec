@@ -35,6 +35,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Repo,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking
@@ -185,6 +186,10 @@ defmodule CodeMySpec.Analysis do
   call always executes — it's the escape hatch for flaky tests.
 
   Returns `{:ok, %Run{}}` with output/stats, or `{:error, reason}`.
+
+  For remote execution, `:on_admitted` accepts a callback receiving the retained
+  run id before dispatch, including when joining an existing run. A transport
+  waiter can retain that identity independently of its own lifetime.
   """
   @spec await_run(Scope.t(), String.t(), [String.t()], keyword()) ::
           {:ok, Run.t()} | {:error, term()}
@@ -372,6 +377,27 @@ defmodule CodeMySpec.Analysis do
   @doc "What `run_id` has reported as it ran, or nil."
   @spec live_state(integer()) :: LiveRuns.t() | nil
   defdelegate live_state(run_id), to: LiveRuns, as: :get
+
+  @doc """
+  Why a queued run (`Run.queued?/1`) is still waiting, or `nil` once it has
+  started or finished.
+
+  `harness_connected: false` means nothing holding this working copy's
+  executor slot is reachable at all -- the run cannot be picked up, no
+  matter how long it waits. A caller otherwise has no way to tell that
+  apart from ordinary load (issue 90492d2d).
+  """
+  @spec queue_wait(Run.t()) ::
+          %{queued_seconds: non_neg_integer(), harness_connected: boolean()} | nil
+  def queue_wait(%Run{} = run) do
+    if Run.queued?(run) do
+      %{
+        queued_seconds: DateTime.diff(DateTime.utc_now(), run.started_at),
+        harness_connected:
+          match?({:ok, _, _}, HarnessRegistry.executor_holder(run.working_copy_id))
+      }
+    end
+  end
 
   defp record_failure(scope, %{"event" => "test", "state" => "failed"} = test) do
     {:ok, _} =
@@ -1053,6 +1079,7 @@ defmodule CodeMySpec.Analysis do
       # Carried as a value, not read from `Logger.metadata()`: callers hand the
       # job to unlinked Tasks that start without it.
       requested_by: Keyword.get(opts, :requested_by),
+      on_admitted: Keyword.get(opts, :on_admitted),
       opts: runner_opt_passthrough(opts) ++ [notify: Keyword.get(opts, :notify, true)]
     }
   end
@@ -1115,6 +1142,7 @@ defmodule CodeMySpec.Analysis do
   defp joinable_run(_scope, _job), do: nil
 
   defp join_remote(job, channel, run) do
+    report_admission(job, run.id)
     Logger.info("[Analysis] #{job.source} joined run #{run.id} already queued on the harness")
 
     send(
@@ -1140,6 +1168,8 @@ defmodule CodeMySpec.Analysis do
   # The same compile-error skip `Execution.execute/3` applies locally, decided
   # here because the executing machine is not this one.
   defp send_or_skip(scope, job, channel, run) do
+    report_admission(job, run.id)
+
     if Execution.skip_for_compile_errors?(scope, run) do
       Reconciler.fail(run, :skipped_compile_errors)
       {:ok, :skipped, run.id}
@@ -1152,6 +1182,14 @@ defmodule CodeMySpec.Analysis do
       {:ok, :started, run.id}
     end
   end
+
+  defp report_admission(job, run_id) do
+    if callback = job[:on_admitted], do: callback.(run_id)
+    :ok
+  end
+
+  @doc "Read a retained run within the caller's project."
+  defdelegate get_run(scope, run_id), to: RunsRepository, as: :get_run_in_project
 
   defp run_inline(scope, job) do
     with {:ok, run} <- open_run(scope, job), do: Execution.execute(scope, run, job.opts)
