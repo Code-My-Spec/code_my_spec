@@ -472,10 +472,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # a waiter that dies leaves the execution — and the ports it owns — alive to
   # be found and stopped. A port whose owner has died is closed, and the
   # program behind it keeps running with nothing left that knows its pid.
+  #
+  # An execution that dies is the engine's to recover (its DOWN on this waiter
+  # aborts the turn), so the waiter leaves with a shutdown reason rather than
+  # crashing in `Task.await` with an error report.
   defp execute(state, message) do
     Alloy.TaskSupervisor
     |> Task.Supervisor.async_nolink(fn -> run_turn(state, message) end)
-    |> Task.await(:infinity)
+    |> Task.yield(:infinity)
+    |> case do
+      {:ok, result} -> result
+      {:exit, reason} -> exit({:shutdown, {:execution_exited, reason}})
+    end
   end
 
   # The waiter and everything it started — the execution, its tool tasks, a
