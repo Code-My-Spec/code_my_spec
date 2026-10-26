@@ -145,7 +145,10 @@ defmodule CodeMySpecSpex.Story1089.Criterion1847Spex do
       then_ "only the first attempt names the screenshot and the second names none", context do
         assert response_text(context.first) =~ "evidence: 1 file(s) uploaded — first.png"
         assert response_text(context.second) =~ "evidence: (none uploaded)"
-        [second, first] = CodeMySpec.Qa.list_qa_attempts(context.scope, context.story.id)
+
+        [second, first | _earlier] =
+          CodeMySpec.Qa.list_qa_attempts(context.scope, context.story.id)
+
         assert Enum.map(first.evidence, & &1.name) == ["first.png"]
         assert second.evidence == []
         {:ok, context}
