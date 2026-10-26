@@ -113,7 +113,12 @@ defmodule CodeMySpecSpex.Story1141.Criterion2460Spex do
   end
 
   defp report(context, event) do
-    ref = push(context.channel, "analysis_event", %{"run_id" => context.run_id, "event" => event})
+    ref =
+      Phoenix.ChannelTest.push(context.channel, "analysis_event", %{
+        "run_id" => context.run_id,
+        "event" => event
+      })
+
     assert_reply ref, :ok
   end
 

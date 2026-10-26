@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2459Spex do
                 }
               ] do
             ref =
-              push(context.channel, "analysis_event", %{
+              Phoenix.ChannelTest.push(context.channel, "analysis_event", %{
                 "run_id" => context.run_id,
                 "event" => event
               })
