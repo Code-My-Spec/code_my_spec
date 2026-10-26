@@ -160,7 +160,7 @@ defmodule CodeMySpec.Devices.DevBoxesTest do
     end
 
     test "cloud setup carries an explicit harness port into startup and Claude settings" do
-      for port <- [4003, 4004, 47403] do
+      for port <- [4003, 4004, 47_403] do
         context = %{token: "cbt_abc", server_url: "https://dev.example.com", harness_port: port}
 
         script =

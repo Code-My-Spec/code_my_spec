@@ -100,7 +100,7 @@ defmodule CodeMySpec.Workspaces.Runner.ClaudeCodeCloud do
     if Application.get_env(:code_my_spec, :env) == :dev, do: 4004, else: 4003
   end
 
-  defp setup_script(server_url, host, port) when is_integer(port) and port in 1..65535 do
+  defp setup_script(server_url, host, port) when is_integer(port) and port in 1..65_535 do
     File.read!(script_path())
     |> String.replace("__SERVER_URL__", server_url)
     |> String.replace("__SERVER_HOST__", host)
