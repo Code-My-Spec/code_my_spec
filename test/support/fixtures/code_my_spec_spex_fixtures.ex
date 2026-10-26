@@ -2953,6 +2953,28 @@ defmodule CodeMySpecSpex.Fixtures do
   output files and `:await` (which waits for the runs to land), neither of
   which a stop accepts.
   """
+  @doc """
+  Retry `check` (a 0-arity fun returning a boolean) until it is true or
+  `attempts_left` is exhausted, sleeping 100ms between tries. `:ok` or
+  `:timeout`.
+
+  For asserting on a result a background task reconciles asynchronously,
+  where nothing in the spec itself ever awaits it.
+  """
+  @spec poll_until((-> boolean()), pos_integer()) :: :ok | :timeout
+  def poll_until(check, attempts_left \\ 200) when is_function(check, 0) do
+    cond do
+      check.() -> :ok
+      attempts_left > 1 -> poll_retry(check, attempts_left)
+      true -> :timeout
+    end
+  end
+
+  defp poll_retry(check, attempts_left) do
+    Process.sleep(100)
+    poll_until(check, attempts_left - 1)
+  end
+
   def land_outputs(%Scope{} = scope, opts) do
     {files, rest} = Keyword.split(opts, Keyword.keys(@output_file_sources))
 

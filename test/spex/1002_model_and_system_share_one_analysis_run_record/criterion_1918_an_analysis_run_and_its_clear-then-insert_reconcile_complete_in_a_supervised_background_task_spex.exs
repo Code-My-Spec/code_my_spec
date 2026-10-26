@@ -55,7 +55,9 @@ defmodule CodeMySpecSpex.Story1002.Criterion1918Spex do
       end
 
       then_ "the finding lands anyway, through the run's own background task", context do
-        assert poll_until(fn -> compiler_problems(context.scope) =~ "lib/example_context.ex" end) ==
+        assert Fixtures.poll_until(fn ->
+                 compiler_problems(context.scope) =~ "lib/example_context.ex"
+               end) ==
                  :ok,
                "the compiler finding never reconciled, though nothing ever asked it to wait — " <>
                  "a reconcile that depends on its caller still being there is not independent " <>
@@ -77,12 +79,15 @@ defmodule CodeMySpecSpex.Story1002.Criterion1918Spex do
           )
         end
 
-        poll_until(fn -> compiler_problems(context.scope) =~ "lib/example_context.ex" end)
+        Fixtures.poll_until(fn ->
+          compiler_problems(context.scope) =~ "lib/example_context.ex"
+        end)
 
         {:ok, context}
       end
 
-      when_ "a clean compiler run is requested next, and the caller again does not wait", context do
+      when_ "a clean compiler run is requested next, and the caller again does not wait",
+            context do
         use_cmd_cassette "clean", record: :none do
           Fixtures.land_outputs(context.scope,
             compile_output_file: fixture_path("pipeline_clean_run/compile.jsonl")
@@ -93,7 +98,8 @@ defmodule CodeMySpecSpex.Story1002.Criterion1918Spex do
       end
 
       then_ "the stale finding is gone, not merely joined by the clean result", context do
-        assert poll_until(fn -> compiler_problems(context.scope) =~ "No problems" end) == :ok,
+        assert Fixtures.poll_until(fn -> compiler_problems(context.scope) =~ "No problems" end) ==
+                 :ok,
                "the first run's finding outlived the second run's reconcile — a clear-then-insert " <>
                  "that is not atomic leaves the old and the new mixed, or neither, for a window " <>
                  "a reader can observe"
@@ -117,23 +123,5 @@ defmodule CodeMySpecSpex.Story1002.Criterion1918Spex do
   defp compiler_problems(scope) do
     {:ok, text} = ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{scope: scope})
     text
-  end
-
-  # Generous: this project_id's compiler job shares one machine-wide
-  # `Analysis.TaskSupervisor` with every other test's analyzer tasks, and
-  # the full story's suite runs this one alongside eight others that also
-  # drive it.
-  defp poll_until(check, attempts_left \\ 200) do
-    cond do
-      check.() ->
-        :ok
-
-      attempts_left > 1 ->
-        Process.sleep(100)
-        poll_until(check, attempts_left - 1)
-
-      true ->
-        :timeout
-    end
   end
 end
