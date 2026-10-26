@@ -111,6 +111,19 @@ defmodule CmsHarness.AttachmentsTest do
     assert {:ok, _} = execute(root, other_id, %{"operation" => "list_directory"})
   end
 
+  test "concurrent disconnects remain idempotent as the session exits", %{root: root, id: id} do
+    disconnect = fn ->
+      Attachments.request(root, "attachment_disconnect", %{"attachment_id" => id})
+    end
+
+    tasks = for _ <- 1..20, do: Task.async(disconnect)
+    assert Enum.all?(tasks, &(Task.await(&1) == :ok))
+    assert :ok = disconnect.()
+
+    assert {:error, :attachment_not_connected} =
+             execute(root, id, %{"operation" => "list_directory"})
+  end
+
   test "disconnect kills a background child after command has returned", %{root: root, id: id} do
     assert {:ok, %{exit_status: 0}} =
              execute(root, id, %{
