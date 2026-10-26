@@ -18,6 +18,7 @@ defmodule CodeMySpec.Staffing do
       CodeMySpec.Components,
       CodeMySpec.Files,
       CodeMySpec.Problems,
+      CodeMySpec.Promotion,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
@@ -46,6 +47,7 @@ defmodule CodeMySpec.Staffing do
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   @gate_copy_needed [:code_my_spec, :promotion_queue, :gate_copy_needed]
+  @gate_copy_obsolete [:code_my_spec, :promotion_queue, :gate_copy_obsolete]
 
   @doc """
   Attach the handler that makes a project's promotion gate copy when its queue
@@ -56,9 +58,9 @@ defmodule CodeMySpec.Staffing do
   it, and nobody works there.
   """
   def attach do
-    :telemetry.attach(
+    :telemetry.attach_many(
       {__MODULE__, :gate_copy},
-      @gate_copy_needed,
+      [@gate_copy_needed, @gate_copy_obsolete],
       &__MODULE__.handle_event/4,
       nil
     )
@@ -85,6 +87,32 @@ defmodule CodeMySpec.Staffing do
       Logger.error(
         "[Staffing] making the promotion gate copy failed: #{Exception.format_banner(kind, reason)}"
       )
+  end
+
+  def handle_event(
+        @gate_copy_obsolete,
+        _measurements,
+        %{scope: scope, gate: %WorkingCopy{} = gate, source_copy_id: source_id},
+        _config
+      ) do
+    with {:ok, %WorkingCopy{} = source} <- WorkingCopies.fetch(source_id),
+         true <- source.project_id == gate.project_id and source.device_id == gate.device_id,
+         true <- source.id != gate.id and is_binary(source.root) and is_binary(gate.root),
+         {:ok, _} <-
+           CodeMySpec.Promotion.Runner.retire_gate_worktree(
+             WorkingCopies.execution_context(%{scope | active_working_copy_id: source.id}),
+             source.root,
+             gate.root,
+             source.id
+           ),
+         {:ok, _} <- offboard(scope, gate) do
+      Logger.info("[Staffing] retired obsolete promotion gate #{gate.id} on #{gate.device_id}")
+    else
+      reason ->
+        Logger.warning(
+          "[Staffing] could not retire obsolete promotion gate #{gate.id}: #{inspect(reason)}"
+        )
+    end
   end
 
   # A gate record whose checkout is reported gone is offboarded before its

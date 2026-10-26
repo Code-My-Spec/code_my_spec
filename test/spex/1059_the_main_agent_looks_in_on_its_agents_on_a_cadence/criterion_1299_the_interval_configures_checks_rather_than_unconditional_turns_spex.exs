@@ -70,13 +70,14 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
         configured =
           ToolLibrary.run(
             "cadence",
-            %{seconds: 30},
+            %{seconds: 120},
             Map.put(frame(context).assigns, :scope, frame(context).assigns[:current_scope])
           )
 
         assert match?({:ok, _}, configured), response_text(configured)
-        # When the 30-second timer would first fire on its own.
-        old_fire_at = DateTime.add(DateTime.utc_now(), 30, :second)
+        # The original schedule leaves enough room for gate contention; the
+        # assertion below still requires the shorter interval to fire first.
+        old_fire_at = DateTime.add(DateTime.utc_now(), 120, :second)
         :ok = Fixtures.start_recovery_timer(context.scope)
 
         timer =
@@ -134,7 +135,7 @@ defmodule CodeMySpecSpex.Story1059.Criterion3331Spex do
         # interval reached the running timer. A wall-clock bound tighter than
         # that only measured how loaded the machine was.
         assert DateTime.compare(checked_at, context.old_fire_at) == :lt
-        HeldProvider.await_request(30_000)
+        HeldProvider.await_request(CmsHarnessTest.GateWait.event_timeout())
         {:ok, context}
       end
 

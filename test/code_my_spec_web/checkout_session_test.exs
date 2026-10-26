@@ -22,10 +22,9 @@ defmodule CodeMySpecWeb.CheckoutSessionTest do
     assert html =~ "Light harness"
   end
 
-  # The hook pushes exactly this, with an empty payload, once Stripe's
-  # confirmPayment resolves without an error. Everything downstream of the
-  # card is this event, so this is the whole redirect path minus the iframe.
-  test "confirming a payment sends the buyer into the product", %{conn: conn} do
+  # The hook pushes exactly this once Stripe confirms the payment. The page
+  # reports receipt in place while the webhook decides the account's tier.
+  test "confirming a payment reports receipt on the pricing page", %{conn: conn} do
     user = user_fixture()
     account = account_fixture()
     member_fixture(user, account, :owner)
@@ -35,6 +34,8 @@ defmodule CodeMySpecWeb.CheckoutSessionTest do
       |> log_in_user(user)
       |> live_isolated(CodeMySpecWeb.CheckoutLive)
 
-    assert {:error, {:redirect, %{to: "/app"}}} = render_hook(view, "payment_confirmed", %{})
+    html = render_hook(view, "payment_confirmed", %{})
+    assert html =~ "Payment received. Your plan will be active in a moment."
+    assert html =~ ~s(data-test="payment-notice")
   end
 end
