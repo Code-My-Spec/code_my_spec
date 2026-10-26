@@ -20,7 +20,9 @@ defmodule CmsHarness.Attachments do
   catch
     # The session can exit after Registry.lookup/2 and before GenServer.call/3.
     # Disconnect is complete once that session is gone.
-    :exit, {:noproc, _} -> :ok
+    :exit, {reason, {GenServer, :call, [_pid, :disconnect, 15_000]}}
+    when reason in [:noproc, :normal] ->
+      :ok
   end
 
   def request(root, "attachment_execute", %{"attachment_id" => id} = payload) do
