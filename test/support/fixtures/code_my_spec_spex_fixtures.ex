@@ -6198,6 +6198,45 @@ defmodule CodeMySpecSpex.Fixtures do
     run
   end
 
+  @doc "A one-file spex run whose first scenario has reported passing."
+  def streaming_spex_scenario(%Scope{} = scope, path, scenario) do
+    {:ok, run} =
+      RunsRepository.start_run(scope, %{
+        source: "spex",
+        kind: :partial,
+        args: %{"args" => [path]}
+      })
+
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{"event" => "file_started", "file" => path})
+
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+      "event" => "test",
+      "file" => path,
+      "name" => scenario,
+      "state" => "passed"
+    })
+
+    run
+  end
+
+  @doc "A running analysis run whose last live event was `seconds` ago."
+  def silent_live_analysis_run(%Scope{} = scope, source, seconds) do
+    run = start_analysis_run(scope, source)
+
+    live =
+      CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+        "event" => "file_started",
+        "file" => "test/held_test.exs"
+      })
+
+    :ets.insert(
+      CodeMySpec.Analysis.LiveRuns,
+      {run.id, %{live | last_event_at: DateTime.add(DateTime.utc_now(), -seconds)}}
+    )
+
+    run
+  end
+
   @doc """
   Finish a run through `Reconciler.reconcile/4`, the production path.
 
