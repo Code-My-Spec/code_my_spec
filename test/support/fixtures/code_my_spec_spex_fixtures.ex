@@ -3516,6 +3516,11 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  @doc "Project IDs visible to this spex's database connection, including escaped committed rows."
+  def visible_project_ids do
+    Repo.all(Project) |> Enum.map(& &1.id)
+  end
+
   @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
   def project_named(account_id, name) do
     Repo.get_by(Project, account_id: account_id, name: name)

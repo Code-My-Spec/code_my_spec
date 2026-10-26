@@ -296,6 +296,22 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert problem.file_path == "test/code_my_spec/demo_test.exs"
     end
 
+    test "committed rows after a passing spex are a blocking problem" do
+      output =
+        "1 test, 0 failures\n** (RuntimeError) spex left committed rows outside the sandbox: projects=2\n"
+
+      assert {:ok, %{problems: [problem]}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert problem.file_path == "test/support/committed_rows_guard.ex"
+      assert problem.message =~ "projects=2"
+      assert problem.severity == :error
+    end
+
     test "a spex run that exited nonzero with no failures fails the run" do
       assert {:error, {:spex_suite_did_not_run, 2, ""}} =
                Runners.from_raw("spex", %{"exit_status" => 2, "diagnostics" => []})
