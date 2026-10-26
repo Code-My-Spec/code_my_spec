@@ -128,7 +128,12 @@ defmodule CodeMySpecWeb.AgentStopRoundTripTest do
     task =
       Task.async(fn ->
         send(caller, :asking)
-        GenServer.call(socket.channel_pid, {:start_agent, %Agent{engine: :alloy}}, 5_000)
+
+        GenServer.call(
+          socket.channel_pid,
+          {:start_agent, %Agent{id: "agent-2", engine: :alloy}},
+          5_000
+        )
       end)
 
     assert_receive :asking, 1_000

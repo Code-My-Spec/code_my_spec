@@ -58,7 +58,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   @doc "The label the project's gate copy carries."
   def gate_label, do: @gate_label
 
-  def gate_label(source_id), do: @gate_label <> ":" <> source_id
+  @doc "The shared gate label for one project on one promoting device."
+  def gate_label(device_id), do: @gate_label <> ":device:" <> device_id
 
   def local_only?(scope),
     do:
@@ -959,33 +960,100 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   # checkout and a harness, which sit above this queue, so it is requested as
   # an event (`Staffing` answers it) and read back.
   defp gate_copy(scope) do
-    case find_gate_copy(scope) do
+    with {:ok, label} <- gate_label_for(scope),
+         {:ok, gate} <- find_or_make_gate(scope, label) do
+      retire_legacy_gates(scope, gate)
+      {:ok, gate}
+    end
+  end
+
+  defp find_or_make_gate(scope, label) do
+    case find_gate_copy(scope, label) do
       %WorkingCopy{} = gate ->
         {:ok, gate}
 
       nil ->
-        :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_needed], %{}, %{
-          scope: scope,
-          label: gate_label_for(scope),
-          source_copy_id: if(local_only?(scope), do: nil, else: scope.active_working_copy_id)
-        })
-
-        case find_gate_copy(scope) do
-          %WorkingCopy{} = gate -> {:ok, gate}
-          nil -> {:error, %{reason: "the project has no gate copy and none could be made"}}
+        case legacy_gate_copy(scope) do
+          %WorkingCopy{} = legacy -> WorkingCopies.relabel(scope, legacy, label)
+          nil -> make_gate_copy(scope, label)
         end
     end
   end
 
-  defp find_gate_copy(scope) do
-    scope
-    |> WorkingCopies.list_harnesses()
-    |> Enum.find(
-      &(gate_on_source?(scope, &1) and &1.label == gate_label_for(scope) and is_binary(&1.root) and
-          &1.root != "")
-    )
+  defp make_gate_copy(scope, label) do
+    :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_needed], %{}, %{
+      scope: scope,
+      label: label,
+      source_copy_id: if(local_only?(scope), do: nil, else: scope.active_working_copy_id)
+    })
+
+    case find_gate_copy(scope, label) do
+      %WorkingCopy{} = gate -> {:ok, gate}
+      nil -> {:error, %{reason: "the project has no gate copy and none could be made"}}
+    end
   end
 
+  defp find_gate_copy(scope) do
+    with {:ok, label} <- gate_label_for(scope), do: find_gate_copy(scope, label)
+  end
+
+  defp find_gate_copy(scope, label) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.find(&(gate_on_source?(scope, &1) and &1.label == label and gate_root?(&1)))
+  end
+
+  defp legacy_gate_copy(scope) do
+    if local_only?(scope) do
+      nil
+    else
+      scope
+      |> WorkingCopies.list_harnesses()
+      |> Enum.find(
+        &(gate_on_source?(scope, &1) and legacy_gate_label?(&1.label) and gate_root?(&1))
+      )
+    end
+  end
+
+  # A gate whose checkout its harness reports gone is no gate: kept, its record
+  # stood in for the copy and every batch was refused on its unreadable HEAD
+  # (03:00Z, a disk cleanup removed the folders and left the records). Passed
+  # over, it is asked for again, and `Staffing` retires the gone record.
+  defp gate_root?(%WorkingCopy{root: root} = gate),
+    do: is_binary(root) and root != "" and is_nil(gate.path_missing_since)
+
+  defp legacy_gate_label?("promotion-gate:" <> suffix),
+    do: not String.starts_with?(suffix, "device:")
+
+  defp legacy_gate_label?(_), do: false
+
+  defp retire_legacy_gates(scope, gate) do
+    unless local_only?(scope) do
+      scope
+      |> WorkingCopies.list_harnesses()
+      |> Enum.filter(
+        &(&1.id != gate.id and gate_on_source?(scope, &1) and
+            legacy_gate_label?(&1.label) and gate_root?(&1))
+      )
+      |> Enum.each(fn obsolete ->
+        obsolete_scope = scope_for(scope, obsolete)
+
+        unless Analysis.running_on?(obsolete_scope) or
+                 Repository.publication_gate_in_use?(scope.active_project_id, obsolete.id) do
+          :telemetry.execute([:code_my_spec, :promotion_queue, :gate_copy_obsolete], %{}, %{
+            scope: scope,
+            gate: obsolete,
+            source_copy_id: scope.active_working_copy_id
+          })
+        end
+      end)
+    end
+  end
+
+  # The gate is a worktree of the source checkout, so it must run on that device
+  # to reach Git, dependencies and the build/test environment. The server or
+  # another device cannot assume access to that disk. One gate per device lets
+  # every source copy there reuse it without crossing this boundary.
   defp gate_on_source?(scope, gate) do
     if local_only?(scope) do
       true
@@ -1036,8 +1104,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  defp gate_label_for(scope),
-    do: if(local_only?(scope), do: @gate_label, else: gate_label(scope.active_working_copy_id))
+  defp gate_label_for(scope) do
+    if local_only?(scope) do
+      {:ok, @gate_label}
+    else
+      case WorkingCopies.fetch(scope.active_working_copy_id) do
+        {:ok, %WorkingCopy{device_id: id}} when is_binary(id) -> {:ok, gate_label(id)}
+        _ -> {:error, %{reason: "the source copy has no device for a promotion gate"}}
+      end
+    end
+  end
 
   defp development_branch(scope) do
     case Projects.get_project(scope, scope.active_project_id) do

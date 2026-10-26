@@ -41,6 +41,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   alias CodeMySpec.Provisioning.ContentPublishing
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -1081,14 +1082,17 @@ defmodule CodeMySpecWeb.ConsoleLive do
     scope = socket.assigns.current_scope
     project = scope.active_project
 
+    prod_registry =
+      registry_address(scope, "prod") || Provisioning.Registry.default_host()
+
     case DeployArtifacts.generate(operation_environment(scope),
            app: DeployArtifacts.otp_app_name(project),
            host: project.domain || "example.com",
            owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org",
-           registry: Provisioning.Registry.default_host(),
-           image: registry_image(scope),
+           registry: prod_registry,
+           image: registry_image(scope, prod_registry),
            kamal_image: registry_repository(scope),
-           prod_registry: registry_address(scope, "prod"),
+           prod_registry: prod_registry,
            uat_registry: registry_address(scope, "uat"),
            telemetry_host: "telemetry.#{project.domain || "example.com"}"
          ) do
@@ -1568,8 +1572,8 @@ defmodule CodeMySpecWeb.ConsoleLive do
     end
   end
 
-  defp registry_image(scope) do
-    case Provisioning.Registry.image(scope) do
+  defp registry_image(scope, registry_host) do
+    case Provisioning.Registry.image(scope, registry_host: registry_host) do
       {:ok, image} -> image
       _ -> nil
     end
@@ -2152,9 +2156,13 @@ defmodule CodeMySpecWeb.ConsoleLive do
   end
 
   defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
-    case Resend.list_domains(scope) do
-      {:ok, domains} when is_list(domains) -> domains
-      _ -> []
+    if ProvisioningPlan.devops_level(scope) == :prod do
+      case Resend.list_domains(scope) do
+        {:ok, domains} when is_list(domains) -> domains
+        _ -> []
+      end
+    else
+      []
     end
   end
 

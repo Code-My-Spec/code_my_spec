@@ -40,14 +40,25 @@ defmodule CodeMySpecSpex.Fakes.Resend do
 
   @doc "Fresh account state. One per test."
   def new do
-    %{domains: [], suppressions: [], webhooks: [], received: [], sent: [], next_id: 1}
+    %{
+      domains: [],
+      suppressions: [],
+      webhooks: [],
+      received: [],
+      sent: [],
+      requests: [],
+      next_id: 1
+    }
   end
 
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
 
     {status, body} =
-      Agent.get_and_update(agent, &route(conn.method, path(conn), body_of(conn), &1))
+      Agent.get_and_update(agent, fn state ->
+        {response, next_state} = route(conn.method, path(conn), body_of(conn), state)
+        {response, %{next_state | requests: [{conn.method, path(conn)} | state.requests]}}
+      end)
 
     conn
     |> Conn.put_resp_content_type("application/json")

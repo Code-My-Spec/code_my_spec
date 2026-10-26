@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.Mailbox do
   alias CodeMySpec.Agents.Mailbox.Entry
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
+  alias CodeMySpec.Agents.SenderStamp
   alias CodeMySpec.Agents.Transport
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
@@ -69,7 +70,11 @@ defmodule CodeMySpec.Agents.Mailbox do
             agent.working_copy_id,
             agent,
             entry.delivery_ref,
-            Message.text(message),
+            SenderStamp.stamp(
+              Message.text(message),
+              agent,
+              SenderStamp.sender(message, entry.event)
+            ),
             timeout
           )
 

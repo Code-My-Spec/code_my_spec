@@ -38,7 +38,8 @@ defmodule CodeMySpecSpex.Story1134.Criterion2325Spex do
         assert context.script =~ ~r/if \[ ! -x \/opt\/otp\/bin\/erl \]/,
                "the toolchain is installed again on a box that has it"
 
-        assert context.script =~ ~r/curl -fs "localhost:\$port\/health"/,
+        assert context.script =~
+                 ~s(curl --noproxy "*" --max-time 5 -fs "http://127.0.0.1:$port/health"),
                "the hook starts a second harness when one is already up"
 
         {:ok, context}

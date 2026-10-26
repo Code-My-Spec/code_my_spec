@@ -4,15 +4,15 @@ defmodule CodeMySpecSpex.Story1080.Criterion1798Spex do
   Criterion 1798 — Answering a question records an answer offer on that
   question, linked to the message that carried the answer.
 
-  An idle asker gets the answer as a turn; one mid-turn gets it as a message.
-  Either way the offer is on the question and points at what carried it.
+  An idle asker receives the answer through the durable mailbox; one mid-turn
+  receives it in the running turn. Either way the offer is on the question and
+  points at what carried it.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
 
-  import CodeMySpecSpex.IdleAgentHelpers, only: [start_session: 1]
   import CodeMySpecSpex.OfferHelpers
   import CodeMySpecSpex.QuestionRoutingHelpers, only: [user_answers: 3]
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
@@ -33,7 +33,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1798Spex do
   spex "An answer is recorded as an offer on its question", criterion: 1798 do
     scenario "an idle continuous agent's question is answered" do
       given_ "a continuous coder that asked a question and ended its turn", context do
-        context = start_session(context)
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         :ok = Fixtures.agent_said(context.scope, coder, "I need a decision first.")
         question = ask(context, coder)
@@ -43,7 +42,10 @@ defmodule CodeMySpecSpex.Story1080.Criterion1798Spex do
       when_ "the user answers it", context do
         :ok = user_answers(context, context.question, "Yes")
         id = context.coder
-        assert_receive {:work_turn_requested, ^id, _ref, prompt}, 2_000
+        # A queued answer can be delivered into a resumed turn or dispatched
+        # directly, depending on when the agent becomes runnable.
+        assert_receive {delivery, ^id, _ref, prompt}, 2_000
+        assert delivery in [:work_turn_requested, :agent_dispatch]
         {:ok, Map.put(context, :sent, prompt)}
       end
 
@@ -54,7 +56,6 @@ defmodule CodeMySpecSpex.Story1080.Criterion1798Spex do
 
     scenario "a question is answered while its agent is mid-turn" do
       given_ "a continuous coder that asked a question and is still working", context do
-        context = start_session(context)
         coder = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
         :ok = Fixtures.put_agent_mid_turn(context.scope, coder.id)
         question = ask(context, coder)

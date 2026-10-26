@@ -91,7 +91,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
         # The push to agents in this BEAM. A Claude Code session is not told
         # here; it picks the alert up on its next tool call.
-        announce_if_new(scope, run, problems, previous, signatures)
+        announce_if_new(scope, run, problems, previous, signatures, reported(run, result, true))
 
         Logger.info(
           "[Analysis] run #{run.id} (#{run.source}) reconciled: #{length(problems)} problem(s) " <>
@@ -162,7 +162,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
           source: run.source,
           problems: problems,
           requester: requester,
-          waiters: waiters
+          waiters: waiters,
+          run: reported(run, result, false)
         }
       )
     end
@@ -240,7 +241,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   # Reports only when this run found something the last one did not, or when
   # an agent requested or waits on it. See knowledge/analysis, "Reporting runs".
-  defp announce_if_new(scope, run, problems, previous, signatures) do
+  defp announce_if_new(scope, run, problems, previous, signatures, reported) do
     requester = requesting_agent_id(run)
     waiters = waiters(run)
 
@@ -255,12 +256,27 @@ defmodule CodeMySpec.Analysis.Reconciler do
           source: run.source,
           problems: problems,
           requester: requester,
-          waiters: waiters
+          waiters: waiters,
+          run: reported
         }
       )
     else
       :ok
     end
+  end
+
+  # The run a report is about, so the notice can name it, say whether
+  # `list_problems` holds its findings (a full run's are written there; a
+  # targeted or tied run's are not), and never call a run that exited non-zero
+  # clean.
+  defp reported(run, result, listed?) do
+    %{
+      id: run.id,
+      kind: run.kind,
+      commit: run.start_commit,
+      exit_status: Map.get(result, :exit_status),
+      listed?: listed?
+    }
   end
 
   # Threaded through so `AnalysisReport.deliver/4` answers the asker even on

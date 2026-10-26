@@ -22,6 +22,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   require Logger
 
   alias CmsHarness.Config
+  alias CmsHarness.CopyDatabases
   alias CmsHarness.Device
   alias CmsHarness.Projects
   alias CmsHarness.Projects.Generator
@@ -66,6 +67,8 @@ defmodule CmsHarness.WorkingCopyReporter do
        known: Keyword.get(opts, :known, %{}),
        last: nil,
        generating: MapSet.new(),
+       # Roots whose databases this boot has already dropped.
+       dropped: MapSet.new(),
        heartbeat: Keyword.get(opts, :heartbeat, @heartbeat)
      }}
   end
@@ -103,6 +106,7 @@ defmodule CmsHarness.WorkingCopyReporter do
   # One exchange: look, say what we saw, keep what the server says we hold.
   defp run(%{known: known, last: last} = state) do
     {observations, known} = observe(known)
+    state = drop_gone_databases(state, observations, known)
 
     case Device.announce(observations) do
       {:ok, %{working_copies: from_server} = reply} ->
@@ -122,6 +126,20 @@ defmodule CmsHarness.WorkingCopyReporter do
         # `last` not advanced: the next report that lands is news.
         {observations, %{state | known: known}}
     end
+  end
+
+  # A checkout gone from disk takes its databases with it, once per boot:
+  # nothing else dropped them, and 99 filled the disk.
+  defp drop_gone_databases(state, observations, known) do
+    gone =
+      for {id, false} <- observations,
+          root = known[id],
+          is_binary(root),
+          not MapSet.member?(state.dropped, root),
+          do: root
+
+    Enum.each(gone, &CopyDatabases.drop_for_root/1)
+    %{state | dropped: Enum.into(gone, state.dropped)}
   end
 
   # Serve the copies the server says this machine carries, not only those a

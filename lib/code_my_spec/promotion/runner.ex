@@ -40,6 +40,18 @@ defmodule CodeMySpec.Promotion.Runner do
   # has not built yet; its analyzers reuse that build.
   @reset_timeout 600_000
 
+  @doc "Remove a legacy gate worktree through its source device's harness."
+  def retire_gate_worktree(environment, source_root, gate_root, source_copy_id) do
+    run(
+      environment,
+      source_copy_id,
+      "promotion_retire_gate",
+      %{"root" => source_root, "gate_root" => gate_root},
+      @git_timeout,
+      fn env -> Steps.retire_gate_worktree(env, source_root, gate_root) end
+    )
+  end
+
   @doc "Fetch the authoritative origin branch on the addressed machine."
   def remote_head(environment, root, branch, copy_id),
     do:

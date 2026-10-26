@@ -240,25 +240,35 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       if serving?(current, desired["head"]) do
         {:ok, desired["head"]}
       else
-        refresh_revision(app, scope, instance.id, desired, changed_files)
+        refresh_revision(app, scope, instance.id, desired, changed_files, copy.root)
       end
     end
   end
 
-  defp refresh_revision(app, scope, id, desired, changed_files) do
+  # `loaded`: without it, a landing on the checkout this server runs from was
+  # reloaded in place (04:05Z), and the reload's migrate and :4000's code
+  # reloader hung every request for seven minutes.
+  defp refresh_revision(app, scope, id, desired, changed_files, root) do
     plan =
       Promotion.deployment_plan(changed_files,
         restart: desired["restart"],
+        loaded: Promotion.loaded_here(root),
         reload_supported: reload_supported(app, scope, id)
       )
 
-    result =
-      case plan.action do
-        :restart -> restart(app, scope, id)
-        :reload -> reload(app, scope, id)
-      end
+    case plan.action do
+      :restart -> verify_revision(app, scope, id, desired["head"], restart(app, scope, id))
+      :reload -> reload(app, scope, id, root, desired["head"])
+    end
+  end
 
-    verify_revision(app, scope, id, desired["head"], result)
+  # A failed migration is the outcome: the app still answers on the new head,
+  # and verifying would read the landing as clean.
+  defp reload(app, scope, id, root, head) do
+    case Promotion.migrate_here(root) do
+      {:ok, _versions} -> verify_revision(app, scope, id, head, reload(app, scope, id))
+      {:error, %{reason: reason}} -> {:error, {:migration_failed, reason}}
+    end
   end
 
   defp verify_revision(app, scope, id, head, result) do
@@ -282,6 +292,7 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   defp ensure_running(app, _scope, id), do: app.ensure_app_running(id, @timeout)
   defp restart(AppInstances, scope, id), do: AppInstances.restart(scope, id, @timeout)
   defp restart(app, _scope, id), do: app.restart_app(id, @timeout)
+
   defp reload(AppInstances, scope, id), do: AppInstances.reload(scope, id, @timeout)
   defp reload(app, _scope, id), do: app.reload_app(id, @timeout)
 

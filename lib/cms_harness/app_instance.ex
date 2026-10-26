@@ -45,9 +45,12 @@ defmodule CmsHarness.AppInstance do
     :state_path,
     :tunnel_pid,
     :tunnel_id,
-    # Monotonic deadline for a first start's background watch; `nil`
+    # Monotonic deadline for a slow start's background watch; `nil`
     # otherwise. Not persisted: it only drives an in-BEAM timer.
     :first_start_deadline,
+    # Which start is being watched ("first start", "restart"), for the reason
+    # given when its ceiling passes.
+    :slow_start,
     # The HEAD a moved copy was last brought onto, tried once whatever came
     # of it, so a failing reload is not retried on every idle check.
     :brought_to,
@@ -458,7 +461,7 @@ defmodule CmsHarness.AppInstance do
 
       System.monotonic_time(:millisecond) >= deadline ->
         reason =
-          "first start exceeded #{first_start_ceiling_minutes()} min; see #{state.log_path}"
+          "#{state.slow_start} exceeded #{first_start_ceiling_minutes()} min; see #{state.log_path}"
 
         Logger.warning("[CmsHarness] #{state.root}: #{reason}")
 
@@ -557,7 +560,8 @@ defmodule CmsHarness.AppInstance do
   defp start_and_reply(stopped, from, after_promote?, tunnel, extra, deadline) do
     case start_app(stopped, tunnel, deadline) do
       {:ok, new_state} ->
-        new_state = ensure_tunnel(new_state, after_promote?, tunnel)
+        new_state =
+          new_state |> watch_if_booting("restart") |> ensure_tunnel(after_promote?, tunnel)
 
         reply_then_hook(
           from,
@@ -767,22 +771,41 @@ defmodule CmsHarness.AppInstance do
         deadline = System.monotonic_time(:millisecond) + window
         settled_state = wait_for_health(launched_state, deadline)
 
-        if settled_state.status == "serving" do
-          new_state = ensure_tunnel(settled_state, after_promote?, tunnel)
-          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-        else
-          # Reported as `starting`. `os_pid` is set, so a concurrent
-          # `ensure_running` will not re-launch it.
-          deadline = System.monotonic_time(:millisecond) + first_start_ceiling_ms()
-          new_state = %{settled_state | status: "starting", first_start_deadline: deadline}
-          persist!(new_state)
-          schedule_first_start_check()
-          {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
-        end
+        new_state =
+          settled_state
+          |> watch_if_booting("first start")
+          |> ensure_tunnel(after_promote?, tunnel)
+
+        {:reply, {:ok, result(new_state)}, new_state, idle_timeout()}
 
       {:error, reason} ->
         new_state = ensure_tunnel(state, after_promote?, tunnel)
         {:reply, {:error, reason}, new_state, idle_timeout()}
+    end
+  end
+
+  # Not serving by the inline window and its process still alive: reported as
+  # `starting` and watched in the background toward the ceiling. `os_pid` is
+  # set, so a concurrent `ensure_running` will not re-launch it. A restart
+  # that recompiles every dep is still booting here, not down.
+  defp watch_if_booting(%__MODULE__{status: "serving"} = state, _label), do: state
+
+  defp watch_if_booting(state, label) do
+    if Runner.alive?(state.os_pid) do
+      deadline = System.monotonic_time(:millisecond) + first_start_ceiling_ms()
+
+      new_state = %{
+        state
+        | status: "starting",
+          first_start_deadline: deadline,
+          slow_start: label
+      }
+
+      persist!(new_state)
+      schedule_first_start_check()
+      new_state
+    else
+      state
     end
   end
 

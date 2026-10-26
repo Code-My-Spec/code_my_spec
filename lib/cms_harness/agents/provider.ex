@@ -28,6 +28,8 @@ defmodule CmsHarness.Agents.Provider do
   # `codex exec` refuses prompts over 1,048,576 characters; Alloy's default
   # 200k-token budget (at ~4 chars/token) lets a transcript pass that before
   # compacting. 160k compacts near 575k characters, leaving room for the rest.
+  # Codex's own thread is held to it too; by default Codex compacts near its
+  # model's window, and a resumed call resends the whole thread.
   @codex_max_tokens 160_000
 
   @type credential :: map()
@@ -66,11 +68,18 @@ defmodule CmsHarness.Agents.Provider do
         workdir: Keyword.get(opts, :working_copy),
         codex_home: codex_home(credential),
         persist_session: true,
+        # At the very top of every full prompt: in the system prompt it sat
+        # after the transcript, which a long one buries.
+        preamble: Keyword.get(opts, :provider_brief),
         # Codex's own tools are switched off in Alloy itself (its provider's
         # native-tools list); this drops only the permissions instructions.
-        config_overrides: ["include_permissions_instructions=false"],
+        config_overrides: [
+          "include_permissions_instructions=false",
+          "model_auto_compact_token_limit=#{@codex_max_tokens}"
+        ],
         timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
       }
+      |> with_codex_bin()
       |> with_command_runner()
 
     with :ok <- codex_model_available(config) do
@@ -151,6 +160,15 @@ defmodule CmsHarness.Agents.Provider do
 
   # Replaces the real `codex`/`claude` CLI, from config. Set only in test,
   # where it is pinned to a recording so no test runs a live CLI.
+  # Codex's own self-updating install when it is there, not whichever `codex`
+  # PATH finds first. The models a login serves depend on the client's
+  # version, and an npm copy (0.144.4) ahead of it on PATH refreshed the shared
+  # models cache without the gpt-6 models, so the coding default was refused.
+  defp with_codex_bin(config) do
+    standalone = Path.expand("~/.codex/packages/standalone/current/bin/codex")
+    if File.exists?(standalone), do: Map.put(config, :codex_bin, standalone), else: config
+  end
+
   defp with_command_runner(config) do
     case Application.get_env(:code_my_spec, __MODULE__, [])[:command_runner] do
       {module, function} ->
@@ -174,7 +192,7 @@ defmodule CmsHarness.Agents.Provider do
   defp codex_model_available(%{model: nil}), do: :ok
 
   defp codex_model_available(%{model: model, codex_home: home}) do
-    case served_models(Path.join(home, "models_cache.json")) do
+    case read_served(Path.join(home, "models_cache.json")) do
       [_ | _] = served ->
         if model in served do
           :ok
@@ -191,7 +209,22 @@ defmodule CmsHarness.Agents.Provider do
     end
   end
 
-  defp served_models(cache) do
+  @doc """
+  What each provider this machine runs from a local login serves, for the join:
+  Codex's cached model list, or "unknown" where nothing lists them (the Claude
+  CLI exposes none, and a Codex home with no cache knows none).
+  """
+  @spec served_models(String.t()) :: %{String.t() => [String.t()] | String.t()}
+  def served_models(codex_home \\ Path.expand("~/.codex")) do
+    codex = codex_home |> Path.join("models_cache.json") |> read_served()
+
+    %{
+      "openai-codex" => if(codex == [], do: "unknown", else: codex),
+      "claude-code" => "unknown"
+    }
+  end
+
+  defp read_served(cache) do
     with {:ok, json} <- File.read(cache),
          {:ok, %{"models" => models}} when is_list(models) <- Jason.decode(json) do
       for %{"slug" => slug} when is_binary(slug) <- models, do: slug

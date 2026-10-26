@@ -98,7 +98,10 @@ defmodule CodeMySpecSpex.StoryIssueBagHelpers do
     context
   end
 
-  def next(context, role), do: call(context, "get_next_requirement", %{}, role)
+  def next(context, role) do
+    agent = Map.fetch!(context, role)
+    StorySliceHelpers.next(context, %{agent_id: agent.id})
+  end
 
   def requirements(context),
     do: call(context, "list_requirements", %{limit: 1000}, :coding)

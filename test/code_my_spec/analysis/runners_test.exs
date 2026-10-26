@@ -124,6 +124,34 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert {:ok, %{problems: [_]}} = Runners.from_raw("compiler", raw)
     end
 
+    test "a failed compile makes warning-labelled Boundary findings blocking" do
+      diagnostic = %{
+        "file" => "test/spex/setup_spex.exs",
+        "line" => 12,
+        "severity" => "warning",
+        "message" => "forbidden reference to CmsHarness.Setup"
+      }
+
+      assert {:ok, failed} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :error, message: "forbidden reference to CmsHarness.Setup"}] =
+               failed.problems
+
+      assert failed.stats == %{"errors" => 1, "warnings" => 0}
+
+      assert {:ok, clean} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 0,
+                 "diagnostics" => [diagnostic]
+               })
+
+      assert [%{severity: :warning}] = clean.problems
+    end
+
     test "a compiler error becomes a blocking Problem" do
       raw = %{
         "exit_status" => 1,
@@ -294,6 +322,22 @@ defmodule CodeMySpec.Analysis.RunnersTest do
 
       assert {:ok, %{problems: [problem]}} = Runners.from_raw("exunit", raw)
       assert problem.file_path == "test/code_my_spec/demo_test.exs"
+    end
+
+    test "committed rows after a passing spex are a blocking problem" do
+      output =
+        "1 test, 0 failures\n** (RuntimeError) spex left committed rows outside the sandbox: projects=2\n"
+
+      assert {:ok, %{problems: [problem]}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert problem.file_path == "test/support/committed_rows_guard.ex"
+      assert problem.message =~ "projects=2"
+      assert problem.severity == :error
     end
 
     test "a spex run that exited nonzero with no failures fails the run" do

@@ -94,6 +94,10 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   """
   def put_probes(statuses), do: Agent.update(__MODULE__, &%{&1 | probes: statuses})
 
+  @doc "What `idle_databases_matching/1` answers."
+  def put_idle_databases(names),
+    do: Agent.update(__MODULE__, &Map.put(&1, :idle_databases, names))
+
   @doc "Every call this fake recorded, oldest first — `{function, args}` pairs."
   def calls, do: __MODULE__ |> Agent.get(& &1.calls) |> Enum.reverse()
 
@@ -149,6 +153,12 @@ defmodule CmsHarnessTest.FakeAppInstanceRunner do
   def seed(root) do
     record(:seed, [root])
     :ok
+  end
+
+  @impl true
+  def idle_databases_matching(regex) do
+    record(:idle_databases_matching, [regex])
+    Agent.get(__MODULE__, &Map.get(&1, :idle_databases, []))
   end
 
   @impl true

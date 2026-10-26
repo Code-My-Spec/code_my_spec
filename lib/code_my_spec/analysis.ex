@@ -35,6 +35,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.Repo,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Tools,
       CodeMySpec.Users.Scope,
       CodeMySpec.Validation.Blocking
@@ -383,6 +384,27 @@ defmodule CodeMySpec.Analysis do
   @doc "What `run_id` has reported as it ran, or nil."
   @spec live_state(integer()) :: LiveRuns.t() | nil
   defdelegate live_state(run_id), to: LiveRuns, as: :get
+
+  @doc """
+  Why a queued run (`Run.queued?/1`) is still waiting, or `nil` once it has
+  started or finished.
+
+  `harness_connected: false` means nothing holding this working copy's
+  executor slot is reachable at all -- the run cannot be picked up, no
+  matter how long it waits. A caller otherwise has no way to tell that
+  apart from ordinary load (issue 90492d2d).
+  """
+  @spec queue_wait(Run.t()) ::
+          %{queued_seconds: non_neg_integer(), harness_connected: boolean()} | nil
+  def queue_wait(%Run{} = run) do
+    if Run.queued?(run) do
+      %{
+        queued_seconds: DateTime.diff(DateTime.utc_now(), run.started_at),
+        harness_connected:
+          match?({:ok, _, _}, HarnessRegistry.executor_holder(run.working_copy_id))
+      }
+    end
+  end
 
   defp record_failure(scope, %{"event" => "test", "state" => "failed"} = test) do
     {:ok, _} =

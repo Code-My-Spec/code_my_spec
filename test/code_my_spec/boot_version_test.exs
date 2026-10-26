@@ -21,10 +21,17 @@ defmodule CodeMySpec.BootVersionTest do
 
   alias CodeMySpec.BootVersion
 
+  @key {BootVersion, :boot}
+
+  # Restored, not erased: the application captured it at boot.
   setup do
-    on_exit(fn -> :persistent_term.erase({BootVersion, :boot}) end)
+    previous = :persistent_term.get(@key, nil)
+    on_exit(fn -> restore(previous) end)
     :ok
   end
+
+  defp restore(nil), do: :persistent_term.erase(@key)
+  defp restore(previous), do: :persistent_term.put(@key, previous)
 
   defp git_repo do
     root = CodeMySpec.TempFile.owned_dir("test")

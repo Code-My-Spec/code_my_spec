@@ -36,6 +36,7 @@ defmodule CmsHarnessTest do
       ConnectHeaders,
       HeldProvider,
       AnalysisResults,
+      GateWait,
       Projects,
       FakeServer,
       HarnessOAuthFixture,

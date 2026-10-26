@@ -56,7 +56,8 @@ defmodule CodeMySpec.AgentPerformance.TokenUsage do
       input_tokens: usage["input_tokens"],
       output_tokens: usage["output_tokens"],
       cache_read_tokens: usage["cache_read_input_tokens"],
-      cache_write_tokens: usage["cache_creation_input_tokens"]
+      cache_write_tokens: usage["cache_creation_input_tokens"],
+      fresh_thread: usage["fresh_thread"]
     })
     |> Repo.insert()
 

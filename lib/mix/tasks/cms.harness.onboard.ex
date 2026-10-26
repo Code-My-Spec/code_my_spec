@@ -61,6 +61,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   @impl Mix.Task
   def run(args) do
+    CmsHarness.Proxy.install!()
     # `:req` and nothing else: minting is one HTTP call, and `app.start` would
     # boot Phoenix and Ecto in a checkout that has never been started.
     {:ok, _} = Application.ensure_all_started(:req)
