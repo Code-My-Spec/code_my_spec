@@ -4,13 +4,12 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
   Criterion 2428 — a stop does not launch a subprocess analyzer; findings
   already persisted by an analysis run remain until a newer run lands.
 
-  The analyzer outputs are landed before the hook fires. The stop itself has
-  no command cassette: attempting to run mix compile, credo, test or spex
-  from that hook fails instead of silently satisfying this specification.
+  The fixture uses the same persisted-problem replacement path as a completed
+  analyzer run. The stop itself has no command cassette: attempting to run
+  mix compile, credo, test or spex from that hook fails this specification.
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
@@ -18,9 +17,6 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpecSpex.SharedGivens
-
-  @dirty_output Path.expand("test/fixtures/validation/pipeline_compile_error/compile.jsonl")
-  @clean_output Path.expand("test/fixtures/validation/pipeline_clean_run/compile.jsonl")
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -37,13 +33,17 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
       given_ :context_implementation_task_started
 
       given_ "a completed compiler run recorded a problem for the existing file", context do
-        use_cmd_cassette "pipeline_compile_error", record: :none do
-          Fixtures.land_outputs(context.scope,
-            compile_output_file: @dirty_output,
-            await: true
-          )
-        end
+        :ok =
+          Fixtures.replace_problems(context.scope, context.component.id, "compiler", [
+            %{message: "missing terminator: end", file_path: "lib/example_context.ex", line: 1}
+          ])
 
+        assert {:ok, problems} =
+                 ToolLibrary.run("list_problems", %{"source" => "compiler"}, %{
+                   scope: context.scope
+                 })
+
+        assert problems =~ "lib/example_context.ex"
         {:ok, context}
       end
 
@@ -70,17 +70,16 @@ defmodule CodeMySpecSpex.Story555.Criterion2428Spex do
       given_ :context_implementation_task_started
 
       given_ "an older compiler run recorded a problem", context do
-        use_cmd_cassette "pipeline_compile_error", record: :none do
-          Fixtures.land_outputs(context.scope, compile_output_file: @dirty_output, await: true)
-        end
+        :ok =
+          Fixtures.replace_problems(context.scope, context.component.id, "compiler", [
+            %{message: "missing terminator: end", file_path: "lib/example_context.ex", line: 1}
+          ])
 
         {:ok, context}
       end
 
       when_ "a clean compiler run lands and the stop hook fires", context do
-        use_cmd_cassette "clean", record: :none do
-          Fixtures.land_outputs(context.scope, compile_output_file: @clean_output, await: true)
-        end
+        :ok = Fixtures.replace_problems(context.scope, context.component.id, "compiler", [])
 
         response = HarnessHooks.post_hook(context, "stop", %{"session_id" => context.session_id})
         {:ok, Map.put(context, :stop_response, response)}
