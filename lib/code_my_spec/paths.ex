@@ -31,12 +31,22 @@ defmodule CodeMySpec.Paths do
   end
 
   @doc """
-  This machine's state directory. On a laptop it is `~/.codemyspec`.
-  With `CMS_PROJECT_DIR`, it remains beside that workspace's checkout so
-  independent workspaces never reuse the host's machine identity.
+  This machine's state directory: explicit `CMS_STATE_DIR`, otherwise
+  `~/.codemyspec` on a laptop or beside `CMS_PROJECT_DIR` on a workspace.
+  Independent workspaces never reuse the host's machine identity.
   """
   @spec local_state_dir() :: String.t()
   def local_state_dir do
+    case System.get_env("CMS_STATE_DIR") do
+      state when is_binary(state) and state != "" -> state
+      _ -> default_local_state_dir()
+    end
+    |> Path.expand()
+  end
+
+  # Explicit state separates provider-hosted boxes without changing HOME.
+  # Existing desktop and one-project workspace defaults remain the same.
+  defp default_local_state_dir do
     case System.get_env("CMS_PROJECT_DIR") do
       dir when is_binary(dir) and dir != "" -> dir |> expand() |> Path.dirname()
       _ -> user_state_dir()

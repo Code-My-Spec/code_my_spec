@@ -16,6 +16,8 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
     if connected?(socket) and is_binary(scope.active_account_id),
       do: Devices.subscribe(scope.active_account_id)
 
+    if connected?(socket), do: Process.send_after(self(), :refresh_devices, 5_000)
+
     {:ok,
      assign(socket,
        page_title: "Devices",
@@ -37,6 +39,11 @@ defmodule CodeMySpecWeb.DeviceLive.Index do
   @impl true
   def handle_info({:server_saved, server}, socket) do
     send_update(ProviderComponent, id: "provider-inventory", saved_server: server)
+    refresh(socket)
+  end
+
+  def handle_info(:refresh_devices, socket) do
+    Process.send_after(self(), :refresh_devices, 5_000)
     refresh(socket)
   end
 
