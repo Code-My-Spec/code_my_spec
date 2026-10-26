@@ -79,7 +79,14 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServer do
     %{
       timeout: {:meta, :integer, [description: "Milliseconds for the call. Defaults to 30000."]},
       path: {:meta, :string, [description: "MCP path on that server. Defaults to /mcp."]},
-      arguments: {:meta, :map, [description: "Arguments for the tool. Defaults to none."]},
+      arguments:
+        {:meta, :map,
+         [
+           description:
+             "Arguments for the tool, any object; `{}` is none. A remote code-mode " <>
+               "server takes its tools through run_script: " <>
+               "tool = \"run_script\", arguments = { script = \"return list_stories()\" }."
+         ]},
       url:
         {:required,
          {:meta, :string, [description: "Base URL of the MCP server, e.g. http://localhost:4004"]}},

@@ -5,7 +5,7 @@
     "input_schema": {
       "properties": {
         "arguments": {
-          "description": "Arguments for the tool. Defaults to none.",
+          "description": "Arguments for the tool, any object; `{}` is none. A remote code-mode server takes its tools through run_script: tool = \"run_script\", arguments = { script = \"return list_stories()\" }.",
           "type": "object"
         },
         "headers": {
