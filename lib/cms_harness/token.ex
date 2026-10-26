@@ -27,7 +27,11 @@ defmodule CmsHarness.Token do
   # The lifetime is the server's: `expires_in` is read off the response.
   @exchange_timeout 30_000
 
-  @type refusal :: :no_credential | {:refused, integer()} | {:unreachable, term()}
+  @type refusal ::
+          :no_credential
+          | {:refused, integer()}
+          | {:refused, integer(), String.t()}
+          | {:unreachable, term()}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -171,15 +175,29 @@ defmodule CmsHarness.Token do
         Logger.error("[CmsHarness] token exchange returned 200 with no access_token")
         {:error, {:refused, 200}}
 
-      {:ok, %{status: status}} ->
-        Logger.error("[CmsHarness] token exchange refused: #{status}")
-        {:error, {:refused, status}}
+      {:ok, %{status: status, body: body}} ->
+        reason = if path == "/api/devices/token", do: refusal_reason(body), else: nil
+        Logger.error("[CmsHarness] token exchange refused: #{status} #{reason}")
+
+        if path == "/api/devices/token" and status == 401 do
+          server = String.trim_trailing(Config.server_url(), "/")
+          host = URI.parse(server).host || server
+
+          Logger.error(
+            "[CmsHarness] #{reason} Add a dev box on #{server}/app/devices and set its token as a network secret for #{host}. Use the bare token, with no 'Bearer ' prefix."
+          )
+        end
+
+        if reason, do: {:error, {:refused, status, reason}}, else: {:error, {:refused, status}}
 
       {:error, reason} ->
         Logger.error("[CmsHarness] token exchange unreachable: #{inspect(reason)}")
         {:error, {:unreachable, reason}}
     end
   end
+
+  defp refusal_reason(%{"error_description" => reason}) when is_binary(reason), do: reason
+  defp refusal_reason(_body), do: "The server did not explain the refusal."
 
   # A margin past the exchange timeout; configurable for tests.
   defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
