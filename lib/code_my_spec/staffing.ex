@@ -71,6 +71,8 @@ defmodule CodeMySpec.Staffing do
         %{scope: scope, label: label} = metadata,
         _config
       ) do
+    retire_gone_gates(scope, label)
+
     case mint(scope, label: label, roles: [], host_copy_id: metadata[:source_copy_id]) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
@@ -83,6 +85,18 @@ defmodule CodeMySpec.Staffing do
       Logger.error(
         "[Staffing] making the promotion gate copy failed: #{Exception.format_banner(kind, reason)}"
       )
+  end
+
+  # A gate record whose checkout is reported gone is offboarded before its
+  # replacement is made, so the queue never reads it again.
+  defp retire_gone_gates(scope, label) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.filter(&(&1.label == label and not is_nil(&1.path_missing_since)))
+    |> Enum.each(fn gone ->
+      Logger.info("[Staffing] retiring gate copy #{gone.id}: its checkout #{gone.root} is gone")
+      offboard(scope, gone, instance_disposition: :discard)
+    end)
   end
 
   @doc """

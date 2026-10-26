@@ -977,12 +977,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  # A gate whose checkout its harness reports gone is no gate: kept, its record
+  # stood in for the copy and every batch was refused on its unreadable HEAD
+  # (03:00Z, a disk cleanup removed the folders and left the records). Passed
+  # over, it is asked for again, and `Staffing` retires the gone record.
   defp find_gate_copy(scope) do
     scope
     |> WorkingCopies.list_harnesses()
     |> Enum.find(
       &(gate_on_source?(scope, &1) and &1.label == gate_label_for(scope) and is_binary(&1.root) and
-          &1.root != "")
+          &1.root != "" and is_nil(&1.path_missing_since))
     )
   end
 
