@@ -138,6 +138,11 @@ defmodule CodeMySpec.Qa do
     to: Invalidations,
     as: :invalidate
 
+  @doc "Remove wrongly attached evidence, preserving the attempt verdict and an audit record."
+  defdelegate remove_qa_evidence(scope, attempt_id, names, reason),
+    to: QaAttempts,
+    as: :remove_evidence
+
   @doc """
   Is `qa_complete` satisfied for the story?
 
