@@ -23,7 +23,7 @@ defmodule CodeMySpec.Agents.ProviderModels do
     "deepinfra" => "https://api.deepinfra.com/v1/openai/models"
   }
 
-  @doc "The API providers whose keys live on the server; the rest are listed by their harness."
+  @doc "Anthropic, z.ai and DeepInfra: their keys live on the server, so it asks them; Codex and the Claude CLI are listed by their harness."
   @spec providers() :: [String.t()]
   def providers, do: Map.keys(@endpoints)
 
