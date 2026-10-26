@@ -2478,7 +2478,9 @@ defmodule CodeMySpecSpex.Case do
   # A name the generator accepts and the provider resources can carry: lowercase
   # letters, digits and underscores, starting with a letter.
   defp generated_app_name(project) do
-    "cms_drill_" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
+    # Keep a letter before the UUID so Macro.camelize/underscore round-trips
+    # the OTP app name used by deploy generation.
+    "cms_drill_a" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
   end
 
   # The generators a real project gets, in the order a project gets them.
