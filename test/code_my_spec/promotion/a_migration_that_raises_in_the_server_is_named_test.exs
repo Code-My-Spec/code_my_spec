@@ -22,12 +22,21 @@ defmodule CodeMySpec.Promotion.AMigrationThatRaisesInTheServerIsNamedTest do
     end
     """)
 
-    assert {:error, %{reason: reason}} = Promotion.migrate_here(BootVersion.root(), dir)
+    assert {:error, %{reason: reason}} = Promotion.migrate_here(here(), dir)
     assert reason =~ "migration 29990101000000 breaks failed in the running server"
     assert reason =~ "it broke"
   end
 
   test "a checkout this server does not run from is not migrated here", %{tmp_dir: dir} do
     assert Promotion.migrate_here(dir, dir) == {:ok, []}
+  end
+
+  # Captured at boot, but node-global: another test may have cleared it, and
+  # then nothing here is "this server's checkout" (2026-10-26 ejection).
+  defp here do
+    with nil <- BootVersion.root() do
+      BootVersion.capture(File.cwd!())
+      BootVersion.root()
+    end
   end
 end

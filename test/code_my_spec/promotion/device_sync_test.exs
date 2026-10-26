@@ -4,6 +4,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   import CodeMySpec.DevicesFixtures
   alias CodeMySpec.Promotion.DeviceSync
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.BootVersion
   alias CodeMySpec.{Repo, WorkingCopies}
 
   defmodule App do
@@ -107,8 +108,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     scope: scope,
     copy: copy
   } do
-    here = CodeMySpec.BootVersion.root()
-    assert is_binary(here)
+    here = here()
     {:ok, _} = copy |> Ecto.Changeset.change(root: here) |> Repo.update()
 
     DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
@@ -130,7 +130,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     scope: scope,
     copy: copy
   } do
-    {:ok, _} = copy |> Ecto.Changeset.change(root: CodeMySpec.BootVersion.root()) |> Repo.update()
+    {:ok, _} = copy |> Ecto.Changeset.change(root: here()) |> Repo.update()
 
     DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
     Process.put(:desired, "one")
@@ -141,6 +141,15 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
 
     assert Process.get(:reloads) == 1
     assert Process.get(:restarts, 0) == 0
+  end
+
+  # Captured at boot, but node-global: another test may have cleared it, and
+  # then nothing here is "this server's checkout" (2026-10-26 ejection).
+  defp here do
+    with nil <- BootVersion.root() do
+      BootVersion.capture(File.cwd!())
+      BootVersion.root()
+    end
   end
 
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}
