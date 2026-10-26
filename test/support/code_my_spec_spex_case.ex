@@ -2989,7 +2989,17 @@ defmodule CodeMySpecSpex.Case do
     # output.
     app = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
 
-    {:ok, _written} = Fixtures.generate_deploy_boilerplate(env, app: app, host: domain)
+    {:ok, image} = CodeMySpec.Provisioning.Registry.image(context.scope)
+    {:ok, repository} = CodeMySpec.Provisioning.Registry.repository(context.scope)
+
+    {:ok, _written} =
+      Fixtures.generate_deploy_boilerplate(env,
+        app: app,
+        host: domain,
+        registry: CodeMySpec.Provisioning.Registry.default_host(),
+        image: image,
+        kamal_image: repository
+      )
 
     context
   end
