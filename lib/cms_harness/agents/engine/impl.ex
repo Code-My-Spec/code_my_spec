@@ -39,7 +39,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   # Compaction budget. Alloy defaults to the model's window, 1M for Sonnet 5
   # and Opus 5.5, so an agent compacted only near a million while Claude Code
-  # on the same model works within ~200k.
+  # on the same model works within ~200k. A provider's own budget wins.
   @context_budget 200_000
 
   # Spilled tool results older than this are pruned when an agent starts. Not
@@ -922,7 +922,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
-       |> Keyword.put(:max_tokens, @context_budget)
+       |> Keyword.put_new(:max_tokens, @context_budget)
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
        # Bash owns its explicit deadline (up to one hour), including process

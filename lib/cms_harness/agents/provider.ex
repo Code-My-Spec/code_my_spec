@@ -28,6 +28,8 @@ defmodule CmsHarness.Agents.Provider do
   # `codex exec` refuses prompts over 1,048,576 characters; Alloy's default
   # 200k-token budget (at ~4 chars/token) lets a transcript pass that before
   # compacting. 160k compacts near 575k characters, leaving room for the rest.
+  # Codex's own thread is held to it too; by default Codex compacts near its
+  # model's window, and a resumed call resends the whole thread.
   @codex_max_tokens 160_000
 
   @type credential :: map()
@@ -71,7 +73,10 @@ defmodule CmsHarness.Agents.Provider do
         preamble: Keyword.get(opts, :provider_brief),
         # Codex's own tools are switched off in Alloy itself (its provider's
         # native-tools list); this drops only the permissions instructions.
-        config_overrides: ["include_permissions_instructions=false"],
+        config_overrides: [
+          "include_permissions_instructions=false",
+          "model_auto_compact_token_limit=#{@codex_max_tokens}"
+        ],
         timeout_ms: Keyword.get(opts, :timeout_ms) || @cli_exec_timeout_ms
       }
       |> with_codex_bin()

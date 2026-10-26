@@ -86,6 +86,15 @@ defmodule CmsHarness.Agents.ProviderTest do
                "leaving too little of codex's 1,048,576-character cap for the system " <>
                "prompt, tool definitions and schema a fresh thread also sends"
     end
+
+    # b97db538: Codex's own thread compacted only near 455k of a 475k window,
+    # every call resending up to that.
+    test "Codex's own thread compacts at the same budget" do
+      {:ok, opts} = Provider.options("openai-codex", %{})
+      {Alloy.Provider.Codex, codex} = Keyword.fetch!(opts, :provider)
+
+      assert "model_auto_compact_token_limit=#{opts[:max_tokens]}" in codex.config_overrides
+    end
   end
 
   describe "how long one claude-code call may run" do
