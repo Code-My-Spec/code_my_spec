@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story973.Criterion967Spex do
   setup :widget_on_the_fleet
 
   spex "Setup proves the widget through the deployed app", criterion: 967 do
-    scenario "an operational probe crosses the widget socket before setup completes" do
+    scenario "an operational probe reaches CodeMySpec before setup completes" do
       given_ "the widget is configured on Sam's deployed app", context do
         {:ok, view, _html} =
           live(
@@ -28,14 +28,17 @@ defmodule CodeMySpecSpex.Story973.Criterion967Spex do
 
       when_ "setup verifies the widget through the app's operational endpoint", context do
         run_console_step(context.view, :widget)
-        {:ok, Map.put(context, :html, render(context.view))}
+        assert_receive {:widget_site_request, "POST", "/_cms/verify/widget"}, 1_000
+        assert_receive {:widget_site_authorized, true}, 1_000
+        assert_receive {:widget_probe_sent, probe}, 1_000
+        {:ok, context |> Map.put(:probe, probe) |> Map.put(:html, render(context.view))}
       end
 
       then_ "CodeMySpec has received the app's probe message", context do
         {:ok, _inbox, inbox_html} =
           live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
-        assert inbox_html =~ "cms-verify-",
+        assert inbox_html =~ context.probe,
                "expected the deployed app's operational widget probe in Sam's inbox"
 
         {:ok, context}

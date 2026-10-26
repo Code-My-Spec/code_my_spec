@@ -665,13 +665,26 @@ defmodule CodeMySpecSpex.Case do
     # prevent.
     markers = Fixtures.widget_markers()
 
+    widget_test_owner = self()
+
     Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
-      Conn.send_resp(
-        conn,
-        200,
-        "<html><body><div #{markers.present}>" <>
-          "<button #{markers.toggle}>?</button></div></body></html>"
-      )
+      send(widget_test_owner, {:widget_site_request, conn.method, conn.request_path})
+
+      case {conn.method, conn.request_path} do
+        {"POST", "/_cms/verify/widget"} ->
+          verify_widget_from_fake_app(
+            conn,
+            Map.put(context, :widget_test_owner, widget_test_owner)
+          )
+
+        _ ->
+          Conn.send_resp(
+            conn,
+            200,
+            "<html><body><div #{markers.present}>" <>
+              "<button #{markers.toggle}>?</button></div></body></html>"
+          )
+      end
     end)
 
     # And the deployed site accepting a pull trigger. Publishing is
@@ -707,6 +720,26 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     {:ok, fakes: agents}
+  end
+
+  # Stand-in for the route the generated app must serve. Keep the transport
+  # real: an HTTP acceptance alone must never satisfy the widget proof.
+  defp verify_widget_from_fake_app(conn, context) do
+    authorized? = Conn.get_req_header(conn, "authorization") == ["Bearer dk_fleet_spex"]
+    send(context.widget_test_owner, {:widget_site_authorized, authorized?})
+
+    if authorized? do
+      {:ok, body, conn} = Conn.read_body(conn)
+      %{"probe" => probe} = Jason.decode!(body)
+      :ok = Fixtures.record_widget_probe(context.scope, probe, "http://127.0.0.1:4100")
+      send(context.widget_test_owner, {:widget_probe_sent, probe})
+
+      conn
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(202, Jason.encode!(%{accepted: true}))
+    else
+      Conn.send_resp(conn, 401, "deploy key required")
+    end
   end
 
   @doc "The agent holding a fake provider's state, for a `given_` to arrange."

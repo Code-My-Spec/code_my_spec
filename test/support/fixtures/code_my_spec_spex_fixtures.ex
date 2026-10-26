@@ -418,6 +418,23 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc "Record a message sent by the stand-in deployed app for widget verification."
+  def record_widget_probe(scope, probe, origin) do
+    visitor = "widget-probe-#{System.unique_integer([:positive])}"
+
+    with {:ok, conversation} <-
+           Conversations.find_or_create_conversation(
+             scope.active_account_id,
+             scope.active_project_id,
+             "#{visitor}@example.com",
+             end_user_id: visitor
+           ),
+         {:ok, _message} <-
+           Conversations.add_message(conversation, :user, probe, visitor, [], origin: origin) do
+      :ok
+    end
+  end
+
   @doc """
   An app access token for the project, minted the way the deployed app gets one.
 

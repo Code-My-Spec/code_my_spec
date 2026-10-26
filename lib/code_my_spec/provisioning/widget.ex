@@ -258,8 +258,8 @@ defmodule CodeMySpec.Provisioning.Widget do
   (bundle mounts, CORS); `verify_present/2` covers the served markup, and the
   resource records `via=loopback`.
 
-  Failure is not fatal: older applications answer 404 and ones without the
-  widget 501. The poll that follows is the real check.
+  A missing or refused endpoint leaves setup unproven. A successful response
+  must be followed by a matching message received from the deployed site.
   """
   @spec trigger_message(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def trigger_message(site_url, deploy_key, opts \\ []) do
