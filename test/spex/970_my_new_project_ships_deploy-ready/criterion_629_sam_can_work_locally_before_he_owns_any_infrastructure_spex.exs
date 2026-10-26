@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story970.Criterion629Spex do
   spex "Sam can work locally before he owns any infrastructure", criterion: 629 do
     scenario "a fresh project starts and serves a request without provider credentials" do
       given_ "Sam has generated a project and configured no provider credentials", context do
+        # given: already true — `setup :drill_working_directory` generated the
+        # cms.new application; no provider-account setup ran for this project.
         assert "mix.exs" in project_tree(context.execution_context),
                "expected cms.new to generate a local application"
 
