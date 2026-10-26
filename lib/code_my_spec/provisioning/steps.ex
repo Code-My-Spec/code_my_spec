@@ -1935,7 +1935,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     scope
     |> Conversations.list_widget_messages()
-    |> Enum.map(&%{origin: origin_of(&1.origin, host), id: &1.id, at: &1.inserted_at})
+    |> Enum.map(
+      &%{
+        origin: origin_of(&1.origin, host),
+        id: &1.id,
+        at: &1.inserted_at,
+        body: Conversations.Message.text(&1)
+      }
+    )
   end
 
   defp origin_of(origin, host) when is_binary(origin) and is_binary(host) do
