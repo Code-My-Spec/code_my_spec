@@ -23,7 +23,7 @@ defmodule CodeMySpec.AgentTasks.PromoteWork do
     end
   end
 
-  @doc "The stamp alone, promoting nothing. See the moduledoc."
+  @doc "Read the tracked publication revision, promoting nothing."
   def evaluate(scope, task) do
     case story_for(scope, task) do
       nil -> no_story()

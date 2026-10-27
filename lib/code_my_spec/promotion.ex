@@ -565,8 +565,11 @@ defmodule CodeMySpec.Promotion do
 
   defp complete_and_stamp_story(scope, story, version, commit, copy_id, expected_revision) do
     case Qa.complete_reviewed_story_issues(scope, story, commit, expected_revision) do
-      {:ok, _issues} -> stamp_promoted_story(scope, story, version, commit, copy_id)
-      {:error, reason} -> Repo.rollback(reason)
+      {:ok, _issues} ->
+        stamp_promoted_story(scope, story, version, commit, copy_id, expected_revision)
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
   end
 
@@ -597,10 +600,15 @@ defmodule CodeMySpec.Promotion do
         story: story
       })
 
-  defp stamp_promoted_story(_scope, nil, _version, _commit, _copy_id), do: :ok
+  defp stamp_promoted_story(_scope, nil, _version, _commit, _copy_id, _candidate), do: :ok
 
-  defp stamp_promoted_story(scope, story, version, commit, copy_id) do
-    opts = [at: DateTime.utc_now(), commit: commit, working_copy_id: copy_id]
+  defp stamp_promoted_story(scope, story, version, commit, copy_id, candidate) do
+    opts = [
+      at: DateTime.utc_now(),
+      commit: commit,
+      candidate_commit: candidate,
+      working_copy_id: copy_id
+    ]
 
     case Stories.mark_story_promoted(scope, story, version, opts) do
       {:ok, _story} ->

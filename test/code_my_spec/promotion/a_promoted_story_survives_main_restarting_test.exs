@@ -32,6 +32,24 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
            "main restarting un-promoted a story whose code it already holds"
   end
 
+  test "a new QA revision is unpromoted even with an older publication stamp" do
+    scope = full_scope_fixture()
+    main_copy(scope, "serving")
+
+    story = %{
+      id: 50,
+      promoted_version: "0.1.1",
+      promoted_candidate_commit: "old-candidate",
+      promoted_qa_commit: "old-qa",
+      qa_ready_commit: "new-qa"
+    }
+
+    {_unpromoted, promoted} = RunningCopy.running_copy_verdicts(scope, [story])
+    assert {false, %{reason: reason}} = promoted[50]
+    assert reason =~ "new-qa has no tracked publication"
+    assert RunningCopy.running_copy_check(scope, story) == promoted[50]
+  end
+
   test "an unstamped story is still unpromoted" do
     scope = full_scope_fixture()
     main_copy(scope, "serving")
