@@ -9,7 +9,8 @@ defmodule CodeMySpecSpex.Story1149.Criterion2412Spex do
 
   spex "Sam's Main works in copies on two devices in one conversation", criterion: 2412 do
     scenario "Main names each device's copy without changing conversations" do
-      given_ "Main has one conversation and two authorized copies on different devices", context do
+      given_ "Main has one conversation and two authorized copies on different devices",
+             context do
         {:ok, AttachmentHelpers.setup(context)}
       end
 

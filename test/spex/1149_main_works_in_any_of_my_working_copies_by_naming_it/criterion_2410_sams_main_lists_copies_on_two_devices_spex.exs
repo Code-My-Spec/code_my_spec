@@ -21,10 +21,13 @@ defmodule CodeMySpecSpex.Story1149.Criterion2410Spex do
       then_ "each copy is shown with its ID and device", context do
         one_id = context.one.id
         two_id = context.two.id
+
         assert %{"id" => ^one_id, "device_name" => "laptop"} =
                  Enum.find(context.listed_copies, &(&1["id"] == one_id))
+
         assert %{"id" => ^two_id, "device_name" => "remote"} =
                  Enum.find(context.listed_copies, &(&1["id"] == two_id))
+
         {:ok, context}
       end
 
