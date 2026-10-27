@@ -91,7 +91,7 @@ defmodule CmsHarness.Agents.ProviderTest do
     # every call resending up to that.
     test "Codex's own thread compacts at the same budget" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, codex} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, codex} = Keyword.fetch!(opts, :provider)
 
       assert "model_auto_compact_token_limit=#{opts[:max_tokens]}" in codex.config_overrides
     end
