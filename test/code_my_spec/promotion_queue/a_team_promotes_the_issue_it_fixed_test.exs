@@ -19,6 +19,7 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
   import CodeMySpecTest.PromotionQueueHelpers
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.AgentTasks.IssuePromote
   alias CodeMySpec.ExecutionContexts.ExecutionContext
@@ -56,6 +57,12 @@ defmodule CodeMySpec.PromotionQueue.ATeamPromotesTheIssueItFixedTest do
         %{scope | active_working_copy_id: copy.id},
         ExecutionContext.new(:local, root)
       )
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(
+      scope,
+      CodeMySpec.Analysis.Run.sources(),
+      commit: git!(root, ["rev-parse", "HEAD"])
+    )
 
     on_exit(fn -> stop_worker(scope.active_project_id) end)
 
