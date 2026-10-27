@@ -576,12 +576,15 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   is synchronous now — nothing in it is long-running, the restart was already
   detached — so it answers, and these criteria cover the door that is used.
   """
-  def promote(context, story_number) do
+  def promote(context, story_number), do: promote(context, story_number, [])
+
+  def promote(context, story_number, opts) do
     frame = %Anubis.Server.Frame{
       assigns: %{current_scope: context.scope, agent_id: Map.get(context, :agent_id)}
     }
 
-    {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
+    params = %{story_number: story_number, fresh: Keyword.get(opts, :fresh, false)}
+    {:reply, response, _frame} = Promote.execute(params, frame)
     response
   end
 
