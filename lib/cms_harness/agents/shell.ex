@@ -90,24 +90,28 @@ defmodule CmsHarness.Agents.Shell do
   defp with_redirect(command, dir, timeout, target, mode) do
     case execute(command, dir, timeout) do
       {:ok, output, exit_code} ->
-        case write_redirect(target, output, mode) do
-          :ok ->
-            reply =
-              "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"
-
-            if restricted_refusal?(output), do: {:error, reply}, else: {:ok, reply}
-
-          {:error, reason} ->
-            {:error,
-             "#{output}\nexit code: #{exit_code}\n\nCould not write #{target}: " <>
-               "#{:file.format_error(reason)}"}
-        end
+        redirected_result(target, output, exit_code, mode)
 
       {:crash, output, reason} ->
         crashed(output, reason)
 
       {:timeout, output, cleanup} ->
         timed_out(output, timeout, cleanup)
+    end
+  end
+
+  defp redirected_result(target, output, exit_code, mode) do
+    case write_redirect(target, output, mode) do
+      :ok ->
+        reply =
+          "Output written to #{target} (#{byte_size(output)} bytes).\nexit code: #{exit_code}"
+
+        if restricted_refusal?(output), do: {:error, reply}, else: {:ok, reply}
+
+      {:error, reason} ->
+        {:error,
+         "#{output}\nexit code: #{exit_code}\n\nCould not write #{target}: " <>
+           "#{:file.format_error(reason)}"}
     end
   end
 
