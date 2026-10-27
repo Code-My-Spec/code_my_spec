@@ -30,6 +30,20 @@ defmodule CmsHarness.SyncPathTest do
   alias CmsHarnessTest.FakeServer
 
   setup do
+    # This suite exercises real disk changes through the watcher, scan and
+    # websocket. Polling avoids macOS FSEvents losing notifications when many
+    # integration tests create and stop streams on the same machine.
+    previous_watch_options = Application.get_env(:code_my_spec, :harness_watch_options)
+    Application.put_env(:code_my_spec, :harness_watch_options, backend: :fs_poll, interval: 100)
+
+    on_exit(fn ->
+      if previous_watch_options == nil do
+        Application.delete_env(:code_my_spec, :harness_watch_options)
+      else
+        Application.put_env(:code_my_spec, :harness_watch_options, previous_watch_options)
+      end
+    end)
+
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
     on_exit(fn -> restore_project_id(previous) end)
@@ -245,10 +259,9 @@ defmodule CmsHarness.SyncPathTest do
       assert_receive {:observations, _, first}, 5_000
       assert eventually(fn -> Watcher.watching?(project.root) end)
 
-      # `watching?` goes true when `FileSystem.start_link/1` returns, but the
-      # OS-level stream takes a moment longer to establish. In production the
-      # gap is covered by the full sync that runs on join; here it just has to
-      # be waited out, or the write races the subscription.
+      # `watching?` goes true when `FileSystem.start_link/1` returns, before
+      # the polling backend has captured its initial snapshot. Wait for that
+      # snapshot so the new file is observed as a change.
       Process.sleep(1_000)
 
       # Wait for a manifest *containing the new file*, not merely for the next
