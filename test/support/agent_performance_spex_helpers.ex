@@ -30,6 +30,22 @@ defmodule CodeMySpecSpex.AgentPerformanceHelpers do
     |> Jason.decode!()
   end
 
+  @doc "Wait for the performance report task to finish, then render the page."
+  @spec await_report(Phoenix.LiveViewTest.View.t()) :: String.t()
+  def await_report(view) do
+    {:ok, pids} = Phoenix.LiveView.Channel.async_pids(view.pid)
+
+    pids
+    |> Enum.map(&Process.monitor/1)
+    |> Enum.each(fn ref ->
+      receive do
+        {:DOWN, ^ref, :process, _pid, _reason} -> :ok
+      end
+    end)
+
+    Phoenix.LiveViewTest.render(view)
+  end
+
   @doc "One story's row in the time-per-story chart: its stage hours by name and its tooltip lines."
   @spec story_row(map(), String.t()) :: %{hours: %{String.t() => number()}, details: [String.t()]}
   def story_row(chart, title) do
