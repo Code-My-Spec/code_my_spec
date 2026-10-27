@@ -13,10 +13,9 @@ defmodule CmsHarness.Agents.CodexWithToolsTest do
 
   test "a short resumed turn carries the named catalog" do
     runner =
-      runner(fn prompt, _attempt ->
-        if String.contains?(prompt, "short operator message"),
-          do: reply("end_turn", "done"),
-          else: reply("end_turn", "ready")
+      runner(fn
+        _prompt, 1 -> reply("end_turn", "ready")
+        _prompt, 2 -> reply("end_turn", "done")
       end)
 
     config = config(runner)
@@ -40,12 +39,10 @@ defmodule CmsHarness.Agents.CodexWithToolsTest do
 
   test "a missing-tools answer on resume is retried once and replaced by a tool call" do
     runner =
-      runner(fn prompt, attempt ->
-        cond do
-          attempt == 1 -> reply("end_turn", "ready")
-          String.contains?(prompt, "previous answer incorrectly claimed") -> tool_reply()
-          true -> reply("end_turn", "get_next_requirement is not available in my tools")
-        end
+      runner(fn
+        _prompt, 1 -> reply("end_turn", "ready")
+        _prompt, 2 -> reply("end_turn", "get_next_requirement is not available in my tools")
+        _prompt, 3 -> tool_reply()
       end)
 
     config = config(runner)
