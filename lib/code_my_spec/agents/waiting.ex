@@ -75,8 +75,12 @@ defmodule CodeMySpec.Agents.Waiting do
 
   defp check(name, scope, agent, _path), do: check(name, scope, agent)
 
-  # The provider refused its last turn and named when to come back (044599cc).
-  # A turn before then is refused again.
+  # Hold a refusal without a retry time until the agent's state is cleared.
+  # A dated refusal holds only until the provider's retry time (044599cc).
+  defp check(:provider_refused, _scope, %{provider_refusal: refusal, provider_retry_at: nil})
+       when is_binary(refusal),
+       do: {:provider_refused, nil}
+
   defp check(:provider_refused, _scope, %{provider_retry_at: %DateTime{} = at}) do
     if DateTime.compare(at, DateTime.utc_now()) == :gt, do: {:provider_refused, at}
   end

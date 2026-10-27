@@ -52,6 +52,21 @@ defmodule CmsHarness.WatcherResyncTest do
              "with the floor removed, this is the only thing that would show it"
   end
 
+  test "an overflow event schedules a full scan even for an ignored path" do
+    for reason <- [:mustscansubdirs, :userdropped, :kerneldropped] do
+      state = %Watcher{project: %{id: "p", root: "/tmp/x"}, fs_pid: self(), watching?: true}
+
+      assert {:noreply, new_state} =
+               Watcher.handle_info(
+                 {:file_event, self(), {"/tmp/x/deps", [reason]}},
+                 state
+               )
+
+      assert new_state.timer
+      Process.cancel_timer(new_state.timer)
+    end
+  end
+
   describe "the liveness check (aac6356e)" do
     test "a stream that has delivered nothing since it started watching is reported" do
       state = %Watcher{

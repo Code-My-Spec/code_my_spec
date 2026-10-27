@@ -24,7 +24,7 @@ defmodule CmsHarness.ARestartStillBootingIsStartingNotDownTest do
     FakeAppInstanceRunner.put_probe(:down)
 
     assert %{"status" => "ok", "app_status" => "starting", "app_url" => url} =
-             push_app_event("restart_app")
+             push_app_event("restart_app", 15_000)
 
     assert url
 
