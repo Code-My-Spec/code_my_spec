@@ -409,9 +409,9 @@ defmodule CodeMySpec.Hooks.Stop do
   @transit_margin_ms 2_500
   @min_bound_ms 1_000
 
-  # The read starts after the request has already spent time (3.1s on
-  # 2026-10-27 under load), so its bound is what is left of the budget: a full
-  # 7.5s on top answered at 10.6s, after the harness had refused the stop.
+  # The read starts after the request has already spent time, so its bound is
+  # what is left of the budget: a full bound on top of that answers after the
+  # harness has stopped waiting.
   defp decide_timeout_ms do
     case Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms) do
       {:ok, override} ->
