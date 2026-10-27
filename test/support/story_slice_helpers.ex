@@ -99,7 +99,11 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})
   end
 
+  # Settled first: the tool reads under a one-second deadline and answers "being
+  # rebuilt" while the projector is still on what the fixture just wrote, which
+  # a loaded box made it do (0c35c198, the_team_finishes_a_story_together_test).
   def next(context, assigns \\ %{}) do
+    :ok = Fixtures.settle_graph(context.scope)
     call(context, "get_next_requirement", %{}, assigns)
   end
 
@@ -266,7 +270,14 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   call this.
   """
   def land(context) do
-    {:ok, _} = Fixtures.record_story_publication(context.scope, context.story.id, "2.0.44")
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+
+    {:ok, _} =
+      Fixtures.record_story_publication(context.scope, story.id, "2.0.44",
+        candidate_commit: story.qa_ready_commit,
+        commit: story.qa_ready_commit
+      )
+
     context
   end
 

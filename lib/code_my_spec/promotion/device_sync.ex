@@ -2,6 +2,8 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   @moduledoc "Durable application of a published revision on the project's main device."
 
   import Ecto.Query
+  require Logger
+
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.AppInstances
   alias CodeMySpec.AppInstances.AppInstance
@@ -208,6 +210,7 @@ defmodule CodeMySpec.Promotion.DeviceSync do
           case instance.promotion_sync do
             %{"status" => status} = desired when status in ["pending", "failed"] ->
               outcome = apply_revision(scope, copy, instance, desired, opts)
+              report(copy, desired, outcome)
               record(instance.id, desired, outcome)
 
             other ->
@@ -219,6 +222,35 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       end
     end)
   end
+
+  # Recorded on the app instance alone, a refusal went unseen: a dirty main
+  # checkout refused two publications for hours and nothing said so.
+  defp report(copy, _desired, {:ok, head}),
+    do: Logger.info("[DeviceSync] #{copy.root} is serving #{short(head)}")
+
+  defp report(copy, desired, {:error, reason}) do
+    if unconfirmable?(reason),
+      do: report_waiting(copy, desired, reason),
+      else: report_failed(copy, desired, reason)
+  end
+
+  defp report_waiting(copy, desired, reason) do
+    Logger.warning(
+      "[DeviceSync] #{copy.root} took #{short(desired["head"])} but its harness is " <>
+        "not back to confirm it; confirming when it rejoins: #{inspect(reason)}"
+    )
+  end
+
+  # A warning: a refusal is an outcome the receipt records, not a crash.
+  defp report_failed(copy, desired, reason) do
+    Logger.warning(
+      "[DeviceSync] #{copy.root} did not take #{short(desired["head"])} " <>
+        "(publication #{desired["publication_sequence"]}): #{inspect(reason)}"
+    )
+  end
+
+  defp short(head) when is_binary(head), do: String.slice(head, 0, 9)
+  defp short(head), do: inspect(head)
 
   defp apply_revision(scope, copy, instance, desired, opts) do
     sync = Keyword.get(opts, :sync, &Runner.remote_sync/5)
@@ -240,25 +272,35 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       if serving?(current, desired["head"]) do
         {:ok, desired["head"]}
       else
-        refresh_revision(app, scope, instance.id, desired, changed_files)
+        refresh_revision(app, scope, instance.id, desired, changed_files, copy.root)
       end
     end
   end
 
-  defp refresh_revision(app, scope, id, desired, changed_files) do
+  # `loaded`: without it, a landing on the checkout this server runs from was
+  # reloaded in place (04:05Z), and the reload's migrate and :4000's code
+  # reloader hung every request for seven minutes.
+  defp refresh_revision(app, scope, id, desired, changed_files, root) do
     plan =
       Promotion.deployment_plan(changed_files,
         restart: desired["restart"],
+        loaded: Promotion.loaded_here(root),
         reload_supported: reload_supported(app, scope, id)
       )
 
-    result =
-      case plan.action do
-        :restart -> restart(app, scope, id)
-        :reload -> reload(app, scope, id)
-      end
+    case plan.action do
+      :restart -> verify_revision(app, scope, id, desired["head"], restart(app, scope, id))
+      :reload -> reload(app, scope, id, root, desired["head"])
+    end
+  end
 
-    verify_revision(app, scope, id, desired["head"], result)
+  # A failed migration is the outcome: the app still answers on the new head,
+  # and verifying would read the landing as clean.
+  defp reload(app, scope, id, root, head) do
+    case Promotion.migrate_here(root) do
+      {:ok, _versions} -> verify_revision(app, scope, id, head, reload(app, scope, id))
+      {:error, %{reason: reason}} -> {:error, {:migration_failed, reason}}
+    end
   end
 
   defp verify_revision(app, scope, id, head, result) do
@@ -282,6 +324,7 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   defp ensure_running(app, _scope, id), do: app.ensure_app_running(id, @timeout)
   defp restart(AppInstances, scope, id), do: AppInstances.restart(scope, id, @timeout)
   defp restart(app, _scope, id), do: app.restart_app(id, @timeout)
+
   defp reload(AppInstances, scope, id), do: AppInstances.reload(scope, id, @timeout)
   defp reload(app, _scope, id), do: app.reload_app(id, @timeout)
 
@@ -311,6 +354,14 @@ defmodule CodeMySpec.Promotion.DeviceSync do
     end)
   end
 
+  # A restart: true landing restarts the harness too, so the confirmation can
+  # find it gone. That is not a failure: left pending, the harness's rejoin
+  # (`copy_joined/2`) applies it again and finds the app already on the head.
+  defp unconfirmable?({:app_revision_unconfirmed, _result, {:error, verify}}),
+    do: verify == :harness_not_connected or match?({:harness_gone, _}, verify)
+
+  defp unconfirmable?(_reason), do: false
+
   defp same_request?(left, right),
     do: left["promotion_id"] == right["promotion_id"] and left["head"] == right["head"]
 
@@ -333,7 +384,9 @@ defmodule CodeMySpec.Promotion.DeviceSync do
               })
 
             {:error, reason} ->
-              Map.merge(desired, %{"status" => "failed", "error" => inspect(reason)})
+              if unconfirmable?(reason),
+                do: Map.merge(desired, %{"status" => "pending", "error" => inspect(reason)}),
+                else: Map.merge(desired, %{"status" => "failed", "error" => inspect(reason)})
           end
 
         instance |> Ecto.Changeset.change(promotion_sync: state) |> Repo.update!()

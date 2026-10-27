@@ -6,11 +6,10 @@ defmodule CodeMySpec.AppInstances.Tools.AttachedRestartTest do
 
   alias CodeMySpec.{AppInstances, WorkingCopies}
   alias CodeMySpec.Agents.{Agent, AppRestart}
-  alias CodeMySpec.AgentAttachments.Attachment
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.AppInstances.Tools.RestartApp
 
-  test "attached and detached Main route restart and its receipt to the selected copy" do
+  test "Main routes restart and its receipt to the copy it names" do
     scope = working_copy_scope_fixture()
     {:ok, home} = WorkingCopies.fetch(scope.active_working_copy_id)
     {:ok, copy} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
@@ -27,13 +26,6 @@ defmodule CodeMySpec.AppInstances.Tools.AttachedRestartTest do
         provider: "openai",
         status: :running
       })
-
-    Repo.insert!(%Attachment{
-      agent_id: agent.id,
-      project_id: scope.active_project_id,
-      account_id: scope.active_account_id,
-      working_copy_id: copy.id
-    })
 
     parent = self()
 

@@ -11,6 +11,7 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
     WorkingCopies
   }
 
+  alias ClientUtils.Harness.Onboarding
   alias CodeMySpec.Provisioning.QaFixture
   alias CodeMySpecWeb.QaEnvironments
   alias ExOauth2Provider.AccessTokens
@@ -233,13 +234,32 @@ defmodule CodeMySpecWeb.DevProvisioningFixtureController do
            WorkingCopies.issue(scope, nil, device: device.id, root: root, label: name),
          {:ok, copy} <- WorkingCopies.report_root(copy, root),
          {:ok, project} <- Projects.ensure_deploy_key(scope, scope.active_project),
-         :ok <- write_identity(root, copy, project) do
+         :ok <- write_identity(root, copy, project),
+         :ok <- onboard(root, copy, project) do
       {:ok, %{working_copy_id: copy.id, device_id: device.id, root: root}}
     end
   end
 
-  # How to bring the copy online: a harness from this checkout on a port of its
-  # own, against this app. QA starts it and stops it by its pid.
+  # Onboarded as `mix cms.harness.onboard` onboards: the settings and harness
+  # config `Onboarding.check/2` asks for. No server URL: that would ask this
+  # app for a real preview tunnel, and the harness is given the URL by its
+  # command.
+  defp onboard(root, copy, project) do
+    report =
+      Onboarding.onboard(root,
+        app: "fixture",
+        harness_id: copy.id,
+        deploy_key: project.deploy_key
+      )
+
+    case report.settings do
+      {:ok, _path} -> :ok
+      {:error, reason} -> {:error, {:onboarding_failed, reason}}
+    end
+  end
+
+  # How to bring the copy online: a harness from this checkout on its port,
+  # against this app. QA starts it and stops it by its pid.
   defp with_harness(copy, origin) do
     port = free_port()
 

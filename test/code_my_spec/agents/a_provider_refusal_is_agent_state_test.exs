@@ -13,6 +13,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
@@ -83,6 +84,22 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
 
     assert agent.provider_refusal == "Invalid API key · Please run /login"
     assert agent.provider_retry_at == nil
+  end
+
+  # e9d92731: five turns in a row failed on an expired Claude login, each
+  # re-offered as an ordinary failure.
+  test "a login that cannot be refreshed is a refusal, and gets no more work", ctx do
+    text =
+      "claude exec failed with status 1: Failed to authenticate: " <>
+        "OAuth session expired and could not be refreshed."
+
+    agent = turn(ctx.scope, ctx.agent, [%{"kind" => "turn_failed", "text" => text}])
+
+    assert agent.provider_refusal =~ "OAuth session expired"
+    assert agent.provider_retry_at == nil
+    # Held by the refusal itself, not by whatever else holds the agent's slot.
+    assert Waiting.reason(ctx.scope, agent, :offer) == {:provider_refused, nil}
+    assert Work.request_turn_if_runnable(ctx.scope, agent, :test) == {:ok, :not_runnable}
   end
 
   test "a failure that is not a refusal records nothing", ctx do

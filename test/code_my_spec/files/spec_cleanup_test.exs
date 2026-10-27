@@ -1,16 +1,15 @@
 defmodule CodeMySpec.Files.SpecCleanupTest do
   @moduledoc """
-  73e302aa. A criterion's wording is never changed (story 1076), so retiring it
-  is the only change that invalidates its spex. Retiring deletes the spex naming
-  its number on the caller's working copy, a sweep deletes any spex there whose
-  number is not a live criterion, and each is reported as deleted or pending
-  (copy offline). Another copy's spex are left to it.
+  A criterion's wording is never changed (story 1076), so retiring it is the
+  only change that invalidates its spex. Retiring never deletes a file
+  (dea00db7: deleted in the product agent's checkout, main's, they refused
+  every sync after them). The spex on the caller's copy that cover nothing are
+  listed for the agent to remove in its own copy; another copy's are not.
   """
 
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.AcceptanceCriteriaFixtures
-  import Ecto.Query, only: [from: 2]
   import CodeMySpec.DevicesFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
@@ -80,80 +79,42 @@ defmodule CodeMySpec.Files.SpecCleanupTest do
     path
   end
 
-  # Every recorded spex of the project, whichever copy it was seen on.
-  defp rows(ctx) do
-    CodeMySpec.Repo.all(
-      from f in CodeMySpec.Files.File,
-        where: f.project_id == ^ctx.scope.active_project_id and f.role == :bdd_spec,
-        select: {f.path, f.criterion_number}
-    )
-    |> Map.new()
-  end
-
-  test "retiring a criterion deletes its spex, reports it, and leaves the others", ctx do
+  test "retiring a criterion lists its spex for removal and deletes nothing", ctx do
     mine = spex(ctx, ctx.online, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
     other = spex(ctx, ctx.online, "test/spex/s/criterion_two_spex.exs", ctx.two.number)
 
     {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
 
-    assert [%{path: ^mine, outcome: :deleted}] =
-             SpecCleanup.for_retired(ctx.scope, ctx.one.number)
-
-    refute ExecutionContexts.file_exists?(ctx.env, mine)
+    one = ctx.one.number
+    assert [%{path: ^mine, criterion_number: ^one}] = SpecCleanup.orphans(ctx.scope)
+    assert ExecutionContexts.file_exists?(ctx.env, mine)
     assert ExecutionContexts.file_exists?(ctx.env, other)
-    refute Map.has_key?(rows(ctx), mine)
-    assert Map.has_key?(rows(ctx), other)
   end
 
-  test "a spex on a copy that cannot be reached is pending, kept, and covers nothing", ctx do
-    path = spex(ctx, ctx.offline, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
-
-    {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
-
-    on_offline = %{ctx.scope | active_working_copy_id: ctx.offline.id}
-
-    assert [%{path: ^path, outcome: {:pending, _why}}] =
-             SpecCleanup.for_retired(on_offline, ctx.one.number)
-
-    assert Map.has_key?(rows(ctx), path)
-
-    assert SpecCleanup.report(SpecCleanup.for_retired(on_offline, ctx.one.number)) =~
-             "Pending deletion: #{path}"
-  end
-
-  test "another copy's spex is left for that copy to remove", ctx do
-    theirs = spex(ctx, ctx.offline, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
-
-    {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
-
-    assert SpecCleanup.for_retired(ctx.scope, ctx.one.number) == []
-    assert SpecCleanup.sweep_orphans(ctx.scope) == []
-    assert Map.has_key?(rows(ctx), theirs)
-  end
-
-  test "the sweep deletes a spex naming a retired or unknown number, and only those", ctx do
+  test "the list names a spex for a retired or unknown number, and only those", ctx do
     retired = spex(ctx, ctx.online, "test/spex/s/retired_spex.exs", ctx.one.number)
     unknown = spex(ctx, ctx.online, "test/spex/s/unknown_spex.exs", 999_999)
-    live = spex(ctx, ctx.online, "test/spex/s/live_spex.exs", ctx.two.number)
+    _live = spex(ctx, ctx.online, "test/spex/s/live_spex.exs", ctx.two.number)
     {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
 
-    results = SpecCleanup.sweep_orphans(ctx.scope)
-
-    assert Enum.sort(Enum.map(results, & &1.path)) == Enum.sort([retired, unknown])
-    assert Enum.all?(results, &(&1.outcome == :deleted))
-    assert ExecutionContexts.file_exists?(ctx.env, live)
-    refute ExecutionContexts.file_exists?(ctx.env, retired)
+    paths = ctx.scope |> SpecCleanup.orphans() |> Enum.map(& &1.path) |> Enum.sort()
+    assert paths == Enum.sort([retired, unknown])
   end
 
-  test "with nothing to remove the report says so, and the sweep is idempotent", ctx do
-    assert SpecCleanup.sweep_orphans(ctx.scope) == []
-    assert SpecCleanup.report([]) == "No spex file named it."
+  test "another copy's spex is left for that copy", ctx do
+    spex(ctx, ctx.offline, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
+    {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
+
+    assert SpecCleanup.orphans(ctx.scope) == []
   end
 
-  test "a live criterion's spex is never touched", ctx do
-    live = spex(ctx, ctx.online, "test/spex/s/live_spex.exs", ctx.two.number)
+  test "the report tells the agent to delete each in its copy and commit", ctx do
+    path = spex(ctx, ctx.online, "test/spex/s/criterion_one_spex.exs", ctx.one.number)
+    {:ok, _} = AcceptanceCriteria.retire_criterion(ctx.scope, ctx.one)
 
-    assert SpecCleanup.sweep_orphans(ctx.scope) == []
-    assert ExecutionContexts.file_exists?(ctx.env, live)
+    report = ctx.scope |> SpecCleanup.orphans() |> SpecCleanup.report()
+    assert report =~ "- #{path} (criterion #{ctx.one.number})"
+    assert report =~ "Delete each in your working copy and commit"
+    assert SpecCleanup.report([]) =~ "No spex on your working copy"
   end
 end

@@ -158,7 +158,7 @@ defmodule CmsHarnessTest.HeldProvider do
   its message to an idle agent and find it started rather than queued.
   """
   @spec await_request(timeout()) :: :ok
-  defdelegate await_request(timeout \\ 5_000), to: Store
+  defdelegate await_request(timeout \\ CmsHarnessTest.GateWait.event_timeout()), to: Store
 
   @doc "Every request body this endpoint has been sent, newest last."
   @spec seen() :: [String.t()]

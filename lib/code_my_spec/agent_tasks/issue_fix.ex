@@ -23,6 +23,7 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
 
   alias CodeMySpec.Issues
   alias CodeMySpec.Promotion
+  alias CodeMySpec.Qa.IssueQaAttempts
 
   def dispatch(_node) do
     "Fix the issue your team is bound to, then call `evaluate_task`. Completing it " <>
@@ -43,6 +44,37 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
       issue ->
         {:ok, build_prompt(scope, issue, task)}
     end
+  end
+
+  # A failed attempt sends the fix back here; without QA's reasons the rework
+  # prompt read the same as the first, and the coder declined it as a loop
+  # (698d994c, 2026-10-26).
+  defp qa_sent_back(scope, issue) do
+    case IssueQaAttempts.latest(scope, issue.id) do
+      %{status: status} = attempt when status != :pass -> sent_back(attempt)
+      _none_or_passed -> ""
+    end
+  end
+
+  defp sent_back(attempt) do
+    failed =
+      attempt.scenarios
+      |> Enum.reject(&(&1.status == :pass))
+      |> Enum.map_join("\n\n", &"- **#{&1.name}** (#{&1.status}): #{&1.observation}")
+
+    findings =
+      if attempt.issue_ids == [],
+        do: "",
+        else: "\n\nQA filed: #{Enum.join(attempt.issue_ids, ", ")}."
+
+    """
+    ## QA sent this fix back
+
+    QA's latest attempt (#{attempt.id}) did not pass. Address what it found, \
+    commit, and complete again; resubmitting the same commit gets the same verdict.
+
+    #{failed}#{findings}
+    """
   end
 
   # Already certified — before this offer was made, or by a prior call that
@@ -139,6 +171,7 @@ defmodule CodeMySpec.AgentTasks.IssueFix do
 
     #{issue.description}
 
+    #{qa_sent_back(scope, issue)}
     Work in the issue's scope: app defects change application code; QA defects
     repair the test tooling; docs defects correct documentation; #{framework_line(issue)}
     Add or repair regression coverage. Do not skip tests, mark them pending,

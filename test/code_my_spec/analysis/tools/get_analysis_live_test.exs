@@ -29,7 +29,9 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLiveTest do
   end
 
   test "a run that has reported nothing says so", %{scope: scope, run: run} do
-    assert %{"run_id" => id, "live" => "not_retained"} = live(%{run_id: run.id}, scope)
+    assert %{"run_id" => id, "status" => "queued", "live" => "no_events"} =
+             live(%{run_id: run.id}, scope)
+
     assert id == run.id
 
     LiveRuns.fold(run.id, %{"event" => "unknown_to_the_fold"})

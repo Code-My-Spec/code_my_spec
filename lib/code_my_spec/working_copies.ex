@@ -615,6 +615,18 @@ defmodule CodeMySpec.WorkingCopies do
     )
   end
 
+  @doc "The ids of every working copy of every project in `account_id`."
+  @spec ids_for_account(Ecto.UUID.t()) :: [Ecto.UUID.t()]
+  def ids_for_account(account_id) when is_binary(account_id) do
+    Repo.all(
+      from h in WorkingCopy,
+        join: p in Project,
+        on: p.id == h.project_id,
+        where: p.account_id == ^account_id,
+        select: h.id
+    )
+  end
+
   @doc "The harness the operator sees unless they ask for another, or `nil`."
   @spec most_recent(Scope.t()) :: WorkingCopy.t() | nil
   def most_recent(%Scope{} = scope), do: scope |> list_harnesses() |> List.first()

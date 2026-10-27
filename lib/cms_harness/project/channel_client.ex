@@ -54,6 +54,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Config
   alias CmsHarness.Credentials
   alias CmsHarness.HarnessConfig
+  alias CmsHarness.Proxy
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.DraftBuffer
   alias CmsHarness.Project.Transport
@@ -223,7 +224,10 @@ defmodule CmsHarness.Project.ChannelClient do
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
-       "attachment_operations" => true,
+       "copy_tools" => true,
+       # What each provider's local login serves, so the server offers and
+       # defaults to models that exist (a retired default crash-looped agents).
+       "served_models" => CmsHarness.Agents.Provider.served_models(),
        # Lets the server name a contract mismatch outright. Absent means a
        # harness that predates the field.
        "contract_version" => @contract_version
@@ -853,15 +857,17 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_message(
         _topic,
         "fs_request",
-        %{"ref" => ref, "op" => "attachment_" <> _ = op} = msg,
+        %{"ref" => ref, "op" => "copy_tool"} = msg,
         socket
       ) do
     client = self()
     topic = socket.assigns.topic
     root = socket.assigns.project.root
 
+    # Main's read/write/edit/bash in this copy; a task, so a long bash never
+    # holds the channel.
     Task.start(fn ->
-      result = CmsHarness.Attachments.request(root, op, msg["payload"] || %{})
+      result = CmsHarness.CopyTools.execute(root, msg["payload"] || %{})
       GenServer.cast(client, {:promotion_result, topic, ref, result})
     end)
 
@@ -2679,8 +2685,10 @@ defmodule CmsHarness.Project.ChannelClient do
   defp connect_headers(socket), do: Config.connect_headers(socket.assigns.project.root)
 
   defp connect_options(socket, uri) do
+    configured = Application.get_env(:code_my_spec, :harness_socket_options, [])
+
     [uri: uri, headers: connect_headers(socket)] ++
-      Application.get_env(:code_my_spec, :harness_socket_options, [])
+      Keyword.merge(configured, Proxy.socket_options(uri))
   end
 
   defp transport, do: Transport.impl()
@@ -2812,12 +2820,15 @@ defmodule CmsHarness.Project.ChannelClient do
     }
   end
 
-  # `component_by_id` is only ever read for `.module_name`, by the test-alignment
-  # check. Structs do not survive JSON, so what arrives is a plain map with
-  # string keys; this gives it the one field its reader asks for.
+  # Structs do not survive JSON. Restore the component fields the scanner
+  # needs for test alignment and architecture proposal references.
   defp atomize_components(components) do
     Map.new(components, fn {id, component} ->
-      {id, %{module_name: MapAccess.get(component, :module_name)}}
+      {id,
+       %{
+         module_name: MapAccess.get(component, :module_name),
+         type: MapAccess.get(component, :type)
+       }}
     end)
   end
 

@@ -666,13 +666,26 @@ defmodule CodeMySpecSpex.Case do
     # prevent.
     markers = Fixtures.widget_markers()
 
+    widget_test_owner = self()
+
     Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
-      Conn.send_resp(
-        conn,
-        200,
-        "<html><body><div #{markers.present}>" <>
-          "<button #{markers.toggle}>?</button></div></body></html>"
-      )
+      send(widget_test_owner, {:widget_site_request, conn.method, conn.request_path})
+
+      case {conn.method, conn.request_path} do
+        {"POST", "/_cms/verify/widget"} ->
+          verify_widget_from_fake_app(
+            conn,
+            Map.put(context, :widget_test_owner, widget_test_owner)
+          )
+
+        _ ->
+          Conn.send_resp(
+            conn,
+            200,
+            "<html><body><div #{markers.present}>" <>
+              "<button #{markers.toggle}>?</button></div></body></html>"
+          )
+      end
     end)
 
     # And the deployed site accepting a pull trigger. Publishing is
@@ -708,6 +721,26 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     {:ok, fakes: agents}
+  end
+
+  # Stand-in for the route the generated app must serve. Keep the transport
+  # real: an HTTP acceptance alone must never satisfy the widget proof.
+  defp verify_widget_from_fake_app(conn, context) do
+    authorized? = Conn.get_req_header(conn, "authorization") == ["Bearer dk_fleet_spex"]
+    send(context.widget_test_owner, {:widget_site_authorized, authorized?})
+
+    if authorized? do
+      {:ok, body, conn} = Conn.read_body(conn)
+      %{"probe" => probe} = Jason.decode!(body)
+      :ok = Fixtures.record_widget_probe(context.scope, probe, "#{conn.scheme}://#{conn.host}")
+      send(context.widget_test_owner, {:widget_probe_sent, probe})
+
+      conn
+      |> Conn.put_resp_content_type("application/json")
+      |> Conn.send_resp(202, Jason.encode!(%{accepted: true}))
+    else
+      Conn.send_resp(conn, 401, "deploy key required")
+    end
   end
 
   @doc "The agent holding a fake provider's state, for a `given_` to arrange."
@@ -1062,6 +1095,37 @@ defmodule CodeMySpecSpex.Case do
 
       ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "the widget works"})
       Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+
+      # The setup step sends a fresh probe and accepts only a matching reply.
+      # Drive it through the same widget socket, since cassette replay cannot
+      # create the corresponding database message on its own.
+      previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      post = fn url, deploy_key, probe ->
+        expected_host = URI.parse(unquote(site)).host
+        actual_host = URI.parse(url).host
+
+        if actual_host == expected_host do
+          probe_ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => probe})
+          Phoenix.ChannelTest.assert_reply(probe_ref, :ok, %{}, 1000)
+          {:ok, %{probe: probe}}
+        else
+          case Keyword.get(previous_step_opts, :post) do
+            nil -> raise "widget probe targeted an unstaged site: #{actual_host}"
+            previous_post -> previous_post.(url, deploy_key, probe)
+          end
+        end
+      end
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.put(previous_step_opts, :post, post)
+      )
+
+      ExUnit.Callbacks.on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+      end)
 
       ctx
     end
@@ -2999,7 +3063,17 @@ defmodule CodeMySpecSpex.Case do
     # output.
     app = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
 
-    {:ok, _written} = Fixtures.generate_deploy_boilerplate(env, app: app, host: domain)
+    {:ok, image} = CodeMySpec.Provisioning.Registry.image(context.scope)
+    {:ok, repository} = CodeMySpec.Provisioning.Registry.repository(context.scope)
+
+    {:ok, _written} =
+      Fixtures.generate_deploy_boilerplate(env,
+        app: app,
+        host: domain,
+        registry: CodeMySpec.Provisioning.Registry.default_host(),
+        image: image,
+        kamal_image: repository
+      )
 
     context
   end
@@ -4174,6 +4248,8 @@ defmodule CodeMySpecSpex.Case do
       otherwise the architecture it actually produced (default: matches)
     * `:on_destroy` — called with the shared box's id when `BurstBox.Lifecycle`
       decides to release it
+    * `:now` — the staged lifecycle check time (default 00:58); a second
+      deploy can check the same box before the following billing hour.
     * `:box_release` — what `BurstBox.Lifecycle.check/3` should decide for the
       shared box this build runs on: `:not_due` (default — an ordinary build,
       mid billing-hour, where nothing about release is observable), `:idle`
@@ -4191,6 +4267,7 @@ defmodule CodeMySpecSpex.Case do
     on_destroy = Keyword.get(opts, :on_destroy, fn _id -> :ok end)
     tag = Keyword.get(opts, :tag, "a1b2c3d4e5f6")
     box_release = Keyword.get(opts, :box_release, :not_due)
+    now = Keyword.get(opts, :now, ~U[2026-01-01 00:58:00Z])
 
     context = stage_deploy(context)
 
@@ -4275,7 +4352,7 @@ defmodule CodeMySpecSpex.Case do
         # when `box_release == :idle`, matching what `Lifecycle.check/3`
         # itself would decide.
         busy?: fn _scope, _server -> box_release == :busy end,
-        now: fn -> ~U[2026-01-01 00:58:00Z] end,
+        now: fn -> now end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
         registry_host: "registry.example.com",

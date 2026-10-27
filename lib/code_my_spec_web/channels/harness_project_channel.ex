@@ -2083,7 +2083,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp parse_mtime(_), do: nil
 
   # Nothing here may be a struct: `story_ids` crosses as a list, and a
-  # component as its `module_name` only, the one field the harness reads.
+  # component as the fields the harness scanner reads for ownership and
+  # proposal validation.
   defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
     %{
       "component_by_module" => read_model.component_by_module,
@@ -2094,7 +2095,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp serialize_component({id, component}) do
-    {id, %{"module_name" => Map.get(component, :module_name)}}
+    {id,
+     %{"module_name" => Map.get(component, :module_name), "type" => Map.get(component, :type)}}
   end
 
   # A harness may only hold a project its credential reaches: a deploy key
@@ -2176,11 +2178,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
-        if payload["attachment_operations"] == true do
-          HarnessRegistry.register_verb(harness.id, "attachment_operations")
+        # Main's read/write/edit/bash in this copy (`CodeMySpec.CopyTools`).
+        if payload["copy_tools"] == true do
+          HarnessRegistry.register_verb(harness.id, "copy_tools")
         end
 
         register_app_verbs(harness, payload)
+        register_served_models(harness, payload)
 
       {:error, {:already_registered, pid}} ->
         Logger.warning(
@@ -2213,6 +2217,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp register_app_verbs(_harness, _payload), do: :ok
+
+  # The models each provider serves this harness's logins, where it could read
+  # them; "unknown" (or nothing) leaves a provider unverified.
+  defp register_served_models(harness, %{"served_models" => models}) when is_map(models) do
+    known = for {provider, [_ | _] = ids} <- models, into: %{}, do: {provider, ids}
+    HarnessRegistry.register_served_models(harness.id, known)
+  end
+
+  defp register_served_models(_harness, _payload), do: :ok
 
   defp id_collision(harness, joining_root, held_root) do
     %{

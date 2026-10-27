@@ -5,7 +5,7 @@ defmodule CodeMySpec.AppInstances.Tools do
     top_level?: true,
     deps: [
       CodeMySpec.Agents,
-      CodeMySpec.AgentAttachments,
+      CodeMySpec.CopyTools,
       CodeMySpec.Environments,
       CodeMySpec.AppInstances,
       CodeMySpec.CodeMode,

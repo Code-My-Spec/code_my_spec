@@ -40,6 +40,18 @@ defmodule CmsHarness.AppInstance.Runner.Local do
   end
 
   @impl true
+  def idle_databases_matching(regex) do
+    query =
+      "SELECT datname FROM pg_database WHERE datname ~ '#{String.replace(regex, "'", "''")}' " <>
+        "AND datname NOT IN (SELECT datname FROM pg_stat_activity WHERE datname IS NOT NULL)"
+
+    case System.cmd("psql", @pg ++ ["-tAc", query], stderr_to_stdout: true) do
+      {out, 0} -> String.split(out, "\n", trim: true)
+      _ -> []
+    end
+  end
+
+  @impl true
   def main_database_name(root) do
     with main when is_binary(main) <- main_checkout_path(root),
          {:ok, content} <- ExecutionContexts.read_file(local(main), "config/dev.exs"),

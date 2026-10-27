@@ -147,9 +147,13 @@ defmodule CmsHarnessTest.FakeServer do
     port
   end
 
+  # `shutdown_timeout`: teardown is a network drop, not a graceful drain. A held
+  # join's channel never returns (`hold/1`), so Bandit's default 15s wait for its
+  # connection ran on every stop after one, and took a 21s test past its 30s
+  # timeout under load (0c35c198, setup_test run 63575).
   def endpoint_config(port) do
     [
-      http: [ip: {127, 0, 0, 1}, port: port],
+      http: [ip: {127, 0, 0, 1}, port: port, thousand_island_options: [shutdown_timeout: 100]],
       server: true,
       adapter: Bandit.PhoenixAdapter,
       secret_key_base: String.duplicate("fake_server_secret", 4),

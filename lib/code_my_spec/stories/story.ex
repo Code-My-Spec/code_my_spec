@@ -22,6 +22,8 @@ defmodule CodeMySpec.Stories.Story do
           qa_reviewed_at: DateTime.t() | nil,
           three_amigos_sealed: boolean(),
           promoted_version: String.t() | nil,
+          promoted_qa_commit: String.t() | nil,
+          promoted_candidate_commit: String.t() | nil,
           epic_id: Ecto.UUID.t() | nil,
           working_copy_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
@@ -132,6 +134,10 @@ defmodule CodeMySpec.Stories.Story do
     # work on the checkout cannot unmake. Clearing it sends the story back
     # through `story_promoted`.
     field :promoted_version, :string
+    # The latest published candidate and the QA certification it carried.
+    # A historical version alone cannot satisfy a later QA pass.
+    field :promoted_qa_commit, :string
+    field :promoted_candidate_commit, :string
     # Historical attribution survives release of the active working-copy assignment.
     field :promoted_working_copy_id, :binary_id
     field :promoted_at, :utc_datetime_usec
@@ -206,6 +212,8 @@ defmodule CodeMySpec.Stories.Story do
       :qa_reviewed_at,
       :three_amigos_sealed,
       :promoted_version,
+      :promoted_qa_commit,
+      :promoted_candidate_commit,
       :promoted_working_copy_id,
       :promoted_at,
       :priority,

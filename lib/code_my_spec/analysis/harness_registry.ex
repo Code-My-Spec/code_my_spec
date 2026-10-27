@@ -56,6 +56,31 @@ defmodule CodeMySpec.Analysis.HarnessRegistry do
     :ok
   end
 
+  @doc """
+  Record the models the calling channel's harness can run, per provider, as it
+  reported them at join: `%{provider => [model ids]}`, only for providers whose
+  list it could read. Dies with the channel.
+  """
+  @spec register_served_models(String.t(), %{String.t() => [String.t()]}) :: :ok
+  def register_served_models(working_copy_id, models) when is_map(models) do
+    _ = Registry.register(__MODULE__, {:served_models, to_string(working_copy_id)}, models)
+    :ok
+  end
+
+  @doc """
+  The models `provider` serves, from the first of `working_copy_ids` whose
+  harness reported a list for it, or `:unknown`.
+  """
+  @spec served_models([String.t()], String.t()) :: [String.t()] | :unknown
+  def served_models(working_copy_ids, provider) do
+    Enum.find_value(working_copy_ids, :unknown, fn id ->
+      case Registry.lookup(__MODULE__, {:served_models, to_string(id)}) do
+        [{_pid, %{^provider => [_ | _] = models}} | _] -> models
+        _ -> nil
+      end
+    end)
+  end
+
   @doc "Whether the channel connected for this copy declared `verb` at join."
   @spec supports?(String.t(), String.t()) :: boolean()
   def supports?(working_copy_id, verb),

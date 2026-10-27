@@ -23,7 +23,7 @@ defmodule CmsHarnessTest do
     deps: [
       CmsHarness,
       CmsHarness.Agents,
-      CmsHarness.Attachments,
+      CmsHarness.CopyTools,
       CmsHarness.Channel,
       CmsHarness.Project,
       CmsHarness.Supervisor,
@@ -36,6 +36,7 @@ defmodule CmsHarnessTest do
       ConnectHeaders,
       HeldProvider,
       AnalysisResults,
+      GateWait,
       Projects,
       FakeServer,
       HarnessOAuthFixture,

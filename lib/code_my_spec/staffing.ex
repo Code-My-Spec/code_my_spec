@@ -73,6 +73,8 @@ defmodule CodeMySpec.Staffing do
         %{scope: scope, label: label} = metadata,
         _config
       ) do
+    retire_gone_gates(scope, label)
+
     case mint(scope, label: label, roles: [], host_copy_id: metadata[:source_copy_id]) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
@@ -111,6 +113,18 @@ defmodule CodeMySpec.Staffing do
           "[Staffing] could not retire obsolete promotion gate #{gate.id}: #{inspect(reason)}"
         )
     end
+  end
+
+  # A gate record whose checkout is reported gone is offboarded before its
+  # replacement is made, so the queue never reads it again.
+  defp retire_gone_gates(scope, label) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.filter(&(&1.label == label and not is_nil(&1.path_missing_since)))
+    |> Enum.each(fn gone ->
+      Logger.info("[Staffing] retiring gate copy #{gone.id}: its checkout #{gone.root} is gone")
+      offboard(scope, gone, instance_disposition: :discard)
+    end)
   end
 
   @doc """
@@ -163,7 +177,9 @@ defmodule CodeMySpec.Staffing do
       "prepare" => true
     }
 
-    case Transport.impl().create_working_copy(candidates, request, 60_000) do
+    # A gate copy's checkout, submodules, copied deps and onboarding took 86s
+    # under load; at 60s the server gave up on a copy the harness then finished.
+    case Transport.impl().create_working_copy(candidates, request, :timer.minutes(5)) do
       {:ok, made} -> register(scope, candidates, made, opts)
       {:error, _reason} = error -> error
     end

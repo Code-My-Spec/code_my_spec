@@ -518,6 +518,11 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 
+# Every provider's /models answers 404 (an unknown list, allowed) unless a test
+# installs a cassette: `Agents.ProviderModels`.
+config :code_my_spec, CodeMySpec.Agents.ProviderModels,
+  plug: CodeMySpecTest.UnlistedProviderModels
+
 # `:dev_routes` is true here, so this LiveView's route exists in the test
 # router — and its one request goes to the harness on :4004, which on a
 # developer's box is the real one. Pinned so a test that mounts it reaches
@@ -539,6 +544,10 @@ config :code_my_spec, CodeMySpec.Workspaces.Runner.Local,
 # shell-outs rule), so nothing stubs this plug today; it exists so this
 # module is accounted for by `HttpClientsAreStubbableTest` and safe by
 # construction if something ever does call it under test.
+# Removing a checkout drops its databases on the machine's Postgres; under the
+# suite nothing is found or dropped (`CmsHarness.CopyDatabases`).
+config :code_my_spec, CmsHarness.CopyDatabases, runner: CmsHarnessTest.NoCopyDatabases
+
 config :code_my_spec, CmsHarness.AppInstance.Runner.Local,
   plug: {Req.Test, CmsHarness.AppInstance.Runner.Local}
 

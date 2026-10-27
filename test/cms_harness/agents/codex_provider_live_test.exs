@@ -94,6 +94,30 @@ defmodule CmsHarness.Agents.CodexProviderLiveTest do
     assert File.read!(path) =~ "written on resume"
   end
 
+  # Issue 8428cef0: Codex intermittently claimed that a short resumed turn had
+  # no harness tools. Ten consecutive resumed turns exercise the actual model
+  # and require an observable file from an outer tool on each turn.
+  @tag timeout: 1_500_000
+  test "ten short resumed turns keep calling harness tools", %{root: root} do
+    {id, engine} = launch(root)
+    assert {:ok, _} = execute(id, "Reply with just READY.")
+    assert %{} = session = get_in(:sys.get_state(engine).provider_state, ["codex_session"])
+    thread = session["id"]
+
+    for trial <- 1..10 do
+      name = "trial-#{trial}.txt"
+
+      assert {:ok, _} =
+               execute(
+                 id,
+                 "Use a harness tool to create #{name} containing exactly trial #{trial}."
+               )
+
+      assert File.read!(Path.join(root, name)) == "trial #{trial}"
+      assert get_in(:sys.get_state(engine).provider_state, ["codex_session", "id"]) == thread
+    end
+  end
+
   # Writes are the outer tools', and those are scoped to the checkout: a file
   # outside it is not written however the model asks.
   test "a write outside the checkout is not made", %{root: root} do

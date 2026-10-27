@@ -192,14 +192,14 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
     if criterion do
       case AcceptanceCriteria.retire_criterion(socket.assigns.current_scope, criterion) do
-        {:ok, retired} ->
-          # Its spex goes with it; any left over is reported as pending.
-          removed = Files.SpecCleanup.for_retired(socket.assigns.current_scope, retired.number)
+        {:ok, _retired} ->
+          # Records only; spex left covering nothing are named for removal.
+          orphans = Files.SpecCleanup.orphans(socket.assigns.current_scope)
 
           {:noreply,
            socket
            |> assign(menu_open: nil, confirming_delete: nil)
-           |> put_flash(:info, retired_message(removed))}
+           |> put_flash(:info, retired_message(orphans))}
 
         {:error, _reason} ->
           {:noreply,
@@ -274,8 +274,8 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
 
   defp retired_message([]), do: "Scenario retired"
 
-  defp retired_message(removed),
-    do: "Scenario retired. " <> String.replace(Files.SpecCleanup.report(removed), "\n", " ")
+  defp retired_message(orphans),
+    do: "Scenario retired. " <> String.replace(Files.SpecCleanup.report(orphans), "\n", " ")
 
   defp refresh(%{assigns: %{current_scope: scope, story: story}} = socket)
        when not is_nil(scope) and not is_nil(story) do

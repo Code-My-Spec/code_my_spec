@@ -1,9 +1,9 @@
 defmodule CodeMySpecSpex.AttachmentHelpers do
   @moduledoc """
-  Stories 1148/1149: real tool/domain/runtime execution over an in-process
-  transport simulation with isolated roots. This is not two-host evidence.
-  Only network delivery is substituted; CmsHarness.Attachments executes files
-  and subprocesses and owns cancellation exactly as it does on a device.
+  Story 1149: Main's read, write, edit and bash, each naming a working
+  copy (issue e377de11), over an in-process transport simulation with isolated
+  roots. This is not two-host evidence. Only network delivery is substituted;
+  CmsHarness.CopyTools runs the agents' own tools exactly as on a device.
   """
   import ExUnit.Assertions
   alias CodeMySpec.ToolLibrary
@@ -11,7 +11,8 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
   alias CodeMySpecSpex.Fixtures
 
   defmodule Transport do
-    def request(copy, event, payload, _timeout) do
+    @moduledoc false
+    def request(copy, _event, payload, _timeout) do
       {root, mode} = Agent.get(__MODULE__, &Map.fetch!(&1, copy))
 
       case mode do
@@ -19,10 +20,10 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
           {:error, :harness_unreachable}
 
         :online ->
-          CmsHarnessTest.AttachmentRuntime.request(root, event, payload)
+          CmsHarnessTest.AttachmentRuntime.request(root, payload)
 
         :drop ->
-          spawn(fn -> CmsHarnessTest.AttachmentRuntime.request(root, event, payload) end)
+          spawn(fn -> CmsHarnessTest.AttachmentRuntime.request(root, payload) end)
           CodeMySpecSpex.AttachmentHelpers.await_file(Path.join(root, "started"))
           {:error, :connection_lost}
       end
@@ -30,20 +31,18 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
   end
 
   def setup(context) do
-    CmsHarnessTest.AttachmentRuntime.start()
-
     ExUnit.Callbacks.start_supervised!(%{
       id: Transport,
       start: {Agent, :start_link, [fn -> %{} end, [name: Transport]]}
     })
 
-    previous = Application.get_env(:code_my_spec, :agent_attachment_transport)
-    Application.put_env(:code_my_spec, :agent_attachment_transport, Transport)
+    previous = Application.get_env(:code_my_spec, :copy_tools_transport)
+    Application.put_env(:code_my_spec, :copy_tools_transport, Transport)
 
     ExUnit.Callbacks.on_exit(fn ->
       if previous,
-        do: Application.put_env(:code_my_spec, :agent_attachment_transport, previous),
-        else: Application.delete_env(:code_my_spec, :agent_attachment_transport)
+        do: Application.put_env(:code_my_spec, :copy_tools_transport, previous),
+        else: Application.delete_env(:code_my_spec, :copy_tools_transport)
     end)
 
     scope = %{context.scope | active_working_copy_id: nil}
@@ -89,24 +88,28 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
 
   def result(c, name, args), do: ToolLibrary.data(name, args, c.tool_context)
 
-  def connect(c, copy) do
-    attachment = data(c, "connect_working_copy", %{working_copy_id: copy.id})
+  # Main's own tools, naming the copy they run in.
+  def work(c, copy, tool, input \\ %{}),
+    do: data(c, tool, Map.put(input, :working_copy_id, copy.id))
 
-    ExUnit.Callbacks.on_exit(fn ->
-      CmsHarnessTest.AttachmentRuntime.request(copy.root, "attachment_disconnect", %{
-        "attachment_id" => attachment["id"]
-      })
-    end)
+  def read(c, copy, path), do: work(c, copy, "read", %{file_path: path})
 
-    attachment
+  # Bash's result: the command's output, then `exit code: N`.
+  def bash(c, copy, command) do
+    text = work(c, copy, "bash", %{command: command})
+    [_, output, status] = Regex.run(~r/\A(.*)\nexit code: (\d+)\z/s, text)
+    %{output: output, exit_status: String.to_integer(status)}
   end
 
-  def attachments(c), do: data(c, "list_working_copy_attachments")
-
-  def work(c, a, op, args \\ %{}),
-    do: data(c, "work_in_copy", Map.merge(args, %{attachment_id: a["id"], operation: op}))
-
   def mode(copy, mode), do: Agent.update(Transport, &Map.put(&1, copy.id, {copy.root, mode}))
+
+  def assert_file_absent(copy, path) do
+    refute File.exists?(Path.join(copy.root, path))
+  end
+
+  def assert_file_content(copy, path, content) do
+    assert File.read!(Path.join(copy.root, path)) == content
+  end
 
   def conversation(c) do
     assert {:ok, body} =
@@ -134,181 +137,90 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
         )
   end
 
-  def exercise(c, 2410) do
-    rows = data(c, "list_working_copies")
-
-    for copy <- [c.one, c.two] do
-      row = Enum.find(rows, &(&1["id"] == copy.id))
-      assert row["device_id"] == copy.device_id
-      assert row["device_name"] in ["laptop", "remote"]
-    end
-  end
-
-  def exercise(c, criterion) when criterion in [2412, 2418] do
-    one = connect(c, c.one)
-    two = connect(c, c.two)
-    assert one["id"] != two["id"]
-    assert MapSet.new(attachments(c)) == MapSet.new([one, two])
-    unchanged(c)
-  end
-
-  def exercise(c, criterion) when criterion in [2413, 2420] do
-    attachment = connect(c, c.one)
-    assert attachment["working_copy_id"] == c.one.id
-    assert attachment["agent_id"] == c.main.id
-    assert attachments(c) == [attachment]
-    unchanged(c)
-  end
-
-  def exercise(c, 2421) do
-    foreign = copy(Fixtures.full_scope_fixture(), "foreign")
-    assert {:error, _} = result(c, "connect_working_copy", %{working_copy_id: foreign.id})
-    assert attachments(c) == []
-    unchanged(c)
-  end
-
-  def exercise(c, 2422) do
-    mode(c.one, :offline)
-
-    assert {:error, :harness_unreachable} =
-             result(c, "connect_working_copy", %{working_copy_id: c.one.id})
-
-    assert attachments(c) == []
-    mode(c.one, :online)
-    assert attachments(c) == []
-  end
-
-  def exercise(c, 2419) do
-    one = connect(c, c.one)
-    two = connect(c, c.two)
-
-    task =
-      Task.async(fn ->
-        result(c, "work_in_copy", %{
-          attachment_id: one["id"],
-          operation: "command",
-          command: "sh",
-          args: ["-c", "touch started; sleep 30; touch survived"]
-        })
-      end)
-
-    await_file(Path.join(c.one.root, "started"))
-    assert data(c, "disconnect_working_copy", %{attachment_id: one["id"]})["disconnected"]
-    assert {:error, _} = Task.await(task, 5_000)
-    assert attachments(c) == [two]
-    assert work(c, two, "read_file", %{path: "identity.txt"}) == "remote"
-
-    assert {:error, _} =
-             result(c, "work_in_copy", %{
-               attachment_id: one["id"],
-               operation: "read_file",
-               path: "identity.txt"
-             })
-
-    assert Enum.any?(data(c, "list_working_copies"), &(&1["id"] == c.one.id))
-    unchanged(c)
-  end
-
   def exercise(c, criterion) when criterion in [2403, 2411] do
     target = if criterion == 2403, do: c.one, else: c.two
     other = if criterion == 2403, do: c.two, else: c.one
     identity = if criterion == 2403, do: "laptop", else: "remote"
     other_identity = if criterion == 2403, do: "remote", else: "laptop"
-    a = connect(c, target)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == identity
-    assert inspect(work(c, a, "search", %{pattern: identity})) =~ "identity.txt"
-    assert inspect(work(c, a, "list_directory")) =~ "identity.txt"
-    work(c, a, "write_file", %{path: "identity.txt", content: "Main helped"})
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "Main helped"
-    result = work(c, a, "command", %{command: "pwd", args: []})
+    assert read(c, target, "identity.txt") =~ identity
+    assert bash(c, target, "grep -rl #{identity} .").output =~ "identity.txt"
+    assert bash(c, target, "ls").output =~ "identity.txt"
+    work(c, target, "write", %{file_path: "identity.txt", content: "Main helped"})
+    assert read(c, target, "identity.txt") =~ "Main helped"
+
+    work(c, target, "edit", %{
+      file_path: "identity.txt",
+      old_string: "Main helped",
+      new_string: "Main edited"
+    })
+
+    assert read(c, target, "identity.txt") =~ "Main edited"
+    result = bash(c, target, "pwd")
     assert String.trim(result.output) == target.root
     assert result.exit_status == 0
-    one = connect(c, other)
-    assert work(c, one, "read_file", %{path: "identity.txt"}) == other_identity
+    assert read(c, other, "identity.txt") =~ other_identity
     unchanged(c)
   end
 
   def exercise(c, 2414) do
-    a = connect(c, c.one)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert read(c, c.one, "identity.txt") =~ "laptop"
   end
 
+  # Only Main reaches another copy this way; its coder's identity is refused.
   def exercise(c, 2415) do
-    assert {:error, _} =
-             result(c, "work_in_copy", %{
-               attachment_id: c.one.id,
-               operation: "write_file",
-               path: "identity.txt",
-               content: "unauthorized"
-             })
+    [coder | _] = c.workers
 
-    a = connect(c, c.one)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert {:error, :main_only} =
+             ToolLibrary.data(
+               "write",
+               %{working_copy_id: c.one.id, file_path: "identity.txt", content: "unauthorized"},
+               %{c.tool_context | agent_id: coder.id}
+             )
+
+    assert read(c, c.one, "identity.txt") =~ "laptop"
   end
 
   def exercise(c, 2416) do
-    a = connect(c, c.two)
-    result = work(c, a, "command", %{command: "pwd", args: []})
+    result = bash(c, c.two, "pwd")
     assert String.trim(result.output) == c.two.root
     assert result.exit_status == 0
   end
 
+  # Offline is a hard error on the call; back online, the next call just works.
   def exercise(c, 2417) do
-    a = connect(c, c.two)
     mode(c.two, :offline)
 
     assert {:error, :harness_unreachable} =
-             result(c, "work_in_copy", %{
-               attachment_id: a["id"],
-               operation: "write_file",
-               path: "identity.txt",
+             result(c, "write", %{
+               working_copy_id: c.two.id,
+               file_path: "identity.txt",
                content: "wrong destination"
              })
 
-    # The real transport's attachment session dies with the OS-level
-    # connection, so coming back online needs an explicit reconnect -- a
-    # bare work_in_copy on the original handle is not the recovery path
-    # (issue 46cbb416). connect_working_copy is idempotent: same copy id
-    # back gives the same attachment id, never a second one.
     mode(c.two, :online)
-    reconnected = data(c, "connect_working_copy", %{working_copy_id: c.two.id})
-    assert reconnected["id"] == a["id"]
-    assert work(c, reconnected, "read_file", %{path: "identity.txt"}) == "remote"
-    one = connect(c, c.one)
-    assert work(c, one, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert read(c, c.two, "identity.txt") =~ "remote"
+    assert read(c, c.one, "identity.txt") =~ "laptop"
     unchanged(c)
   end
 
   def exercise(c, 2423) do
-    a = connect(c, c.two)
     mode(c.two, :drop)
 
     assert {:error, :connection_lost} =
-             result(c, "work_in_copy", %{
-               attachment_id: a["id"],
-               operation: "command",
-               command: "sh",
-               args: ["-c", "echo once >> executions; touch started; sleep 0.1; touch finished"]
+             result(c, "bash", %{
+               working_copy_id: c.two.id,
+               command:
+                 "sh -c 'echo once >> executions; touch started; sleep 0.1; touch finished'"
              })
 
     await_file(Path.join(c.two.root, "finished"))
     mode(c.two, :online)
-    assert work(c, a, "read_file", %{path: "executions"}) == "once\n"
+    assert length(Regex.scan(~r/once/, read(c, c.two, "executions"))) == 1
     unchanged(c)
   end
 end
 
 defmodule CmsHarnessTest.AttachmentRuntime do
-  @moduledoc "Harness-side bridge for attachment Spex, using the real runtime."
-  def request(root, event, payload), do: CmsHarness.Attachments.request(root, event, payload)
-
-  def start do
-    CmsHarnessTest.Machine.ensure_supervisor()
-
-    unless Process.whereis(CmsHarness.AttachmentsSupervisor) do
-      ExUnit.Callbacks.start_supervised!(
-        {DynamicSupervisor, strategy: :one_for_one, name: CmsHarness.AttachmentsSupervisor}
-      )
-    end
-  end
+  @moduledoc "Harness-side bridge for copy-tool Spex, using the real runtime."
+  def request(root, payload), do: CmsHarness.CopyTools.execute(root, payload)
 end

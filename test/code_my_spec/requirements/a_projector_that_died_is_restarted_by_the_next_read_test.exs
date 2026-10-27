@@ -43,6 +43,10 @@ defmodule CodeMySpec.Requirements.AProjectorThatDiedIsRestartedByTheNextReadTest
         name: IncrementalGraph.via(project_id)
       )
 
+    # Let the initial seed finish before killing the unsupervised process.
+    # Killing it mid-query can tear down the test's shared sandbox connection.
+    :ok = IncrementalGraph.settle(project_id)
+
     ref = Process.monitor(pid)
     Process.exit(pid, :kill)
     assert_receive {:DOWN, ^ref, :process, ^pid, :killed}

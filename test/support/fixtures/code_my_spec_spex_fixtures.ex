@@ -418,6 +418,23 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc "Record a message sent by the stand-in deployed app for widget verification."
+  def record_widget_probe(scope, probe, origin) do
+    visitor = "widget-probe-#{System.unique_integer([:positive])}"
+
+    with {:ok, conversation} <-
+           Conversations.find_or_create_conversation(
+             scope.active_account_id,
+             scope.active_project_id,
+             "#{visitor}@example.com",
+             end_user_id: visitor
+           ),
+         {:ok, _message} <-
+           Conversations.add_message(conversation, :user, probe, visitor, [], origin: origin) do
+      :ok
+    end
+  end
+
   @doc """
   An app access token for the project, minted the way the deployed app gets one.
 
@@ -2802,6 +2819,15 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
   defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
+
+  @doc "Observe whether a specific persona-story link persisted after a tool call."
+  def persona_story_link_exists?(persona_id, story_id) do
+    Repo.exists?(
+      from ps in CodeMySpec.Personas.PersonaStory,
+        where: ps.persona_id == ^persona_id and ps.story_id == ^story_id
+    )
+  end
+
   defdelegate list_components(scope), to: CodeMySpec.Components
 
   @doc """
@@ -3304,10 +3330,12 @@ defmodule CodeMySpecSpex.Fixtures do
   def launch_agent(request) do
     callbacks = mailbox_callbacks(request["agent_id"])
 
+    agent = Repo.get!(CodeMySpec.Agents.Agent, request["agent_id"])
+
     request
     |> Map.put_new(
       "direct_tools",
-      ToolIndex.carried_definitions(ToolRegistry.registry())
+      ToolIndex.carried_definitions(ToolRegistry.registry(), ToolIndex.copy_tools?(agent))
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
@@ -6212,6 +6240,53 @@ defmodule CodeMySpecSpex.Fixtures do
   def start_analysis_run(%Scope{} = scope, source) do
     {:ok, run} =
       RunsRepository.start_run(scope, %{source: source, kind: :full})
+
+    run
+  end
+
+  @doc "A run whose harness has reported that execution began."
+  def reporting_analysis_run(%Scope{} = scope, source) do
+    run = start_analysis_run(scope, source)
+    {:ok, started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
+    started
+  end
+
+  @doc "A one-file spex run whose first scenario has reported passing."
+  def streaming_spex_scenario(%Scope{} = scope, path, scenario) do
+    {:ok, run} =
+      RunsRepository.start_run(scope, %{
+        source: "spex",
+        kind: :partial,
+        args: %{"args" => [path]}
+      })
+
+    {:ok, _started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{"event" => "file_started", "file" => path})
+
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+      "event" => "test",
+      "file" => path,
+      "name" => scenario,
+      "state" => "passed"
+    })
+
+    run
+  end
+
+  @doc "A running analysis run whose last live event was `seconds` ago."
+  def silent_live_analysis_run(%Scope{} = scope, source, seconds) do
+    run = reporting_analysis_run(scope, source)
+
+    live =
+      CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+        "event" => "file_started",
+        "file" => "test/held_test.exs"
+      })
+
+    :ets.insert(
+      CodeMySpec.Analysis.LiveRuns,
+      {run.id, %{live | last_event_at: DateTime.add(DateTime.utc_now(), -seconds)}}
+    )
 
     run
   end

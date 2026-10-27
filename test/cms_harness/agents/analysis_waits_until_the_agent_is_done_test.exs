@@ -264,6 +264,7 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
     assert {:ok, :started} = Machine.send_message(agent, "exit-race", "first")
     assert_receive {:holding_turn, execution}, 5_000
     [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    waiter = :sys.get_state(engine).turn.task.pid
     monitor = Process.monitor(engine)
 
     log =
@@ -273,12 +274,48 @@ defmodule CmsHarness.Agents.AnalysisWaitsUntilTheAgentIsDoneTest do
         assert_receive {:DOWN, ^monitor, :process, ^engine, _reason}, 5_000
       end)
 
-    refute log =~ "[error]"
+    ours = entries_about(log, [agent, engine, waiter, execution])
+    refute ours =~ "[error]", ours
     refute Process.alive?(execution)
     refute Machine.running?(agent)
   end
 
-  # A turned-off Claude Code agent's `claude -p` kept editing its copy for ten
+  # 0c35c198: under load the waiter saw its execution die before the stop
+  # reached it, and `Task.await` crashed it with an error report.
+  test "a waiter whose execution dies before the stop logs no error", %{root: root} do
+    agent = start_agent(root, gated_plug(self()), self())
+    assert {:ok, :started} = Machine.send_message(agent, "exit-first", "first")
+    assert_receive {:holding_turn, execution}, 5_000
+    [{engine, _}] = Registry.lookup(CmsHarness.Registry, {:agent, agent})
+    waiter = :sys.get_state(engine).turn.task.pid
+    waiter_down = Process.monitor(waiter)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        Process.exit(execution, :kill)
+        assert_receive {:DOWN, ^waiter_down, :process, ^waiter, _reason}, 5_000
+        assert :ok = Machine.stop_agent(agent)
+      end)
+
+    ours = entries_about(log, [agent, engine, waiter, execution])
+    refute ours =~ "[error]", ours
+  end
+
+  # `capture_log` takes every process's log on the node and this module runs
+  # async, so another test's error failed it (0c35c198): only entries naming
+  # this agent or its processes are this test's.
+  defp entries_about(log, subjects) do
+    markers = Enum.map(subjects, &marker/1)
+
+    log
+    |> String.split(~r/(?=^\d{2}:\d{2}:\d{2}\.\d{3} )/m, trim: true)
+    |> Enum.filter(fn entry -> Enum.any?(markers, &String.contains?(entry, &1)) end)
+    |> Enum.join()
+  end
+
+  defp marker(pid) when is_pid(pid), do: inspect(pid)
+  defp marker(id) when is_binary(id), do: id
+
   # minutes: stopping an agent closed its ports, which does not end the
   # programs behind them, and its loop ran on in a task nothing linked.
   for mode <- [:direct, :supervised] do

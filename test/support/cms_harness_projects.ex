@@ -152,7 +152,10 @@ defmodule CmsHarnessTest.Projects do
         })
     end
 
-    ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
+    ExUnit.Callbacks.on_exit(fn ->
+      stop_project(root)
+      File.rm_rf(root)
+    end)
 
     %{root: root, id: id && to_string(id), working_copy_id: working_copy_id}
   end
