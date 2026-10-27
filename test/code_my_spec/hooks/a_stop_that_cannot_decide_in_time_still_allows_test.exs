@@ -85,6 +85,15 @@ defmodule CodeMySpec.Hooks.AStopThatCannotDecideInTimeStillAllowsTest do
       assert Stop.bound_for(1) == 1_000
     end
 
+    test "what the request already spent comes off the bound" do
+      assert Stop.bound_for(10_000, 3_100) == 4_400
+      assert Stop.bound_for(10_000, 0) == 7_500
+    end
+
+    test "a request that has spent its whole budget answers at once" do
+      assert Stop.bound_for(10_000, 9_000) == 0
+    end
+
     test "a request that names no wait gets the wait the harness has always had" do
       assert Stop.bound_for(nil) == 7_500
       assert Stop.bound_for("soon") == 7_500

@@ -51,7 +51,8 @@ defmodule CodeMySpec.Hooks.Stop do
     Logger.metadata(
       cms_session: session_id,
       cms_hook: "stop",
-      cms_budget_ms: Map.get(params, @budget_key)
+      cms_budget_ms: Map.get(params, @budget_key),
+      cms_started_ms: System.monotonic_time(:millisecond)
     )
 
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
@@ -408,12 +409,24 @@ defmodule CodeMySpec.Hooks.Stop do
   @transit_margin_ms 2_500
   @min_bound_ms 1_000
 
+  # The read starts after the request has already spent time (3.1s on
+  # 2026-10-27 under load), so its bound is what is left of the budget: a full
+  # 7.5s on top answered at 10.6s, after the harness had refused the stop.
   defp decide_timeout_ms do
     case Application.fetch_env(:code_my_spec, :stop_decide_timeout_ms) do
-      {:ok, override} -> override
-      :error -> bound_for(Logger.metadata()[:cms_budget_ms])
+      {:ok, override} ->
+        override
+
+      :error ->
+        meta = Logger.metadata()
+        bound_for(meta[:cms_budget_ms], spent_ms(meta[:cms_started_ms]))
     end
   end
+
+  defp spent_ms(started) when is_integer(started),
+    do: System.monotonic_time(:millisecond) - started
+
+  defp spent_ms(_unstamped), do: 0
 
   @doc false
   @spec bound_for(term()) :: pos_integer()
@@ -421,6 +434,10 @@ defmodule CodeMySpec.Hooks.Stop do
     do: max(budget - @transit_margin_ms, @min_bound_ms)
 
   def bound_for(_unnamed), do: bound_for(@unnamed_budget_ms)
+
+  @doc "The bound left once `spent` milliseconds of the request are gone; 0 answers at once."
+  @spec bound_for(term(), non_neg_integer()) :: non_neg_integer()
+  def bound_for(budget, spent), do: max(bound_for(budget) - spent, 0)
 
   defp continue_with_actionable_work(scope, %Agent{role: :main} = agent, req_id) do
     timeout = decide_timeout_ms()
