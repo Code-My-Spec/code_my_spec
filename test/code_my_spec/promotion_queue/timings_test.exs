@@ -80,14 +80,17 @@ defmodule CodeMySpec.PromotionQueue.TimingsTest do
     stages = Map.new(Timings.stages(), &{&1, %{status: :not_run, duration_seconds: nil}})
     stages = Map.put(stages, "gate-build", %{status: :ran, duration_seconds: gate_seconds})
 
-    stages =
-      if landing_seconds == nil,
-        do: stages,
-        else: Map.put(stages, "landing", %{status: :ran, duration_seconds: landing_seconds})
+    stages = put_landing_stage(stages, landing_seconds)
 
     waits =
       Map.new(~w(compiler credo exunit spex), &{&1, %{status: :not_run, duration_seconds: nil}})
 
     %{outcome: outcome, stages: stages, analyzer_waits: waits, gate_seconds: gate_seconds}
+  end
+
+  defp put_landing_stage(stages, nil), do: stages
+
+  defp put_landing_stage(stages, seconds) do
+    Map.put(stages, "landing", %{status: :ran, duration_seconds: seconds})
   end
 end
