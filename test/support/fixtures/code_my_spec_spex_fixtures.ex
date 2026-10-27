@@ -6228,6 +6228,72 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Configure analysis retention for the current scenario."
+  def configure_analysis_retention_days(days) when is_integer(days) and days > 0 do
+    key = :analysis_retention_days
+
+    unless Process.get({__MODULE__, key}) do
+      previous = Application.fetch_env(:code_my_spec, key)
+
+      ExUnit.Callbacks.on_exit(fn ->
+        case previous do
+          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
+          :error -> Application.delete_env(:code_my_spec, key)
+        end
+      end)
+
+      Process.put({__MODULE__, key}, true)
+    end
+
+    Application.put_env(:code_my_spec, key, days)
+    :ok
+  end
+
+  @doc "Create a completed analyzer run with retained findings for story specs."
+  def finished_analysis_run_with_findings(%Scope{} = scope, opts \\ []) do
+    partial? = Keyword.get(opts, :partial, false) or not Keyword.get(opts, :full, true)
+    kind = if partial?, do: :partial, else: :full
+
+    run =
+      CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
+        source: Keyword.get(opts, :source, "exunit"),
+        kind: kind,
+        args: %{"args" => Keyword.get(opts, :paths, [])},
+        status_override: :completed
+      })
+
+    attrs =
+      %{}
+      |> then(fn attrs ->
+        case Keyword.get(opts, :commit) do
+          nil -> attrs
+          commit -> Map.merge(attrs, %{start_commit: commit, completed_commit: commit})
+        end
+      end)
+      |> then(fn attrs ->
+        case Keyword.get(opts, :days_ago) do
+          nil -> attrs
+          days -> Map.put(attrs, :finished_at, DateTime.add(DateTime.utc_now(), -days, :day))
+        end
+      end)
+
+    run = run |> Ecto.Changeset.change(attrs) |> Repo.update!()
+
+    failures =
+      Keyword.get(opts, :failures, [%{file: "test/failure_test.exs", name: "test fails"}])
+
+    problems =
+      Keyword.get(opts, :problems, [%{file_path: "test/failure_test.exs", message: "failure"}])
+
+    CodeMySpec.Analysis.History.record!(run, failures, problems)
+  end
+
+  @doc "Run the analysis history retention sweep."
+  def run_scheduled_analysis_history_prune(%Scope{} = scope) do
+    {:ok, _count} = CodeMySpec.Analysis.History.prune(scope)
+    :ok
+  end
+
   @doc """
   Start a full analyzer run, the way a real sweep enqueues one.
 
