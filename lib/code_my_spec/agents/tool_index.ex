@@ -43,7 +43,7 @@ defmodule CodeMySpec.Agents.ToolIndex do
   @spec for(Agent.t(), registry(), [String.t()]) :: String.t() | nil
   def for(%Agent{} = agent, registry, machine_tools \\ []) do
     [
-      section(direct_heading(), carried(registry, agent.role)),
+      section(direct_heading(), carried(registry, copy_tools?(agent))),
       section(scriptable_heading(), reach(agent, registry)["scriptable"]),
       section(browser_heading(), Enum.sort(machine_tools || []))
     ]
@@ -90,23 +90,29 @@ defmodule CodeMySpec.Agents.ToolIndex do
   # never given a harness module.
   @not_carried ~w(health promote_sync)
 
-  # Main's read/write/edit/bash, each naming a working copy (`CodeMySpec.CopyTools`).
-  # Main carries them in place of the local four it does not
-  # have; any other agent keeps its own copy's tools of the same names.
-  @main_only ~w(read write edit bash)
+  # Main's read/write/edit/bash, each naming a working copy (`CodeMySpec.CopyTools`),
+  # carried by a Main with no working copy of its own in place of the local four
+  # it does not have. A Main still on a checkout, and every other agent, keeps
+  # its own copy's tools of the same names.
+  @copy_tools ~w(read write edit bash)
+
+  @doc "Whether this agent carries the server's copy tools: a Main with no working copy."
+  @spec copy_tools?(Agent.t()) :: boolean()
+  def copy_tools?(%Agent{role: :main, working_copy_id: nil}), do: true
+  def copy_tools?(_agent), do: false
 
   @doc """
   The direct tools an in-BEAM agent carries: `LocalServer`'s, less
   `@not_carried`. `CmsHarness.Agents.Engine.tools/1` builds from this, so the
   index cannot name a tool the engine answers `Unknown tool` for.
   """
-  @spec carried(registry(), atom() | String.t() | nil) :: [String.t()]
-  def carried(%{direct: direct} = registry, role \\ :main) do
+  @spec carried(registry(), boolean()) :: [String.t()]
+  def carried(%{direct: direct} = registry, copy_tools? \\ false) do
     direct
     |> Enum.map(& &1.name)
     |> Enum.reject(
       &(&1 in @not_carried or &1 in tombstoned(registry) or
-          (&1 in @main_only and to_string(role) != "main"))
+          (&1 in @copy_tools and not copy_tools?))
     )
     |> Enum.sort()
   end
@@ -116,9 +122,9 @@ defmodule CodeMySpec.Agents.ToolIndex do
   input schema, read from the registration the server lists, so the engine's
   copy of a tool cannot drift from the one every other client sees.
   """
-  @spec carried_definitions(registry(), atom() | String.t() | nil) :: [map()]
-  def carried_definitions(%{direct: direct} = registry, role \\ :main) do
-    names = carried(registry, role)
+  @spec carried_definitions(registry(), boolean()) :: [map()]
+  def carried_definitions(%{direct: direct} = registry, copy_tools? \\ false) do
+    names = carried(registry, copy_tools?)
 
     for %{name: name} = tool <- Enum.sort_by(direct, & &1.name), name in names do
       %{

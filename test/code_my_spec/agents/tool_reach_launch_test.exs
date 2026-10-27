@@ -26,15 +26,22 @@ defmodule CodeMySpec.Agents.ToolReachLaunchTest do
     carried = request["direct_tools"]
 
     assert Enum.map(carried, & &1["name"]) ==
-             ToolIndex.carried(ToolRegistry.registry(), agent().role)
+             ToolIndex.carried(ToolRegistry.registry(), ToolIndex.copy_tools?(agent()))
 
     assert Enum.all?(carried, &(is_binary(&1["description"]) and is_map(&1["input_schema"])))
   end
 
-  # Main has no copy of its own, so its read/write/edit/bash
-  # are the server's, naming a copy; any other agent keeps its own copy's four.
-  test "only Main carries the server's read, write, edit and bash, which replace its local four" do
+  # A Main with no copy of its own carries the server's read/write/edit/bash,
+  # naming a copy; a Main still on a checkout, and any other agent, keeps its own.
+  test "only a copyless Main carries the server's read, write, edit and bash, in place of its own" do
     main = %{agent() | role: :main}
+    on_checkout = %{main | working_copy_id: "copy"}
+
+    refute Enum.any?(
+             LaunchRequest.for(on_checkout, ToolRegistry.registry())["direct_tools"],
+             &(&1["name"] == "read")
+           )
+
     main_tools = LaunchRequest.for(main, ToolRegistry.registry())["direct_tools"]
     names = ~w(read write edit bash)
 
