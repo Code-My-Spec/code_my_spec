@@ -23,7 +23,8 @@ defmodule CodeMySpecSpex.Story1046.Criterion2556Spex do
 
   spex "An issue fix certified at an earlier commit is refused", criterion: 2556 do
     scenario "the issue's QA-passed fix is followed by an uncertified commit" do
-      given_ "a team has fixed an assigned issue and QA has passed its certified commit", context do
+      given_ "a team has fixed an assigned issue and QA has passed its certified commit",
+             context do
         context =
           context
           |> a_promotable_project()

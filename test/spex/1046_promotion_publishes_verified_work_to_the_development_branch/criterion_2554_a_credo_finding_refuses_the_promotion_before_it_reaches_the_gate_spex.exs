@@ -24,7 +24,14 @@ defmodule CodeMySpecSpex.Story1046.Criterion2554Spex do
     scenario "Main promotes unassigned work with a credo warning at HEAD" do
       given_ "Main's copy has committed work and no story or issue assigned", context do
         context = a_promotable_project(context)
-        commit_work(context, context.agent_root, "lib/broken_oaths/diplomacy/war.ex", war(":tidier"))
+
+        commit_work(
+          context,
+          context.agent_root,
+          "lib/broken_oaths/diplomacy/war.ex",
+          war(":tidier")
+        )
+
         {:ok, context}
       end
 
