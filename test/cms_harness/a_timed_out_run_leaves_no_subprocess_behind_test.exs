@@ -565,11 +565,14 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
 
   defp wait_for_pid_file(true, path, _deadline), do: path |> File.read!() |> String.trim()
 
-  defp wait_for_pid_file(false, path, deadline) do
-    if System.monotonic_time(:millisecond) >= deadline,
-      do: flunk("the task's shell never wrote its child's pid to #{path} within 15s")
+  defp wait_for_pid_file(false, path, deadline),
+    do: wait_or_give_up(System.monotonic_time(:millisecond) < deadline, path, deadline)
 
+  defp wait_or_give_up(true, path, deadline) do
     Process.sleep(20)
     wait_for_pid_file(path, deadline)
   end
+
+  defp wait_or_give_up(false, path, _deadline),
+    do: flunk("the task's shell never wrote its child's pid to #{path} within 15s")
 end
