@@ -72,6 +72,22 @@ defmodule CodeMySpec.Agents.MainHearsWhenATeammateStallsOrDiesTest do
     text
   end
 
+  test "a repeated false missing-tools claim is reported as a provider fault", ctx do
+    main = main(ctx)
+    coder = coder(ctx)
+
+    fault =
+      "Codex provider fault for agent #{coder.id}: twice claimed the supplied Alloy harness tools were unavailable"
+
+    :ok =
+      Agents.record_turn_event(ctx.scope, coder.id, %{"kind" => "turn_failed", "text" => fault})
+
+    text = told(main)
+    assert text =~ "Provider fault"
+    assert text =~ coder.id
+    assert text =~ ctx.feature.id
+  end
+
   describe "a teammate dying" do
     test "main is told who its harness gave up on, its role and copy, and why", ctx do
       main = main(ctx)

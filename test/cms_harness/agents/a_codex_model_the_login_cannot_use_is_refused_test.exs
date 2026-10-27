@@ -36,7 +36,9 @@ defmodule CmsHarness.Agents.ACodexModelTheLoginCannotUseIsRefusedTest do
 
   test "a model the login serves starts", %{credential: credential} do
     assert {:ok, opts} = Provider.options("openai-codex", credential, model: "gpt-5.6-terra")
-    assert {Alloy.Provider.Codex, %{model: "gpt-5.6-terra"}} = Keyword.fetch!(opts, :provider)
+
+    assert {CmsHarness.Agents.CodexWithTools, %{model: "gpt-5.6-terra"}} =
+             Keyword.fetch!(opts, :provider)
   end
 
   test "no model asked for leaves it to the login", %{credential: credential} do

@@ -2959,11 +2959,17 @@ defmodule CodeMySpec.Agents do
          {:ok, conversation} <- open_conversation(scope, agent) do
       # A refusal and a timeout each have a reader that finds this line on the
       # transcript (`ProviderRefusal`, `TurnTimeout`), so they stay there.
-      if ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) do
-        record_refusal(scope, agent, event)
-        write_turn_event(conversation, agent, event)
-      else
-        reoffer_failed_turn(conversation, agent, text)
+      cond do
+        String.starts_with?(text, "Codex provider fault for agent ") ->
+          write_turn_event(conversation, agent, event)
+          notify_main(scope, :teammate_stalled, "Provider fault on #{teammate(agent)}: #{text}")
+
+        ProviderRefusal.read(text, DateTime.utc_now()) || TurnTimeout.exec(text) ->
+          record_refusal(scope, agent, event)
+          write_turn_event(conversation, agent, event)
+
+        true ->
+          reoffer_failed_turn(conversation, agent, text)
       end
     else
       _ -> :ok

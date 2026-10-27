@@ -55,7 +55,7 @@ defmodule CmsHarness.Agents.ProviderTest do
     test "as long as a claude-code call: a turn runs whole test files and spex" do
       {:ok, codex} = Provider.options("openai-codex", %{}, timeout_ms: nil)
       {:ok, claude} = Provider.options("claude-code", %{}, timeout_ms: nil)
-      {Alloy.Provider.Codex, codex_config} = Keyword.fetch!(codex, :provider)
+      {CmsHarness.Agents.CodexWithTools, codex_config} = Keyword.fetch!(codex, :provider)
       {AlloyClaudeCode, claude_config} = Keyword.fetch!(claude, :provider)
 
       assert codex_config.timeout_ms == claude_config.timeout_ms
@@ -97,7 +97,7 @@ defmodule CmsHarness.Agents.ProviderTest do
   describe "which model an agent asks for" do
     test "a codex agent names none unless one was asked for" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       refute config.model,
              "a hardcoded model is a guess about the account's plan. This shipped " <>
@@ -107,7 +107,7 @@ defmodule CmsHarness.Agents.ProviderTest do
 
     test "a codex agent borrows the home's login, not its config" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.codex_home == Path.expand("~/.codex")
 
@@ -119,7 +119,7 @@ defmodule CmsHarness.Agents.ProviderTest do
 
     test "a codex agent resumes its own thread and runs no command of its own" do
       {:ok, opts} = Provider.options("openai-codex", %{}, working_copy: "/tmp/copy")
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.persist_session
       assert config.workdir == "/tmp/copy"
@@ -131,14 +131,14 @@ defmodule CmsHarness.Agents.ProviderTest do
     # ask for the outer Edit/Write tools at all.
     test "a codex agent is not told it cannot write" do
       {:ok, opts} = Provider.options("openai-codex", %{})
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert "include_permissions_instructions=false" in config.config_overrides
     end
 
     test "a codex agent uses the model it was given" do
       {:ok, opts} = Provider.options("openai-codex", %{}, model: "gpt-5.6-terra")
-      {Alloy.Provider.Codex, config} = Keyword.fetch!(opts, :provider)
+      {CmsHarness.Agents.CodexWithTools, config} = Keyword.fetch!(opts, :provider)
 
       assert config.model == "gpt-5.6-terra"
     end

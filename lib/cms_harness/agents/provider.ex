@@ -74,7 +74,7 @@ defmodule CmsHarness.Agents.Provider do
       |> with_command_runner()
 
     with :ok <- codex_model_available(config) do
-      {:ok, [provider: {Alloy.Provider.Codex, config}, max_tokens: @codex_max_tokens]}
+      {:ok, [provider: {CmsHarness.Agents.CodexWithTools, config}, max_tokens: @codex_max_tokens]}
     end
   end
 
