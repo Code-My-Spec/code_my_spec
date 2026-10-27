@@ -19,15 +19,40 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisHistory do
   @impl true
   def call(params, context) do
     with {:ok, scope} <- Tools.project_scope(context) do
-      runs = History.list(scope, source: params[:source])
-      {:ok, Jason.encode!(%{runs: runs})}
+      {:ok, Jason.encode!(history_result(scope, params))}
     end
   end
 
   @impl true
   def script_result(params, context) do
     with {:ok, scope} <- Tools.project_scope(context) do
-      {:ok, %{runs: History.list(scope, source: params[:source])}}
+      {:ok, history_result(scope, params)}
     end
   end
+
+  defp history_result(scope, params) do
+    runs =
+      scope
+      |> History.list(source: params[:source])
+      |> Enum.map(&plain_run/1)
+
+    %{runs: runs}
+  end
+
+  defp plain_run(run) do
+    %{
+      run_id: run.run_id,
+      commit: run.commit,
+      working_copy_id: run.working_copy_id,
+      source: run.source,
+      partial: run.partial,
+      started_at: timestamp(run.started_at),
+      finished_at: timestamp(run.finished_at),
+      failures: run.failures,
+      problems: run.problems
+    }
+  end
+
+  defp timestamp(nil), do: nil
+  defp timestamp(value), do: DateTime.to_iso8601(value)
 end
