@@ -241,8 +241,9 @@ defmodule CodeMySpec.Promotion.DeviceSync do
     )
   end
 
+  # A warning: a refusal is an outcome the receipt records, not a crash.
   defp report_failed(copy, desired, reason) do
-    Logger.error(
+    Logger.warning(
       "[DeviceSync] #{copy.root} did not take #{short(desired["head"])} " <>
         "(publication #{desired["publication_sequence"]}): #{inspect(reason)}"
     )
