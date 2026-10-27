@@ -14,9 +14,9 @@ defmodule CmsHarness.ARestartStillBootingIsStartingNotDownTest do
   setup do
     rig = app_instance_rig()
     assert %{"app_status" => "serving"} = push_app_event("ensure_app_running")
-    # The inline wait is three quarters of this: long enough to probe, short
-    # of the boot.
-    set_op_timeout(200)
+    # A short call budget leaves only an initial inline probe; the live
+    # process must then be watched in the background.
+    set_op_timeout(1_000)
     rig
   end
 

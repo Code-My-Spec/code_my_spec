@@ -1099,9 +1099,13 @@ defmodule CmsHarness.AppInstance do
     end
   end
 
-  # A start replies inside the call that asked for it, so it settles by three
-  # quarters of that call's timeout: the rest covers the stop and the launch.
-  defp settle_by(call_timeout), do: System.monotonic_time(:millisecond) + div(call_timeout * 3, 4)
+  # A start replies inside the call that asked for it. Reserve at least a
+  # second for stop, launch, and the reply; a short configured call timeout
+  # otherwise leaves only a few milliseconds after the health wait.
+  defp settle_by(call_timeout) do
+    health_wait = max(call_timeout - max(div(call_timeout, 4), 1_000), 0)
+    System.monotonic_time(:millisecond) + health_wait
+  end
 
   defp health_wait_interval_ms,
     do: Application.get_env(:code_my_spec, :app_instance_health_wait_interval_ms, 1_000)
