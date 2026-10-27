@@ -268,6 +268,21 @@ defmodule CodeMySpec.Requirements.Preloader do
     }
   end
 
+  @doc """
+  What a read of stored rows needs, and nothing a checker needs.
+
+  `topology_context/1` plus each story's questions, for story execution. A read
+  never loads `load/2`'s context: every file row and checker input on the
+  checkout, a second a call on a large project. Keys it does not load stay
+  absent. See knowledge/requirements_graph, "The read path".
+  """
+  @spec read_context(Scope.t()) :: map()
+  def read_context(%Scope{active_project_id: project_id} = scope) do
+    scope
+    |> topology_context()
+    |> Map.put(:questions_by_story, questions_by_story(project_id))
+  end
+
   defp project_story_issues(project_id) do
     Repo.all(
       from(i in CodeMySpec.Issues.Issue,
