@@ -34,7 +34,7 @@ defmodule CodeMySpec.Agents.Waiting do
   alias CodeMySpec.Users.Scope
 
   @type reason ::
-          {:provider_refused, DateTime.t()}
+          {:provider_refused, DateTime.t() | nil}
           | {:provisioning, String.t() | nil}
           | :tap_out
           | :analysis_runs
@@ -80,6 +80,13 @@ defmodule CodeMySpec.Agents.Waiting do
   defp check(:provider_refused, _scope, %{provider_retry_at: %DateTime{} = at}) do
     if DateTime.compare(at, DateTime.utc_now()) == :gt, do: {:provider_refused, at}
   end
+
+  # A refusal naming no time (an expired login that cannot be refreshed,
+  # e9d92731) is refused again on every turn until a person fixes it. A
+  # person's message and the agent's own replies have no waiting path, so they
+  # still reach it, and its next turn that is not refused clears this.
+  defp check(:provider_refused, _scope, %{provider_refusal: refusal}) when is_binary(refusal),
+    do: {:provider_refused, nil}
 
   defp check(:provider_refused, _scope, _agent), do: nil
 
