@@ -318,17 +318,10 @@ defmodule CodeMySpecDesktop.ProjectSetup do
     end
   end
 
-  defp attach_team(scope) do
-    case Agents.attach_setup_working_copy(scope, WorkingCopies.main(scope)) do
-      {:ok, _} -> :ok
-      :none -> :ok
-      error -> error
-    end
-  end
-
+  # Main stays working-copy-less: it names a copy on each read/write/edit/bash
+  # (`CodeMySpec.CopyTools`), so setup has nothing to attach it to.
   defp connected_ready(scope, snapshot, dev_ready) do
-    with :ok <- attach_team(scope),
-         :ok <- activate_team(scope, snapshot, dev_ready) do
+    with :ok <- activate_team(scope, snapshot, dev_ready) do
       {:ok, %{ready: dev_ready, snapshot: snapshot}}
     end
   end

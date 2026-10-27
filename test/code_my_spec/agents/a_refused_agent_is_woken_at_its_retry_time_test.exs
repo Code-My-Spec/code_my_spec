@@ -151,15 +151,22 @@ defmodule CodeMySpec.Agents.ARefusedAgentIsWokenAtItsRetryTimeTest do
     assert DateTime.compare(scheduled(ctx.agent.id), retry_at) == :eq
   end
 
-  # Without a retry time, the refusal stays held until the agent's state is
-  # cleared; there is no automatic wake to schedule.
-  test "a refusal naming no time holds the turn and schedules nothing", ctx do
+  # Unchanged: nothing holds its turn end, and nothing is scheduled after it.
+  # e9d92731: a refusal naming no time (a bad or expired login) is refused
+  # again on every turn, so its turn end is held too, not re-offered; with no
+  # time to wake at, nothing is scheduled. A person's message still reaches it.
+  test "a refusal naming no time holds the turn end and schedules nothing", ctx do
     turn(ctx.scope, ctx.agent, [
       %{"kind" => "turn_failed", "text" => "Error: Invalid API key · Please run /login"}
     ])
 
     agent_id = ctx.agent.id
-    refute_receive {:agent_dispatch, ^agent_id, _ref, _ordinary_turn_end}, 1_000
+    agent = Repo.get!(Agent, agent_id)
+
+    assert CodeMySpec.Agents.Waiting.reason(ctx.scope, agent, :turn_end) ==
+             {:provider_refused, nil}
+
+    refute_received {:agent_dispatch, ^agent_id, _ref, _turn_end}
     assert scheduled(agent_id) == nil
   end
 end

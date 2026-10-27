@@ -62,7 +62,7 @@ defmodule CodeMySpec.AppInstances.Tools.TargetTest do
              Target.own_default(copy_scope, %{scope: copy_scope}, instance.id)
   end
 
-  test "Main controls an explicitly attached instance and loses access when detached" do
+  test "Main controls any instance in its project; Coding, QA and a retired Main do not" do
     scope = working_copy_scope_fixture()
     {:ok, own} = WorkingCopies.fetch(scope.active_working_copy_id)
     {:ok, foreign} = WorkingCopies.issue(scope, nil, device: device_fixture(scope))
@@ -80,17 +80,8 @@ defmodule CodeMySpec.AppInstances.Tools.TargetTest do
         status: :running
       })
 
+    # Main reaches every copy in its project with no attachment.
     context = %{scope: scope, agent_id: agent.id}
-    assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
-
-    attachment =
-      Repo.insert!(%CodeMySpec.AgentAttachments.Attachment{
-        agent_id: agent.id,
-        project_id: scope.active_project_id,
-        account_id: scope.active_account_id,
-        working_copy_id: foreign.id
-      })
-
     assert {:ok, ^instance} = Target.lifecycle(scope, context, instance.id)
     detached_scope = %{scope | active_working_copy_id: nil}
     assert {:ok, ^instance} = Target.lifecycle(detached_scope, context, instance.id)
@@ -101,11 +92,15 @@ defmodule CodeMySpec.AppInstances.Tools.TargetTest do
       assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
     end
 
-    agent |> Ecto.Changeset.change(role: :main, retired_at: DateTime.utc_now()) |> Repo.update!()
+    fresh = fn -> Repo.get!(CodeMySpec.Agents.Agent, agent.id) end
+
+    fresh.()
+    |> Ecto.Changeset.change(role: :main, retired_at: DateTime.utc_now())
+    |> Repo.update!()
+
     assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
-    agent |> Ecto.Changeset.change(role: :main, retired_at: nil) |> Repo.update!()
-    Repo.delete!(attachment)
-    assert {:error, :instance_not_owned} = Target.lifecycle(scope, context, instance.id)
+    fresh.() |> Ecto.Changeset.change(retired_at: nil) |> Repo.update!()
+    assert {:ok, ^instance} = Target.lifecycle(scope, context, instance.id)
   end
 
   test "lifecycle refuses provisioned, foreign and malformed instances" do

@@ -30,20 +30,6 @@ defmodule CmsHarness.SyncPathTest do
   alias CmsHarnessTest.FakeServer
 
   setup do
-    # This suite exercises real disk changes through the watcher, scan and
-    # websocket. Polling avoids macOS FSEvents losing notifications when many
-    # integration tests create and stop streams on the same machine.
-    previous_watch_options = Application.get_env(:code_my_spec, :harness_watch_options)
-    Application.put_env(:code_my_spec, :harness_watch_options, backend: :fs_poll, interval: 100)
-
-    on_exit(fn ->
-      if previous_watch_options == nil do
-        Application.delete_env(:code_my_spec, :harness_watch_options)
-      else
-        Application.put_env(:code_my_spec, :harness_watch_options, previous_watch_options)
-      end
-    end)
-
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
     on_exit(fn -> restore_project_id(previous) end)
@@ -259,39 +245,28 @@ defmodule CmsHarness.SyncPathTest do
       assert_receive {:observations, _, first}, 5_000
       assert eventually(fn -> Watcher.watching?(project.root) end)
 
-      # `watching?` goes true when `FileSystem.start_link/1` returns, before
-      # the polling backend has captured its initial snapshot. Wait for that
-      # snapshot so the new file is observed as a change.
-      Process.sleep(1_000)
-
-      # Wait for a manifest *containing the new file*, not merely for the next
-      # one. A reconnect triggers its own full rescan, so the next manifest to
-      # arrive is not necessarily the one caused by this write — and asserting
-      # on arrival order rather than on content made this fail about one run in
-      # five, which reads as "the sync dropped my change" when nothing did.
-      #
-      # Re-writes rather than waiting once on a long clock. The watcher
-      # debounces file events for 2s before syncing (`Watcher`'s
-      # `@default_debounce_ms`) on top of however long the OS actually takes
-      # to deliver the event, which is not bounded tightly on a machine under
-      # real load — several concurrent harnesses and `mix test`/`mix spex`
-      # sweeps sharing this box is the normal case here, not an edge one.
-      # A single fs event has a small but real chance of arriving late enough
-      # to miss any fixed budget; a `mix test` result has to be a fact about
-      # the code, not about how the box was doing the moment it ran. Writing
-      # the same content again is a fresh fs event and a fresh debounce
-      # window — safe to repeat, since the assertion below only checks the
-      # file is present in *a* manifest, not which write produced it.
-      # Measured this session (issue e285546d) at a load average of 20-37 on
-      # a 10-core box: a single fixed 20s wait still failed 4 of 16 runs.
+      # What this test owns is what the watcher does with a file event: debounce
+      # it and send a fresh manifest. Delivering the event is FileSystem's job,
+      # and on a loaded box (fseventsd pegged, several suites sharing it) the OS
+      # stream lagged past every budget this test tried (one fixed 20s wait
+      # failed 4 runs in 16; four retried writes still ejected promotions). So
+      # the event is handed to the watcher exactly as its stream would hand it.
       second =
         await_manifest_with(project, "lib/demo/billing.ex", fn ->
           write(project.root, "lib/demo/billing.ex", "defmodule Demo.Billing do\nend\n")
+          file_event(project.root, "lib/demo/billing.ex")
         end)
 
       assert length(second) == length(first) + 1,
              "the manifest is the whole set, not a delta — that is what lets the " <>
                "server tell a deletion from an omission"
+    end
+
+    # The event the watcher's FileSystem stream sends for a changed file.
+    defp file_event(root, relative) do
+      [{watcher, _}] = Registry.lookup(CmsHarness.Registry, {:watcher, root})
+      %{fs_pid: fs_pid} = :sys.get_state(watcher)
+      send(watcher, {:file_event, fs_pid, {Path.join(root, relative), [:modified]}})
     end
 
     # Drains manifests until one mentions `path`, re-running `write_fun` (a

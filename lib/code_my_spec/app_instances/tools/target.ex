@@ -1,9 +1,9 @@
 defmodule CodeMySpec.AppInstances.Tools.Target do
   @moduledoc false
 
-  alias CodeMySpec.AgentAttachments
   alias CodeMySpec.Agents
   alias CodeMySpec.AppInstances
+  alias CodeMySpec.CopyTools
   alias CodeMySpec.Environments
   alias CodeMySpec.WorkingCopies
 
@@ -29,7 +29,7 @@ defmodule CodeMySpec.AppInstances.Tools.Target do
 
   def own_default(_scope, _context, _requested_id), do: {:error, :missing_active_working_copy}
 
-  @doc "Resolve an explicit harness instance through ownership or Main's existing attachment."
+  @doc "Resolve an explicit harness instance: the caller's own copy's, or any in the project for Main."
   def lifecycle(scope, context, requested_id) when is_binary(requested_id) do
     with {:ok, instance} <- fetch_instance(scope, requested_id),
          :ok <- harness_instance(scope, instance),
@@ -66,17 +66,14 @@ defmodule CodeMySpec.AppInstances.Tools.Target do
        when is_binary(copy_id) and copy_id == scope.active_working_copy_id,
        do: :ok
 
-  defp authorized_source(scope, context, instance) do
+  defp authorized_source(scope, context, _instance) do
     agent_id = context[:agent_id] || Agents.terminal_agent_id(scope, context[:session_id])
 
-    case AgentAttachments.list(scope, agent_id) do
-      attachments when is_list(attachments) ->
-        if Enum.any?(attachments, &(&1.working_copy_id == instance.working_copy_id)),
-          do: :ok,
-          else: {:error, :instance_not_owned}
-
-      _ ->
-        {:error, :instance_not_owned}
+    # Main has no copy of its own and reaches every copy in its project;
+    # `fetch_instance/2` already scoped the instance to it.
+    case CopyTools.main(scope, agent_id) do
+      {:ok, _main} -> :ok
+      _ -> {:error, :instance_not_owned}
     end
   end
 
@@ -93,11 +90,11 @@ defmodule CodeMySpec.AppInstances.Tools.Target do
 
   def error(:instance_not_owned),
     do:
-      "This instance is outside the caller's working copy. Main must connect to its working copy first; other agents can control only their own copy."
+      "This instance is outside the caller's working copy. Only Main controls other copies' instances; other agents control only their own copy."
 
   def error(:missing_active_working_copy),
     do:
-      "This call has no working copy of its own. Main can select an explicit instance_id after connecting to its working copy."
+      "This call has no working copy of its own. Main names an explicit instance_id (list_app_instances)."
 
   def error(reason), do: "Cannot resolve app instance: #{inspect(reason)}"
 

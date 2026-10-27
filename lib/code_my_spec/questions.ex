@@ -4,9 +4,9 @@ defmodule CodeMySpec.Questions do
 
   Questions are first-class records produced when neither the agent nor
   the PM can answer something in the moment. They belong to a Story and
-  cycle through `:open → :resolved | :deferred`. Only OPEN questions
-  count against the readiness gate (`scenarios > questions`); resolved
-  and deferred are historical.
+  cycle through `:open → :resolved | :deferred`. Any open question blocks
+  the Three Amigos seal, regardless of scenario count. Resolved and deferred
+  questions remain in the record but do not block the seal.
 
   Direct-DB implementation via `QuestionsRepository`. The
   `:questions_implementation` config key is kept as a swap point for test

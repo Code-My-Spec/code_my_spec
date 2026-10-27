@@ -13,8 +13,8 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   alias CmsHarness.Project.ChannelClient
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
-  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Agents.Waiting
+  alias CodeMySpec.Agents.Work
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecTest.AgentPresence
@@ -97,6 +97,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
 
     assert agent.provider_refusal =~ "OAuth session expired"
     assert agent.provider_retry_at == nil
+    # Held by the refusal itself, not by whatever else holds the agent's slot.
     assert Waiting.reason(ctx.scope, agent, :offer) == {:provider_refused, nil}
     assert Work.request_turn_if_runnable(ctx.scope, agent, :test) == {:ok, :not_runnable}
   end

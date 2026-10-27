@@ -3330,10 +3330,12 @@ defmodule CodeMySpecSpex.Fixtures do
   def launch_agent(request) do
     callbacks = mailbox_callbacks(request["agent_id"])
 
+    agent = Repo.get!(CodeMySpec.Agents.Agent, request["agent_id"])
+
     request
     |> Map.put_new(
       "direct_tools",
-      ToolIndex.carried_definitions(ToolRegistry.registry())
+      ToolIndex.carried_definitions(ToolRegistry.registry(), ToolIndex.copy_tools?(agent))
     )
     |> Map.put("on_register", callbacks[:on_register])
     |> Map.put("on_consume", callbacks[:on_consume])
