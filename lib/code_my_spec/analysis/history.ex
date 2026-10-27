@@ -103,6 +103,7 @@ defmodule CodeMySpec.Analysis.History do
       commit: run.completed_commit || run.start_commit,
       working_copy_id: run.working_copy_id,
       source: run.source,
+      status: run.status,
       partial: run.kind == :partial,
       started_at: run.started_at,
       finished_at: run.finished_at,
