@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story1149.Criterion2422Spex do
         assert {:error, :harness_unreachable} = context.command_result
         AttachmentHelpers.mode(context.two, :online)
         assert AttachmentHelpers.read(context, context.two, "identity.txt") =~ "remote"
-        refute File.exists?(Path.join(context.two.root, "queued-command"))
+        AttachmentHelpers.assert_file_absent(context.two, "queued-command")
         AttachmentHelpers.unchanged(context)
         {:ok, context}
       end

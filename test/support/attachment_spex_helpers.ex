@@ -103,6 +103,14 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
 
   def mode(copy, mode), do: Agent.update(Transport, &Map.put(&1, copy.id, {copy.root, mode}))
 
+  def assert_file_absent(copy, path) do
+    refute File.exists?(Path.join(copy.root, path))
+  end
+
+  def assert_file_content(copy, path, content) do
+    assert File.read!(Path.join(copy.root, path)) == content
+  end
+
   def conversation(c) do
     assert {:ok, body} =
              ToolLibrary.run("read_agent_conversation", %{agent_id: c.main.id}, c.tool_context)

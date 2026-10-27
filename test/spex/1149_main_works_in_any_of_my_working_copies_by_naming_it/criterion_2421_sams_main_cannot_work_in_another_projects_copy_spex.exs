@@ -41,8 +41,8 @@ defmodule CodeMySpecSpex.Story1149.Criterion2421Spex do
 
       then_ "the call is refused and nothing runs in the foreign copy", context do
         assert match?({:error, _}, context.command_result)
-        refute File.exists?(Path.join(context.foreign_copy.root, "forbidden"))
-        assert File.read!(Path.join(context.foreign_copy.root, "identity.txt")) == "foreign"
+        AttachmentHelpers.assert_file_absent(context.foreign_copy, "forbidden")
+        AttachmentHelpers.assert_file_content(context.foreign_copy, "identity.txt", "foreign")
         AttachmentHelpers.unchanged(context)
         {:ok, context}
       end
