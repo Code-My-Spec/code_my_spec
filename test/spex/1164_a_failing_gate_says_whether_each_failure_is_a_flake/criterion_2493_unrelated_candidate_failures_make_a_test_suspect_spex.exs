@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story1164.Criterion2493Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.PromotionHelpers
-  import ExUnit.CaptureLog
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -66,7 +65,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2493Spex do
         promote(context, context.story.number, fresh: true)
 
         log =
-          capture_log([level: :info], fn ->
+          Fixtures.capture_log_at(:info, fn ->
             the_gate_answers(context, %{"exunit" => [failure()]})
             what_the_agent_was_told(context)
           end)

@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story1164.Criterion2494Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.PromotionHelpers
-  import ExUnit.CaptureLog
 
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -38,6 +37,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2494Spex do
 
       when_ "the gate ejects the candidate after both tests fail", context do
         promote(context, context.story.number, fresh: true)
+        the_gate_is_running(context)
         commit = head_of(context, context.gate_root)
         other_scope = %{context.scope | active_working_copy_id: context.running.working_copy_id}
 
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2494Spex do
           )
 
         log =
-          capture_log([level: :info], fn ->
+          Fixtures.capture_log_at(:info, fn ->
             the_gate_answers(context, %{"exunit" => [failure("test A"), failure("test B")]})
             what_the_agent_was_told(context)
           end)
