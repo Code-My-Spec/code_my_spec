@@ -278,7 +278,14 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
   call this.
   """
   def land(context) do
-    {:ok, _} = Fixtures.record_story_publication(context.scope, context.story.id, "2.0.44")
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+
+    {:ok, _} =
+      Fixtures.record_story_publication(context.scope, story.id, "2.0.44",
+        candidate_commit: story.qa_ready_commit,
+        commit: story.qa_ready_commit
+      )
+
     context
   end
 

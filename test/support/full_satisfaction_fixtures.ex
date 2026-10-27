@@ -96,8 +96,13 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
   end
 
   defp apply_publication_record(context) do
+    story = CodeMySpec.Stories.get_story!(context.scope, context.story.id)
+
     {:ok, story} =
-      Fixtures.record_story_publication(context.scope, context.story.id, "fixture-published")
+      Fixtures.record_story_publication(context.scope, story.id, "fixture-published",
+        candidate_commit: story.qa_ready_commit,
+        commit: story.qa_ready_commit
+      )
 
     Map.put(context, :story, story)
   end

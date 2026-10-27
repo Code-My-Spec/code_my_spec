@@ -28,7 +28,14 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
     ctx = Map.merge(ctx, %{coding: coding, qa: qa}) |> Slice.complete() |> Slice.main_copy()
     story = CodeMySpec.Stories.get_story!(ctx.scope, ctx.story.id)
     at = DateTime.add(DateTime.utc_now(), -3600)
-    {:ok, _} = CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.15", at: at)
+
+    {:ok, _} =
+      CodeMySpec.Stories.mark_story_promoted(ctx.scope, story, "0.1.15",
+        at: at,
+        candidate_commit: story.qa_ready_commit,
+        commit: story.qa_ready_commit
+      )
+
     Slice.assert_active(Slice.next(ctx, %{agent_id: coding.id}), ctx, "complete")
 
     # Installed after the fixtures, which swap the transport themselves.
