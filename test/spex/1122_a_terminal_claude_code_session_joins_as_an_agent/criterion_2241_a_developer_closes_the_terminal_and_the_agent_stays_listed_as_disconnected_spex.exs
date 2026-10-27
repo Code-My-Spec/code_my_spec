@@ -7,6 +7,7 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
 
   import CodeMySpecSpex.TerminalAgentHelpers
 
+  alias CodeMySpec.Agents
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
@@ -49,7 +50,11 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
       end
 
       then_ "the agent stays listed, shown as not connected", context do
-        eventually(fn -> assert panel(context) =~ "Away" end)
+        eventually(fn ->
+          refute MapSet.member?(Agents.present_ids(context.scope), context.agent_id)
+        end)
+
+        assert panel(context) =~ "Away"
         assert [%{"id" => id}] = agents(context)
         assert id == context.agent_id
         {:ok, context}
