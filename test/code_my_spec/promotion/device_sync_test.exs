@@ -2,6 +2,7 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   use CodeMySpecTest.DataCase, async: true
   import CodeMySpec.UsersFixtures
   import CodeMySpec.DevicesFixtures
+  import ExUnit.CaptureLog
   alias CodeMySpec.Promotion.DeviceSync
   alias CodeMySpec.AppInstances
   alias CodeMySpec.BootVersion
@@ -52,11 +53,19 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
   test "dirty destination fails separately, then retry applies once", %{scope: scope, copy: copy} do
     DeviceSync.request(scope, "one", "main", "p1", dispatch: false)
 
-    assert {:ok, %{"status" => "failed"}} =
-             DeviceSync.apply_pending(scope, copy.id,
-               sync: fn _, _, _, _, _ -> {:error, :dirty} end,
-               app: App
-             )
+    log =
+      capture_log(fn ->
+        assert {:ok, %{"status" => "failed"}} =
+                 DeviceSync.apply_pending(scope, copy.id,
+                   sync: fn _, _, _, _, _ -> {:error, :dirty} end,
+                   app: App
+                 )
+      end)
+
+    # Recorded on the instance alone, a dirty main checkout refused landings
+    # for hours unseen.
+    assert log =~ "[DeviceSync] #{copy.root} did not take one"
+    assert log =~ ":dirty"
 
     Process.put(:desired, "one")
 

@@ -2,6 +2,8 @@ defmodule CodeMySpec.Promotion.DeviceSync do
   @moduledoc "Durable application of a published revision on the project's main device."
 
   import Ecto.Query
+  require Logger
+
   alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.AppInstances
   alias CodeMySpec.AppInstances.AppInstance
@@ -208,6 +210,7 @@ defmodule CodeMySpec.Promotion.DeviceSync do
           case instance.promotion_sync do
             %{"status" => status} = desired when status in ["pending", "failed"] ->
               outcome = apply_revision(scope, copy, instance, desired, opts)
+              report(copy, desired, outcome)
               record(instance.id, desired, outcome)
 
             other ->
@@ -219,6 +222,21 @@ defmodule CodeMySpec.Promotion.DeviceSync do
       end
     end)
   end
+
+  # Recorded on the app instance alone, a refusal went unseen: a dirty main
+  # checkout refused two publications for hours and nothing said so.
+  defp report(copy, _desired, {:ok, head}),
+    do: Logger.info("[DeviceSync] #{copy.root} is serving #{short(head)}")
+
+  defp report(copy, desired, {:error, reason}) do
+    Logger.error(
+      "[DeviceSync] #{copy.root} did not take #{short(desired["head"])} " <>
+        "(publication #{desired["publication_sequence"]}): #{inspect(reason)}"
+    )
+  end
+
+  defp short(head) when is_binary(head), do: String.slice(head, 0, 9)
+  defp short(head), do: inspect(head)
 
   defp apply_revision(scope, copy, instance, desired, opts) do
     sync = Keyword.get(opts, :sync, &Runner.remote_sync/5)
