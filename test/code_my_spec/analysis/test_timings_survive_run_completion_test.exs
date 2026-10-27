@@ -24,7 +24,7 @@ defmodule CodeMySpec.Analysis.TestTimingsSurviveRunCompletionTest do
                "name" => "sync path",
                "file" => file,
                "state" => "passed",
-               "duration_us" => 39_000_000
+               "duration" => 39_000
              })
 
     assert :ok =

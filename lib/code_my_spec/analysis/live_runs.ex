@@ -131,7 +131,7 @@ defmodule CodeMySpec.Analysis.LiveRuns do
       state: test["state"],
       message: test["message"],
       failure_line: test["failure_line"],
-      duration_us: test["duration_us"]
+      duration_us: test_duration_us(test)
     }
 
     %{live | tests: live.tests ++ [result]}
@@ -152,4 +152,15 @@ defmodule CodeMySpec.Analysis.LiveRuns do
     do: %{live | finished?: true, totals: Map.take(event, ["files", "findings"])}
 
   defp apply_event(_event, live), do: live
+
+  # The formatter reports milliseconds; the timing ledger stores microseconds.
+  defp test_duration_us(%{"duration" => duration})
+       when is_number(duration) and duration >= 0,
+       do: round(duration * 1_000)
+
+  defp test_duration_us(%{"duration_us" => duration})
+       when is_integer(duration) and duration >= 0,
+       do: duration
+
+  defp test_duration_us(_test), do: nil
 end
