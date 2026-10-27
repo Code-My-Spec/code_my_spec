@@ -76,6 +76,75 @@ defmodule CodeMySpec.PromotionQueue.TimingsTest do
     refute Map.has_key?(summary["outcomes"]["ejected"]["stages"], "landing")
   end
 
+  test "ranks only associated full gate run tests and files by duration" do
+    entry = %Entry{
+      id: Ecto.UUID.generate(),
+      status: :landed,
+      result: %{"timing" => %{"gate_copy_id" => "gate", "run_ids" => [1, 2, 3]}}
+    }
+
+    runs = [
+      %Run{
+        id: 1,
+        source: "exunit",
+        kind: :full,
+        working_copy_id: "gate",
+        stats: %{
+          "timings" => %{
+            "tests" => [
+              %{
+                "name" => "slow test",
+                "file" => "test/sync_test.exs",
+                "duration_us" => 39_000_000
+              },
+              %{"name" => "fast test", "file" => "test/sync_test.exs", "duration_us" => 2_000_000}
+            ],
+            "files" => [%{"file" => "test/sync_test.exs", "duration_us" => 41_000_000}]
+          }
+        }
+      },
+      %Run{
+        id: 2,
+        source: "spex",
+        kind: :full,
+        working_copy_id: "gate",
+        stats: %{
+          "timings" => %{
+            "tests" => [
+              %{
+                "name" => "slow spex",
+                "file" => "test/spex/slow_spex.exs",
+                "duration_us" => 12_000_000
+              }
+            ],
+            "files" => []
+          }
+        }
+      },
+      %Run{
+        id: 3,
+        source: "exunit",
+        kind: :partial,
+        working_copy_id: "gate",
+        stats: %{
+          "timings" => %{"tests" => [%{"name" => "unrelated", "duration_us" => 99_000_000}]}
+        }
+      }
+    ]
+
+    summary = entry |> Timings.build(runs) |> then(&Timings.summarize([&1]))
+
+    assert [
+             %{"name" => "slow test", "duration_seconds" => 39.0},
+             %{"name" => "fast test", "duration_seconds" => 2.0}
+           ] = summary["slowest_tests"]["exunit"]
+
+    assert [%{"name" => "slow spex"}] = summary["slowest_tests"]["spex"]
+
+    assert [%{"file" => "test/sync_test.exs", "duration_seconds" => 41.0}] =
+             summary["slowest_files"]["exunit"]
+  end
+
   defp timing(outcome, gate_seconds, landing_seconds) do
     stages = Map.new(Timings.stages(), &{&1, %{status: :not_run, duration_seconds: nil}})
     stages = Map.put(stages, "gate-build", %{status: :ran, duration_seconds: gate_seconds})

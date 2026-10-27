@@ -23,7 +23,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
           line: integer() | nil,
           state: String.t(),
           message: String.t() | nil,
-          failure_line: integer() | nil
+          failure_line: integer() | nil,
+          duration_us: non_neg_integer() | nil
         }
   @type finding :: %{
           file: String.t() | nil,
@@ -34,6 +35,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
   @type t :: %{
           running_files: [String.t()],
           tests: [test_result()],
+          file_started_at: %{String.t() => DateTime.t()},
+          file_timings: [map()],
           findings: [finding()],
           totals: map() | nil,
           finished?: boolean(),
@@ -77,6 +80,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
     %{
       running_files: [],
       tests: [],
+      file_started_at: %{},
+      file_timings: [],
       findings: [],
       totals: nil,
       finished?: false,
@@ -91,11 +96,32 @@ defmodule CodeMySpec.Analysis.LiveRuns do
 
   # Test files run concurrently, so the run is in every file started and not
   # yet finished.
-  defp apply_event(%{"event" => "file_started", "file" => file}, live),
-    do: %{live | running_files: live.running_files ++ [file]}
+  defp apply_event(%{"event" => "file_started", "file" => file}, live) do
+    %{
+      live
+      | running_files: live.running_files ++ [file],
+        file_started_at: Map.put(live.file_started_at, file, DateTime.utc_now())
+    }
+  end
 
-  defp apply_event(%{"event" => "file_finished", "file" => file}, live),
-    do: %{live | running_files: List.delete(live.running_files, file)}
+  defp apply_event(%{"event" => "file_finished", "file" => file}, live) do
+    timings =
+      case Map.get(live.file_started_at, file) do
+        %DateTime{} = started ->
+          elapsed = max(DateTime.diff(DateTime.utc_now(), started, :microsecond), 0)
+          live.file_timings ++ [%{"file" => file, "duration_us" => elapsed}]
+
+        nil ->
+          live.file_timings
+      end
+
+    %{
+      live
+      | running_files: List.delete(live.running_files, file),
+        file_started_at: Map.delete(live.file_started_at, file),
+        file_timings: timings
+    }
+  end
 
   defp apply_event(%{"event" => "test"} = test, live) do
     result = %{
@@ -104,7 +130,8 @@ defmodule CodeMySpec.Analysis.LiveRuns do
       line: test["line"],
       state: test["state"],
       message: test["message"],
-      failure_line: test["failure_line"]
+      failure_line: test["failure_line"],
+      duration_us: test["duration_us"]
     }
 
     %{live | tests: live.tests ++ [result]}

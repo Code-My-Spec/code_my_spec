@@ -116,6 +116,28 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
                 )}</span>
               </div>
             </section>
+            <section :for={source <- ~w(exunit spex)} class="space-y-3">
+              <h2 class="text-xl font-semibold">Slowest {String.capitalize(source)} tests</h2>
+              <ol data-test={"promotion-slowest-tests-#{source}"} class="space-y-1">
+                <li
+                  :for={item <- @summary["slowest_tests"][source]}
+                  data-file={item["file"]}
+                  data-duration-seconds={item["duration_seconds"]}
+                >
+                  {item["name"]} ({item["file"]}): {format_seconds(item["duration_seconds"])}
+                </li>
+              </ol>
+              <h2 class="text-xl font-semibold">Slowest {String.capitalize(source)} test files</h2>
+              <ol data-test={"promotion-slowest-files-#{source}"} class="space-y-1">
+                <li
+                  :for={item <- @summary["slowest_files"][source]}
+                  data-file={item["file"]}
+                  data-duration-seconds={item["duration_seconds"]}
+                >
+                  {item["file"]}: {format_seconds(item["duration_seconds"])}
+                </li>
+              </ol>
+            </section>
           <% else %>
             <p>Promotion not found.</p>
           <% end %>

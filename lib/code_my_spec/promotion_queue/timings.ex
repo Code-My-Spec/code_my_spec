@@ -24,6 +24,8 @@ defmodule CodeMySpec.PromotionQueue.Timings do
           outcome: :landed | :ejected,
           stages: %{String.t() => stage()},
           analyzer_waits: %{String.t() => stage()},
+          test_timings: [map()],
+          file_timings: [map()],
           total_seconds: non_neg_integer(),
           gate_seconds: non_neg_integer()
         }
@@ -76,7 +78,9 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       "window" => window,
       "count" => length(timings),
       "empty" => timings == [],
-      "outcomes" => outcomes
+      "outcomes" => outcomes,
+      "slowest_tests" => slowest(timings, :test_timings),
+      "slowest_files" => slowest(timings, :file_timings)
     }
   end
 
@@ -108,6 +112,8 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       outcome: outcome,
       stages: stages,
       analyzer_waits: analyzer_waits,
+      test_timings: timed_items(own_runs, "tests"),
+      file_timings: timed_items(own_runs, "files"),
       total_seconds: sum_stages(stages, @stages) + wait_seconds,
       gate_seconds: sum_stages(stages, @gate_stages) + wait_seconds
     }
@@ -229,6 +235,35 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       "analyzer_waits" => waits,
       "gate_seconds" => Enum.sum(Enum.map(selected, & &1.gate_seconds))
     }
+  end
+
+  defp timed_items(runs, key) do
+    for %Run{source: source, id: run_id, stats: stats} <- runs,
+        source in ["exunit", "spex"],
+        item <- get_in(stats || %{}, ["timings", key]) || [],
+        is_integer(item["duration_us"]) and item["duration_us"] >= 0 do
+      item
+      |> Map.take(["name", "file", "duration_us"])
+      |> Map.merge(%{
+        "source" => source,
+        "run_id" => run_id,
+        "duration_seconds" => Float.round(item["duration_us"] / 1_000_000, 2)
+      })
+    end
+  end
+
+  defp slowest(timings, key) do
+    items = Enum.flat_map(timings, &Map.get(&1, key, []))
+
+    Map.new(["exunit", "spex"], fn source ->
+      ranked =
+        items
+        |> Enum.filter(&(&1["source"] == source))
+        |> Enum.sort_by(& &1["duration_us"], :desc)
+        |> Enum.take(10)
+
+      {source, ranked}
+    end)
   end
 
   defp statistics([]), do: nil

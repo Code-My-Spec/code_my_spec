@@ -7004,6 +7004,43 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc "Read spex durations directly from promotion gate run records in the last day."
+  def promotion_spex_run_seconds(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    entries =
+      Repo.all(
+        from e in CodeMySpec.PromotionQueue.Entry,
+          where:
+            e.project_id == ^scope.active_project_id and e.status == :landed and
+              e.updated_at >= ^since
+      )
+
+    ids = Enum.flat_map(entries, &get_in(&1.result, ["timing", "run_ids"]))
+
+    Repo.all(
+      from r in CodeMySpec.Analysis.Run,
+        where:
+          r.id in ^ids and r.project_id == ^scope.active_project_id and
+            r.source == "spex" and r.kind == :full
+    )
+    |> Enum.map(&DateTime.diff(&1.finished_at, &1.began_at, :second))
+    |> Enum.sort()
+  end
+
+  @doc "Read landed and ejected queue counts directly from the last day's entries."
+  def promotion_queue_counts(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    Repo.all(
+      from e in CodeMySpec.PromotionQueue.Entry,
+        where:
+          e.project_id == ^scope.active_project_id and
+            e.status in [:landed, :ejected] and e.updated_at >= ^since
+    )
+    |> Enum.frequencies_by(& &1.status)
+  end
+
   @doc "Record an unrelated partial analysis run, which cannot count as a gate run."
   def partial_agent_analysis_run(scope, opts) do
     at = Keyword.get(opts, :started_at, DateTime.utc_now())
@@ -7044,7 +7081,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     runs =
       for source <- ~w(compiler credo exunit spex), source in reached do
-        seconds = Keyword.get(opts, String.to_existing_atom(source), 60)
+        seconds = Keyword.get(opts, String.to_atom(source), 60)
 
         CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
           project_id: scope.active_project_id,
@@ -7052,6 +7089,13 @@ defmodule CodeMySpecSpex.Fixtures do
           source: source,
           kind: :full,
           status: if(outcome == :ejected and source == failed, do: :failed, else: :completed),
+          stats: %{
+            "timings" =>
+              Keyword.get(opts, String.to_atom("#{source}_timings"), %{
+                "tests" => [],
+                "files" => []
+              })
+          },
           started_at: DateTime.add(at, -seconds, :second),
           began_at: DateTime.add(at, -seconds, :second),
           finished_at: at
