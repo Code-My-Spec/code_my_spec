@@ -7,10 +7,6 @@ defmodule CodeMySpec.PromotionQueue.Timings do
   entry's `result["timing"]`. Only those IDs can contribute analyzer time.
   """
 
-  use Boundary,
-    top_level?: true,
-    deps: [CodeMySpec.Analysis, CodeMySpec.PromotionQueue.Entry, CodeMySpec.Repo]
-
   import Ecto.Query
 
   alias CodeMySpec.Analysis.Run

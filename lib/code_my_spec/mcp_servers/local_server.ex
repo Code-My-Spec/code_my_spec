@@ -79,6 +79,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # the gate that shipped reading a column nothing wrote.
   component(CodeMySpec.McpServers.Promotion.Tools.Promote)
   component(CodeMySpec.McpServers.Promotion.Tools.PromoteSync)
+  component(CodeMySpec.McpServers.Promotion.Tools.GetPromotionTimings)
 
   # Code mode itself.
   component(CodeMySpec.McpServers.CodeMode.Tools.ToolDocs)

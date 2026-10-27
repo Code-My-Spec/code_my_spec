@@ -332,7 +332,15 @@ defmodule CodeMySpec.PromotionQueueTest do
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    assert {:ok, %{status: :landed}} = settle(entry)
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    timing = result["timing"]
+    assert timing["gate_copy_id"] == ctx.gate.id
+    assert length(timing["run_ids"]) == length(Run.sources())
+    assert Enum.all?(timing["run_ids"], &is_integer/1)
+    assert is_integer(timing["stages"]["queue-wait"])
+    assert is_integer(timing["stages"]["gate-build"])
+    assert is_integer(timing["stages"]["asset-build"])
+    assert is_integer(timing["stages"]["landing"])
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
@@ -590,6 +598,9 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "assets"
+    timing = result["timing"]
+    assert is_integer(timing["stages"]["asset-build"])
+    refute Map.has_key?(timing["stages"], "landing")
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 

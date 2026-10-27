@@ -192,7 +192,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp reserve_and_build(state, entry, base) do
-    case Repository.move(entry, :gating, %{}) do
+    case Repository.move(entry, :gating, %{result: start_timing(entry)}) do
       {:ok, reserved} ->
         build_on(%{state | reserved_entries: [reserved]}, [reserved], base)
 
@@ -417,7 +417,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp begin_gating(state, entries, gate, base, head, format) do
     batch_id = Ecto.UUID.generate()
-    in_batch = Enum.map(entries, &moved(&1, :gating, %{batch_id: batch_id}))
+
+    in_batch =
+      Enum.map(entries, fn entry ->
+        entry = finish_stage(entry, "gate-build", "build_started_at")
+        timing = timing(entry) |> Map.put("gate_copy_id", gate.id)
+        moved(entry, :gating, %{batch_id: batch_id, result: put_timing(entry, timing)})
+      end)
 
     batch = %{
       id: batch_id,
@@ -494,9 +500,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
            fresh_since: fresh_since(batch.entries),
            retry_failed_since: queued_since(batch.entries)
          ) do
-      {:ok, swept} -> state |> note_reused(swept) |> assets_build(swept)
-      {:pending, _pending} -> {:noreply, recheck_later(state)}
-      {:error, reason} -> red(state, reason)
+      {:ok, swept} ->
+        state = %{state | batch: record_runs(batch, swept)}
+        state |> note_reused(swept) |> assets_build(swept)
+
+      {:pending, _pending} ->
+        {:noreply, recheck_later(state)}
+
+      {:error, reason} ->
+        red(state, reason)
     end
   end
 
@@ -518,7 +530,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp assets_build(%{batch: batch} = state, swept) do
     environment = WorkingCopies.execution_context(batch.scope)
 
-    case Runner.build_assets(environment, batch.gate.root, batch.gate.id) do
+    started = DateTime.utc_now()
+    result = Runner.build_assets(environment, batch.gate.root, batch.gate.id)
+    state = %{state | batch: record_stage(batch, "asset-build", started)}
+
+    case result do
       {:ok, _} -> stories_green(state, swept)
       {:error, reason} -> eject_batch(state, reason.reason)
     end
@@ -594,6 +610,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # A red batch is its one candidate's.
   defp eject_batch(%{batch: batch} = state, reason) do
+    batch = record_runs(batch, gate_answers(batch))
     release_gate(state)
     Enum.each(batch.entries, &eject(state.scope, &1, reason <> format_note(batch)))
     next(idle(state))
@@ -695,6 +712,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     notify = batch.entries |> Enum.map(& &1.requested_by_agent_id) |> Enum.reject(&is_nil/1)
 
     landing = if local_only?(state.scope), do: :land, else: :land_remote
+    landing_started = DateTime.utc_now()
 
     case apply(Promotion, landing, [
            batch.scope,
@@ -712,8 +730,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
            ]
          ]) do
       {:ok, report} = result ->
+        batch = record_stage(batch, "landing", landing_started)
+
         for entry <- batch.entries do
-          moved(entry, :landed, %{result: landed_result(batch, report)})
+          moved(entry, :landed, %{result: landed_result(entry, batch, report)})
           issue_landed(state.scope, entry, batch.head)
 
           # The landing report itself, in memory, for a caller waiting on this
@@ -798,8 +818,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     next(%{state | phase: :idle, batch: nil})
   end
 
-  defp landed_result(batch, report) do
+  defp landed_result(entry, batch, report) do
     base = %{
+      "timing" => timing(entry),
       "version" => report[:version],
       "head" => batch.head,
       "promotion_id" => batch.id,
@@ -869,9 +890,78 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   # -- Helpers ----------------------------------------------------------------
 
+  defp timing(entry), do: get_in(entry.result || %{}, ["timing"]) || %{}
+
+  defp put_timing(entry, value), do: Map.put(entry.result || %{}, "timing", value)
+
+  defp start_timing(entry) do
+    now = DateTime.utc_now()
+    stages = %{"queue-wait" => max(DateTime.diff(now, entry.inserted_at, :second), 0)}
+    put_timing(entry, %{"stages" => stages, "build_started_at" => DateTime.to_iso8601(now)})
+  end
+
+  defp finish_stage(entry, stage, start_key) do
+    case get_in(timing(entry), [start_key]) do
+      started when is_binary(started) ->
+        {:ok, at, _} = DateTime.from_iso8601(started)
+
+        stages =
+          Map.put(
+            timing(entry)["stages"] || %{},
+            stage,
+            max(DateTime.diff(DateTime.utc_now(), at, :second), 0)
+          )
+
+        value = timing(entry) |> Map.put("stages", stages) |> Map.delete(start_key)
+        moved(entry, entry.status, %{result: put_timing(entry, value)})
+
+      _ ->
+        entry
+    end
+  end
+
+  defp record_stage(batch, stage, started) do
+    seconds = max(DateTime.diff(DateTime.utc_now(), started, :second), 0)
+
+    entries =
+      Enum.map(batch.entries, fn entry ->
+        stages = Map.put(timing(entry)["stages"] || %{}, stage, seconds)
+
+        moved(entry, entry.status, %{
+          result: put_timing(entry, Map.put(timing(entry), "stages", stages))
+        })
+      end)
+
+    %{batch | entries: entries}
+  end
+
+  defp record_runs(batch, swept) do
+    ids = Enum.map(swept, & &1.run_id) |> Enum.reject(&is_nil/1)
+
+    entries =
+      Enum.map(batch.entries, fn entry ->
+        value = Map.put(timing(entry), "run_ids", ids)
+        moved(entry, entry.status, %{result: put_timing(entry, value)})
+      end)
+
+    %{batch | entries: entries}
+  end
+
+  defp gate_answers(batch) do
+    for source <- Run.sources(),
+        %Run{kind: :full, id: id} <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
+      %{run_id: id}
+    end
+  end
+
   defp eject(scope, %Entry{} = entry, reason) do
     entry = Repository.get(entry.id) || entry
-    moved(entry, :ejected, %{batch_id: nil, result: %{"reason" => reason}})
+
+    moved(entry, :ejected, %{
+      batch_id: nil,
+      result: Map.put(entry.result || %{}, "reason", reason)
+    })
+
     Logger.info("[PromotionQueue] ejected #{subject(entry)}: #{reason}")
 
     tell_durably(
@@ -1146,7 +1236,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       }
 
       for entry <- batch.entries,
-          do: moved(entry, :gating, %{result: %{"publication" => publication}})
+          do:
+            moved(entry, :gating, %{
+              result: Map.put(entry.result || %{}, "publication", publication)
+            })
 
       Map.put(batch, :publication_sequence, sequence)
     end

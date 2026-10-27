@@ -579,6 +579,8 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/content", ContentLive
       live "/projects/:project_id/content/:id", ContentLive.Show
       live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/promotion-timing", PromotionTimingLive, :index
+      live "/projects/:project_id/promotion-timing/:entry_id", PromotionTimingLive, :show
       live "/projects/:project_id/runs/:run_id", RunLive
 
       live "/projects/:project_id/files", FilesLive
