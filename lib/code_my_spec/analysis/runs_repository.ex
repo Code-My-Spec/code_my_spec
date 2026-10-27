@@ -4,7 +4,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   All queries filter by the scope's active project. The ledger is append-heavy:
   runs are inserted `:running` at enqueue, then completed/failed exactly once.
-  Old rows are pruned per `{project, source}` so the table stays small.
+  Expired rows are pruned by the configured analysis history window.
   """
 
   import Ecto.Query, warn: false
@@ -15,10 +15,6 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   alias CodeMySpec.Analysis.RunWaiter
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
-
-  # Keep this many finished runs per {project, source} — enough for the UI
-  # gauge history and debugging without unbounded growth.
-  @keep_per_source 20
 
   # How long a requested run its harness's departure killed still counts as
   # awaited by its agent. See `awaiting_runs?/3`.
@@ -620,25 +616,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     end
   end
 
-  @doc "Prune finished runs beyond the newest #{@keep_per_source} per source."
-  @spec prune(Scope.t(), String.t()) :: {:ok, integer()}
-  def prune(%Scope{active_project_id: project_id}, source) do
-    keep_ids =
-      Run
-      |> where([r], r.project_id == ^project_id and r.source == ^source)
-      |> where([r], r.status in [:completed, :failed])
-      |> order_by(desc: :started_at)
-      |> limit(@keep_per_source)
-      |> select([r], r.id)
-      |> Repo.all()
-
-    {count, _} =
-      Run
-      |> where([r], r.project_id == ^project_id and r.source == ^source)
-      |> where([r], r.status in [:completed, :failed])
-      |> where([r], r.id not in ^keep_ids)
-      |> Repo.delete_all()
-
-    {:ok, count}
-  end
+  @doc "Prune expired runs for the project. The source argument is kept for callers."
+  @spec prune(Scope.t(), String.t()) :: {:ok, non_neg_integer()}
+  def prune(%Scope{} = scope, _source), do: CodeMySpec.Analysis.History.prune(scope)
 end
