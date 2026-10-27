@@ -145,7 +145,7 @@ defmodule CmsHarness.Project.Watcher do
     # Any event proves the stream is alive, whether or not it is worth a sync.
     state = mark_alive(state)
 
-    if relevant?(events) and not ignored?(state.project.root, path) do
+    if lost_events?(events) or (relevant?(events) and not ignored?(state.project.root, path)) do
       {:noreply, schedule_sync(state)}
     else
       {:noreply, state}
@@ -224,7 +224,11 @@ defmodule CmsHarness.Project.Watcher do
         state
 
       dirs ->
-        {:ok, pid} = FileSystem.start_link(dirs: dirs)
+        options =
+          Application.get_env(:code_my_spec, :harness_watch_options, [])
+          |> Keyword.merge(dirs: dirs)
+
+        {:ok, pid} = FileSystem.start_link(options)
         FileSystem.subscribe(pid)
         Logger.info("[CmsHarness] watching #{state.project.root}: #{Enum.join(dirs, ", ")}")
 
@@ -239,10 +243,10 @@ defmodule CmsHarness.Project.Watcher do
   defp stop_watching(state) do
     if state.timer, do: Process.cancel_timer(state.timer)
     if state.liveness_timer, do: Process.cancel_timer(state.liveness_timer)
-    # Unlinked before stopping so a normal shutdown of the watcher is not an
-    # exit signal to this process.
+    # Unlink before shutdown so the worker's exit does not stop this watcher.
+    # A normal exit would leave its linked backend running after fixture cleanup.
     Process.unlink(state.fs_pid)
-    GenServer.stop(state.fs_pid, :normal)
+    GenServer.stop(state.fs_pid, :shutdown)
     %{state | fs_pid: nil, timer: nil, liveness_timer: nil, watching?: false}
   end
 
@@ -262,8 +266,13 @@ defmodule CmsHarness.Project.Watcher do
     %{state | timer: Process.send_after(self(), :sync, debounce_ms())}
   end
 
+  # FSEvents reports these when it cannot account for every path change.
+  # A complete scan is required even if the reported path is ignored.
+  defp lost_events?(events),
+    do: Enum.any?(events, &(&1 in [:mustscansubdirs, :userdropped, :kerneldropped]))
+
   defp relevant?(events),
-    do: Enum.any?(events, &(&1 in [:modified, :created, :removed, :renamed]))
+    do: Enum.any?(events, &(&1 in [:modified, :created, :removed, :deleted, :renamed]))
 
   # Screened with the scanner's own rule, so what is watched and what is
   # scanned cannot drift apart.

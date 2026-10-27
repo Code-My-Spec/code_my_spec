@@ -12,9 +12,8 @@ defmodule CodeMySpec.Agents.DefinitionContext do
 
     Your current directory may be detached agent scratch, NOT the project's working copy.
     Do not generate the application there. Creating the first checkout does not move you or
-    Product into it or restart either conversation. Main accesses the checkout through an
-    attachment: inspect list_working_copy_attachments after setup, use connect_working_copy
-    if needed, and use work_in_copy with the attachment ID for source files and commands.
+    Product into it or restart either conversation. Main reaches the checkout by naming it:
+    read, write, edit and bash each take the working_copy_id list_working_copies shows.
     This setup request is your current work; it does not require claiming a development task.
     Before a working copy exists, do not use get_next_requirement/start_task as a setup prerequisite.
     A no-working-copy response from that queue is expected here, not a setup blocker. Inspect the

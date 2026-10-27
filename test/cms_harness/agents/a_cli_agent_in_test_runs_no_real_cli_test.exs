@@ -36,7 +36,8 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
   end
 
   test "a fresh turn and a resumed one both answer from the recording", %{id: id} do
-    sessions_before = codex_sessions()
+    days = for offset <- -1..1, do: Date.add(Date.utc_today(), offset)
+    sessions_before = codex_sessions(days)
 
     assert {:ok, first} =
              CmsHarness.Agents.send_message(
@@ -62,11 +63,19 @@ defmodule CmsHarness.Agents.ACliAgentInTestRunsNoRealCliTest do
 
     recording? = System.get_env("SPEX_CASSETTE_MODE") == "record"
 
-    assert recording? or codex_sessions() == sessions_before,
+    assert recording? or codex_sessions(days) == sessions_before,
            "a test agent started a real codex session"
   end
 
-  defp codex_sessions do
-    Path.wildcard(Path.expand("~/.codex/sessions/**/*.jsonl")) |> MapSet.new()
+  # A new Codex run writes under its current date. Reading nearby days also
+  # covers a test crossing midnight without traversing every historical session.
+  defp codex_sessions(days) do
+    root = Path.expand("~/.codex/sessions")
+
+    days
+    |> Enum.flat_map(fn day ->
+      Path.wildcard(Path.join(root, Calendar.strftime(day, "%Y/%m/%d/*.jsonl")))
+    end)
+    |> MapSet.new()
   end
 end

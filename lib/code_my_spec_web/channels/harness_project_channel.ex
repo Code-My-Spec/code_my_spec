@@ -2178,10 +2178,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
-        # Attachments run the agents' own tools (issue 2394520b); a harness
-        # that still runs its own file/command layer is not offered them.
-        if payload["attachment_tools"] == true do
-          HarnessRegistry.register_verb(harness.id, "attachment_tools")
+        # Main's read/write/edit/bash in this copy (`CodeMySpec.CopyTools`).
+        if payload["copy_tools"] == true do
+          HarnessRegistry.register_verb(harness.id, "copy_tools")
         end
 
         register_app_verbs(harness, payload)

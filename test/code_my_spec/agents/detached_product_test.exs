@@ -319,8 +319,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert moved.working_copy == main.working_copy
     assert moved.os_pid == main.os_pid
     assert moved.os_boot_id == main.os_boot_id
-    assert [%{working_copy_id: target}] = CodeMySpec.AgentAttachments.list(scope, main.id)
-    assert target == copy.id
     assert {:ok, retained_product} = Agents.fetch_agent(scope, product.id)
     assert retained_product.execution_mode == :detached
     assert retained_product.working_copy_id == nil
@@ -335,8 +333,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     refute_received {:agent_runtime_stopped, _}
     refute_received {:agent_runtime_started, _}
     assert :ok = CodeMySpec.Analysis.HarnessRegistry.register_executor(copy.id)
-    assert {:ok, same_main} = Agents.attach_setup_working_copy(scope, copy)
-    assert same_main.id == main.id
     assert {:ok, reopened_main} = Agents.ensure_main_agent(scope)
     assert reopened_main.id == main.id
     assert {:ok, reopened_product} = Agents.ensure_product_agent(scope)
@@ -347,7 +343,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert retried_main.id == main.id
     refute_received {:agent_runtime_stopped, _}
     refute_received {:agent_runtime_started, _}
-    assert length(CodeMySpec.AgentAttachments.list(scope, main.id)) == 1
     assert length(Agents.list_agents(scope)) == 2
   end
 
@@ -365,8 +360,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert {:ok, _, main} = Agents.start_project_setup(scope)
     assert main.execution_mode == :detached
     assert main.working_copy_id == nil
-    assert {:ok, attached} = Agents.attach_setup_working_copy(scope, copy)
-    assert attached.id == main.id
     assert {:ok, _, retried} = Agents.start_project_setup(scope)
     assert retried.id == main.id
     assert {:ok, reopened_product} = Agents.ensure_product_agent(scope)
@@ -374,17 +367,13 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert reopened_product.execution_mode == :detached
     assert %{started: [], failed: []} = Agents.ensure_copy_agents(scope, copy)
     assert length(Agents.list_agents(scope)) == 2
-    assert [%{working_copy_id: target}] = CodeMySpec.AgentAttachments.list(scope, main.id)
-    assert target == copy.id
   end
 
   test "reopening Main on a connected copy restores only a missing runtime", %{scope: scope} do
     {:ok, _} = ready_for_setup(scope)
     {:ok, _, main} = Agents.start_project_setup(scope)
     {:ok, conversation} = Agents.conversation_id(scope, main.id)
-    copy = connected_onboarding_copy(scope)
-    {:ok, _} = Agents.attach_setup_working_copy(scope, copy)
-    [original_attachment] = CodeMySpec.AgentAttachments.list(scope, main.id)
+    connected_onboarding_copy(scope)
     assert_received {:agent_runtime_started, id}
     assert id == main.id
     Presence.untrack(self(), Presence.topic(scope.active_project_id), main.id)
@@ -405,7 +394,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert reopened.id == main.id
     refute_received {:agent_runtime_started, _}
     refute_received {:agent_runtime_stopped, _}
-    assert [^original_attachment] = CodeMySpec.AgentAttachments.list(scope, main.id)
     assert length(Agents.list_agents(scope)) == 1
   end
 
@@ -423,7 +411,6 @@ defmodule CodeMySpec.Agents.DetachedProductTest do
     assert Agent.off?(off)
     refute Agents.present?(scope, off)
     refute_received {:agent_runtime_started, _}
-    assert CodeMySpec.AgentAttachments.list(scope, main.id) == {:error, :unauthorized_agent}
     assert length(Agents.list_agents(scope)) == 1
   end
 

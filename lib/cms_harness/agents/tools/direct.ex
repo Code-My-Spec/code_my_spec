@@ -47,11 +47,17 @@ defmodule CmsHarness.Agents.Tools.Direct do
   # Pass through what the caller set and nothing else, so a tool that gains an
   # argument on the server gains it here without an edit.
   defp forward(name, input, %{mcp_client: client}) when not is_nil(client),
-    do: Mcp.call(client, name, if(is_map(input), do: input, else: %{}))
+    do: Mcp.call(client, name, if(is_map(input), do: input, else: %{}), deadline(name))
 
   defp forward(name, _input, _context) do
     {:error,
      "This agent has no session with its project's server, so `#{name}` cannot reach it. " <>
        "Check the harness is connected."}
   end
+
+  # Main's served bash runs a command in a named copy with a deadline of up to
+  # an hour, as an agent's own bash does; the forward outlives it so the tool,
+  # not this wait, reports a timeout. Every other tool keeps the default.
+  defp deadline("bash"), do: [timeout: :timer.hours(1) + 30_000]
+  defp deadline(_name), do: []
 end

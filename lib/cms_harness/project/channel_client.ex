@@ -224,7 +224,7 @@ defmodule CmsHarness.Project.ChannelClient do
        # to a harness that declared it: an unknown push is logged here and
        # never answered, which would hold a promote for its whole timeout.
        "app_verbs" => ["reload_app"],
-       "attachment_tools" => true,
+       "copy_tools" => true,
        # What each provider's local login serves, so the server offers and
        # defaults to models that exist (a retired default crash-looped agents).
        "served_models" => CmsHarness.Agents.Provider.served_models(),
@@ -857,15 +857,17 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_message(
         _topic,
         "fs_request",
-        %{"ref" => ref, "op" => "attachment_" <> _ = op} = msg,
+        %{"ref" => ref, "op" => "copy_tool"} = msg,
         socket
       ) do
     client = self()
     topic = socket.assigns.topic
     root = socket.assigns.project.root
 
+    # Main's read/write/edit/bash in this copy; a task, so a long bash never
+    # holds the channel.
     Task.start(fn ->
-      result = CmsHarness.Attachments.request(root, op, msg["payload"] || %{})
+      result = CmsHarness.CopyTools.execute(root, msg["payload"] || %{})
       GenServer.cast(client, {:promotion_result, topic, ref, result})
     end)
 
