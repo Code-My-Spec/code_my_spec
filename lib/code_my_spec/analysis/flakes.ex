@@ -61,13 +61,13 @@ defmodule CodeMySpec.Analysis.Flakes do
 
     candidates =
       runs
-      |> Enum.filter(&prior_failure?(&1, commit, file, name))
-      |> Enum.filter(&unrelated?.(&1, failure))
+      |> Enum.filter(&(prior_failure?(&1, commit, file, name) and unrelated?.(&1, failure)))
       |> Enum.uniq_by(& &1.working_copy_id)
 
-    case length(candidates) >= threshold do
-      true -> %{classification: :suspected_flake, failure: failure, evidence: candidates}
-      false -> %{classification: :no_flake_evidence, failure: failure, evidence: []}
+    if length(candidates) >= threshold do
+      %{classification: :suspected_flake, failure: failure, evidence: candidates}
+    else
+      %{classification: :no_flake_evidence, failure: failure, evidence: []}
     end
   end
 
