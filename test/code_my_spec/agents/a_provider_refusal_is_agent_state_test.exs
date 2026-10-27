@@ -14,6 +14,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Work
+  alias CodeMySpec.Agents.Waiting
   alias CodeMySpec.Requirements.GraphWatcher
   alias CodeMySpecSpex.FullSatisfactionFixtures
   alias CodeMySpecTest.AgentPresence
@@ -96,6 +97,7 @@ defmodule CodeMySpec.Agents.AProviderRefusalIsAgentStateTest do
 
     assert agent.provider_refusal =~ "OAuth session expired"
     assert agent.provider_retry_at == nil
+    assert Waiting.reason(ctx.scope, agent, :offer) == {:provider_refused, nil}
     assert Work.request_turn_if_runnable(ctx.scope, agent, :test) == {:ok, :not_runnable}
   end
 
