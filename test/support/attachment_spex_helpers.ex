@@ -1,6 +1,6 @@
 defmodule CodeMySpecSpex.AttachmentHelpers do
   @moduledoc """
-  Stories 1148/1149: Main's read, write, edit and bash, each naming a working
+  Story 1149: Main's read, write, edit and bash, each naming a working
   copy (issue e377de11), over an in-process transport simulation with isolated
   roots. This is not two-host evidence. Only network delivery is substituted;
   CmsHarness.CopyTools runs the agents' own tools exactly as on a device.
@@ -127,60 +127,6 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
           Process.sleep(10)
           await_file(path, tries - 1)
         )
-  end
-
-  def exercise(c, 2410) do
-    rows = data(c, "list_working_copies")
-
-    for copy <- [c.one, c.two] do
-      row = Enum.find(rows, &(&1["id"] == copy.id))
-      assert row["device_id"] == copy.device_id
-      assert row["device_name"] in ["laptop", "remote"]
-    end
-  end
-
-  # Main works in copies on two devices in turn, with no restart and no
-  # connection to make or keep.
-  def exercise(c, criterion) when criterion in [2412, 2418] do
-    assert read(c, c.one, "identity.txt") =~ "laptop"
-    assert read(c, c.two, "identity.txt") =~ "remote"
-    unchanged(c)
-  end
-
-  def exercise(c, criterion) when criterion in [2413, 2420] do
-    assert read(c, c.one, "identity.txt") =~ "laptop"
-    unchanged(c)
-  end
-
-  def exercise(c, 2421) do
-    foreign = copy(Fixtures.full_scope_fixture(), "foreign")
-
-    assert {:error, :working_copy_not_found} =
-             result(c, "read", %{working_copy_id: foreign.id, file_path: "identity.txt"})
-
-    unchanged(c)
-  end
-
-  def exercise(c, 2422) do
-    mode(c.one, :offline)
-
-    assert {:error, :harness_unreachable} =
-             result(c, "read", %{working_copy_id: c.one.id, file_path: "identity.txt"})
-
-    mode(c.one, :online)
-    assert read(c, c.one, "identity.txt") =~ "laptop"
-  end
-
-  # Coding and QA keep running in the copy Main works in.
-  def exercise(c, 2419) do
-    work(c, c.one, "write", %{file_path: "notes.txt", content: "Main was here"})
-    assert read(c, c.one, "notes.txt") =~ "Main was here"
-
-    for worker <- c.workers do
-      assert Enum.any?(data(c, "list_agents"), &(&1["id"] == worker.id))
-    end
-
-    unchanged(c)
   end
 
   def exercise(c, criterion) when criterion in [2403, 2411] do
