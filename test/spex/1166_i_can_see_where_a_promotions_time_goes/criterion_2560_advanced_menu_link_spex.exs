@@ -11,6 +11,7 @@ defmodule CodeMySpecSpex.Story1166.Criterion2560Spex do
   spex "John can find promotion timing in the Advanced menu", criterion: 2560 do
     scenario "the project menu links to its promotion timing page" do
       given_ "John has an active project", context do
+        # given: already true — `setup :setup_active_project` creates it.
         {:ok, context}
       end
 
