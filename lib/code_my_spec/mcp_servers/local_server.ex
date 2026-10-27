@@ -97,7 +97,11 @@ defmodule CodeMySpec.McpServers.LocalServer do
   @spine ~w(get_next_requirement start_task evaluate_task cancel_task sync_project reject_offer)
   @unscriptable ~w(ask_question start_analysis check_answer list_user_questions
                    tap_out show_in_panel)
-  @library_tools @spine ++ @unscriptable
+  # Main's read/write/edit/bash in a working copy it names:
+  # direct so a bash can wait out a suite past a script's 30 seconds, and
+  # refused per call to anyone but Main (`CodeMySpec.CopyTools`).
+  @main_tools ~w(read write edit bash)
+  @library_tools @spine ++ @unscriptable ++ @main_tools
 
   @doc "The library tools this server lists."
   def library_tools, do: Enum.filter(ToolLibrary.tools(), &(&1.name() in @library_tools))

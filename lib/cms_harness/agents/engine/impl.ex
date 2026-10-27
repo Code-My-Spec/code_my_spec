@@ -16,6 +16,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias Alloy.Provider.CodexSession
 
   alias CmsHarness.Agents.Compaction
+  alias CmsHarness.Agents.CoreTools
   alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.Keeper
   alias CmsHarness.Agents.Engine.State
@@ -795,8 +796,13 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec tools(keyword()) :: [module() | Alloy.Tool.Inline.t()]
   def tools(opts) do
-    CmsHarness.Agents.CoreTools.modules() ++
-      Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
+    direct = Keyword.get(opts, :direct_tools) || []
+    served = MapSet.new(direct, & &1["name"])
+
+    # A core tool the server also sends is the server's: Main has no copy of
+    # its own, so its read/write/edit/bash name one (`CodeMySpec.CopyTools`).
+    Enum.reject(CoreTools.modules(), &MapSet.member?(served, &1.name())) ++
+      Enum.map(direct, &direct_tool/1)
   end
 
   @doc """
@@ -808,9 +814,12 @@ defmodule CmsHarness.Agents.Engine.Impl do
   def direct_tool(%{"name" => name} = definition) do
     module = Module.concat(CmsHarness.Agents.Tools, Macro.camelize(name))
 
-    if Code.ensure_loaded?(module) and function_exported?(module, :execute, 2),
-      do: module,
-      else: Direct.tool(definition)
+    # A served core tool name (Main's read/bash) is the server's, never the
+    # local module of the same name, which would act on no copy at all.
+    if name not in CoreTools.names() and Code.ensure_loaded?(module) and
+         function_exported?(module, :execute, 2),
+       do: module,
+       else: Direct.tool(definition)
   end
 
   @doc "A tool's name, whether it is a module or an inline tool."

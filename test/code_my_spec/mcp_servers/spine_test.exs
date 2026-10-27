@@ -17,7 +17,9 @@ defmodule CodeMySpec.McpServers.SpineTest do
 
   describe "the list an agent receives at connect" do
     test "is the spine, not every tool" do
-      assert MapSet.size(advertised()) <= 20,
+      # Main's read/write/edit/bash, which name a working copy, are on it too:
+      # direct because a bash may outlive a script.
+      assert MapSet.size(advertised()) <= 22,
              "the point of the story is a short list; got #{MapSet.size(advertised())}"
 
       assert "run_script" in advertised()

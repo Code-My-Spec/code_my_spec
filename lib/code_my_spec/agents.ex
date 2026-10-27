@@ -23,7 +23,6 @@ defmodule CodeMySpec.Agents do
     top_level?: true,
     deps: [
       CodeMySpec.Accounts,
-      CodeMySpec.AgentAttachments,
       CodeMySpec.Agents.Agent,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.Analysis,
@@ -1784,13 +1783,8 @@ defmodule CodeMySpec.Agents do
     end
   end
 
-  defp ensure_detached_main(scope, agent, copy) do
-    with {:ok, running} <- ensure_detached_running(scope, agent) do
-      if not Agent.off?(running) and copy_connected?(copy),
-        do: attach_main(scope, running, copy),
-        else: {:ok, running}
-    end
-  end
+  # Main has no copy to attach to: it names one on each call (`CopyTools`).
+  defp ensure_detached_main(scope, agent, _copy), do: ensure_detached_running(scope, agent)
 
   @doc "Hand environment setup to main after product records the initial choices."
   def start_project_setup(scope, instructions \\ nil)
@@ -1926,9 +1920,6 @@ defmodule CodeMySpec.Agents do
         start_detached_product(scope)
     end
   end
-
-  defp copy_connected?(copy),
-    do: match?({:ok, _pid, _instance}, HarnessRegistry.executor_holder(copy.id))
 
   defp start_detached_product(scope), do: start_detached_agent(scope, :product)
 
@@ -2385,22 +2376,6 @@ defmodule CodeMySpec.Agents do
     end)
   end
 
-  @doc "Attach onboarding Main to a checkout while keeping Main and Product in their runtimes."
-  @spec attach_setup_working_copy(Scope.t(), map()) ::
-          {:ok, Agent.t()} | {:error, term()} | :none
-  def attach_setup_working_copy(%Scope{} = scope, copy) do
-    case main_agent_anywhere(scope) do
-      nil -> :none
-      agent -> attach_main(scope, agent, copy)
-    end
-  end
-
-  defp attach_main(scope, agent, copy) do
-    with {:ok, _attachment} <- CodeMySpec.AgentAttachments.connect(scope, agent.id, copy.id) do
-      {:ok, agent}
-    end
-  end
-
   @doc """
   Move the project's own agent to a different checkout.
 
@@ -2418,7 +2393,7 @@ defmodule CodeMySpec.Agents do
         :none
 
       %Agent{execution_mode: :detached} = agent ->
-        attach_main(scope, agent, copy)
+        {:ok, agent}
 
       %Agent{working_copy_id: id} when id == :erlang.map_get(:id, copy) ->
         with :ok <- move_main_copy_roster(scope, nil, copy), do: :none
