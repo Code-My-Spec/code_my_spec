@@ -35,6 +35,7 @@ defmodule CodeMySpec.McpServers.ScriptableTools do
     capabilities: [:tools]
 
   component(CodeMySpec.McpServers.Health.Tools.ScriptHealth)
+  component(CodeMySpec.McpServers.Promotion.Tools.GetPromotionTimings)
 
   # Placement, kept apart from approval on purpose — John: "let's have these as
   # separate actions, creating the working copy and assigning an epic to a

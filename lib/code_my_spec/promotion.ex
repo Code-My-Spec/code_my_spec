@@ -1168,7 +1168,12 @@ defmodule CodeMySpec.Promotion do
   # runs are visibly the same verdict.
   defp certified_by(answered) do
     for source <- Run.sources(), %Run{} = run <- [answered[source]] do
-      %{source: source, finished_at: run.finished_at, commit: run.completed_commit}
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
     end
   end
 

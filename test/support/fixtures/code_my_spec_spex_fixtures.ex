@@ -71,6 +71,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Projects,
       CodeMySpec.Qa,
       CodeMySpec.Promotion,
+      CodeMySpec.PromotionQueue,
+      CodeMySpec.PromotionQueue.Entry,
       CodeMySpec.Provisioning,
       CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
@@ -6989,6 +6991,157 @@ defmodule CodeMySpecSpex.Fixtures do
         raise "no project named #{inspect(project_name)} on this account"
 
     enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
+  end
+
+  @doc "Record a completed queue candidate and its associated full gate runs."
+  def landed_promotion_with_timing(scope, opts \\ []) do
+    promotion_with_timing(scope, :landed, opts)
+  end
+
+  @doc "Record a candidate ejected at the named stage."
+  def ejected_promotion_with_timing(scope, opts \\ []) do
+    promotion_with_timing(scope, :ejected, opts)
+  end
+
+  @doc "Record a daily population for promotion timing summaries."
+  def promotion_timing_history(scope, opts) do
+    for _ <- 1..Keyword.fetch!(opts, :landed) do
+      landed_promotion_with_timing(scope)
+    end
+
+    for _ <- 1..Keyword.fetch!(opts, :ejected) do
+      ejected_promotion_with_timing(scope)
+    end
+
+    :ok
+  end
+
+  @doc "Read spex durations directly from promotion gate run records in the last day."
+  def promotion_spex_run_seconds(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    entries =
+      Repo.all(
+        from e in CodeMySpec.PromotionQueue.Entry,
+          where:
+            e.project_id == ^scope.active_project_id and e.status == :landed and
+              e.updated_at >= ^since
+      )
+
+    ids = Enum.flat_map(entries, &get_in(&1.result, ["timing", "run_ids"]))
+
+    Repo.all(
+      from r in CodeMySpec.Analysis.Run,
+        where:
+          r.id in ^ids and r.project_id == ^scope.active_project_id and
+            r.source == "spex" and r.kind == :full
+    )
+    |> Enum.map(&DateTime.diff(&1.finished_at, &1.began_at, :second))
+    |> Enum.sort()
+  end
+
+  @doc "Read landed and ejected queue counts directly from the last day's entries."
+  def promotion_queue_counts(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    Repo.all(
+      from e in CodeMySpec.PromotionQueue.Entry,
+        where:
+          e.project_id == ^scope.active_project_id and
+            e.status in [:landed, :ejected] and e.updated_at >= ^since
+    )
+    |> Enum.frequencies_by(& &1.status)
+  end
+
+  @doc "Record an unrelated partial analysis run, which cannot count as a gate run."
+  def partial_agent_analysis_run(scope, opts) do
+    at = Keyword.get(opts, :started_at, DateTime.utc_now())
+    duration = Keyword.fetch!(opts, :duration_seconds)
+    source = Keyword.fetch!(opts, :source) |> to_string()
+
+    CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+      project_id: scope.active_project_id,
+      working_copy_id: promotion_timing_copy(scope).id,
+      source: source,
+      kind: :partial,
+      status: :completed,
+      started_at: at,
+      began_at: at,
+      finished_at: DateTime.add(at, duration, :second)
+    })
+  end
+
+  defp promotion_with_timing(scope, outcome, opts) do
+    copy = promotion_timing_copy(scope)
+    at = Keyword.get(opts, :landed_at, DateTime.utc_now())
+
+    failed =
+      Keyword.get(opts, :failed_stage, :asset_build) |> to_string() |> String.replace("_", "-")
+
+    stages = CodeMySpec.PromotionQueue.Timings.stages()
+
+    reached =
+      if outcome == :landed,
+        do: stages,
+        else: Enum.take_while(stages, &(&1 != failed)) ++ [failed]
+
+    recorded =
+      for stage <- reached, stage not in ~w(compiler credo exunit spex), into: %{} do
+        key = stage |> String.replace("-", "_") |> String.to_atom()
+        {stage, Keyword.get(opts, key, 60)}
+      end
+
+    runs =
+      for source <- ~w(compiler credo exunit spex), source in reached do
+        seconds = Keyword.get(opts, String.to_atom(source), 60)
+
+        CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+          project_id: scope.active_project_id,
+          working_copy_id: copy.id,
+          source: source,
+          kind: :full,
+          status: if(outcome == :ejected and source == failed, do: :failed, else: :completed),
+          stats: %{
+            "timings" =>
+              Keyword.get(opts, String.to_atom("#{source}_timings"), %{
+                "tests" => [],
+                "files" => []
+              })
+          },
+          started_at: DateTime.add(at, -seconds, :second),
+          began_at: DateTime.add(at, -seconds, :second),
+          finished_at: at
+        })
+      end
+
+    CodeMySpec.Repo.insert!(%CodeMySpec.PromotionQueue.Entry{
+      project_id: scope.active_project_id,
+      working_copy_id: copy.id,
+      commit: String.duplicate("a", 40),
+      restart: false,
+      status: outcome,
+      result: %{
+        "timing" => %{
+          "stages" => recorded,
+          "run_ids" => Enum.map(runs, & &1.id),
+          "gate_copy_id" => copy.id
+        }
+      },
+      inserted_at: at,
+      updated_at: at
+    })
+  end
+
+  defp promotion_timing_copy(scope) do
+    CodeMySpec.Repo.one(
+      from c in CodeMySpec.WorkingCopies.WorkingCopy,
+        where: c.project_id == ^scope.active_project_id and c.label == "promotion-timing-fixture",
+        limit: 1
+    ) ||
+      CodeMySpec.Repo.insert!(%CodeMySpec.WorkingCopies.WorkingCopy{
+        project_id: scope.active_project_id,
+        label: "promotion-timing-fixture"
+      })
   end
 
   # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
