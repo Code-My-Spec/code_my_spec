@@ -206,6 +206,26 @@ defmodule CmsHarness.Agents.AToolErrorDoesNotKillTheAgentTest do
     assert Machine.running?(agent), "a failed tool call ended the agent"
   end
 
+  test "a timed out tool reply leaves the outcome explicitly unknown", %{root: root} do
+    :persistent_term.put(
+      {FailingTransport, :answer},
+      {:error, %Req.TransportError{reason: :timeout}}
+    )
+
+    agent = start_agent(root)
+
+    assert {:ok, :started} = Machine.send_message(agent, "ref-1", "collect the answer")
+
+    assert_receive {:second_request, request}, 5_000
+    result = tool_result(request)
+
+    assert result["is_error"] == true
+    assert result["content"] =~ "action may have taken effect"
+    assert result["content"] =~ "inspect its current state before retrying"
+    assert_receive {:event, %{event: :turn_ended}}, 5_000
+    assert Machine.running?(agent)
+  end
+
   @tag :capture_log
   test "a tool that raises is a readable result, and the agent lives", %{root: root} do
     :persistent_term.put({FailingTransport, :answer}, {:raise, RuntimeError.exception("boom")})
@@ -287,6 +307,23 @@ defmodule CmsHarness.Agents.AToolErrorDoesNotKillTheAgentTest do
       }
 
       assert ToolResults.describe(error) == "Send Failure: :econnrefused"
+    end
+
+    test "a lost tool reply says the outcome is unknown before retry" do
+      for error <- [:timeout, "timeout", %Req.TransportError{reason: :timeout}] do
+        message = ToolResults.describe(error)
+        assert message =~ "may have taken effect"
+        assert message =~ "inspect its current state before retrying"
+      end
+
+      mcp_error = %Anubis.MCP.Error{
+        code: -32_000,
+        reason: :send_failure,
+        message: "Send Failure",
+        data: %{original_reason: :timeout}
+      }
+
+      assert ToolResults.describe(mcp_error) =~ "may have taken effect"
     end
 
     test "text stays text and anything else is inspected" do
