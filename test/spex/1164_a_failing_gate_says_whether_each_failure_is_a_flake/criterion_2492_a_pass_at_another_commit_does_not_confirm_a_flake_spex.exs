@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2492Spex do
       end
 
       when_ "the gate's full exunit run fails the test", context do
-        promote(context, context.story.number)
+        promote(context, context.story.number, fresh: true)
         commit = head_of(context, context.gate_root)
         other_scope = %{context.scope | active_working_copy_id: context.running.working_copy_id}
 

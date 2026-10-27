@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2491Spex do
       end
 
       when_ "the gate sees a failure after a full run elsewhere passed at its commit", context do
-        promote(context, context.story.number)
+        promote(context, context.story.number, fresh: true)
         commit = head_of(context, context.gate_root)
         other_scope = %{context.scope | active_working_copy_id: context.running.working_copy_id}
 

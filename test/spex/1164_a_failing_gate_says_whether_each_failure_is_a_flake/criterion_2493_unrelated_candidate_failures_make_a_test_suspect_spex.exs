@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2493Spex do
       end
 
       when_ "the candidate's gate fails test A", context do
-        promote(context, context.story.number)
+        promote(context, context.story.number, fresh: true)
 
         log =
           capture_log([level: :info], fn ->
