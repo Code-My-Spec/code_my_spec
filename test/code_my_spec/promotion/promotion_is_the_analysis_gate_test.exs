@@ -256,6 +256,43 @@ defmodule CodeMySpec.Promotion.PromotionIsTheAnalysisGateTest do
     refute_received {:git, @main, ["merge" | _]}
   end
 
+  test "a new promotion retries only an earlier red answer at the same commit" do
+    %{scope: scope} = a_project()
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["compiler", "credo", "exunit", "spex"],
+      commit: @head
+    )
+
+    previous = RunsRepository.latest_completed_run(scope, "credo")
+    problem_fixture(scope, %{severity: :warning})
+    queued_at = DateTime.add(DateTime.utc_now(), 1, :second)
+
+    assert {:pending, %{started: ["credo"], running: []}} =
+             Promotion.gate(scope, @head, retry_failed_since: queued_at)
+
+    assert RunsRepository.latest_completed_run(scope, "credo").id == previous.id
+    assert [_retry] = RunsRepository.running_full_runs(scope, "credo")
+    assert RunsRepository.running_full_runs(scope, "compiler") == []
+    assert RunsRepository.running_full_runs(scope, "exunit") == []
+    assert RunsRepository.running_full_runs(scope, "spex") == []
+  end
+
+  test "a red answer from this promotion still refuses the gate" do
+    %{scope: scope} = a_project()
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(scope, ["compiler", "credo", "exunit", "spex"],
+      commit: @head
+    )
+
+    problem_fixture(scope, %{severity: :warning})
+    queued_at = DateTime.add(DateTime.utc_now(), -1, :second)
+
+    assert {:error, %{counts: %{"credo" => 1}}} =
+             Promotion.gate(scope, @head, retry_failed_since: queued_at)
+
+    assert RunsRepository.running_full_runs(scope, "credo") == []
+  end
+
   test "clean runs at HEAD promote exactly that commit" do
     %{scope: scope} = a_project()
 
