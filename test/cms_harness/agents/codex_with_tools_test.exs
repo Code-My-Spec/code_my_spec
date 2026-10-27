@@ -93,6 +93,31 @@ defmodule CmsHarness.Agents.CodexWithToolsTest do
     refute_receive {:invocation, _, _}
   end
 
+  # The words a QA agent wrote on 2026-10-27 after a harness restart, with
+  # Codex's own apostrophes, while its teammate called the same tools fine.
+  test "a claim that the listed tools are not callable is retried" do
+    assert_retried(
+      "I can’t continue the Alloy loop in this turn: the listed Alloy tools, including " <>
+        "`get_next_requirement`, aren’t callable in the active tool interface."
+    )
+  end
+
+  test "a claim that the loop's tools are not callable in this session is retried" do
+    assert_retried(
+      "I can’t continue the required Alloy loop because its tools aren’t callable in this session."
+    )
+  end
+
+  defp assert_retried(claim) do
+    runner = runner(fn _prompt, _attempt -> reply("end_turn", claim) end)
+
+    assert {:error, %Error{kind: :unknown}} =
+             CodexWithTools.complete([Message.user("get work")], [@tool], config(runner))
+
+    assert_receive {:invocation, _, _}
+    assert_receive {:invocation, _, _}
+  end
+
   defp config(runner) do
     %{
       model: "test-model",
