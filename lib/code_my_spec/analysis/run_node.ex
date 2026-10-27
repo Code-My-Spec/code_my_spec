@@ -37,7 +37,12 @@ defmodule CodeMySpec.Analysis.RunNode do
   def env(run_id, listener) do
     :yes = :global.re_register_name({:cms_run, run_id}, self())
     cookie = Atom.to_string(Node.get_cookie())
-    name = "cms_run_#{run_id}_#{System.unique_integer([:positive])}@127.0.0.1"
+    # The minting BEAM's OS pid as well: run ids come from each database, and
+    # concurrent suites in different copies reuse them while every BEAM's
+    # counter starts low, so two runs on one machine (one epmd) minted the
+    # same name and the second could not boot ("seems to be in use").
+    name =
+      "cms_run_#{run_id}_#{System.pid()}_#{System.unique_integer([:positive])}@127.0.0.1"
 
     [
       {"ELIXIR_ERL_OPTIONS", "-hidden -name #{name} -setcookie #{cookie}"},
