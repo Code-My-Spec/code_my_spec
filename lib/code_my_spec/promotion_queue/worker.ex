@@ -490,12 +490,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp gate_runs(%{batch: batch} = state) do
-    case Promotion.gate(batch.scope, batch.head, fresh_since: fresh_since(batch.entries)) do
+    case Promotion.gate(batch.scope, batch.head,
+           fresh_since: fresh_since(batch.entries),
+           retry_failed_since: queued_since(batch.entries)
+         ) do
       {:ok, swept} -> state |> note_reused(swept) |> assets_build(swept)
       {:pending, _pending} -> {:noreply, recheck_later(state)}
       {:error, reason} -> red(state, reason)
     end
   end
+
+  defp queued_since(entries),
+    do: entries |> Enum.map(& &1.inserted_at) |> Enum.min(DateTime, fn -> nil end)
 
   # The earliest a fresh entry in the batch was queued: runs before it answer
   # for none of them. `nil` when no entry asked.
