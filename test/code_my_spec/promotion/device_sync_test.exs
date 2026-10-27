@@ -27,6 +27,19 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
     end
   end
 
+  # A restart: true landing restarts the harness with the app, so the restart
+  # reply and the confirmation both find the harness gone.
+  defmodule GoneApp do
+    def ensure_app_running(_, _), do: {:error, :harness_not_connected}
+    def reload_supported?(_), do: true
+
+    def restart_app(_, _) do
+      Process.put(:restarts, Process.get(:restarts, 0) + 1)
+      Process.put(:serving, Process.get(:desired))
+      {:error, {:harness_gone, {:shutdown, :draining}}}
+    end
+  end
+
   setup do
     scope = full_scope_fixture()
 
@@ -159,6 +172,27 @@ defmodule CodeMySpec.Promotion.DeviceSyncTest do
       BootVersion.capture(File.cwd!())
       BootVersion.root()
     end
+  end
+
+  test "a restart the harness cannot confirm while it restarts too stays pending, then applies on rejoin",
+       %{scope: scope, copy: copy} do
+    DeviceSync.request(scope, "one", "main", "p1", restart: true, dispatch: false)
+    Process.put(:desired, "one")
+
+    log =
+      capture_log(fn ->
+        assert {:ok, %{"status" => "pending"}} =
+                 DeviceSync.apply_pending(scope, copy.id, sync: &synced/5, app: GoneApp)
+      end)
+
+    assert log =~ "confirming when it rejoins"
+    assert Process.get(:restarts) == 1
+
+    # The harness is back and the app is already on the head: no second restart.
+    assert {:ok, %{"status" => "applied"}} =
+             DeviceSync.apply_pending(scope, copy.id, sync: &synced/5, app: App)
+
+    assert Process.get(:restarts) == 1
   end
 
   defp synced(_, _, _, _, _), do: {:ok, %{changed_files: ["lib/example.ex"]}}
