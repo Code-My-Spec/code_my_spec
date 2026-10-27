@@ -118,9 +118,7 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
                 :if={selection["suite_size"] && selection["suite_size"] > 0}
                 data-test="promotion-selected-share"
                 data-promotion-id={timing.id}
-                data-percent={
-                  100 * length(selection["selected_tests"] || []) / selection["suite_size"]
-                }
+                data-percent={selected_share_percent(selection)}
               >
                 Selected {length(selection["selected_tests"] || [])} of {selection["suite_size"]} tests
               </p>
@@ -197,6 +195,11 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  defp selected_share_percent(selection) do
+    percent = 100 * length(selection["selected_tests"] || []) / selection["suite_size"]
+    if percent == trunc(percent), do: trunc(percent), else: percent
   end
 
   defp format_seconds(seconds), do: "#{seconds}s"

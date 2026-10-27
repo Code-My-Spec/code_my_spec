@@ -210,10 +210,7 @@ defmodule CodeMySpec.Promotion.TestImpact do
   end
 
   defp reason(test, :error, changed, _affected) do
-    case MapSet.member?(changed, test) do
-      true -> :new
-      false -> nil
-    end
+    if MapSet.member?(changed, test), do: :new, else: nil
   end
 
   defp reason(

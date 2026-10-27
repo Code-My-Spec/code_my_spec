@@ -81,12 +81,10 @@ defmodule CodeMySpec.Analysis.Flakes do
       |> Enum.map(& &1.id)
       |> Enum.uniq()
 
-    case length(related) >= threshold do
-      true ->
-        %{failure: failure, classification: :suspected_flake, evidence: %{candidate_ids: related}}
-
-      false ->
-        %{failure: failure, classification: :failure, evidence: %{}}
+    if length(related) >= threshold do
+      %{failure: failure, classification: :suspected_flake, evidence: %{candidate_ids: related}}
+    else
+      %{failure: failure, classification: :failure, evidence: %{}}
     end
   end
 

@@ -42,6 +42,13 @@ defmodule CodeMySpecSpex.Story1167.Criterion2508Spex do
           unrelated: [@unrelated_test, @unrelated_spex]
         )
 
+        assert File.exists?(
+                 Path.join(
+                   context.gate.root,
+                   "_build/test/lib/code_my_spec/.mix/compile.test_impact"
+                 )
+               )
+
         {:ok, Map.put(context, :story, a_promotable_story(context))}
       end
 
@@ -53,13 +60,23 @@ defmodule CodeMySpecSpex.Story1167.Criterion2508Spex do
           "defmodule CodeMySpec.Analysis.Flakes do\n  def confirmed?, do: true\nend\n"
         )
 
+        :ok =
+          Fixtures.StoryIssueBag.certify(
+            context.scope,
+            context.story.id,
+            head_of(context, context.agent_root)
+          )
+
+        {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: context.story.id)
+
         {:ok, analyzers_are_current(context)}
       end
 
       when_ "the agent promotes and the gate answers its full runs", context do
-        response = promote(context, context.story.number)
-        refute response.isError
+        response = promote(context, context.story.number, fresh: true)
+        refute response.isError, inspect(response)
         the_gate_answers(context)
+        what_the_agent_was_told(context)
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")

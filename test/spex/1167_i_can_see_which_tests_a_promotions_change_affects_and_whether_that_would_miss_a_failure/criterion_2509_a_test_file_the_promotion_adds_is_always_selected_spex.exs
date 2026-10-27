@@ -40,13 +40,14 @@ defmodule CodeMySpecSpex.Story1167.Criterion2509Spex do
           "defmodule CodeMySpec.Analysis.FlakesTest do\n  use ExUnit.Case\n  test \"a new test\" do\n    assert true\n  end\nend\n"
         )
 
-        {:ok, analyzers_are_current(context)}
+        {:ok, context |> certify_current_story() |> analyzers_are_current()}
       end
 
       when_ "the promotion is gated", context do
-        response = promote(context, context.story.number)
-        refute response.isError
+        response = promote(context, context.story.number, fresh: true)
+        refute response.isError, inspect(response)
         the_gate_answers(context)
+        what_the_agent_was_told(context)
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")

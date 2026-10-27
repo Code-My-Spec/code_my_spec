@@ -7033,6 +7033,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
       file ->
         now = DateTime.utc_now()
+        before_gate = DateTime.add(now, -60, :second)
         source = if String.starts_with?(file, "test/spex/"), do: "spex", else: "exunit"
 
         CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
@@ -7043,8 +7044,8 @@ defmodule CodeMySpecSpex.Fixtures do
           status: :completed,
           completed_commit: commit,
           findings: %{"failures" => []},
-          started_at: now,
-          began_at: now,
+          started_at: before_gate,
+          began_at: before_gate,
           finished_at: now
         })
 
@@ -7054,7 +7055,13 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Record a published story as the premise for post-landing timing checks."
   def story_landed_on_main(scope, number) do
-    story = CodeMySpec.Stories.get_story_by_number!(scope, number)
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        number: number,
+        title: "Story #{number} landed on main",
+        story: "As a user, I want a published story, so that gate history can be reviewed."
+      })
+
     record_story_publication(scope, story.id, "fixture-published")
   end
 

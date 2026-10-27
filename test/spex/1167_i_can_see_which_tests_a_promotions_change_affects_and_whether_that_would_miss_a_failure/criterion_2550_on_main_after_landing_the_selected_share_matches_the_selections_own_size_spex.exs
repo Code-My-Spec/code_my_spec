@@ -9,7 +9,6 @@ defmodule CodeMySpecSpex.Story1167.Criterion2550Spex do
   alias CodeMySpec.McpServers.Promotion.Tools.GetPromotionTimings
   alias CodeMySpecSpex.Fixtures
 
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

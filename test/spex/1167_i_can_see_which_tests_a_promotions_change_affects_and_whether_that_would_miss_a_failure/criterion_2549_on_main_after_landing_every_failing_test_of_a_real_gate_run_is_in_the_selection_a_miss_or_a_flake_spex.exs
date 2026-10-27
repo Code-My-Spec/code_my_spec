@@ -49,14 +49,15 @@ defmodule CodeMySpecSpex.Story1167.Criterion2549Spex do
         )
 
         Fixtures.fail_full_promotion_run(context.gate, [@selected_failure, @omitted_failure])
-        {:ok, analyzers_are_current(context)}
+        {:ok, context |> certify_current_story() |> analyzers_are_current()}
       end
 
       when_ "John opens the promotion's recorded selection, misses and flakes after its real gate run",
             context do
-        response = promote(context, context.story.number)
+        response = promote(context, context.story.number, fresh: true)
         refute response.isError
         the_gate_answers(context)
+        what_the_agent_was_told(context)
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")

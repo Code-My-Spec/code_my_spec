@@ -21,6 +21,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.Flakes
+  alias CodeMySpec.Analysis.History
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
@@ -966,7 +967,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           is_binary(failure["file"]) and is_binary(failure["name"]),
           do: failure
 
-    classified = Flakes.classify(batch.scope, batch.head, failures)
+    gate_history =
+      batch.scope
+      |> History.list()
+      |> Enum.filter(&(&1.working_copy_id == batch.gate.id))
+
+    classified = Enum.map(failures, &Flakes.classify_one(&1, batch.head, gate_history, []))
 
     entries =
       Enum.map(batch.entries, fn entry ->

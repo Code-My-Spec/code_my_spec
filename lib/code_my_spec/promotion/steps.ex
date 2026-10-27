@@ -513,8 +513,10 @@ defmodule CodeMySpec.Promotion.Steps do
 
   defp select_from_baseline(root, changed) do
     manifests =
-      Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.test_impact")) ++
-        Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.elixir"))
+      Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.test_impact"),
+        match_dot: true
+      ) ++
+        Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.elixir"), match_dot: true)
 
     tests_on_disk =
       ["test/**/*_test.exs", "test/**/*_spex.exs"]
