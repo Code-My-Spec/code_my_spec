@@ -6290,6 +6290,13 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Analysis.History.record!(run, failures, problems)
   end
 
+  @doc "Look up one retained analysis run by the ID cited in a promotion log."
+  def analysis_history_entry(%Scope{} = scope, run_id) when is_integer(run_id) do
+    scope
+    |> CodeMySpec.Analysis.History.list(source: "exunit")
+    |> Enum.find(&(&1.run_id == run_id))
+  end
+
   @doc "Run the analysis history retention sweep."
   def run_scheduled_analysis_history_prune(%Scope{} = scope) do
     {:ok, _count} = CodeMySpec.Analysis.History.prune(scope)
