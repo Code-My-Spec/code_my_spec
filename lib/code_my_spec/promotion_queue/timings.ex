@@ -21,6 +21,7 @@ defmodule CodeMySpec.PromotionQueue.Timings do
   @type stage :: %{status: :ran | :not_run, duration_seconds: non_neg_integer() | nil}
   @type timing :: %{
           id: Ecto.UUID.t(),
+          completed_at: DateTime.t(),
           outcome: :landed | :ejected,
           stages: %{String.t() => stage()},
           analyzer_waits: %{String.t() => stage()},
@@ -50,6 +51,14 @@ defmodule CodeMySpec.PromotionQueue.Timings do
   def summary(project_id, window \\ "24h")
 
   def summary(project_id, window) when is_binary(project_id) and is_map_key(@windows, window) do
+    project_id |> list(window) |> summarize(window)
+  end
+
+  @doc "Completed promotion timings in a project's selected window."
+  @spec list(Ecto.UUID.t(), String.t()) :: [timing()]
+  def list(project_id, window \\ "24h")
+
+  def list(project_id, window) when is_binary(project_id) and is_map_key(@windows, window) do
     since = DateTime.add(DateTime.utc_now(), -Map.fetch!(@windows, window), :second)
 
     entries =
@@ -61,8 +70,7 @@ defmodule CodeMySpec.PromotionQueue.Timings do
           order_by: [asc: e.updated_at, asc: e.id]
       )
 
-    timings = Enum.map(entries, &load_timing/1) |> Enum.reject(&is_nil/1)
-    summarize(timings, window)
+    Enum.map(entries, &load_timing/1) |> Enum.reject(&is_nil/1)
   end
 
   @doc "Build the shared page and tool figures from completed timings."
@@ -109,6 +117,7 @@ defmodule CodeMySpec.PromotionQueue.Timings do
 
     %{
       id: entry.id,
+      completed_at: entry.updated_at,
       outcome: outcome,
       stages: stages,
       analyzer_waits: analyzer_waits,

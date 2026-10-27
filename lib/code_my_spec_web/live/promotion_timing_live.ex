@@ -3,6 +3,10 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.PromotionQueue.Timings
+  alias CodeMySpecWeb.PromotionTiming.Counts
+  alias CodeMySpecWeb.PromotionTiming.DailyChart
+  alias CodeMySpecWeb.PromotionTiming.PerPromotionChart
+  alias CodeMySpecWeb.PromotionTiming.StageTable
 
   @impl true
   def mount(params, _session, socket) do
@@ -13,7 +17,14 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
        socket |> put_flash(:error, "Project not found") |> push_navigate(to: ~p"/app/projects")}
     else
       {:ok,
-       assign(socket, page_title: "Promotion timing", window: "24h", timing: nil, summary: nil)}
+       assign(socket,
+         page_title: "Promotion timing",
+         window: "24h",
+         timing: nil,
+         summary: nil,
+         timings: [],
+         zoom: %{start: 0, end: 100}
+       )}
     end
   end
 
@@ -28,11 +39,19 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
 
   @impl true
   def handle_event("window", %{"window" => window}, socket) when window in ["24h", "7d"] do
-    {:noreply, socket |> assign(window: window) |> load_summary()}
+    {:noreply, socket |> assign(window: window, zoom: %{start: 0, end: 100}) |> load_summary()}
+  end
+
+  def handle_event("promotion-zoom", %{"start" => start, "end" => finish}, socket)
+      when is_number(start) and is_number(finish) do
+    start = start |> max(0) |> min(100)
+    finish = finish |> max(start) |> min(100)
+    {:noreply, assign(socket, zoom: %{start: start, end: finish})}
   end
 
   defp load_summary(socket) do
-    assign(socket, summary: Timings.summary(socket.assigns.project.id, socket.assigns.window))
+    timings = Timings.list(socket.assigns.project.id, socket.assigns.window)
+    assign(socket, timings: timings, summary: Timings.summarize(timings, socket.assigns.window))
   end
 
   @impl true
@@ -51,18 +70,7 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
           <div data-test="promotion-total" data-duration-seconds={@timing.total_seconds}>
             Total: {format_seconds(@timing.total_seconds)}
           </div>
-          <div class="space-y-2">
-            <div
-              :for={stage <- Timings.stages()}
-              data-test={"promotion-stage-#{stage}"}
-              data-status={stage_status(@timing.stages[stage])}
-              data-duration-seconds={@timing.stages[stage].duration_seconds}
-              class="flex gap-3"
-            >
-              <span>{label(stage)}</span>
-              <span>{format_stage(@timing.stages[stage])}</span>
-            </div>
-          </div>
+          <StageTable.detail timing={@timing} />
         <% else %>
           <%= if @summary do %>
             <div data-test="promotion-window" data-window={@window} class="flex gap-2">
@@ -84,37 +92,18 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
             <p :if={@summary["empty"]} data-test="promotion-timing-empty">
               No promotions ran in this window.
             </p>
+            <div :if={!@summary["empty"]} class="grid gap-6">
+              <DailyChart.chart timings={@timings} zoom={@zoom} />
+              <PerPromotionChart.chart timings={@timings} zoom={@zoom} />
+            </div>
             <section
               :for={outcome <- ~w(landed ejected)}
               data-test={"promotion-outcome-#{outcome}"}
               data-count={@summary["outcomes"][outcome]["count"]}
               class="space-y-3"
             >
-              <h2 class="text-xl font-semibold">
-                {String.capitalize(outcome)}: {@summary["outcomes"][outcome]["count"]}
-              </h2>
-              <p
-                data-test={"promotion-gate-time-#{outcome}"}
-                data-duration-seconds={@summary["outcomes"][outcome]["gate_seconds"]}
-              >
-                Gate time: {format_seconds(@summary["outcomes"][outcome]["gate_seconds"])}
-              </p>
-              <div
-                :for={{stage, figures} <- @summary["outcomes"][outcome]["stages"]}
-                data-test={"promotion-summary-#{outcome}-#{stage}"}
-                class="flex flex-wrap gap-4"
-              >
-                <strong>{label(stage)}</strong>
-                <span data-stat="median" data-duration-seconds={figures["median_seconds"]}>Median: {format_seconds(
-                  figures["median_seconds"]
-                )}</span>
-                <span data-stat="p90" data-duration-seconds={figures["p90_seconds"]}>P90: {format_seconds(
-                  figures["p90_seconds"]
-                )}</span>
-                <span data-stat="total" data-duration-seconds={figures["total_seconds"]}>Total: {format_seconds(
-                  figures["total_seconds"]
-                )}</span>
-              </div>
+              <Counts.summary outcome={outcome} figures={@summary["outcomes"][outcome]} />
+              <StageTable.summary outcome={outcome} stages={@summary["outcomes"][outcome]["stages"]} />
             </section>
             <section :for={source <- ~w(exunit spex)} class="space-y-3">
               <h2 class="text-xl font-semibold">Slowest {String.capitalize(source)} tests</h2>
@@ -147,11 +136,5 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
     """
   end
 
-  defp stage_status(%{status: :not_run}), do: "not-run"
-  defp stage_status(%{status: :ran}), do: "ran"
-
-  defp label(stage), do: stage |> String.replace("-", " ") |> String.capitalize()
-  defp format_stage(%{status: :not_run}), do: "Not run"
-  defp format_stage(%{duration_seconds: seconds}), do: format_seconds(seconds)
   defp format_seconds(seconds), do: "#{seconds}s"
 end
