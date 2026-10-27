@@ -19,12 +19,20 @@ defmodule CodeMySpecSpex.Story1166.Criterion2558Spex do
       end
 
       when_ "John opens promotion timing", context do
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+
         {:ok, Map.put(context, :timing_view, view)}
       end
 
-      then_ "the chart has a stage stack for every promotion and separates landed from ejected", context do
-        chart = AgentPerformanceHelpers.chart_data(context.timing_view, "[data-test='promotion-per-entry-chart']")
+      then_ "the chart has a stage stack for every promotion and separates landed from ejected",
+            context do
+        chart =
+          AgentPerformanceHelpers.chart_data(
+            context.timing_view,
+            "[data-test='promotion-per-entry-chart']"
+          )
+
         categories = chart["xAxis"]["data"]
 
         assert length(categories) == 18
