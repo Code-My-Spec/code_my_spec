@@ -317,7 +317,9 @@ defmodule CodeMySpec.Analysis.Runners do
       failures
       |> Enum.map(&%{spex_failure_to_problem(&1) | source: "spex"})
 
-    summarize(problems, exit_code, %{"failures" => length(failures)}, output)
+    problems
+    |> summarize(exit_code, %{"failures" => length(failures)}, output)
+    |> Map.put(:failures, Enum.map(failures, &Map.put_new(&1, "name", &1["scenario"])))
   end
 
   # Required, not defaulted: a missing key defaulted to `[]` would report the
@@ -349,6 +351,7 @@ defmodule CodeMySpec.Analysis.Runners do
      with_partition(
        %{
          problems: problems,
+         failures: Enum.map(diagnostics(raw), &Map.put_new(&1, "name", &1["message"])),
          output: cap(raw["output"] || ""),
          exit_status: raw["exit_status"],
          stats: raw["stats"] || %{}

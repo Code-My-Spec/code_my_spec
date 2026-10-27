@@ -48,6 +48,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
              exit_status: result.exit_status,
              stats: result.stats
            }) do
+      finished =
+        CodeMySpec.Analysis.History.record!(
+          finished,
+          Map.get(result, :failures, []),
+          result.problems
+        )
+
       report_tied(scope, run, result)
       {:ok, finished}
     end
@@ -76,7 +83,10 @@ defmodule CodeMySpec.Analysis.Reconciler do
             stats: Signatures.put(result.stats, signatures)
           })
 
-        RunsRepository.prune(scope, run.source)
+        finished =
+          CodeMySpec.Analysis.History.record!(finished, Map.get(result, :failures, []), problems)
+
+        CodeMySpec.Analysis.History.prune(scope)
         # Events, because Analysis sits below `AgentTasks` and `Notifications`.
         :telemetry.execute(
           [:code_my_spec, :analysis, :run_reconciled],
