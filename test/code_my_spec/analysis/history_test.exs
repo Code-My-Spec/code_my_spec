@@ -11,10 +11,9 @@ defmodule CodeMySpec.Analysis.HistoryTest do
     previous = Application.get_env(:code_my_spec, :analysis_retention_days)
 
     on_exit(fn ->
-      if previous == nil do
-        Application.delete_env(:code_my_spec, :analysis_retention_days)
-      else
-        Application.put_env(:code_my_spec, :analysis_retention_days, previous)
+      case previous do
+        nil -> Application.delete_env(:code_my_spec, :analysis_retention_days)
+        value -> Application.put_env(:code_my_spec, :analysis_retention_days, value)
       end
     end)
 
