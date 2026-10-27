@@ -27,7 +27,8 @@ defmodule CodeMySpec.Agents.Main.TokenBurn do
           turns: pos_integer(),
           tokens: non_neg_integer() | :unknown,
           largest_turn: non_neg_integer() | :unknown,
-          cache_read: non_neg_integer() | :unknown
+          cache_read: non_neg_integer() | :unknown,
+          fresh_threads: non_neg_integer()
         }
 
   @doc "Every agent on the project that ran a turn in the last hour, the biggest spender first."
@@ -54,7 +55,10 @@ defmodule CodeMySpec.Agents.Main.TokenBurn do
               t.output_tokens
             )
           ),
-        cache_read: sum(t.cache_read_tokens)
+        cache_read: sum(t.cache_read_tokens),
+        # Turns that started a new Codex thread mid-conversation: each sent the
+        # whole transcript uncached.
+        fresh_threads: count(t.fresh_thread)
       }
     )
     |> Repo.all()
@@ -87,7 +91,8 @@ defmodule CodeMySpec.Agents.Main.TokenBurn do
       turns: row.turns,
       tokens: in_out(row.input, row.output),
       largest_turn: known(row.largest_turn),
-      cache_read: known(row.cache_read)
+      cache_read: known(row.cache_read),
+      fresh_threads: to_int(row.fresh_threads)
     }
   end
 

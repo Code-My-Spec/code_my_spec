@@ -2178,11 +2178,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp take_working_copy(harness, payload) do
     case HarnessRegistry.register_executor(harness.id, payload["instance"], payload["root"]) do
       :ok ->
-        if payload["attachment_operations"] == true do
-          HarnessRegistry.register_verb(harness.id, "attachment_operations")
+        # Attachments run the agents' own tools (issue 2394520b); a harness
+        # that still runs its own file/command layer is not offered them.
+        if payload["attachment_tools"] == true do
+          HarnessRegistry.register_verb(harness.id, "attachment_tools")
         end
 
         register_app_verbs(harness, payload)
+        register_served_models(harness, payload)
 
       {:error, {:already_registered, pid}} ->
         Logger.warning(
@@ -2215,6 +2218,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp register_app_verbs(_harness, _payload), do: :ok
+
+  # The models each provider serves this harness's logins, where it could read
+  # them; "unknown" (or nothing) leaves a provider unverified.
+  defp register_served_models(harness, %{"served_models" => models}) when is_map(models) do
+    known = for {provider, [_ | _] = ids} <- models, into: %{}, do: {provider, ids}
+    HarnessRegistry.register_served_models(harness.id, known)
+  end
+
+  defp register_served_models(_harness, _payload), do: :ok
 
   defp id_collision(harness, joining_root, held_root) do
     %{

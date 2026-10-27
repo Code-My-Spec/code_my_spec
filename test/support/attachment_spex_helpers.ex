@@ -11,6 +11,7 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
   alias CodeMySpecSpex.Fixtures
 
   defmodule Transport do
+    @moduledoc false
     def request(copy, event, payload, _timeout) do
       {root, mode} = Agent.get(__MODULE__, &Map.fetch!(&1, copy))
 
@@ -103,8 +104,18 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
 
   def attachments(c), do: data(c, "list_working_copy_attachments")
 
-  def work(c, a, op, args \\ %{}),
-    do: data(c, "work_in_copy", Map.merge(args, %{attachment_id: a["id"], operation: op}))
+  # The agents' own tools, run in the attached copy (issue 2394520b).
+  def work(c, a, tool, input \\ %{}),
+    do: data(c, "work_in_copy", Map.merge(input, %{attachment_id: a["id"], tool: tool}))
+
+  def read(c, a, path), do: work(c, a, "read", %{file_path: path})
+
+  # Bash's result: the command's output, then `exit code: N`.
+  def bash(c, a, command) do
+    text = work(c, a, "bash", %{command: command})
+    [_, output, status] = Regex.run(~r/\A(.*)\nexit code: (\d+)\z/s, text)
+    %{output: output, exit_status: String.to_integer(status)}
+  end
 
   def mode(copy, mode), do: Agent.update(Transport, &Map.put(&1, copy.id, {copy.root, mode}))
 
@@ -186,9 +197,9 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
       Task.async(fn ->
         result(c, "work_in_copy", %{
           attachment_id: one["id"],
-          operation: "command",
-          command: "sh",
-          args: ["-c", "touch started; sleep 30; touch survived"]
+          tool: "bash",
+          command: "touch started; sleep 30; touch survived",
+          timeout: 60_000
         })
       end)
 
@@ -196,13 +207,13 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     assert data(c, "disconnect_working_copy", %{attachment_id: one["id"]})["disconnected"]
     assert {:error, _} = Task.await(task, 5_000)
     assert attachments(c) == [two]
-    assert work(c, two, "read_file", %{path: "identity.txt"}) == "remote"
+    assert read(c, two, "identity.txt") =~ "remote"
 
     assert {:error, _} =
              result(c, "work_in_copy", %{
                attachment_id: one["id"],
-               operation: "read_file",
-               path: "identity.txt"
+               tool: "read",
+               file_path: "identity.txt"
              })
 
     assert Enum.any?(data(c, "list_working_copies"), &(&1["id"] == c.one.id))
@@ -215,40 +226,48 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     identity = if criterion == 2403, do: "laptop", else: "remote"
     other_identity = if criterion == 2403, do: "remote", else: "laptop"
     a = connect(c, target)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == identity
-    assert inspect(work(c, a, "search", %{pattern: identity})) =~ "identity.txt"
-    assert inspect(work(c, a, "list_directory")) =~ "identity.txt"
-    work(c, a, "write_file", %{path: "identity.txt", content: "Main helped"})
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "Main helped"
-    result = work(c, a, "command", %{command: "pwd", args: []})
+    assert read(c, a, "identity.txt") =~ identity
+    assert bash(c, a, "grep -rl #{identity} .").output =~ "identity.txt"
+    assert bash(c, a, "ls").output =~ "identity.txt"
+    work(c, a, "write", %{file_path: "identity.txt", content: "Main helped"})
+    assert read(c, a, "identity.txt") =~ "Main helped"
+
+    work(c, a, "edit", %{
+      file_path: "identity.txt",
+      old_string: "Main helped",
+      new_string: "Main edited"
+    })
+
+    assert read(c, a, "identity.txt") =~ "Main edited"
+    result = bash(c, a, "pwd")
     assert String.trim(result.output) == target.root
     assert result.exit_status == 0
     one = connect(c, other)
-    assert work(c, one, "read_file", %{path: "identity.txt"}) == other_identity
+    assert read(c, one, "identity.txt") =~ other_identity
     unchanged(c)
   end
 
   def exercise(c, 2414) do
     a = connect(c, c.one)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert read(c, a, "identity.txt") =~ "laptop"
   end
 
   def exercise(c, 2415) do
     assert {:error, _} =
              result(c, "work_in_copy", %{
                attachment_id: c.one.id,
-               operation: "write_file",
-               path: "identity.txt",
+               tool: "write",
+               file_path: "identity.txt",
                content: "unauthorized"
              })
 
     a = connect(c, c.one)
-    assert work(c, a, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert read(c, a, "identity.txt") =~ "laptop"
   end
 
   def exercise(c, 2416) do
     a = connect(c, c.two)
-    result = work(c, a, "command", %{command: "pwd", args: []})
+    result = bash(c, a, "pwd")
     assert String.trim(result.output) == c.two.root
     assert result.exit_status == 0
   end
@@ -260,8 +279,8 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     assert {:error, :harness_unreachable} =
              result(c, "work_in_copy", %{
                attachment_id: a["id"],
-               operation: "write_file",
-               path: "identity.txt",
+               tool: "write",
+               file_path: "identity.txt",
                content: "wrong destination"
              })
 
@@ -273,9 +292,9 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     mode(c.two, :online)
     reconnected = data(c, "connect_working_copy", %{working_copy_id: c.two.id})
     assert reconnected["id"] == a["id"]
-    assert work(c, reconnected, "read_file", %{path: "identity.txt"}) == "remote"
+    assert read(c, reconnected, "identity.txt") =~ "remote"
     one = connect(c, c.one)
-    assert work(c, one, "read_file", %{path: "identity.txt"}) == "laptop"
+    assert read(c, one, "identity.txt") =~ "laptop"
     unchanged(c)
   end
 
@@ -286,14 +305,14 @@ defmodule CodeMySpecSpex.AttachmentHelpers do
     assert {:error, :connection_lost} =
              result(c, "work_in_copy", %{
                attachment_id: a["id"],
-               operation: "command",
-               command: "sh",
-               args: ["-c", "echo once >> executions; touch started; sleep 0.1; touch finished"]
+               tool: "bash",
+               command:
+                 "sh -c 'echo once >> executions; touch started; sleep 0.1; touch finished'"
              })
 
     await_file(Path.join(c.two.root, "finished"))
     mode(c.two, :online)
-    assert work(c, a, "read_file", %{path: "executions"}) == "once\n"
+    assert length(Regex.scan(~r/once/, read(c, a, "executions"))) == 1
     unchanged(c)
   end
 end

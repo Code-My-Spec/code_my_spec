@@ -22,6 +22,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
     OperatingRules,
     ProviderBrief,
     RoleBrief,
+    SenderStamp,
     ToolIndex
   }
 
@@ -72,7 +73,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "role_brief" => RoleBrief.for(agent.role),
       # Section one: the loop every agent runs and how the machinery behaves;
       # the same for every role and project. See `OperatingRules`.
-      "universal" => OperatingRules.text(),
+      "universal" => OperatingRules.text() <> "\n\n" <> SenderStamp.brief(agent),
       # Every tool it can reach, by name only. See `Agents.ToolIndex`.
       "tool_index" => ToolIndex.for(agent, tools, machine_tools(agent)),
       # The same grant as data, so the harness can say why a direct call missed.

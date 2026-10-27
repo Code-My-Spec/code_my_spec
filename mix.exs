@@ -103,19 +103,6 @@ defmodule CodeMySpec.MixProject do
     ErlangError -> nil
   end
 
-  # `client_utils` is checked out beside the main checkout on a dev machine.
-  # Every worktree shares that checkout's git dir, wherever the worktree itself
-  # lives. A machine without it (CI, a release build) takes it from GitHub.
-  defp client_utils do
-    args = ["rev-parse", "--path-format=absolute", "--git-common-dir"]
-    {common, 0} = System.cmd("git", args, cd: __DIR__, stderr_to_stdout: true)
-    path = Path.expand("../../client_utils", String.trim(common))
-
-    if File.dir?(path),
-      do: {:client_utils, path: path},
-      else: {:client_utils, github: "Code-My-Spec/client_utils", branch: "main"}
-  end
-
   defp from_describe(described) do
     case Regex.run(~r/^v(\d+\.\d+\.\d+)-(\d+)-(g[0-9a-f]+)$/, described) do
       [_, version, "0", _sha] -> version
@@ -220,12 +207,12 @@ defmodule CodeMySpec.MixProject do
        git: "https://github.com/Code-My-Spec/spex.git",
        branch: "feature/reusable-givens",
        only: [:dev, :test]},
-      # A path rather than hex, so the harness and the library it shares a
-      # contract with move together. `Onboarding.databases/2` lists the
-      # partitions and `TestDatabase.partition_for/2` uses them; a release
-      # boundary between the two means a window where the harness runs a suite
-      # against a database nothing told anyone to create.
-      client_utils(),
+      # Pinned: the harness shares a contract with it (`Onboarding.databases/2`
+      # lists the partitions `TestDatabase.partition_for/2` uses), so a new
+      # release lands with the harness change that needs it. Not a path dep: a
+      # path dep makes every mix command take the build lock, and a migrate
+      # beside a running :4000 waited on its code reloader.
+      {:client_utils, "== 0.3.0"},
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},

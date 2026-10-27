@@ -99,20 +99,12 @@ defmodule CodeMySpecSpex.StorySliceHelpers do
     Map.merge(context, %{main_copy: copy, main_scope: main_scope, main: main})
   end
 
+  # Settled first: the tool reads under a one-second deadline and answers "being
+  # rebuilt" while the projector is still on what the fixture just wrote, which
+  # a loaded box made it do (0c35c198, the_team_finishes_a_story_together_test).
   def next(context, assigns \\ %{}) do
-    next_when_graph_ready(context, assigns, 3)
-  end
-
-  defp next_when_graph_ready(context, assigns, retries) do
-    response = call(context, "get_next_requirement", %{}, assigns)
-
-    if retries > 0 and
-         String.starts_with?(response, "The requirement graph is being rebuilt or updated;") do
-      Process.sleep(5_000)
-      next_when_graph_ready(context, assigns, retries - 1)
-    else
-      response
-    end
+    :ok = Fixtures.settle_graph(context.scope)
+    call(context, "get_next_requirement", %{}, assigns)
   end
 
   def topology(context, triples) do

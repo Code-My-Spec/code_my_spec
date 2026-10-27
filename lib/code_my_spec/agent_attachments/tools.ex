@@ -36,6 +36,27 @@ defmodule CodeMySpec.AgentAttachments.Tools do
          "Call connect_working_copy with the same working_copy_id to reconnect -- it is " <>
          "idempotent and returns this same attachment id."}
 
+  def render({:error, :attachment_not_found}),
+    do:
+      {:error,
+       "No such attachment for this agent (it may have been disconnected). " <>
+         "list_working_copy_attachments shows yours; connect_working_copy makes one."}
+
+  def render({:error, :unsupported_tool}),
+    do: {:error, "work_in_copy runs read, write, edit or bash."}
+
+  def render({:error, :harness_unreachable}),
+    do:
+      {:error,
+       "That working copy's harness is not connected, so nothing ran there. " <>
+         "Start its harness, then reconnect with connect_working_copy."}
+
+  def render({:error, :attachment_tools_unsupported}),
+    do:
+      {:error,
+       "That working copy's harness predates attachment tools; update and restart it, " <>
+         "then reconnect with connect_working_copy."}
+
   def render({:error, reason}), do: Tools.error(reason)
 
   def row(attachment) do

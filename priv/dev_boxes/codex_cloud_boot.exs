@@ -1,55 +1,4 @@
 # Executed by the installed Linux harness release, never by the target project.
-defmodule CodexCloudProxy do
-  def attach(req), do: Req.Request.prepend_request_steps(req, cloud_proxy: &route/1)
-
-  def route(%{url: %{scheme: "https", host: host}} = req)
-      when host not in ["localhost", "127.0.0.1", "::1"] do
-    case proxy_for(host) do
-      proxy when is_binary(proxy) and proxy != "" ->
-        Req.Request.put_option(
-          req,
-          :connect_options,
-          Keyword.merge(Req.Request.get_option(req, :connect_options, []), options(proxy))
-        )
-
-      _ ->
-        req
-    end
-  end
-
-  def route(req), do: req
-
-  def proxy_for(host) do
-    bypass =
-      (System.get_env("NO_PROXY") || System.get_env("no_proxy") || "")
-      |> String.split(",", trim: true)
-      |> Enum.any?(fn entry ->
-        suffix = entry |> String.trim() |> String.trim_leading(".")
-        suffix == "*" or host == suffix or String.ends_with?(host, "." <> suffix)
-      end)
-
-    if bypass, do: nil, else: System.get_env("HTTPS_PROXY") || System.get_env("https_proxy")
-  end
-
-  def options(value) do
-    proxy = URI.parse(value)
-
-    unless proxy.scheme in ["http", "https"] and is_binary(proxy.host) and is_nil(proxy.userinfo),
-      do: raise("HTTPS_PROXY must be an HTTP or HTTPS proxy URL without embedded credentials")
-
-    [
-      proxy: {String.to_existing_atom(proxy.scheme), proxy.host, proxy.port, []},
-      transport_opts: [
-        verify: :verify_peer,
-        cacertfile:
-          String.to_charlist(
-            System.get_env("SSL_CERT_FILE") || "/etc/ssl/certs/ca-certificates.crt"
-          )
-      ]
-    ]
-  end
-end
-
 defmodule CodexCloudBoot do
   def run do
     state = System.fetch_env!("CMS_CLOUD_STATE_DIR")
@@ -72,13 +21,7 @@ defmodule CodexCloudBoot do
     opts = [state_dir: credential_dir]
     Application.put_env(:code_my_spec, CodeMySpec.Auth.HarnessOAuth, opts)
     Application.put_env(:code_my_spec, :project_id, context["project_id"])
-    Req.default_options(Keyword.put(Req.default_options(), :plugins, [CodexCloudProxy]))
-
-    if proxy = CodexCloudProxy.proxy_for(URI.parse(server).host) do
-      Application.put_env(:code_my_spec, :harness_socket_options,
-        mint_opts: Keyword.put(CodexCloudProxy.options(proxy), :protocols, [:http1])
-      )
-    end
+    CmsHarness.Proxy.install!()
 
     {:ok, _} = Application.ensure_all_started(:req)
     seed_device(credential_dir, context["device_id"])

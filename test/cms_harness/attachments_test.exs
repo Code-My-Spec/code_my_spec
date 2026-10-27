@@ -27,51 +27,67 @@ defmodule CmsHarness.AttachmentsTest do
     %{root: root, id: id}
   end
 
-  test "file operations target the attachment root and refuse path escapes", %{root: root, id: id} do
-    assert :ok =
-             execute(root, id, %{
-               "operation" => "write_file",
-               "path" => "lib/hello.txt",
-               "content" => "hello"
-             })
+  test "the agents' read and write target the attachment root and refuse escapes", %{
+    root: root,
+    id: id
+  } do
+    assert {:ok, _} =
+             execute(root, id, "write", %{"file_path" => "lib/hello.txt", "content" => "hello"})
 
-    assert {:ok, "hello"} =
-             execute(root, id, %{"operation" => "read_file", "path" => "lib/hello.txt"})
+    assert File.read!(Path.join(root, "lib/hello.txt")) == "hello"
+    assert {:ok, text} = execute(root, id, "read", %{"file_path" => "lib/hello.txt"})
+    assert text =~ "hello"
 
-    assert {:error, :path_outside_working_copy} =
-             execute(root, id, %{"operation" => "read_file", "path" => "../secret"})
+    assert {:error, outside} = execute(root, id, "read", %{"file_path" => "../secret"})
+    assert outside =~ "outside allowed directories"
 
     assert :ok = File.ln_s(System.tmp_dir!(), Path.join(root, "escape"))
 
-    assert {:error, :symlink_path_not_allowed} =
-             execute(root, id, %{
-               "operation" => "write_file",
-               "path" => "escape/secret",
-               "content" => "bad"
-             })
+    assert {:error, _} =
+             execute(root, id, "write", %{"file_path" => "escape/secret", "content" => "bad"})
+
+    refute File.exists?(Path.join(System.tmp_dir!(), "secret"))
 
     other = Path.join(root, "other")
 
     assert {:error, :attachment_not_connected} =
-             execute(other, id, %{"operation" => "read_file", "path" => "lib/hello.txt"})
+             execute(other, id, "read", %{"file_path" => "lib/hello.txt"})
   end
 
-  test "search returns bounded literal matches and ignores symbolic links", %{root: root, id: id} do
-    File.write!(Path.join(root, "note.txt"), "first\nmatch [x]\n")
+  test "edit is the agents' edit, in the attached copy", %{root: root, id: id} do
+    File.write!(Path.join(root, "note.txt"), "first\nsecond\n")
 
-    assert {:ok, [%{path: "note.txt", line: 2, text: "match [x]"}]} =
-             execute(root, id, %{"operation" => "search", "pattern" => "[x]"})
-  end
-
-  test "command returns output and exit status from the selected copy", %{root: root, id: id} do
-    assert {:ok, %{output: output, exit_status: 7}} =
-             execute(root, id, %{
-               "operation" => "command",
-               "command" => "sh",
-               "args" => ["-c", "pwd; exit 7"]
+    assert {:ok, _} =
+             execute(root, id, "edit", %{
+               "file_path" => "note.txt",
+               "old_string" => "second",
+               "new_string" => "Main helped"
              })
 
-    assert String.trim(output) == root or String.trim(output) == "/private" <> root
+    assert File.read!(Path.join(root, "note.txt")) == "first\nMain helped\n"
+  end
+
+  test "bash runs in the selected copy and reports its exit code", %{root: root, id: id} do
+    assert {:ok, text} = execute(root, id, "bash", %{"command" => "pwd; exit 7"})
+    assert text =~ "exit code: 7"
+    [pwd | _] = String.split(text, "\n")
+    assert pwd in [root, "/private" <> root]
+  end
+
+  test "a long result spills to the attachment's own file, as an agent's does", %{
+    root: root,
+    id: id
+  } do
+    assert {:ok, text} = execute(root, id, "bash", %{"command" => "seq 1 5000"})
+    assert text =~ "Output too large"
+    [_, path] = Regex.run(~r/Full output saved to: (\S+)/, text)
+    assert path =~ "attachment-#{id}"
+    assert File.read!(path) =~ "4999"
+  end
+
+  test "an unknown tool is refused by name", %{root: root, id: id} do
+    assert {:error, message} = execute(root, id, "search", %{"pattern" => "x"})
+    assert message =~ "read, write, edit, bash"
   end
 
   test "disconnect kills its subprocess and leaves an independent attachment usable", %{
@@ -91,10 +107,9 @@ defmodule CmsHarness.AttachmentsTest do
 
     task =
       Task.async(fn ->
-        execute(root, id, %{
-          "operation" => "command",
-          "command" => "sh",
-          "args" => ["-c", "echo $$ > running.pid; exec sleep 60"]
+        execute(root, id, "bash", %{
+          "command" => "sh -c 'echo $$ > running.pid; exec sleep 60'",
+          "timeout" => 60_000
         })
       end)
 
@@ -106,9 +121,9 @@ defmodule CmsHarness.AttachmentsTest do
     assert status != 0
 
     assert {:error, :attachment_not_connected} =
-             execute(root, id, %{"operation" => "list_directory"})
+             execute(root, id, "read", %{"file_path" => "running.pid"})
 
-    assert {:ok, _} = execute(root, other_id, %{"operation" => "list_directory"})
+    assert {:ok, _} = execute(root, other_id, "read", %{"file_path" => "running.pid"})
   end
 
   test "concurrent disconnects remain idempotent as the session exits", %{root: root, id: id} do
@@ -121,26 +136,16 @@ defmodule CmsHarness.AttachmentsTest do
     assert :ok = disconnect.()
 
     assert {:error, :attachment_not_connected} =
-             execute(root, id, %{"operation" => "list_directory"})
+             execute(root, id, "read", %{"file_path" => "anything"})
   end
 
-  test "disconnect kills a background child after command has returned", %{root: root, id: id} do
-    assert {:ok, %{exit_status: 0}} =
-             execute(root, id, %{
-               "operation" => "command",
-               "command" => "sh",
-               "args" => ["-c", "sleep 60 & echo $! > background.pid"]
-             })
-
-    os_pid = root |> Path.join("background.pid") |> File.read!() |> String.trim()
-    assert {_output, 0} = System.cmd("kill", ["-0", os_pid], stderr_to_stdout: true)
-    assert :ok = Attachments.request(root, "attachment_disconnect", %{"attachment_id" => id})
-    assert {_output, status} = System.cmd("kill", ["-0", os_pid], stderr_to_stdout: true)
-    assert status != 0
+  defp execute(root, id, tool, input) do
+    Attachments.request(root, "attachment_execute", %{
+      "attachment_id" => id,
+      "tool" => tool,
+      "input" => input
+    })
   end
-
-  defp execute(root, id, payload),
-    do: Attachments.request(root, "attachment_execute", Map.put(payload, "attachment_id", id))
 
   defp wait_for_file(_path, 0), do: false
 

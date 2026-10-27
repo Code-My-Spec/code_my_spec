@@ -15,9 +15,10 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
   ceiling, reporting the eventual `serving`/`erroring` transition through
   `app_status` (see `criterion_1526_...spex.exs` for that push, exercised
   through the full channel/`FakeServer` round trip). What this file covers
-  instead is `AppInstance`'s own internal state directly — the ordinary
-  restart path is genuinely unchanged, and that is easiest to prove by
-  reading `:sys.get_state/1` rather than threading it through a channel.
+  instead is `AppInstance`'s own internal state directly, read with
+  `:sys.get_state/1` rather than threaded through a channel. An ordinary
+  restart that serves inside its inline wait never enters the background
+  watch; one still booting when the wait ends does, like a first start.
   """
 
   # Sync: `app_instance_rig` sets application env.
@@ -77,8 +78,12 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
              "an ordinary restart must never enter the first-start ceiling path"
     end
 
-    test "a copy that has already started once, and now never answers, reports down once its deadline passes" do
+    # 8fcce1fb: a restart recompiling every dep was reported down mid-compile.
+    # A restart whose process lives but never answers is watched like a first
+    # start, and reported erroring at the ceiling rather than down at once.
+    test "a copy that has already started once, and now never answers, is watched and then reported erroring" do
       set_op_timeout(1_000)
+      set_first_start_ceiling(0)
       %{root: root} = app_instance_rig(database_exists?: true)
 
       # Establishes a real prior success — `commit` is only ever set once
@@ -88,12 +93,13 @@ defmodule CmsHarness.AppInstanceFirstStartTest do
 
       FakeAppInstanceRunner.put_probe(:down)
 
-      assert %{"status" => "ok", "app_status" => "down"} = push_app_event("restart_app")
+      assert %{"status" => "ok", "app_status" => "starting"} = push_app_event("restart_app")
+
+      assert_receive {:app_status, %{"status" => "erroring"} = payload}, 1_000
+      assert payload["reason"] =~ "restart exceeded"
 
       state = :sys.get_state(GenServer.whereis(AppInstance.via(instance(root))))
-
-      assert state.first_start_deadline == nil,
-             "an ordinary restart must never enter the first-start ceiling path"
+      assert state.first_start_deadline == nil
     end
   end
 end

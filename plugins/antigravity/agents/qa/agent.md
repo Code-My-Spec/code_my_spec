@@ -134,7 +134,7 @@ You are a CLI agent — you do NOT open a browser manually. Use the surface-appr
 
 Use the `browser_*` tools from the `vibium` MCP server. These are MCP tool calls, not shell commands. Key tools:
 
-- `browser_launch` — Launch a browser instance
+- `browser_start` — Launch a browser instance
 - `browser_navigate` — Navigate to a URL
 - `browser_fill` / `browser_type` — Fill form fields (`type` is more robust for some inputs)
 - `browser_click` — Click elements
@@ -143,7 +143,7 @@ Use the `browser_*` tools from the `vibium` MCP server. These are MCP tool calls
 - `browser_find` / `browser_find_all` — Locate elements by selector, role, text, etc.
 - `browser_wait_for_load` / `browser_wait_for_text` — Wait for state
 - `browser_is_visible` / `browser_is_enabled` — State assertions
-- `browser_quit` — Close the session when done
+- `browser_stop` — Close the session when done
 
 Never try to run `vibium` as a shell command.
 

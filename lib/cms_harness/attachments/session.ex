@@ -17,19 +17,16 @@ defmodule CmsHarness.Attachments.Session do
     {:ok, %{root: root, tasks: %{}}}
   end
 
+  # The tools own their deadlines (bash's reaches an hour, as an agent's does);
+  # this backstop matches the engine's `tool_timeout` and only catches a call
+  # that never returns.
+  @backstop :timer.hours(1) + 5_000
+
   @impl true
   def handle_call({:execute, payload}, from, state) do
-    owner = self()
-    token = make_ref()
-
-    task =
-      Task.async(fn ->
-        Operations.execute(state.root, payload, &send(owner, {:operation_result, token, &1}))
-      end)
-
-    timeout = timeout(payload["timeout_ms"])
-    timer = Process.send_after(self(), {:timeout, task.ref}, timeout)
-    entry = %{task: task, from: from, timer: timer, token: token}
+    task = Task.async(fn -> Operations.execute(state.root, payload) end)
+    timer = Process.send_after(self(), {:timeout, task.ref}, @backstop)
+    entry = %{task: task, from: from, timer: timer}
     {:noreply, %{state | tasks: Map.put(state.tasks, task.ref, entry)}}
   end
 
@@ -46,21 +43,6 @@ defmodule CmsHarness.Attachments.Session do
   end
 
   @impl true
-  def handle_info({:operation_result, token, result}, state) do
-    tasks =
-      Map.new(state.tasks, fn {ref, entry} ->
-        if entry.token == token do
-          Process.cancel_timer(entry.timer)
-          reply(entry.from, result)
-          {ref, %{entry | from: nil}}
-        else
-          {ref, entry}
-        end
-      end)
-
-    {:noreply, %{state | tasks: tasks}}
-  end
-
   def handle_info({ref, result}, state) when is_reference(ref) do
     {entry, tasks} = Map.pop(state.tasks, ref)
 
@@ -111,9 +93,5 @@ defmodule CmsHarness.Attachments.Session do
     Cleanup.stop(entry.task.pid)
   end
 
-  defp reply(nil, _result), do: :ok
   defp reply(from, result), do: GenServer.reply(from, result)
-
-  defp timeout(value) when is_integer(value), do: min(max(value, 1), 120_000)
-  defp timeout(_), do: 30_000
 end

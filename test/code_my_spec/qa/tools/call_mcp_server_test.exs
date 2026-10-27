@@ -23,6 +23,17 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest.PingServer do
   component(CodeMySpec.Qa.Tools.CallMcpServerTest.PingTool)
 end
 
+defmodule CodeMySpec.Qa.Tools.CallMcpServerTest.Refuses do
+  @moduledoc false
+  @behaviour Plug
+
+  @impl true
+  def init(opts), do: opts
+
+  @impl true
+  def call(conn, _opts), do: Plug.Conn.send_resp(conn, 401, "")
+end
+
 defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
   @moduledoc """
   The instrument QA tests a tool surface with.
@@ -108,6 +119,31 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
     end
   end
 
+  # 3942db94: /mcp/harness answered 401 to a caller with no bearer token, and
+  # this read as `{:session_died, {:noproc, …}}`.
+  describe "a server that refuses the caller" do
+    @describetag :capture_log
+
+    setup do
+      bandit = start_supervised!({Bandit, plug: __MODULE__.Refuses, port: 0, startup_log: false})
+      {:ok, {_address, port}} = ThousandIsland.listener_info(bandit)
+      %{url: "http://127.0.0.1:#{port}"}
+    end
+
+    test "says it was refused, with the status", %{frame: frame, url: url} do
+      {:error, text} =
+        ToolLibrary.run(
+          "call_mcp_server",
+          %{url: url, path: "/mcp/harness", timeout: 5_000},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      [_could_not_open, headline | _rest] = String.split(text, "\n\n")
+      assert headline =~ "Refused: HTTP 401"
+      assert headline =~ "Authorization: Bearer"
+    end
+  end
+
   describe "a server that is actually running" do
     @describetag :capture_log
 
@@ -139,6 +175,10 @@ defmodule CodeMySpec.Qa.Tools.CallMcpServerTest do
 
       assert text =~ "ping_tool",
              "a server that answered was not read as one offering a tool named ping_tool:\n#{text}"
+
+      # Whose tools these are: an agent read a list like this as its own catalog.
+      assert text =~ "#{url}/mcp offers this caller 1 tool(s)"
+      assert text =~ "not yours"
     end
 
     test "calls the tool it offers", %{frame: frame, url: url} do

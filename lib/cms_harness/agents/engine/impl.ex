@@ -13,6 +13,8 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   require Logger
 
+  alias Alloy.Provider.CodexSession
+
   alias CmsHarness.Agents.Compaction
   alias CmsHarness.Agents.Engine.Execution
   alias CmsHarness.Agents.Engine.Keeper
@@ -37,7 +39,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
 
   # Compaction budget. Alloy defaults to the model's window, 1M for Sonnet 5
   # and Opus 5.5, so an agent compacted only near a million while Claude Code
-  # on the same model works within ~200k.
+  # on the same model works within ~200k. A provider's own budget wins.
   @context_budget 200_000
 
   # Spilled tool results older than this are pruned when an agent starts. Not
@@ -470,10 +472,18 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # a waiter that dies leaves the execution — and the ports it owns — alive to
   # be found and stopped. A port whose owner has died is closed, and the
   # program behind it keeps running with nothing left that knows its pid.
+  #
+  # An execution that dies is the engine's to recover (its DOWN on this waiter
+  # aborts the turn), so the waiter leaves with a shutdown reason rather than
+  # crashing in `Task.await` with an error report.
   defp execute(state, message) do
     Alloy.TaskSupervisor
     |> Task.Supervisor.async_nolink(fn -> run_turn(state, message) end)
-    |> Task.await(:infinity)
+    |> Task.yield(:infinity)
+    |> case do
+      {:ok, result} -> result
+      {:exit, reason} -> exit({:shutdown, {:execution_exited, reason}})
+    end
   end
 
   # The waiter and everything it started — the execution, its tool tasks, a
@@ -512,12 +522,13 @@ defmodule CmsHarness.Agents.Engine.Impl do
   # goes next. In the order it was sent, because the second thing an operator
   # says usually assumes the first.
   def settle(state, result) do
+    previous = state.provider_state
     state = absorb(state, result)
     :ok = Keeper.remember(state.agent_id, %{messages: state.messages, in_flight: nil})
 
     announce_outcome(state, result)
     reply_to(state.turn.awaiting, result)
-    announce_turn_end(state, result)
+    announce_turn_end(state, result, fresh_thread(previous, state.provider_state))
 
     {:idle, state} = State.finish(state)
     send(self(), :mailbox_ready)
@@ -554,18 +565,38 @@ defmodule CmsHarness.Agents.Engine.Impl do
     :ok
   end
 
-  defp announce_turn_end(%{on_event: nil}, _result), do: :ok
+  defp announce_turn_end(%{on_event: nil}, _result, _fresh), do: :ok
 
-  defp announce_turn_end(state, result) do
+  defp announce_turn_end(state, result, fresh) do
     state.on_event.(state.agent_id, %{
       event: :turn_ended,
-      usage: usage_of(result),
+      usage: with_fresh_thread(usage_of(result), fresh),
       ref: state.turn && state.turn.ref,
       generation: state.generation
     })
 
     :ok
   end
+
+  @doc """
+  Why this turn started a new Codex thread partway through the conversation
+  (sending the whole transcript uncached), from the provider state before and
+  after it; nil when it did not. Carried with the turn's usage, so the token
+  alert and check-in can say so.
+  """
+  @spec fresh_thread(map() | nil, map() | nil) :: String.t() | nil
+  def fresh_thread(previous, current) do
+    {before, _reason} = CodexSession.fresh_threads(previous)
+
+    case CodexSession.fresh_threads(current) do
+      {count, reason} when count > before -> reason
+      _ -> nil
+    end
+  end
+
+  defp with_fresh_thread(usage, nil), do: usage
+  defp with_fresh_thread(nil, reason), do: %{fresh_thread: reason}
+  defp with_fresh_thread(usage, reason), do: Map.put(usage, :fresh_thread, reason)
 
   # The provider's own usage, carried on `turn_ended`: asking the loop
   # afterwards answers busy while the next turn runs. Nil (not zero) when no
@@ -760,7 +791,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   @doc """
   What an agent of this type carries.
 
-  The four core tools (read, write, edit, bash) plus the launch request's
+  The four core tools (`CoreTools`: read, write, edit, bash) plus the launch request's
   `direct_tools`: the server's `ToolIndex.carried_definitions/1`, each built by
   `direct_tool/1`. Everything else is reached through `run_script`. Tools
   `CodeMode.Catalog` excludes from scripts must be direct here. See
@@ -768,12 +799,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   """
   @spec tools(keyword()) :: [module() | Alloy.Tool.Inline.t()]
   def tools(opts) do
-    [
-      CmsHarness.Agents.Tools.Read,
-      Alloy.Tool.Core.Write,
-      Alloy.Tool.Core.Edit,
-      CmsHarness.Agents.Tools.Bash
-    ] ++
+    CmsHarness.Agents.CoreTools.modules() ++
       Enum.map(Keyword.get(opts, :direct_tools) || [], &direct_tool/1)
   end
 
@@ -865,6 +891,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
            Provider.options(provider, credential,
              model: Keyword.get(opts, :model),
              base_url: Keyword.get(opts, :base_url),
+             provider_brief: Keyword.get(opts, :provider_brief),
              # Machine-local; nothing on the wire sets it.
              req_options:
                Keyword.put_new(
@@ -894,7 +921,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
-       |> Keyword.put(:max_tokens, @context_budget)
+       |> Keyword.put_new(:max_tokens, @context_budget)
        # Alloy bounds the whole loop by this (its default is two minutes).
        |> Keyword.put(:timeout_ms, @loop_deadline)
        # Bash owns its explicit deadline (up to one hour), including process

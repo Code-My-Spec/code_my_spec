@@ -71,6 +71,14 @@ defmodule CodeMySpec.Problems.Tools.ListProblemsNamesTheRunTest do
     assert text(ctx.scope) =~ "exunit ran against the `h789652afa` test database."
   end
 
+  # 3bbc3a94: a targeted run's count was read against this list, which only a
+  # full run writes.
+  test "names the full run the findings are from", ctx do
+    run = finished_run(ctx.scope, %{"partition" => "h789652afa"}, 5)
+
+    assert text(ctx.scope) =~ "exunit findings are from full run #{run.id}"
+  end
+
   test "a long run says how long, beside the failures it produced", ctx do
     finished_run(ctx.scope, %{"partition" => "h789652afa"}, 8 * 60 + 13)
 

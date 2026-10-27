@@ -16,6 +16,8 @@ defmodule CodeMySpec.AgentTasks.IssueFixPromptTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.IssueFix
+  alias CodeMySpec.Qa.IssueQaAttempt
+  alias CodeMySpec.Repo
 
   setup do
     scope = full_scope_fixture()
@@ -38,6 +40,37 @@ defmodule CodeMySpec.AgentTasks.IssueFixPromptTest do
 
     assert {:ok, prompt} = IssueFix.command(ctx.scope, %{id: "t1", issue_id: ctx.issue.id})
     assert prompt =~ "belong to the framework rather than"
+  end
+
+  # 698d994c: QA failed the fix twice; the rework prompt showed only the issue,
+  # and the coder declined it as a loop.
+  test "a fix QA sent back shows the coder what QA found", ctx do
+    finding = issue_fixture(ctx.scope, %{status: :incoming})
+
+    {:ok, _attempt} =
+      %IssueQaAttempt{}
+      |> IssueQaAttempt.changeset(%{
+        issue_id: ctx.issue.id,
+        status: :fail,
+        issue_ids: [finding.id],
+        submitted_at: DateTime.utc_now(),
+        scenarios: [
+          %{name: "Gate reused per device", status: :pass, observation: "One gate survives"},
+          %{name: "Rationale in the code", status: :fail, observation: "No comment on the gate"}
+        ]
+      })
+      |> Repo.insert()
+
+    assert {:ok, prompt} = IssueFix.command(ctx.scope, %{id: "t1", issue_id: ctx.issue.id})
+    assert prompt =~ "QA sent this fix back"
+    assert prompt =~ "**Rationale in the code** (fail): No comment on the gate"
+    refute prompt =~ "Gate reused per device"
+    assert prompt =~ "QA filed: #{finding.id}"
+  end
+
+  test "a first fix has no QA section", ctx do
+    assert {:ok, prompt} = IssueFix.command(ctx.scope, %{id: "t1", issue_id: ctx.issue.id})
+    refute prompt =~ "QA sent this fix back"
   end
 
   defp restore(nil), do: Application.delete_env(:code_my_spec, :code_my_spec_project_id)

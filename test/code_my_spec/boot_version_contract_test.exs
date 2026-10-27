@@ -21,21 +21,23 @@ defmodule CodeMySpec.BootVersionContractTest do
 
   alias CodeMySpec.BootVersion
 
+  @key {BootVersion, :boot}
+
   setup do
     # `contract_changed?/2` reads the root out of the same persistent term
     # `capture/1` writes, so capturing here is what points it at this checkout.
     #
-    # Erased afterwards because the term is node-global and outlives the test.
-    # Left set, `drift/0` stops returning `:none` for everything downstream and
-    # starts shelling out `git rev-parse --short HEAD` — which under ExCliVcr is
-    # an unrecorded command, so `hook_decision_test:359` fails with
-    # `CassetteNotFoundError` whenever the seed happens to order this file first.
-    # Intermittent, and it reads as a missing cassette rather than as a test
-    # that left the node dirty.
+    # Restored, not erased: the application captures it at boot, and async
+    # tests read it. Erased, `BootVersion.root/0` was nil for a device-sync test
+    # running beside this one, and a promotion was ejected (2026-10-26).
+    previous = :persistent_term.get(@key, nil)
     BootVersion.capture(File.cwd!())
-    on_exit(fn -> :persistent_term.erase({BootVersion, :boot}) end)
+    on_exit(fn -> restore(previous) end)
     :ok
   end
+
+  defp restore(nil), do: :persistent_term.erase(@key)
+  defp restore(previous), do: :persistent_term.put(@key, previous)
 
   describe "contract_changed?/2" do
     test "says true for a range that changed the harness" do

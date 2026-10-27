@@ -18,6 +18,7 @@ defmodule CodeMySpec.Staffing do
       CodeMySpec.Components,
       CodeMySpec.Files,
       CodeMySpec.Problems,
+      CodeMySpec.Promotion,
       CodeMySpec.Projects,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
@@ -46,6 +47,7 @@ defmodule CodeMySpec.Staffing do
   alias CodeMySpec.Workspaces.PreviewTunnel
 
   @gate_copy_needed [:code_my_spec, :promotion_queue, :gate_copy_needed]
+  @gate_copy_obsolete [:code_my_spec, :promotion_queue, :gate_copy_obsolete]
 
   @doc """
   Attach the handler that makes a project's promotion gate copy when its queue
@@ -56,9 +58,9 @@ defmodule CodeMySpec.Staffing do
   it, and nobody works there.
   """
   def attach do
-    :telemetry.attach(
+    :telemetry.attach_many(
       {__MODULE__, :gate_copy},
-      @gate_copy_needed,
+      [@gate_copy_needed, @gate_copy_obsolete],
       &__MODULE__.handle_event/4,
       nil
     )
@@ -71,6 +73,8 @@ defmodule CodeMySpec.Staffing do
         %{scope: scope, label: label} = metadata,
         _config
       ) do
+    retire_gone_gates(scope, label)
+
     case mint(scope, label: label, roles: [], host_copy_id: metadata[:source_copy_id]) do
       {:ok, copy, _staffed} ->
         Logger.info("[Staffing] made the promotion gate copy #{copy.id} at #{copy.root}")
@@ -83,6 +87,44 @@ defmodule CodeMySpec.Staffing do
       Logger.error(
         "[Staffing] making the promotion gate copy failed: #{Exception.format_banner(kind, reason)}"
       )
+  end
+
+  def handle_event(
+        @gate_copy_obsolete,
+        _measurements,
+        %{scope: scope, gate: %WorkingCopy{} = gate, source_copy_id: source_id},
+        _config
+      ) do
+    with {:ok, %WorkingCopy{} = source} <- WorkingCopies.fetch(source_id),
+         true <- source.project_id == gate.project_id and source.device_id == gate.device_id,
+         true <- source.id != gate.id and is_binary(source.root) and is_binary(gate.root),
+         {:ok, _} <-
+           CodeMySpec.Promotion.Runner.retire_gate_worktree(
+             WorkingCopies.execution_context(%{scope | active_working_copy_id: source.id}),
+             source.root,
+             gate.root,
+             source.id
+           ),
+         {:ok, _} <- offboard(scope, gate) do
+      Logger.info("[Staffing] retired obsolete promotion gate #{gate.id} on #{gate.device_id}")
+    else
+      reason ->
+        Logger.warning(
+          "[Staffing] could not retire obsolete promotion gate #{gate.id}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  # A gate record whose checkout is reported gone is offboarded before its
+  # replacement is made, so the queue never reads it again.
+  defp retire_gone_gates(scope, label) do
+    scope
+    |> WorkingCopies.list_harnesses()
+    |> Enum.filter(&(&1.label == label and not is_nil(&1.path_missing_since)))
+    |> Enum.each(fn gone ->
+      Logger.info("[Staffing] retiring gate copy #{gone.id}: its checkout #{gone.root} is gone")
+      offboard(scope, gone, instance_disposition: :discard)
+    end)
   end
 
   @doc """
@@ -135,7 +177,9 @@ defmodule CodeMySpec.Staffing do
       "prepare" => true
     }
 
-    case Transport.impl().create_working_copy(candidates, request, 60_000) do
+    # A gate copy's checkout, submodules, copied deps and onboarding took 86s
+    # under load; at 60s the server gave up on a copy the harness then finished.
+    case Transport.impl().create_working_copy(candidates, request, :timer.minutes(5)) do
       {:ok, made} -> register(scope, candidates, made, opts)
       {:error, _reason} = error -> error
     end
