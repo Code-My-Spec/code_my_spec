@@ -2827,8 +2827,6 @@ defmodule CodeMySpecSpex.Fixtures do
   # Paths and domain calls a spex needs. Re-exported rather than referenced
   # directly, because `CodeMySpecSpex` may not depend on `CodeMySpec` — the
   # bridge is the sanctioned crossing.
-  defdelegate qa_plan_path(), to: CodeMySpec.Paths, as: :qa_plan
-  defdelegate qa_journey_plan_path(), to: CodeMySpec.Paths, as: :qa_journey_plan
   defdelegate qa_journey_result_path(), to: CodeMySpec.Paths, as: :qa_journey_result
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path

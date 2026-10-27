@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2464Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
 
         main_scope = %{context.scope | active_working_copy_id: nil}
         main = Fixtures.running_agent(main_scope, role: "main", execution_mode: :detached)
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2464Spex do
       end
 
       then_ "Main gets the plan markdown without attaching a copy", context do
-        refute context.read_response.isError, response_text(context.read_response)
+        refute match?({:error, _}, context.read_response), response_text(context.read_response)
         assert response_text(context.read_response) =~ "Sign in before each QA journey."
         assert is_nil(context.main_scope.active_working_copy_id)
         {:ok, context}

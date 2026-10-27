@@ -6,291 +6,112 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
 
   alias CodeMySpec.AgentTasks.QaSetup
   alias CodeMySpec.ExecutionContexts.ExecutionContext
-  alias CodeMySpec.Files.FileSync
-
-  # ============================================================================
-  # Test Helpers
-  # ============================================================================
+  alias CodeMySpec.Qa.Documents
 
   defp create_scope(_context) do
     tmp_dir = CodeMySpec.TempFile.owned_dir("test")
     scope = working_copy_scope_fixture()
-    scope = put_fixture_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
-    :ok = register_working_copy_execution_context(scope, ExecutionContext.new(:local, tmp_dir))
-    %{scope: scope, tmp_dir: tmp_dir}
+    env = ExecutionContext.new(:local, tmp_dir)
+    scope = put_fixture_execution_context(scope, env)
+    :ok = register_working_copy_execution_context(scope, env)
+
+    %{
+      scope: scope,
+      task: %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
+    }
   end
 
-  defp create_task(context) do
-    task = %{project_id: context.scope.active_project.id, component_id: nil, story_id: nil}
-    Map.put(context, :task, task)
-  end
-
-  defp write_file!(env, relative_path, content) do
-    full_path = Path.join(env.cwd, relative_path)
+  defp write_file!(scope, relative_path, content) do
+    full_path = Path.join(fixture_execution_context(scope).cwd, relative_path)
     full_path |> Path.dirname() |> File.mkdir_p!()
     File.write!(full_path, content)
   end
 
-  defp write_router(env, app_name \\ "my_app") do
-    write_file!(env, "lib/#{app_name}_web/router.ex", """
-    defmodule #{Macro.camelize(app_name)}Web.Router do
-      use #{Macro.camelize(app_name)}Web, :router
+  defp valid_plan do
+    """
+    # QA Plan
 
-      pipeline :browser do
-        plug :accepts, ["html"]
-        plug :fetch_session
-      end
+    ## App Overview
 
-      pipeline :require_authenticated_user do
-        plug :fetch_current_user
-        plug :require_authenticated_user
-      end
+    Phoenix app with session-based auth.
 
-      scope "/", #{Macro.camelize(app_name)}Web do
-        pipe_through :browser
+    ## Tools Registry
 
-        get "/", PageController, :home
-        live "/dashboard", DashboardLive
-        live "/settings", SettingsLive
-      end
-    end
-    """)
+    Use the browser for LiveView pages.
+
+    ## Seed Strategy
+
+    Seed a QA account.
+    """
   end
-
-  defp write_mix_exs(env, app_name \\ "my_app") do
-    write_file!(env, "mix.exs", """
-    defmodule #{Macro.camelize(app_name)}.MixProject do
-      use Mix.Project
-      def project do
-        [app: :#{app_name}, version: "0.1.0", deps: deps()]
-      end
-      defp deps do
-        [{:phoenix, "~> 1.7"}, {:phoenix_live_view, "~> 1.0"}]
-      end
-    end
-    """)
-  end
-
-  # `evaluate/2` reads the synced record, not the file — the plan is parsed
-  # during the scan, on the machine that holds it, so a server with no working
-  # copy can still tell whether it is valid. Syncing here means these tests
-  # exercise the classifier and the validator too, not just the checker.
-  defp sync!(scope) do
-    {:ok, _} = FileSync.sync(scope, base_dir: fixture_execution_context(scope).cwd)
-    :ok
-  end
-
-  defp write_qa_plan(env, content \\ nil) do
-    write_file!(
-      env,
-      ".code_my_spec/qa/plan.md",
-      content ||
-        """
-        # QA Plan
-
-        ## App Overview
-
-        Phoenix app with session-based auth on port 4000.
-
-        ## Tools Registry
-
-        ### web tool
-        Use for LiveView pages.
-
-        ### curl
-        Use for API endpoints.
-
-        ## Seed Strategy
-
-        - `mix run -e "MyApp.Seeds.run()"`
-        """
-    )
-  end
-
-  # ============================================================================
-  # command/2 Tests
-  # ============================================================================
 
   describe "command/2" do
-    setup [:create_scope, :create_task]
+    setup :create_scope
 
-    test "returns ok tuple with non-empty prompt", %{scope: scope, task: task} do
+    test "includes document instructions and required sections", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert is_binary(prompt)
-      assert String.length(prompt) > 0
-    end
-
-    test "includes document spec projection", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "Required Sections"
+      assert prompt =~ "write_document"
+      assert prompt =~ "qa_plan"
       assert prompt =~ "App Overview"
       assert prompt =~ "Tools Registry"
       assert prompt =~ "Seed Strategy"
     end
 
-    test "includes router content when router exists", %{scope: scope, task: task} do
-      write_mix_exs(fixture_execution_context(scope))
-      write_router(fixture_execution_context(scope))
+    test "includes router content when a router exists", %{scope: scope, task: task} do
+      write_file!(
+        scope,
+        "lib/my_app_web/router.ex",
+        "defmodule MyAppWeb.Router do\n  live \"/dashboard\", DashboardLive\nend\n"
+      )
 
       assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "PageController"
       assert prompt =~ "DashboardLive"
     end
 
-    test "includes mix phx.routes fallback when router not found", %{
-      scope: scope,
-      task: task
-    } do
+    test "mentions an existing plan document", %{scope: scope, task: task} do
+      assert {:ok, _} = Documents.put(scope, "qa_plan", nil, valid_plan())
+      assert {:ok, prompt} = QaSetup.command(scope, task)
+      assert prompt =~ ~r/existing plan/i
+      assert prompt =~ "read_document"
+    end
+
+    test "offers route discovery when no router is found", %{scope: scope, task: task} do
       assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ "mix phx.routes"
     end
-
-    test "includes existing plan reference when plan.md exists", %{
-      scope: scope,
-      task: task
-    } do
-      write_qa_plan(fixture_execution_context(scope))
-
-      assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ ~r/existing plan/i
-      assert prompt =~ ~r/patch|update/i
-    end
-
-    test "does not include existing plan section when no plan", %{
-      scope: scope,
-      task: task
-    } do
-      assert {:ok, prompt} = QaSetup.command(scope, task)
-      refute prompt =~ ~r/existing plan/i
-    end
-
-    test "points at the qa-tooling playbook for shell-script details", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ "qa-tooling"
-    end
-
-    test "includes plan output path", %{scope: scope, task: task} do
-      assert {:ok, prompt} = QaSetup.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/plan.md"
-    end
   end
 
-  # ============================================================================
-  # evaluate/2 Tests
-  # ============================================================================
-
   describe "evaluate/2" do
-    setup [:create_scope, :create_task]
+    setup :create_scope
 
-    test "returns {:ok, :valid} when plan has all required sections", %{
-      scope: scope,
-      task: task
-    } do
-      write_qa_plan(fixture_execution_context(scope))
-      sync!(scope)
-
+    test "accepts a valid stored plan", %{scope: scope, task: task} do
+      assert {:ok, _} = Documents.put(scope, "qa_plan", nil, valid_plan())
       assert {:ok, :valid} = QaSetup.evaluate(scope, task)
     end
 
-    test "returns {:ok, :invalid, feedback} when plan.md doesn't exist", %{
+    test "reports a missing plan document", %{scope: scope, task: task} do
+      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
+      assert feedback =~ "QA plan document not found"
+      assert feedback =~ "write_document"
+    end
+
+    test "rejects a plan missing required sections without replacing the stored plan", %{
       scope: scope,
       task: task
     } do
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
-      assert feedback =~ "QA plan not found"
-      assert feedback =~ ".code_my_spec/qa/plan.md"
+      assert {:error, error} =
+               Documents.put(scope, "qa_plan", nil, "# QA Plan\n\n## App Overview\n\nOverview.\n")
+
+      assert error =~ "tools registry"
+      assert error =~ "seed strategy"
+      assert {:ok, :invalid, _feedback} = QaSetup.evaluate(scope, task)
     end
 
-    test "returns {:ok, :invalid, feedback} when plan is missing required sections", %{
-      scope: scope,
-      task: task
-    } do
-      write_qa_plan(fixture_execution_context(scope), """
-      # QA Plan
-
-      ## App Overview
-
-      Some overview content.
-      """)
-
-      sync!(scope)
-
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
-      assert feedback =~ "missing required section"
-      assert feedback =~ "Tools Registry"
-      assert feedback =~ "Seed Strategy"
+    test "validates journey plans against their own schema", %{scope: scope} do
+      incomplete = "# QA Journey Plan\n\n## Journeys\n\n- Sign in.\n"
+      assert {:error, error} = Documents.put(scope, "qa_journey_plan", nil, incomplete)
+      assert error =~ "prerequisites"
+      refute error =~ "tools registry"
     end
-
-    test "returns {:ok, :invalid, feedback} when plan is missing one section", %{
-      scope: scope,
-      task: task
-    } do
-      write_qa_plan(fixture_execution_context(scope), """
-      # QA Plan
-
-      ## App Overview
-
-      Overview here.
-
-      ## Tools Registry
-
-      Tools here.
-      """)
-
-      sync!(scope)
-
-      assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
-      assert feedback =~ "Seed Strategy"
-    end
-  end
-
-  describe "the journey plan shares the role but not the schema" do
-    setup [:create_scope, :create_task]
-
-    test "a valid journey plan is not marked invalid by the qa_plan spec", %{scope: scope} do
-      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/journey_plan.md", """
-      # QA Journey Plan
-
-      ## Journeys
-
-      ### Capture a task
-      1. Log in
-      2. Type a task
-      3. See it listed
-      """)
-
-      sync!(scope)
-
-      record = CodeMySpec.Files.get_by_path(scope, CodeMySpec.Paths.qa_journey_plan())
-
-      assert record, "journey_plan.md must classify and sync"
-
-      error = record.validation_errors["errors"]["plan"]
-
-      # This fixture is missing `journey_plan`'s own required "prerequisites"
-      # section, so a real complaint is expected — the question is which
-      # schema it names. `qa_plan` requires App Overview / Tools Registry /
-      # Seed Strategy; if the journey plan were being judged by that schema
-      # instead of its own, the complaint would name those instead.
-      assert error =~ "prerequisites",
-             "expected the missing-section complaint to name the journey " <>
-               "plan's own required section, got: #{inspect(error)}"
-
-      refute error =~ "tools registry",
-             "the journey plan is being validated against the qa_plan schema, " <>
-               "which tells an agent to fix a file that is already correct"
-
-      refute error =~ "seed strategy"
-    end
-  end
-
-  defp refute_not_validated_as_qa_plan(nil), do: :ok
-
-  defp refute_not_validated_as_qa_plan(error) do
-    refute error =~ "tools registry",
-           "the journey plan is being validated against the qa_plan schema, " <>
-             "which tells an agent to fix a file that is already correct"
-
-    refute error =~ "seed strategy"
   end
 end

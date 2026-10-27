@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         File.write!(Path.join(root, "main.txt"), "later work on main\n")
         git!(root, ["add", "main.txt"])
         git!(root, ["commit", "-qm", "main work"])
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         assert response_text(response) =~ "Sign in before testing."
         {:ok, context}
       end

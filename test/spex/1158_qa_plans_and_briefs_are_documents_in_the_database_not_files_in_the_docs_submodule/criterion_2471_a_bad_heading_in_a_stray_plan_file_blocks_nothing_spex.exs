@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ExecutionContexts
-  alias CodeMySpec.Qa.DocumentImporter
+  alias CodeMySpec.Requirements.QaDocumentImporter
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
 
@@ -19,7 +19,12 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
       given_ "the QA plan has been imported as a document", context do
         path = ".code_my_spec/qa/plan.md"
         assert :ok = ExecutionContexts.write_file(context.execution_context, path, valid_plan())
-        assert match?({:ok, _}, DocumentImporter.import(context.scope, context.execution_context))
+
+        assert match?(
+                 {:ok, _},
+                 QaDocumentImporter.import(context.scope, context.execution_context)
+               )
+
         refute ExecutionContexts.file_exists?(context.execution_context, path)
         other_scope = Fixtures.live_agent_scope(context.scope, label: "Second QA copy")
         {:ok, Map.merge(context, %{plan_path: path, other_scope: other_scope})}
@@ -41,7 +46,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
         for scope <- [context.scope, context.other_scope] do
           frame = %{current_scope: scope, scope: scope}
           plan = ToolLibrary.run("read_document", %{document_type: "qa_plan"}, frame)
-          refute plan.isError, response_text(plan)
+          refute match?({:error, _}, plan), response_text(plan)
           refute response_text(plan) =~ "Provisioning agents on a candidate"
 
           setup =
@@ -51,7 +56,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
               frame
             )
 
-          refute setup.isError, response_text(setup)
+          refute match?({:error, _}, setup), response_text(setup)
           assert response_text(setup) =~ "**Status:** Satisfied"
 
           qa =
@@ -65,7 +70,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
               frame
             )
 
-          refute qa.isError, response_text(qa)
+          refute match?({:error, _}, qa), response_text(qa)
           refute response_text(qa) =~ "qa_setup is not satisfied"
         end
 

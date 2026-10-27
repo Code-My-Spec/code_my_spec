@@ -35,6 +35,7 @@ defmodule CodeMySpec.Requirements.Handlers do
   alias CodeMySpec.Requirements.IssuesChecker
   alias CodeMySpec.Requirements.PersonasChecker
   alias CodeMySpec.Requirements.Profiles
+  alias CodeMySpec.Requirements.QaDocumentChecker
   alias CodeMySpec.Requirements.QaIntegrationPlanChecker
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -215,8 +216,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   @path_requirements %{
     "technical_strategy" => {:path, ".code_my_spec/architecture/decisions.md"},
     "code_generation" => {:path, ".code_my_spec/tasks/code_generation.sh"},
-    "qa_setup" => {:path, ".code_my_spec/qa/plan.md"},
-    "qa_journey_plan" => {:path, ".code_my_spec/qa/journey_plan.md"},
     "qa_journey_execute" => {:path, ".code_my_spec/qa/journey_result.md"}
   }
 
@@ -360,7 +359,17 @@ defmodule CodeMySpec.Requirements.Handlers do
     }
   end
 
-  # The five project `path_exists` requirements: one row each, `except` empty.
+  defp settle("qa_setup", _profile, scope) do
+    {satisfied?, detail} = QaDocumentChecker.plan?(scope, nil)
+    project_sweep("qa_setup", satisfied?, detail, detail)
+  end
+
+  defp settle("qa_journey_plan", _profile, scope) do
+    {satisfied?, detail} = QaDocumentChecker.journey_plan?(scope, nil)
+    project_sweep("qa_journey_plan", satisfied?, detail, detail)
+  end
+
+  # The remaining project `path_exists` requirements: one row each, `except` empty.
   defp settle(name, %{files: profile}, _scope) when is_map_key(@path_requirements, name) do
     {satisfied?, detail} = path_verdict(Map.fetch!(@path_requirements, name), profile)
     project_sweep(name, satisfied?, detail, detail)

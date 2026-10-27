@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2463Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         {:ok, Map.put(context, :reader_scope, reader_scope)}
       end
 
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2463Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         {:ok, context}
       end
 
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2463Spex do
             %{current_scope: context.reader_scope, scope: context.reader_scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         text = response_text(response)
         assert text =~ "attachment_fixtures"
         assert text =~ "roles"

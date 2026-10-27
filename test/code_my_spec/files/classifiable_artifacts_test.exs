@@ -37,8 +37,6 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
     {Paths.proposal_path(), "architecture proposal"},
     {Paths.decisions_index(), "ADR index"},
     {Path.join(Paths.decisions_dir(), "0001-some-decision.md"), "an ADR"},
-    {Paths.qa_plan(), "QA plan"},
-    {Paths.qa_journey_plan(), "QA journey plan"},
     {Paths.qa_journey_result(), "QA journey result"},
     {Path.join(Paths.credo_checks_framework_dir(), "spex_denied_calls.ex"),
      "framework credo check"},
@@ -67,6 +65,16 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
     {"CLAUDE.md", "CLAUDE.md"},
     {Path.join(Paths.base_dir(), "AGENTS.md"), "AGENTS.md"}
   ]
+
+  test "legacy QA documents are outside file classification" do
+    for path <- [
+          ".code_my_spec/qa/plan.md",
+          ".code_my_spec/qa/journey_plan.md",
+          ".code_my_spec/qa/42/brief.md"
+        ] do
+      assert is_nil(Scanner.classify(path))
+    end
+  end
 
   for {path, description} <- @gated_artifacts do
     test "#{description} (#{path}) classifies to a role" do

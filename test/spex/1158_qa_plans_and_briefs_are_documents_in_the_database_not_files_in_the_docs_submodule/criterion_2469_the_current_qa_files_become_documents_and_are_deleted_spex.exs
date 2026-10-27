@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2469Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ExecutionContexts
-  alias CodeMySpec.Qa.DocumentImporter
+  alias CodeMySpec.Requirements.QaDocumentImporter
   alias CodeMySpec.ToolLibrary
 
   setup :register_log_in_setup_account
@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2469Spex do
       end
 
       when_ "the one-time QA document import runs", context do
-        result = DocumentImporter.import(context.scope, context.execution_context)
+        result = QaDocumentImporter.import(context.scope, context.execution_context)
         assert match?({:ok, _}, result), inspect(result)
         {:ok, Map.put(context, :import_report, elem(result, 1))}
       end
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2469Spex do
 
   defp read_document(scope, args) do
     response = ToolLibrary.run("read_document", args, %{current_scope: scope, scope: scope})
-    refute response.isError, response_text(response)
+    refute match?({:error, _}, response), response_text(response)
     response_text(response)
   end
 
@@ -99,6 +99,10 @@ defmodule CodeMySpecSpex.Story1158.Criterion2469Spex do
     ## Journeys
 
     - Sign-in journey: log in as the seeded QA account.
+
+    ## Prerequisites
+
+    - Seed the QA account.
     """
   end
 

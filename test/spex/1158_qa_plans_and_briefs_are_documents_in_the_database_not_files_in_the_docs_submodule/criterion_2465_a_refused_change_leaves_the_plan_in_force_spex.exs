@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2465Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         {:ok, Map.put(context, :other_scope, other_scope)}
       end
 
@@ -40,8 +40,11 @@ defmodule CodeMySpecSpex.Story1158.Criterion2465Spex do
       end
 
       then_ "the document tool refuses the edit and names the heading", context do
-        assert context.write_response.isError
-        assert response_text(context.write_response) =~ "Provisioning agents on a candidate"
+        assert match?({:error, _}, context.write_response)
+
+        assert String.downcase(response_text(context.write_response)) =~
+                 "provisioning agents on a candidate"
+
         {:ok, context}
       end
 
@@ -50,7 +53,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2465Spex do
           tool_context = %{current_scope: scope, scope: scope}
 
           plan = ToolLibrary.run("read_document", %{document_type: "qa_plan"}, tool_context)
-          refute plan.isError, response_text(plan)
+          refute match?({:error, _}, plan), response_text(plan)
           assert response_text(plan) =~ "Seed a QA account before testing."
           refute response_text(plan) =~ "Provisioning agents on a candidate"
 
@@ -61,7 +64,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2465Spex do
               tool_context
             )
 
-          refute requirement.isError, response_text(requirement)
+          refute match?({:error, _}, requirement), response_text(requirement)
           assert response_text(requirement) =~ "**Status:** Satisfied"
         end
 

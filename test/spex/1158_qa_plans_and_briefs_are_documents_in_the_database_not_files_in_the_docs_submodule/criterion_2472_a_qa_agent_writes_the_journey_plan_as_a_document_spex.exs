@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2472Spex do
             scope: context.scope
           })
 
-        assert response.isError
+        assert match?({:error, _}, response)
         {:ok, Map.put(context, :other_scope, other_scope)}
       end
 
@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2472Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         {:ok, context}
       end
 
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2472Spex do
         for scope <- [context.scope, context.other_scope] do
           frame = %{current_scope: scope, scope: scope}
           plan = ToolLibrary.run("read_document", %{document_type: "qa_journey_plan"}, frame)
-          refute plan.isError, response_text(plan)
+          refute match?({:error, _}, plan), response_text(plan)
           assert response_text(plan) =~ "Sign-in journey"
 
           requirement =
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2472Spex do
               frame
             )
 
-          refute requirement.isError, response_text(requirement)
+          refute match?({:error, _}, requirement), response_text(requirement)
           assert response_text(requirement) =~ "**Status:** Satisfied"
         end
 
@@ -79,6 +79,10 @@ defmodule CodeMySpecSpex.Story1158.Criterion2472Spex do
     ## Journeys
 
     - Sign-in journey: log in as the seeded QA account and visit the dashboard.
+
+    ## Prerequisites
+
+    - Seed the QA account.
     """
   end
 end

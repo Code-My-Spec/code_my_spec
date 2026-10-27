@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2468Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute first.isError, response_text(first)
+        refute match?({:error, _}, first), response_text(first)
 
         updated =
           ToolLibrary.run(
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2468Spex do
             %{current_scope: context.later_scope, scope: context.later_scope}
           )
 
-        refute updated.isError, response_text(updated)
+        refute match?({:error, _}, updated), response_text(updated)
         {:ok, context}
       end
 
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2468Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         text = response_text(response)
         assert text =~ "Check sign-in and sign-out"
         refute text =~ "Check sign-in\n"

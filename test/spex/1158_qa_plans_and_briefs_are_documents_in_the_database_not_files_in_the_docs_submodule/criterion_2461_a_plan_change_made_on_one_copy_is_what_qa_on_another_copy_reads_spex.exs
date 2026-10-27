@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2461Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        false = baseline.isError
+        false = match?({:error, _}, baseline)
         {:ok, Map.put(context, :copy_b_scope, copy_b_scope)}
       end
 
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2461Spex do
       end
 
       then_ "copy B reads the updated plan without syncing either checkout", context do
-        refute context.write_response.isError, response_text(context.write_response)
+        refute match?({:error, _}, context.write_response), response_text(context.write_response)
 
         response =
           ToolLibrary.run(
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2461Spex do
             %{current_scope: context.copy_b_scope, scope: context.copy_b_scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         assert response_text(response) =~ "Sign in as the QA account before starting a journey."
         {:ok, context}
       end

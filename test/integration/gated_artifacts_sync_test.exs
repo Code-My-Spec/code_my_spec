@@ -34,9 +34,6 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
   # {path, content, expected_role}
   defp artifacts do
     [
-      {Paths.qa_plan(), qa_plan_body(), :qa_plan},
-      {Paths.qa_journey_plan(), "# QA Journey Plan\n\n## Journeys\n\n### One\n1. Step\n",
-       :qa_plan},
       {Paths.qa_journey_result(), "# Journey Result\n\nRan it.\n", :qa_result},
       {Paths.proposal_path(), "# Architecture Proposal\n\nSome design.\n", :architecture},
       {Paths.decisions_index(), "# Decisions\n\n- 0001\n", :architecture},
@@ -100,43 +97,11 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
            """
   end
 
-  test "the qa plans are judged by their own schemas, not each other's", %{scope: scope} do
-    assert {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
-
-    journey = Files.get_by_path(scope, Paths.qa_journey_plan())
-    error = journey.validation_errors["errors"]["plan"]
-
-    # This fixture is missing journey_plan's own required "prerequisites"
-    # section, so a real complaint is expected — the question is which
-    # schema names it.
-    assert error =~ "prerequisites",
-           "expected the missing-section complaint to name the journey plan's " <>
-             "own required section, got: #{inspect(error)}"
-
-    refute error =~ "tools registry",
-           "the journey plan is being validated against the `qa_plan` schema — " <>
-             "it has its own registered document type, and judging it by the " <>
-             "wrong one tells an agent to fix a correct file"
-  end
-
-  defp qa_plan_body do
-    """
-    # QA Plan
-
-    ## App Overview
-
-    Phoenix app on 4000, session auth.
-
-    ## Tools Registry
-
-    ### curl
-
-    `curl localhost:4000`
-
-    ## Seed Strategy
-
-    `mix run priv/repo/qa_seeds.exs` creates a user.
-    """
+  test "the QA document store validates the journey schema", %{scope: scope} do
+    content = "# QA Journey Plan\n\n## Journeys\n\n### One\n1. Step\n"
+    assert {:error, error} = CodeMySpec.Qa.Documents.put(scope, "qa_journey_plan", nil, content)
+    assert error =~ "prerequisites"
+    refute error =~ "tools registry"
   end
 
   defp persona_summary do

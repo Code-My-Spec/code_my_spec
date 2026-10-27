@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2470Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ExecutionContexts
-  alias CodeMySpec.Qa.DocumentImporter
+  alias CodeMySpec.Requirements.QaDocumentImporter
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.Fixtures
 
@@ -22,7 +22,11 @@ defmodule CodeMySpecSpex.Story1158.Criterion2470Spex do
         assert :ok =
                  ExecutionContexts.write_file(context.execution_context, path, imported_plan())
 
-        assert match?({:ok, _}, DocumentImporter.import(context.scope, context.execution_context))
+        assert match?(
+                 {:ok, _},
+                 QaDocumentImporter.import(context.scope, context.execution_context)
+               )
+
         refute ExecutionContexts.file_exists?(context.execution_context, path)
 
         {:ok, Map.put(context, :plan_path, path)}
@@ -49,7 +53,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2470Spex do
             %{current_scope: qa_scope, scope: qa_scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         assert response_text(response) =~ "Imported plan marker"
         refute response_text(response) =~ "Stray file marker"
         {:ok, context}

@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2467Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        assert response.isError, "expected the QA plan document to be absent"
+        assert match?({:error, _}, response), "expected the QA plan document to be absent"
         {:ok, context}
       end
 
@@ -42,7 +42,9 @@ defmodule CodeMySpecSpex.Story1158.Criterion2467Spex do
       end
 
       then_ "QA setup is unsatisfied and names the missing QA plan", context do
-        refute context.requirement_response.isError, response_text(context.requirement_response)
+        refute match?({:error, _}, context.requirement_response),
+               response_text(context.requirement_response)
+
         body = response_text(context.requirement_response)
         assert body =~ "# qa_setup"
         assert body =~ "**Status:** Not satisfied"

@@ -36,8 +36,8 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert {:rule, _} = swap(FileSync.classify(".code_my_spec/rules/context.md"))
     end
 
-    test "classifies qa brief files" do
-      assert {:qa_brief, _} = swap(FileSync.classify(".code_my_spec/qa/440/brief.md"))
+    test "does not classify legacy qa brief files" do
+      assert is_nil(FileSync.classify(".code_my_spec/qa/440/brief.md"))
     end
 
     test "classifies only result_complete.md as qa_result; in-progress and failed runs are not role-tagged" do

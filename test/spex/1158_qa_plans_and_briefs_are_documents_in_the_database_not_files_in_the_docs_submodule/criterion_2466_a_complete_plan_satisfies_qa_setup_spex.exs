@@ -21,7 +21,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2466Spex do
             %{current_scope: context.scope, scope: context.scope}
           )
 
-        refute response.isError, response_text(response)
+        refute match?({:error, _}, response), response_text(response)
         {:ok, context}
       end
 
@@ -41,7 +41,9 @@ defmodule CodeMySpecSpex.Story1158.Criterion2466Spex do
       end
 
       then_ "QA setup is satisfied", context do
-        refute context.requirement_response.isError, response_text(context.requirement_response)
+        refute match?({:error, _}, context.requirement_response),
+               response_text(context.requirement_response)
+
         assert response_text(context.requirement_response) =~ "# qa_setup"
         assert response_text(context.requirement_response) =~ "**Status:** Satisfied"
         {:ok, context}
