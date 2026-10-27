@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion2555Spex do
       end
 
       given_ "the copy has no certification at that HEAD", context do
-        # No analyzer runs are recorded for the new commit.
+        # given: already true — `commit_work` created a new HEAD without recording analyzer runs.
         {:ok, context}
       end
 
