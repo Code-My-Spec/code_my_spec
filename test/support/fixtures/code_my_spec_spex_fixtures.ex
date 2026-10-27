@@ -7007,6 +7007,7 @@ defmodule CodeMySpecSpex.Fixtures do
     path = Path.join(gate.root, "_build/test/lib/code_my_spec/.mix/compile.test_impact")
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, :erlang.term_to_binary(baseline))
+    true = File.exists?(path)
     :ok
   end
 

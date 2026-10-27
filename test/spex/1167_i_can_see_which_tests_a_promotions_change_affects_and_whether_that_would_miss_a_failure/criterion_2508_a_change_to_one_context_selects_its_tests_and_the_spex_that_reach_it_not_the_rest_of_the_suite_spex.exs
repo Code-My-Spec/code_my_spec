@@ -42,13 +42,6 @@ defmodule CodeMySpecSpex.Story1167.Criterion2508Spex do
           unrelated: [@unrelated_test, @unrelated_spex]
         )
 
-        assert File.exists?(
-                 Path.join(
-                   context.gate.root,
-                   "_build/test/lib/code_my_spec/.mix/compile.test_impact"
-                 )
-               )
-
         {:ok, Map.put(context, :story, a_promotable_story(context))}
       end
 
