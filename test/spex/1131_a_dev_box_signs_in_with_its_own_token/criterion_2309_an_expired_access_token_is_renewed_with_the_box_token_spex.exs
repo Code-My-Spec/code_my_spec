@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story1131.Criterion2309Spex do
   spex "A harness whose access token expired trades its box token again", criterion: 2309 do
     scenario "the access token runs out" do
       given_ "Sam's box has been connected longer than its access token lasts", context do
-        short_lived_access_tokens(1)
         {:ok, live, _html} = open_dev_boxes(context.conn, context.project)
         box = add_box(live, "cloud-1", "claude_code_cloud")
         first = exchanged(box.token)
@@ -29,9 +28,8 @@ defmodule CodeMySpecSpex.Story1131.Criterion2309Spex do
       end
 
       when_ "the access token expires", context do
-        eventually(fn ->
-          refute match?({:ok, _}, connect_socket(context.first["access_token"]))
-        end)
+        :ok = expire_access_token(context.first["access_token"])
+        refute match?({:ok, _}, connect_socket(context.first["access_token"]))
 
         {:ok, context}
       end

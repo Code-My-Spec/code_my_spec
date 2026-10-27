@@ -453,6 +453,18 @@ defmodule CodeMySpecSpex.Fixtures do
     token
   end
 
+  @doc "Expire a box access token after a spex verifies its first connection."
+  @spec expire_access_token(String.t()) :: :ok
+  def expire_access_token(token) do
+    {1, _} =
+      Repo.update_all(
+        from(t in "oauth_access_tokens", where: t.token == ^token),
+        set: [expires_in: 1, inserted_at: NaiveDateTime.add(NaiveDateTime.utc_now(), -2, :second)]
+      )
+
+    :ok
+  end
+
   @doc """
   Give the account an SSH access key, generated for real.
 
