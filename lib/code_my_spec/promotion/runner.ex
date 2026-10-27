@@ -252,6 +252,18 @@ defmodule CodeMySpec.Promotion.Runner do
         fn env -> Steps.changed(env, root, from, to) end
       )
 
+  @doc "Read changed files and the gate device's green test baseline."
+  def select_tests(environment, root, base, head, copy_id),
+    do:
+      run(
+        environment,
+        copy_id,
+        "promotion_select_tests",
+        %{"root" => root, "base" => base, "head" => head},
+        @git_timeout,
+        fn env -> Steps.select_tests(env, root, base, head) end
+      )
+
   @doc "The checkout at `root`'s HEAD and current version, moving nothing."
   @spec current(ExecutionContext.t() | nil, String.t(), Ecto.UUID.t() | nil) :: Steps.result()
   def current(environment, root, copy_id),

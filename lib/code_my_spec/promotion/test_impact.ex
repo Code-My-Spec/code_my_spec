@@ -1,4 +1,4 @@
-defmodule CodeMySpec.TestImpact do
+defmodule CodeMySpec.Promotion.TestImpact do
   @moduledoc """
   Which test files a diff can affect, without respect to what ran last.
 
@@ -268,12 +268,24 @@ defmodule CodeMySpec.TestImpact do
   """
   @spec read_baseline(Path.t()) :: {:ok, map()} | {:error, String.t()}
   def read_baseline(manifest_dir) do
-    elixir_manifest = Path.join(manifest_dir, "compile.elixir")
-    test_manifest = Path.join(manifest_dir, "compile.test_stale")
+    saved = Path.join(manifest_dir, "compile.test_impact")
 
-    with {:ok, modules, sources} <- read_elixir_manifest(elixir_manifest),
-         {:ok, test_sources} <- read_test_manifest(test_manifest) do
-      {:ok, %{modules: modules, sources: sources, test_sources: test_sources}}
+    if File.exists?(saved) do
+      with {:ok, binary} <- File.read(saved),
+           %{version: 1, modules: modules, sources: sources, test_sources: tests}
+           when is_map(modules) and is_map(sources) and is_map(tests) <- decode(binary) do
+        {:ok, %{modules: modules, sources: sources, test_sources: tests}}
+      else
+        _ -> {:error, "#{saved} is not a recognised green test baseline"}
+      end
+    else
+      elixir_manifest = Path.join(manifest_dir, "compile.elixir")
+      test_manifest = Path.join(manifest_dir, "compile.test_stale")
+
+      with {:ok, modules, sources} <- read_elixir_manifest(elixir_manifest),
+           {:ok, test_sources} <- read_test_manifest(test_manifest) do
+        {:ok, %{modules: modules, sources: sources, test_sources: test_sources}}
+      end
     end
   end
 

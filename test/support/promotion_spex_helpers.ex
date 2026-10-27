@@ -341,7 +341,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     context
     |> Map.put(:gate_root, gate_root)
-    |> Map.put(:gate, gate)
+    |> Map.put(:gate, Map.merge(gate, %{root: gate_root, id: gate.working_copy_id}))
     |> Map.put(:gate_socket, socket)
   end
 
@@ -360,8 +360,18 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     runs = gate_runs(context.gate_socket, sources)
     # Read once the runs are here: the batch is built before they are sent.
     head = head_of(context, context.gate_root)
+    :ok = Fixtures.prepare_promotion_flake(context.scope, context.gate, head)
 
     for %{"run_id" => id, "source" => source} <- runs do
+      diagnostics =
+        if source == "exunit" do
+          Enum.map(Fixtures.promotion_failure_paths(context.gate), fn file ->
+            %{"file" => file, "line" => 1, "severity" => "error", "message" => "test failure"}
+          end) ++ Map.get(findings, source, [])
+        else
+          Map.get(findings, source, [])
+        end
+
       started = %{"run_id" => id, "start_commit" => head, "start_tree_dirty" => false}
       push(context.gate_socket, "analysis_started", started)
 
@@ -371,7 +381,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
           "source" => source,
           "status" => "ok",
           "completed_commit" => head,
-          "result" => raw_result(source, Map.get(findings, source, []))
+          "result" => raw_result(source, diagnostics)
         })
 
       assert_reply(ref, :ok, _, 10_000)

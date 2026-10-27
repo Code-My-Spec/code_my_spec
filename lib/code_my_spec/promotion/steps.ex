@@ -15,6 +15,7 @@ defmodule CodeMySpec.Promotion.Steps do
   require Logger
 
   alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Promotion.TestImpact
 
   @submodule ".code_my_spec"
 
@@ -501,6 +502,60 @@ defmodule CodeMySpec.Promotion.Steps do
   `{:ok, %{paths: paths}}`; `paths` is `nil` when they cannot be read.
   """
   def changed(env, root, from, to), do: {:ok, %{paths: changed_between(env, root, from, to)}}
+
+  @doc "Select affected tests from the gate device's green Mix baseline."
+  def select_tests(env, root, base, head) do
+    case changed_between(env, root, base, head) do
+      nil -> {:error, %{reason: "cannot read changed files between #{base} and #{head}"}}
+      changed -> {:ok, select_from_baseline(root, changed)}
+    end
+  end
+
+  defp select_from_baseline(root, changed) do
+    manifests =
+      Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.test_impact")) ++
+        Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.elixir"))
+
+    tests_on_disk =
+      ["test/**/*_test.exs", "test/**/*_spex.exs"]
+      |> Enum.flat_map(&Path.wildcard(Path.join(root, &1)))
+      |> Enum.map(&Path.relative_to(&1, root))
+
+    baseline =
+      Enum.find_value(
+        manifests,
+        {:error, "no usable baseline manifests on the gate device"},
+        fn manifest ->
+          case TestImpact.read_baseline(Path.dirname(manifest)) do
+            {:ok, data} -> {:ok, data}
+            {:error, _} -> nil
+          end
+        end
+      )
+
+    {mode, selected, suite, reason} =
+      case baseline do
+        {:ok, data} ->
+          suite = Enum.uniq(tests_on_disk ++ Map.keys(data.test_sources)) |> Enum.sort()
+          result = TestImpact.select(Map.merge(data, %{tests: suite, changed: changed}))
+          {result.mode, result.tests, suite, result.why_all}
+
+        {:error, why} ->
+          suite = Enum.sort(tests_on_disk)
+          {:all, suite, suite, why}
+      end
+
+    %{
+      "mode" => if(mode == :all, do: "full", else: "partial"),
+      "selected_tests" => selected,
+      "suite_size" => length(suite),
+      "reason" => reason,
+      "changed_files" => changed,
+      "failed_tests" => [],
+      "misses" => [],
+      "flakes" => []
+    }
+  end
 
   # What the merge brought in, which `Promotion` reads to choose a reload or a
   # restart. `nil` when it cannot be read, which restarts.
