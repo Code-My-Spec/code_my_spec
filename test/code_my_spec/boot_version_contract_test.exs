@@ -17,7 +17,8 @@ defmodule CodeMySpec.BootVersionContractTest do
   the thing under test is a `git diff` and a fixture repo would prove only that
   the arguments were spelled correctly.
   """
-  use ExUnit.Case, async: true
+  # capture/1 changes node-global persistent_term read by promotion tests.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.BootVersion
 
@@ -27,9 +28,9 @@ defmodule CodeMySpec.BootVersionContractTest do
     # `contract_changed?/2` reads the root out of the same persistent term
     # `capture/1` writes, so capturing here is what points it at this checkout.
     #
-    # Restored, not erased: the application captures it at boot, and async
-    # tests read it. Erased, `BootVersion.root/0` was nil for a device-sync test
-    # running beside this one, and a promotion was ejected (2026-10-26).
+    # Restored, not erased: the application captures it at boot. This module
+    # runs synchronously because async promotion tests read the same node-global
+    # value; restoring nil beside one changed its deployment plan (2026-10-26).
     previous = :persistent_term.get(@key, nil)
     BootVersion.capture(File.cwd!())
     on_exit(fn -> restore(previous) end)
