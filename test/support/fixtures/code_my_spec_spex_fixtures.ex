@@ -6242,6 +6242,53 @@ defmodule CodeMySpecSpex.Fixtures do
     run
   end
 
+  @doc "A run whose harness has reported that execution began."
+  def reporting_analysis_run(%Scope{} = scope, source) do
+    run = start_analysis_run(scope, source)
+    {:ok, started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
+    started
+  end
+
+  @doc "A one-file spex run whose first scenario has reported passing."
+  def streaming_spex_scenario(%Scope{} = scope, path, scenario) do
+    {:ok, run} =
+      RunsRepository.start_run(scope, %{
+        source: "spex",
+        kind: :partial,
+        args: %{"args" => [path]}
+      })
+
+    {:ok, _started} = CodeMySpec.Analysis.record_remote_start(scope, %{"run_id" => run.id})
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{"event" => "file_started", "file" => path})
+
+    CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+      "event" => "test",
+      "file" => path,
+      "name" => scenario,
+      "state" => "passed"
+    })
+
+    run
+  end
+
+  @doc "A running analysis run whose last live event was `seconds` ago."
+  def silent_live_analysis_run(%Scope{} = scope, source, seconds) do
+    run = reporting_analysis_run(scope, source)
+
+    live =
+      CodeMySpec.Analysis.LiveRuns.fold(run.id, %{
+        "event" => "file_started",
+        "file" => "test/held_test.exs"
+      })
+
+    :ets.insert(
+      CodeMySpec.Analysis.LiveRuns,
+      {run.id, %{live | last_event_at: DateTime.add(DateTime.utc_now(), -seconds)}}
+    )
+
+    run
+  end
+
   @doc """
   Finish a run through `Reconciler.reconcile/4`, the production path.
 

@@ -307,6 +307,13 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
+        # The final result and the live end event travel asynchronously. If the
+        # result arrives first, the later event is rejected after this row closes.
+        # ExUnit and spex need no payload from their end event. Credo's event
+        # carries checked-file totals, so preserve that event's own payload.
+        if run.source in ["exunit", "spex"] and LiveRuns.get(run.id),
+          do: LiveRuns.fold(run.id, %{"event" => "finished"})
+
         run = RunsRepository.record_tree(run, Map.take(payload, ["completed_commit"]))
         run = RunsRepository.record_executed(run, payload)
         result = apply_remote_result(scope, run, payload)

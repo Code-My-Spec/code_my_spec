@@ -431,25 +431,27 @@ defmodule CodeMySpec.Promotion.Runner do
 
   # The far side answers in JSON, so keys come back as strings. Atomized here,
   # nested too, so no caller has to know which side answered.
-  defp decode({:ok, %{} = result}), do: {:ok, atomize(result)}
-  defp decode({:error, %{} = reason}), do: {:error, atomize(reason)}
+  @doc false
+  def decode({:ok, %{} = result}), do: {:ok, atomize(result)}
+  def decode({:error, %{} = reason}), do: {:error, atomize(reason)}
 
   # Unreachable is marked, not only worded: a harness restarting after a
   # landing, or its channel down for a code reload, is a passing state a caller
   # can wait out, not a fault of the work.
-  defp decode({:error, {gone, _} = reason}) when gone in [:harness_not_registered, :harness_gone],
-    do:
-      {:error,
-       %{
-         reason: "could not reach the machine holding this checkout: #{inspect(reason)}",
-         unreachable: true
-       }}
+  def decode({:error, {gone, _} = reason})
+      when gone in [:harness_not_registered, :harness_gone, :harness_registry_down],
+      do:
+        {:error,
+         %{
+           reason: "could not reach the machine holding this checkout: #{inspect(reason)}",
+           unreachable: true
+         }}
 
-  defp decode({:error, reason}),
+  def decode({:error, reason}),
     do:
       {:error, %{reason: "could not reach the machine holding this checkout: #{inspect(reason)}"}}
 
-  defp decode(other),
+  def decode(other),
     do: {:error, %{reason: "unexpected reply from the harness: #{inspect(other)}"}}
 
   defp atomize(%{} = map) do
