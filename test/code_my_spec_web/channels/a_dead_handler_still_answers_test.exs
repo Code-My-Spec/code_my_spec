@@ -164,11 +164,13 @@ defmodule CodeMySpecWeb.ADeadHandlerStillAnswersTest do
         _other -> nil
       end)
 
-    if pid do
-      pid
-    else
-      Process.sleep(10)
-      await_handler(channel_pid, tries - 1)
-    end
+    await_handler_result(pid, channel_pid, tries)
+  end
+
+  defp await_handler_result(pid, _channel_pid, _tries) when is_pid(pid), do: pid
+
+  defp await_handler_result(nil, channel_pid, tries) do
+    Process.sleep(10)
+    await_handler(channel_pid, tries - 1)
   end
 end
