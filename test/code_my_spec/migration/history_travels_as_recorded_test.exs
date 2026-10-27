@@ -92,6 +92,24 @@ defmodule CodeMySpec.Migration.HistoryTravelsAsRecordedTest do
     refute issue_id == blocker
   end
 
+  # The legacy desktop app exports scenarios as they were before blockers
+  # travelled: name, status and observation only, a blocked one naming nothing.
+  test "a legacy payload's blocked scenario with no blocker still travels", %{scope: scope} do
+    legacy = %{
+      "name" => "Fixture login",
+      "status" => "blocked",
+      "observation" => "No fixture account."
+    }
+
+    payload = %{"stories" => [story(7)], "qa_attempts" => [attempt("partial", [legacy], [])]}
+
+    assert {:ok, %{qa_attempts: 1}} = Migration.import_project(scope, payload)
+
+    [%QaAttempt{scenarios: [scenario]}] = Repo.all(QaAttempt)
+    assert scenario.status == :blocked
+    assert scenario.blocker_issue_id == nil
+  end
+
   test "a passed attempt recorded with a failed scenario still travels", %{scope: scope} do
     failed = %{
       "name" => "Turn-end run races the write",
