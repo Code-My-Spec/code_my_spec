@@ -10,12 +10,7 @@ defmodule CodeMySpec.Analysis.HistoryTest do
   setup do
     previous = Application.get_env(:code_my_spec, :analysis_retention_days)
 
-    on_exit(fn ->
-      case previous do
-        nil -> Application.delete_env(:code_my_spec, :analysis_retention_days)
-        value -> Application.put_env(:code_my_spec, :analysis_retention_days, value)
-      end
-    end)
+    on_exit(fn -> restore_retention_days(previous) end)
 
     %{scope: full_scope_fixture()}
   end
@@ -87,6 +82,12 @@ defmodule CodeMySpec.Analysis.HistoryTest do
     {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
     run
   end
+
+  defp restore_retention_days(nil),
+    do: Application.delete_env(:code_my_spec, :analysis_retention_days)
+
+  defp restore_retention_days(value),
+    do: Application.put_env(:code_my_spec, :analysis_retention_days, value)
 
   defp aged(run, days, now) do
     run
