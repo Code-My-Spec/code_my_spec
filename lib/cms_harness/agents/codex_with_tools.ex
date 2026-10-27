@@ -61,10 +61,12 @@ defmodule CmsHarness.Agents.CodexWithTools do
 
   defp missing_tools_claim?(%{stop_reason: :end_turn, messages: messages}, tools)
        when tools != [] do
-    text = Enum.map_join(messages, "\n", &Message.text/1)
+    # Codex writes typographic apostrophes ("aren’t callable"), which the
+    # patterns' "can't"/"n't" never matched, so the retry did not fire.
+    text = messages |> Enum.map_join("\n", &Message.text/1) |> String.replace("’", "'")
 
     Regex.match?(
-      ~r/\b(?:no|missing|unavailable|lack|without|cannot|can't|do not have|don't have|not available)\b.{0,100}\btools?\b|\btools?\b.{0,100}\b(?:not available|not provided|missing|unavailable|not in|cannot call|can't call|do not include)\b|\btools?\.\w+\b.{0,60}\b(?:not a function|undefined)\b|\bnot in\b.{0,80}\btool list\b/is,
+      ~r/\b(?:no|missing|unavailable|lack|without|cannot|can't|do not have|don't have|not available)\b.{0,100}\btools?\b|\btools?\b.{0,100}\b(?:not available|not provided|missing|unavailable|not in|cannot call|can't call|do not include|(?:not|n't) callable)\b|\btools?\.\w+\b.{0,60}\b(?:not a function|undefined)\b|\bnot in\b.{0,80}\btool list\b/is,
       text
     )
   end
