@@ -7,9 +7,9 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
   (`evaluate/3`, what `evaluate_task` calls) queues the copy's HEAD for
   promotion (promote-queue step 2, John 2026-10-04): the task stays open until
   the candidate lands, and is valid once the story is on main. What a
-  candidate's own copy records — behind main, problems at HEAD — no longer
-  refuses it; the queue's batch gate decides. A dirty tree still refuses at
-  once.
+  candidate behind main can still queue for the batch gate. Its own HEAD must
+  already have clean certification; a dirty tree or blocking finding refuses
+  before queueing.
 
   Git is scripted through the in-memory environment's per-env shell; nothing
   shells out.
@@ -136,6 +136,7 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
     :ok = ExecutionContexts.register({:working_copy, copy.id}, env)
     :ok = ExecutionContexts.register({:working_copy, running.id}, env)
     scope = %{scope | active_working_copy_id: copy.id}
+    certified(scope)
 
     {:ok, coder} =
       AgentsRepository.create_agent(scope, %{
@@ -310,11 +311,13 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
       refute_received {:git, @main, ["merge" | _]}
     end
 
-    test "problems on its own copy do not refuse: the batch gate decides" do
+    test "a credo warning on the candidate refuses promotion before the batch gate" do
       %{scope: scope, coder: coder, story: story, task: task} = a_project()
       problem_fixture(scope, %{source: "credo", severity: :warning})
 
-      assert {:ok, :pending, _text} = PromoteWork.evaluate(scope, task, coder)
+      assert {:ok, :invalid, feedback} = PromoteWork.evaluate(scope, task, coder)
+      assert feedback =~ "credo"
+      assert queued(scope) == []
       refute_received {:git, @main, ["merge" | _]}
       assert Stories.get_story!(scope, story.id).promoted_version == nil
     end

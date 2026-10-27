@@ -166,7 +166,8 @@ defmodule CodeMySpec.PromotionQueue do
       :none ->
         with :ok <- qa_passed(scope, subject, head),
              :ok <- assigned_issues_clear(scope, copy, subject),
-             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head) do
+             :ok <- Promotion.red_at(%{scope | active_working_copy_id: copy.id}, head),
+             :ok <- certified_head(scope, copy, head) do
           Repository.enqueue(attrs)
         end
 
@@ -496,6 +497,20 @@ defmodule CodeMySpec.PromotionQueue do
 
   defp promoting_copy(_scope),
     do: {:error, %{reason: "no working copy on this scope; nothing to promote."}}
+
+  # A candidate must already have a clean analyzer answer at its exact HEAD.
+  # The queue's later gate still certifies the combined batch before publication.
+  defp certified_head(scope, copy, head) do
+    if Promotion.certified_at?(%{scope | active_working_copy_id: copy.id}, head) do
+      :ok
+    else
+      {:error,
+       %{
+         reason:
+           "#{copy.id} at #{head} is not certified. Run every analyzer and fix its findings at this HEAD before promoting. Nothing was queued."
+       }}
+    end
+  end
 
   # A clean, committed checkout, read where it lives.
   defp clean_head(scope, copy) do
