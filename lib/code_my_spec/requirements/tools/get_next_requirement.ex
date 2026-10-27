@@ -7,6 +7,7 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.AgentTasks.Init
   alias CodeMySpec.Requirements.Directives
+  alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Tools.Responses, as: RequirementsMapper
 
   @impl true
@@ -31,9 +32,14 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
     }
   end
 
+  # Seeding one copy's vantage loads ~5,000 file rows (0.4-1.3s idle); at 1s
+  # every copy's discovery was refused while the projector sat idle. Still short
+  # enough that a projector held through a restart rebuild answers quickly.
+  @read_deadline_ms 2_500
+
   @impl true
   def call(params, context) do
-    case CodeMySpec.Requirements.IncrementalGraph.with_read_deadline(1_000, fn ->
+    case IncrementalGraph.with_read_deadline(@read_deadline_ms, fn ->
            discover(params, context)
          end) do
       {:error, :graph_rebuilding} ->
