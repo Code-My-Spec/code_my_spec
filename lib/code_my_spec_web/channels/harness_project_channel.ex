@@ -1280,7 +1280,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp reply_async(socket, ref, label, fun) do
     task = Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fun)
 
-    assign(socket, :pending_replies, Map.put(pending_replies(socket), task.ref, {ref, label}))
+    assign(
+      socket,
+      :pending_replies,
+      Map.put(pending_replies(socket), task.ref, {ref, label, task.pid})
+    )
   end
 
   # The answer the task computed. Removing the entry here is what makes its
@@ -1290,7 +1294,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {nil, _} ->
         socket
 
-      {{ref, _label}, pending} ->
+      {{ref, _label, _pid}, pending} ->
         # `:flush` because the `:DOWN` is already on its way and there is
         # nothing left for it to say.
         Process.demonitor(task_ref, [:flush])
@@ -1307,12 +1311,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {nil, _} ->
         socket
 
-      {{ref, label}, pending} ->
+      {{ref, label, _pid}, pending} ->
         Logger.error("[HarnessProject] #{describe(label)} died: #{death_reason(reason)}")
 
         Phoenix.Channel.reply(
           ref,
-          {:error, handler_failure(socket.assigns.scope, label, reason)}
+          {:error, handler_failure(label, reason)}
         )
 
         assign(socket, :pending_replies, pending)
@@ -1321,19 +1325,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp pending_replies(socket), do: socket.assigns[:pending_replies] || %{}
 
-  defp handler_failure(scope, {"analysis_run", _source, _request_id, run_id} = label, reason) do
-    run = Analysis.get_run(scope, run_id)
-
+  # Admission identifies a running analysis before its waiter can die. A DOWN
+  # reply must not query the database from the channel process: losing sandbox
+  # ownership there would kill the channel instead of answering the caller.
+  defp handler_failure({"analysis_run", _source, _request_id, run_id} = label, reason) do
     %{
       "reason" => "handler_died",
       "at" => describe(label),
       "handler_error" => death_reason(reason),
       "run_id" => run_id,
-      "status" => if(run, do: to_string(run.status), else: "unknown")
+      "status" => "running"
     }
   end
 
-  defp handler_failure(_scope, label, reason) do
+  defp handler_failure(label, reason) do
     %{
       "reason" => "handler_died",
       "at" => describe(label),
@@ -1481,8 +1486,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_info({:analysis_admitted, request_id, run_id}, socket) do
     pending =
       Map.new(pending_replies(socket), fn
-        {task_ref, {ref, {"analysis_run", source, ^request_id}}} ->
-          {task_ref, {ref, {"analysis_run", source, request_id, run_id}}}
+        {task_ref, {ref, {"analysis_run", source, ^request_id}, pid}} ->
+          {task_ref, {ref, {"analysis_run", source, request_id, run_id}, pid}}
 
         entry ->
           entry

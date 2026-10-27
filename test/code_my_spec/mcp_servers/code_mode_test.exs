@@ -11,8 +11,10 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
+  import CodeMySpec.AnalysisFixtures
 
   alias Anubis.Server.{Frame, Response}
+  alias CodeMySpec.Analysis.{History, RunsRepository}
   alias CodeMySpec.CodeMode.Catalog
   alias CodeMySpec.McpServers.CodeMode, as: Layer
   alias CodeMySpec.McpServers.CodeMode.Tools.{RunBrowserScript, RunScript, ToolDocs}
@@ -78,6 +80,30 @@ defmodule CodeMySpec.McpServers.CodeModeTest do
 
       assert response.isError == false
       assert text(response) =~ "A story code mode can see"
+    end
+
+    test "analysis history crosses the Lua bridge with ISO timestamps and findings", %{
+      scope: scope,
+      frame: frame
+    } do
+      run = analysis_run_fixture(scope)
+      {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 1})
+      History.record!(run, [%{"name" => "failing test"}], [%{message: "failure"}])
+
+      script = """
+      local history = get_analysis_history({ source = "exunit" })
+      local run = history.runs[1]
+      assert(run.run_id == #{run.id})
+      assert(run.started_at == "#{DateTime.to_iso8601(run.started_at)}")
+      assert(run.finished_at == "#{DateTime.to_iso8601(run.finished_at)}")
+      assert(run.failures[1].name == "failing test")
+      assert(run.problems[1].message == "failure")
+      return "history readable"
+      """
+
+      assert {:reply, response, ^frame} = RunScript.execute(%{script: script}, frame)
+      refute response.isError
+      assert text(response) =~ "history readable"
     end
 
     test "several tools in one call", %{scope: scope, frame: frame} do

@@ -45,6 +45,7 @@ defmodule CodeMySpec.Analysis.Run do
           status: :running | :completed | :failed,
           args: map() | nil,
           stats: map() | nil,
+          findings: map() | nil,
           requested_by: map() | nil,
           requester_agent_id: String.t() | nil,
           orphaned: boolean(),
@@ -76,6 +77,7 @@ defmodule CodeMySpec.Analysis.Run do
     field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded, :cancelled]
     field :args, :map
     field :stats, :map
+    field :findings, :map
 
     # Who asked, and why — a hook run carries `session_id`/`agent_id`/`hook`,
     # an MCP tool call carries `agent_id` alone, a manual trigger carries
@@ -174,6 +176,7 @@ defmodule CodeMySpec.Analysis.Run do
       :status,
       :args,
       :stats,
+      :findings,
       :requested_by,
       :orphaned,
       :exit_status,

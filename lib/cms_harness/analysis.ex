@@ -383,11 +383,21 @@ defmodule CmsHarness.Analysis do
 
   # Reduced to the three fields the server's converter reads.
   defp test_failure(%{error: nil} = failure) do
-    %{"file" => nil, "line" => nil, "message" => failure.full_title || failure.title}
+    %{
+      "file" => nil,
+      "line" => nil,
+      "name" => failure.full_title || failure.title,
+      "message" => failure.full_title || failure.title
+    }
   end
 
-  defp test_failure(%{error: error}) do
-    %{"file" => error.file, "line" => error.line, "message" => error.message}
+  defp test_failure(%{error: error} = failure) do
+    %{
+      "file" => error.file,
+      "line" => error.line,
+      "name" => failure.full_title || failure.title,
+      "message" => error.message
+    }
   end
 
   # Location via the shared `Runners.spex_location/2`, never a second copy.
