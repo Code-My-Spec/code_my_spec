@@ -7,6 +7,25 @@ No PR is open. Nothing is wired into the promotion gate yet.
 written). References below into `.code_my_spec/` are to that checkout; it is a
 separate repo, so nothing here was committed to it.
 
+## Where to find it
+
+| | |
+|---|---|
+| Repo | https://github.com/Code-My-Spec/code_my_spec |
+| Branch | `claude/peaceful-knuth-ugokk3` (tip may be ahead of the commits below if this doc was amended later: `git log -3`) |
+| Base | `c09d5890922c9ecbc36f704fb1b529256ab6c021` — "Promotion batch: merge 4271667e786e" |
+| Spike | `ed0c5a6111f07443d07597d216a3b7d08cf79b7f` — adds `lib/code_my_spec/test_impact.ex`, `lib/mix/tasks/cms.test_affected.ex`, `test/code_my_spec/test_impact_test.exs` |
+| Handoff + harness | `f2a187970e8d70270c3a6b293d203c418d51693c` — adds this file and `scripts/test_impact_toy_check.sh` |
+| Whole change | `git diff c09d589..f2a1879` (5 files, +990 lines, no deletions, nothing outside these five touched) |
+| Submodule | `.code_my_spec` pinned at `1397524d491dba245ae81f76aa9e80be5dd3edb9`; not modified |
+| Session | https://claude.ai/code/session_01Wc1L6mFQx95mdVzv6tyiDV (the conversation these findings came from) |
+
+```
+git fetch origin claude/peaceful-knuth-ugokk3
+git checkout claude/peaceful-knuth-ugokk3
+scripts/test_impact_toy_check.sh        # expect 11 x SAME, exit 0
+```
+
 Citations are `[R#]`; the table in **References** says where each lives, what it
 establishes, and **how much of it I actually read**. Treat anything marked
 *excerpt*, *snippet* or *not read* as unverified.
