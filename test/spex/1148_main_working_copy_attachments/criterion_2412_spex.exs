@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story1148.Criterion2412Spex do
         {:ok, AttachmentHelpers.setup(context)}
       end
 
-      when_ "Main exercises the attachment through its registered tools", context do
+      when_ "Main works in the copies it names through its registered tools", context do
         AttachmentHelpers.exercise(context, 2412)
         {:ok, context}
       end

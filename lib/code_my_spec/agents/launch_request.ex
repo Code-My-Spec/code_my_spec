@@ -80,7 +80,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "tool_reach" => ToolIndex.reach(agent, tools),
       # The tools the engine carries directly, as the server registers them.
       # The harness builds its tools from these rather than keeping copies.
-      "direct_tools" => ToolIndex.carried_definitions(tools),
+      "direct_tools" => ToolIndex.carried_definitions(tools, agent.role),
       # How a tool call physically happens on this provider. See `ProviderBrief`.
       "provider_brief" => ProviderBrief.for(agent.provider),
       # Where the application is running: the main checkout's preview, whichever

@@ -25,8 +25,30 @@ defmodule CodeMySpec.Agents.ToolReachLaunchTest do
     request = LaunchRequest.for(agent(), ToolRegistry.registry())
     carried = request["direct_tools"]
 
-    assert Enum.map(carried, & &1["name"]) == ToolIndex.carried(ToolRegistry.registry())
+    assert Enum.map(carried, & &1["name"]) ==
+             ToolIndex.carried(ToolRegistry.registry(), agent().role)
+
     assert Enum.all?(carried, &(is_binary(&1["description"]) and is_map(&1["input_schema"])))
+  end
+
+  # Main has no copy of its own, so its read/write/edit/bash
+  # are the server's, naming a copy; any other agent keeps its own copy's four.
+  test "only Main carries the server's read, write, edit and bash, which replace its local four" do
+    main = %{agent() | role: :main}
+    main_tools = LaunchRequest.for(main, ToolRegistry.registry())["direct_tools"]
+    names = ~w(read write edit bash)
+
+    assert Enum.all?(names, fn n -> Enum.any?(main_tools, &(&1["name"] == n)) end)
+    refute Enum.any?(request_tools(), &(&1["name"] in names))
+
+    built = Impl.tools(direct_tools: main_tools)
+
+    for name <- names do
+      [tool] = Enum.filter(built, &(Impl.tool_name(&1) == name))
+      refute is_atom(tool), "Main's #{name} must forward to the server, not run locally"
+    end
+
+    assert CmsHarness.Agents.Tools.Read in Impl.tools(direct_tools: request_tools())
   end
 
   test "the harness builds every tool the server names as carried" do
