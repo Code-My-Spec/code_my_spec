@@ -127,33 +127,34 @@ defmodule CmsHarness.AnalysisTest do
 
   defp fetch_deps(_root, false), do: :ok
 
-  defp mix_exs(opts) do
-    if Keyword.get(opts, :boundary, false) do
-      """
-      defmodule Demo.MixProject do
-        use Mix.Project
+  defp mix_exs(opts), do: mix_exs_boundary(Keyword.get(opts, :boundary, false), opts)
 
-        def project do
-          [
-            app: :demo,
-            version: "0.1.0",
-            elixir: "~> 1.14",
-            elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
-            compilers: [:diagnostics, :boundary] ++ Mix.compilers(),
-            deps: [
-              {:client_utils, path: #{inspect(@client_utils)}},
-              {:boundary, path: #{inspect(@boundary)}}
-            ]
+  defp mix_exs_boundary(true, _opts) do
+    """
+    defmodule Demo.MixProject do
+      use Mix.Project
+
+      def project do
+        [
+          app: :demo,
+          version: "0.1.0",
+          elixir: "~> 1.14",
+          elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
+          compilers: [:diagnostics, :boundary] ++ Mix.compilers(),
+          deps: [
+            {:client_utils, path: #{inspect(@client_utils)}},
+            {:boundary, path: #{inspect(@boundary)}}
           ]
-        end
-
-        def application, do: [extra_applications: [:logger]]
+        ]
       end
-      """
-    else
-      mix_exs_for(Keyword.get(opts, :client_utils, false))
+
+      def application, do: [extra_applications: [:logger]]
     end
+    """
   end
+
+  defp mix_exs_boundary(false, opts),
+    do: mix_exs_for(Keyword.get(opts, :client_utils, false))
 
   # The two fixture shapes the module is about: one whose `compilers` list has
   # `:diagnostics` and one without. The difference is the whole point — see the
