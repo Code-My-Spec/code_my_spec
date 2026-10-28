@@ -39,9 +39,6 @@ defmodule CodeMySpec.Promotion.Runner do
   # Each drop boots `mix` in the test env, which compiles a candidate the gate
   # has not built yet; its analyzers reuse that build.
   @reset_timeout 600_000
-  # Requiring every test file can take as long as an analyzer run, even though
-  # ExUnit never executes the registered tests.
-  @test_capture_timeout 600_000
 
   @doc "Remove a legacy gate worktree through its source device's harness."
   def retire_gate_worktree(environment, source_root, gate_root, source_copy_id) do
@@ -253,20 +250,6 @@ defmodule CodeMySpec.Promotion.Runner do
         %{"root" => root, "from" => from, "to" => to},
         @git_timeout,
         fn env -> Steps.changed(env, root, from, to) end
-      )
-
-  @doc "Save test dependencies from the green gate without rerunning tests."
-  def save_test_baseline(environment, root, copy_id),
-    do:
-      run(
-        environment,
-        copy_id,
-        "promotion_save_test_baseline",
-        %{"root" => root},
-        @test_capture_timeout,
-        fn env ->
-          Steps.save_test_baseline(env, root)
-        end
       )
 
   @doc "Read changed files and the gate device's green test baseline."

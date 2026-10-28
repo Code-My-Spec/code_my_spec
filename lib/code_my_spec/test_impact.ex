@@ -10,9 +10,9 @@ defmodule CodeMySpec.TestImpact do
 
   It is `Mix.Compilers.Test`'s own selection with the mtimes taken out:
 
-    * the baseline combines the Elixir compile manifest (`compile.elixir`, who
-      references whom) with lexical test references captured after a green gate
-      without executing ExUnit test bodies;
+    * the baseline is a pair of manifests from a green run -- the Elixir
+      compile manifest (`compile.elixir`, who references whom) and the test
+      manifest (`compile.test_stale`, which modules each test file references);
     * the seeds are the modules defined in changed files, instead of modules
       whose `.beam` is newer than the test manifest;
     * the closure over runtime, compile and export references is the same one
@@ -286,63 +286,6 @@ defmodule CodeMySpec.TestImpact do
         {:ok, %{modules: modules, sources: sources, test_sources: test_sources}}
       end
     end
-  end
-
-  @doc "Save lexical test references captured by an isolated compiler process."
-  def save_baseline(manifest_dir, test_sources) when is_map(test_sources) do
-    with {:ok, modules, sources} <-
-           read_elixir_manifest(Path.join(manifest_dir, "compile.elixir")) do
-      path = Path.join(manifest_dir, "compile.test_impact")
-      baseline = %{version: 1, modules: modules, sources: sources, test_sources: test_sources}
-      File.write(path, :erlang.term_to_binary(baseline, [:compressed]))
-    end
-  end
-
-  @doc "Code evaluated in the target project's isolated test VM to capture Mix lexical references."
-  def capture_script do
-    ~S"""
-    ExUnit.start(autorun: false)
-    helper = Path.join(File.cwd!(), "test/test_helper.exs")
-    if File.exists?(helper), do: Code.require_file(helper)
-    ExUnit.configure(autorun: false)
-    files = ["test/**/*_test.exs", "test/**/*_spex.exs"]
-      |> Enum.flat_map(&Path.wildcard/1)
-      |> Enum.uniq()
-    {:ok, references} = Agent.start_link(fn -> %{} end)
-    each_file = fn file, lexical ->
-      {compile, exported, runtime, _} = Kernel.LexicalTracker.references(lexical)
-      relative_file = Path.relative_to(file, File.cwd!())
-      Agent.update(references, fn sources ->
-        external = case Map.get(sources, relative_file) do
-          {:source, _, _, existing} -> existing
-          nil -> []
-        end
-        Map.put(sources, relative_file, {:source, compile ++ exported, runtime, external})
-      end)
-    end
-    each_module = fn file, module, _binary ->
-      external = for path <- Module.get_attribute(module, :external_resource),
-        do: Path.relative_to(path, File.cwd!())
-      if external != [] do
-        relative_file = Path.relative_to(file, File.cwd!())
-        Agent.update(references, fn sources ->
-          {compile, runtime, existing} = case Map.get(sources, relative_file) do
-            {:source, c, r, e} -> {c, r, e}
-            nil -> {[], [], []}
-          end
-          Map.put(sources, relative_file, {:source, compile, runtime, external ++ existing})
-        end)
-      end
-    end
-    case Kernel.ParallelCompiler.require(files, each_file: each_file,
-           each_module: each_module, return_diagnostics: true) do
-      {:ok, _, _} ->
-        File.write!(System.fetch_env!("CMS_TEST_IMPACT_CAPTURE"),
-          :erlang.term_to_binary(Agent.get(references, & &1), [:compressed]))
-      {:error, errors, _} ->
-        raise "test dependency compilation failed: #{inspect(errors)}"
-    end
-    """
   end
 
   defp read_elixir_manifest(path) do
