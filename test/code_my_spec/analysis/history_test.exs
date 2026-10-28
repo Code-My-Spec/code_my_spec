@@ -106,14 +106,15 @@ defmodule CodeMySpec.Analysis.HistoryTest do
 
     previous = Application.fetch_env(:code_my_spec, History)
 
-    on_exit(fn ->
-      case previous do
-        {:ok, config} -> Application.put_env(:code_my_spec, History, config)
-        :error -> Application.delete_env(:code_my_spec, History)
-      end
-    end)
+    on_exit(fn -> restore_history_config(previous) end)
     Application.put_env(:code_my_spec, History, retention_days: 7)
     assert {:ok, 1} = History.prune(scope)
     assert Repo.get(Run, fresh.id) == nil
   end
+
+  defp restore_history_config({:ok, config}),
+    do: Application.put_env(:code_my_spec, History, config)
+
+  defp restore_history_config(:error),
+    do: Application.delete_env(:code_my_spec, History)
 end
