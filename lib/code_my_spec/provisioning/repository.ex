@@ -400,7 +400,7 @@ defmodule CodeMySpec.Provisioning.Repository do
   @spec run(Scope.t(), ExecutionContexts.ExecutionContext.t(), map(), keyword()) :: result()
   def run(%Scope{} = scope, env, project, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    push_fun = Keyword.get(opts, :push, &push/3)
+    push_fun = Keyword.get(opts, :push, default_push(scope, env))
 
     case ensure(scope, project, opts) do
       {:ok, disposition, repo} ->
@@ -452,10 +452,40 @@ defmodule CodeMySpec.Provisioning.Repository do
   defp repo_label(nil, name), do: name
   defp repo_label(owner, name), do: "#{owner}/#{name}"
 
+  # A harness copy's checkout is on another machine and its harness runs no
+  # git: the agent there pushes, and the proof is GitHub's own answer that the
+  # default branch has a commit the grant can push to.
+  defp default_push(scope, %{type: :harness}), do: &remote_proof(scope, &1, &2, &3)
+  defp default_push(_scope, _env), do: &push/3
+
+  defp remote_proof(scope, _env, _url, opts) do
+    owner = Keyword.fetch!(opts, :owner)
+    {name, branch} = {Keyword.fetch!(opts, :repo_name), Keyword.fetch!(opts, :default_branch)}
+
+    case GitHub.branch_head(scope, owner, name, branch) do
+      {:ok, sha} when is_binary(sha) ->
+        if Keyword.get(opts, :can_push?, false),
+          do: {:ok, sha},
+          else: {:error, "this GitHub grant cannot push to #{owner}/#{name}."}
+
+      {:error, :not_found} ->
+        {:error, "#{owner}/#{name} has no #{branch} branch yet; push it from the working copy."}
+
+      {:error, reason} ->
+        {:error, "GitHub could not confirm #{owner}/#{name}: #{inspect(reason)}"}
+    end
+  end
+
   defp prove(repo, disposition, env, push_fun, now, opts) do
     # The repository's own owner: under `opts[:org]` that is the org, not the
     # authenticated user.
-    opts = Keyword.put(opts, :owner, repo_owner_login(repo))
+    opts =
+      Keyword.merge(opts,
+        owner: repo_owner_login(repo),
+        repo_name: repo["name"],
+        default_branch: repo["default_branch"] || "main",
+        can_push?: get_in(repo, ["permissions", "push"]) == true
+      )
 
     case push_fun.(env, repo["clone_url"] || repo["ssh_url"], opts) do
       {:ok, commit} ->
