@@ -532,8 +532,7 @@ defmodule CodeMySpec.Promotion.Steps do
              env: [
                {"MIX_ENV", "test"},
                {"MIX_BUILD_PATH", Path.expand("../../..", manifest_dir)},
-               {"CMS_TEST_IMPACT_CAPTURE", capture},
-               {"CMS_TEST_IMPACT_ROOT", root}
+               {"CMS_TEST_IMPACT_CAPTURE", capture}
              ]
            ) do
         {_output, 0} ->

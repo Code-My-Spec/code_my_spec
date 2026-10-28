@@ -302,17 +302,16 @@ defmodule CodeMySpec.TestImpact do
   def capture_script do
     ~S"""
     ExUnit.start(autorun: false)
-    root = System.fetch_env!("CMS_TEST_IMPACT_ROOT")
-    helper = Path.join(root, "test/test_helper.exs")
+    helper = Path.join(File.cwd!(), "test/test_helper.exs")
     if File.exists?(helper), do: Code.require_file(helper)
     ExUnit.configure(autorun: false)
     files = ["test/**/*_test.exs", "test/**/*_spex.exs"]
-      |> Enum.flat_map(fn pattern -> root |> Path.join(pattern) |> Path.wildcard() end)
+      |> Enum.flat_map(&Path.wildcard/1)
       |> Enum.uniq()
     {:ok, references} = Agent.start_link(fn -> %{} end)
     each_file = fn file, lexical ->
       {compile, exported, runtime, _} = Kernel.LexicalTracker.references(lexical)
-      relative_file = Path.relative_to(file, root)
+      relative_file = Path.relative_to(file, File.cwd!())
       Agent.update(references, fn sources ->
         external = case Map.get(sources, relative_file) do
           {:source, _, _, existing} -> existing
@@ -323,9 +322,9 @@ defmodule CodeMySpec.TestImpact do
     end
     each_module = fn file, module, _binary ->
       external = for path <- Module.get_attribute(module, :external_resource),
-        do: Path.relative_to(path, root)
+        do: Path.relative_to(path, File.cwd!())
       if external != [] do
-        relative_file = Path.relative_to(file, root)
+        relative_file = Path.relative_to(file, File.cwd!())
         Agent.update(references, fn sources ->
           {compile, runtime, existing} = case Map.get(sources, relative_file) do
             {:source, c, r, e} -> {c, r, e}
