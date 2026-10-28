@@ -48,6 +48,22 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
     :ok
   end
 
+  test "verdict check ignores UUID segments but detects verdict prose" do
+    ids = [
+      "89e5b0fc-dead-4cc7-96a3-1731fe89451a",
+      "deadbeef-1234-4cc7-96a3-1731fe89451a",
+      "89e5b0fc-1234-4cc7-96a3-dead1731fe89"
+    ]
+
+    for id <- ids do
+      refute verdict_in?("Agent: #{id}\nTask: implementation_file")
+    end
+
+    for word <- ~w(stalled stuck dead unhealthy healthy) do
+      assert verdict_in?("Agent: #{hd(ids)}\nStatus: #{word}")
+    end
+  end
+
   spex "The parts are handed over, not a conclusion drawn from them", criterion: 1245 do
     scenario "an agent holds a task and has been quiet for a while" do
       given_ "an agent with an open task, quiet for half an hour, waiting on an answer",
@@ -149,7 +165,7 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
       end
 
       then_ "and no verdict is offered in place of them", context do
-        refute without_ids(context.view) =~ ~r/\b(stalled|stuck|dead|unhealthy|healthy)\b/i,
+        refute verdict_in?(context.view),
                """
                The view has drawn its own conclusion about this agent.
 
@@ -172,6 +188,9 @@ defmodule CodeMySpecSpex.Story1054.Criterion3275Spex do
       end
     end
   end
+
+  defp verdict_in?(view),
+    do: without_ids(view) =~ ~r/\b(stalled|stuck|dead|unhealthy|healthy)\b/i
 
   # An agent id is hex, and hyphens are word boundaries: an id with a "dead"
   # group matched the verdict check and failed the spex at random.
