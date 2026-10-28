@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story965.Criterion2928Spex do
       end
 
       then_ "I land on the graph, on its own requirement", context do
-        render_async(context.live)
+        render_settled(context.live)
 
         assert has_element?(
                  context.live,

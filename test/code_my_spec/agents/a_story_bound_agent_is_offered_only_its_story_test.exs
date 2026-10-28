@@ -174,6 +174,7 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
     setup ctx do
       {:ok, plan} = CodeMySpec.Qa.Documents.get(ctx.scope, "qa_plan")
       Repo.delete!(plan)
+
       :ok =
         CodeMySpec.ExecutionContexts.delete_file(
           ctx.execution_context,

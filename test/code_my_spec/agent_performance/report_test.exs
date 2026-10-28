@@ -75,10 +75,10 @@ defmodule CodeMySpec.AgentPerformance.ReportTest do
 
   test "the page's download hands the browser the same Markdown", context do
     {:ok, index, _html} = live(context.conn, index_path(context))
-    _ = render_async(index)
+    _ = render_settled(index)
 
     index |> element("[data-test='export-report']") |> render_click()
-    _ = render_async(index)
+    _ = render_settled(index)
 
     assert_push_event(index, "download", %{filename: filename, content: content})
     assert filename =~ ~r/^agent-performance-\d{4}-\d{2}-\d{2}\.md$/

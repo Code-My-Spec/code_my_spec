@@ -90,7 +90,7 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
   defp shared_run(_scope, _source, _paths, _agent_id), do: :none
 
   defp admit(scope, source, paths, agent_id, requested_by) do
-    case Analysis.start_run(scope, source, paths, requested_by: requested_by) do
+    case Analysis.start_run(scope, source, args(source, paths), requested_by: requested_by) do
       {:ok, :skipped, run_id} ->
         {:error, "#{source} run #{run_id} skipped because of compiler errors."}
 
@@ -114,6 +114,12 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysis do
         {:error, "Could not admit #{source}: #{inspect(reason)}"}
     end
   end
+
+  # Certification counts only a forced compiler run (`Promotion.certified_at?/2`),
+  # so a full one from here is forced too, or a copy promoting without a story
+  # could never certify.
+  defp args("compiler", []), do: ["--force"]
+  defp args(_source, paths), do: paths
 
   # "Requested", not "Started", and the difference is not pedantry.
   #

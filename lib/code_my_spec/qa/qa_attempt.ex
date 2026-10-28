@@ -95,6 +95,35 @@ defmodule CodeMySpec.Qa.QaAttempt do
     |> validate_attempt()
   end
 
+  @doc """
+  For an attempt a migration carries from another server: the fields
+  `changeset/2` casts, without `validate_attempt/1`. An attempt recorded before
+  a verdict rule existed is history, and refusing it refuses the whole move.
+  """
+  @spec import_changeset(t(), map()) :: Ecto.Changeset.t()
+  def import_changeset(attempt \\ %__MODULE__{}, attrs) do
+    attempt
+    |> cast(attrs, [
+      :story_id,
+      :status,
+      :issue_ids,
+      :agent_id,
+      :task_id,
+      :parent_attempt_id,
+      :submitted_at
+    ])
+    |> cast_embed(:scenarios, required: true, with: &import_scenario/2)
+    |> validate_required([:story_id, :status, :submitted_at])
+    |> validate_scenarios_non_empty()
+  end
+
+  # A recorded scenario as it was: the blocker rule judges new submissions.
+  defp import_scenario(scenario, attrs) do
+    scenario
+    |> cast(attrs, [:name, :status, :observation, :blocker_issue_id])
+    |> validate_required([:name, :status, :observation])
+  end
+
   @doc "Validate an attempt's verdict and its declared scenario blockers."
   @spec validate_attempt(Ecto.Changeset.t()) :: Ecto.Changeset.t()
   def validate_attempt(changeset) do

@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2009Spex do
 
       then_ "interventions are counted", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        _ = render_async(index)
+        _ = await_report(index)
         chart = chart_data(index, "[data-test='story-stages-chart']")
         {:ok, Map.put(context, :row, story_row(chart, context.story.title))}
       end

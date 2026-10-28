@@ -92,6 +92,67 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
             <p :if={@summary["empty"]} data-test="promotion-timing-empty">
               No promotions ran in this window.
             </p>
+            <p
+              data-test="promotion-miss-count"
+              data-window={@window}
+              data-count={@summary["miss_count"]}
+            >
+              Misses: {@summary["miss_count"]}
+            </p>
+            <section :for={timing <- @timings} class="space-y-2">
+              <% selection = timing.selection %>
+              <p
+                :if={selection["mode"]}
+                data-test="promotion-selection"
+                data-mode={selection["mode"]}
+              >
+                Promotion {timing.id}: {selection["mode"]} selection
+              </p>
+              <p
+                :if={selection["reason"]}
+                data-test="promotion-selection-reason"
+              >
+                {selection["reason"]}
+              </p>
+              <p
+                :if={selection["suite_size"] && selection["suite_size"] > 0}
+                data-test="promotion-selected-share"
+                data-promotion-id={timing.id}
+                data-percent={selected_share_percent(selection)}
+              >
+                Selected {length(selection["selected_tests"] || [])} of {selection["suite_size"]} tests
+              </p>
+              <ul>
+                <li
+                  :for={file <- selection["selected_tests"] || []}
+                  data-test="promotion-selected-test"
+                  data-file={file}
+                >
+                  {file}
+                </li>
+                <li
+                  :for={file <- selection["failed_tests"] || []}
+                  data-test="promotion-failed-test"
+                  data-file={file}
+                >
+                  {file}
+                </li>
+                <li
+                  :for={miss <- selection["misses"] || []}
+                  data-test="promotion-miss"
+                  data-file={miss["file"]}
+                >
+                  {miss["file"]}: {Enum.join(miss["changed_files"] || [], ", ")}
+                </li>
+                <li
+                  :for={file <- selection["flakes"] || []}
+                  data-test="promotion-flake"
+                  data-file={file}
+                >
+                  {file}
+                </li>
+              </ul>
+            </section>
             <div :if={!@summary["empty"]} class="grid gap-6">
               <DailyChart.chart timings={@timings} zoom={@zoom} />
               <PerPromotionChart.chart timings={@timings} zoom={@zoom} />
@@ -134,6 +195,11 @@ defmodule CodeMySpecWeb.PromotionTimingLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  defp selected_share_percent(selection) do
+    percent = 100 * length(selection["selected_tests"] || []) / selection["suite_size"]
+    if percent == trunc(percent), do: trunc(percent), else: percent
   end
 
   defp format_seconds(seconds), do: "#{seconds}s"

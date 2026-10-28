@@ -61,12 +61,18 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloaderTest do
 
   test "a genuine compile error still halts with its own 500, unchanged" do
     opts =
-      SafeCodeReloader.init(reloader: fn _endpoint, _opts -> {:error, "a real compile error"} end)
+      SafeCodeReloader.init(
+        reloader: fn _endpoint, _opts -> {:error, "lib/foo.ex:42: a real compile error"} end
+      )
 
-    result = SafeCodeReloader.call(conn(), opts)
+    log =
+      capture_log(fn ->
+        result = SafeCodeReloader.call(conn(), opts)
+        assert result.status == 500
+        assert result.halted
+        assert result.resp_body =~ "a real compile error"
+      end)
 
-    assert result.status == 500
-    assert result.halted
-    assert result.resp_body =~ "a real compile error"
+    assert log =~ "lib/foo.ex:42: a real compile error"
   end
 end

@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story1133.Criterion2319Spex do
 
       when_ "its harness starts today", context do
         {:ok, reopened, _} = live(context.conn, "/app")
-        render_async(reopened, 10_000)
+        render_settled(reopened)
         {:ok, Map.put(context, :reopened, reopened)}
       end
 

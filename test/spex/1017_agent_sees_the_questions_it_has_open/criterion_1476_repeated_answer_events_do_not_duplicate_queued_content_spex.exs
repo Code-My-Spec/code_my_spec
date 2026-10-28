@@ -55,7 +55,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
             persona_id: context.persona_id
           )
 
-        # Start only the explicit held user turn; continuous graph work can race it.
+        # Start held, then enable continuous work once the user's turn is in flight.
+        # Otherwise an offered graph turn can take the agent first.
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
@@ -89,16 +90,23 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
 
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
         base_url = HeldProvider.start()
-        HeldProvider.hold()
         {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
+
+        # Held only after any turn the start itself began has finished, so the
+        # held request is this message's and the send never finds it busy.
+        :ok = Machine.await_idle(agent.id)
+        HeldProvider.hold()
 
         {:ok, :started} =
           Machine.send_message(agent.id, "user-turn-3578", "Finish this user turn")
 
         HeldProvider.await_request()
-        :ok = Fixtures.enable_agent_continuous(agent)
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
+
+        conversation_path = Fixtures.agent_conversation_path(context.scope, agent)
+        {:ok, conversation, _} = live(context.conn, conversation_path)
+        conversation |> element("[data-test='toggle-agent-working']") |> render_click()
 
         {:ok,
          Map.merge(context, %{
@@ -106,7 +114,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
            frame: frame,
            task_id: task_id,
            question_id: question_id,
-           conversation_path: Fixtures.agent_conversation_path(context.scope, agent)
+           conversation_path: conversation_path
          })}
       end
 

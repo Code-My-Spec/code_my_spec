@@ -26,6 +26,7 @@ what finishes each step. The per-task playbooks assume it.
 | Function components / core_components | `liveview/core_components.md`          |
 | A form (create, edit, settings)    | `liveview/forms.md`                       |
 | LiveView or LiveComponent tests    | `liveview/testing.md`                     |
+| A flaky test, or keeping tests from flaking | `testing/flakes.md`              |
 | Any HEEx template                  | `heex/syntax.md`                          |
 | UI layout or styling               | `ui/tailwind.md` then `ui/daisyui.md`    |
 | A table, modal, card, or list      | `ui/daisyui.md` + `liveview/patterns.md` |

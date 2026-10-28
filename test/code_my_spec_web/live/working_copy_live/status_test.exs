@@ -97,7 +97,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
     |> Repo.update!()
 
     {:ok, view, _} = live(ctx.conn, status_path(ctx, copy.working_copy_id))
-    render_async(view, 15_000)
+    render_settled(view)
     graph = view |> element("[data-test=story-requirements]") |> render()
     assert graph =~ "Current team story"
     refute graph =~ "Historical reservation"
@@ -105,7 +105,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
     refute has_element?(view, "select[name=story_id]")
 
     view |> form("form[phx-change=filter]", show_retired: "true") |> render_change()
-    render_async(view, 15_000)
+    render_settled(view)
     graph = view |> element("[data-test=story-requirements]") |> render()
     assert graph =~ "Current team story"
     refute graph =~ "Historical reservation"
@@ -139,7 +139,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
       CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, second.id, copy.working_copy_id)
 
     {:ok, view, _} = live(ctx.conn, status_path(ctx, copy.working_copy_id))
-    render_async(view, 15_000)
+    render_settled(view)
     assert has_element?(view, "[data-test=story-requirements]", "Issues (2)")
     assert has_element?(view, "[data-test=story-requirements]", "Submitted")
 
@@ -153,7 +153,7 @@ defmodule CodeMySpecWeb.WorkingCopyLive.StatusTest do
     refute render(view) =~ "Unassigned elsewhere"
     assert has_element?(view, "#story-requirements-flow")
     {:ok, _} = CodeMySpec.Agents.assign_issue_to_working_copy(ctx.scope, second.id, nil)
-    render_async(view, 15_000)
+    render_settled(view)
     assert has_element?(view, "[data-test=story-requirements]", "Issues (1)")
   end
 

@@ -6,6 +6,6 @@ defmodule CodeMySpec.Repo.Migrations.AnalysisRunsKeepFindings do
       add :findings, :map
     end
 
-    create index(:analysis_runs, [:project_id, :finished_at])
+    create_if_not_exists index(:analysis_runs, [:project_id, :finished_at])
   end
 end

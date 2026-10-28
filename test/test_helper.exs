@@ -21,6 +21,9 @@ sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:
 sqlite_exclusions =
   if CodeMySpec.Repo.sqlite?(), do: [:concurrent_writers, :postgres], else: []
 
+# Temp entries a halted test VM left owned and never removed (issue 6c9defed).
+CodeMySpec.TempFile.sweep_orphans(:timer.minutes(10))
+
 ExUnit.start(
   # A push behind a DB write and a PubSub hop overran ExUnit's 100ms default in a
   # loaded gate (conversation_channel_test, 2026-10-06). A passing assert returns

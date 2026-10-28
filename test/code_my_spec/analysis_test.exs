@@ -52,7 +52,9 @@ defmodule CodeMySpec.AnalysisTest do
       refute Analysis.answered?(scope, "exunit")
     end
 
-    test "fail_stranded_runs closes rows left :running", %{scope: scope} do
+    test "fail_stranded_runs closes local rows left :running", %{scope: scope} do
+      scope = %{scope | active_working_copy_id: nil}
+
       {:ok, _run} =
         RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
 

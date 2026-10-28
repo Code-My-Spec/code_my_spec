@@ -47,7 +47,7 @@ defmodule CodeMySpecWeb.RequirementsLive.TheGraphPageNamesTheWriterThatKeepsItCu
     {:ok, view, _html} = live(ctx.conn, graph_path(ctx))
 
     send(view.pid, {:graph_updated, ctx.scope.active_project_id})
-    render_async(view, 5_000)
+    render_settled(view)
 
     assert text(render(view), "graph-watcher") == "projector idle"
   end

@@ -89,7 +89,7 @@ defmodule CodeMySpec.AgentPerformance.ThePageJoinsWithoutWaitingForTheReadTest d
     assert html =~ "performance-loading", "the page shows no loading state while it reads"
 
     # ...and then it does arrive, over the same socket, without a reload.
-    assert render_async(index) =~ "Perf story 1"
+    assert render_settled(index) =~ "Perf story 1"
   end
 
   # `agent_id` narrows to one agent and the select carries it; the story

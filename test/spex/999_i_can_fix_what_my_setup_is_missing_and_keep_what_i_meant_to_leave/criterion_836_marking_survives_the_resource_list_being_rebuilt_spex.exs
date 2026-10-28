@@ -146,7 +146,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        render_async(view, 5_000)
+        render_settled(view)
 
         view
         |> element("[data-test='keep'][phx-value-location='storage/old-dumps']")
@@ -161,7 +161,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        {:ok, Map.put(context, :document, Floki.parse_document!(render_async(view, 5_000)))}
+        {:ok, Map.put(context, :document, Floki.parse_document!(render_settled(view)))}
       end
 
       then_ "the bucket is still shown as kept on purpose", context do

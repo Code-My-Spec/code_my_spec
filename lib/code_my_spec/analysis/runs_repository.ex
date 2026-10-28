@@ -531,7 +531,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     # The closed rows come back so their requesters can be told.
     {_count, failed} =
       Run
-      |> where([r], r.project_id == ^project_id and r.status == :running)
+      |> where([r], r.project_id == ^project_id and r.status == :running and not r.orphaned)
       |> scope_to_harness(scope)
       |> exclude_claimed(claimed)
       |> select([r], r)
@@ -561,13 +561,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   defp exclude_claimed(query, claimed), do: where(query, [r], r.id not in ^claimed)
 
   @doc """
-  Mark stranded `:running` rows as `:failed`.
-
-  Called at boot, marking each `orphaned`. Runs this server executed died with
-  it; runs dispatched to a harness may still be executing and will be refused
-  as `unknown_run` when they report (the rejoin's `resume_orphaned` can reopen
-  or rerun them). Deliberately blunt and logged: nothing can claim a run at
-  boot because no harness has joined yet, and the alternative is a timer.
+  Mark local `:running` rows as failed at boot. Remote harness runs remain
+  open for the harness to reclaim or for the recovery timer to abandon.
   """
   @spec fail_stranded_runs() :: {:ok, [Run.t()]}
   def fail_stranded_runs do
@@ -575,7 +570,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     {_count, failed} =
       Run
-      |> where([r], r.status == :running)
+      |> where([r], r.status == :running and is_nil(r.working_copy_id))
       |> select([r], r)
       |> Repo.update_all(
         set: [
@@ -613,6 +608,70 @@ defmodule CodeMySpec.Analysis.RunsRepository do
           "executing there — their results will be refused as unknown_run. " <>
           "#{length(local)} ran on this server and are genuinely dead."
       )
+    end
+  end
+
+  @doc "Mark remote runs for recovery before the harness rejoins."
+  def mark_remote_for_recovery do
+    {count, _} =
+      Run
+      |> where([r], r.status == :running and not is_nil(r.working_copy_id))
+      |> Repo.update_all(set: [orphaned: true])
+
+    {:ok, count}
+  end
+
+  @doc "Remote runs still open when a server restarts."
+  def remote_running_before(cutoff) do
+    Run
+    |> where([r], r.status == :running and not is_nil(r.working_copy_id))
+    |> where([r], r.inserted_at <= ^DateTime.to_naive(cutoff))
+    |> Repo.all()
+  end
+
+  @doc "Running runs for one joined working copy."
+  def running_for_copy(%Scope{active_project_id: project_id, active_working_copy_id: copy_id})
+      when not is_nil(copy_id) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.working_copy_id == ^copy_id)
+    |> where([r], r.status == :running)
+    |> Repo.all()
+  end
+
+  def running_for_copy(_scope), do: []
+
+  @doc "A returning harness has the run; its eventual result is authoritative."
+  def claim_recovering_run(%Run{id: id}) do
+    Run
+    |> where([r], r.id == ^id and r.status == :running)
+    |> Repo.update_all(set: [orphaned: false])
+
+    :ok
+  end
+
+  @doc "Close a lost run as not run, only if it is still open."
+  def abandon_run(%Run{} = run, reason) do
+    now = DateTime.utc_now()
+
+    {count, rows} =
+      Run
+      |> where([r], r.id == ^run.id and r.status == :running)
+      |> select([r], r)
+      |> Repo.update_all(
+        set: [
+          status: :abandoned,
+          finished_at: now,
+          updated_at: now,
+          stats: %{"error" => reason},
+          orphaned: true
+        ]
+      )
+
+    if count == 1 do
+      Enum.each(rows, &CodeMySpec.Analysis.ValidationHolds.terminal/1)
+      {:ok, hd(rows)}
+    else
+      :already_closed
     end
   end
 

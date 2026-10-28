@@ -61,6 +61,23 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
     do:
       HarnessHooks.post_hook(context, name, Map.merge(%{"session_id" => context.session}, extra))
 
+  # Which agent's row lacks what, for a failure to name: 2280 fails only in
+  # full sweeps, with one of the two rows missing its tool activity.
+  defp rows(html, context) do
+    names = %{context.agent_id => :terminal, context.alloy_id => :alloy}
+
+    html
+    |> Floki.parse_document!()
+    |> Floki.find(~s([data-test="team-agent"]))
+    |> Enum.map(fn row ->
+      [id] = Floki.attribute(row, "data-agent-id")
+
+      {Map.get(names, id, id),
+       turn: Floki.find(row, ~s([data-test="team-agent-turn"])) != [],
+       tool: Floki.attribute(row, ~s([data-test="team-agent-tool"]), "data-count")}
+    end)
+  end
+
   spex "An external coder and an Alloy coder show their tool activity alike", criterion: 2280 do
     scenario "both are mid-turn running a test" do
       given_ "an external coder and an Alloy coder are each mid-turn running a test", context do
@@ -102,7 +119,8 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
             |> Enum.map(fn [_, tool, count] -> {tool, count} end)
 
           assert [first, second] = activity,
-                 "each agent's row shows its tool activity; got #{inspect(activity)}"
+                 "each agent's row shows its tool activity; got #{inspect(activity)} " <>
+                   "from rows #{inspect(rows(html, context))}"
 
           assert first == second,
                  "the two rows must show it in the same form; got #{inspect(activity)}"

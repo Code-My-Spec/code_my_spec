@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8284Spex do
           ])
 
         {:ok, view, _html} = live(context.conn, "/app/servers/web-1")
-        html = render_async(view)
+        html = render_settled(view)
 
         assert html
                |> Floki.parse_document!()
@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8284Spex do
 
         {:ok, view, _html} = live(context.conn, "/app/servers/web-1")
 
-        {:ok, Map.put(context, :html, render_async(view))}
+        {:ok, Map.put(context, :html, render_settled(view))}
       end
 
       then_ "the page shows the uptime since his restart", context do

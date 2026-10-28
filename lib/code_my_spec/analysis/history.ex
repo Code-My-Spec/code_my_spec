@@ -14,7 +14,7 @@ defmodule CodeMySpec.Analysis.History do
   alias CodeMySpec.Users.Scope
 
   @default_retention_days 30
-  @terminal_statuses [:completed, :failed, :superseded, :cancelled]
+  @terminal_statuses [:completed, :failed, :superseded, :cancelled, :abandoned]
 
   @doc "Retention window in days, configured with `:analysis_retention_days`."
   @spec retention_days() :: pos_integer()
@@ -106,6 +106,7 @@ defmodule CodeMySpec.Analysis.History do
       working_copy_id: run.working_copy_id,
       source: run.source,
       partial: run.kind == :partial,
+      clean: run.start_tree_dirty == false,
       findings_recorded: not is_nil(run.findings),
       started_at: run.started_at,
       finished_at: run.finished_at,

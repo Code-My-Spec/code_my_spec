@@ -48,6 +48,7 @@ defmodule CodeMySpecSpex.Story1046.Criterion1968Spex do
 
         context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
+        its_analyzers_are_current(context, context.second)
 
         {:ok, context}
       end

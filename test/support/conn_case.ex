@@ -28,6 +28,7 @@ defmodule CodeMySpecTest.ConnCase do
       import Plug.Conn
       import Phoenix.ConnTest
       import CodeMySpecTest.ConnCase
+      import CodeMySpecTest.LiveAsync, only: [render_settled: 1]
     end
   end
 

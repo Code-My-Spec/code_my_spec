@@ -32,7 +32,10 @@ defmodule CodeMySpec.Agents.Tools.StartAnalysisTest do
       )
 
     assert match?({:ok, _}, response)
-    assert_receive {:run_analysis, [%{"run_id" => run_id, "source" => "compiler", "args" => []}]}
+    # Forced, as only a forced compiler run certifies a commit.
+    assert_receive {:run_analysis,
+                    [%{"run_id" => run_id, "source" => "compiler", "args" => ["--force"]}]}
+
     assert text(response) =~ "Run #{run_id}"
     run = RunsRepository.get_run_in_project(scope, run_id)
     assert run.status == :running
