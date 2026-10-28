@@ -42,11 +42,7 @@ defmodule CmsHarness.DiskCapacityTest do
       {:ok, 64 * @mib}
     end)
 
-    on_exit(fn ->
-      if prior == nil,
-        do: Application.delete_env(:code_my_spec, :harness_disk_capacity_reader),
-        else: Application.put_env(:code_my_spec, :harness_disk_capacity_reader, prior)
-    end)
+    on_exit(fn -> restore_reader(prior) end)
 
     parent = self()
 
@@ -63,4 +59,10 @@ defmodule CmsHarness.DiskCapacityTest do
     assert_received {"agent-1",
                      %{event: :disk_capacity_refused, text: "disk nearly full: 64 MiB free"}}
   end
+
+  defp restore_reader(nil),
+    do: Application.delete_env(:code_my_spec, :harness_disk_capacity_reader)
+
+  defp restore_reader(reader),
+    do: Application.put_env(:code_my_spec, :harness_disk_capacity_reader, reader)
 end
