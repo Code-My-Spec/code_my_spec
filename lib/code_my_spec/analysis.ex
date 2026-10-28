@@ -32,6 +32,7 @@ defmodule CodeMySpec.Analysis do
       CodeMySpec.ExecutionContexts,
       CodeMySpec.Files,
       CodeMySpec.Problems,
+      CodeMySpec.PromotionQueue.Entry,
       CodeMySpec.Repo,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,

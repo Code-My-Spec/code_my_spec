@@ -21,9 +21,9 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
     this working copy. `live` is "no_events" (queued, or running and not yet
     reporting), "streaming", "finished" (it reported its end), or "not_retained"
     (no live record for this run; read get_analysis_output). `seconds_since_event`
-    tells a stalled run from a slow one. `status` is the ledger's: queued, running,
-    completed, failed, cancelled or superseded; `orphaned` means its harness went
-    away while it ran. Retained stdout is get_analysis_output's, not this.
+    tells a stalled run from a slow one. `status` is queued, running, completed,
+    failed, cancelled or superseded. An orphaned failed run is shown as abandoned
+    with a harness disconnect reason. Retained stdout is get_analysis_output's, not this.
 
     A queued run also carries queued_seconds and harness_connected: false there
     means nothing able to run it is reachable for this working copy right now.
@@ -72,13 +72,20 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisLive do
     |> Map.merge(live_part(run, live, now))
   end
 
+  defp display_status(%Run{orphaned: true, status: :failed}), do: "abandoned"
+
+  defp display_status(%Run{} = run) do
+    if Run.queued?(run), do: "queued", else: to_string(run.status)
+  end
+
   defp ledger(run) do
     Map.merge(
       %{
         run_id: run.id,
         source: run.source,
-        status: if(Run.queued?(run), do: "queued", else: to_string(run.status)),
+        status: display_status(run),
         orphaned: run.orphaned,
+        reason: if(run.orphaned, do: "harness disconnected", else: nil),
         exit_status: run.exit_status,
         start_commit: run.start_commit,
         began_at: run.began_at,
