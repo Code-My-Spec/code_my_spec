@@ -1758,17 +1758,24 @@ defmodule CodeMySpec.Provisioning.Steps do
   def with_builder_ssh(scope, opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
-        {:ok,
-         opts
-         |> Keyword.put_new(:env, env(scope))
-         |> Keyword.put_new(:ssh_env, ssh_env(Path.dirname(path)))}
+        {:ok, with_ssh_env(opts, scope, Path.dirname(path))}
 
       _ ->
         write_builder_key(scope, opts)
     end
   end
 
-  defp ssh_env(dir), do: ExecutionContext.new(:local, dir)
+  # The checkout's own context runs ssh when it can run commands (and keeps any
+  # injected one); a harness copy, or none, gets a local context on this node.
+  defp with_ssh_env(opts, scope, key_dir) do
+    opts = Keyword.put_new_lazy(opts, :env, fn -> env(scope) end)
+
+    case Keyword.fetch!(opts, :env) do
+      %{type: :harness} -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      nil -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      _runs_commands -> opts
+    end
+  end
 
   defp write_builder_key(scope, opts) do
     case AccountSecrets.fetch_value(scope, @access_key_private) do
@@ -1784,8 +1791,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts
          |> Keyword.put(:ssh_key_path, path)
          |> Keyword.put(:builder_key_dir, dir)
-         |> Keyword.put_new(:env, env(scope))
-         |> Keyword.put_new(:ssh_env, ssh_env(dir))}
+         |> with_ssh_env(scope, dir)}
 
       _ ->
         {:error,

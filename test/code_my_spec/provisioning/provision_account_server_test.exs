@@ -50,28 +50,29 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
   end
 
   describe "the builder's ssh" do
-    # A scope naming a working copy routed ssh to that copy's harness, which
-    # runs no commands: `await_ssh` read `{:error, :not_supported_on_harness}`
-    # as output "error" and timed out against boxes that were up.
-    test "runs on this node, where the key is, even for a working copy's scope", %{scope: scope} do
-      scope = %{scope | active_working_copy_id: Ecto.UUID.generate()}
+    alias CodeMySpec.ExecutionContexts.ExecutionContext
 
-      {:ok, opts} = Steps.with_builder_ssh(scope, [])
+    # A harness copy's context runs no commands: `await_ssh` read
+    # `{:error, :not_supported_on_harness}` as output "error" and timed out
+    # against boxes that were up. ssh runs here, where the key is.
+    test "a harness copy's ssh runs on this node, in the key's directory", %{scope: scope} do
+      harness = %ExecutionContext{type: :harness, cwd: "/Users/someone/app"}
 
-      assert %{type: :local, cwd: dir} = Keyword.fetch!(opts, :ssh_env)
-      assert Path.dirname(Keyword.fetch!(opts, :ssh_key_path)) == dir
-      File.rm_rf!(dir)
+      {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id", env: harness)
+
+      assert Keyword.fetch!(opts, :env) == harness
+      assert %{type: :local, cwd: "/keys"} = Keyword.fetch!(opts, :ssh_env)
     end
 
-    # Source delivery reads `:env` as the checkout; ssh's own context must not
-    # replace it, or `git archive` runs in the key's temp dir.
-    test "leaves the checkout's environment for source delivery", %{scope: scope} do
-      checkout = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, "/work/app")
+    # A checkout that runs commands keeps running ssh, so an injected context
+    # (and the cassettes behind it) still answers.
+    test "a checkout that runs commands keeps running ssh", %{scope: scope} do
+      checkout = ExecutionContext.new(:local, "/work/app")
 
       {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id", env: checkout)
 
       assert Keyword.fetch!(opts, :env) == checkout
-      assert %{type: :local, cwd: "/keys"} = Keyword.fetch!(opts, :ssh_env)
+      refute Keyword.has_key?(opts, :ssh_env)
     end
   end
 
