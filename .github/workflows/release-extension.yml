@@ -58,6 +58,11 @@ jobs:
         shell: bash
 
     steps:
+      # Spex filenames are criterion titles and pass Windows' 260-character
+      # path limit; checkout fails on them without long paths.
+      - if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
