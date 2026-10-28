@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1995Spex do
 
       when_ "I look at how my agents perform", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
         {:ok, Map.put(context, :html, html)}
       end
 
