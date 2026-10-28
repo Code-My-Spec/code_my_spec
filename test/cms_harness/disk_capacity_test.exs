@@ -26,6 +26,12 @@ defmodule CmsHarness.DiskCapacityTest do
     assert_received {:checked, :tmp}
   end
 
+  test "checks the parent volume when a checkout has not been created yet" do
+    path = Path.join(System.tmp_dir!(), "missing-checkout-#{System.unique_integer([:positive])}")
+    assert {:ok, free} = DiskCapacity.free_bytes(path)
+    assert free >= 0
+  end
+
   test "admits exactly the minimum and refuses unreadable capacity" do
     assert :ok = DiskCapacity.check(["/checkout"], fn _ -> {:ok, 512 * @mib} end)
 

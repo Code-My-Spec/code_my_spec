@@ -41,9 +41,14 @@ defmodule CmsHarness.DiskCapacity do
       else: :ok
   end
 
+  defp existing_ancestor(path) do
+    expanded = Path.expand(path)
+    if File.exists?(expanded), do: expanded, else: existing_ancestor(Path.dirname(expanded))
+  end
+
   @spec free_bytes(String.t()) :: {:ok, non_neg_integer()} | {:error, String.t()}
   def free_bytes(path) do
-    case System.cmd("df", ["-Pk", path], stderr_to_stdout: true) do
+    case System.cmd("df", ["-Pk", existing_ancestor(path)], stderr_to_stdout: true) do
       {output, 0} ->
         fields = output |> String.trim() |> String.split("\n") |> List.last() |> String.split()
 
