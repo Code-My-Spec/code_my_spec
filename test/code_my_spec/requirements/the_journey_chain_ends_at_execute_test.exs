@@ -10,7 +10,7 @@ defmodule CodeMySpec.Requirements.TheJourneyChainEndsAtExecuteTest do
   use CodeMySpecSpex.Case, async: true
 
   import CodeMySpec.UsersFixtures,
-    only: [fixture_execution_context: 1, put_fixture_execution_context: 2]
+    only: [fixture_execution_context: 1]
 
   alias CodeMySpec.AgentTasks.Release
   alias CodeMySpec.ExecutionContexts

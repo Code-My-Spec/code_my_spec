@@ -116,7 +116,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     call_mcp_server get_local_app_token
     ensure_app_running restart_app stop_app share_copy_app unshare_copy_app
     list_knowledge read_knowledge semantic_search
-    read_project_file write_project_file
+    read_project_file write_project_file read_document write_document
     list_tasks list_notifications list_environments list_devices get_device list_app_instances get_app_instance
     check_answer list_user_questions tool_docs search_answers
     list_problems get_analysis_output get_analysis_live
@@ -146,7 +146,7 @@ defmodule CodeMySpec.Agents.RoleProfile do
     check_answer list_user_questions tool_docs
     list_issues get_issue create_issue resolve_issue update_issue submit_story_issue
     list_knowledge read_knowledge semantic_search
-    read_project_file write_project_file
+    read_project_file write_project_file read_document
     list_tasks clear_problems list_problems get_analysis_output get_analysis_live
     install_credo_checks
     web_search web_fetch

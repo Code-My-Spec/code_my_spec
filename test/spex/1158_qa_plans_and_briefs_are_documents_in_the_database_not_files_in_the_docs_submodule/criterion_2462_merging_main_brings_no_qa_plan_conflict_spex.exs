@@ -10,6 +10,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ToolLibrary
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -17,18 +18,7 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
   spex "a plan document change cannot conflict with a working copy's merge", criterion: 2462 do
     scenario "main changes after the copy branches" do
       given_ "a working copy branched from main before the QA plan changed", context do
-        root = CodeMySpec.TempFile.owned_dir("qa_plan_merge")
-        git!(root, ["init", "-q", "-b", "main"])
-        git!(root, ["config", "user.name", "Spex"])
-        git!(root, ["config", "user.email", "spex@example.test"])
-        File.write!(Path.join(root, "README.md"), "initial project\n")
-        git!(root, ["add", "README.md"])
-        git!(root, ["commit", "-qm", "base"])
-        git!(root, ["checkout", "-qb", "working-copy"])
-        File.write!(Path.join(root, "copy.txt"), "work on the copy\n")
-        git!(root, ["add", "copy.txt"])
-        git!(root, ["commit", "-qm", "copy work"])
-        git!(root, ["checkout", "-q", "main"])
+        root = Fixtures.qa_plan_merge_repository()
 
         response =
           ToolLibrary.run(
@@ -38,23 +28,21 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
           )
 
         refute match?({:error, _}, response), response_text(response)
-        File.write!(Path.join(root, "main.txt"), "later work on main\n")
-        git!(root, ["add", "main.txt"])
-        git!(root, ["commit", "-qm", "main work"])
+        Fixtures.qa_plan_merge_advance_main(root)
         {:ok, Map.put(context, :root, root)}
       end
 
       when_ "the working copy merges main", context do
-        git!(context.root, ["checkout", "-q", "working-copy"])
-        merge_output = git!(context.root, ["merge", "--no-edit", "main"])
+        merge_output = Fixtures.qa_plan_merge_main(context.root)
         {:ok, Map.put(context, :merge_output, merge_output)}
       end
 
       then_ "the merge succeeds without a QA plan conflict", context do
         assert context.merge_output =~ "Merge made by"
-        assert git!(context.root, ["diff", "--name-only", "--diff-filter=U"]) == ""
-        assert git!(context.root, ["status", "--porcelain"]) == ""
-        assert git!(context.root, ["ls-files", ".code_my_spec/qa/plan.md"]) == ""
+        state = Fixtures.qa_plan_merge_state(context.root)
+        assert state.unmerged == ""
+        assert state.status == ""
+        assert state.plan_files == ""
 
         response =
           ToolLibrary.run(
@@ -86,11 +74,5 @@ defmodule CodeMySpecSpex.Story1158.Criterion2462Spex do
 
     Seed a QA account.
     """
-  end
-
-  defp git!(root, args) do
-    {output, status} = System.cmd("git", args, cd: root, stderr_to_stdout: true)
-    assert status == 0, "git #{Enum.join(args, " ")} failed: #{output}"
-    String.trim(output)
   end
 end

@@ -286,7 +286,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp check_brief(scope, story_number) do
     case QaDocuments.get(scope, "qa_story_brief", story_number) do
       {:ok, %{content: content}} when is_binary(content) and byte_size(content) > 0 ->
-        :ok
+        case Documents.create_dynamic_document(content, "qa_story_brief") do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:ok, :invalid, "Brief document is invalid: #{reason}"}
+        end
 
       {:ok, nil} ->
         {:ok, :invalid,

@@ -296,11 +296,10 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     context
   end
 
-  @doc "Satisfies `qa_setup` by writing the QA plan file."
+  @doc "Satisfies `qa_setup` by storing the QA plan document."
   @spec apply_qa_setup(map()) :: map()
   def apply_qa_setup(context) do
-    env = context.execution_context
-    :ok = ExecutionContexts.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
+    {:ok, _} = CodeMySpec.Qa.Documents.put(context.scope, "qa_plan", nil, qa_plan_content())
     synced(context)
   end
 
@@ -312,12 +311,8 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   def apply_journey_artifacts(context) do
     env = context.execution_context
 
-    :ok =
-      ExecutionContexts.write_file(
-        env,
-        ".code_my_spec/qa/journey_plan.md",
-        qa_journey_plan_content()
-      )
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put(context.scope, "qa_journey_plan", nil, qa_journey_plan_content())
 
     :ok =
       ExecutionContexts.write_file(
@@ -540,15 +535,10 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_qa_complete_for_story(map(), term()) :: :ok
   def apply_qa_complete_for_story(context, story) do
-    env = context.execution_context
     story_id = story.id
 
-    :ok =
-      ExecutionContexts.write_file(
-        env,
-        ".code_my_spec/qa/#{story_id}/brief.md",
-        qa_brief_content()
-      )
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put(context.scope, "qa_story_brief", story.number, qa_brief_content())
 
     {:ok, _attempt} =
       Fixtures.passed_qa_attempt(context.scope, story_id: story_id)
