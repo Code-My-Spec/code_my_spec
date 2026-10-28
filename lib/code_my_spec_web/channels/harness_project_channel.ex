@@ -128,6 +128,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        |> assign(:harness, harness)
        # One reconcile in flight, at most one waiting. See `accept_manifest/2`.
        |> assign(:reconciling, nil)
+       |> assign(:reconciling_manifest, nil)
+       |> assign(:reconcile_retries, 0)
        |> assign(:pending_manifest, nil)}
     else
       # A changeset is a map too, so it must be matched ahead of the generic
@@ -1570,14 +1572,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, next_manifest(socket)}
   end
 
-  # A reconcile that died takes its manifest with it; the next scan sends the
-  # whole set again, so this moves on rather than retrying an aged snapshot.
+  # A failed batch rolls back only itself. Keep the already received manifest
+  # in this channel and retry once: committed upserts are no-ops, so the same
+  # observation set resumes without a filesystem scan or a socket reconnect.
   def handle_info(
         {:DOWN, ref, :process, _pid, reason},
         %{assigns: %{reconciling: %Task{ref: ref}}} = socket
       ) do
     Logger.error("[HarnessProject] reconcile failed: #{inspect(reason)}")
-    {:noreply, next_manifest(socket)}
+
+    socket =
+      cond do
+        socket.assigns.pending_manifest != nil ->
+          next_manifest(socket)
+
+        socket.assigns.reconcile_retries < 1 ->
+          entries = socket.assigns.reconciling_manifest
+          Logger.warning("[HarnessProject] retrying received manifest after reconcile failure")
+
+          socket
+          |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+          |> assign(:reconcile_retries, socket.assigns.reconcile_retries + 1)
+
+        true ->
+          Logger.error("[HarnessProject] manifest retry failed; waiting for a newer manifest")
+          next_manifest(socket)
+      end
+
+    {:noreply, socket}
   end
 
   # A deferred reply's answer, and then its task ending (see `reply_async/4`).
@@ -1678,7 +1700,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     case ReconcileRegistry.in_flight(working_copy_id) do
       nil ->
-        assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
+        socket
+        |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+        |> assign(:reconciling_manifest, entries)
+        |> assign(:reconcile_retries, 0)
 
       %{count: count, started_at: started_at} ->
         Logger.warning(
@@ -1706,19 +1731,23 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end)
   end
 
-  # Both halves of a sync in one transaction: reconcile the files, then project
-  # components and write `component_id` back onto each File row, without which
-  # no `implementation_file` requirement can be satisfied. The transaction lives
-  # in `FileSync`: `CodeMySpecWeb` may not reference `CodeMySpec.Repo`.
+  # FileSync commits bounded batches; each upsert and its component projection
+  # land together so requirement checks can read a consistent batch.
+  # `CodeMySpecWeb` may not reference `CodeMySpec.Repo`.
   defp reconcile(scope, entries), do: FileSync.reconcile_and_project(scope, entries)
 
   defp next_manifest(%{assigns: %{pending_manifest: nil}} = socket) do
-    assign(socket, :reconciling, nil)
+    socket
+    |> assign(:reconciling, nil)
+    |> assign(:reconciling_manifest, nil)
+    |> assign(:reconcile_retries, 0)
   end
 
   defp next_manifest(%{assigns: %{pending_manifest: entries}} = socket) do
     socket
     |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+    |> assign(:reconciling_manifest, entries)
+    |> assign(:reconcile_retries, 0)
     |> assign(:pending_manifest, nil)
   end
 
