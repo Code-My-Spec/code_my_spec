@@ -235,6 +235,47 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
              "issue drain grew from #{baseline_cost.queries} to #{enlarged_cost.queries} queries for twelve stamped stories"
     end
 
+    test "an issue update remains bounded across twelve vantages", ctx do
+      scope = ctx.scope
+      device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+
+      copies =
+        for n <- 1..10 do
+          {:ok, copy} =
+            CodeMySpec.WorkingCopies.issue(scope, nil, label: "Vantage #{n}", device: device)
+
+          copy
+        end
+
+      create_story(scope, title: "Twelve-vantage subject", description: "issue drain measurement")
+      :ok = IncrementalGraph.settle(scope.active_project_id, [nil | Enum.map(copies, & &1.id)])
+      drains()
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "Twelve-vantage issue",
+          description: "first observation",
+          severity: :high
+        })
+
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(scope, issue)
+      settle(scope)
+
+      applied =
+        settle_after(scope, fn ->
+          {:ok, _} =
+            CodeMySpec.Issues.update_issue(scope, issue, %{description: "updated observation"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert applied != []
+      {cost, meta} = Enum.max_by(applied, fn {cost, _meta} -> cost.queries end)
+      assert meta.vantages == 12
+      assert cost.queries < 1_000
+    end
+
     test "a drain reports how many checkouts it settled", ctx do
       scope = ctx.scope
       story = create_story(scope, title: "Counted", description: "across checkouts")
