@@ -271,7 +271,7 @@ defmodule CmsHarness.HookDecision do
     """
     #{dir} has not been onboarded, so this harness has no identity for it.
 
-    Run `mix cms.harness.onboard #{dir}` there. Until then nothing in this \
+    Run /codemyspec:init there. Until then nothing in this \
     checkout is recorded — its files, problems and analysis all key on an id it \
     does not have.
 
@@ -282,7 +282,7 @@ defmodule CmsHarness.HookDecision do
 
   defp explain(:no_credential, _working_dir, _state) do
     """
-    The harness has no credential for the CodeMySpec server, so it never connected. Run `mix cms.harness.onboard` in this working copy, which records its deploy key in `.cms_harness.json`, and restart the harness.
+    The harness has no credential for the CodeMySpec server, so it never connected. Run /codemyspec:init, which shows the sign-in code to approve.
     """
     |> String.trim()
   end
