@@ -9,6 +9,9 @@ defmodule CodeMySpecWeb.PromotionTiming.Counts do
     ~H"""
     <div>
       <h2 class="text-xl font-semibold">{String.capitalize(@outcome)}: {@figures["count"]}</h2>
+      <p data-test={"promotion-timed-#{@outcome}"} data-timed={@figures["timed"]}>
+        {@figures["timed"]} of {@figures["count"]} timed
+      </p>
       <p
         data-test={"promotion-gate-time-#{@outcome}"}
         data-duration-seconds={@figures["gate_seconds"]}

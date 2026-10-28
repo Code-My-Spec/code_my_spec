@@ -6278,8 +6278,9 @@ defmodule CodeMySpecSpex.Fixtures do
         status_override: :completed
       })
 
+    # A run counts as flake evidence only when it started on a clean tree.
     attrs =
-      %{}
+      %{start_tree_dirty: Keyword.get(opts, :dirty, false)}
       |> then(fn attrs ->
         case Keyword.get(opts, :commit) do
           nil -> attrs

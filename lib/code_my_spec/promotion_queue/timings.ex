@@ -98,11 +98,13 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       when outcome in [:landed, :ejected] and is_list(runs) do
     recorded = get_in(entry.result || %{}, ["timing", "stages"]) || %{}
     run_ids = get_in(entry.result || %{}, ["timing", "run_ids"]) || []
+    gate = get_in(entry.result || %{}, ["timing", "gate_copy_id"])
 
+    # An entry ejected before its gate copy was recorded still names its runs.
     own_runs =
       Enum.filter(runs, fn
         %Run{id: id, kind: :full, working_copy_id: gate_id} ->
-          id in run_ids and gate_id == get_in(entry.result || %{}, ["timing", "gate_copy_id"])
+          id in run_ids and (is_nil(gate) or gate_id == gate)
 
         _ ->
           false
@@ -240,11 +242,15 @@ defmodule CodeMySpec.PromotionQueue.Timings do
 
     %{
       "count" => length(selected),
+      "timed" => Enum.count(selected, &timed?/1),
       "stages" => stages,
       "analyzer_waits" => waits,
       "gate_seconds" => Enum.sum(Enum.map(selected, & &1.gate_seconds))
     }
   end
+
+  defp timed?(%{stages: stages, analyzer_waits: waits}),
+    do: Enum.any?(Map.values(stages) ++ Map.values(waits), &(&1.status == :ran))
 
   defp timed_items(runs, key) do
     for %Run{source: source, id: run_id, stats: stats} <- runs,
