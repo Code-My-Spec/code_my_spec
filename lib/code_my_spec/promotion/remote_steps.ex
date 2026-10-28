@@ -136,13 +136,7 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
           failure(:moved, "origin/#{branch} moved without this promotion's receipt")
 
         {nil, ^base} ->
-          if transient_push_error?(push_error.reason),
-            do:
-              failure(
-                :uncertain,
-                "remote push failed; retry the same promotion: #{push_error.reason}"
-              ),
-            else: failure(:rejected, push_error.reason)
+          unreconciled_push(push_error.reason)
       end
     else
       _ ->
@@ -151,6 +145,12 @@ defmodule CodeMySpec.Promotion.RemoteSteps do
           "push result could not be reconciled; retry the same promotion: #{push_error.reason}"
         )
     end
+  end
+
+  defp unreconciled_push(reason) do
+    if transient_push_error?(reason),
+      do: failure(:uncertain, "remote push failed; retry the same promotion: #{reason}"),
+      else: failure(:rejected, reason)
   end
 
   defp transient_push_error?(reason) do
