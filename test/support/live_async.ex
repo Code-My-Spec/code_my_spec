@@ -5,6 +5,10 @@ defmodule CodeMySpecTest.LiveAsync do
   outlasts.
   """
 
+  # A leaf of its own, like `CodeMySpec.TempFile`: ExUnit tests and the spex
+  # suite's helpers both wait on LiveViews, and they are separate boundaries.
+  use Boundary, top_level?: true, deps: []
+
   alias Phoenix.LiveView.Channel
 
   # Not a window to race: work this late is hung, and saying so beats the
