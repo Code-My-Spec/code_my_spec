@@ -50,25 +50,28 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
   end
 
   describe "the builder's ssh" do
-    # A scope naming a working copy used to route ssh to that copy's harness,
-    # which runs no commands: `await_ssh` read `{:error, :not_supported_on_harness}`
+    # A scope naming a working copy routed ssh to that copy's harness, which
+    # runs no commands: `await_ssh` read `{:error, :not_supported_on_harness}`
     # as output "error" and timed out against boxes that were up.
     test "runs on this node, where the key is, even for a working copy's scope", %{scope: scope} do
       scope = %{scope | active_working_copy_id: Ecto.UUID.generate()}
 
       {:ok, opts} = Steps.with_builder_ssh(scope, [])
 
-      assert %{type: :local, cwd: dir} = Keyword.fetch!(opts, :env)
+      assert %{type: :local, cwd: dir} = Keyword.fetch!(opts, :ssh_env)
       assert Path.dirname(Keyword.fetch!(opts, :ssh_key_path)) == dir
       File.rm_rf!(dir)
     end
 
-    test "a given key path keeps its own directory", %{scope: scope} do
-      scope = %{scope | active_working_copy_id: Ecto.UUID.generate()}
+    # Source delivery reads `:env` as the checkout; ssh's own context must not
+    # replace it, or `git archive` runs in the key's temp dir.
+    test "leaves the checkout's environment for source delivery", %{scope: scope} do
+      checkout = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, "/work/app")
 
-      {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id_ed25519")
+      {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id", env: checkout)
 
-      assert %{type: :local, cwd: "/keys"} = Keyword.fetch!(opts, :env)
+      assert Keyword.fetch!(opts, :env) == checkout
+      assert %{type: :local, cwd: "/keys"} = Keyword.fetch!(opts, :ssh_env)
     end
   end
 

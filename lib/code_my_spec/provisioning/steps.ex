@@ -1750,14 +1750,18 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The account key is written 0600 to a temp dir (ssh refuses a readable
   # key) and removed by `cleanup_builder_key/2`.
   #
-  # ssh runs on this node, where the key file is, whatever working copy the
-  # scope names: `env/1` would route it to that copy's harness, which runs no
-  # commands, and `await_ssh` then times out on a box that is up.
+  # `:env` stays the checkout (source delivery reads it); `:ssh_env` is where
+  # ssh itself runs: this node, where the key file is. Routing ssh through
+  # `env/1` sent it to a harness copy's harness, which runs no commands, and
+  # `await_ssh` timed out on boxes that were up.
   @doc false
   def with_builder_ssh(scope, opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
-        {:ok, Keyword.put_new(opts, :env, ssh_env(Path.dirname(path)))}
+        {:ok,
+         opts
+         |> Keyword.put_new(:env, env(scope))
+         |> Keyword.put_new(:ssh_env, ssh_env(Path.dirname(path)))}
 
       _ ->
         write_builder_key(scope, opts)
@@ -1780,7 +1784,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts
          |> Keyword.put(:ssh_key_path, path)
          |> Keyword.put(:builder_key_dir, dir)
-         |> Keyword.put_new(:env, ssh_env(dir))}
+         |> Keyword.put_new(:env, env(scope))
+         |> Keyword.put_new(:ssh_env, ssh_env(dir))}
 
       _ ->
         {:error,
@@ -3776,6 +3781,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
   def commit_generated_configuration(scope) do
     case env(scope) do
+      # The checkout is on another machine and its harness runs no git; the
+      # agent working there commits.
+      %{type: :harness} ->
+        :ok
+
       %{cwd: cwd} = environment when is_binary(cwd) ->
         commit_generated_configuration_in(environment)
 
