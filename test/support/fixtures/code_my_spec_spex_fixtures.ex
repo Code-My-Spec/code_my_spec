@@ -2827,8 +2827,6 @@ defmodule CodeMySpecSpex.Fixtures do
   # Paths and domain calls a spex needs. Re-exported rather than referenced
   # directly, because `CodeMySpecSpex` may not depend on `CodeMySpec` — the
   # bridge is the sanctioned crossing.
-  defdelegate qa_plan_path(), to: CodeMySpec.Paths, as: :qa_plan
-  defdelegate qa_journey_plan_path(), to: CodeMySpec.Paths, as: :qa_journey_plan
   defdelegate qa_journey_result_path(), to: CodeMySpec.Paths, as: :qa_journey_result
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
@@ -7161,6 +7159,47 @@ defmodule CodeMySpecSpex.Fixtures do
   # and fall back to the file the value actually lives in. Parsing it here is
   # what Dotenvy does for the application; the alternative is a suite that only
   # runs for whoever remembered the incantation.
+  @doc "Build a diverged Git repository for the QA document merge scenario."
+  def qa_plan_merge_repository do
+    root = CodeMySpec.TempFile.owned_dir("qa_plan_merge")
+    qa_git!(root, ["init", "-q", "-b", "main"])
+    qa_git!(root, ["config", "user.name", "Spex"])
+    qa_git!(root, ["config", "user.email", "spex@example.test"])
+    File.write!(Path.join(root, "README.md"), "initial project\n")
+    qa_git!(root, ["add", "README.md"])
+    qa_git!(root, ["commit", "-qm", "base"])
+    qa_git!(root, ["checkout", "-qb", "working-copy"])
+    File.write!(Path.join(root, "copy.txt"), "work on the copy\n")
+    qa_git!(root, ["add", "copy.txt"])
+    qa_git!(root, ["commit", "-qm", "copy work"])
+    qa_git!(root, ["checkout", "-q", "main"])
+    root
+  end
+
+  def qa_plan_merge_advance_main(root) do
+    File.write!(Path.join(root, "main.txt"), "later work on main\n")
+    qa_git!(root, ["add", "main.txt"])
+    qa_git!(root, ["commit", "-qm", "main work"])
+  end
+
+  def qa_plan_merge_main(root) do
+    qa_git!(root, ["checkout", "-q", "working-copy"])
+    qa_git!(root, ["merge", "--no-edit", "main"])
+  end
+
+  def qa_plan_merge_state(root) do
+    %{
+      unmerged: qa_git!(root, ["diff", "--name-only", "--diff-filter=U"]),
+      status: qa_git!(root, ["status", "--porcelain"]),
+      plan_files: qa_git!(root, ["ls-files", ".code_my_spec/qa/plan.md"])
+    }
+  end
+
+  defp qa_git!(root, args) do
+    {output, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)
+    String.trim(output)
+  end
+
   defp spex_env(name) do
     case System.get_env(name) do
       value when is_binary(value) and value != "" -> value

@@ -29,8 +29,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
              context do
         env = context.execution_context
 
-        :ok =
-          ExecutionContexts.write_file(env, ".code_my_spec/qa/plan.md", existing_plan())
+        {:ok, _} = CodeMySpec.Qa.Documents.put(context.scope, "qa_plan", nil, existing_plan())
 
         :ok =
           ExecutionContexts.write_file(env, "priv/repo/qa_seeds.exs", "# qa seeds\n")

@@ -87,7 +87,7 @@ defmodule CodeMySpec.AgentTasks.FixIssues do
 
     ## QA context
 
-    - **QA plan**: `#{Paths.qa_plan()}` — server startup, seeds, auth.
+    - **QA plan**: read the `qa_plan` document with `read_document` — server startup, seeds, auth.
     - **QA evidence**: `#{Paths.qa_dir()}/<story_number>/` — failed results,
       screenshots, briefs per story.
 

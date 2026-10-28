@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.ExecutionContexts
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -36,17 +34,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
       end
 
       given_ "a complete plan exists at .code_my_spec/qa/plan.md", context do
-        :ok =
-          ExecutionContexts.write_file(
-            context.execution_context,
-            ".code_my_spec/qa/plan.md",
-            valid_plan()
-          )
-
-        # The checker reads its verdict from the Files projection, not from
-        # disk — a plan that was never classified could never be found. Sync
-        # the file through the same event the watcher fires.
-        {:ok, _} = Fixtures.notify_file_changed(context.scope, ".code_my_spec/qa/plan.md")
+        {:ok, _} = CodeMySpec.Qa.Documents.put(context.scope, "qa_plan", nil, valid_plan())
 
         {:ok, context}
       end

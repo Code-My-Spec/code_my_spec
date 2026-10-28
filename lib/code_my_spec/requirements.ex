@@ -28,6 +28,7 @@ defmodule CodeMySpec.Requirements do
       # to answer. So the graph reads it — from this leaf, not from `Promotion`,
       # which sits above the graph and must not be called by it.
       CodeMySpec.Promotion.RunningCopy,
+      CodeMySpec.Qa,
       CodeMySpec.Qa.QaAttempt,
       CodeMySpec.Qa.Verdict,
       CodeMySpec.Questions,
