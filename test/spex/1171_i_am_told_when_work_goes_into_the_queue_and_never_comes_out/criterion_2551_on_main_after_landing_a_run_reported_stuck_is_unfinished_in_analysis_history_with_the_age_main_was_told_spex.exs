@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story1171.Criterion2551Spex do
 
         run =
           Fixtures.start_analysis_run(context.scope, "spex",
-            run_number: 64421,
+            run_number: 64_421,
             started_minutes_ago: 31
           )
 

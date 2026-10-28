@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story1171.Criterion2541Spex do
       given_ "run 64421 is unfinished on team B's copy", context do
         run =
           Fixtures.start_analysis_run(context.scope, "spex",
-            run_number: 64421,
+            run_number: 64_421,
             working_copy_name: "team B's copy",
             started_minutes_ago: 31
           )
