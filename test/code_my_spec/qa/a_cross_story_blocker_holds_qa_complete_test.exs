@@ -22,6 +22,12 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Users.Scope
 
+  def count_owner_query(_, _, _, {owner, counter}) when self() == owner do
+    :counters.add(counter, 1, 1)
+  end
+
+  def count_owner_query(_, _, _, _), do: :ok
+
   setup do
     user = user_fixture()
 
@@ -218,10 +224,8 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
       :telemetry.attach(
         handler,
         [:code_my_spec, :repo, :query],
-        fn _, _, _, _ ->
-          if self() == owner, do: :counters.add(counter, 1, 1)
-        end,
-        nil
+        &__MODULE__.count_owner_query/4,
+        {owner, counter}
       )
 
     on_exit(fn -> :telemetry.detach(handler) end)
