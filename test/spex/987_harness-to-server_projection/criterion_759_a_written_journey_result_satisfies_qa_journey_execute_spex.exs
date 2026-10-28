@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8189Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Qa.Documents
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -23,14 +24,13 @@ defmodule CodeMySpecSpex.Story987.Criterion8189Spex do
   spex "An agent's journey result satisfies the requirement that asked for it", criterion: 759 do
     scenario "writing the journey result satisfies qa_journey_execute" do
       given_ "a journey plan exists and no result does", context do
-        :ok =
-          ExecutionContexts.write_file(
-            context.execution_context,
-            Fixtures.qa_journey_plan_path(),
-            "# QA Journey Plan\n\n## Journeys\n\n### Capture\n\n1. Sign in\n2. Capture a task\n"
-          )
-
-        Fixtures.deliver_manifest(context.scope)
+        assert {:ok, _document} =
+                 Documents.put(
+                   context.scope,
+                   "qa_journey_plan",
+                   nil,
+                   "# QA Journey Plan\n\n## Journeys\n\n### Capture\n\n1. Sign in\n2. Capture a task\n\n## Prerequisites\n\n- Seed a QA account.\n"
+                 )
 
         refute Fixtures.requirement_satisfied?(
                  context.scope,

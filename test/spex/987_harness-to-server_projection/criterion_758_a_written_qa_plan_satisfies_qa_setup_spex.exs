@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8188Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.ExecutionContexts
+  alias CodeMySpec.Qa.Documents
   alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
@@ -34,15 +34,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8188Spex do
         {:ok, context}
       end
 
-      when_ "the agent writes the QA plan and the harness delivers its manifest", context do
-        :ok =
-          ExecutionContexts.write_file(
-            context.execution_context,
-            Fixtures.qa_plan_path(),
-            qa_plan()
-          )
-
-        Fixtures.deliver_manifest(context.scope)
+      when_ "the agent writes the shared QA plan document", context do
+        assert {:ok, _document} = Documents.put(context.scope, "qa_plan", nil, qa_plan())
         {:ok, context}
       end
 
@@ -53,8 +46,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8188Spex do
                  :project,
                  context.project.id
                ),
-               "the plan is on disk and synced; a requirement still asking for it " <>
-                 "is asking the agent to write a file it already wrote"
+               "the stored QA plan should satisfy the project requirement"
 
         {:ok, context}
       end

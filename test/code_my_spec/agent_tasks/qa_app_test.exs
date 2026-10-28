@@ -72,25 +72,26 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     """)
   end
 
-  defp write_qa_plan(env) do
-    write_file!(env, ".code_my_spec/qa/plan.md", """
-    # QA Plan
+  defp write_qa_plan(scope) do
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put_legacy(scope, "qa_plan", nil, """
+      # QA Plan
 
-    ## App Overview
+      ## App Overview
 
-    Phoenix app with session-based auth on port 4000.
+      Phoenix app with session-based auth on port 4000.
 
-    ## Tools Registry
+      ## Tools Registry
 
-    ### web tool
-    Use for LiveView pages.
+      ### web tool
+      Use for LiveView pages.
 
-    ## Seed Strategy
+      ## Seed Strategy
 
-    - `mix run priv/repo/qa_seeds.exs`
-    """)
+      - `mix run priv/repo/qa_seeds.exs`
+      """)
 
-    write_file!(env, ".code_my_spec/qa/scripts/start-qa.sh", """
+    write_file!(fixture_execution_context(scope), ".code_my_spec/qa/scripts/start-qa.sh", """
     #!/bin/bash
     mix run priv/repo/qa_seeds.exs
     echo "QA setup complete"
@@ -105,37 +106,39 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     )
   end
 
-  defp write_story_brief(env, story_number, content \\ nil) do
-    write_file!(
-      env,
-      ".code_my_spec/qa/#{story_number}/brief.md",
-      content ||
-        """
-        # QA Brief: Story #{story_number}
+  defp write_story_brief(scope, story_number, content \\ nil) do
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put_legacy(
+        scope,
+        "qa_story_brief",
+        story_number,
+        content ||
+          """
+          # QA Brief: Story #{story_number}
 
-        ## Tool
+          ## Tool
 
-        web
+          web
 
-        ## Auth
+          ## Auth
 
-        Login as admin@example.com / password123
+          Login as admin@example.com / password123
 
-        ## Seeds
+          ## Seeds
 
-        mix run priv/repo/qa_seeds.exs
+          mix run priv/repo/qa_seeds.exs
 
-        ## What To Test
+          ## What To Test
 
-        - Visit /users/log_in
-        - Enter credentials
-        - Verify redirect to dashboard
+          - Visit /users/log_in
+          - Enter credentials
+          - Verify redirect to dashboard
 
-        ## Result Path
+          ## Result Path
 
-        .code_my_spec/qa/#{story_number}/result.md
-        """
-    )
+          .code_my_spec/qa/#{story_number}/result.md
+          """
+      )
   end
 
   defp write_story_result(env, story_number, content \\ nil) do
@@ -295,7 +298,7 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
     test "delegates story validation to QaStory.evaluate", %{scope: scope} do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
-      write_qa_plan(fixture_execution_context(scope))
+      write_qa_plan(scope)
 
       # No brief or result — QaStory.evaluate should report brief missing
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
@@ -313,8 +316,8 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(fixture_execution_context(scope))
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_qa_plan(scope)
+      write_story_brief(scope, story.number)
       write_story_result(fixture_execution_context(scope), story.number)
       write_qa_summary(fixture_execution_context(scope))
 
@@ -327,8 +330,8 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(fixture_execution_context(scope))
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_qa_plan(scope)
+      write_story_brief(scope, story.number)
       write_qa_summary(fixture_execution_context(scope))
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)
@@ -339,8 +342,8 @@ defmodule CodeMySpec.AgentTasks.QaAppTest do
       %{story: story} = create_story(%{scope: scope})
       task = %{project_id: scope.active_project.id, component_id: nil, story_id: nil}
 
-      write_qa_plan(fixture_execution_context(scope))
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_qa_plan(scope)
+      write_story_brief(scope, story.number)
       write_story_result(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, feedback} = QaApp.evaluate(scope, task)

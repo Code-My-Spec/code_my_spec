@@ -59,7 +59,9 @@ defmodule CodeMySpecSpex.Story1164.Criterion2546Spex do
         assert line =~ "confirmed flake"
         assert [_, run_id] = Regex.run(~r/evidence=(\d+):/, line)
 
-        history = Fixtures.analysis_history_entry(context.scope, String.to_integer(run_id))
+        history =
+          Fixtures.retained_analysis_history_entry(context.scope, String.to_integer(run_id))
+
         {:ok, Map.merge(context, %{line: line, history: history})}
       end
 

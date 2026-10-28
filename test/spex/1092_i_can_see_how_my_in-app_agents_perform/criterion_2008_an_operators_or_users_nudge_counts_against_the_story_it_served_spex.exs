@@ -101,7 +101,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2008Spex do
 
       then_ "the restart is counted as a manual intervention on that story", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
 
         assert html =~ context.story.title and html =~ "restart",
                "the agent's restart is not shown as a manual intervention against the story it was working"

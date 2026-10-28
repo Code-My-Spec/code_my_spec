@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8285Spex do
 
         {:ok, view, _html} = live(context.conn, "/app/servers/web-1")
 
-        {:ok, Map.put(context, :html, render_async(view))}
+        {:ok, Map.put(context, :html, render_settled(view))}
       end
 
       then_ "the page says the box could not be reached, and why", context do

@@ -387,6 +387,7 @@ defmodule CmsHarness.Analysis do
       "file" => nil,
       "line" => nil,
       "name" => failure.full_title || failure.title,
+      "test" => failure.full_title || failure.title,
       "message" => failure.full_title || failure.title
     }
   end
@@ -396,6 +397,7 @@ defmodule CmsHarness.Analysis do
       "file" => error.file,
       "line" => error.line,
       "name" => failure.full_title || failure.title,
+      "test" => failure.full_title || failure.title,
       "message" => error.message
     }
   end

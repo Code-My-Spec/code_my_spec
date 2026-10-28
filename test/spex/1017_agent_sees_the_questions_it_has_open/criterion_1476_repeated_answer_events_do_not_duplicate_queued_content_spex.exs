@@ -55,7 +55,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
             persona_id: context.persona_id
           )
 
-        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        # Started held, not continuous: a continuous agent is offered work the
+        # moment it is idle, and one arriving between `await_idle` and the user
+        # message took the turn first ({:error, :busy}). Its person switches it
+        # on below, once the user's turn is the one in flight.
+        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
         started =
@@ -88,9 +92,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
 
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
         base_url = HeldProvider.start()
-        HeldProvider.hold()
         {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
+
+        # Held only after any turn the start itself began has finished, so the
+        # held request is this message's and the send never finds it busy.
+        :ok = Machine.await_idle(agent.id)
+        HeldProvider.hold()
 
         {:ok, :started} =
           Machine.send_message(agent.id, "user-turn-3578", "Finish this user turn")
@@ -98,13 +106,17 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
         HeldProvider.await_request()
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
+        conversation_path = Fixtures.agent_conversation_path(context.scope, agent)
+        {:ok, conversation, _} = live(context.conn, conversation_path)
+        conversation |> element("[data-test='toggle-agent-working']") |> render_click()
+
         {:ok,
          Map.merge(context, %{
            agent_id: agent.id,
            frame: frame,
            task_id: task_id,
            question_id: question_id,
-           conversation_path: Fixtures.agent_conversation_path(context.scope, agent)
+           conversation_path: conversation_path
          })}
       end
 

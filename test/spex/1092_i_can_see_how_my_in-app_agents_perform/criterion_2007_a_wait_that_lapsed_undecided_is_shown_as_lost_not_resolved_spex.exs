@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2007Spex do
 
       when_ "blocked time is shown", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
         {:ok, Map.put(context, :html, html)}
       end
 

@@ -4,6 +4,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   """
 
   alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Qa.Documents, as: QaDocuments
   alias CodeMySpec.{ExecutionContexts, Paths, Stories}
 
   @stories_file Path.join(Paths.qa_dir(), "stories_summary.md")
@@ -32,8 +33,8 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
       stories: stories,
       plan_spec: DocumentSpecProjector.project_spec("qa_journey_plan"),
       result_spec: DocumentSpecProjector.project_spec("qa_journey_result"),
-      qa_plan_exists: ExecutionContexts.file_exists?(env, Paths.qa_plan()) == true,
-      journey_plan_exists: ExecutionContexts.file_exists?(env, Paths.qa_journey_plan()) == true,
+      qa_plan_exists: document_exists?(scope, "qa_plan"),
+      journey_plan_exists: document_exists?(scope, "qa_journey_plan"),
       journey_result_exists:
         ExecutionContexts.file_exists?(env, Paths.qa_journey_result()) == true,
       existing_tests: list_journey_tests(env)
@@ -45,6 +46,13 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   # ============================================================================
   # Data Loading
   # ============================================================================
+
+  defp document_exists?(scope, type) do
+    match?(
+      {:ok, %{content: content}} when is_binary(content) and content != "",
+      QaDocuments.get(scope, type)
+    )
+  end
 
   defp list_stories(scope) do
     Stories.list_stories(scope)
@@ -114,9 +122,10 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
   defp build_context_section(ctx) do
     items =
       [
-        ctx.qa_plan_exists && "- `#{Paths.qa_plan()}` — QA infrastructure",
+        ctx.qa_plan_exists && "- `qa_plan` document (`read_document`) — QA infrastructure",
         "- `show_namespace_hierarchy` — component tree",
-        ctx.journey_plan_exists && "- `#{Paths.qa_journey_plan()}` — existing plan",
+        ctx.journey_plan_exists &&
+          "- `qa_journey_plan` document (`read_document`) — existing plan",
         ctx.journey_result_exists && "- `#{Paths.qa_journey_result()}` — existing result",
         !ctx.qa_plan_exists &&
           "- No QA plan yet: read the app's router and config for routes, auth, and features"
@@ -158,7 +167,7 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     """
     ## Phase 1: Journey Planning — SKIP
 
-    Plan already at `#{Paths.qa_journey_plan()}`. Proceed to Phase 2.\
+    The `qa_journey_plan` document exists. Proceed to Phase 2.\
     """
   end
 
@@ -166,7 +175,8 @@ defmodule CodeMySpec.AgentTasks.QaJourney do
     """
     ## Phase 1: Journey Planning
 
-    **Artifact:** `#{Paths.qa_journey_plan()}`
+    **Artifact:** `qa_journey_plan` database document. Use `write_document`
+    with `document_type: "qa_journey_plan"`; read it with `read_document`.
 
     Design 3–5 end-to-end journeys that cut across stories — see the
     playbook for procedure and anti-patterns. Write the plan to match:

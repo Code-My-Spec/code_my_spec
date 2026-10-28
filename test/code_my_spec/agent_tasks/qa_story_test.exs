@@ -52,60 +52,63 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   end
 
   defp create_qa_plan(context) do
-    write_qa_plan(fixture_execution_context(context.scope))
+    write_qa_plan(context.scope)
     context
   end
 
-  defp write_qa_plan(env) do
-    write_file!(env, ".code_my_spec/qa/plan.md", """
-    # QA Plan
+  defp write_qa_plan(scope) do
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put_legacy(scope, "qa_plan", nil, """
+      # QA Plan
 
-    ## App Overview
+      ## App Overview
 
-    Phoenix app with session-based auth on port 4000.
+      Phoenix app with session-based auth on port 4000.
 
-    ## Tools Registry
+      ## Tools Registry
 
-    ### web tool
-    Use for LiveView pages.
+      ### web tool
+      Use for LiveView pages.
 
-    ## Seed Strategy
+      ## Seed Strategy
 
-    - `mix run priv/repo/qa_seeds.exs`
-    """)
+      - `mix run priv/repo/qa_seeds.exs`
+      """)
   end
 
-  defp write_story_brief(env, story_number, content \\ nil) do
-    write_file!(
-      env,
-      ".code_my_spec/qa/#{story_number}/brief.md",
-      content ||
-        """
-        # QA Brief: Story #{story_number}
+  defp write_story_brief(scope, story_number, content \\ nil) do
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put_legacy(
+        scope,
+        "qa_story_brief",
+        story_number,
+        content ||
+          """
+          # QA Brief: Story #{story_number}
 
-        ## Tool
+          ## Tool
 
-        web
+          web
 
-        ## Auth
+          ## Auth
 
-        Login as admin@example.com / password123
+          Login as admin@example.com / password123
 
-        ## Seeds
+          ## Seeds
 
-        mix run priv/repo/qa_seeds.exs
+          mix run priv/repo/qa_seeds.exs
 
-        ## What To Test
+          ## What To Test
 
-        - Visit /users/log_in
-        - Enter credentials
-        - Verify redirect to dashboard
+          - Visit /users/log_in
+          - Enter credentials
+          - Verify redirect to dashboard
 
-        ## Result Path
+          ## Result Path
 
-        .code_my_spec/qa/#{story_number}/result.md
-        """
-    )
+          .code_my_spec/qa/#{story_number}/result.md
+          """
+      )
   end
 
   defp write_story_result(env, story_number, content \\ nil) do
@@ -317,8 +320,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       story: story
     } do
       assert {:ok, prompt} = QaStory.command(scope, task)
-      assert prompt =~ ".code_my_spec/qa/plan.md"
-      assert prompt =~ ".code_my_spec/qa/#{story.number}/brief.md"
+      assert prompt =~ "read_document"
+      assert prompt =~ "document_type: \"qa_story_brief\""
       assert prompt =~ "# QA Story #{story.number}: "
 
       refute story.id != story.number and prompt =~ ".code_my_spec/qa/#{story.id}/",
@@ -331,8 +334,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
     test "same prompt regardless of existing artifacts", %{scope: scope, task: task, story: story} do
       assert {:ok, prompt_before} = QaStory.command(scope, task)
 
-      write_qa_plan(fixture_execution_context(scope))
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_qa_plan(scope)
+      write_story_brief(scope, story.number)
 
       assert {:ok, prompt_after} = QaStory.command(scope, task)
       assert prompt_before == prompt_after
@@ -373,7 +376,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
     test "returns invalid when plan doesn't exist", %{scope: scope, task: task} do
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "QA plan not found"
+      assert feedback =~ "QA plan document not found"
     end
 
     test "feedback points at qa_setup when plan is missing", %{scope: scope, task: task} do
@@ -385,13 +388,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       scope: scope,
       task: task
     } do
-      write_file!(fixture_execution_context(scope), ".code_my_spec/qa/plan.md", """
-      # QA Plan
+      {:ok, _} =
+        CodeMySpec.Qa.Documents.put_legacy(scope, "qa_plan", nil, """
+        # QA Plan
 
-      ## App Overview
+        ## App Overview
 
-      Phoenix app on port 4000.
-      """)
+        Phoenix app on port 4000.
+        """)
 
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
       assert feedback =~ "missing required section"
@@ -401,15 +405,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
     test "passes plan check when plan has all required sections", %{
       scope: scope,
-      task: task,
-      story: story
+      task: task
     } do
-      write_qa_plan(fixture_execution_context(scope))
+      write_qa_plan(scope)
 
       # With plan valid but no brief, should get brief phase feedback
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Brief not found"
-      assert feedback =~ ".code_my_spec/qa/#{story.number}/brief.md"
+      assert feedback =~ "Brief document not found"
+      assert feedback =~ "write_document"
     end
   end
 
@@ -422,17 +425,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
 
     test "returns invalid when brief doesn't exist", %{scope: scope, task: task} do
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-      assert feedback =~ "Brief not found"
+      assert feedback =~ "Brief document not found"
     end
 
-    # a83cb226: ExecutionContexts.read_file failing for any reason other than
-    # :enoent (a harness unreachable, a timeout) used to collapse into the
-    # same "Brief not found" text as a genuinely absent file -- so a caller
-    # checking for "brief not found" in the feedback could not tell a
-    # transient read failure from the brief never having been written.
-    # A directory at the brief's path forces File.read to fail with
-    # :eisdir, not :enoent, deterministically exercising that other branch.
-    test "a read failure that is not :enoent names the error, not \"not found\"", %{
+    # The old brief path must not affect the document-backed evaluator.
+    test "an unreadable legacy brief path does not stand in for a document", %{
       scope: scope,
       task: task,
       story: story
@@ -440,14 +437,11 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       env = fixture_execution_context(scope)
       brief_dir = Path.join(env.cwd, ".code_my_spec/qa/#{story.number}/brief.md")
       File.mkdir_p!(brief_dir)
+      assert File.dir?(brief_dir)
 
       assert {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
-
-      refute feedback =~ "Brief not found",
-             "a read failure read as the file never having been written: #{feedback}"
-
-      assert feedback =~ "Could not read the brief"
-      assert feedback =~ "eisdir"
+      assert feedback =~ "Brief document not found"
+      refute feedback =~ "eisdir"
     end
 
     test "returns invalid when brief is missing required sections", %{
@@ -455,7 +449,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number, """
+      write_story_brief(scope, story.number, """
       # QA Brief
 
       ## Tool
@@ -489,7 +483,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       # completion path. A brief with no result is a fine intermediate
       # state — the agent finished planning and either ran the tests in
       # the BEAM/browser or aborted (issue a15c252b).
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
     end
@@ -499,7 +493,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
 
       write_story_result(fixture_execution_context(scope), story.number, """
       # QA Result
@@ -526,7 +520,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
 
       write_story_result(fixture_execution_context(scope), story.number, """
       # QA Result
@@ -553,7 +547,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
       write_story_result(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
@@ -564,7 +558,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
 
       write_story_result(fixture_execution_context(scope), story.number, """
       # QA Result: Story #{story.number}
@@ -615,7 +609,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
       write_result_with_issues(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
@@ -633,7 +627,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
       write_result_with_issues(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
@@ -651,7 +645,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
       write_result_with_issues(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
@@ -681,7 +675,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
       write_result_with_issues(fixture_execution_context(scope), story.number)
 
       assert {:ok, :invalid, _} = QaStory.evaluate(scope, task)
@@ -697,7 +691,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       task: task,
       story: story
     } do
-      write_story_brief(fixture_execution_context(scope), story.number)
+      write_story_brief(scope, story.number)
 
       write_story_result(fixture_execution_context(scope), story.number, """
       # QA Result: Story #{story.number}
@@ -789,15 +783,14 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       assert feedback =~ "list_qa_attempts"
     end
 
-    test "a story with no attempts at all still walks the file chain", %{
+    test "a story with no attempts at all still checks the document chain", %{
       scope: scope,
       task: task
     } do
-      # The first-time path is unchanged: with nothing in the DB the evaluator
-      # still scaffolds plan -> brief -> result.
+      # A first attempt checks the project plan, then the story brief.
       {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
 
-      assert feedback =~ "plan" or feedback =~ "brief"
+      assert feedback =~ "Brief document not found"
     end
 
     test "a satisfying attempt short-circuits ahead of all of this", %{

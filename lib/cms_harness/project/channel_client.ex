@@ -1405,6 +1405,9 @@ defmodule CmsHarness.Project.ChannelClient do
         {:ok, _pid} ->
           Logger.info("[CmsHarness] re-attached terminal agent #{id}")
 
+        {:error, :session_ended} ->
+          Logger.info("[CmsHarness] terminal agent #{id} stays away: its session ended")
+
         {:error, reason} ->
           Logger.warning(
             "[CmsHarness] could not re-attach terminal agent #{id} (#{session_id}): " <>

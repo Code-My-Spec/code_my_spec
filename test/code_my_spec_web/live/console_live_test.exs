@@ -244,7 +244,7 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       |> element("[data-test='run-check'][data-check='telemetry']")
       |> render_click()
 
-      render_async(view, 5_000)
+      render_settled(view)
       saved = CodeMySpec.Telemetry.last_check(scope, "uat")
       assert saved != nil
 
@@ -276,7 +276,7 @@ defmodule CodeMySpecWeb.ConsoleLiveTest do
       |> element("[data-test='run-check'][data-check='telemetry']")
       |> render_click()
 
-      render_async(view, 5_000)
+      render_settled(view)
 
       result =
         view

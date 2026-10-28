@@ -105,7 +105,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2003Spex do
 
       when_ "its cycle time is shown", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
         {:ok, context |> Map.put(:index, index) |> Map.put(:html, html)}
       end
 

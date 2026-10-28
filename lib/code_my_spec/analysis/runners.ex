@@ -338,9 +338,10 @@ defmodule CodeMySpec.Analysis.Runners do
       |> diagnostics()
       |> Enum.map(fn failure ->
         %{
-          ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
+          ProblemConverter.from_test_failure(%{
             file: failure["file"],
             line: failure["line"],
+            test: failure["test"],
             message: failure["message"]
           })
           | source: "exunit"

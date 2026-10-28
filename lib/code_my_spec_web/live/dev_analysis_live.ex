@@ -44,6 +44,8 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.DevState
+  alias CodeMySpec.Analysis.StuckWork
+  alias CodeMySpec.Users.Scope
 
   @refresh_ms 2_000
   @harness_base_url "http://localhost:4004"
@@ -68,8 +70,15 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
     report = DevState.report()
     harness = fetch_harness_status()
 
+    project_timing =
+      Map.new(report.projects, fn project ->
+        scope = %Scope{active_project_id: project.project_id}
+        {project.project_id, StuckWork.snapshot(scope)}
+      end)
+
     assign(socket,
       report: report,
+      project_timing: project_timing,
       harness_error: harness_error(harness),
       rows: Enum.flat_map(report.projects, &copy_rows(&1, harness))
     )
@@ -252,6 +261,22 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
           <div :if={@harness_error} class="text-warning">harness: {@harness_error}</div>
         </div>
       </div>
+
+      <section aria-label="Promotion timing" class="mb-6">
+        <h2 class="text-xl font-semibold mb-2">Promotion timing (last 24 hours)</h2>
+        <div :for={project <- @report.projects} class="mb-3">
+          <h3 class="font-semibold">{project.project_name}</h3>
+          <% timing = Map.fetch!(@project_timing, project.project_id) %>
+          <p data-test="analysis-timing">
+            Analysis: {timing.analysis.started} started, {timing.analysis.finished} finished, {timing.analysis.open} open; oldest open {timing.analysis.oldest_open_minutes ||
+              0} minutes.
+          </p>
+          <p data-test="promotion-timing">
+            Promotion: {timing.promotion.started} queued, {timing.promotion.finished} finished, {timing.promotion.open} open; oldest open {timing.promotion.oldest_open_minutes ||
+              0} minutes.
+          </p>
+        </div>
+      </section>
 
       <div :if={@report.disagreements != []} class="alert alert-warning mb-6" role="alert">
         <div>

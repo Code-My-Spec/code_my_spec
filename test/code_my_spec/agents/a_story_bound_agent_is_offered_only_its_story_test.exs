@@ -172,6 +172,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
   # goes to agents without a story, and does not hold a bound agent's story.
   describe "a project-level requirement the story waits on" do
     setup ctx do
+      {:ok, plan} = CodeMySpec.Qa.Documents.get(ctx.scope, "qa_plan")
+      Repo.delete!(plan)
+
       :ok =
         CodeMySpec.ExecutionContexts.delete_file(
           ctx.execution_context,
@@ -179,6 +182,9 @@ defmodule CodeMySpec.Agents.AStoryBoundAgentIsOfferedOnlyItsStoryTest do
         )
 
       CodeMySpecSpex.GraphGivens.sync(ctx)
+      assert {:ok, nil} = CodeMySpec.Qa.Documents.get(ctx.scope, "qa_plan")
+      :ok = CodeMySpecSpex.Fixtures.recompute_graph(ctx.scope)
+      :ok = CodeMySpecSpex.Fixtures.settle_graph(ctx.scope)
       %{qa: reload(ctx.qa)}
     end
 

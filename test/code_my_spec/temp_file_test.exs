@@ -106,6 +106,45 @@ defmodule CodeMySpec.TempFileTest do
     end
   end
 
+  describe "sweep_orphans/2" do
+    test "removes an old entry whose creating process is gone" do
+      orphan = dead_owner_dir("orphan-test")
+      File.mkdir_p!(orphan)
+      backdate!(orphan, :timer.minutes(20))
+
+      TempFile.sweep_orphans(:timer.minutes(10))
+
+      refute File.exists?(orphan)
+    end
+
+    test "leaves an entry whose creating process is alive" do
+      owned = TempFile.dir("owned-test")
+      File.mkdir_p!(owned)
+      backdate!(owned, :timer.minutes(20))
+
+      TempFile.sweep_orphans(:timer.minutes(10))
+
+      assert File.exists?(owned)
+      File.rm_rf!(owned)
+    end
+
+    test "leaves a recent entry even when its process is gone" do
+      recent = dead_owner_dir("recent-test")
+      File.mkdir_p!(recent)
+
+      TempFile.sweep_orphans(:timer.minutes(10))
+
+      assert File.exists?(recent)
+      File.rm_rf!(recent)
+    end
+  end
+
+  # macOS pids stay below 100_000, so this owner is never running.
+  defp dead_owner_dir(prefix) do
+    random = 9 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    Path.join(System.tmp_dir!(), "#{prefix}-999999999_1_#{random}")
+  end
+
   defp backdate!(path, age_ms) do
     File.touch!(path, System.os_time(:second) - div(age_ms, 1000))
   end
