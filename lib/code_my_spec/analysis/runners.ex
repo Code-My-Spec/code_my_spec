@@ -67,9 +67,10 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  defp run_resolved("compiler", %Scope{} = _scope, _args, opts) do
+  defp run_resolved("compiler", %Scope{} = _scope, args, opts) do
     execute_opts =
-      [execution_context: opts[:execution_context], cwd: opts[:cwd]] |> maybe_output_file(opts)
+      [execution_context: opts[:execution_context], cwd: opts[:cwd], force: "--force" in args]
+      |> maybe_output_file(opts)
 
     result = Compile.execute(execute_opts)
 
@@ -175,7 +176,7 @@ defmodule CodeMySpec.Analysis.Runners do
       {:ok, failures, exit_code, output} ->
         from_raw("spex", %{
           "exit_status" => exit_code,
-          "output" => cap(output),
+          "output" => output,
           "diagnostics" =>
             Enum.map(failures, fn failure ->
               {file, line} = spex_location(failure.error, failure.spec_file)
@@ -229,7 +230,9 @@ defmodule CodeMySpec.Analysis.Runners do
   def from_raw("credo", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
 
-    {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)}, raw["output"])}
+    stats = %{"issues" => length(problems), "findings" => length(problems)}
+    stats = if is_integer(raw["files"]), do: Map.put(stats, "files", raw["files"]), else: stats
+    {:ok, summarize(problems, raw["exit_status"], stats, raw["output"])}
   end
 
   # The suite never ran (bad args, compile error, missing deps). An empty `:ok`
@@ -277,11 +280,11 @@ defmodule CodeMySpec.Analysis.Runners do
             {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
 
           failure ->
-            {:ok, with_partition(spex_result([failure], code, raw["output"]), raw)}
+            {:ok, with_partition(spex_result([failure], code, raw), raw)}
         end
 
       {failures, code} ->
-        {:ok, with_partition(spex_result(failures, code, raw["output"]), raw)}
+        {:ok, with_partition(spex_result(failures, code, raw), raw)}
     end
   end
 
@@ -321,13 +324,28 @@ defmodule CodeMySpec.Analysis.Runners do
 
   defp committed_rows_failure(_output), do: nil
 
-  defp spex_result(failures, exit_code, output) do
+  defp spex_result(failures, exit_code, raw) do
     problems =
       failures
       |> Enum.map(&%{spex_failure_to_problem(&1) | source: "spex"})
 
+    stats = %{"failures" => length(failures)}
+    reported = get_in(raw, ["stats", "tests"])
+
+    tests =
+      if is_integer(reported) do
+        reported
+      else
+        case Regex.scan(~r/(?:^|\n)\s*(\d+) tests?, \d+ failures?\b/, raw["output"] || "") do
+          [] -> nil
+          matches -> matches |> List.last() |> List.last() |> String.to_integer()
+        end
+      end
+
+    stats = if is_integer(tests), do: Map.put(stats, "tests", tests), else: stats
+
     problems
-    |> summarize(exit_code, %{"failures" => length(failures)}, output)
+    |> summarize(exit_code, stats, raw["output"])
     |> Map.put(:failures, Enum.map(failures, &Map.put_new(&1, "name", &1["scenario"])))
   end
 

@@ -15,6 +15,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
   require Logger
 
   alias CodeMySpec.Analysis.{
+    LiveRuns,
     Run,
     RunsRepository,
     Signatures
@@ -46,7 +47,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
            RunsRepository.finish_run(run, :completed, %{
              output: result.output,
              exit_status: result.exit_status,
-             stats: result.stats
+             stats: persisted_stats(run, result)
            }) do
       finished =
         CodeMySpec.Analysis.History.record!(
@@ -80,7 +81,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
           RunsRepository.finish_run(run, :completed, %{
             output: result.output,
             exit_status: result.exit_status,
-            stats: Signatures.put(result.stats, signatures)
+            stats: Signatures.put(persisted_stats(run, result), signatures)
           })
 
         finished =
@@ -142,10 +143,30 @@ defmodule CodeMySpec.Analysis.Reconciler do
            RunsRepository.finish_run(run, :completed, %{
              output: result.output,
              exit_status: result.exit_status,
-             stats: result.stats
+             stats: persisted_stats(run, result)
            }) do
       report_tied(scope, run, result)
       {:ok, finished}
+    end
+  end
+
+  # Capture completion events while they still exist, then render history only
+  # from this persisted snapshot. A missing event never becomes an invented zero.
+  defp persisted_stats(%Run{} = run, result) do
+    stats = result.stats || %{}
+
+    case {run.source, LiveRuns.get(run.id)} do
+      {"credo", %{finished?: true, totals: %{"files" => files}}}
+      when is_integer(files) ->
+        Map.put_new(stats, "files", files)
+
+      {"spex", %{finished?: true, tests: tests}} when is_list(tests) and tests != [] ->
+        stats
+        |> Map.put_new("tests", length(tests))
+        |> Map.put_new("failures", Enum.count(tests, &(&1.state == "failed")))
+
+      _ ->
+        stats
     end
   end
 

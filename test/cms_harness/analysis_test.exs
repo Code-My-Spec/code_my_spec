@@ -75,6 +75,7 @@ defmodule CmsHarness.AnalysisTest do
 
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
                   Path.expand("../client_utils", File.cwd!())
+  @boundary Path.expand("deps/boundary", File.cwd!())
 
   setup_all do
     {:ok, client_utils?: File.exists?(Path.join(@client_utils, "mix.exs"))}
@@ -126,7 +127,34 @@ defmodule CmsHarness.AnalysisTest do
 
   defp fetch_deps(_root, false), do: :ok
 
-  defp mix_exs(opts), do: mix_exs_for(Keyword.get(opts, :client_utils, false))
+  defp mix_exs(opts), do: mix_exs_boundary(Keyword.get(opts, :boundary, false), opts)
+
+  defp mix_exs_boundary(true, _opts) do
+    """
+    defmodule Demo.MixProject do
+      use Mix.Project
+
+      def project do
+        [
+          app: :demo,
+          version: "0.1.0",
+          elixir: "~> 1.14",
+          elixirc_paths: if(Mix.env() == :test, do: ["lib", "test/support"], else: ["lib"]),
+          compilers: [:diagnostics, :boundary] ++ Mix.compilers(),
+          deps: [
+            {:client_utils, path: #{inspect(@client_utils)}},
+            {:boundary, path: #{inspect(@boundary)}}
+          ]
+        ]
+      end
+
+      def application, do: [extra_applications: [:logger]]
+    end
+    """
+  end
+
+  defp mix_exs_boundary(false, opts),
+    do: mix_exs_for(Keyword.get(opts, :client_utils, false))
 
   # The two fixture shapes the module is about: one whose `compilers` list has
   # `:diagnostics` and one without. The difference is the whole point — see the
@@ -175,6 +203,59 @@ defmodule CmsHarness.AnalysisTest do
   end
 
   describe "compiler" do
+    test "forced certification finds a forbidden call in test/support", ctx do
+      with_client_utils(ctx, "test/support boundary diagnostics", fn ->
+        project =
+          mix_project(
+            %{
+              "lib/demo.ex" =>
+                "defmodule Demo do\n  use Boundary, top_level?: true, deps: []\nend\n",
+              "lib/foreign.ex" =>
+                "defmodule Foreign do\n  use Boundary, top_level?: true, deps: []\n  def ping, do: :ok\nend\n",
+              "test/support/crossing.ex" =>
+                "defmodule Demo.Crossing do\n  def call, do: Foreign.ping()\nend\n"
+            },
+            client_utils: true,
+            boundary: true
+          )
+
+        assert {:ok, result} = Analysis.run(project, "compiler", ["--force"])
+        assert result["diagnostics_available"]
+
+        assert Enum.any?(result["diagnostics"], fn diagnostic ->
+                 diagnostic["file"] =~ "test/support/crossing.ex" and
+                   diagnostic["severity"] in ["warning", "error"] and
+                   diagnostic["message"] =~ "Foreign"
+               end),
+               "the harness gate must report the test/support boundary crossing"
+
+        scope = %CodeMySpec.Users.Scope{cwd: project.root}
+        environment = CodeMySpec.ExecutionContexts.ExecutionContext.new(:local, project.root)
+
+        assert {:ok, %{problems: initial_problems}} =
+                 CodeMySpec.Analysis.Runners.run("compiler", scope, [],
+                   execution_context: environment
+                 )
+
+        assert Enum.any?(initial_problems, &(&1.file_path =~ "test/support/crossing.ex"))
+
+        # An incremental second compile sees no changed files. Certification
+        # must force Boundary to report the already-compiled violation again.
+
+        assert {:ok, %{problems: problems}} =
+                 CodeMySpec.Analysis.Runners.run("compiler", scope, ["--force"],
+                   execution_context: environment
+                 )
+
+        assert Enum.any?(problems, fn problem ->
+                 problem.file_path =~ "test/support/crossing.ex" and
+                   problem.severity in [:warning, :error] and
+                   problem.message =~ "Foreign"
+               end),
+               "copy certification must report the same test/support boundary crossing as the gate"
+      end)
+    end
+
     test "a file that cannot compile comes back as an error diagnostic", ctx do
       with_client_utils(ctx, "compile diagnostics", fn ->
         project =

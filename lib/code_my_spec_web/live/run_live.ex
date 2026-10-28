@@ -135,21 +135,27 @@ defmodule CodeMySpecWeb.RunLive do
   defp findings(nil), do: []
   defp findings(live), do: live.findings
 
-  # A credo run counts what it checked and found (story 1144).
-  defp totals(%{source: "credo"}, %{totals: %{"files" => files, "findings" => found}}, _, _),
-    do: "#{plural(files, "file")}, #{plural(found, "finding")}"
+  # Finished totals are a property of the recorded run. LiveRuns can disappear
+  # on restart or eviction, so it must never supply counts for history pages.
+  defp totals(%{source: "credo", stats: stats}, _live, _tests, _failures) do
+    stats = stats || %{}
+    count = stats["findings"] || stats["issues"]
+    files = stats["files"]
 
-  defp totals(%{source: "credo"}, live, _tests, _failures),
-    do: plural(length(findings(live)), "finding")
+    if is_integer(files) and is_integer(count) do
+      "#{plural(files, "file")}, #{plural(count, "finding")}"
+    else
+      "#{recorded_count(files, "file")}, #{recorded_count(count, "finding")}"
+    end
+  end
 
-  # A run that reported nothing live (a scoped run, or one from before story
-  # 1141) still recorded its counts: it read "0 tests" after five passed.
-  defp totals(%{stats: %{"tests" => count} = stats}, _live, [], _failures)
-       when is_integer(count),
-       do: "#{plural(count, "test")}, #{plural(stats["failures"] || 0, "failure")}"
+  defp totals(%{stats: stats}, _live, _tests, _failures) do
+    stats = stats || %{}
+    "#{recorded_count(stats["tests"], "test")}, #{recorded_count(stats["failures"], "failure")}"
+  end
 
-  defp totals(_run, _live, tests, failures),
-    do: "#{plural(length(tests), "test")}, #{plural(failures, "failure")}"
+  defp recorded_count(count, noun) when is_integer(count), do: plural(count, noun)
+  defp recorded_count(_count, noun), do: "#{noun} count not recorded"
 
   defp status_class("running"), do: "badge-info"
   defp status_class("finished"), do: "badge-success"

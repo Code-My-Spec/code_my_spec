@@ -42,7 +42,7 @@ defmodule CodeMySpec.Analysis.Run do
           id: integer() | nil,
           source: String.t(),
           kind: :full | :partial,
-          status: :running | :completed | :failed,
+          status: :running | :completed | :failed | :abandoned,
           args: map() | nil,
           stats: map() | nil,
           findings: map() | nil,
@@ -74,7 +74,9 @@ defmodule CodeMySpec.Analysis.Run do
     # its source report `failed` when nothing had failed, and — until
     # `latest_completed_run/2` — made a good result read stale. 14 of these in
     # half an hour on one harness.
-    field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded, :cancelled]
+    field :status, Ecto.Enum,
+      values: [:running, :completed, :failed, :superseded, :cancelled, :abandoned]
+
     field :args, :map
     field :stats, :map
     field :findings, :map

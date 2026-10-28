@@ -121,6 +121,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:read_model, nil)
       |> assign(:pending, %{})
       |> assign(:analysis_refs, %{})
+      |> assign(:analysis_pending, %{})
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:silences, 0)
@@ -213,7 +214,11 @@ defmodule CmsHarness.Project.ChannelClient do
        "instance" => instance(),
        # Runs still in flight here. The server's join sweep closes only what
        # goes unclaimed: a dropped socket does not kill the analyzers.
-       "active_runs" => AnalysisServer.in_flight(project.root),
+       "active_runs" =>
+         Enum.uniq(
+           AnalysisServer.in_flight(project.root) ++
+             Map.keys(Map.get(socket.assigns, :analysis_pending, %{}))
+         ),
        # The app this copy is actually running, from the harness's own
        # `state.json`. A reply or push lost to a restart or reconnect leaves the
        # server holding a stale commit; the join is where it converges. `nil`
@@ -266,6 +271,10 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:refused, nil)
       |> assign(:silences, 0)
       |> assign(:read_model_refused, false)
+
+    for payload <- Map.values(Map.get(socket.assigns, :analysis_pending, %{})) do
+      GenServer.cast(self(), {:analysis_result, payload})
+    end
 
     schedule_read_model_refresh()
     schedule_preview_check()
@@ -638,8 +647,22 @@ defmodule CmsHarness.Project.ChannelClient do
       {nil, _} ->
         handle_pending_reply(ref, reply, socket)
 
-      {source, refs} ->
-        {:ok, log_analysis_reply(source, reply, assign(socket, :analysis_refs, refs))}
+      {payload, refs} ->
+        socket = assign(socket, :analysis_refs, refs)
+
+        socket =
+          case reply do
+            {:ok, _} ->
+              update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
+
+            :ok ->
+              update_in(socket.assigns.analysis_pending, &Map.delete(&1, payload["run_id"]))
+
+            _ ->
+              socket
+          end
+
+        {:ok, log_analysis_reply(payload["source"], reply, socket)}
     end
   end
 
@@ -2460,6 +2483,13 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_cast({:analysis_result, payload}, %{assigns: %{joined: true}} = socket) do
+    socket =
+      assign(
+        socket,
+        :analysis_pending,
+        Map.put(Map.get(socket.assigns, :analysis_pending, %{}), payload["run_id"], payload)
+      )
+
     case transport().push(
            socket,
            socket.assigns.topic,
@@ -2473,7 +2503,7 @@ defmodule CmsHarness.Project.ChannelClient do
             "#{socket.assigns.project.root} (#{payload["status"]})"
         )
 
-        {:noreply, put_in(socket.assigns.analysis_refs[ref], payload["source"])}
+        {:noreply, put_in(socket.assigns.analysis_refs[ref], payload)}
 
       {:error, reason} ->
         Logger.error(
@@ -2484,15 +2514,15 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
-  # Not queued: the server closes a departed connection's unclaimed runs, and
-  # the rejoin re-runs whatever is still stale.
+  # A completed analyzer is no longer in AnalysisServer's in-flight list.
+  # Keep its result through reconnect and claim the run until the server replies.
   def handle_cast({:analysis_result, payload}, socket) do
-    Logger.error(
-      "[CmsHarness] dropped the #{payload["source"]} result for " <>
-        "#{socket.assigns.project.root} — not connected. It will be re-run on rejoin."
-    )
-
-    {:noreply, socket}
+    {:noreply,
+     assign(
+       socket,
+       :analysis_pending,
+       Map.put(Map.get(socket.assigns, :analysis_pending, %{}), payload["run_id"], payload)
+     )}
   end
 
   # Dropped: a manifest describes *now*. The rescan on rejoin is the recovery.

@@ -180,6 +180,17 @@ defmodule CodeMySpec.TestImpactTest do
     end
   end
 
+  describe "reference_map_script/0" do
+    # Run as `mix run -e` in a project's own VM, where a syntax error would
+    # only show as a gate that never records a selection.
+    test "is a well-formed script that writes compile.test_refs" do
+      script = TestImpact.reference_map_script()
+
+      assert {:ok, _} = Code.string_to_quoted(script)
+      assert script =~ "compile.test_refs"
+    end
+  end
+
   describe "read_baseline/1" do
     @tag :tmp_dir
     test "an absent or unrecognised manifest is an error, never an empty baseline", %{

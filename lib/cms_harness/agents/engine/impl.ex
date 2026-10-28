@@ -445,10 +445,24 @@ defmodule CmsHarness.Agents.Engine.Impl do
   def interrupt_turn(state) do
     case stop_turn_task(state.turn.task) do
       :ok ->
-        resume_interrupted(state)
+        # The execution may have reported its last completed tool call before
+        # the interrupt arrived, while that report is still behind the call in
+        # this process's mailbox. Once shutdown completes, no more reports can
+        # arrive from this turn; collect the pending ones before choosing what
+        # history to keep.
+        resume_interrupted(collect_turn_progress(state))
 
       {:error, failure} ->
         {:stop, {:turn_shutdown_unconfirmed, :interrupted, failure}, state}
+    end
+  end
+
+  defp collect_turn_progress(state) do
+    receive do
+      {:turn_progress, messages} ->
+        collect_turn_progress(%{state | turn: %{state.turn | progress: messages}})
+    after
+      0 -> state
     end
   end
 

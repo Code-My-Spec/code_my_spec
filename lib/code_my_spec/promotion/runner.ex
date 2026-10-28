@@ -260,7 +260,8 @@ defmodule CodeMySpec.Promotion.Runner do
         copy_id,
         "promotion_select_tests",
         %{"root" => root, "base" => base, "head" => head},
-        @git_timeout,
+        # Compiles the test env at the gate head and requires every test file.
+        @restart_timeout,
         fn env -> Steps.select_tests(env, root, base, head) end
       )
 
