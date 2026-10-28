@@ -76,6 +76,13 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     story
   end
 
+  @doc "Certify the fixture story after a candidate commit and record the QA pass it reviewed."
+  def certify_current_story(%{agent_root: root, story: story} = context) do
+    :ok = StoryIssueBag.certify(context.scope, story.id, head_of(context, root))
+    {:ok, _} = Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
+    context
+  end
+
   defp qa(%{agent_root: root} = context, story, :passed) do
     :ok =
       StoryIssueBag.certify(
@@ -252,6 +259,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     {_, 0} = git(context, running_root, ["config", "user.name", "Spex"])
 
     write(running_root, "lib/broken_oaths/diplomacy/war.ex", war(":base"))
+    write(running_root, ".gitignore", "/_build/\n")
 
     # The project's own restart recipe, which is the seam a promotion uses
     # instead of knowing how to bring a Phoenix app up. It compiles before it
@@ -341,7 +349,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
 
     context
     |> Map.put(:gate_root, gate_root)
-    |> Map.put(:gate, gate)
+    |> Map.put(:gate, Map.merge(gate, %{root: gate_root, id: gate.working_copy_id}))
     |> Map.put(:gate_socket, socket)
   end
 
@@ -360,8 +368,18 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     runs = gate_runs(context.gate_socket, sources)
     # Read once the runs are here: the batch is built before they are sent.
     head = head_of(context, context.gate_root)
+    :ok = Fixtures.prepare_promotion_flake(context.scope, context.gate, head)
 
     for %{"run_id" => id, "source" => source} <- runs do
+      diagnostics =
+        if source == "exunit" do
+          Enum.map(Fixtures.promotion_failure_paths(context.gate), fn file ->
+            %{"file" => file, "line" => 1, "severity" => "error", "message" => "test failure"}
+          end) ++ Map.get(findings, source, [])
+        else
+          Map.get(findings, source, [])
+        end
+
       started = %{"run_id" => id, "start_commit" => head, "start_tree_dirty" => false}
       push(context.gate_socket, "analysis_started", started)
 
@@ -371,7 +389,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
           "source" => source,
           "status" => "ok",
           "completed_commit" => head,
-          "result" => raw_result(source, Map.get(findings, source, []))
+          "result" => raw_result(source, diagnostics)
         })
 
       assert_reply(ref, :ok, _, 10_000)
@@ -576,12 +594,15 @@ defmodule CodeMySpecSpex.PromotionHelpers do
   is synchronous now — nothing in it is long-running, the restart was already
   detached — so it answers, and these criteria cover the door that is used.
   """
-  def promote(context, story_number) do
+  def promote(context, story_number), do: promote(context, story_number, [])
+
+  def promote(context, story_number, opts) do
     frame = %Anubis.Server.Frame{
       assigns: %{current_scope: context.scope, agent_id: Map.get(context, :agent_id)}
     }
 
-    {:reply, response, _frame} = Promote.execute(%{story_number: story_number}, frame)
+    args = Map.merge(%{story_number: story_number, fresh: false}, Map.new(opts))
+    {:reply, response, _frame} = Promote.execute(args, frame)
     response
   end
 

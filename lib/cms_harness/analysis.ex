@@ -381,10 +381,12 @@ defmodule CmsHarness.Analysis do
     {:error, "#{source} crashed: #{Exception.message(exception)}"}
   end
 
+  # Reduced to the three fields the server's converter reads.
   defp test_failure(%{error: nil} = failure) do
     %{
       "file" => nil,
       "line" => nil,
+      "name" => failure.full_title || failure.title,
       "test" => failure.full_title || failure.title,
       "message" => failure.full_title || failure.title
     }
@@ -394,6 +396,7 @@ defmodule CmsHarness.Analysis do
     %{
       "file" => error.file,
       "line" => error.line,
+      "name" => failure.full_title || failure.title,
       "test" => failure.full_title || failure.title,
       "message" => error.message
     }

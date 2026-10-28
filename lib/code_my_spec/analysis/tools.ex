@@ -5,6 +5,7 @@ defmodule CodeMySpec.Analysis.Tools do
     do: [
       __MODULE__.GetAnalysisOutput,
       __MODULE__.GetAnalysisLive,
+      __MODULE__.GetAnalysisHistory,
       __MODULE__.GetStuckWork,
       __MODULE__.AwaitAnalysis
     ]

@@ -28,6 +28,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
+      CodeMySpec.TestImpact,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation.Blocking,
@@ -962,6 +963,9 @@ defmodule CodeMySpec.Promotion do
       # stop hook sweeps, never what promote demands.
       {answered, missing} = answers_at(scope, Run.sources(), head, opts[:fresh_since])
 
+      {answered, missing} =
+        retry_failed_answers(scope, answered, missing, opts[:retry_failed_since])
+
       case blocking_problems(scope, Map.keys(answered)) do
         [] -> certify(scope, answered, missing, head, named, opts)
         problems -> gate_result(problems, named)
@@ -1068,6 +1072,28 @@ defmodule CodeMySpec.Promotion do
     {Map.new(answered), Enum.map(missing, &elem(&1, 0))}
   end
 
+  # A new queue attempt may reuse green answers at the same commit. A red
+  # answer from before this attempt must get one new run; once that run lands,
+  # its findings decide this attempt without starting it over. Keep the old run
+  # for same-commit flake evidence.
+  defp retry_failed_answers(_scope, answered, missing, nil), do: {answered, missing}
+
+  defp retry_failed_answers(scope, answered, missing, queued_at) do
+    failed_sources =
+      scope
+      |> blocking_problems(Map.keys(answered))
+      |> Enum.map(& &1.source)
+      |> MapSet.new()
+
+    {retry, reusable} =
+      Enum.split_with(answered, fn {source, run} ->
+        MapSet.member?(failed_sources, source) and
+          not is_nil(run.finished_at) and DateTime.compare(run.finished_at, queued_at) == :lt
+      end)
+
+    {Map.new(reusable), missing ++ Enum.map(retry, &elem(&1, 0))}
+  end
+
   defp since(run, nil), do: run
   defp since(nil, _fresh_since), do: nil
 
@@ -1143,7 +1169,12 @@ defmodule CodeMySpec.Promotion do
   # runs are visibly the same verdict.
   defp certified_by(answered) do
     for source <- Run.sources(), %Run{} = run <- [answered[source]] do
-      %{source: source, finished_at: run.finished_at, commit: run.completed_commit}
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
     end
   end
 

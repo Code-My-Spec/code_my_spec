@@ -529,7 +529,7 @@ defmodule CodeMySpec.Analysis do
        when is_map(raw) do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
-        result = note_analyzer_staleness(result, payload)
+        result = result |> note_analyzer_staleness(payload) |> put_live_timings(run)
         reconcile_or_finish_tied(scope, run, result, payload["tied_to"])
 
       {:error, reason} ->
@@ -583,6 +583,28 @@ defmodule CodeMySpec.Analysis do
 
   defp reconcile_or_finish_tied(scope, run, result, tied_to) when is_integer(tied_to),
     do: Reconciler.finish_tied(scope, run, result)
+
+  # Keep the streamed timing data with the ledger row so promotion history can
+  # still show slow tests and files after LiveRuns prunes its in-memory state.
+  defp put_live_timings(result, %Run{source: source, id: run_id})
+       when source in ["exunit", "spex"] do
+    case LiveRuns.get(run_id) do
+      %{tests: tests, file_timings: files} ->
+        timed_tests =
+          for %{name: name, file: file, duration_us: duration} <- tests,
+              is_binary(name) and is_integer(duration) and duration >= 0 do
+            %{"name" => name, "file" => file, "duration_us" => duration}
+          end
+
+        timings = %{"tests" => timed_tests, "files" => files}
+        %{result | stats: Map.put(result.stats || %{}, "timings", timings)}
+
+      _ ->
+        result
+    end
+  end
+
+  defp put_live_timings(result, _run), do: result
 
   # Whether the harness ran analyzer code older than the tree it judged —
   # computed there, carried on `stats`, so the stop response can say whether

@@ -691,6 +691,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     |> String.slice(0, 500)
   end
 
+  def failure_text(%Alloy.Provider.Error{message: "Codex provider fault" <> _ = message}),
+    do: String.slice(message, 0, 500)
+
   # A failed result carries the whole run; only its `error` field is wanted.
   def failure_text(%{error: reason}) when reason != nil, do: failure_text(reason)
 
@@ -746,8 +749,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
     end)
   end
 
-  defp provider_config(Alloy.Provider.Codex, config, state) do
+  defp provider_config(CmsHarness.Agents.CodexWithTools, config, state) do
     config
+    |> Map.put(:agent_id, state.agent_id)
     |> Map.put(:provider_state, state.provider_state)
     |> Map.put(:session_generation, state.session_generation)
   end

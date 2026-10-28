@@ -1,12 +1,12 @@
 defmodule CodeMySpec.AgentTasks.QaSetup do
   @moduledoc """
-  Produce the project-wide QA plan at `.code_my_spec/qa/plan.md`.
+  Produce the project-wide `qa_plan` document in the database.
   """
 
+  alias CodeMySpec.Documents, as: DocumentParser
   alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Qa.Documents
   alias CodeMySpec.{ExecutionContexts, Paths}
-  alias CodeMySpec.Files
-  alias CodeMySpec.Files.File, as: FileRecord
 
   @doc_type "qa_plan"
   @scripts_dir Path.join(Paths.qa_dir(), "scripts")
@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   # ============================================================================
 
   def dispatch(_node) do
-    "Produce the project-wide QA plan at `.code_my_spec/qa/plan.md`. " <>
+    "Produce the project-wide `qa_plan` document in the database. " <>
       "Probes every running endpoint (listening ports, auth pipelines, MCP " <>
       "transports) then writes the plan covering App Overview, Tools Registry, " <>
       "and Seed Strategy. Use when starting QA work and no plan exists, or " <>
@@ -39,7 +39,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     env = CodeMySpec.AgentTasks.execution_context(scope)
 
     routers = list_routers(env)
-    existing_plan = read_existing_plan(env)
+    existing_plan = read_existing_plan(scope)
     existing_seeds = list_paths(env, @existing_seeds_glob)
     existing_scripts = list_paths(env, Path.join(@scripts_dir, "*"))
 
@@ -58,80 +58,47 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   end
 
   # ============================================================================
-  # Evaluate — parse plan.md against the qa_plan document spec
+  # Evaluate the stored qa_plan document
   # ============================================================================
 
   @doc """
-  Validate `plan.md` by parsing it against the registered `qa_plan` document
+  Validate the stored document against the registered `qa_plan` document
   spec. Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
   """
   def evaluate(scope, _task) do
-    plan_path = Paths.qa_plan()
+    case Documents.get(scope, "qa_plan") do
+      {:ok, %{content: content}} when is_binary(content) and content != "" ->
+        case DocumentParser.create_dynamic_document(content, @doc_type) do
+          {:ok, _} -> {:ok, :valid}
+          {:error, reason} -> {:ok, :invalid, plan_feedback(nil, reason)}
+        end
 
-    # The synced record first. `Files.Scanner` parses the plan against the same
-    # document spec at sync time, on the machine that has it — this server may
-    # have no working copy at all, and reading one it does not have reported the
-    # plan missing while it sat in the agent's directory. Two drills ended that
-    # way.
-    case Files.get_by_path(scope, plan_path) do
-      %FileRecord{valid: true} ->
-        {:ok, :valid}
-
-      %FileRecord{validation_errors: errors} ->
-        {:ok, :invalid, plan_feedback(plan_path, qa_plan_error(errors))}
-
-      nil ->
+      {:ok, nil} ->
         {:ok, :invalid,
-         plan_feedback(
-           plan_path,
-           "QA plan not found at `#{plan_path}`. Write the plan and stop the session again."
-         )}
+         plan_feedback(nil, "QA plan document not found. Write it with write_document.")}
+
+      {:error, reason} ->
+        {:ok, :invalid, "Could not read QA plan document: #{inspect(reason)}"}
     end
-  end
-
-  # The scanner stores the validator's raw error; the wording an agent reads is
-  # shaped here, where the prompt is built. "Missing required sections: tools
-  # registry" tells you less than "missing required section(s): `## Tools
-  # Registry`", and this is the text someone acts on.
-  defp qa_plan_error(%{"errors" => %{"plan" => reason}}) when is_binary(reason) do
-    case Regex.run(~r/^`plan\.md` invalid — (.*)$/s, reason) do
-      [_, inner] -> "QA plan " <> translate_error(inner)
-      _ -> reason
-    end
-  end
-
-  defp qa_plan_error(_), do: "QA plan is not valid."
-
-  defp translate_error("Missing required sections: " <> sections) do
-    formatted =
-      sections
-      |> String.split(", ")
-      |> Enum.map_join(", ", &"`## #{title_case(&1)}`")
-
-    "missing required section(s): #{formatted}"
-  end
-
-  defp translate_error("Empty required sections: " <> sections) do
-    formatted =
-      sections
-      |> String.split(", ")
-      |> Enum.map_join(", ", &"`## #{title_case(&1)}`")
-
-    "missing content under required section(s): #{formatted}"
-  end
-
-  defp translate_error(reason), do: "invalid: #{reason}"
-
-  defp title_case(string) do
-    string
-    |> String.split(" ")
-    |> Enum.map_join(" ", &String.capitalize/1)
   end
 
   defp plan_feedback(_plan_path, reason) do
     spec = DocumentSpecProjector.project_spec(@doc_type)
-    "#{reason}\n\n## QA Plan Format\n\n#{spec}"
+    "#{format_reason(reason)}\n\n## QA Plan Format\n\n#{spec}"
   end
+
+  defp format_reason("Missing required sections: " <> sections) do
+    names =
+      sections
+      |> String.split(", ")
+      |> Enum.map_join(", ", fn section ->
+        "`## #{String.split(section, " ") |> Enum.map_join(" ", &String.capitalize/1)}`"
+      end)
+
+    "Missing required sections: #{names}"
+  end
+
+  defp format_reason(reason), do: reason
 
   # ============================================================================
   # Validation
@@ -154,9 +121,9 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     |> Enum.reject(&is_nil/1)
   end
 
-  defp read_existing_plan(env) do
-    case ExecutionContexts.read_file(env, Paths.qa_plan()) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 -> content
+  defp read_existing_plan(scope) do
+    case Documents.get(scope, "qa_plan") do
+      {:ok, %{content: content}} -> content
       _ -> nil
     end
   end
@@ -191,7 +158,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     """
     # QA Setup: Infrastructure Planning
 
-    Your job is to write `#{Paths.qa_plan()}` — a QA plan covering every running
+    Your job is to write the `qa_plan` document with `write_document` — a QA plan covering every running
     surface of this app: every web endpoint, every API pipeline, every MCP
     server, every hook URL. Real selectors. Real headers. Real seed paths.
 
@@ -208,9 +175,9 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     """
     ## Document format
 
-    Write the QA plan at `#{Paths.qa_plan()}` matching this spec exactly. The
-    validator parses it as a `qa_plan` document — extra H2 sections are
-    rejected, and required sections must be non-empty.
+    Use `write_document` with `document_type: "qa_plan"` and the plan content.
+    Read it with `read_document`. The validator rejects extra H2 sections and
+    requires non-empty required sections.
 
     #{doc_spec}\
     """
@@ -275,7 +242,7 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     """
     ## Existing plan — patch rather than rewrite
 
-    A plan already exists at `#{Paths.qa_plan()}`. The playbook covers the
+    A `qa_plan` document already exists. Read it with `read_document`. The playbook covers the
     idempotent-rerun procedure: diff against the Router Files and Inventory
     sections above, and edit only the sections that drifted. Preserve working
     scripts and credentials — the plan is institutional memory.\

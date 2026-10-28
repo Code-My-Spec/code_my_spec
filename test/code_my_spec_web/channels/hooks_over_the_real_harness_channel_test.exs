@@ -7,14 +7,9 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
   reads fetched back over the same socket (`fs_request` / `fs_result`) from a
   checkout on disk. See `CodeMySpecSpex.HarnessHooks`.
 
-  The stop exercised here validates a QA brief the session wrote. The cloud has
-  no disk: it knows the brief changed from the harness's manifest and the
-  session's `post-tool-use`, and it can only judge the brief's content by asking
-  the harness to read it. So the same stop runs twice — first recording a
-  problem naming the sections the written brief lacks, then clearing it once the
-  brief is complete — and the record has to follow what is on disk. A cut
-  `fs_request` path reads as "could not read, nothing to report" and records
-  nothing the first time. Neither stop blocks: problems gate at promotion.
+  The stop exercised here follows writes sent through the real harness channel.
+  QA briefs now live in shared project documents, so writing a legacy brief
+  file and stopping the session must leave the stored document unchanged.
 
   Driven from two async test modules below, so the two run at once (ExUnit
   runs one module's tests in sequence, and modules side by side): two projects,
@@ -60,7 +55,7 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
   `.code_my_spec/qa/result.md`
   """
 
-  @doc "session-start, then two stops that judge a file read over the channel."
+  @doc "Session-start and two stops across legacy file writes on the real channel."
   def drive_a_session(ctx) do
     ctx =
       HarnessHooks.given_a_live_harness(ctx, files: %{"lib/app.ex" => "defmodule App do\nend\n"})
@@ -74,23 +69,27 @@ defmodule CodeMySpecWeb.HooksOverTheRealHarnessChannel do
     assert is_binary(started["agent_id"]),
            "session-start should register the session as an agent in the cloud; got #{inspect(started)}"
 
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put(ctx.scope, "qa_story_brief", story.number, @complete_brief)
+
     write_brief(ctx, session_id, brief, @incomplete_brief)
     first = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
 
-    refute first["decision"] == "block", "problems never block a stop: #{inspect(first)}"
-
-    assert [problem] = brief_problems(ctx, brief),
-           "the incomplete brief, read over the channel, should be recorded as a problem"
-
-    assert problem.message =~ "Missing required sections: auth, seeds, what to test, result path"
+    refute first["decision"] == "block", "stop refused: #{inspect(first)}"
+    assert_stored_brief(ctx.scope, story.number)
+    assert brief_problems(ctx, brief) == []
 
     write_brief(ctx, session_id, brief, @complete_brief)
     second = HarnessHooks.post_hook(ctx, "stop", %{"session_id" => session_id})
 
-    refute second["decision"] == "block", "expected the stop through: #{inspect(second)}"
+    refute second["decision"] == "block", "stop refused: #{inspect(second)}"
+    assert_stored_brief(ctx.scope, story.number)
+    assert brief_problems(ctx, brief) == []
+  end
 
-    assert brief_problems(ctx, brief) == [],
-           "the brief on disk is complete, so a problem still standing means it was never re-read"
+  defp assert_stored_brief(scope, story_number) do
+    assert {:ok, %{content: @complete_brief}} =
+             CodeMySpec.Qa.Documents.get(scope, "qa_story_brief", story_number)
   end
 
   defp brief_problems(ctx, brief) do

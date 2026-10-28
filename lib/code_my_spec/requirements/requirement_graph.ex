@@ -395,11 +395,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   Returns `{{nodes, edges}, computed_at}`: `computed_at` is the latest row's
   `checked_at`, or `nil` when this vantage has no rows. Reads compute nothing.
   """
-  @spec cached_graph(Scope.t()) :: {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
+  @spec cached_graph(Scope.t(), keyword()) ::
+          {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
   def cached_graph(%Scope{} = scope, opts \\ []) do
-    {graph, _actionable, computed_at} = cached_graph_with_actionable(scope, opts)
-    {graph, computed_at}
+    if Keyword.get(opts, :settle, true), do: settle(scope)
+
+    {nodes, edges} = served_graph(scope, read_context(scope))
+    {{nodes, edges}, last_checked_at(nodes)}
   end
+
+  @doc """
+  What a read needs at the scope's vantage: `Preloader.read_context/1`, never
+  the computation's `Preloader.load/1`. See knowledge/requirements_graph,
+  "The read path".
+  """
+  @spec read_context(Scope.t()) :: map()
+  def read_context(%Scope{} = scope),
+    do: scope |> normalize_vantage() |> Preloader.read_context()
+
+  @doc """
+  For a reader that already holds `read_context/1`'s context, so one read loads
+  it once. Settles, loads and ranks nothing: the caller settled first.
+  """
+  @spec served_graph(Scope.t(), map()) :: {[Requirement.t()], [edge()]}
+  def served_graph(%Scope{} = scope, ctx),
+    do: scope |> normalize_vantage() |> Projection.load(ctx)
 
   @doc """
   `cached_graph/1` plus the actionable set, for readers that want both without

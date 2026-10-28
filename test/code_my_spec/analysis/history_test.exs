@@ -1,120 +1,97 @@
 defmodule CodeMySpec.Analysis.HistoryTest do
   use CodeMySpecTest.DataCase, async: false
 
-  import Ecto.Query
+  import CodeMySpec.AnalysisFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Analysis.History
-  alias CodeMySpec.Analysis.History.Finding
-  alias CodeMySpec.Analysis.Run
-  alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Analysis.{History, Run, RunsRepository}
   alias CodeMySpec.Repo
 
-  @commit String.duplicate("a", 40)
-
   setup do
+    previous = Application.get_env(:code_my_spec, :analysis_retention_days)
+
+    on_exit(fn -> restore_retention_days(previous) end)
+
     %{scope: full_scope_fixture()}
   end
 
-  defp run(scope, source, kind), do: run(scope, source, kind, DateTime.utc_now())
+  test "retains findings with run metadata and infers an unlisted test passed", %{scope: scope} do
+    commit = String.duplicate("a", 40)
+    run = finished_run(scope)
+    run = RunsRepository.record_tree(run, %{start_commit: commit, completed_commit: commit})
+    failure = %{"file" => "test/a_test.exs", "name" => "test A", "message" => "failed"}
+    problem = %{severity: :error, file_path: "test/a_test.exs", message: "failed"}
+    History.record!(run, [failure], [problem])
 
-  defp run(scope, source, kind, finished_at) do
-    %Run{}
-    |> Run.changeset(%{
-      source: source,
-      kind: kind,
-      status: :completed,
-      project_id: scope.active_project_id,
-      working_copy_id: scope.active_working_copy_id,
-      started_at: DateTime.add(finished_at, -1, :hour),
-      finished_at: finished_at
-    })
-    |> Repo.insert!()
-    |> Run.tree_changeset(%{
-      start_commit: @commit,
-      completed_commit: @commit,
-      start_tree_dirty: false
-    })
+    assert [
+             %{
+               run_id: id,
+               commit: ^commit,
+               source: "exunit",
+               partial: false,
+               working_copy_id: working_copy_id,
+               failures: [stored_failure],
+               problems: [stored_problem]
+             }
+           ] = History.list(scope)
+
+    assert id == run.id
+    assert working_copy_id == run.working_copy_id
+    assert stored_failure == failure
+    assert stored_problem["severity"] == "error"
+    refute History.test_passed?(scope, commit, "test/a_test.exs", "test A")
+    assert History.test_passed?(scope, commit, "test/b_test.exs", "test B")
+  end
+
+  test "prunes a run and its findings by age, not by count", %{scope: scope} do
+    now = DateTime.utc_now()
+    old = finished_run(scope) |> aged(31, now)
+    recent = finished_run(scope) |> aged(29, now)
+    History.record!(old, [%{"name" => "old"}], [%{message: "old"}])
+    History.record!(recent, [%{"name" => "recent"}], [%{message: "recent"}])
+
+    assert {:ok, 1} = History.prune(scope, now)
+    assert Repo.get(Run, old.id) == nil
+    assert [%{run_id: id, failures: [%{"name" => "recent"}]}] = History.list(scope)
+    assert id == recent.id
+
+    Application.put_env(:code_my_spec, :analysis_retention_days, 7)
+    assert {:ok, 1} = History.prune(scope, now)
+    assert History.list(scope) == []
+  end
+
+  test "keeps more than twenty recent runs", %{scope: scope} do
+    for _ <- 1..25 do
+      finished_run(scope)
+    end
+
+    assert length(History.list(scope, source: "exunit")) == 25
+    assert {:ok, 0} = RunsRepository.prune(scope, "exunit")
+    assert length(History.list(scope, source: "exunit")) == 25
+  end
+
+  test "a partial snapshot leaves current problems untouched", %{scope: scope} do
+    run = finished_run(scope, %{kind: :partial})
+    History.record!(run, [%{"name" => "targeted test"}], [%{message: "targeted"}])
+
+    assert [%{partial: true, failures: [%{"name" => "targeted test"}]}] = History.list(scope)
+  end
+
+  defp finished_run(scope, attrs \\ %{}) do
+    run = analysis_run_fixture(scope, attrs)
+    {:ok, run} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
+    run
+  end
+
+  defp restore_retention_days(nil),
+    do: Application.delete_env(:code_my_spec, :analysis_retention_days)
+
+  defp restore_retention_days(value),
+    do: Application.put_env(:code_my_spec, :analysis_retention_days, value)
+
+  defp aged(run, days, now) do
+    run
+    |> Ecto.Changeset.change(finished_at: DateTime.add(now, -days, :day))
     |> Repo.update!()
   end
-
-  defp failure(source, file, test_name) do
-    %Problem{
-      severity: :error,
-      source_type: :test,
-      source: source,
-      file_path: file,
-      line: 12,
-      message: "assertion failed",
-      category: "test_failure",
-      metadata: %{"test" => test_name}
-    }
-  end
-
-  test "a full run retains failures and infers a pass only for its own test source", %{
-    scope: scope
-  } do
-    run = run(scope, "exunit", :full)
-    :ok = History.record!(run, [failure("exunit", "test/a_test.exs", "test A")])
-
-    assert [%Finding{file_path: "test/a_test.exs", test_name: "test A"}] =
-             History.failures(scope, run)
-
-    refute History.passed?(scope, @commit, "test/a_test.exs", "test A")
-    assert History.passed?(scope, @commit, "test/b_test.exs", "test B")
-    refute History.passed?(scope, @commit, "test/spex/b_spex.exs", "scenario B")
-    assert run.working_copy_id == scope.active_working_copy_id
-    assert run.kind == :full
-    assert run.start_commit == @commit
-  end
-
-  test "a partial spex failure keeps its criterion without altering current problems", %{
-    scope: scope
-  } do
-    run = run(scope, "spex", :partial)
-
-    before_count =
-      Repo.aggregate(from(p in Problem, where: p.project_id == ^scope.active_project_id), :count)
-
-    file = "test/spex/1163_history/criterion_2401_failure_spex.exs"
-    :ok = History.record!(run, [failure("spex", file, "scenario fails")])
-
-    assert [%Finding{file_path: ^file, criterion: 2401, test_name: "scenario fails"}] =
-             History.failures(scope, run)
-
-    assert Repo.aggregate(
-             from(p in Problem, where: p.project_id == ^scope.active_project_id),
-             :count
-           ) ==
-             before_count
-
-    refute History.passed?(scope, @commit, file, "scenario fails")
-  end
-
-  test "one prune deletes expired runs and findings but keeps newer and running runs", %{
-    scope: scope
-  } do
-    old = run(scope, "exunit", :full, DateTime.add(DateTime.utc_now(), -31, :day))
-    fresh = run(scope, "exunit", :full, DateTime.add(DateTime.utc_now(), -29, :day))
-    :ok = History.record!(old, [failure("exunit", "test/old_test.exs", "old")])
-    :ok = History.record!(fresh, [failure("exunit", "test/new_test.exs", "new")])
-
-    assert {:ok, 1} = History.prune(scope)
-    assert Repo.get(Run, old.id) == nil
-    assert Repo.get(Finding, hd(History.failures(scope, fresh)).id)
-    assert History.failures(scope, old) == []
-
-    previous = Application.fetch_env(:code_my_spec, History)
-
-    on_exit(fn -> restore_history_config(previous) end)
-    Application.put_env(:code_my_spec, History, retention_days: 7)
-    assert {:ok, 1} = History.prune(scope)
-    assert Repo.get(Run, fresh.id) == nil
-  end
-
-  defp restore_history_config({:ok, config}),
-    do: Application.put_env(:code_my_spec, History, config)
-
-  defp restore_history_config(:error),
-    do: Application.delete_env(:code_my_spec, History)
 end

@@ -332,7 +332,15 @@ defmodule CodeMySpec.PromotionQueueTest do
     entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
-    assert {:ok, %{status: :landed}} = settle(entry)
+    assert {:ok, %{status: :landed, result: result}} = settle(entry)
+    timing = result["timing"]
+    assert timing["gate_copy_id"] == ctx.gate.id
+    assert length(timing["run_ids"]) == length(Run.sources())
+    assert Enum.all?(timing["run_ids"], &is_integer/1)
+    assert is_integer(timing["stages"]["queue-wait"])
+    assert is_integer(timing["stages"]["gate-build"])
+    assert is_integer(timing["stages"]["asset-build"])
+    assert is_integer(timing["stages"]["landing"])
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == a.commit
     assert git!(ctx.main_root, ["describe", "--tags", "--exact-match", "HEAD"]) == "v0.1.1"
   end
@@ -534,14 +542,32 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert merge_head == ""
   end
 
+  test "a new queue entry retries an earlier red source and reuses green runs", ctx do
+    a = candidate(ctx, "a", "main", "a.ex", "a\n")
+    gate = gate_scope(ctx)
+    clean_runs_at(ctx, a.commit)
+    previous = RunsRepository.latest_completed_run(gate, "credo")
+    problem_fixture(gate, %{source: "credo", severity: :warning, file_path: "a.ex"})
+
+    entry = queue(ctx, a)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, runs}, 5_000
+    assert Enum.map(runs, & &1["source"]) == ["credo"]
+    assert Repository.get(entry.id).status == :gating
+    assert RunsRepository.latest_completed_run(gate, "credo").id == previous.id
+  end
+
   test "a red candidate is ejected with its findings, and nothing lands", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     gate = gate_scope(ctx)
     clean_runs_at(ctx, a.commit)
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex", line: 2})
 
-    entry = queue(ctx, a)
     before = git!(ctx.main_root, ["rev-parse", "HEAD"])
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
@@ -572,6 +598,9 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "assets"
+    timing = result["timing"]
+    assert is_integer(timing["stages"]["asset-build"])
+    refute Map.has_key?(timing["stages"], "landing")
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 
@@ -620,12 +649,12 @@ defmodule CodeMySpec.PromotionQueueTest do
   # running in the gate copy, and the next batch reset the tree under them.
   test "an ejected batch's runs in the gate copy are stopped", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     gate = gate_scope(ctx)
     clean_runs_at(ctx, a.commit)
     problem_fixture(gate, %{source: "compiler", severity: :error, file_path: "a.ex"})
     a_harness_for(ctx.gate.id, ctx.gate_root)
 
-    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected}} = settle(entry)
@@ -667,6 +696,7 @@ defmodule CodeMySpec.PromotionQueueTest do
   # triage reads the ones the gate judged.
   test "a red batch is triaged on what the gate judged at its head, not older runs", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "broken\n")
+    entry = queue(ctx, a)
     own = gate_scope(ctx)
 
     AnalysisFixtures.fresh_analysis_runs_fixture(own, ~w(compiler exunit spex), commit: a.commit)
@@ -678,7 +708,6 @@ defmodule CodeMySpec.PromotionQueueTest do
     problem_fixture(own, %{source: "exunit", severity: :error, file_path: "test/a_test.exs"})
     problem_fixture(own, %{source: "credo", severity: :error, file_path: "lib/stale.ex"})
 
-    entry = queue(ctx, a)
     :ok = PromotionQueue.ensure_worker(ctx.scope)
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)

@@ -54,6 +54,7 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
       )
 
     head = git!(root, ["rev-parse", "HEAD"])
+
     AnalysisFixtures.fresh_analysis_runs_fixture(
       scope,
       CodeMySpec.Analysis.Run.sources(),

@@ -33,6 +33,20 @@ export const EChart = {
       this.chart = echarts.init(this.el)
       const data = this.readData()
       this.chart.setOption(toOption(data))
+      if (this.el.dataset.zoomEvent) {
+        this.chart.on("datazoom", () => {
+          if (this.updating) return
+          const zoom = this.chart.getOption().dataZoom?.find((item) => item.type === "slider")
+          if (!zoom) return
+          const start = Math.round(zoom.start)
+          const end = Math.round(zoom.end)
+          if (start !== this.currentZoom?.start || end !== this.currentZoom?.end) {
+            this.currentZoom = { start, end }
+            this.pushEvent(this.el.dataset.zoomEvent, this.currentZoom)
+          }
+        })
+        this.currentZoom = data.dataZoom?.[0]
+      }
       // A bar that names something can pick it: the server is told which.
       if (data.pick_event) {
         this.chart.on("click", (params) => {
@@ -47,6 +61,14 @@ export const EChart = {
   readData() {
     return JSON.parse(this.el.dataset.option)
   },
+  updated() {
+    if (!this.chart) return
+    const data = this.readData()
+    this.updating = true
+    this.currentZoom = data.dataZoom?.[0]
+    this.chart.setOption(toOption(data), true)
+    this.updating = false
+  },
   destroyed() {
     this.disposed = true
     if (this.onResize) window.removeEventListener("resize", this.onResize)
@@ -55,6 +77,7 @@ export const EChart = {
 }
 
 function toOption(data) {
+  if (data.xAxis && data.yAxis && data.series) return data
   if (data.kind === "bars") return barsOption(data)
 
   const categories = data.categories || []

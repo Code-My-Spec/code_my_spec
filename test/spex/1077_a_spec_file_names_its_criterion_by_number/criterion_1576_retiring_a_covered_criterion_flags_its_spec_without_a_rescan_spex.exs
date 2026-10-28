@@ -5,10 +5,8 @@ defmodule CodeMySpecSpex.Story1077.Criterion1576Spex do
 
   Covers Rule "A spec file naming a retired criterion covers nothing and says
   to delete it". Which criterion a spec covers is a join on the number it
-  names, so retiring the criterion changes the answer with no rescan. Since issue
-  73e302aa retiring also deletes the spec on its working copy: the retire result
-  says so, and a copy that cannot be reached reports it as pending deletion and
-  keeps the file flagged until a sweep removes it.
+  names, so retiring the criterion changes the answer with the file untouched.
+  The retire result names the file for the agent to delete in its own copy.
   """
 
   use CodeMySpecSpex.Case
@@ -23,7 +21,7 @@ defmodule CodeMySpecSpex.Story1077.Criterion1576Spex do
   @path "test/spex/story_a/a_thing_happens_spex.exs"
 
   spex "Retiring flags the spec at once", criterion: 1576 do
-    scenario "a covered criterion is retired and its spec file is deleted and reported" do
+    scenario "a covered criterion is retired and its spec file is not touched" do
       given_ "a spec naming the criterion covers it", context do
         story = CriterionScript.create_story(context.scope, "Story A", ["A thing happens"])
         [number] = context.scope |> CriterionScript.story_text(story) |> CriterionScript.numbers()
@@ -51,16 +49,23 @@ defmodule CodeMySpecSpex.Story1077.Criterion1576Spex do
         {:ok, Map.put(context, :retired, result)}
       end
 
-      then_ "the retire result says the spec was deleted", context do
-        assert context.retired.text =~ "Deleted spex #{@path}",
-               "retire_criterion did not report deleting the spec:\n#{context.retired.text}"
+      then_ "the spec is reported as naming a retired criterion, to be deleted", context do
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
+        row = "[data-test='file-row'][data-file-path='#{@path}']"
+
+        assert has_element?(view, "#{row} [data-test='file-validity'][data-validity='invalid']"),
+               "the spec names a retired criterion and should read as invalid without a rescan"
+
+        reason = view |> element("#{row} [data-test='file-reason']") |> render()
+        assert reason =~ ~r/retired/i, "Got: #{reason}"
+        assert reason =~ ~r/delete/i, "Got: #{reason}"
 
         {:ok, context}
       end
 
-      then_ "and it is gone from the files list, with nothing left to rescan", context do
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
-        refute has_element?(view, "[data-test='file-row'][data-file-path='#{@path}']")
+      then_ "and the retire result names it for the agent to delete in its copy", context do
+        assert context.retired.text =~ "- #{@path} (criterion #{context.number})",
+               "retire_criterion did not name the spec:\n#{context.retired.text}"
 
         {:ok, context}
       end

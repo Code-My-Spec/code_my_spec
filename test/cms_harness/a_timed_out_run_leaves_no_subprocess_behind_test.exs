@@ -552,16 +552,27 @@ defmodule CmsHarness.ATimedOutRunLeavesNoSubprocessBehindTest do
   defp assert_eventually_dead(false, pid, _attempts),
     do: flunk("child pid #{pid} is still alive 6s after the timeout handler ran")
 
-  defp wait_for_pid_file(path, attempts \\ 50),
-    do: wait_for_pid_file(File.exists?(path), path, attempts)
+  # Python's start and three forks take milliseconds idle and seconds on a
+  # loaded promotion gate; a 1s budget lost that race. 15s bounds a fixture that
+  # died before writing without racing one that is merely slow.
+  @pid_file_wait_ms 15_000
 
-  defp wait_for_pid_file(true, path, _attempts), do: path |> File.read!() |> String.trim()
+  defp wait_for_pid_file(path),
+    do: wait_for_pid_file(path, System.monotonic_time(:millisecond) + @pid_file_wait_ms)
 
-  defp wait_for_pid_file(false, path, attempts) when attempts > 0 do
+  defp wait_for_pid_file(path, deadline),
+    do: wait_for_pid_file(File.exists?(path), path, deadline)
+
+  defp wait_for_pid_file(true, path, _deadline), do: path |> File.read!() |> String.trim()
+
+  defp wait_for_pid_file(false, path, deadline),
+    do: wait_or_give_up(System.monotonic_time(:millisecond) < deadline, path, deadline)
+
+  defp wait_or_give_up(true, path, deadline) do
     Process.sleep(20)
-    wait_for_pid_file(path, attempts - 1)
+    wait_for_pid_file(path, deadline)
   end
 
-  defp wait_for_pid_file(false, path, _attempts),
-    do: flunk("the task's shell never wrote its child's pid to #{path}")
+  defp wait_or_give_up(false, path, _deadline),
+    do: flunk("the task's shell never wrote its child's pid to #{path} within 15s")
 end

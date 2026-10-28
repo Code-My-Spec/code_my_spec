@@ -16,6 +16,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   alias CodeMySpec.{Components, ExecutionContexts, Files, Issues, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
+  alias CodeMySpec.Qa.Documents, as: QaDocuments
   alias CodeMySpec.Utils
   alias CodeMySpec.AppInstances
   alias CodeMySpec.WorkingCopies
@@ -140,7 +141,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   defp do_evaluate(scope, env, story_id, story_number) do
     with :ok <- check_plan(scope, env),
-         :ok <- check_brief(env, story_number),
+         :ok <- check_brief(scope, story_number),
          :ok <- maybe_check_result(scope, env, story_id, story_number) do
       # Files validate but no DB attempt exists, and only the attempt
       # satisfies `qa_complete`: demand a submit rather than pass.
@@ -226,12 +227,15 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # ============================================================================
 
   defp check_plan(scope, env) do
-    case ExecutionContexts.read_file(env, Paths.qa_plan()) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
+    case QaDocuments.get(scope, "qa_plan") do
+      {:ok, %{content: content}} when is_binary(content) and byte_size(content) > 0 ->
         validate_plan_sections(content)
 
-      _ ->
+      {:ok, nil} ->
         {:ok, :invalid, plan_missing_feedback(scope, env)}
+
+      {:error, reason} ->
+        {:ok, :invalid, "Could not read the QA plan document: #{inspect(reason)}"}
     end
   end
 
@@ -246,7 +250,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
     case scope do
       %{active_project: %{name: name}} ->
-        "QA plan not found at `#{Paths.qa_plan()}`, looking in #{where} for project " <>
+        "QA plan document not found for project " <>
           "\"#{name}\". If that is not the project you expected, the working directory " <>
           "resolved to the wrong one — check which project claims #{where}. " <>
           "Otherwise run the `qa_setup` task, which owns the project-wide plan."
@@ -274,45 +278,27 @@ defmodule CodeMySpec.AgentTasks.QaStory do
         section_list = Enum.map_join(sections, ", ", &"`## #{title_case(&1)}`")
 
         {:ok, :invalid,
-         "QA plan at `#{Paths.qa_plan()}` is missing required section(s): #{section_list}. " <>
+         "QA plan document is missing required section(s): #{section_list}. " <>
            "Re-run `qa_setup` to complete the plan, then re-run this task."}
     end
   end
 
-  defp check_brief(env, story_number) do
-    path = brief_path(story_number)
-
-    case ExecutionContexts.read_file(env, path) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
+  defp check_brief(scope, story_number) do
+    case QaDocuments.get(scope, "qa_story_brief", story_number) do
+      {:ok, %{content: content}} when is_binary(content) and byte_size(content) > 0 ->
         case Documents.create_dynamic_document(content, "qa_story_brief") do
-          {:ok, _document} ->
-            :ok
-
-          {:error, reason} ->
-            {:ok, :invalid,
-             "Brief at `#{path}` is invalid: #{reason}. Fix the brief and stop the session again."}
+          {:ok, _} -> :ok
+          {:error, reason} -> {:ok, :invalid, "Brief document is invalid: #{reason}"}
         end
 
-      {:error, :enoent} ->
-        brief_not_found(path)
+      {:ok, nil} ->
+        {:ok, :invalid,
+         "Brief document not found for story #{story_number}. Write it with `write_document` and stop the session."}
 
-      # Anything else is the read itself failing -- a harness unreachable, a
-      # timeout, a transport tag -- not the file being absent. Collapsing
-      # this into "not found" told an agent to write a brief that already
-      # existed, and let a transient failure satisfy a caller checking for
-      # "brief not found" in the text (a83cb226).
       {:error, reason} ->
         {:ok, :invalid,
-         "Could not read the brief at `#{path}`: #{inspect(reason)}. Stop the session again once this clears."}
-
-      _ ->
-        brief_not_found(path)
+         "Could not read the brief document for story #{story_number}: #{inspect(reason)}"}
     end
-  end
-
-  defp brief_not_found(path) do
-    {:ok, :invalid,
-     "Brief not found at `#{path}`. Write the brief following the format specification, then stop the session."}
   end
 
   defp check_result(env, story_number) do
@@ -536,9 +522,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
     ## Required reading: QA plan
 
-    Read `#{Paths.qa_plan()}` first. It contains the App Overview, Tools
-    Registry, auth strategy, and Seed Strategy you need before writing the
-    brief. The plan is produced and maintained by the `qa_setup` task; if
+    Read the `qa_plan` document first with `read_document`. It contains the
+    App Overview, Tools Registry, auth strategy, and Seed Strategy you need
+    before writing the brief. The plan is produced and maintained by the `qa_setup` task; if
     it's missing or incomplete, the evaluator will tell you to run that
     task first.\
     """
@@ -611,8 +597,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     """
     ## Brief format spec
 
-    Write the brief to `#{brief_path(story_number)}` matching this spec exactly.
-    The evaluator validates the brief structure on stop.
+    Write the brief with `write_document`, using `document_type: "qa_story_brief"`
+    and `story_number: #{story_number}`. Read it with `read_document`. The
+    evaluator checks the brief document on stop.
 
     #{brief_spec}\
     """
@@ -765,11 +752,6 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       nil -> nil
       story -> story.number
     end
-  end
-
-  # Evidence lives under the story number, the name agents and people use.
-  defp brief_path(story_number) do
-    Path.join([Paths.qa_dir(), to_string(story_number), "brief.md"])
   end
 
   defp result_path(story_number) do

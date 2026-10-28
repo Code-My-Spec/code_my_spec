@@ -26,7 +26,7 @@ defmodule CodeMySpec.PromotionQueue do
       CodeMySpec.Users.Scope,
       CodeMySpec.WorkingCopies
     ],
-    exports: [Worker]
+    exports: [Worker, Timings]
 
   alias CodeMySpec.AppRole
   alias CodeMySpec.Issues

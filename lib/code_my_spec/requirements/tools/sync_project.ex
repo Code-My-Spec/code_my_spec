@@ -8,6 +8,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.QaDocumentImporter
 
   @impl true
   def name, do: "sync_project"
@@ -77,11 +78,15 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
     environment =
       CodeMySpec.WorkingCopies.tool_execution_context(context[:scope], context[:working_dir])
 
-    with {:ok, file_result} <- FileSync.sync(scope, execution_context: environment),
+    with {:ok, import_report} <- QaDocumentImporter.import(scope, environment),
+         {:ok, file_result} <- FileSync.sync(scope, execution_context: environment),
          {:ok, comp_result} <-
            FileComponentSync.sync_from_files(scope, execution_context: environment),
          {:ok, requirements} <- recompute(scope) do
-      text = format_result(file_result, comp_result, requirements)
+      text =
+        format_result(file_result, comp_result, requirements) <>
+          "\nQA document import: #{inspect(import_report)}"
+
       {:ok, text}
     else
       # `cwd` is set for any resolved scope and is not the claim "there is a

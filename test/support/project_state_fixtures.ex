@@ -296,11 +296,24 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     context
   end
 
-  @doc "Satisfies `qa_setup` by writing the QA plan file."
+  @doc "Stores a legacy QA document for migration and validation scenarios."
+  def put_legacy_qa_document(scope, type, story_number, content) do
+    CodeMySpec.Qa.Documents.put_legacy(scope, type, story_number, content)
+  end
+
+  @doc "Removes a seeded QA document so a scenario can exercise its absence or import."
+  def delete_qa_document(scope, type), do: delete_qa_document(scope, type, nil)
+
+  def delete_qa_document(scope, type, story_number) do
+    {:ok, _} = CodeMySpec.Qa.Documents.delete(scope, type, story_number)
+    :ok
+  end
+
+  @doc "Satisfies `qa_setup` by storing the QA plan document."
   @spec apply_qa_setup(map()) :: map()
   def apply_qa_setup(context) do
-    env = context.execution_context
-    :ok = ExecutionContexts.write_file(env, ".code_my_spec/qa/plan.md", qa_plan_content())
+    {:ok, _} = CodeMySpec.Qa.Documents.put(context.scope, "qa_plan", nil, qa_plan_content())
+    CodeMySpec.Requirements.recompute(context.scope)
     synced(context)
   end
 
@@ -312,10 +325,11 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   def apply_journey_artifacts(context) do
     env = context.execution_context
 
-    :ok =
-      ExecutionContexts.write_file(
-        env,
-        ".code_my_spec/qa/journey_plan.md",
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put(
+        context.scope,
+        "qa_journey_plan",
+        nil,
         qa_journey_plan_content()
       )
 
@@ -540,13 +554,13 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
   """
   @spec apply_qa_complete_for_story(map(), term()) :: :ok
   def apply_qa_complete_for_story(context, story) do
-    env = context.execution_context
     story_id = story.id
 
-    :ok =
-      ExecutionContexts.write_file(
-        env,
-        ".code_my_spec/qa/#{story_id}/brief.md",
+    {:ok, _} =
+      CodeMySpec.Qa.Documents.put(
+        context.scope,
+        "qa_story_brief",
+        story.number,
         qa_brief_content()
       )
 

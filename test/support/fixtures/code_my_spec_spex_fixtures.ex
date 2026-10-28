@@ -71,6 +71,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.Projects,
       CodeMySpec.Qa,
       CodeMySpec.Promotion,
+      CodeMySpec.PromotionQueue,
+      CodeMySpec.PromotionQueue.Entry,
       CodeMySpec.Provisioning,
       CodeMySpec.ProvisioningPlan,
       CodeMySpec.Repo,
@@ -2825,8 +2827,6 @@ defmodule CodeMySpecSpex.Fixtures do
   # Paths and domain calls a spex needs. Re-exported rather than referenced
   # directly, because `CodeMySpecSpex` may not depend on `CodeMySpec` — the
   # bridge is the sanctioned crossing.
-  defdelegate qa_plan_path(), to: CodeMySpec.Paths, as: :qa_plan
-  defdelegate qa_journey_plan_path(), to: CodeMySpec.Paths, as: :qa_journey_plan
   defdelegate qa_journey_result_path(), to: CodeMySpec.Paths, as: :qa_journey_result
   defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
   defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
@@ -6242,6 +6242,79 @@ defmodule CodeMySpecSpex.Fixtures do
     })
   end
 
+  @doc "Configure analysis retention for the current scenario."
+  def configure_analysis_retention_days(days) when is_integer(days) and days > 0 do
+    key = :analysis_retention_days
+
+    unless Process.get({__MODULE__, key}) do
+      previous = Application.fetch_env(:code_my_spec, key)
+
+      ExUnit.Callbacks.on_exit(fn ->
+        case previous do
+          {:ok, value} -> Application.put_env(:code_my_spec, key, value)
+          :error -> Application.delete_env(:code_my_spec, key)
+        end
+      end)
+
+      Process.put({__MODULE__, key}, true)
+    end
+
+    Application.put_env(:code_my_spec, key, days)
+    :ok
+  end
+
+  @doc "Create a completed analyzer run with retained findings for story specs."
+  def finished_analysis_run_with_findings(%Scope{} = scope, opts \\ []) do
+    partial? = Keyword.get(opts, :partial, false) or not Keyword.get(opts, :full, true)
+    kind = if partial?, do: :partial, else: :full
+
+    run =
+      CodeMySpec.AnalysisFixtures.analysis_run_fixture(scope, %{
+        source: Keyword.get(opts, :source, "exunit"),
+        kind: kind,
+        args: %{"args" => Keyword.get(opts, :paths, [])},
+        status_override: :completed
+      })
+
+    attrs =
+      %{}
+      |> then(fn attrs ->
+        case Keyword.get(opts, :commit) do
+          nil -> attrs
+          commit -> Map.merge(attrs, %{start_commit: commit, completed_commit: commit})
+        end
+      end)
+      |> then(fn attrs ->
+        case Keyword.get(opts, :days_ago) do
+          nil -> attrs
+          days -> Map.put(attrs, :finished_at, DateTime.add(DateTime.utc_now(), -days, :day))
+        end
+      end)
+
+    run = run |> Ecto.Changeset.change(attrs) |> Repo.update!()
+
+    failures =
+      Keyword.get(opts, :failures, [%{file: "test/failure_test.exs", name: "test fails"}])
+
+    problems =
+      Keyword.get(opts, :problems, [%{file_path: "test/failure_test.exs", message: "failure"}])
+
+    CodeMySpec.Analysis.History.record!(run, failures, problems)
+  end
+
+  @doc "Look up one retained analysis run by the ID cited in a promotion log."
+  def retained_analysis_history_entry(%Scope{} = scope, run_id) when is_integer(run_id) do
+    scope
+    |> CodeMySpec.Analysis.History.list(source: "exunit")
+    |> Enum.find(&(&1.run_id == run_id))
+  end
+
+  @doc "Run the analysis history retention sweep."
+  def run_scheduled_analysis_history_prune(%Scope{} = scope) do
+    {:ok, _count} = CodeMySpec.Analysis.History.prune(scope)
+    :ok
+  end
+
   @doc """
   Start a full analyzer run, the way a real sweep enqueues one.
 
@@ -7125,6 +7198,276 @@ defmodule CodeMySpecSpex.Fixtures do
     enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
   end
 
+  @doc "Write the last green test dependency baseline for a promotion gate fixture."
+  def green_test_impact_baseline(_scope, gate, opts) do
+    require Mix.Compilers.Elixir, as: CE
+
+    source = Keyword.get(opts, :source, "lib/fixture.ex")
+    related = Keyword.get(opts, :related, [])
+    unrelated = Keyword.get(opts, :unrelated, [])
+    module = CodeMySpecSpex.TestImpactFixture
+    tests = related ++ unrelated
+
+    test_sources =
+      Map.new(tests, fn path ->
+        references = if path in related, do: [module], else: []
+        {path, {:source, [], references, []}}
+      end)
+
+    baseline = %{
+      version: 1,
+      modules: %{module => CE.module(kind: :module, sources: [source])},
+      sources: %{source => CE.source(modules: [module])},
+      test_sources: test_sources
+    }
+
+    path = Path.join(gate.root, "_build/test/lib/code_my_spec/.mix/compile.test_impact")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, :erlang.term_to_binary(baseline))
+    true = File.exists?(path)
+    :ok
+  end
+
+  @doc "Plan failures for the gate harness's next full test run."
+  def fail_full_promotion_run(gate, files) do
+    Process.put({:promotion_failure_paths, gate.working_copy_id}, List.wrap(files))
+    :ok
+  end
+
+  def promotion_failure_paths(gate) do
+    Process.get({:promotion_failure_paths, gate.working_copy_id}, [])
+  end
+
+  @doc "Mark a test for same-commit passing evidence before the gate's failing run."
+  def confirmed_promotion_flake(scope, file) do
+    Process.put({:promotion_confirmed_flake, scope.active_project_id}, file)
+    :ok
+  end
+
+  def prepare_promotion_flake(scope, gate, commit) do
+    case Process.get({:promotion_confirmed_flake, scope.active_project_id}) do
+      nil ->
+        :ok
+
+      file ->
+        now = DateTime.utc_now()
+        before_gate = DateTime.add(now, -60, :second)
+        source = if String.starts_with?(file, "test/spex/"), do: "spex", else: "exunit"
+
+        CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+          project_id: scope.active_project_id,
+          working_copy_id: gate.working_copy_id,
+          source: source,
+          kind: :full,
+          status: :completed,
+          completed_commit: commit,
+          findings: %{"failures" => []},
+          started_at: before_gate,
+          began_at: before_gate,
+          finished_at: now
+        })
+
+        :ok
+    end
+  end
+
+  @doc "Record a published story as the premise for post-landing timing checks."
+  def story_landed_on_main(scope, number) do
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        number: number,
+        title: "Story #{number} landed on main",
+        story: "As a user, I want a published story, so that gate history can be reviewed."
+      })
+
+    record_story_publication(scope, story.id, "fixture-published")
+  end
+
+  @doc "Record a landed promotion with a persisted gate selection."
+  def landed_promotion_with_gate_selection(scope, opts) do
+    selection = gate_selection_fixture(opts)
+    promotion_with_timing(scope, :landed, Keyword.put(opts, :test_selection, selection))
+  end
+
+  @doc "Read a promotion's persisted selection, independently of its timing projection."
+  def promotion_gate_selection(scope, entry_id) do
+    timing = CodeMySpec.PromotionQueue.Timings.get(scope.active_project_id, entry_id)
+    selection = timing.selection
+    %{selected_tests: selection["selected_tests"], suite_size: selection["suite_size"]}
+  end
+
+  @doc "Record promotion selections throughout the requested time window."
+  def promotion_history_with_gate_selections(scope, opts) do
+    count = Keyword.fetch!(opts, :count)
+    for _ <- 1..count, do: landed_promotion_with_gate_selection(scope, opts)
+    :ok
+  end
+
+  defp gate_selection_fixture(opts) do
+    selected_size = Keyword.fetch!(opts, :selected_size)
+
+    %{
+      "mode" => "partial",
+      "selected_tests" => for(i <- 1..selected_size, do: "test/selected_#{i}_test.exs"),
+      "suite_size" => Keyword.fetch!(opts, :suite_size),
+      "failed_tests" => Keyword.get(opts, :failures, []),
+      "misses" => [],
+      "flakes" => []
+    }
+  end
+
+  @doc "Record a completed queue candidate and its associated full gate runs."
+  def landed_promotion_with_timing(scope, opts \\ []) do
+    promotion_with_timing(scope, :landed, opts)
+  end
+
+  @doc "Record a candidate ejected at the named stage."
+  def ejected_promotion_with_timing(scope, opts \\ []) do
+    promotion_with_timing(scope, :ejected, opts)
+  end
+
+  @doc "Record a daily population for promotion timing summaries."
+  def promotion_timing_history(scope, opts) do
+    for _ <- 1..Keyword.fetch!(opts, :landed) do
+      landed_promotion_with_timing(scope)
+    end
+
+    for _ <- 1..Keyword.fetch!(opts, :ejected) do
+      ejected_promotion_with_timing(scope)
+    end
+
+    :ok
+  end
+
+  @doc "Read spex durations directly from promotion gate run records in the last day."
+  def promotion_spex_run_seconds(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    entries =
+      Repo.all(
+        from e in CodeMySpec.PromotionQueue.Entry,
+          where:
+            e.project_id == ^scope.active_project_id and e.status == :landed and
+              e.updated_at >= ^since
+      )
+
+    ids = Enum.flat_map(entries, &get_in(&1.result, ["timing", "run_ids"]))
+
+    Repo.all(
+      from r in CodeMySpec.Analysis.Run,
+        where:
+          r.id in ^ids and r.project_id == ^scope.active_project_id and
+            r.source == "spex" and r.kind == :full
+    )
+    |> Enum.map(&DateTime.diff(&1.finished_at, &1.began_at, :second))
+    |> Enum.sort()
+  end
+
+  @doc "Read landed and ejected queue counts directly from the last day's entries."
+  def promotion_queue_counts(scope) do
+    since = DateTime.add(DateTime.utc_now(), -86_400, :second)
+
+    Repo.all(
+      from e in CodeMySpec.PromotionQueue.Entry,
+        where:
+          e.project_id == ^scope.active_project_id and
+            e.status in [:landed, :ejected] and e.updated_at >= ^since
+    )
+    |> Enum.frequencies_by(& &1.status)
+  end
+
+  @doc "Record an unrelated partial analysis run, which cannot count as a gate run."
+  def partial_agent_analysis_run(scope, opts) do
+    at = Keyword.get(opts, :started_at, DateTime.utc_now())
+    duration = Keyword.fetch!(opts, :duration_seconds)
+    source = Keyword.fetch!(opts, :source) |> to_string()
+
+    CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+      project_id: scope.active_project_id,
+      working_copy_id: promotion_timing_copy(scope).id,
+      source: source,
+      kind: :partial,
+      status: :completed,
+      started_at: at,
+      began_at: at,
+      finished_at: DateTime.add(at, duration, :second)
+    })
+  end
+
+  defp promotion_with_timing(scope, outcome, opts) do
+    copy = promotion_timing_copy(scope)
+    at = Keyword.get(opts, :landed_at, DateTime.utc_now())
+
+    failed =
+      Keyword.get(opts, :failed_stage, :asset_build) |> to_string() |> String.replace("_", "-")
+
+    stages = CodeMySpec.PromotionQueue.Timings.stages()
+
+    reached =
+      if outcome == :landed,
+        do: stages,
+        else: Enum.take_while(stages, &(&1 != failed)) ++ [failed]
+
+    recorded =
+      for stage <- reached, stage not in ~w(compiler credo exunit spex), into: %{} do
+        key = stage |> String.replace("-", "_") |> String.to_atom()
+        {stage, Keyword.get(opts, key, 60)}
+      end
+
+    runs =
+      for source <- ~w(compiler credo exunit spex), source in reached do
+        seconds = Keyword.get(opts, String.to_atom(source), 60)
+
+        CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+          project_id: scope.active_project_id,
+          working_copy_id: copy.id,
+          source: source,
+          kind: :full,
+          status: if(outcome == :ejected and source == failed, do: :failed, else: :completed),
+          stats: %{
+            "timings" =>
+              Keyword.get(opts, String.to_atom("#{source}_timings"), %{
+                "tests" => [],
+                "files" => []
+              })
+          },
+          started_at: DateTime.add(at, -seconds, :second),
+          began_at: DateTime.add(at, -seconds, :second),
+          finished_at: at
+        })
+      end
+
+    CodeMySpec.Repo.insert!(%CodeMySpec.PromotionQueue.Entry{
+      project_id: scope.active_project_id,
+      working_copy_id: copy.id,
+      commit: String.duplicate("a", 40),
+      restart: false,
+      status: outcome,
+      result: %{
+        "timing" => %{
+          "stages" => recorded,
+          "run_ids" => Enum.map(runs, & &1.id),
+          "gate_copy_id" => copy.id
+        },
+        "test_selection" => Keyword.get(opts, :test_selection, %{})
+      },
+      inserted_at: at,
+      updated_at: at
+    })
+  end
+
+  defp promotion_timing_copy(scope) do
+    CodeMySpec.Repo.one(
+      from c in CodeMySpec.WorkingCopies.WorkingCopy,
+        where: c.project_id == ^scope.active_project_id and c.label == "promotion-timing-fixture",
+        limit: 1
+    ) ||
+      CodeMySpec.Repo.insert!(%CodeMySpec.WorkingCopies.WorkingCopy{
+        project_id: scope.active_project_id,
+        label: "promotion-timing-fixture"
+      })
+  end
+
   # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
   # than into the process environment — so `System.get_env/1` answers nil for a
   # value that is plainly sitting in the file, unless somebody exported it by
@@ -7135,6 +7478,47 @@ defmodule CodeMySpecSpex.Fixtures do
   # and fall back to the file the value actually lives in. Parsing it here is
   # what Dotenvy does for the application; the alternative is a suite that only
   # runs for whoever remembered the incantation.
+  @doc "Build a diverged Git repository for the QA document merge scenario."
+  def qa_plan_merge_repository do
+    root = CodeMySpec.TempFile.owned_dir("qa_plan_merge")
+    qa_git!(root, ["init", "-q", "-b", "main"])
+    qa_git!(root, ["config", "user.name", "Spex"])
+    qa_git!(root, ["config", "user.email", "spex@example.test"])
+    File.write!(Path.join(root, "README.md"), "initial project\n")
+    qa_git!(root, ["add", "README.md"])
+    qa_git!(root, ["commit", "-qm", "base"])
+    qa_git!(root, ["checkout", "-qb", "working-copy"])
+    File.write!(Path.join(root, "copy.txt"), "work on the copy\n")
+    qa_git!(root, ["add", "copy.txt"])
+    qa_git!(root, ["commit", "-qm", "copy work"])
+    qa_git!(root, ["checkout", "-q", "main"])
+    root
+  end
+
+  def qa_plan_merge_advance_main(root) do
+    File.write!(Path.join(root, "main.txt"), "later work on main\n")
+    qa_git!(root, ["add", "main.txt"])
+    qa_git!(root, ["commit", "-qm", "main work"])
+  end
+
+  def qa_plan_merge_main(root) do
+    qa_git!(root, ["checkout", "-q", "working-copy"])
+    qa_git!(root, ["merge", "--no-edit", "main"])
+  end
+
+  def qa_plan_merge_state(root) do
+    %{
+      unmerged: qa_git!(root, ["diff", "--name-only", "--diff-filter=U"]),
+      status: qa_git!(root, ["status", "--porcelain"]),
+      plan_files: qa_git!(root, ["ls-files", ".code_my_spec/qa/plan.md"])
+    }
+  end
+
+  defp qa_git!(root, args) do
+    {output, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)
+    String.trim(output)
+  end
+
   defp spex_env(name) do
     case System.get_env(name) do
       value when is_binary(value) and value != "" -> value

@@ -4,7 +4,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   All queries filter by the scope's active project. The ledger is append-heavy:
   runs are inserted `:running` at enqueue, then completed/failed exactly once.
-  Expired rows are pruned by the configured analysis history window.
+  Old rows are pruned by the configurable history retention window.
   """
 
   import Ecto.Query, warn: false
@@ -616,7 +616,7 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     end
   end
 
-  @doc "Prune expired runs for the project. The source argument is kept for callers."
+  @doc "Prune expired run history using the configured retention window."
   @spec prune(Scope.t(), String.t()) :: {:ok, non_neg_integer()}
   def prune(%Scope{} = scope, _source), do: CodeMySpec.Analysis.History.prune(scope)
 end

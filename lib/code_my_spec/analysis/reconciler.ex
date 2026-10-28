@@ -38,7 +38,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # Its asker is still answered: team 4's QA waited on targeted runs 59901 and
   # 59902, both clean, that told nobody (2026-10-15).
   def reconcile(%Scope{} = scope, %Run{kind: :partial} = run, result, _opts) do
-    Logger.info("[Analysis] run #{run.id} (#{run.source}) targeted run — Problems untouched")
+    Logger.info(
+      "[Analysis] run #{run.id} (#{run.source}) targeted run — output only, Problems untouched"
+    )
 
     with {:ok, finished} <-
            RunsRepository.finish_run(run, :completed, %{
@@ -46,9 +48,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
              exit_status: result.exit_status,
              stats: result.stats
            }) do
-      problems = history_problems(scope, run, result)
-      CodeMySpec.Analysis.History.record!(finished, problems)
-      CodeMySpec.Analysis.History.prune(scope)
+      finished =
+        CodeMySpec.Analysis.History.record!(
+          finished,
+          Map.get(result, :failures, []),
+          result.problems
+        )
+
       report_tied(scope, run, result)
       {:ok, finished}
     end
@@ -77,7 +83,9 @@ defmodule CodeMySpec.Analysis.Reconciler do
             stats: Signatures.put(result.stats, signatures)
           })
 
-        CodeMySpec.Analysis.History.record!(finished, problems)
+        finished =
+          CodeMySpec.Analysis.History.record!(finished, Map.get(result, :failures, []), problems)
+
         CodeMySpec.Analysis.History.prune(scope)
         # Events, because Analysis sits below `AgentTasks` and `Notifications`.
         :telemetry.execute(
@@ -136,9 +144,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
              exit_status: result.exit_status,
              stats: result.stats
            }) do
-      problems = history_problems(scope, run, result)
-      CodeMySpec.Analysis.History.record!(finished, problems)
-      CodeMySpec.Analysis.History.prune(scope)
       report_tied(scope, run, result)
       {:ok, finished}
     end
@@ -372,13 +377,6 @@ defmodule CodeMySpec.Analysis.Reconciler do
   end
 
   defp stamp_component_ids(problems, _scope, _source), do: problems
-
-  defp history_problems(scope, run, result) do
-    result
-    |> Map.get(:problems, [])
-    |> Enum.map(&(&1 |> stamp_project(scope) |> patch_file_path()))
-    |> stamp_component_ids(scope, run.source)
-  end
 
   # -- Clear scope --
 

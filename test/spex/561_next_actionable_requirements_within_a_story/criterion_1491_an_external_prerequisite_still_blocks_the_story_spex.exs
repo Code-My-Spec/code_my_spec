@@ -13,11 +13,7 @@ defmodule CodeMySpecSpex.Story561.Criterion3593Spex do
       given_ "a project requirement the story waits on that is not met", context do
         context = context |> Slice.base() |> Slice.child()
 
-        :ok =
-          CodeMySpec.ExecutionContexts.delete_file(
-            context.execution_context,
-            ".code_my_spec/qa/plan.md"
-          )
+        :ok = CodeMySpecSpex.ProjectStateFixtures.delete_qa_document(context.scope, "qa_plan")
 
         {:ok, CodeMySpecSpex.GraphGivens.sync(context)}
       end

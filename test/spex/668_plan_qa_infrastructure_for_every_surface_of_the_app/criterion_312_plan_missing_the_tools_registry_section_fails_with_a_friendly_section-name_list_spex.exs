@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.ExecutionContexts
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpecSpex.HarnessHooks
 
   setup :register_log_in_setup_account
@@ -36,17 +34,13 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
       end
 
       given_ "a plan exists with App Overview and Seed Strategy but no Tools Registry", context do
-        :ok =
-          ExecutionContexts.write_file(
-            context.execution_context,
-            ".code_my_spec/qa/plan.md",
+        {:ok, _} =
+          CodeMySpecSpex.ProjectStateFixtures.put_legacy_qa_document(
+            context.scope,
+            "qa_plan",
+            nil,
             incomplete_plan()
           )
-
-        # The checker reads its verdict from the Files projection, so a plan
-        # that is never synced is never seen — and "not found" is not the
-        # rejection this criterion is about.
-        {:ok, _} = Fixtures.notify_file_changed(context.scope, ".code_my_spec/qa/plan.md")
 
         {:ok, context}
       end
