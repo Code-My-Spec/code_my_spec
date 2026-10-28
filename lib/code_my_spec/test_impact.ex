@@ -1,6 +1,6 @@
 defmodule CodeMySpec.TestImpact do
   @reference_map_script ~S"""
-  cwd = File.cwd!()
+  cwd = Path.dirname(Mix.Project.project_file())
   paths = Mix.Project.config()[:test_paths] || ["test"]
   files = paths |> Enum.flat_map(&Path.wildcard(Path.join(&1, "**/*_test.exs"))) |> Enum.sort()
   Code.compiler_options(docs: false, debug_info: false, infer_signatures: false)
