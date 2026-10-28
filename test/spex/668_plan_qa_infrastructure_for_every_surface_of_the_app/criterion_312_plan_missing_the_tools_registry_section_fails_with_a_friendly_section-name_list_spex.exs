@@ -35,7 +35,12 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
 
       given_ "a plan exists with App Overview and Seed Strategy but no Tools Registry", context do
         {:ok, _} =
-          CodeMySpec.Qa.Documents.put_legacy(context.scope, "qa_plan", nil, incomplete_plan())
+          CodeMySpecSpex.ProjectStateFixtures.put_legacy_qa_document(
+            context.scope,
+            "qa_plan",
+            nil,
+            incomplete_plan()
+          )
 
         {:ok, context}
       end

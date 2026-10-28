@@ -296,6 +296,11 @@ defmodule CodeMySpecSpex.ProjectStateFixtures do
     context
   end
 
+  @doc "Stores a legacy QA document for migration and validation scenarios."
+  def put_legacy_qa_document(scope, type, story_number, content) do
+    CodeMySpec.Qa.Documents.put_legacy(scope, type, story_number, content)
+  end
+
   @doc "Removes a seeded QA document so a scenario can exercise its absence or import."
   def delete_qa_document(scope, type), do: delete_qa_document(scope, type, nil)
 
