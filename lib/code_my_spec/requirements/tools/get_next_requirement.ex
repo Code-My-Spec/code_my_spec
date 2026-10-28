@@ -44,11 +44,27 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
          end) do
       {:error, :graph_rebuilding} ->
         offered_during_rebuild(params, context) ||
+          snapshot_during_rebuild(params, context) ||
           {:ok,
            "The requirement graph is being rebuilt or updated; retry in 5 s. No work was offered."}
 
       result ->
         result
+    end
+  end
+
+  # A drain can take longer than discovery's deadline while the single graph
+  # writer seeds or reprojects other vantages. Existing rows are its last
+  # completed snapshot; start_task rechecks a claim against current truth.
+  # An unseeded vantage has no snapshot and must not look like completed work.
+  defp snapshot_during_rebuild(params, context) do
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         {{nodes, _edges}, _checked_at} <-
+           CodeMySpec.Requirements.RequirementGraph.cached_graph(scope, settle: false),
+         true <- nodes != [] do
+      discover(params, context, settle: false)
+    else
+      _ -> nil
     end
   end
 
@@ -80,7 +96,9 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
     end
   end
 
-  defp discover(params, context) do
+  defp discover(params, context), do: discover(params, context, [])
+
+  defp discover(params, context, opts) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
         # One normalisation rather than two lookups: the schema declares atom
@@ -94,7 +112,10 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
         # (a31f1cd6); what `start_task` would refuse is withheld (467310a7).
         execution =
           scope
-          |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
+          |> Work.work_for(agent && agent.role, agent,
+            story_number: requested["story_number"],
+            settle: Keyword.get(opts, :settle, true)
+          )
           |> then(&Directives.number_execution(scope, &1))
 
         execution

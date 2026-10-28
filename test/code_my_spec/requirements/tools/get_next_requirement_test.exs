@@ -27,8 +27,9 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
       started = System.monotonic_time(:millisecond)
       assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
       assert System.monotonic_time(:millisecond) - started < 3_000
-      assert text =~ "retry in 5 s"
-      refute text =~ "requirement_name=`"
+      assert text =~ "Status: ready"
+      assert text =~ "requirement_name=`personas_complete`"
+      refute text =~ "retry in 5 s"
       refute text =~ "All requirements satisfied"
     end)
 
