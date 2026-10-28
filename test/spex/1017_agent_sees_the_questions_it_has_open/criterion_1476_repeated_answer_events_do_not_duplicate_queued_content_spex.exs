@@ -55,8 +55,10 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
             persona_id: context.persona_id
           )
 
-        # Start held, then enable continuous work once the user's turn is in flight.
-        # Otherwise an offered graph turn can take the agent first.
+        # Started held, not continuous: a continuous agent is offered work the
+        # moment it is idle, and one arriving between `await_idle` and the user
+        # message took the turn first ({:error, :busy}). Its person switches it
+        # on below, once the user's turn is the one in flight.
         agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
