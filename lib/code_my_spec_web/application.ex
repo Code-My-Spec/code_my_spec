@@ -151,7 +151,8 @@ defmodule CodeMySpecWeb.Application do
         # Main serves remote harnesses even though it has no local analyzer supervisor.
         when_serving(serving? and env != :test, CodeMySpec.Analysis.BootRecovery),
         CodeMySpecWeb.Endpoint,
-        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler)
+        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler),
+        {CodeMySpecWeb.TelemetryHandlers, telemetry_handlers()}
       ]
       |> Enum.filter(& &1)
       |> children(env, serving?)
@@ -180,6 +181,20 @@ defmodule CodeMySpecWeb.Application do
       other ->
         other
     end
+  end
+
+  # Attached at boot below; `TelemetryHandlers` puts back any that come off.
+  defp telemetry_handlers do
+    [
+      {"GoogleAnalytics", &GoogleAnalytics.attach/0},
+      {"AnalysisReport", &AnalysisReport.attach/0},
+      {"ValidationHoldReport", &CodeMySpec.Agents.ValidationHoldReport.attach/0},
+      {"Events", &Events.attach/0},
+      {"RunReconciled", &RunReconciled.attach/0},
+      {"AnalysisPush", &AnalysisPush.attach/0},
+      {"Staffing", &CodeMySpec.Staffing.attach/0},
+      {"GraphWake", &GraphWake.attach/0}
+    ]
   end
 
   defp log_boot_version do
