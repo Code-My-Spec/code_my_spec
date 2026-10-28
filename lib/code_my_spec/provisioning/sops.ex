@@ -323,8 +323,19 @@ defmodule CodeMySpec.Provisioning.Sops do
   # another machine. So sops runs here, over a temp mirror of `.sops.yaml` and
   # the environment's file, and only the encrypted result is written back.
   # The plaintext stays an argument, as on a local copy.
-  defp on_this_node(%{type: type} = env, environment, mode, fun)
-       when type in [:harness, :memory] do
+  defp on_this_node(env, environment, mode, fun) do
+    if files_elsewhere?(env),
+      do: mirrored(env, environment, mode, fun),
+      else: fun.(env)
+  end
+
+  # A harness copy's files are on another machine; an in-memory store with no
+  # directory behind it has none at all. Anything else runs sops in place.
+  defp files_elsewhere?(%{type: :harness}), do: true
+  defp files_elsewhere?(%{type: :memory, cwd: cwd}), do: not File.dir?(cwd || "")
+  defp files_elsewhere?(_env), do: false
+
+  defp mirrored(env, environment, mode, fun) do
     dir = TempFile.owned_dir("cms-sops")
     local = ExecutionContexts.ExecutionContext.new(:local, dir)
     path = env_file(environment)
@@ -339,8 +350,6 @@ defmodule CodeMySpec.Provisioning.Sops do
     end
     |> unwrap_read(mode)
   end
-
-  defp on_this_node(env, _environment, _mode, fun), do: fun.(env)
 
   # `:read_only` results are `{:ok, map}` rather than `:ok`; carried through
   # `write_back/5` untouched and unwrapped after.
