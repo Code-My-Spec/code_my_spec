@@ -963,6 +963,22 @@ defmodule CodeMySpecSpex.Fixtures do
     AgentPresence.present(agent)
   end
 
+  @doc "Enable continuous work after a test has started the agent's held turn."
+  def enable_agent_continuous(agent) do
+    {:ok, _agent} = CodeMySpec.TaskOwner.set_continuous(agent, true)
+    :ok
+  end
+
+  @doc "Create the two-copy analysis dashboard scenario through the approved fixture boundary."
+  def analysis_dashboard_two_copies_in_flight(scope) do
+    CodeMySpec.AnalysisDashboardFixtures.two_copies_in_flight(scope)
+  end
+
+  @doc "Stub the harness response for the analysis dashboard scenario."
+  def stub_analysis_dashboard_harness(runs) do
+    CodeMySpec.AnalysisDashboardFixtures.stub_harness(runs)
+  end
+
   @doc "Track an already-created agent present, the way `running_agent/2` does."
   @spec mark_present(map()) :: map()
   def mark_present(agent), do: AgentPresence.present(agent)

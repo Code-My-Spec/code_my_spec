@@ -265,7 +265,7 @@ defmodule CodeMySpecWeb.DevAnalysisLive do
       <section aria-label="Promotion timing" class="mb-6">
         <h2 class="text-xl font-semibold mb-2">Promotion timing (last 24 hours)</h2>
         <div :for={project <- @report.projects} class="mb-3">
-          <h3 class="font-semibold">{project.project_name}</h3>
+          <h3 class="font-semibold">{project.name}</h3>
           <% timing = Map.fetch!(@project_timing, project.project_id) %>
           <p data-test="analysis-timing">
             Analysis: {timing.analysis.started} started, {timing.analysis.finished} finished, {timing.analysis.open} open; oldest open {timing.analysis.oldest_open_minutes ||
