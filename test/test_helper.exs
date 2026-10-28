@@ -299,11 +299,12 @@ end
 # without anything the analyzer does being special.
 Enum.each(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_HARNESS_ID), &System.delete_env/1)
 
-# Started here rather than from `CodeMySpecWeb.Application`'s test children, so
-# the cloud application does not gain a compile-time reference to `CmsHarness`
-# that only the test suite ever wanted. Its endpoint is `server: false` in test,
-# so this costs a registry and an idle DynamicSupervisor.
-{:ok, _} = CmsHarness.Supervisor.start_link([])
+# The test BEAM must bind its own socket even when a parent harness passes
+# CMS_SOPS_KEY_SOCKET_PATH down to `mix test`. Reusing that inherited path
+# collides with the parent listener during a promotion gate's ExUnit run.
+# Scope the path before starting any harness children. The helper also starts
+# the tree for spex runs, which do not load this file.
+:ok = CmsHarnessTest.Projects.ensure_harness_supervisor_started()
 
 # Auto-load envs/test.env (gitignored) for e2e tests so OAuth client_id /
 # secret / test-account creds are available without manual sourcing.
