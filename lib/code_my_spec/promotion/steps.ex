@@ -506,8 +506,41 @@ defmodule CodeMySpec.Promotion.Steps do
   @doc "Select affected tests from the gate device's green Mix baseline."
   def select_tests(env, root, base, head) do
     case changed_between(env, root, base, head) do
-      nil -> {:error, %{reason: "cannot read changed files between #{base} and #{head}"}}
-      changed -> {:ok, select_from_baseline(root, changed)}
+      nil ->
+        {:error, %{reason: "cannot read changed files between #{base} and #{head}"}}
+
+      changed ->
+        map_note = build_test_references(env, root)
+        {:ok, Map.put(select_from_baseline(root, changed), "reference_map", map_note)}
+    end
+  end
+
+  # The baseline 1167's selection reads, built without running a test: the
+  # gate head's test files are compiled and required in the project's own VM
+  # with the callbacks `Mix.Compilers.Test` uses for `compile.test_stale`, and
+  # the map is written beside `compile.elixir` as `compile.test_refs`. A green
+  # `--stale` run was the only other source, and selection exists to avoid
+  # full runs. Measured, not acted on: the gate still runs every test.
+  defp build_test_references(env, root) do
+    if loadable_mix_exs?(env, root) do
+      env
+      |> ExecutionContexts.cmd(
+        "mix",
+        ["run", "--no-start", "-e", TestImpact.reference_map_script()],
+        cd: root,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+      |> normalize()
+      |> case do
+        {_out, 0} ->
+          "built"
+
+        {out, status} ->
+          "not built (exit #{status}): #{out |> String.trim() |> String.slice(-300, 300)}"
+      end
+    else
+      "skipped: no loadable mix.exs"
     end
   end
 
