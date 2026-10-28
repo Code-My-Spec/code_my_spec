@@ -7013,12 +7013,12 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Plan failures for the gate harness's next full test run."
   def fail_full_promotion_run(gate, files) do
-    Process.put({:promotion_failure_paths, gate.id}, List.wrap(files))
+    Process.put({:promotion_failure_paths, gate.working_copy_id}, List.wrap(files))
     :ok
   end
 
   def promotion_failure_paths(gate) do
-    Process.get({:promotion_failure_paths, gate.id}, [])
+    Process.get({:promotion_failure_paths, gate.working_copy_id}, [])
   end
 
   @doc "Mark a test for same-commit passing evidence before the gate's failing run."
@@ -7039,7 +7039,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
         CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
           project_id: scope.active_project_id,
-          working_copy_id: gate.id,
+          working_copy_id: gate.working_copy_id,
           source: source,
           kind: :full,
           status: :completed,
