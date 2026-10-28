@@ -79,7 +79,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
       |> Application.app_dir("ebin")
       |> Path.join("*.beam")
       |> Path.wildcard()
-      |> Enum.flat_map(&ReleaseScan.modules_referencing_mix/1)
+      |> ReleaseScan.modules_referencing_mix_in()
       |> Enum.reject(fn mod ->
         Enum.any?(@allowed_modules, &Regex.match?(&1, Atom.to_string(mod)))
       end)

@@ -29,13 +29,24 @@ defmodule CodeMySpecSpex.Story1166.Criterion2504Spex do
       end
 
       when_ "John looks at promotion timing for the last 24 hours", context do
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+
         {:ok, Map.put(context, :timing_view, view)}
       end
 
       then_ "the page says no promotions ran in that window", context do
-        assert has_element?(context.timing_view, "[data-test='promotion-window'][data-window='24h']")
-        assert has_element?(context.timing_view, "[data-test='promotion-timing-empty']", "No promotions ran")
+        assert has_element?(
+                 context.timing_view,
+                 "[data-test='promotion-window'][data-window='24h']"
+               )
+
+        assert has_element?(
+                 context.timing_view,
+                 "[data-test='promotion-timing-empty']",
+                 "No promotions ran"
+               )
+
         {:ok, context}
       end
 

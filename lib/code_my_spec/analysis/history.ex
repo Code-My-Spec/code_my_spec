@@ -100,11 +100,13 @@ defmodule CodeMySpec.Analysis.History do
   defp as_history_entry(%Run{} = run) do
     %{
       run_id: run.id,
+      status: run.status,
+      completed_commit: run.completed_commit,
       commit: run.completed_commit || run.start_commit,
       working_copy_id: run.working_copy_id,
       source: run.source,
-      status: run.status,
       partial: run.kind == :partial,
+      findings_recorded: not is_nil(run.findings),
       started_at: run.started_at,
       finished_at: run.finished_at,
       failures: failures(run),

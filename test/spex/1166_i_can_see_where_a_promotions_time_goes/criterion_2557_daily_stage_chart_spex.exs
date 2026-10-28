@@ -31,13 +31,20 @@ defmodule CodeMySpecSpex.Story1166.Criterion2557Spex do
       end
 
       when_ "John opens promotion timing for the last seven days", context do
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+
         view |> element("[data-test='promotion-window-7d']") |> render_click()
         {:ok, Map.put(context, :timing_view, view)}
       end
 
       then_ "one bar per day stacks the median of each named stage", context do
-        chart = AgentPerformanceHelpers.chart_data(context.timing_view, "[data-test='promotion-daily-stage-chart']")
+        chart =
+          AgentPerformanceHelpers.chart_data(
+            context.timing_view,
+            "[data-test='promotion-daily-stage-chart']"
+          )
+
         assert length(chart["xAxis"]["data"]) == 2
 
         for stage <- ~w(queue-wait gate-build compiler credo exunit spex landing) do

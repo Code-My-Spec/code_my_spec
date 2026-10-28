@@ -31,20 +31,41 @@ defmodule CodeMySpecSpex.Story1166.Criterion2503Spex do
       end
 
       when_ "John chooses the last seven days", context do
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/promotion-timing")
+
         view |> element("[data-test='promotion-window-7d']") |> render_click()
         {:ok, Map.put(context, :timing_view, view)}
       end
 
       then_ "every median, p90 and total covers those seven days", context do
-        assert has_element?(context.timing_view, "[data-test='promotion-window'][data-window='7d']")
-        assert has_element?(context.timing_view, "[data-test='promotion-outcome-landed'][data-count='3']")
+        assert has_element?(
+                 context.timing_view,
+                 "[data-test='promotion-window'][data-window='7d']"
+               )
+
+        assert has_element?(
+                 context.timing_view,
+                 "[data-test='promotion-outcome-landed'][data-count='3']"
+               )
 
         for stage <- ~w(queue-wait gate-build compiler credo exunit spex asset-build landing) do
           summary = "[data-test='promotion-summary-landed-#{stage}']"
-          assert has_element?(context.timing_view, "#{summary} [data-stat='median'][data-duration-seconds='60']")
-          assert has_element?(context.timing_view, "#{summary} [data-stat='p90'][data-duration-seconds='120']")
-          assert has_element?(context.timing_view, "#{summary} [data-stat='total'][data-duration-seconds='240']")
+
+          assert has_element?(
+                   context.timing_view,
+                   "#{summary} [data-stat='median'][data-duration-seconds='60']"
+                 )
+
+          assert has_element?(
+                   context.timing_view,
+                   "#{summary} [data-stat='p90'][data-duration-seconds='120']"
+                 )
+
+          assert has_element?(
+                   context.timing_view,
+                   "#{summary} [data-stat='total'][data-duration-seconds='240']"
+                 )
         end
 
         {:ok, context}

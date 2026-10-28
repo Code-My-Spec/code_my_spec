@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story1166.Criterion2500Spex do
 
   spex "John sees where a landed promotion's time went", criterion: 2500 do
     scenario "a landed promotion shows every stage and accounts for its elapsed time" do
-      given_ "a promotion waited 11 minutes, built the gate for 2 minutes, ran compiler for 1 minute, credo for 30 seconds, exunit for 5 minutes and spex for 5 minutes, then landed", context do
+      given_ "a promotion waited 11 minutes, built the gate for 2 minutes, ran compiler for 1 minute, credo for 30 seconds, exunit for 5 minutes and spex for 5 minutes, then landed",
+             context do
         entry =
           Fixtures.landed_promotion_with_timing(context.scope,
             queue_wait: 660,
@@ -56,7 +57,8 @@ defmodule CodeMySpecSpex.Story1166.Criterion2500Spex do
           assert has_element?(
                    context.timing_view,
                    "[data-test='promotion-stage-#{stage}'][data-duration-seconds='#{seconds}']"
-                 ), "missing #{stage} duration"
+                 ),
+                 "missing #{stage} duration"
         end
 
         {:ok, context}

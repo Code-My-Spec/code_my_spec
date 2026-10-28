@@ -601,7 +601,7 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       assigns: %{current_scope: context.scope, agent_id: Map.get(context, :agent_id)}
     }
 
-    args = Map.merge(%{story_number: story_number}, Map.new(opts))
+    args = Map.merge(%{story_number: story_number, fresh: false}, Map.new(opts))
     {:reply, response, _frame} = Promote.execute(args, frame)
     response
   end

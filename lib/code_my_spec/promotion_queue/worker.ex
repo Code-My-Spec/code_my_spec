@@ -20,9 +20,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.Flakes
-  alias CodeMySpec.Analysis.History
-  alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.{Flakes, History, Run}
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
@@ -624,7 +622,64 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       # not start, the tree was dirty).
       could_not_gate(state, batch.entries, reason)
     else
+      log_flake_classifications(batch)
       eject_batch(state, findings(problems))
+    end
+  end
+
+  defp log_flake_classifications(batch) do
+    runs = History.list(batch.scope, source: "exunit")
+
+    current =
+      Enum.find(runs, fn run ->
+        run.working_copy_id == batch.gate.id and run.commit == batch.head and
+          run.status == :completed and not run.partial and run.findings_recorded
+      end)
+
+    failures =
+      current
+      |> then(&if(&1, do: &1.failures, else: []))
+      |> Enum.filter(&(is_binary(&1["file"]) and is_binary(&1["name"])))
+      |> Enum.uniq_by(&{&1["file"], &1["name"]})
+
+    unrelated? = fn run, failure -> unrelated_candidate?(batch, run, failure) end
+
+    for result <-
+          Flakes.classify_all(batch.scope, batch.head, failures, unrelated_candidate?: unrelated?) do
+      failure = result.failure
+      evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
+
+      label =
+        case result.classification do
+          :confirmed_flake -> "confirmed flake"
+          :suspected_flake -> "suspect"
+          :no_flake_evidence -> "not a flake"
+        end
+
+      Logger.info(
+        "[PromotionQueue] #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
+      )
+    end
+  end
+
+  defp unrelated_candidate?(batch, run, failure) do
+    file = failure["file"]
+
+    covered =
+      file |> String.replace_prefix("test/", "lib/") |> String.replace_suffix("_test.exs", ".ex")
+
+    environment = WorkingCopies.execution_context(batch.scope)
+
+    if run.working_copy_id in [batch.gate.id | Enum.map(batch.entries, & &1.working_copy_id)] do
+      false
+    else
+      case Runner.changed(environment, batch.gate.root, batch.base, run.commit, batch.gate.id) do
+        {:ok, %{paths: paths}} when is_list(paths) ->
+          file not in paths and covered not in paths
+
+        _ ->
+          false
+      end
     end
   end
 

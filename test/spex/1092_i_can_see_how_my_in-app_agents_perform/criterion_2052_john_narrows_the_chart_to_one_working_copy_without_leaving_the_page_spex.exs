@@ -78,7 +78,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2052Spex do
         |> element("form[data-test='performance-filter']")
         |> render_change(%{"working_copy_id" => context.working_copy_id, "story_id" => ""})
 
-        html = render_async(context.index)
+        html = await_report(context.index)
 
         {:ok, Map.put(context, :html, html)}
       end

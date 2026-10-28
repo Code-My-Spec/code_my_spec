@@ -455,6 +455,18 @@ defmodule CodeMySpecSpex.Fixtures do
     token
   end
 
+  @doc "Expire a box access token after a spex verifies its first connection."
+  @spec expire_access_token(String.t()) :: :ok
+  def expire_access_token(token) do
+    {1, _} =
+      Repo.update_all(
+        from(t in "oauth_access_tokens", where: t.token == ^token),
+        set: [expires_in: 1, inserted_at: NaiveDateTime.add(NaiveDateTime.utc_now(), -2, :second)]
+      )
+
+    :ok
+  end
+
   @doc """
   Give the account an SSH access key, generated for real.
 
@@ -6290,6 +6302,13 @@ defmodule CodeMySpecSpex.Fixtures do
       Keyword.get(opts, :problems, [%{file_path: "test/failure_test.exs", message: "failure"}])
 
     CodeMySpec.Analysis.History.record!(run, failures, problems)
+  end
+
+  @doc "Look up one retained analysis run by the ID cited in a promotion log."
+  def analysis_history_entry(%Scope{} = scope, run_id) when is_integer(run_id) do
+    scope
+    |> CodeMySpec.Analysis.History.list(source: "exunit")
+    |> Enum.find(&(&1.run_id == run_id))
   end
 
   @doc "Run the analysis history retention sweep."

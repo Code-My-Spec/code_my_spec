@@ -15,7 +15,8 @@ defmodule CodeMySpec.McpServers.NoToolTakesABareIdTest do
     {:ok, modules} = :application.get_key(:code_my_spec, :modules)
 
     Enum.filter(modules, fn module ->
-      Code.ensure_loaded?(module) and function_exported?(module, :__components__, 1)
+      String.starts_with?(Atom.to_string(module), "Elixir.CodeMySpec.McpServers.") and
+        Code.ensure_loaded?(module) and function_exported?(module, :__components__, 1)
     end)
   end
 

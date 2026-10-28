@@ -17,6 +17,7 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpecTest.PromotionQueueHelpers
 
+  alias CodeMySpec.AnalysisFixtures
   alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.PromotionQueue
   alias CodeMySpec.PromotionQueue.Repository
@@ -52,13 +53,21 @@ defmodule CodeMySpec.PromotionQueue.APromoteIsCheckedAtItsCommitTest do
         ExecutionContext.new(:local, root)
       )
 
+    head = git!(root, ["rev-parse", "HEAD"])
+
+    AnalysisFixtures.fresh_analysis_runs_fixture(
+      scope,
+      CodeMySpec.Analysis.Run.sources(),
+      commit: head
+    )
+
     on_exit(fn -> stop_worker(scope.active_project_id) end)
 
     %{
       scope: scope,
       copy: copy,
       story: story_fixture(scope, %{working_copy_id: copy.id}),
-      head: git!(root, ["rev-parse", "HEAD"])
+      head: head
     }
   end
 

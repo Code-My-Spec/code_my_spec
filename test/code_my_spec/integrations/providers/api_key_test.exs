@@ -20,7 +20,9 @@ defmodule CodeMySpec.Integrations.Providers.ApiKeyTest do
   which nothing here could otherwise see with an account that has no balance.
   """
 
-  use ExUnit.Case, async: true
+  # with_plug/2 temporarily changes the node-wide ApiKey request config.
+  # Run after async tests so their Req.Test stubs cannot see a cassette plug.
+  use ExUnit.Case, async: false
 
   import CodeMySpec.ApiKeyCassetteHelpers
 
