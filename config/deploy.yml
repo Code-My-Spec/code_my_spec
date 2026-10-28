@@ -1,0 +1,53 @@
+# Kamal deploys prod for code_my_spec.
+service: code_my_spec
+image: code-my-spec
+<% if ENV["CMS_SSH_KEY_PATH"] %>
+ssh:
+  keys: ["<%= ENV["CMS_SSH_KEY_PATH"] %>"]
+  keys_only: true
+  log_level: debug
+<% end %>
+
+servers:
+  web:
+    hosts:
+      - codemyspec.com
+    options:
+      network: db_net
+
+proxy:
+  ssl: true
+  host: codemyspec.com
+  # The proxy probes this before moving traffic. It must answer without a
+  # session, without auth and without the database (criterion 7977).
+  healthcheck:
+    path: /health
+    interval: 3
+    timeout: 5
+
+registry:
+  server: 10.0.0.2:5000
+  username:
+    - KAMAL_REGISTRY_USERNAME
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+env:
+  clear:
+    APP_ENV: prod
+    PHX_HOST: codemyspec.com
+    # Names this deploy to the project's own telemetry collector, so
+    # traces and logs land under the right ServiceName with no manual
+    # config on Sam's part (criterion 1713/1855).
+    OTEL_SERVICE_NAME: code_my_spec-web
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  secret:
+    - SECRET_KEY_BASE
+    - DATABASE_URL
+
+# Migrations run against the new image before traffic moves to it, so a
+# migration that fails leaves the old version serving.
+boot:
+  limit: 1
+  wait: 2
