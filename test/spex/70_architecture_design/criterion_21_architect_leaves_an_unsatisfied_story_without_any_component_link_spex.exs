@@ -211,7 +211,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
     assert [feedback] =
              Regex.run(
                ~r/\A# ArchitectureDesign: Needs work\n\nTask ID: `[^`]+`[^\n]*\n\n([\s\S]*)\z/,
-               body, capture: :all_but_first),
+               body,
+               capture: :all_but_first
+             ),
            "expected an ArchitectureDesign rejection with feedback, got: #{inspect(body)}"
 
     feedback
