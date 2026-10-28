@@ -47,6 +47,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
       from(agent in Agent, where: agent.id in ^[coding.id, qa.id]),
       set: [story_id: nil, continuous: true]
     )
+
     %{ctx | coding: reload(coding), qa: reload(qa)}
   end
 
@@ -65,6 +66,7 @@ defmodule CodeMySpec.Agents.AnIdleTeamPicksUpItsReopenedStoryTest do
       from(story in Story, where: story.id == ^ctx.story.id),
       set: [working_copy_id: nil]
     )
+
     ctx
   end
 
