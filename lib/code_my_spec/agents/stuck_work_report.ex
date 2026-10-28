@@ -6,6 +6,7 @@ defmodule CodeMySpec.Agents.StuckWorkReport do
   alias CodeMySpec.Agents
   alias CodeMySpec.Analysis.StuckWork.Alert
   alias CodeMySpec.Repo
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @spec deliver(map()) :: :ok
   def deliver(%{scope: scope, kind: kind, item: item, now: now, interval: interval})
@@ -43,9 +44,14 @@ defmodule CodeMySpec.Agents.StuckWorkReport do
   defp send_report(scope, main_id, kind, id, item) do
     source = Map.get(item, :source, "promotion")
 
+    copy = Repo.get(WorkingCopy, item.working_copy_id)
+    copy_name = if copy, do: copy.label || copy.id, else: item.working_copy_id
+    silent_minutes = div(item.seconds_since_event, 60)
+
     message =
-      "Stuck #{kind} #{id} (#{source}) on working copy #{item.working_copy_id}: " <>
-        "#{item.age_minutes} minutes old; last heard from at #{DateTime.to_iso8601(item.last_event_at)}."
+      "Stuck #{kind} #{id} (#{source}) on working copy #{copy_name}: " <>
+        "#{item.age_minutes} minutes old; last heard from #{silent_minutes} minutes ago " <>
+        "at #{DateTime.to_iso8601(item.last_event_at)}."
 
     case Agents.message_agent(scope, main_id, message) do
       {:ok, _} -> :ok
