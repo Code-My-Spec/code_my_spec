@@ -1385,6 +1385,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {:ok, run} ->
         {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}
 
+      {:error, {:refused, reason}} ->
+        Agents.notify_main(scope, :teammate_stalled, "#{source} analyzer refused: #{reason}")
+        {:ok, %{"run_id" => payload["run_id"], "status" => "refused"}}
+
       # Not applied: reconciling it would rewrite this source's Problems off a
       # run nobody is waiting for.
       {:error, :unknown_run} ->

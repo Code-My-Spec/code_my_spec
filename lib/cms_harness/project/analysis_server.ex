@@ -26,6 +26,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.Analysis
   alias CmsHarness.AnalysisSlots
   alias CmsHarness.Channel
+  alias CmsHarness.DiskCapacity
   alias CmsHarness.Sync
   alias CodeMySpec.ExecutionContexts.ExecutionContext
 
@@ -599,6 +600,27 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp maybe_start_next(%{pending_cleanups: [_ | _]} = state), do: state
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
+    case DiskCapacity.check([state.project.root, System.tmp_dir!()]) do
+      :ok ->
+        start_next(state, entry, rest)
+
+      {:error, reason} ->
+        for run_id <- answers_for(entry) do
+          Channel.deliver_analysis_result(state.project.root, %{
+            "run_id" => run_id,
+            "source" => entry.source,
+            "status" => "refused",
+            "error" => reason
+          })
+        end
+
+        maybe_start_next(%{state | queue: rest})
+    end
+  end
+
+  defp maybe_start_next(state), do: state
+
+  defp start_next(state, entry, rest) do
     project = state.project
     parent = self()
     {:ok, capture} = StringIO.open("")
@@ -613,8 +635,6 @@ defmodule CmsHarness.Project.AnalysisServer do
 
     %{state | running: Map.merge(entry, %{task: task, started: false}), queue: rest, timer: nil}
   end
-
-  defp maybe_start_next(state), do: state
 
   # Bounds `Analysis.tree_state/1`'s two git calls to @git_snapshot_timeout,
   # independent of the analyzer's own timer -- a hung git call must not be

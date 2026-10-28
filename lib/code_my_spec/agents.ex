@@ -2922,6 +2922,21 @@ defmodule CodeMySpec.Agents do
     end
   end
 
+  def record_turn_event(
+        %Scope{} = scope,
+        agent_id,
+        %{"kind" => "disk_capacity_refused", "text" => reason} = event,
+        _opts
+      ) do
+    with {:ok, agent} <- AgentsRepository.fetch_agent(scope, agent_id),
+         {:ok, conversation} <- open_conversation(scope, agent) do
+      write_turn_event(conversation, agent, event)
+      notify_main(scope, :teammate_stalled, "Turn refused on #{teammate(agent)}: #{reason}")
+    else
+      _ -> :ok
+    end
+  end
+
   # A failed turn that was neither a provider refusal nor a timeout: said to
   # the agent with the request it failed on, once. A failure on the re-offer is
   # recorded and left, so a repeating failure cannot buy a turn per failure.

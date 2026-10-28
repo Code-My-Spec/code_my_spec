@@ -552,6 +552,14 @@ defmodule CodeMySpec.Analysis do
     {:error, {:superseded, reason}}
   end
 
+  # A capacity refusal happened before the analyzer ran. Close the ledger row
+  # without reconciling Problems or recording a clean analyzer result.
+  defp apply_remote_result(_scope, run, %{"status" => "refused"} = payload) do
+    reason = payload["error"] || "analyzer refused before starting"
+    RunsRepository.abandon_run(run, reason)
+    {:error, {:refused, reason}}
+  end
+
   # Somebody cancelled it: closed as that, and accepted, since it is the
   # answer the harness was asked for.
   defp apply_remote_result(_scope, run, %{"status" => "cancelled"}), do: Reconciler.cancel(run)
