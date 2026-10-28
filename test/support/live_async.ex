@@ -5,13 +5,15 @@ defmodule CodeMySpecTest.LiveAsync do
   outlasts.
   """
 
+  alias Phoenix.LiveView.Channel
+
   # Not a window to race: work this late is hung, and saying so beats the
   # test's own timeout.
   @hung 30_000
 
   @spec render_settled(Phoenix.LiveViewTest.View.t()) :: String.t()
   def render_settled(view) do
-    {:ok, pids} = Phoenix.LiveView.Channel.async_pids(view.pid)
+    {:ok, pids} = Channel.async_pids(view.pid)
 
     pids
     |> Enum.map(&Process.monitor/1)
