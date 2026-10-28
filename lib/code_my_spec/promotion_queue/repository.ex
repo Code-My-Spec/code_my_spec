@@ -269,8 +269,12 @@ defmodule CodeMySpec.PromotionQueue.Repository do
         # new entry is created instead.
         locked = Repo.one!(from(e in Entry, where: e.id == ^entry.id, lock: "FOR UPDATE"))
 
-        if status == :gating and locked.status != :queued,
-          do: Repo.rollback(:candidate_no_longer_queued)
+        # The worker first reserves a queued row, then updates that same
+        # gating row with the batch details. Reject a stale struct whose row
+        # changed state, while allowing both steps of the worker's transition.
+        if status == :gating and
+             (entry.status not in [:queued, :gating] or locked.status != entry.status),
+           do: Repo.rollback(:candidate_no_longer_queued)
 
         if status == :gating and locked.status != :gating and
              not ValidationHolds.promotion_allowed?(locked.project_id),

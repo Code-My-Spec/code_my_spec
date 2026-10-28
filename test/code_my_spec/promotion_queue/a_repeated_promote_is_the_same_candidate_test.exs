@@ -95,6 +95,17 @@ defmodule CodeMySpec.PromotionQueue.ARepeatedPromoteIsTheSameCandidateTest do
     assert [%{id: ^id}] = open(ctx)
   end
 
+  test "a reserved candidate can record its gate batch without losing its reservation", ctx do
+    {:ok, waiting} = enqueue(ctx, "c1")
+    {:ok, reserved} = Repository.move(waiting, :gating, %{result: %{"stage" => "build"}})
+    batch_id = Ecto.UUID.generate()
+
+    assert {:ok, %{status: :gating, batch_id: ^batch_id}} =
+             Repository.move(reserved, :gating, %{batch_id: batch_id})
+
+    assert {:error, :candidate_no_longer_queued} = Repository.move(waiting, :gating)
+  end
+
   test "the same commit again while it is being gated is the same entry", ctx do
     {:ok, first} = enqueue(ctx, "c1")
     {:ok, _} = Repository.move(first, :gating, %{batch_id: Ecto.UUID.generate()})
