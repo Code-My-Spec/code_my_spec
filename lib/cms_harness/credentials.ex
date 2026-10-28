@@ -90,8 +90,8 @@ defmodule CmsHarness.Credentials do
   # A copy's own key goes only to its server. A config with no `server_url`
   # predates recording it; `Config.server_url_for/1` already connects that copy
   # to this harness's server, so its own requests may present the key there.
-  # The cross-copy fallback (`any/0`) never takes an unrecorded key: that is
-  # how one server's key reached another (c1ab3c54).
+  # The cross-copy fallback (`any/0`) never takes an unrecorded key, so one
+  # server's key cannot reach another.
   defp from_working_copy(root, server, mode) when is_binary(root) and root != "" do
     case HarnessConfig.read_file(root) do
       {:ok, %{deploy_key: key, server_url: recorded}} when is_binary(key) and key != "" ->
