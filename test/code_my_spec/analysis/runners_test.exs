@@ -242,6 +242,23 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert excerpt =~ "did not match"
     end
 
+    test "a key socket bind collision is a named suite startup failure" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "error",
+        "output" =>
+          "** (Mix) Could not start application cms_harness: " <>
+            "CmsHarness.SopsKeySocket listener exited with :eaddrinuse",
+        "stats" => %{},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, :sops_key_socket_address_in_use, 1, excerpt}} =
+               Runners.from_raw("exunit", raw)
+
+      assert excerpt =~ "eaddrinuse"
+    end
+
     # Run 54391: the first `** (` in a full suite's output is a logged
     # disconnect, not what ended `mix test`; the crash opens a line, last.
     test "the excerpt is the crash that ended the run, not an earlier logged error" do

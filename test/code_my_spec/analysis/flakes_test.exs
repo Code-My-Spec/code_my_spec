@@ -156,10 +156,44 @@ defmodule CodeMySpec.Analysis.FlakesTest do
     assert Enum.sort(Enum.map(result.evidence, & &1.run_id)) == Enum.sort(Enum.map(runs, & &1.id))
   end
 
+  test "an exunit pass cannot confirm a spex failure", %{scope: scope} do
+    commit = sha(7)
+    failure = %{file: "test/code_my_spec/criterion_spex.exs", name: "criterion fails"}
+    {:ok, gate} = WorkingCopies.issue(scope, nil, label: "gate", device: device_fixture(scope))
+    gate_scope = %{scope | active_working_copy_id: gate.id}
+
+    completed_run(gate_scope, commit, [failure], source: "spex")
+    completed_run(scope, commit, [], source: "exunit")
+
+    assert [%{source: "spex", result: %{classification: :no_flake_evidence}}] =
+             Flakes.classify_gate_failures(scope, gate.id, commit)
+  end
+
+  test "gate classifies spex failures with spex evidence without borrowing exunit passes", %{
+    scope: scope
+  } do
+    commit = sha(8)
+    failure = %{file: "test/code_my_spec/criterion_spex.exs", name: "criterion fails"}
+    {:ok, gate} = WorkingCopies.issue(scope, nil, label: "gate", device: device_fixture(scope))
+    gate_scope = %{scope | active_working_copy_id: gate.id}
+
+    completed_run(gate_scope, commit, [failure], source: "exunit")
+    completed_run(gate_scope, commit, [failure, failure], source: "spex")
+    passing_spex = completed_run(scope, commit, [], source: "spex")
+
+    assert [
+             %{source: "exunit", result: %{classification: :no_flake_evidence}},
+             %{source: "spex", result: %{classification: :confirmed_flake, evidence: [evidence]}}
+           ] = Flakes.classify_gate_failures(scope, gate.id, commit)
+
+    assert evidence.run_id == passing_spex.id
+  end
+
   defp completed_run(scope, commit, failures, opts \\ []) do
     kind = Keyword.get(opts, :kind, :full)
     dirty? = Keyword.get(opts, :dirty, false)
-    run = analysis_run_fixture(scope, %{kind: kind, status_override: :completed})
+    source = Keyword.get(opts, :source, "exunit")
+    run = analysis_run_fixture(scope, %{kind: kind, source: source, status_override: :completed})
 
     run =
       RunsRepository.record_tree(run, %{
