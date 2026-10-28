@@ -17,6 +17,8 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.AgentTasks.RunReconciled
+  alias CodeMySpec.Agents.ValidationHoldReport
+  alias CodeMySpec.Staffing
 
   @impl true
   def start(_type, args) do
@@ -167,11 +169,11 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
-        CodeMySpec.Agents.ValidationHoldReport.attach()
+        ValidationHoldReport.attach()
         Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()
-        CodeMySpec.Staffing.attach()
+        Staffing.attach()
         # A copy's app holds main's open candidates in its cloned database;
         # resuming them there would gate and publish beside main.
         when_serving(serving? and main_copy?(), &CodeMySpec.PromotionQueue.resume_all/0)
@@ -188,11 +190,11 @@ defmodule CodeMySpecWeb.Application do
     [
       {"GoogleAnalytics", &GoogleAnalytics.attach/0},
       {"AnalysisReport", &AnalysisReport.attach/0},
-      {"ValidationHoldReport", &CodeMySpec.Agents.ValidationHoldReport.attach/0},
+      {"ValidationHoldReport", &ValidationHoldReport.attach/0},
       {"Events", &Events.attach/0},
       {"RunReconciled", &RunReconciled.attach/0},
       {"AnalysisPush", &AnalysisPush.attach/0},
-      {"Staffing", &CodeMySpec.Staffing.attach/0},
+      {"Staffing", &Staffing.attach/0},
       {"GraphWake", &GraphWake.attach/0}
     ]
   end
