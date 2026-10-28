@@ -11,6 +11,8 @@ defmodule CodeMySpec.Agents.Mailbox do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.CompletionHandoffs
   alias CodeMySpec.Agents.Mailbox.Entry
+  alias CodeMySpec.Agents.Offer
+  alias CodeMySpec.Agents.OfferMessage
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.SenderStamp
@@ -306,36 +308,64 @@ defmodule CodeMySpec.Agents.Mailbox do
 
   @terminal_dispatch_reason :harness_not_connected
 
-  # Internal notices stay in the durable mailbox across a harness disconnect.
-  # They are retried by the reconciler or when the harness reconnects. A direct
-  # operator message has a different delivery contract: a definite refusal is
-  # reported to its sender below.
+  # Run results and restart replies stay in the durable mailbox across a
+  # harness disconnect. They are retried by the reconciler or on reconnect.
+  # Offer notices and operator messages retain their definite-refusal contract
+  # below: an offer the agent never received is marked undelivered.
   defp reconcile_dispatch(
          scope,
          agent_id,
          %{event: event} = entry,
          {:error, @terminal_dispatch_reason}
        )
-       when event != "operator_message" do
+       when event == "own_reply" do
+    refused_offer? =
+      Repo.exists?(
+        from link in OfferMessage,
+          join: offer in Offer,
+          on: offer.id == link.offer_id,
+          where: link.message_id == ^entry.message_id and offer.kind != :resume
+      )
+
+    if refused_offer? do
+      fail_refused_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason})
+    else
+      case transition(scope, agent_id, entry.delivery_ref, fn
+             %{state: :claimed} = current ->
+               change_entry(current, %{
+                 state: :queued,
+                 claimed_at: nil,
+                 diagnostic: "Dispatch deferred: #{@terminal_dispatch_reason}"
+               })
+
+             current ->
+               current
+           end) do
+        {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
+        _ -> {:ok, :queued}
+      end
+    end
+  end
+
+  # A definite refusal of a direct operator message or offer notice settles
+  # its delivery and offer as failed, so the sender sees it was not delivered.
+  defp reconcile_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason} = error),
+    do: fail_refused_dispatch(scope, agent_id, entry, error)
+
+  defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
     case transition(scope, agent_id, entry.delivery_ref, fn
            %{state: :claimed} = current ->
-             change_entry(current, %{
-               state: :queued,
-               claimed_at: nil,
-               diagnostic: "Dispatch deferred: #{@terminal_dispatch_reason}"
-             })
+             change_entry(current, %{diagnostic: "Dispatch unconfirmed: #{inspect(reason)}"})
 
            current ->
              current
          end) do
       {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
-      _ -> {:ok, :queued}
+      _ -> error
     end
   end
 
-  # A definite refusal of a direct operator message settles its delivery and
-  # offer as failed, so the sender can tell it was not delivered.
-  defp reconcile_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason} = error) do
+  defp fail_refused_dispatch(scope, agent_id, entry, error) do
     case transition(scope, agent_id, entry.delivery_ref, fn
            %{state: :claimed} = current ->
              change_entry(current, %{
@@ -356,19 +386,6 @@ defmodule CodeMySpec.Agents.Mailbox do
 
       _other ->
         error
-    end
-  end
-
-  defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
-    case transition(scope, agent_id, entry.delivery_ref, fn
-           %{state: :claimed} = current ->
-             change_entry(current, %{diagnostic: "Dispatch unconfirmed: #{inspect(reason)}"})
-
-           current ->
-             current
-         end) do
-      {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
-      _ -> error
     end
   end
 
