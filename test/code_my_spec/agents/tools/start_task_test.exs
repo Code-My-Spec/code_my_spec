@@ -115,23 +115,27 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
       assert task.status == :active
     end
 
-    test "a session that never registered as an agent has no owner to start a task on" do
+    test "a session that missed SessionStart registers on its first task claim" do
       {scope, _agent, _component, req_params} = setup_requirement()
-      frame = %Frame{assigns: %{current_scope: scope}}
+      :ok = register_working_copy_execution_context(scope, fixture_execution_context(scope))
+      session_id = "conv-unregistered-#{System.unique_integer([:positive])}"
+      assert {:error, :no_owner} = CodeMySpec.Agents.fetch_owner(scope, nil, session_id)
 
       response =
         ToolLibrary.run(
           "start_task",
-          Map.put(
-            req_params,
-            :session_id,
-            "conv-unregistered-#{System.unique_integer([:positive])}"
-          ),
-          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+          Map.put(req_params, :session_id, session_id),
+          %{scope: scope, current_scope: scope}
         )
 
-      assert match?({:error, _}, response)
-      assert response_text(response) =~ "No agent found"
+      assert match?({:ok, _}, response)
+      assert response_text(response) =~ "Task ID:"
+      assert {:ok, agent} = CodeMySpec.Agents.fetch_owner(scope, nil, session_id)
+      assert agent.role == :main
+      assert agent.engine == :claude_code
+
+      assert [%{status: :active, requirement_name: "implementation_file"}] =
+               Repo.reload!(agent).tasks
     end
   end
 
@@ -223,7 +227,7 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
       assert response_text(response) =~ "not found"
     end
 
-    test "returns error when session_id is missing" do
+    test "returns a named error when session_id is missing" do
       {scope, _agent, _component, req_params} = setup_requirement()
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -235,7 +239,7 @@ defmodule CodeMySpec.Agents.Tools.StartTaskTest do
         )
 
       assert match?({:error, _}, response)
-      assert response_text(response) =~ "No agent found"
+      assert response_text(response) =~ "session_id is required"
     end
 
     test "returns error without valid scope" do
