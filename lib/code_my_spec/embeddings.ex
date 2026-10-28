@@ -32,6 +32,10 @@ defmodule CodeMySpec.Embeddings do
   @doc "Retry failed hex doc packages; see `HexDocReconciler.reset_failed/1`."
   defdelegate reset_failed_doc_packages(opts \\ []), to: HexDocReconciler, as: :reset_failed
 
+  @doc "Whether an embedding call is currently running on the shared pool."
+  @spec runner_busy?() :: boolean()
+  def runner_busy?, do: CodeMySpec.Embeddings.InFlightCalls.any_in_flight?(CodeMySpec.EmbedPool)
+
   @doc """
   True when the server reconciles corpora itself (`PgVectorBackend`).
   """

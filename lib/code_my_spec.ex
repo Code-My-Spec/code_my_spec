@@ -116,4 +116,8 @@ defmodule CodeMySpec do
       CodeMySpec.Workspaces
     ],
     exports: :all
+
+  @doc "Whether a call is running on the shared embedding pool."
+  @spec embedding_runner_busy?() :: boolean()
+  def embedding_runner_busy?, do: CodeMySpec.Embeddings.runner_busy?()
 end

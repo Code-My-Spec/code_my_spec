@@ -83,7 +83,8 @@ defmodule CodeMySpec.Provisioning.RunLock do
   end
 
   @doc """
-  Whether any project has a setup run in flight on this node.
+  Whether any project has a setup run in flight on this node. This registry is
+  node-local; it does not observe runs on other application nodes.
 
   For callers that act on shared infrastructure rather than one project (the
   burst-box sweep): a run may be mid-step on a box they would otherwise judge

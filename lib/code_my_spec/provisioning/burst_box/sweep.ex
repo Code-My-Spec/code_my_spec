@@ -46,6 +46,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   alias CodeMySpec.Provisioning.BurstBox.Lifecycle
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.Users.Scope
 
   # The label every burst box carries, set at creation by whatever ensures
@@ -70,7 +71,11 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   # (`reap_legacy_builders: true`) sweeps them once they are well past any
   # build. Two hours, past the longest build and the billing hour it is in.
   @legacy_builder_name ~r/\Abuilder-[0-9a-f]{12}\z/
+  @legacy_builder_role_label "cms-builder-role"
   @legacy_builder_max_age_minutes 120
+
+  @doc "The ownership label required before a legacy builder can be reaped."
+  def legacy_builder_role_label, do: @legacy_builder_role_label
 
   # Anonymous unless a caller asks for a name. A customer's own sweep and the
   # platform's own are two different `Scope`s with no business sharing one
@@ -111,11 +116,12 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   def sweep_now(%Scope{} = scope, opts \\ []) do
     list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
     run_in_flight? = Keyword.get(opts, :run_in_flight?, &RunLock.any_in_flight?/0)
+    setup_pending? = Keyword.get(opts, :setup_pending?, &ProvisioningPlan.server_setup_pending?/0)
 
-    # A provisioning run may be mid-step on a box this sweep would judge idle
-    # (the `server` step builds through the burst box). Delete nothing then.
-    if run_in_flight?.() do
-      Logger.info("[BurstBox.Sweep] a provisioning run is in flight — skipping this sweep")
+    # A run can be mid-step, or paused between steps before its server is ready.
+    # The latter must retain the builder that the server step adopts.
+    if run_in_flight?.() or setup_pending?.() do
+      Logger.info("[BurstBox.Sweep] provisioning still needs the burst box — skipping this sweep")
       []
     else
       sweep_servers(scope, list, opts)
@@ -261,7 +267,10 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   defp server_id(%{"id" => id}), do: id
   defp server_id(%{"server" => %{"id" => id}}), do: id
 
-  defp burst_box?(server), do: Map.has_key?(labels(server), @role_label)
+  defp burst_box?(server) do
+    Map.has_key?(labels(server), @role_label) and
+      server["name"] not in ["fuellytics", "fuellytics-prod"]
+  end
 
   # Exactly `builder-` + 12 hex digits: the name the retired one-box-per-build
   # design gave its servers. Anything else (`fuellytics-prod`, `builder-x`)
@@ -271,10 +280,15 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
     labels = labels(server)
 
     Regex.match?(@legacy_builder_name, to_string(server["name"])) and
+      Map.has_key?(labels, @legacy_builder_role_label) and
       not Map.has_key?(labels, @role_label) and
       not Map.has_key?(labels, Builder.bootstrap_role_label())
   end
-  defp bootstrap_box?(server), do: Map.has_key?(labels(server), Builder.bootstrap_role_label())
+
+  defp bootstrap_box?(server) do
+    Map.has_key?(labels(server), Builder.bootstrap_role_label()) and
+      String.starts_with?(to_string(server["name"]), "cms-burst-bootstrap-")
+  end
 
   defp labels(%{"labels" => labels}) when is_map(labels), do: labels
   defp labels(%{"server" => server}), do: labels(server)

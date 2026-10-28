@@ -5,10 +5,13 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
   "which boxes get a check at all" and "one bad box must not sink the sweep"
   logic, not a round trip to Hetzner.
   """
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.DataCase, async: true
 
   import ExUnit.CaptureLog
+  import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.ProvisioningPlan
+  alias CodeMySpec.ProvisioningPlan.Step
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.BurstBox.Sweep
   alias CodeMySpec.Users.Scope
@@ -84,6 +87,26 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       assert :kept in results
       assert_received {:destroyed, 1}
       refute_received {:destroyed, 2}
+    end
+
+    test "never checks app servers even if they carry a burst label" do
+      servers = [
+        burst_server(%{"id" => 1, "name" => "fuellytics"}),
+        burst_server(%{"id" => 2, "name" => "fuellytics-prod"})
+      ]
+
+      busy? = fn _, _ -> flunk("app server must never be checked") end
+      assert [] = Sweep.sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
+    end
+
+    test "never checks an unlabelled box even when its name resembles a burst box" do
+      servers = [
+        burst_server(%{"id" => 1, "name" => "burst-platform", "labels" => %{}}),
+        burst_server(%{"id" => 2, "name" => "cms-burst-bootstrap-old", "labels" => %{}})
+      ]
+
+      busy? = fn _, _ -> flunk("unlabelled server must never be checked") end
+      assert [] = Sweep.sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
     end
 
     test "no burst boxes in the account is an empty, successful sweep" do
@@ -224,7 +247,12 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
   describe "legacy builder reaping" do
     defp legacy_builder(overrides \\ %{}) do
       Map.merge(
-        %{"id" => 21, "name" => "builder-2633473a5e14", "created" => "2026-08-01T00:00:00Z"},
+        %{
+          "id" => 21,
+          "name" => "builder-2633473a5e14",
+          "created" => "2026-08-01T00:00:00Z",
+          "labels" => %{Sweep.legacy_builder_role_label() => "true"}
+        },
         overrides
       )
     end
@@ -249,6 +277,12 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
     test "deletes a builder-<12 hex> box past the age cutoff" do
       assert [:reaped] = Sweep.sweep_now(scope(), reaper_opts([legacy_builder()], self()))
       assert_received {:destroyed, 21}
+    end
+
+    test "never deletes an unlabelled legacy builder" do
+      unlabelled = legacy_builder(%{"labels" => %{}})
+      assert [] = Sweep.sweep_now(scope(), reaper_opts([unlabelled], self()))
+      refute_received {:destroyed, _}
     end
 
     test "leaves a young builder alone" do
@@ -301,6 +335,60 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       refute_received {:destroyed, _}
     end
 
+    test "a setup paused between steps keeps the builder and avoids listing" do
+      owner = self()
+
+      opts = [
+        list: fn _scope -> send(owner, :listed) && {:ok, [burst_server()]} end,
+        run_in_flight?: fn -> false end,
+        setup_pending?: fn -> true end,
+        destroy: fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
+      ]
+
+      assert [] = Sweep.sweep_now(scope(), opts)
+      refute_received :listed
+      refute_received {:destroyed, _}
+    end
+
+    test "persisted setup rows retain the burst box until the server step completes" do
+      scope = provisioning_scope_fixture()
+      refute ProvisioningPlan.server_setup_pending?()
+
+      Repo.insert!(
+        Step.changeset(%Step{}, %{
+          project_id: scope.active_project_id,
+          key: :repository,
+          state: :done,
+          position: 0
+        })
+      )
+
+      assert ProvisioningPlan.server_setup_pending?()
+
+      Repo.insert!(
+        Step.changeset(%Step{}, %{
+          project_id: scope.active_project_id,
+          key: :server,
+          state: :done,
+          position: 1
+        })
+      )
+
+      refute ProvisioningPlan.server_setup_pending?()
+
+      Repo.insert!(
+        Step.changeset(%Step{}, %{
+          project_id: scope.active_project_id,
+          key: :secrets,
+          state: :running,
+          environment: "uat",
+          position: 2
+        })
+      )
+
+      refute ProvisioningPlan.server_setup_pending?()
+    end
+
     test "RunLock.any_in_flight?/0 sees a held lock" do
       project_id = Ecto.UUID.generate()
 
@@ -334,6 +422,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
           scope: scope(),
           interval_ms: 1,
           list: list,
+          setup_pending?: fn -> false end,
           busy?: fn _, _ -> true end
         )
 

@@ -13,7 +13,6 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
-  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
@@ -241,7 +240,7 @@ defmodule CodeMySpecWeb.Application do
        reap_legacy_builders: true,
        busy?: fn scope, server ->
          BurstBox.busy?(scope, server,
-           embed_runner_busy?: fn -> InFlightCalls.any_in_flight?(CodeMySpec.EmbedPool) end
+           embed_runner_busy?: fn -> CodeMySpec.embedding_runner_busy?() end
          )
        end}
     end
