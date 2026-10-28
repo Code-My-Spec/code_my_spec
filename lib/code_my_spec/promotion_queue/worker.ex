@@ -601,6 +601,18 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     case failing do
       [] ->
+        environment = WorkingCopies.execution_context(batch.scope)
+
+        case Runner.save_test_baseline(environment, batch.gate.root, batch.gate.id) do
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning(
+              "[PromotionQueue] could not save test impact baseline: #{inspect(reason)}"
+            )
+        end
+
         batch = Map.put(batch, :swept, swept)
         batch = persist_publication(state.scope, batch)
         send(self(), :land)

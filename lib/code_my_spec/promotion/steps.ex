@@ -503,6 +503,57 @@ defmodule CodeMySpec.Promotion.Steps do
   """
   def changed(env, root, from, to), do: {:ok, %{paths: changed_between(env, root, from, to)}}
 
+  @doc "Save a dependency baseline by compiling test files without running ExUnit."
+  def save_test_baseline(env, root) do
+    manifests =
+      [
+        "_build/analyzer/test/lib/*/.mix/compile.elixir",
+        "_build/analyzer/lib/*/.mix/compile.elixir",
+        "_build/test/lib/*/.mix/compile.elixir"
+      ]
+      |> Enum.flat_map(&Path.wildcard(Path.join(root, &1), match_dot: true))
+
+    case manifests do
+      [manifest | _] -> capture_test_baseline(env, root, Path.dirname(manifest))
+      [] -> {:error, %{reason: "no compiled source manifest on the gate device"}}
+    end
+  end
+
+  defp capture_test_baseline(env, root, manifest_dir) do
+    capture = Path.join(root, "_build/test_impact_capture_#{System.unique_integer([:positive])}")
+
+    try do
+      case ExecutionContexts.cmd(
+             env,
+             "mix",
+             ["run", "--no-start", "-e", TestImpact.capture_script()],
+             cd: root,
+             stderr_to_stdout: true,
+             env: [
+               {"MIX_ENV", "test"},
+               {"MIX_BUILD_PATH", Path.expand("../../..", manifest_dir)},
+               {"CMS_TEST_IMPACT_CAPTURE", capture}
+             ]
+           ) do
+        {_output, 0} ->
+          with {:ok, binary} <- File.read(capture),
+               references when is_map(references) and map_size(references) > 0 <-
+                 :erlang.binary_to_term(binary),
+               :ok <- TestImpact.save_baseline(manifest_dir, references) do
+            {:ok, %{manifest: manifest_dir}}
+          else
+            _ -> {:error, %{reason: "test dependency capture produced no usable baseline"}}
+          end
+
+        {output, status} ->
+          {:error,
+           %{reason: "test dependency capture failed (#{status}): #{String.trim(output)}"}}
+      end
+    after
+      File.rm(capture)
+    end
+  end
+
   @doc "Select affected tests from the gate device's green Mix baseline."
   def select_tests(env, root, base, head) do
     case changed_between(env, root, base, head) do
@@ -513,10 +564,15 @@ defmodule CodeMySpec.Promotion.Steps do
 
   defp select_from_baseline(root, changed) do
     manifests =
-      Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.test_impact"),
-        match_dot: true
-      ) ++
-        Path.wildcard(Path.join(root, "_build/test/lib/*/.mix/compile.elixir"), match_dot: true)
+      [
+        "_build/analyzer/test/lib/*/.mix/compile.test_impact",
+        "_build/analyzer/lib/*/.mix/compile.test_impact",
+        "_build/test/lib/*/.mix/compile.test_impact",
+        "_build/analyzer/test/lib/*/.mix/compile.elixir",
+        "_build/analyzer/lib/*/.mix/compile.elixir",
+        "_build/test/lib/*/.mix/compile.elixir"
+      ]
+      |> Enum.flat_map(&Path.wildcard(Path.join(root, &1), match_dot: true))
 
     tests_on_disk =
       ["test/**/*_test.exs", "test/**/*_spex.exs"]
