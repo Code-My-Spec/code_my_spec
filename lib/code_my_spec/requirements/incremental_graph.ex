@@ -162,6 +162,14 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   end
 
   defp drain_before(pid, requested, deadline) do
+    # A suspended projector cannot answer a drain until it resumes. A bounded
+    # discovery read can report rebuilding immediately instead of spending its
+    # entire deadline on a call whose recipient is known not to be running.
+    case Process.info(pid, :current_function) do
+      {:current_function, {:sys, :suspend_loop, _arity}} -> throw(:graph_rebuilding)
+      _ -> :ok
+    end
+
     remaining = deadline - System.monotonic_time(:millisecond)
     if remaining <= 0, do: throw(:graph_rebuilding)
 
