@@ -179,6 +179,62 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
       end
     end
 
+    test "an issue update does not query once per promoted story", ctx do
+      scope = ctx.scope
+      story = create_story(scope, title: "First promoted", description: "query baseline")
+
+      CodeMySpec.Repo.get!(CodeMySpec.Stories.Story, story.id)
+      |> Ecto.Changeset.change(promoted_version: "0.1.1")
+      |> CodeMySpec.Repo.update!()
+
+      settle(scope)
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "Measure issue drain",
+          description: "first observation",
+          severity: :high
+        })
+
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(scope, issue)
+      settle(scope)
+
+      baseline =
+        settle_after(scope, fn ->
+          {:ok, _} = CodeMySpec.Issues.update_issue(scope, issue, %{description: "baseline"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert baseline != []
+      {baseline_cost, _} = Enum.max_by(baseline, fn {cost, _meta} -> cost.queries end)
+
+      for n <- 1..12 do
+        story = create_story(scope, title: "Promoted #{n}", description: "query scaling")
+
+        CodeMySpec.Repo.get!(CodeMySpec.Stories.Story, story.id)
+        |> Ecto.Changeset.change(promoted_version: "0.1.1")
+        |> CodeMySpec.Repo.update!()
+      end
+
+      settle(scope)
+
+      enlarged =
+        settle_after(scope, fn ->
+          {:ok, _} = CodeMySpec.Issues.update_issue(scope, issue, %{description: "enlarged"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert enlarged != []
+      {enlarged_cost, _} = Enum.max_by(enlarged, fn {cost, _meta} -> cost.queries end)
+
+      assert enlarged_cost.queries - baseline_cost.queries < 8,
+             "issue drain grew from #{baseline_cost.queries} to #{enlarged_cost.queries} queries for twelve stamped stories"
+    end
+
     test "a drain reports how many checkouts it settled", ctx do
       scope = ctx.scope
       story = create_story(scope, title: "Counted", description: "across checkouts")

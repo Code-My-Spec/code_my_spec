@@ -65,7 +65,7 @@ defmodule CodeMySpec.Qa.Verdict do
 
         attempt
         |> valid_for_story?(scope, story, ctx[:qa_submission_snapshots])
-        |> verdict(scope, story, attempt)
+        |> verdict(scope, story, attempt, ctx)
 
       _ ->
         complete_check(scope, story)
@@ -101,9 +101,12 @@ defmodule CodeMySpec.Qa.Verdict do
   """
   @spec verdict(boolean(), Scope.t(), map(), QaAttempt.t() | nil) :: {boolean(), map()}
   def verdict(true, _scope, _story, _attempt), do: verdict(true)
+  def verdict(false, scope, story, attempt), do: verdict(false, scope, story, attempt, %{})
 
-  def verdict(false, scope, story, attempt) do
-    case blocking_issue(scope, story, attempt) do
+  defp verdict(true, _scope, _story, _attempt, _ctx), do: verdict(true)
+
+  defp verdict(false, scope, story, attempt, ctx) do
+    case blocking_issue(scope, story, attempt, ctx) do
       nil ->
         verdict(false)
 
@@ -164,20 +167,25 @@ defmodule CodeMySpec.Qa.Verdict do
 
   # An invalidated attempt no longer speaks for the story, so neither does
   # what it cited.
-  defp blocking_issue(_scope, _story, %QaAttempt{invalidations: [_ | _]}), do: nil
+  defp blocking_issue(_scope, _story, %QaAttempt{invalidations: [_ | _]}, _ctx), do: nil
 
-  defp blocking_issue(scope, story, %QaAttempt{status: status, issue_ids: issue_ids})
+  defp blocking_issue(scope, story, %QaAttempt{status: status, issue_ids: issue_ids}, ctx)
        when status in [:partial, :fail] do
-    threshold = Configurations.fix_issues_min_severity(scope)
+    threshold = Map.get(ctx, :qa_issue_threshold) || Configurations.fix_issues_min_severity(scope)
 
     issue_ids
-    |> Enum.map(&Issues.get_issue(scope, &1))
+    |> Enum.map(fn id ->
+      case Map.fetch(ctx, :qa_issues_by_id) do
+        {:ok, issues} -> Map.get(issues, id)
+        :error -> Issues.get_issue(scope, id)
+      end
+    end)
     |> Enum.find(fn issue ->
       cross_story_blocker?(issue, story) and not submitted_at_threshold?(issue, threshold)
     end)
   end
 
-  defp blocking_issue(_scope, _story, _attempt), do: nil
+  defp blocking_issue(_scope, _story, _attempt, _ctx), do: nil
 
   # Only a possible product defect holds the story: an `app` issue. QA cites
   # the environment it could not test in (a harness restart, a dying MCP

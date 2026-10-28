@@ -32,6 +32,34 @@ defmodule CodeMySpec.Promotion.APromotedStorySurvivesMainRestartingTest do
            "main restarting un-promoted a story whose code it already holds"
   end
 
+  test "checking many stamped stories has a fixed query cost" do
+    scope = full_scope_fixture()
+    main_copy(scope, "serving")
+    stories = for id <- 1..12, do: %{id: id, promoted_version: "0.1.1"}
+
+    owner = self()
+    counter = :counters.new(1, [])
+    handler = {__MODULE__, owner, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :repo, :query],
+        fn _, _, _, _ ->
+          if self() == owner, do: :counters.add(counter, 1, 1)
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    {_unpromoted, promoted} = RunningCopy.running_copy_verdicts(scope, stories)
+
+    assert map_size(promoted) == 12
+    assert Enum.all?(promoted, fn {_id, {satisfied?, _details}} -> satisfied? end)
+    assert :counters.get(counter, 1) <= 3
+  end
+
   test "a new QA revision is unpromoted even with an older publication stamp" do
     scope = full_scope_fixture()
     main_copy(scope, "serving")

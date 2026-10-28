@@ -161,24 +161,36 @@ defmodule CodeMySpec.Requirements.Profiles do
   # boolean: what counts as a pass is the Qa context's judgement.
   def load(%Scope{active_project_id: project_id} = scope, :qa) do
     story_ids = Repo.all(from(s in Story, where: s.project_id == ^project_id, select: s.id))
+    threshold = Configurations.fix_issues_min_severity(scope)
+
+    latest_by_story =
+      Repo.all(
+        from(a in QaAttempt,
+          where: a.story_id in ^story_ids and not a.stale,
+          order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
+          preload: [:invalidations]
+        )
+      )
+      |> Enum.group_by(& &1.story_id)
+      |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+
+    # A partial/fail attempt may cite issues on another story. Read those
+    # issues once for the whole profile instead of resolving every cited ID
+    # separately while settling each story.
+    issues_by_id =
+      if Enum.any?(latest_by_story, fn {_id, attempt} ->
+           attempt.status in [:partial, :fail] and attempt.invalidations == []
+         end) do
+        Map.new(Issues.list_issues(scope), &{&1.id, &1})
+      else
+        %{}
+      end
 
     %{
-      submission_snapshots:
-        Issues.story_submission_snapshots(
-          scope,
-          story_ids,
-          Configurations.fix_issues_min_severity(scope)
-        ),
-      latest_by_story:
-        Repo.all(
-          from(a in QaAttempt,
-            where: a.story_id in ^story_ids and not a.stale,
-            order_by: [desc_nulls_last: a.review_started_at, desc: a.submitted_at, desc: a.id],
-            preload: [:invalidations]
-          )
-        )
-        |> Enum.group_by(& &1.story_id)
-        |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+      submission_snapshots: Issues.story_submission_snapshots(scope, story_ids, threshold),
+      latest_by_story: latest_by_story,
+      issues_by_id: issues_by_id,
+      issue_threshold: threshold
     }
   end
 
