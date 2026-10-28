@@ -717,7 +717,11 @@ defmodule CodeMySpec.Requirements.Handlers do
   # gets its own row too â every other false story shares `default_details`,
   # but a reason naming which issue holds this one is not every story's reason.
   defp qa_passes(profile, %{stories: stories}, scope) do
-    ctx = %{qa_latest_by_story: profile.latest_by_story}
+    ctx = %{
+      qa_latest_by_story: profile.latest_by_story,
+      qa_issues_by_id: profile.issues_by_id,
+      qa_issue_threshold: profile.issue_threshold
+    }
 
     ctx =
       case Map.fetch(profile, :submission_snapshots) do
