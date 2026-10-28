@@ -43,15 +43,62 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
            discover(params, context)
          end) do
       {:error, :graph_rebuilding} ->
-        {:ok,
-         "The requirement graph is being rebuilt or updated; retry in 5 s. No work was offered."}
+        offered_during_rebuild(params, context) ||
+          snapshot_during_rebuild(params, context) ||
+          {:ok,
+           "The requirement graph is being rebuilt or updated; retry in 5 s. No work was offered."}
 
       result ->
         result
     end
   end
 
-  defp discover(params, context) do
+  # A drain can take longer than discovery's deadline while the single graph
+  # writer seeds or reprojects other vantages. Existing rows are its last
+  # completed snapshot; start_task rechecks a claim against current truth.
+  # An unseeded vantage has no snapshot and must not look like completed work.
+  defp snapshot_during_rebuild(params, context) do
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         {{nodes, _edges}, _checked_at} <-
+           CodeMySpec.Requirements.RequirementGraph.cached_graph(scope, settle: false),
+         true <- nodes != [] do
+      discover(params, context, settle: false)
+    else
+      _ -> nil
+    end
+  end
+
+  # The graph writer can be unavailable while a work offer already exists.
+  # The offer is durable and names the exact requirement the agent was woken
+  # for, so keep that claim path visible without reading unsettled graph rows.
+  defp offered_during_rebuild(params, context) do
+    requested = Map.new(params, fn {k, v} -> {to_string(k), v} end)
+
+    with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
+         %{id: agent_id} <- my_agent(context, scope),
+         %{subject_type: "requirement", subject_key: key} = offer <-
+           Offers.current_work_offer(agent_id),
+         true <- offer.project_id == scope.active_project_id,
+         true <- offer.working_copy_id == scope.active_working_copy_id,
+         [type, id, name] when type in ["story", "issue", "component", "project"] <-
+           String.split(key, ":", parts: 3),
+         true <-
+           type != "story" or is_nil(requested["story_number"]) or
+             to_string(requested["story_number"]) == id do
+      {:ok,
+       "# Offered requirement\n\nStatus: ready\n\nThe requirement graph is rebuilding. " <>
+         "Your open offer can still be claimed: call `start_task` with " <>
+         "requirement_name=`#{name}`, entity_type=`#{type}`, entity_id=`#{id}`." <>
+         "\n\nThis is backed by offer `#{offer.id}`. Complete it, or call " <>
+         "`reject_offer` with that id and a reason."}
+    else
+      _ -> nil
+    end
+  end
+
+  defp discover(params, context), do: discover(params, context, [])
+
+  defp discover(params, context, opts) do
     case CodeMySpec.Tools.project_scope(context) do
       {:ok, scope} ->
         # One normalisation rather than two lookups: the schema declares atom
@@ -65,7 +112,10 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirement do
         # (a31f1cd6); what `start_task` would refuse is withheld (467310a7).
         execution =
           scope
-          |> Work.work_for(agent && agent.role, agent, story_number: requested["story_number"])
+          |> Work.work_for(agent && agent.role, agent,
+            story_number: requested["story_number"],
+            settle: Keyword.get(opts, :settle, true)
+          )
           |> then(&Directives.number_execution(scope, &1))
 
         execution

@@ -86,6 +86,9 @@ defmodule CodeMySpec.Requirements do
       ),
       do: StoryExecution.read(scope, role, requested_number, withheld?, assignment)
 
+  def story_execution(scope, role, requested_number, withheld?, assignment, opts),
+    do: StoryExecution.read(scope, role, requested_number, withheld?, assignment, opts)
+
   @doc """
   How many requirements this role can act on for this working copy, before any
   agent's claims. An agent's work — what it is offered, counted and told — is
