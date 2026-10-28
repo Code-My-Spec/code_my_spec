@@ -3,7 +3,7 @@ defmodule CodeMySpec.TestImpactTest do
 
   require Mix.Compilers.Elixir, as: CE
 
-  alias CodeMySpec.Promotion.TestImpact
+  alias CodeMySpec.TestImpact
 
   # A chain a <- b <- c (runtime, then export), a macro user e of m, an
   # independent d, and r with an external resource.

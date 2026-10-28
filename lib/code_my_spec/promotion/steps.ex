@@ -15,7 +15,7 @@ defmodule CodeMySpec.Promotion.Steps do
   require Logger
 
   alias CodeMySpec.ExecutionContexts
-  alias CodeMySpec.Promotion.TestImpact
+  alias CodeMySpec.TestImpact
 
   @submodule ".code_my_spec"
 

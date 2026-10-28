@@ -1,4 +1,4 @@
-defmodule CodeMySpec.Promotion.TestImpact do
+defmodule CodeMySpec.TestImpact do
   @moduledoc """
   Which test files a diff can affect, without respect to what ran last.
 
@@ -23,8 +23,8 @@ defmodule CodeMySpec.Promotion.TestImpact do
   the edge is already a seed. A removed module is in the baseline manifest, so
   it seeds too.
 
-  Pure: `select/2` takes the manifests' contents and the changed paths and does
-  no IO. `Mix.Tasks.Cms.TestAffected` reads the manifests and `git diff`.
+  `select/2` takes the manifests' contents and changed paths without IO.
+  The promotion gate reads the manifests and changed files.
 
   ## What it does not see
 
@@ -39,6 +39,8 @@ defmodule CodeMySpec.Promotion.TestImpact do
   recognised answers `mode: :all`: the cost of an Elixir upgrade is a full run,
   never a missed test.
   """
+
+  use Boundary, top_level?: true, deps: []
 
   require Record
   require Mix.Compilers.Elixir, as: CE

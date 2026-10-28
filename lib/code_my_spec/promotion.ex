@@ -28,6 +28,7 @@ defmodule CodeMySpec.Promotion do
       CodeMySpec.Qa,
       CodeMySpec.Repo,
       CodeMySpec.Stories,
+      CodeMySpec.TestImpact,
       CodeMySpec.Users.Scope,
       CodeMySpec.Utils,
       CodeMySpec.Validation.Blocking,
