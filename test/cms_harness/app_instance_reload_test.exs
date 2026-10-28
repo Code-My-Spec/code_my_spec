@@ -111,14 +111,32 @@ defmodule CmsHarness.AppInstanceReloadTest do
     assert hooks() == 1
   end
 
-  test "a reload the app does not survive answers an error" do
+  test "a successful reload with an unhealthy endpoint replaces the old process" do
     %{root: root} = running_app(%{"reload" => true})
-    FakeAppInstanceRunner.put_probe(:erroring)
+    FakeAppInstanceRunner.put_probes([:erroring])
+    launched = launches()
 
-    assert %{"status" => "error", "reason" => reason} = push_app_event_as_main("reload_app")
+    assert %{"status" => "ok", "app_action" => "restarted", "app_action_reason" => why} =
+             push_app_event_as_main("reload_app")
+
     sync_after_reply(root)
+    assert why =~ "erroring"
+    assert launches() == launched + 1
+    assert hooks() == 1
+  end
 
-    assert reason =~ "erroring"
-    assert hooks() == 0
+  test "a failed reload with an unhealthy endpoint replaces the old process" do
+    %{root: root} = running_app(%{"reload" => true})
+    FakeAppInstanceRunner.put_reload_result({:error, "probe timed out"})
+    FakeAppInstanceRunner.put_probes([:erroring])
+    launched = launches()
+
+    assert %{"status" => "ok", "app_action" => "restarted", "app_action_reason" => why} =
+             push_app_event_as_main("reload_app")
+
+    sync_after_reply(root)
+    assert why =~ "probe timed out"
+    assert launches() == launched + 1
+    assert hooks() == 1
   end
 end
