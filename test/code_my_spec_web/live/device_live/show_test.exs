@@ -59,7 +59,7 @@ defmodule CodeMySpecWeb.DeviceLive.ShowTest do
     assert has_element?(view, "[data-test=server-detail][data-name=shared-box]")
     assert has_element?(view, "[data-test=device][data-device-id='#{device.id}']")
     assert has_element?(view, "[data-test=retire-server]")
-    render_async(view)
+    render_settled(view)
     assert has_element?(view, "[data-test=containers-error]")
     refute has_element?(view, "[data-test=no-containers]")
   end
