@@ -13,8 +13,7 @@ defmodule CodeMySpecSpex.MailboxHelpers do
   def start(ctx, role \\ :coding) do
     Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
     CmsHarnessTest.Machine.ensure_supervisor()
-    root = CodeMySpec.TempFile.dir("mailbox-spex")
-    File.mkdir_p!(root)
+    root = CodeMySpec.TempFile.owned_dir("mailbox-spex")
     agent = Fixtures.running_agent(ctx.scope, working_copy: root, role: role)
     provider = HeldProvider.start()
 
