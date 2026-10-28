@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        render_async(view, 5_000)
+        render_settled(view)
 
         view |> element("[data-test='fix-all']") |> render_click()
 

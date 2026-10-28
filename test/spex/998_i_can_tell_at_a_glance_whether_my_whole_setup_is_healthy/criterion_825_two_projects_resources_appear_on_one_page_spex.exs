@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, render_async(view, 5_000))}
+        {:ok, context |> Map.put(:view, view) |> Map.put(:html, render_settled(view))}
       end
 
       then_ "resources from both projects are listed", context do

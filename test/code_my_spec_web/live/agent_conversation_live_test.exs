@@ -1198,7 +1198,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
              )
 
       view |> element("[data-test='open-graph']") |> render_click()
-      render_async(view)
+      render_settled(view)
 
       assert has_element?(view, "[data-test='graph-modal'] #timeline-graph[data-graph]")
       assert has_element?(view, "[data-test='graph-modal'] a[data-test='graph-modal-open']")
@@ -1210,7 +1210,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       |> element("[data-test='timeline-step'][data-step='work_dispatched'] a")
       |> render_click()
 
-      render_async(view)
+      render_settled(view)
 
       assert has_element?(
                view,
@@ -1273,7 +1273,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='story-graph-slider'] input[type='range'][max='1']")
 
       # The graph arriving renders the stage drawn, not loading.
-      render_async(view)
+      render_settled(view)
       refute has_element?(view, "[data-test='story-graph-loading-empty']")
 
       # A phone's canvas with no size yet reports its viewport as nulls.
@@ -1285,7 +1285,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       view |> element("#story-graph-slider") |> render_change(%{"index" => "1"})
 
       assert has_element?(view, "[data-test='story-graph-modal']", second.title)
-      render_async(view)
+      render_settled(view)
       refute has_element?(view, "[data-test='story-graph-loading']")
     end
 
@@ -1421,7 +1421,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       view |> element("[data-test='activity-counts']") |> render_click()
       assert has_element?(view, "[data-test='activity-modal']")
-      render_async(view)
+      render_settled(view)
       assert has_element?(view, "[data-test='activity-modal'] [data-test='activity-chart']")
     end
 
@@ -1588,7 +1588,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       )
       |> render_click()
 
-      render_async(view)
+      render_settled(view)
 
       assert has_element?(view, "[data-test='task-modal']", node.name)
       assert has_element?(view, "[data-test='task-modal-directive']")
@@ -1616,7 +1616,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       )
       |> render_click()
 
-      render_async(view)
+      render_settled(view)
       assert has_element?(view, "[data-test='task-modal-gone']")
     end
   end
@@ -1652,7 +1652,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       row =
         "[data-test='team-copy'][data-working-copy-id='#{agent.working_copy_id}'] [data-test='story-progress']"
 
-      render_async(view)
+      render_settled(view)
       {done, total} = slice_progress(scope, project, story)
       assert has_element?(view, header <> "[data-done='#{done}'][data-total='#{total}']")
       assert has_element?(view, row <> "[data-done='#{done}'][data-total='#{total}']")
@@ -1665,7 +1665,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
       send(view.pid, {:graph_updated, project.id})
       render(view)
-      render_async(view)
+      render_settled(view)
 
       {done, total} = slice_progress(scope, project, story)
       assert {done, total} != before or total == 0
