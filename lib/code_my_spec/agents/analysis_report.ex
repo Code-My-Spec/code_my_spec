@@ -189,6 +189,7 @@ defmodule CodeMySpec.Agents.AnalysisReport do
   defp agents_to_tell(%Scope{active_project_id: project_id}, copy_id, askers) do
     Agent
     |> where([a], a.working_copy_id == ^copy_id and a.project_id == ^project_id)
+    |> where([a], a.status == :running)
     |> where([a], a.engine == :alloy or a.id in ^askers)
     |> Repo.all()
   end
@@ -197,7 +198,8 @@ defmodule CodeMySpec.Agents.AnalysisReport do
     Agent
     |> where(
       [a],
-      a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id
+      a.id in ^agent_ids and a.working_copy_id == ^copy_id and a.project_id == ^project_id and
+        a.status == :running
     )
     |> Repo.all()
   end
