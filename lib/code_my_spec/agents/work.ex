@@ -1192,10 +1192,7 @@ defmodule CodeMySpec.Agents.Work do
     scope = requirement_scope(scope, owner)
     number = Keyword.get(opts, :story_number)
     withheld? = withholding(scope, owner, opts)
-
-    Requirements.story_execution(scope, role, number, withheld?, assignment(scope, owner),
-      settle: Keyword.get(opts, :settle, true)
-    )
+    Requirements.story_execution(scope, role, number, withheld?, assignment(scope, owner))
   end
 
   # Whose story the answer is about. A project-scoped role (main) reads none.

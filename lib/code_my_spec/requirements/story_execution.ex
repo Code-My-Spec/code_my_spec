@@ -38,16 +38,13 @@ defmodule CodeMySpec.Requirements.StoryExecution do
         requested_number \\ nil,
         withheld? \\ fn _ -> false end,
         assignment \\ :copy
-      ),
-      do: read(scope, role, requested_number, withheld?, assignment, [])
-
-  def read(scope, role, requested_number, withheld?, assignment, opts) do
+      ) do
     Process.delete(@laps)
     started = System.monotonic_time(:millisecond)
 
     with {:ok, copy} <- WorkingCopies.fetch(scope.active_working_copy_id),
          true <- copy.project_id == scope.active_project_id,
-         :ok <- lap(:settle, fn -> settle_graph(scope, opts) end),
+         :ok <- lap(:settle, fn -> RequirementGraph.settle(scope) end),
          ctx = lap(:preload, fn -> RequirementGraph.read_context(scope) end),
          ctx = Map.put(ctx, :withheld?, withheld?),
          {nodes, edges} <- lap(:graph, fn -> RequirementGraph.served_graph(scope, ctx) end) do
@@ -78,10 +75,6 @@ defmodule CodeMySpec.Requirements.StoryExecution do
     else
       _ -> result(:unavailable, nil, "This session has no working copy on this project.")
     end
-  end
-
-  defp settle_graph(scope, opts) do
-    if Keyword.get(opts, :settle, true), do: RequirementGraph.settle(scope), else: :ok
   end
 
   # A slow read with nothing in the logs cannot say where its time went. The

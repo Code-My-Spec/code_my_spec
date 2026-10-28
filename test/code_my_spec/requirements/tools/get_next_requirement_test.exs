@@ -27,59 +27,14 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
       started = System.monotonic_time(:millisecond)
       assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
       assert System.monotonic_time(:millisecond) - started < 3_000
-      assert text =~ "Status: ready"
-      assert text =~ "requirement_name=`personas_complete`"
-      refute text =~ "retry in 5 s"
+      assert text =~ "retry in 5 s"
+      refute text =~ "requirement_name=`"
       refute text =~ "All requirements satisfied"
     end)
 
     :ok = IncrementalGraph.settle(scope.active_project_id)
     assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
     refute text =~ "retry in 5 s"
-  end
-
-  test "an outstanding offer remains discoverable while the graph writer is suspended" do
-    alias CodeMySpec.Agents.Offers
-    alias CodeMySpec.Requirements.IncrementalGraph
-
-    scope = full_scope_fixture()
-
-    {:ok, copy} =
-      WorkingCopies.issue(scope, nil, device: CodeMySpec.DevicesFixtures.device_fixture(scope))
-
-    scope = %{scope | active_working_copy_id: copy.id}
-    story = story_fixture(scope)
-
-    {:ok, agent} =
-      AgentsRepository.create_agent(scope, %{
-        engine: :alloy,
-        provider: "zai",
-        working_copy: "/tmp/rebuild-offer",
-        role: :coding,
-        working_copy_id: copy.id
-      })
-
-    {:ok, _} = Agents.assign_team(scope, copy.id, story.id)
-    {:ok, pid} = IncrementalGraph.ensure_projecting(scope)
-    :ok = IncrementalGraph.settle(scope.active_project_id)
-
-    offer =
-      Offers.record(nil, agent, :work, {"requirement", "story:#{story.number}:ready_for_qa"})
-
-    context = %{scope: scope, agent_id: agent.id}
-
-    CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
-      assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, context)
-      assert text =~ "requirement_name=`ready_for_qa`"
-      assert text =~ "entity_type=`story`, entity_id=`#{story.number}`"
-      assert text =~ offer.id
-      refute text =~ "No work was offered"
-
-      assert {:ok, mismatch} =
-               ToolLibrary.run("get_next_requirement", %{story_number: story.number + 1}, context)
-
-      refute mismatch =~ "requirement_name=`ready_for_qa`"
-    end)
   end
 
   describe "execute/2" do
