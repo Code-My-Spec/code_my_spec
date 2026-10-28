@@ -404,14 +404,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       %{socket: socket, run: run}
     end
 
-    test "a server restart says so, with the time", ctx do
+    test "a server restart leaves the harness run claimable", ctx do
       terminate_channel(ctx.socket, {:shutdown, :draining})
 
-      assert %{stats: %{"error" => error}} =
+      assert %{status: :running, orphaned: false} =
                RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
-
-      assert error =~ "shared dev server was restarted"
-      assert error =~ "not by anything in your working copy"
     end
 
     # The other half. A harness that genuinely went away must not claim a

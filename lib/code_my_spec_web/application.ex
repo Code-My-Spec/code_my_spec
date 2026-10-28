@@ -147,6 +147,9 @@ defmodule CodeMySpecWeb.Application do
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
         {CodeMySpec.McpServers.Ga4Server, transport: :streamable_http},
         {CodeMySpec.McpServers.GoogleAdsServer, transport: :streamable_http},
+        # Settle the previous server's run ledger before a harness can join.
+        # Main serves remote harnesses even though it has no local analyzer supervisor.
+        when_serving(serving? and env != :test, CodeMySpec.Analysis.BootRecovery),
         CodeMySpecWeb.Endpoint,
         when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler)
       ]

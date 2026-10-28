@@ -133,6 +133,8 @@ defmodule CodeMySpec.Analysis.Tools.GetAnalysisOutput do
 
   # A run waiting on a machine-wide slot and one executing are both `:running`
   # in the ledger; `Run.queued?/1` tells them apart.
+  defp status_label(%Run{status: :abandoned}), do: "not_run"
+
   defp status_label(run) do
     if Run.queued?(run), do: "queued", else: to_string(run.status)
   end

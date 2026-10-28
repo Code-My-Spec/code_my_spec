@@ -939,15 +939,67 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Where runs execute here (`Analysis.Supervisor`), at boot: close the runs the
-  last server took with it, and settle them as `resume_orphaned/2` does. No
-  harness rejoins to do it, so whoever was waiting would otherwise never hear.
+  At boot, fail local runs whose executor died with the server and mark
+  remote runs for recovery by their returning harness.
   """
   @spec settle_stranded_runs() :: {:ok, non_neg_integer()}
   def settle_stranded_runs do
+    {:ok, _recovering} = RunsRepository.mark_remote_for_recovery()
     {:ok, failed} = RunsRepository.fail_stranded_runs()
     Enum.each(failed, &resume_orphan(&1, []))
     {:ok, length(failed)}
+  end
+
+  @doc "Recover remote runs marked at server boot; preserve claims and readmit queued work."
+  def reconcile_rejoined(%Scope{} = scope, claimed) do
+    channel = HarnessRegistry.executor_holder(scope.active_working_copy_id)
+
+    for run <- RunsRepository.running_for_copy(scope), run.orphaned do
+      cond do
+        run.id in claimed ->
+          RunsRepository.claim_recovering_run(run)
+
+        Run.queued?(run) and match?({:ok, _, _}, channel) ->
+          {:ok, pid, _} = channel
+          RunsRepository.claim_recovering_run(run)
+          args = get_in(run.args || %{}, ["args"]) || []
+
+          send(
+            pid,
+            {:run_analysis, [%{"run_id" => run.id, "source" => run.source, "args" => args}]}
+          )
+
+        true ->
+          abandon_and_report(run, "harness rejoined without this run")
+      end
+    end
+
+    :ok
+  end
+
+  @doc "Give remote harnesses time to reclaim runs left by a server restart."
+  def abandon_unclaimed_after_restart(cutoff) do
+    for run <- RunsRepository.remote_running_before(cutoff),
+        HarnessRegistry.executor_holder(run.working_copy_id) == :error do
+      abandon_and_report(run, "harness did not rejoin after server restart")
+    end
+
+    :ok
+  end
+
+  defp abandon_and_report(run, reason) do
+    case RunsRepository.abandon_run(run, reason) do
+      {:ok, abandoned} ->
+        Reconciler.announce_failed(
+          abandoned,
+          "not run: #{reason}. Start it again if you still need it."
+        )
+
+        :ok
+
+      :already_closed ->
+        :ok
+    end
   end
 
   defp resume_orphan(run, claimed) do

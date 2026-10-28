@@ -102,6 +102,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # to a previous connection that will never finish it; an open run makes
       # every later stop report analysis pending.
       Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
+      Analysis.reconcile_rejoined(scope, claimed_runs(payload))
 
       # Then settle what the departure killed: reopen what this harness still
       # holds, run the requested rest again. Registered above, so a re-dispatch
@@ -1833,16 +1834,19 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   defp copy_id(socket), do: socket.assigns.scope.active_working_copy_id
 
   @impl true
-  # Fails this copy's in-flight runs (the analyzers keep running on the harness;
-  # a rejoin that claims them reopens them) and logs why the channel died — the
-  # harness only ever sees an empty `phx_error`. Loud on purpose.
+  # A server drain leaves remote runs open for the returning harness. Other
+  # disconnects close them as orphans; a rejoin can reclaim live runs.
   def terminate(reason, socket) do
     shutdown_reconcile(socket)
 
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
-        Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+
+        unless reason == {:shutdown, :draining} do
+          Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
+        end
+
         mark_device_down_if_last_copy(socket)
 
       _ ->
@@ -1907,20 +1911,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp closing_copy(socket), do: socket.topic
 
-  # `{:shutdown, :draining}` means the *server* restarted, killing every copy's
-  # runs; recorded as such, with a timestamp, so agents do not hunt for a
-  # harness problem they do not have.
-  defp failure_reason({:shutdown, :draining}) do
-    "the shared dev server was restarted at " <>
-      DateTime.to_iso8601(DateTime.utc_now()) <>
-      " — this run was killed by that restart, not by anything in your working " <>
-      "copy or its analyzers"
-  end
-
   defp failure_reason(_reason), do: :harness_disconnected
 
-  # The harness leaving on purpose — a restart, a shutdown. Worth a line,
-  # because it still strands whatever was running, but not an alarm.
+  # A server drain leaves remote runs for recovery when the harness rejoins.
+  defp log_disconnect({:shutdown, :draining}, socket) do
+    Logger.info(
+      "[HarnessProject] server draining channel topic=#{socket.topic}; remote runs await harness recovery"
+    )
+  end
+
+  # The harness leaving on purpose is worth a line, but not an alarm.
   defp log_disconnect(reason, socket)
        when reason in [
               :normal,
