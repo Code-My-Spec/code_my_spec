@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
         assert response_text(answer) =~ "Keep existing"
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert [_answer] = Fixtures.queued_agent_messages(context.scope, context.agent_id)
-        assert length(HeldProvider.seen()) == 1
+        assert Enum.count(HeldProvider.seen(), &String.contains?(&1, "Finish this user turn")) == 1
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert render(view) =~ "Keep existing"
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")
