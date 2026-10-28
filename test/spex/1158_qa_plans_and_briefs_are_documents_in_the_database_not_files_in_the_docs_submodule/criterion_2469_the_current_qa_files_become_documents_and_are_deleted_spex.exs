@@ -17,6 +17,15 @@ defmodule CodeMySpecSpex.Story1158.Criterion2469Spex do
   spex "The one-time import moves QA files into documents", criterion: 2469 do
     scenario "the plan, journey and brief survive import while source files are removed" do
       given_ "the docs submodule contains the QA plan, journey plan and a story brief", context do
+        for {type, number} <- [
+              {"qa_plan", nil},
+              {"qa_journey_plan", nil},
+              {"qa_story_brief", context.story.number}
+            ] do
+          :ok =
+            CodeMySpecSpex.ProjectStateFixtures.delete_qa_document(context.scope, type, number)
+        end
+
         brief_path = ".code_my_spec/qa/#{context.story.number}/brief.md"
 
         files = [

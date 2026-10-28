@@ -38,6 +38,18 @@ defmodule CodeMySpec.Qa.Documents do
 
   def put(_scope, _type, _number, _content), do: {:error, "content must be markdown text"}
 
+  @doc "Delete a QA document by its project-scoped key."
+  def delete(scope, type), do: delete(scope, type, nil)
+
+  def delete(%Scope{active_project_id: project_id}, type, story_number) do
+    with {:ok, number} <- validate_key(type, story_number) do
+      case Repo.get_by(Stored, project_id: project_id, document_type: type, story_number: number) do
+        nil -> {:ok, nil}
+        document -> Repo.delete(document)
+      end
+    end
+  end
+
   @doc "Preserve a legacy QA file exactly during the one-time import."
   def put_legacy(%Scope{active_project_id: project_id}, type, story_number, content)
       when is_binary(content) do

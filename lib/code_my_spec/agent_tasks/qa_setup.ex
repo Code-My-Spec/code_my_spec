@@ -84,8 +84,21 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
 
   defp plan_feedback(_plan_path, reason) do
     spec = DocumentSpecProjector.project_spec(@doc_type)
-    "#{reason}\n\n## QA Plan Format\n\n#{spec}"
+    "#{format_reason(reason)}\n\n## QA Plan Format\n\n#{spec}"
   end
+
+  defp format_reason("Missing required sections: " <> sections) do
+    names =
+      sections
+      |> String.split(", ")
+      |> Enum.map_join(", ", fn section ->
+        "`## #{String.split(section, " ") |> Enum.map_join(" ", &String.capitalize/1)}`"
+      end)
+
+    "Missing required sections: #{names}"
+  end
+
+  defp format_reason(reason), do: reason
 
   # ============================================================================
   # Validation

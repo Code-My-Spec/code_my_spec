@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story1158.Criterion2471Spex do
   spex "A bad heading in a stray plan file blocks nothing", criterion: 2471 do
     scenario "QA setup and story QA remain available on both copies" do
       given_ "the QA plan has been imported as a document", context do
+        :ok = CodeMySpecSpex.ProjectStateFixtures.delete_qa_document(context.scope, "qa_plan")
+
         path = ".code_my_spec/qa/plan.md"
         assert :ok = ExecutionContexts.write_file(context.execution_context, path, valid_plan())
 
