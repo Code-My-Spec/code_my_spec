@@ -20,7 +20,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Flakes, History, Run}
+  alias CodeMySpec.Analysis.{Flakes, History, Run, RunsRepository}
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
@@ -558,16 +558,24 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # A run that failed at the batch commit is red like a finding: the batch's own
-  # change may be what stops the analyzer running (a broken mix.exs, a config
-  # the suite cannot boot with), and a failure at main too is main's to fix.
-  # Not retried. Runs orphaned by a harness going away are not failures here.
-  defp failed_runs(batch),
-    do:
-      Enum.filter(
-        Run.sources(),
-        &(Analysis.failed_at_commit(batch.scope, &1, batch.head, batch.since) > 0)
-      )
+  # A failed run can mean the candidate prevents the analyzer from starting.
+  # A collision with the gate runner's own key socket says nothing about the
+  # candidate, so let the ordinary gate path ask for a fresh ExUnit run.
+  defp failed_runs(batch) do
+    Enum.filter(Run.sources(), fn source ->
+      batch.scope
+      |> RunsRepository.failed_runs_at_commit(source, batch.head, batch.since)
+      |> Enum.any?(&(not retryable_socket_failure?(&1)))
+    end)
+  end
+
+  defp retryable_socket_failure?(%Run{source: "exunit", stats: %{"error" => reason}})
+       when is_binary(reason) do
+    String.contains?(reason, ":test_suite_did_not_run") and
+      String.contains?(reason, ":sops_key_socket_address_in_use")
+  end
+
+  defp retryable_socket_failure?(_), do: false
 
   defp could_not_run(%{batch: batch} = state, sources) do
     why = Enum.map_join(sources, "\n\n", &cannot_run(batch.scope, &1))

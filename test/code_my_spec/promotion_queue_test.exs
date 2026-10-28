@@ -850,6 +850,40 @@ defmodule CodeMySpec.PromotionQueueTest do
     refute Repository.get(first.id).status in [:ejected, :landed]
   end
 
+  test "a key socket startup failure retries ExUnit without ejecting the candidate", ctx do
+    a = candidate(ctx, "socket-retry", "main", "socket_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+
+    reason =
+      {:test_suite_did_not_run, :sops_key_socket_address_in_use, 1,
+       "CmsHarness.SopsKeySocket listener exited with :eaddrinuse"}
+
+    {:ok, failed} =
+      CodeMySpec.Analysis.Reconciler.fail(first, reason, %{
+        output: "CmsHarness.SopsKeySocket listener exited with :eaddrinuse",
+        exit_status: 1
+      })
+
+    assert failed.status == :failed
+    assert failed.stats["error"] =~ "sops_key_socket_address_in_use"
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
   # A run that fails at the batch commit is red like a finding, and not retried:
   # the candidate's own change may be what stops the analyzer running. (The
   # first live batch, 2026-10-05: a gate copy minted without its envs could not

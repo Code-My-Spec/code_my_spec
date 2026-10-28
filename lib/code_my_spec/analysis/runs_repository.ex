@@ -200,23 +200,24 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   (`stats.orphaned`) are not counted: they say nothing about the analyzer.
   """
   @spec failed_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: non_neg_integer()
-  def failed_at_commit(%Scope{active_project_id: project_id} = scope, source, commit, since) do
+  def failed_at_commit(scope, source, commit, since),
+    do: scope |> failed_runs_query(source, commit, since) |> Repo.aggregate(:count)
+
+  @doc "Failed full runs from this gate attempt, with their recorded failure reasons."
+  @spec failed_runs_at_commit(Scope.t(), String.t(), String.t(), DateTime.t()) :: [Run.t()]
+  def failed_runs_at_commit(scope, source, commit, since),
+    do: scope |> failed_runs_query(source, commit, since) |> Repo.all()
+
+  defp failed_runs_query(%Scope{active_project_id: project_id} = scope, source, commit, since) do
     since = DateTime.to_naive(since)
 
     Run
     |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
     |> where([r], r.status == :failed)
     |> where([r], r.inserted_at >= ^since)
-    |> where(
-      [r],
-      r.start_commit == ^commit or is_nil(r.start_commit)
-    )
-    |> where(
-      [r],
-      not r.orphaned
-    )
+    |> where([r], r.start_commit == ^commit or is_nil(r.start_commit))
+    |> where([r], not r.orphaned)
     |> scope_to_harness(scope)
-    |> Repo.aggregate(:count)
   end
 
   @doc """

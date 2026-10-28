@@ -237,7 +237,16 @@ defmodule CodeMySpec.Analysis.Runners do
   # never fresh and is re-enqueued.
   # See knowledge/analysis, "A run that saw nothing is not clean".
   def from_raw("exunit", %{"execution_status" => "error"} = raw) do
-    {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
+    output = raw["output"] || ""
+    excerpt = error_excerpt(output)
+
+    if String.contains?(output, "SopsKeySocket") and
+         String.contains?(output, "eaddrinuse") do
+      {:error,
+       {:test_suite_did_not_run, :sops_key_socket_address_in_use, raw["exit_status"], excerpt}}
+    else
+      {:error, {:test_suite_did_not_run, raw["exit_status"], excerpt}}
+    end
   end
 
   # Zero tests is not zero failures: the same trap reached through a zero exit.
