@@ -70,6 +70,18 @@ defmodule CmsHarness.CredentialsTest do
       })
   end
 
+  defp onboard_before_server_url(root, key) do
+    File.write!(
+      Path.join(root, ".cms_harness.json"),
+      Jason.encode!(%{
+        "working_copy_id" => Ecto.UUID.generate(),
+        "project_id" => @project,
+        "deploy_key" => key,
+        "root" => root
+      })
+    )
+  end
+
   defp restore_app(key, nil), do: Application.delete_env(:code_my_spec, key)
   defp restore_app(key, value), do: Application.put_env(:code_my_spec, key, value)
 
@@ -95,6 +107,14 @@ defmodule CmsHarness.CredentialsTest do
                Credentials.for_working_copy(ctx.root)
 
       assert {:ok, "code-my-spec-key", :working_copy_key} = Credentials.for_working_copy(other)
+    end
+
+    # Configs written before `server_url` was recorded: every copy on the dev
+    # machine was refused when 48222542e landed.
+    test "a copy whose config predates server_url still uses its own key", ctx do
+      onboard_before_server_url(ctx.root, "legacy-key")
+
+      assert {:ok, "legacy-key", :working_copy_key} = Credentials.for_working_copy(ctx.root)
     end
 
     # The environment is not a credential source, and the sprite does not need
@@ -195,6 +215,13 @@ defmodule CmsHarness.CredentialsTest do
 
       assert {:error, :no_credential} = Credentials.any()
       assert {:error, :no_credential} = CmsHarness.Config.credential()
+    end
+
+    test "never borrows a served copy's key that records no server", ctx do
+      onboard_before_server_url(ctx.root, "legacy-key")
+      :ok = CmsHarnessTest.Projects.serve(ctx.root)
+
+      assert {:error, :no_credential} = Credentials.any()
     end
 
     test "and says so when there is nothing to answer with" do
