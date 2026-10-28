@@ -8,6 +8,7 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
   import CodeMySpecSpex.TerminalAgentHelpers
 
   alias CodeMySpec.Agents
+  alias CodeMySpec.Agents.Presence
   alias CodeMySpec.ToolLibrary
   alias CodeMySpecSpex.HarnessHooks
   alias Ecto.Adapters.SQL.Sandbox
@@ -44,18 +45,29 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
       end
 
       when_ "the developer closes that terminal", context do
+        # Watched from before the close: the harness drops the agent's presence
+        # over its channel, asynchronously, and on a loaded gate that took
+        # longer than a fixed wait.
+        :ok = Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Presence.topic(context.project.id))
         close_session(context.session, context.inbox)
         look(context.agent_id)
         {:ok, context}
       end
 
       then_ "the agent stays listed, shown as not connected", context do
-        # The panel's status follows the same presence change asynchronously, so
-        # it is waited on, not read once after presence drops.
-        eventually(fn ->
-          refute MapSet.member?(Agents.present_ids(context.scope), context.agent_id)
-          assert panel(context) =~ "Away"
-        end)
+        agent_id = context.agent_id
+
+        assert_receive %Phoenix.Socket.Broadcast{
+                         event: "presence_diff",
+                         payload: %{leaves: leaves}
+                       }
+                       when is_map_key(leaves, agent_id),
+                       30_000
+
+        refute MapSet.member?(Agents.present_ids(context.scope), agent_id)
+
+        # The panel's status follows the same change asynchronously.
+        eventually(fn -> assert panel(context) =~ "Away" end)
 
         assert [%{"id" => id}] = agents(context)
         assert id == context.agent_id

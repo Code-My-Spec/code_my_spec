@@ -71,15 +71,20 @@ defmodule CodeMySpec.Analysis.Flakes do
     end
   end
 
+  # Evidence is a run of the code at its commit: a run that started on a dirty
+  # tree tested uncommitted work, and an agent's half-written test read as a
+  # confirmed flake.
   defp same_commit_pass?(run, commit, file, name) do
-    run.status == :completed and run.findings_recorded and run.completed_commit == commit and
-      not run.partial and not failed?(run, file, name)
+    evidence?(run) and run.completed_commit == commit and not failed?(run, file, name)
   end
 
   defp prior_failure?(run, commit, file, name) do
-    run.status == :completed and run.findings_recorded and run.commit != commit and
-      not run.partial and not is_nil(run.working_copy_id) and failed?(run, file, name)
+    evidence?(run) and run.commit != commit and not is_nil(run.working_copy_id) and
+      failed?(run, file, name)
   end
+
+  defp evidence?(run),
+    do: run.status == :completed and run.findings_recorded and not run.partial and run.clean
 
   defp failed?(run, file, name) do
     Enum.any?(run.failures, fn failure ->

@@ -379,4 +379,24 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
 
     assert %{"pid" => 4242, "status" => "idle"} = Terminal.session_record("cc-dup", dir)
   end
+
+  # A reconnect re-attaches every terminal agent whose session record survives;
+  # one whose session already ended went up, then down at its first check.
+  test "a terminal agent whose session already ended never starts or reports up", %{
+    socket: socket
+  } do
+    test = self()
+
+    assert :ignore =
+             Terminal.start_link(
+               agent_id: Ecto.UUID.generate(),
+               socket: socket,
+               session_id: "ended-session",
+               working_copy: "/workspace/terminal",
+               sessions: fn -> {:ok, []} end,
+               report_up: fn _root, agent_id -> send(test, {:reported_up, agent_id}) end
+             )
+
+    refute_received {:reported_up, _}
+  end
 end
