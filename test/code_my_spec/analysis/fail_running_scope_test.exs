@@ -25,7 +25,7 @@ defmodule CodeMySpec.Analysis.FailRunningScopeTest do
 
   defp running_run(scope) do
     {:ok, run} = RunsRepository.start_run(scope, %{source: "credo", kind: :full})
-    run
+    RunsRepository.record_tree(run, %{began_at: DateTime.utc_now()})
   end
 
   test "a scope with no harness closes nothing rather than raising" do

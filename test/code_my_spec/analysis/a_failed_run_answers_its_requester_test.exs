@@ -68,7 +68,9 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
   # transport goes away, and a run killed that way is run again first
   # (`ARunARestartKilledIsRunAgainTest`). This is the one it gave up on.
   test "a run a server restart keeps killing tells the agent that requested it", ctx do
-    run(ctx.scope, %{"agent_id" => ctx.agent.id, "redispatches" => 3})
+    ctx.scope
+    |> run(%{"agent_id" => ctx.agent.id, "redispatches" => 3})
+    |> RunsRepository.record_tree(%{began_at: DateTime.utc_now()})
 
     reason = "the shared dev server was restarted — this run was killed by that restart"
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, reason)
@@ -83,7 +85,11 @@ defmodule CodeMySpec.Analysis.AFailedRunAnswersItsRequesterTest do
 
   test "a failed run nobody requested stays silent", ctx do
     Reconciler.fail(run(ctx.scope, nil), :timeout)
-    run(ctx.scope, nil)
+
+    ctx.scope
+    |> run(nil)
+    |> RunsRepository.record_tree(%{began_at: DateTime.utc_now()})
+
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
 
     refute_receive {:agent_dispatch, _id, _ref, _message}, 100

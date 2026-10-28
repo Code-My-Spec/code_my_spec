@@ -875,11 +875,10 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
-  Close out every `:running` run for the working copy as failed orphans.
+  Close executing runs as failed orphans and retain queued runs for re-admission.
 
-  Called when a harness's channel goes and again when one joins: the queue that
-  would answer those runs is gone, and left open they read as analysis pending
-  forever.
+  Called when a harness channel goes and again when one joins. A queued run
+  has not started, so the returning harness can run it under the same id.
   """
   @spec fail_in_flight(Scope.t(), term()) :: {:ok, non_neg_integer()}
   def fail_in_flight(%Scope{} = scope, reason), do: fail_in_flight(scope, reason, [])
