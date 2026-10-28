@@ -10,11 +10,12 @@ defmodule CodeMySpecWeb.Plugs.HoldDuringLanding do
   everything that arrives for about five seconds is a 503 — returned to agents
   as tool results too.
 
-  `Steps.merge` writes `landing_hold` (a unix time) in the checkout's git directory (so it can never
-  dirty the tree; see `CodeMySpec.LandingHold`) before it merges; the `reload` and `serve` recipes remove it once `mix ecto.migrate` has
-  run. Requests wait for it to go. The wait is bounded two ways, so a landing that
-  dies halfway can never hold the app: a request waits at most 30 seconds, and a
-  marker older than two minutes is ignored.
+  `Steps.merge` writes `landing_hold` (a unix time) in the checkout's git directory
+  before it merges. The `reload` recipe removes it after its loopback reload and
+  health probes succeed; `serve` removes it after migration. Other requests wait
+  up to 30 seconds, then receive a 503 with Retry-After while the marker remains
+  fresh. A marker older than two minutes is ignored so an abandoned landing
+  cannot hold requests indefinitely.
 
   Development only: the endpoint mounts this beside the code reloader.
   """
@@ -30,18 +31,34 @@ defmodule CodeMySpecWeb.Plugs.HoldDuringLanding do
 
   @impl true
   def call(conn, opts) do
-    hold(
-      Keyword.get(opts, :marker, marker_path()),
-      Keyword.get(opts, :max_wait_ms, @max_wait_ms),
-      opts
-    )
+    path = Keyword.get(opts, :marker, marker_path())
 
-    conn
+    if probe?(conn) do
+      conn
+    else
+      case hold(path, Keyword.get(opts, :max_wait_ms, @max_wait_ms), opts) do
+        :ok ->
+          conn
+
+        :timeout ->
+          conn
+          |> Plug.Conn.put_resp_header("retry-after", "1")
+          |> Plug.Conn.send_resp(503, "Promotion reload in progress; retry shortly.")
+          |> Plug.Conn.halt()
+      end
+    end
   end
 
   defp marker_path, do: CodeMySpec.LandingHold.marker_path(File.cwd!())
 
-  defp hold(_path, remaining, _opts) when remaining <= 0, do: :ok
+  defp probe?(%Plug.Conn{remote_ip: {127, 0, 0, 1}, request_path: path}),
+    do: path in ["/", "/health"]
+
+  defp probe?(_conn), do: false
+
+  defp hold(path, remaining, _opts) when remaining <= 0 do
+    if holding?(path, System.os_time(:second)), do: :timeout, else: :ok
+  end
 
   defp hold(path, remaining, opts) do
     if holding?(path, System.os_time(:second)) do

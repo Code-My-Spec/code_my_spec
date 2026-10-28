@@ -33,6 +33,20 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloader do
 
   @impl true
   def call(conn, opts) do
+    reloader = Keyword.fetch!(opts, :reloader)
+
+    opts =
+      Keyword.put(opts, :reloader, fn endpoint, reload_opts ->
+        case reloader.(endpoint, reload_opts) do
+          {:error, output} = error ->
+            Logger.error("[CodeMySpecWeb] Phoenix.CodeReloader compile failed:\n#{output}")
+            error
+
+          result ->
+            result
+        end
+      end)
+
     Phoenix.CodeReloader.call(conn, opts)
   catch
     kind, reason ->
