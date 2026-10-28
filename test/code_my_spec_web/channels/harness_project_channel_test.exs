@@ -727,6 +727,48 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  test "a failed reconcile retries the received manifest without closing the channel", %{
+    scope: scope
+  } do
+    observation = %{
+      path: "lib/retry.ex",
+      role: :implementation,
+      mtime: ~U[2026-07-28 10:00:00.000000Z],
+      size: 10,
+      fingerprint: "retry",
+      valid: true,
+      validation_errors: %{}
+    }
+
+    old_ref = make_ref()
+
+    socket =
+      scope
+      |> harness_socket([])
+      |> Phoenix.Socket.assign(:reconciling, %Task{
+        ref: old_ref,
+        pid: self(),
+        owner: self(),
+        mfa: {__MODULE__, :retry, 0}
+      })
+      |> Phoenix.Socket.assign(:pending_manifest, nil)
+      |> Phoenix.Socket.assign(:reconciling_manifest, [observation])
+      |> Phoenix.Socket.assign(:reconcile_retries, 0)
+
+    assert {:noreply, retried} =
+             HarnessProjectChannel.handle_info(
+               {:DOWN, old_ref, :process, self(), :timeout},
+               socket
+             )
+
+    assert retried.assigns.reconcile_retries == 1
+    assert retried.assigns.reconciling_manifest == [observation]
+    assert %Task{ref: new_ref} = retried.assigns.reconciling
+    refute new_ref == old_ref
+    assert {:ok, %{upserted: 1}} = Task.yield(retried.assigns.reconciling, 2_000)
+    assert length(CodeMySpec.Files.list_files(scope)) == 1
+  end
+
   describe "module_name" do
     setup %{scope: scope, topic: topic} do
       # The main one, because only the main checkout may say what the project is

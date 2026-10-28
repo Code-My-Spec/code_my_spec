@@ -158,12 +158,13 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
 
       then_ "the rejection feedback names the unlinked story", context do
         body = response_text(context.evaluate_response)
+        feedback = rejection_feedback!(body)
         story_c = to_string(context.story_c.number)
 
-        assert body =~ story_c,
-               "expected rejection feedback to name story #{story_c}, got: #{inspect(body)}"
+        assert feedback =~ story_c,
+               "expected rejection feedback to name story #{story_c}, got: #{inspect(feedback)}"
 
-        refute_id_leak(body, context.story_c.id, context.story_c.number)
+        refute_id_leak(feedback, context.story_c.id, context.story_c.number)
 
         {:ok, context}
       end
@@ -187,11 +188,44 @@ defmodule CodeMySpecSpex.Story70.Criterion5290Spex do
     end
   end
 
-  # An id that equals the story's number is the number, not a leak.
-  defp refute_id_leak(_body, same, same), do: :ok
+  test "task UUID digits do not count as a story ID in rejection feedback" do
+    body =
+      "# ArchitectureDesign: Needs work\n\nTask ID: `aaaaaaaa-1234-bbbb-cccc-dddddddddddd` — this task remains open.\n\nStory 70 is unlinked."
 
-  defp refute_id_leak(body, id, _number) do
-    refute body =~ to_string(id),
-           "the rejection should not carry the story's id: #{inspect(body)}"
+    feedback = rejection_feedback!(body)
+    refute_id_leak(feedback, 1234, 70)
+  end
+
+  test "a whole story ID in rejection feedback is a disclosure" do
+    body =
+      "# ArchitectureDesign: Needs work\n\nTask ID: `aaaaaaaa-1234-bbbb-cccc-dddddddddddd` — this task remains open.\n\nStory 70 (internal id 1234) is unlinked."
+
+    feedback = rejection_feedback!(body)
+
+    assert_raise ExUnit.AssertionError, ~r/rejection should not carry the story's id/, fn ->
+      refute_id_leak(feedback, 1234, 70)
+    end
+  end
+
+  defp rejection_feedback!(body) do
+    assert [feedback] =
+             Regex.run(
+               ~r/\A# ArchitectureDesign: Needs work\n\nTask ID: `[^`]+`[^\n]*\n\n([\s\S]*)\z/,
+               body,
+               capture: :all_but_first
+             ),
+           "expected an ArchitectureDesign rejection with feedback, got: #{inspect(body)}"
+
+    feedback
+  end
+
+  # An id that equals the story's number is the number, not a leak.
+  defp refute_id_leak(_feedback, same, same), do: :ok
+
+  defp refute_id_leak(feedback, id, _number) do
+    token = ~r/(?<![[:alnum:]_-])#{Regex.escape(to_string(id))}(?![[:alnum:]_-])/
+
+    refute Regex.match?(token, feedback),
+           "the rejection should not carry the story's id: #{inspect(feedback)}"
   end
 end
