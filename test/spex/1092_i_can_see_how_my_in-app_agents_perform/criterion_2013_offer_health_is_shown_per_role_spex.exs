@@ -149,7 +149,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2013Spex do
 
       when_ "I look at offer health", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_settled(index)
+        html = await_report(index)
         {:ok, Map.put(context, :html, html)}
       end
 
