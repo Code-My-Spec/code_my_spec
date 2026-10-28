@@ -164,6 +164,11 @@ defmodule CodeMySpecSpex.Story1046.Criterion3176Spex do
       status
     )
 
+    # The status and the assignment before it each reproject the graph in the
+    # background; asked mid-rebuild, discovery answers "being rebuilt" or a
+    # stale offer.
+    :ok = CodeMySpecSpex.Fixtures.settle_graph(context.scope)
+
     context
   end
 

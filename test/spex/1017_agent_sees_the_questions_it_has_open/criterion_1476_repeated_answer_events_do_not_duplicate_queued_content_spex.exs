@@ -55,7 +55,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
             persona_id: context.persona_id
           )
 
-        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: true)
+        # Started held, not continuous: a continuous agent is offered work the
+        # moment it is idle, and one arriving between `await_idle` and the user
+        # message took the turn first ({:error, :busy}). Its person switches it
+        # on below, once the user's turn is the one in flight.
+        agent = Fixtures.running_agent(context.scope, role: "coding", continuous: false)
         frame = %Frame{assigns: %{current_scope: context.scope, agent_id: agent.id}}
 
         started =
@@ -102,13 +106,17 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
         HeldProvider.await_request()
         :ok = Fixtures.put_agent_mid_turn(context.scope, agent.id)
 
+        conversation_path = Fixtures.agent_conversation_path(context.scope, agent)
+        {:ok, conversation, _} = live(context.conn, conversation_path)
+        conversation |> element("[data-test='toggle-agent-working']") |> render_click()
+
         {:ok,
          Map.merge(context, %{
            agent_id: agent.id,
            frame: frame,
            task_id: task_id,
            question_id: question_id,
-           conversation_path: Fixtures.agent_conversation_path(context.scope, agent)
+           conversation_path: conversation_path
          })}
       end
 
@@ -137,7 +145,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
         assert response_text(answer) =~ "Keep existing"
         assert {:ok, %{busy?: true}} = Machine.status(context.agent_id)
         assert [_answer] = Fixtures.queued_agent_messages(context.scope, context.agent_id)
-        assert Enum.count(HeldProvider.seen(), &String.contains?(&1, "Finish this user turn")) == 1
+        assert length(HeldProvider.seen()) == 1
         {:ok, view, _} = live(context.conn, context.conversation_path)
         assert render(view) =~ "Keep existing"
         assert has_element?(view, "[data-test='toggle-agent-working'][data-working='true']")

@@ -37,7 +37,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
       |> Repo.update()
 
     {:ok, index, _html} = live(context.conn, index_path(context))
-    html = render_async(index)
+    html = render_settled(index)
 
     assert html =~ story.title
 
@@ -78,7 +78,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
       |> Repo.update()
 
     {:ok, index, _html} = live(context.conn, index_path(context))
-    _html = render_async(index)
+    _html = render_settled(index)
 
     stages = index |> element("[data-test='story-stages']") |> render()
 
@@ -94,7 +94,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
     Offers.record(nil, qa, :work, {"requirement", "qa-offer-2"})
 
     {:ok, index, _html} = live(context.conn, index_path(context))
-    _ = render_async(index)
+    _ = render_settled(index)
 
     assert has_element?(
              index,
@@ -107,7 +107,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
     assert changed =~ "offer-results-loading",
            "the role's offers were read before the page answered the change"
 
-    _ = render_async(index)
+    _ = render_settled(index)
 
     assert has_element?(
              index,
@@ -135,7 +135,7 @@ defmodule CodeMySpecWeb.AgentPerformanceLive.IndexTest do
     end
 
     {:ok, index, _html} = live(context.conn, index_path(context))
-    _ = render_async(index)
+    _ = render_settled(index)
 
     assert index |> element("[data-test='standouts']") |> render() =~ "Tap-outs expired undecided"
 

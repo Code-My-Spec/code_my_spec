@@ -181,6 +181,7 @@ defmodule CodeMySpecSpex.Case do
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
+      import CodeMySpecTest.LiveAsync, only: [render_settled: 1]
       # The harness's surface. A working copy reaches the server over
       # `HarnessProjectChannel` — join is where identity is issued and where the
       # lease is taken — and no HTTP endpoint carries that exchange, so a spec

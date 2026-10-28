@@ -184,7 +184,7 @@ defmodule CodeMySpecSpex.DevBoxHelpers do
     |> element("[data-test='start-box'][data-device-id='#{device_id}']")
     |> render_click()
 
-    render_async(live)
+    CodeMySpecTest.LiveAsync.render_settled(live)
   end
 
   @doc """

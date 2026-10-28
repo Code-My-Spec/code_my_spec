@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/console/inventory")
 
-        {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view, 5_000)))}
+        {:ok, context |> Map.put(:document, Floki.parse_document!(render_settled(view)))}
       end
 
       then_ "the page reports the account unhealthy before any resource is read", context do
