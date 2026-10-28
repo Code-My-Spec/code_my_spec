@@ -628,24 +628,12 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp log_flake_classifications(batch) do
-    runs = History.list(batch.scope, source: "exunit")
-
-    current =
-      Enum.find(runs, fn run ->
-        run.working_copy_id == batch.gate.id and run.commit == batch.head and
-          run.status == :completed and not run.partial and run.findings_recorded
-      end)
-
-    failures =
-      current
-      |> then(&if(&1, do: &1.failures, else: []))
-      |> Enum.filter(&(is_binary(&1["file"]) and is_binary(&1["name"])))
-      |> Enum.uniq_by(&{&1["file"], &1["name"]})
-
     unrelated? = fn run, failure -> unrelated_candidate?(batch, run, failure) end
 
-    for result <-
-          Flakes.classify_all(batch.scope, batch.head, failures, unrelated_candidate?: unrelated?) do
+    for %{source: source, result: result} <-
+          Flakes.classify_gate_failures(batch.scope, batch.gate.id, batch.head,
+            unrelated_candidate?: unrelated?
+          ) do
       failure = result.failure
       evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
 
@@ -657,9 +645,14 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         end
 
       Logger.info(
-        "[PromotionQueue] #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
+        "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
       )
     end
+  rescue
+    error ->
+      Logger.warning(
+        "[PromotionQueue] flake classification unavailable: #{Exception.message(error)}"
+      )
   end
 
   defp unrelated_candidate?(batch, run, failure) do
