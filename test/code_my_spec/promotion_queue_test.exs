@@ -573,6 +573,12 @@ defmodule CodeMySpec.PromotionQueueTest do
 
     assert {:ok, %{status: :ejected, result: result}} = settle(entry)
     assert result["reason"] =~ "a.ex"
+    # Every step's timing survives to the ejection, not only the last write.
+    timing = result["timing"]
+    assert timing["gate_copy_id"] == gate.active_working_copy_id
+    assert is_integer(timing["stages"]["queue-wait"])
+    assert is_integer(timing["stages"]["gate-build"])
+    assert [_ | _] = timing["run_ids"]
     assert git!(ctx.main_root, ["rev-parse", "HEAD"]) == before
   end
 

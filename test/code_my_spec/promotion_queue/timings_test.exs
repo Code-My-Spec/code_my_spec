@@ -60,6 +60,40 @@ defmodule CodeMySpec.PromotionQueue.TimingsTest do
     assert timing.gate_seconds == 110
   end
 
+  test "an ejection recorded before its gate copy still counts its runs' time" do
+    began = ~U[2026-10-27 12:00:00Z]
+
+    entry = %Entry{
+      id: Ecto.UUID.generate(),
+      status: :ejected,
+      result: %{"timing" => %{"run_ids" => [1]}}
+    }
+
+    run = %Run{
+      id: 1,
+      source: "exunit",
+      kind: :full,
+      working_copy_id: "gate",
+      started_at: began,
+      began_at: began,
+      finished_at: DateTime.add(began, 300, :second)
+    }
+
+    timing = Timings.build(entry, [run])
+    assert timing.stages["exunit"] == %{status: :ran, duration_seconds: 300}
+    assert timing.gate_seconds == 300
+    assert Timings.summarize([timing])["outcomes"]["ejected"]["gate_seconds"] == 300
+  end
+
+  test "says how many promotions in each outcome carry any timing" do
+    untimed = %{timing(:landed, 0, nil) | stages: Map.new(Timings.stages(), &{&1, not_run()})}
+    timings = [timing(:landed, 60, 0), untimed, untimed, timing(:ejected, 900, nil)]
+    outcomes = Timings.summarize(timings)["outcomes"]
+
+    assert %{"count" => 3, "timed" => 1} = outcomes["landed"]
+    assert %{"count" => 1, "timed" => 1} = outcomes["ejected"]
+  end
+
   test "separates outcome statistics and excludes unreached stages" do
     landed = for seconds <- [60, 60, 120], do: timing(:landed, seconds, 0)
     ejected = for _ <- 1..8, do: timing(:ejected, 900, nil)
@@ -156,6 +190,8 @@ defmodule CodeMySpec.PromotionQueue.TimingsTest do
 
     %{outcome: outcome, stages: stages, analyzer_waits: waits, gate_seconds: gate_seconds}
   end
+
+  defp not_run, do: %{status: :not_run, duration_seconds: nil}
 
   defp put_landing_stage(stages, nil), do: stages
 

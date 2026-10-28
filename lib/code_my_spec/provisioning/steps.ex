@@ -1761,8 +1761,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp write_builder_key(scope, opts) do
     case AccountSecrets.fetch_value(scope, @access_key_private) do
       {:ok, private} when is_binary(private) and private != "" ->
-        dir = Path.join(System.tmp_dir!(), "cms-build-#{System.unique_integer([:positive])}")
-        File.mkdir_p!(dir)
+        # Owned: removed when the caller exits even where no explicit cleanup
+        # runs, and named per OS process so two processes never share a key.
+        dir = TempFile.owned_dir("cms-build")
         path = Path.join(dir, "id_ed25519")
         File.write!(path, private)
         File.chmod!(path, 0o600)

@@ -149,6 +149,50 @@ defmodule CodeMySpec.TempFile do
     :ok
   end
 
+  @doc """
+  Removes temp entries whose creating OS process is gone and that are older
+  than `max_age_ms`.
+
+  `token/0` puts the creator's OS pid in every name this module hands out, so
+  ownership is readable from the name: a test VM that halts with directories
+  still owned (`owned_dir/1` cleans on its caller's `:DOWN`, which a halting VM
+  never delivers) leaves entries no live process will remove. Run at the start
+  of a suite, this clears them for every prefix at once. `live_pids` is the set
+  of running OS pids; the age guard covers a pid recycled since.
+  """
+  @spec sweep_orphans(non_neg_integer(), MapSet.t(String.t())) :: non_neg_integer()
+  def sweep_orphans(max_age_ms, live_pids \\ live_os_pids()) do
+    tmp_dir = System.tmp_dir!()
+    cutoff_s = System.os_time(:second) - div(max_age_ms, 1000)
+
+    tmp_dir
+    |> File.ls!()
+    |> Enum.filter(&orphan_name?(&1, live_pids))
+    |> Enum.count(&remove_if_stale(Path.join(tmp_dir, &1), cutoff_s))
+  end
+
+  defp orphan_name?(name, live_pids) do
+    case Regex.run(~r/[-_](\d+)_\d+_[A-Za-z0-9_-]{12}/, name) do
+      [_, pid] -> not MapSet.member?(live_pids, pid)
+      _ -> false
+    end
+  end
+
+  defp remove_if_stale(path, cutoff_s) do
+    with {:ok, %File.Stat{mtime: mtime}} <- File.lstat(path, time: :posix),
+         true <- mtime < cutoff_s,
+         {:ok, _} <- File.rm_rf(path) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  defp live_os_pids do
+    {out, 0} = System.cmd("ps", ["-Ao", "pid="])
+    out |> String.split() |> MapSet.new()
+  end
+
   defp sweep_entry(path, cutoff_s) do
     with {:ok, %File.Stat{type: :directory, mtime: mtime}} <- File.stat(path, time: :posix),
          true <- mtime < cutoff_s do
