@@ -103,6 +103,9 @@ defmodule CmsHarness.Web.Router do
     pipe_through(:hook)
 
     post("/skills/start", SkillsController, :start)
+
+    # Before onboarding, so resolvable only from `X-Working-Dir`. See `InitController`.
+    post("/skills/init", InitController, :start)
   end
 
   # There is no unaddressed hook surface *by path*: a hook says where it fired

@@ -66,8 +66,7 @@ defmodule CmsHarness.Web.SkillsController do
 
   defp message({:not_onboarded, dir}) do
     "#{dir} has not been onboarded, so there is no harness to run the skill. Run " <>
-      "`mix cms.harness.onboard #{dir}` there and restart the agent. The MCP tools do " <>
-      "not need onboarding and work meanwhile."
+      "/codemyspec:init there. The MCP tools do not need onboarding and work meanwhile."
   end
 
   defp message(reason) do

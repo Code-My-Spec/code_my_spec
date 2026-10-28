@@ -7,9 +7,13 @@ defmodule CmsHarness.ProjectIdentity do
 
   Resolution order:
 
-    1. `project_id` in the working copy's own `.code_my_spec/config.yml`
-    2. `project_id` in the working copy's own `.cms_harness.json`
+    1. `project_id` in the working copy's own `.cms_harness.json`
+    2. `project_id` in the working copy's own `.code_my_spec/config.yml`
     3. refuse
+
+  The copy's record wins for the reason `server_url/1` gives: one repository is
+  a different project on each server (ours is 708492f9 on dev and a3158f01 on
+  codemyspec.com), and the tracked file can hold only one of them.
 
   There is no environment fallback. A directory that cannot say which project
   it is gets an error naming the file it should have said it in, because
@@ -63,11 +67,14 @@ defmodule CmsHarness.ProjectIdentity do
   end
 
   defp resolve_project(root) do
-    case from_config(root) do
-      {:ok, project} -> note_disagreement(project, :config)
-      {:error, :no_project_id} -> from_harness_file(root)
-      {:error, reason} -> {:error, reason}
+    case from_harness_file(root) do
+      {:ok, _source, _project} = found -> found
+      {:error, :no_project_id} -> from_config_file(root)
     end
+  end
+
+  defp from_config_file(root) do
+    with {:ok, project} <- from_config(root), do: note_disagreement(project, :config)
   end
 
   # The file onboarding writes; carries `project_id` as well as
