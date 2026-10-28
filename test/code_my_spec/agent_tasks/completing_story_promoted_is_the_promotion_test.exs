@@ -158,7 +158,13 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
         %{path: spex, role: :bdd_spec, story_id: story.id, valid: true, mtime: DateTime.utc_now()}
       ])
 
-    %{scope: scope, copy: copy, coder: coder, story: story, task: %{story_id: story.id}}
+    %{
+      scope: scope,
+      copy: copy,
+      coder: coder,
+      story: story,
+      task: %{id: Ecto.UUID.generate(), story_id: story.id}
+    }
   end
 
   # Promotion comes after QA; a story QA has not passed is refused. Certified
@@ -227,7 +233,21 @@ defmodule CodeMySpec.AgentTasks.CompletingStoryPromotedIsThePromotionTest do
 
       assert {:ok, :pending, text} = PromoteWork.evaluate(scope, task, coder)
       assert text =~ "Queued for promotion at position 1"
-      assert [%{commit: @head, status: status, requested_by_agent_id: requester}] = queued(scope)
+
+      assert [
+               %{
+                 id: entry_id,
+                 commit: @head,
+                 task_id: task_id,
+                 status: status,
+                 requested_by_agent_id: requester
+               }
+             ] = queued(scope)
+
+      assert task_id == task.id
+      assert text =~ entry_id
+      assert text =~ @head
+      assert text =~ task.id
       assert status in [:queued, :gating]
       assert requester == coder.id
       refute_received {:git, @main, ["merge" | _]}
