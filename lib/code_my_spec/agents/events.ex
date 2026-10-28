@@ -34,6 +34,7 @@ defmodule CodeMySpec.Agents.Events do
   @story_qa_passed [:code_my_spec, :qa, :story_passed]
   @promotion_team_free [:code_my_spec, :promotion, :team_free]
   @promotion_report [:code_my_spec, :promotion, :report]
+  @stuck_work [:code_my_spec, :analysis, :stuck_work]
   @decline_cleared [:code_my_spec, :notifications, :decline_cleared]
   @tap_out_denied [:code_my_spec, :notifications, :tap_out_denied]
   @decision_reached [:code_my_spec, :notifications, :decision_reached]
@@ -53,6 +54,7 @@ defmodule CodeMySpec.Agents.Events do
         @story_qa_passed,
         @promotion_team_free,
         @promotion_report,
+        @stuck_work,
         @decline_cleared,
         @tap_out_denied,
         @decision_reached,
@@ -198,6 +200,12 @@ defmodule CodeMySpec.Agents.Events do
     end
   catch
     kind, reason -> log(:promotion_report, kind, reason)
+  end
+
+  def handle_event(@stuck_work, _measurements, meta, _config) do
+    CodeMySpec.Agents.StuckWorkReport.deliver(meta)
+  catch
+    kind, reason -> log(:stuck_work, kind, reason)
   end
 
   # A person saying "go and work" outranks the agent's own last refusal: the

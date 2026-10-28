@@ -6304,7 +6304,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "Look up one retained analysis run by the ID cited in a promotion log."
-  def analysis_history_entry(%Scope{} = scope, run_id) when is_integer(run_id) do
+  def retained_analysis_history_entry(%Scope{} = scope, run_id) when is_integer(run_id) do
     scope
     |> CodeMySpec.Analysis.History.list(source: "exunit")
     |> Enum.find(&(&1.run_id == run_id))
@@ -6328,6 +6328,206 @@ defmodule CodeMySpecSpex.Fixtures do
       RunsRepository.start_run(scope, %{source: source, kind: :full})
 
     run
+  end
+
+  @doc "Record a completed run with the requested historical duration."
+  def record_analysis_duration_history(%Scope{} = scope, source, p90_minutes: minutes) do
+    run = start_analysis_run(scope, source)
+    now = DateTime.utc_now()
+    began = DateTime.add(now, -minutes * 60, :second)
+
+    run
+    |> CodeMySpec.Analysis.Run.changeset(%{
+      started_at: began,
+      status: :completed,
+      finished_at: now
+    })
+    |> Repo.update!()
+
+    :ok
+  end
+
+  @doc "Configure the stuck work thresholds for a spex."
+  def configure_stuck_work(%Scope{}, opts) do
+    key = CodeMySpec.Analysis.StuckWork
+    previous = Application.get_env(:code_my_spec, key, [])
+    Application.put_env(:code_my_spec, key, Keyword.merge(previous, opts))
+    ExUnit.Callbacks.on_exit(fn -> Application.put_env(:code_my_spec, key, previous) end)
+    :ok
+  end
+
+  @doc "Start an analysis run and place its ledger start at the requested age."
+  def start_analysis_run(%Scope{} = scope, source, opts) do
+    if name = Keyword.get(opts, :working_copy_name) do
+      Repo.update_all(
+        from(w in CodeMySpec.WorkingCopies.WorkingCopy,
+          where: w.id == ^scope.active_working_copy_id
+        ),
+        set: [label: name]
+      )
+    end
+
+    if Keyword.has_key?(opts, :run_number), do: ensure_stuck_main_agent(scope)
+    run = start_analysis_run(scope, source)
+    minutes = Keyword.get(opts, :started_minutes_ago, 0)
+    started_at = DateTime.add(DateTime.utc_now(), -minutes * 60, :second)
+    run = run |> CodeMySpec.Analysis.Run.changeset(%{started_at: started_at}) |> Repo.update!()
+
+    case Keyword.get(opts, :run_number) do
+      nil ->
+        run
+
+      number ->
+        {1, _} =
+          Repo.update_all(from(r in CodeMySpec.Analysis.Run, where: r.id == ^run.id),
+            set: [id: number]
+          )
+
+        Repo.get!(CodeMySpec.Analysis.Run, number)
+    end
+  end
+
+  @doc "Set the last event time on a live run."
+  def set_last_analysis_event(%Scope{}, run_id, opts) do
+    seconds = Keyword.get(opts, :seconds_ago, Keyword.get(opts, :minutes_ago, 0) * 60)
+
+    live =
+      CodeMySpec.Analysis.LiveRuns.fold(run_id, %{
+        "event" => "file_started",
+        "file" => "test/held_test.exs"
+      })
+
+    :ets.insert(
+      CodeMySpec.Analysis.LiveRuns,
+      {run_id, %{live | last_event_at: DateTime.add(DateTime.utc_now(), -seconds, :second)}}
+    )
+
+    :ok
+  end
+
+  @doc "Create the Main recipient for stuck-work reports in this project."
+  def ensure_stuck_main_agent(%Scope{} = scope) do
+    case CodeMySpec.Agents.main_agent(scope) do
+      nil ->
+        :ok = install_recording_agent_transport(scope.active_project_id)
+
+        running_agent(%{scope | active_working_copy_id: nil},
+          execution_mode: :detached,
+          role: "main"
+        )
+
+      agent ->
+        agent
+    end
+  end
+
+  @doc "Stuck-work messages delivered to the project's Main agent."
+  def main_stuck_notifications(%Scope{} = scope), do: main_stuck_notifications(scope, nil)
+
+  def main_stuck_notifications(%Scope{} = scope, item_id) do
+    messages =
+      case CodeMySpec.Agents.main_agent(scope) do
+        nil -> []
+        agent -> messages_to_agent(scope, agent.id)
+      end
+
+    if item_id,
+      do: Enum.filter(messages, &String.contains?(&1, to_string(item_id))),
+      else: messages
+  end
+
+  @doc "A queued promotion entry old enough to be reported stuck."
+  def stuck_promotion_entry(%Scope{} = scope) do
+    ensure_stuck_main_agent(scope)
+
+    id = Ecto.UUID.generate()
+    old = DateTime.add(DateTime.utc_now(), -11 * 60, :second)
+
+    {1, _} =
+      Repo.insert_all("promotion_queue_entries", [
+        %{
+          id: Ecto.UUID.dump!(id),
+          project_id: Ecto.UUID.dump!(scope.active_project_id),
+          working_copy_id: Ecto.UUID.dump!(scope.active_working_copy_id),
+          commit: String.duplicate("a", 40),
+          restart: false,
+          status: "queued",
+          inserted_at: old,
+          updated_at: old
+        }
+      ])
+
+    %{id: id}
+  end
+
+  @doc "Produce the first Main report for a stuck entry."
+  def record_stuck_notification(%Scope{} = scope, entry_id) do
+    report = CodeMySpec.Analysis.StuckWork.check(scope)
+    true = Enum.any?(report.entries, &(&1.entry_id == entry_id))
+    :ok
+  end
+
+  @doc "Age alert records to simulate time between checks."
+  def advance_stuck_clock(%Scope{} = scope, minutes: minutes) do
+    alert = CodeMySpec.Analysis.StuckWork.Alert
+
+    for row <- Repo.all(from(a in alert, where: a.project_id == ^scope.active_project_id)) do
+      aged = DateTime.add(row.reported_at, -minutes * 60, :second)
+      Repo.update_all(from(a in alert, where: a.id == ^row.id), set: [reported_at: aged])
+    end
+
+    :ok
+  end
+
+  @doc "Create a recent analysis ledger with one aged unfinished run."
+  def record_analysis_run_history(%Scope{} = scope, opts) do
+    started = Keyword.fetch!(opts, :started)
+    finished = Keyword.fetch!(opts, :finished)
+    oldest_open = Keyword.fetch!(opts, :oldest_open_minutes)
+
+    for index <- 1..started do
+      run = start_analysis_run(scope, "spex")
+
+      if index <= finished do
+        {:ok, _} =
+          CodeMySpec.Analysis.RunsRepository.finish_run(run, :completed, %{exit_status: 0})
+      else
+        old = DateTime.add(DateTime.utc_now(), -oldest_open * 60, :second)
+        run |> CodeMySpec.Analysis.Run.changeset(%{started_at: old}) |> Repo.update!()
+      end
+    end
+
+    :ok
+  end
+
+  @doc "Read the 24-hour analysis timing summary."
+  def open_promotion_timing(%Scope{} = scope),
+    do: CodeMySpec.Analysis.StuckWork.snapshot(scope).analysis
+
+  @doc "Represent this story on the designated main copy."
+  def land_story_on_main(%Scope{} = scope, 1171) do
+    if is_nil(CodeMySpec.WorkingCopies.main(scope)) do
+      {:ok, _} = CodeMySpec.WorkingCopies.designate_main(scope, scope.active_working_copy_id)
+    end
+
+    ensure_stuck_main_agent(scope)
+    :ok
+  end
+
+  @doc "Read an analysis ledger entry in this project."
+  def analysis_history_entry(%Scope{} = scope, run_id) do
+    Repo.get_by!(CodeMySpec.Analysis.Run, id: run_id, project_id: scope.active_project_id)
+  end
+
+  @doc "Read analysis runs in the requested recent window."
+  def analysis_history(%Scope{} = scope, within_hours: hours) do
+    cutoff = DateTime.add(DateTime.utc_now(), -hours * 3600, :second)
+
+    Repo.all(
+      from(r in CodeMySpec.Analysis.Run,
+        where: r.project_id == ^scope.active_project_id and r.started_at >= ^cutoff
+      )
+    )
   end
 
   @doc "A run whose harness has reported that execution began."
