@@ -67,11 +67,6 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
     run
   end
 
-  defp begun_run(scope, agent) do
-    run = requested_run(scope, agent)
-    RunsRepository.record_tree(run, %{:began_at => DateTime.utc_now()})
-  end
-
   # This process stands in for the rejoined harness's channel: a dispatch is
   # `send(channel, {:run_analysis, runs})`.
   defp rejoin(scope, claimed \\ []) do
@@ -89,7 +84,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "a run a disconnect killed is reported on rejoin and not run again", ctx do
-    begun_run(ctx.scope, ctx.agent)
+    requested_run(ctx.scope, ctx.agent)
 
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
 
@@ -107,7 +102,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "a run a server restart killed is reported once, not on every join", ctx do
-    begun_run(ctx.scope, ctx.agent)
+    requested_run(ctx.scope, ctx.agent)
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, @restart)
 
     rejoin(ctx.scope)
@@ -119,7 +114,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "a run the returning harness still holds is reopened, not run twice", ctx do
-    held = begun_run(ctx.scope, ctx.agent)
+    held = requested_run(ctx.scope, ctx.agent)
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, @restart)
 
     rejoin(ctx.scope, [held.id])
@@ -142,8 +137,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "a run nobody requested is not started again", ctx do
-    {:ok, run} = RunsRepository.start_run(ctx.scope, %{source: "compiler", kind: :full})
-    RunsRepository.record_tree(run, %{began_at: DateTime.utc_now()})
+    {:ok, _run} = RunsRepository.start_run(ctx.scope, %{source: "compiler", kind: :full})
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
 
     rejoin(ctx.scope)
@@ -152,7 +146,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "the agent is still awaiting a killed run until the rejoin settles it", ctx do
-    begun_run(ctx.scope, ctx.agent)
+    requested_run(ctx.scope, ctx.agent)
     {:ok, 1} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
 
     assert Analysis.awaiting_runs?(ctx.scope, ctx.copy.id, ctx.agent.id)
@@ -165,7 +159,7 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
   end
 
   test "server boot leaves a remote run open for its returning harness", ctx do
-    held = begun_run(ctx.scope, ctx.agent)
+    held = requested_run(ctx.scope, ctx.agent)
 
     assert {:ok, 0} = Analysis.settle_stranded_runs()
     assert %{status: :running} = RunsRepository.get_running_run(ctx.scope, held.id)
@@ -180,34 +174,6 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
     assert id == held.id
   end
 
-  test "a queued run survives disconnect and restart until re-admission", ctx do
-    queued = requested_run(ctx.scope, ctx.agent)
-    assert queued.began_at == nil
-
-    assert {:ok, 0} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
-
-    assert %{status: :running, orphaned: true, stats: nil, began_at: nil} =
-             RunsRepository.get_run_in_project(ctx.scope, queued.id)
-
-    assert RunsRepository.latest_full_run(ctx.scope, "compiler") == nil
-    assert Analysis.awaiting_runs?(ctx.scope, ctx.copy.id, ctx.agent.id)
-
-    assert {:ok, 0} = Analysis.settle_stranded_runs()
-    rejoin(ctx.scope)
-    assert :ok = Analysis.reconcile_rejoined(ctx.scope, [])
-
-    assert_receive {:run_analysis, [%{"run_id" => id, "source" => "compiler"}]}
-    assert id == queued.id
-
-    assert %{status: :running, orphaned: false, stats: nil} =
-             RunsRepository.get_run_in_project(ctx.scope, id)
-
-    refute_receive {:agent_dispatch, _id, _ref, _message}, 100
-
-    assert {:ok, %{id: ^id, status: :completed}} =
-             Analysis.record_remote_result(ctx.scope, clean_compile(id))
-  end
-
   test "a queued run lost by the old channel is readmitted with its original id", ctx do
     queued = requested_run(ctx.scope, ctx.agent)
     assert {:ok, 0} = Analysis.settle_stranded_runs()
@@ -219,24 +185,8 @@ defmodule CodeMySpec.Analysis.ARunItsHarnessTookIsReportedNotRerunTest do
     assert %{status: :running} = RunsRepository.get_running_run(ctx.scope, queued.id)
   end
 
-  test "a queued run whose harness never rejoins is not counted as failed", ctx do
-    queued = requested_run(ctx.scope, ctx.agent)
-    assert {:ok, 0} = Analysis.fail_in_flight(ctx.scope, :harness_disconnected)
-
-    cutoff = DateTime.add(DateTime.utc_now(), 1, :second)
-    assert :ok = Analysis.abandon_unclaimed_after_restart(cutoff)
-
-    assert %{status: :abandoned, stats: %{"error" => reason}} =
-             RunsRepository.get_run_in_project(ctx.scope, queued.id)
-
-    assert reason =~ "did not rejoin"
-    assert RunsRepository.latest_full_run(ctx.scope, "compiler") == nil
-    assert_receive {:agent_dispatch, _id, _ref, message}
-    assert message =~ "not run"
-  end
-
   test "a harness that never rejoins leaves an abandoned run, not a failed result", ctx do
-    run = begun_run(ctx.scope, ctx.agent)
+    run = requested_run(ctx.scope, ctx.agent)
     cutoff = DateTime.add(DateTime.utc_now(), 1, :second)
 
     assert :ok = Analysis.abandon_unclaimed_after_restart(cutoff)

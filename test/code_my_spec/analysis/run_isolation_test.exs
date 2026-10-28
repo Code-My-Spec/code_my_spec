@@ -38,7 +38,7 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
 
   defp start(scope, source) do
     {:ok, run} = RunsRepository.start_run(scope, %{source: source, kind: :full})
-    RunsRepository.record_tree(run, %{began_at: DateTime.utc_now()})
+    run
   end
 
   test "a join in one checkout does not fail another checkout's in-flight run" do

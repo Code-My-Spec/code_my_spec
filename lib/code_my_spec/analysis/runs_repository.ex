@@ -512,9 +512,13 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def fail_running(%Scope{} = scope, reason), do: fail_running(scope, reason, [])
 
   @doc """
-  Close this working copy's executing runs, except those the harness still holds.
-  Queued runs have not begun, so leave them open for re-admission when the
-  harness rejoins. The original run id and its waiters survive the restart.
+  Close this working copy's `:running` runs, except the ones the harness says it
+  is still working on.
+
+  A restarted harness lost its queue, so those runs never finish; one whose
+  socket merely dropped is still running them. The two look alike from here,
+  so the harness declares on join what it still holds, and anything unclaimed
+  is closed. An empty claim closes everything.
   """
   @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, [Run.t()]}
   # No working copy, nothing to close: `scope_to_harness/2`'s nil clause would
@@ -524,22 +528,12 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
 
-    unclaimed =
+    # The closed rows come back so their requesters can be told.
+    {_count, failed} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running and not r.orphaned)
       |> scope_to_harness(scope)
       |> exclude_claimed(claimed)
-
-    # The old channel may have lost the queue, but no analyzer ran. Keep these
-    # rows open until the next join re-admits them under their original ids.
-    unclaimed
-    |> where([r], is_nil(r.began_at))
-    |> Repo.update_all(set: [orphaned: true, updated_at: now])
-
-    # Only work that actually began can have been killed by the disconnect.
-    {_count, failed} =
-      unclaimed
-      |> where([r], not is_nil(r.began_at))
       |> select([r], r)
       |> Repo.update_all(
         set: [

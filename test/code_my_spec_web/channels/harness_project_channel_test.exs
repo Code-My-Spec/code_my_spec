@@ -401,7 +401,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       {:ok, run} =
         RunsRepository.start_run(scope, %{source: "spex", kind: :full})
 
-      RunsRepository.record_tree(run, %{began_at: DateTime.utc_now()})
       %{socket: socket, run: run}
     end
 
@@ -1153,11 +1152,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       # different one is asking about a different machine.
       served = %{scope | active_working_copy_id: id}
 
-      run_id = dispatch_compiler(channel)
-
-      RunsRepository.record_tree(RunsRepository.get_running_run(served, run_id), %{
-        began_at: DateTime.utc_now()
-      })
+      _run_id = dispatch_compiler(channel)
 
       assert Analysis.runs_in_flight?(served)
 
@@ -1219,15 +1214,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       served = %{scope | active_working_copy_id: id}
       asker = %{"kind" => "mcp_tool", "tool" => "start_analysis", "agent_id" => nil}
 
-      {:ok, killed} =
+      {:ok, _killed} =
         RunsRepository.start_run(served, %{
           source: "spex",
           kind: :full,
           args: %{"args" => []},
           requested_by: asker
         })
-
-      RunsRepository.record_tree(killed, %{began_at: DateTime.utc_now()})
 
       down = Process.monitor(channel.channel_pid)
       Process.exit(channel.channel_pid, :kill)
