@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion1979Spex do
 
       then_ "I see the story's tokens in total, per agent and per provider", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
 
         assert html =~ "420", "the story's total tokens (300 + 120) are not shown"
         assert html =~ "anthropic", "the story's per-provider breakdown omits anthropic"

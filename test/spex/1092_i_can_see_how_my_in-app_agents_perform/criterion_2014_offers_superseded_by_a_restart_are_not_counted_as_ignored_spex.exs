@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2014Spex do
 
       then_ "offer health shows it as superseded", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
 
         assert html =~ "superseded",
                "the offer the restart overtook before delivery is not shown as superseded"

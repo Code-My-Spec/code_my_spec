@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2002Spex do
 
       then_ "I see its total time from release to promotion", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
 
         assert html =~ context.story.title,
                "the promoted story does not appear in the performance report at all"

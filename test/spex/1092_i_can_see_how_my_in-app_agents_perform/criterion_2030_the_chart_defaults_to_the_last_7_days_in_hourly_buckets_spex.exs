@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story1092.Criterion2030Spex do
 
       when_ "I look at the performance page", context do
         {:ok, index, _html} = live(context.conn, index_path(context))
-        html = render_async(index)
+        html = await_report(index)
         {:ok, Map.put(context, :html, html)}
       end
 
