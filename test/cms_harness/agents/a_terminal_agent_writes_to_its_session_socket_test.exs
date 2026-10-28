@@ -76,6 +76,25 @@ defmodule CmsHarness.Agents.ATerminalAgentWritesToItsSessionSocketTest do
     {id, pid}
   end
 
+  test "reattaching a terminal that closes during the session call returns session ended" do
+    id = Ecto.UUID.generate()
+    parent = self()
+
+    pid =
+      spawn(fn ->
+        {:ok, _} = Registry.register(CmsHarness.Registry, {:agent, id}, nil)
+        send(parent, :registered)
+
+        receive do
+          {:"$gen_call", _from, {:session, _session}} -> exit(:normal)
+        end
+      end)
+
+    assert_receive :registered
+    assert {:error, :session_ended} = Terminal.attach(id, %{working_copy: "/workspace/terminal"})
+    refute Process.alive?(pid)
+  end
+
   test "a delivery is one user frame on the session's socket", %{socket: socket} do
     listen(socket)
 
