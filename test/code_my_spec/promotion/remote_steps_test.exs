@@ -75,6 +75,39 @@ defmodule CodeMySpec.Promotion.RemoteStepsTest do
     assert git!(c.origin, ["for-each-ref", "refs/codemyspec/promotions"]) == ""
   end
 
+  test "a transient commit_refs failure retries the same atomic publication", c do
+    hook = Path.join(c.origin, "hooks/pre-receive")
+    marker = Path.join(c.origin, "failed-once")
+
+    File.write!(
+      hook,
+      "#!/bin/sh\nif [ ! -e '#{marker}' ]; then\n  touch '#{marker}'\n  echo 'fatal error in commit_refs' >&2\n  exit 1\nfi\n"
+    )
+
+    File.chmod!(hook, 0o755)
+    assert {:ok, %{head: head, published: true}} = publish(c)
+    assert head == c.head
+    assert File.exists?(marker)
+    assert git!(c.origin, ["rev-parse", "release"]) == c.head
+    assert git!(c.origin, ["rev-parse", "refs/codemyspec/promotions/test-promotion"]) == c.head
+  end
+
+  test "persistent commit_refs failure remains retryable after bounded attempts", c do
+    hook = Path.join(c.origin, "hooks/pre-receive")
+    attempts = Path.join(c.origin, "push-attempts")
+
+    File.write!(
+      hook,
+      "#!/bin/sh\nprintf x >> '#{attempts}'\necho 'fatal error in commit_refs' >&2\nexit 1\n"
+    )
+
+    File.chmod!(hook, 0o755)
+    assert {:error, %{retryable: true, uncertain: true}} = publish(c)
+    assert File.read!(attempts) == "xxx"
+    assert git!(c.origin, ["rev-parse", "release"]) == c.base
+    assert git!(c.origin, ["for-each-ref", "refs/codemyspec/promotions"]) == ""
+  end
+
   test "an origin without atomic push support is refused without partial publication", c do
     git!(c.origin, ["config", "receive.advertiseAtomic", "false"])
     assert {:error, %{status: :rejected}} = publish(c)
