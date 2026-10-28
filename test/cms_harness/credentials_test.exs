@@ -65,6 +65,7 @@ defmodule CmsHarness.CredentialsTest do
         working_copy_id: Keyword.get(opts, :working_copy_id, Ecto.UUID.generate()),
         project_id: Keyword.get(opts, :project_id, @project),
         deploy_key: Keyword.get(opts, :deploy_key),
+        server_url: Keyword.get(opts, :server_url, CmsHarness.Config.server_url()),
         root: root
       })
   end
@@ -183,6 +184,17 @@ defmodule CmsHarness.CredentialsTest do
       assert {:ok, "this-copys-key", :working_copy_key} = Credentials.any(),
              "the daemon holds a credential on disk and could not find it, " <>
                "which is the shape that took every harness on this machine down"
+    end
+
+    test "does not borrow a served copy's key for another server", ctx do
+      onboard(ctx.root, deploy_key: "server-a-key", server_url: "https://server-a.example.test")
+      :ok = CmsHarnessTest.Projects.serve(ctx.root)
+
+      assert {:ok, "server-a-key", :working_copy_key} =
+               Credentials.for_working_copy(ctx.root)
+
+      assert {:error, :no_credential} = Credentials.any()
+      assert {:error, :no_credential} = CmsHarness.Config.credential()
     end
 
     test "and says so when there is nothing to answer with" do

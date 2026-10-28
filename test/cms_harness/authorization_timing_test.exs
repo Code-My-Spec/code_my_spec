@@ -3,6 +3,21 @@ defmodule CmsHarness.AuthorizationTimingTest do
 
   alias CmsHarness.Authorization
 
+  test "pending device authorization exposes the verification URL and code" do
+    state = %{
+      phase: :pending,
+      grant: %{verification_uri: "https://auth.example/device", user_code: "ABCD-EFGH"}
+    }
+
+    assert {:reply,
+            %{
+              phase: :pending,
+              verification_uri: "https://auth.example/device",
+              user_code: "ABCD-EFGH"
+            }, ^state} =
+             Authorization.handle_call(:status, {self(), make_ref()}, state)
+  end
+
   test "authorized harness checks again at the configured interval" do
     dir = CodeMySpec.TempFile.dir("authorization-timing")
     File.mkdir_p!(dir)

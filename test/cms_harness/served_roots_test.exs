@@ -122,6 +122,12 @@ defmodule CmsHarness.ServedRootsTest do
     )
 
     assert ServedRoots.list() == []
+    assert {:error, :no_credential} = Credentials.any()
+
+    conn = CmsHarness.Web.HealthController.index(Plug.Test.conn(:get, "/health"), %{})
+    health = Jason.decode!(conn.resp_body)
+    assert health["credential"] == false
+    assert Map.has_key?(health, "authorization")
   end
 
   defp boot_reporter(roster) do

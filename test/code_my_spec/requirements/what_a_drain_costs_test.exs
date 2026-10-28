@@ -179,6 +179,103 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
       end
     end
 
+    test "an issue update does not query once per promoted story", ctx do
+      scope = ctx.scope
+      story = create_story(scope, title: "First promoted", description: "query baseline")
+
+      CodeMySpec.Repo.get!(CodeMySpec.Stories.Story, story.id)
+      |> Ecto.Changeset.change(promoted_version: "0.1.1")
+      |> CodeMySpec.Repo.update!()
+
+      settle(scope)
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "Measure issue drain",
+          description: "first observation",
+          severity: :high
+        })
+
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(scope, issue)
+      settle(scope)
+
+      baseline =
+        settle_after(scope, fn ->
+          {:ok, _} = CodeMySpec.Issues.update_issue(scope, issue, %{description: "baseline"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert baseline != []
+      {baseline_cost, _} = Enum.max_by(baseline, fn {cost, _meta} -> cost.queries end)
+
+      for n <- 1..12 do
+        story = create_story(scope, title: "Promoted #{n}", description: "query scaling")
+
+        CodeMySpec.Repo.get!(CodeMySpec.Stories.Story, story.id)
+        |> Ecto.Changeset.change(promoted_version: "0.1.1")
+        |> CodeMySpec.Repo.update!()
+      end
+
+      settle(scope)
+
+      enlarged =
+        settle_after(scope, fn ->
+          {:ok, _} = CodeMySpec.Issues.update_issue(scope, issue, %{description: "enlarged"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert enlarged != []
+      {enlarged_cost, _} = Enum.max_by(enlarged, fn {cost, _meta} -> cost.queries end)
+
+      assert enlarged_cost.queries - baseline_cost.queries < 8,
+             "issue drain grew from #{baseline_cost.queries} to #{enlarged_cost.queries} queries for twelve stamped stories"
+    end
+
+    test "an issue update remains bounded across twelve vantages", ctx do
+      scope = ctx.scope
+      device = CodeMySpec.DevicesFixtures.device_fixture(scope)
+
+      copies =
+        for n <- 1..10 do
+          {:ok, copy} =
+            CodeMySpec.WorkingCopies.issue(scope, nil, label: "Vantage #{n}", device: device)
+
+          copy
+        end
+
+      create_story(scope, title: "Twelve-vantage subject", description: "issue drain measurement")
+      :ok = IncrementalGraph.settle(scope.active_project_id, [nil | Enum.map(copies, & &1.id)])
+      drains()
+
+      {:ok, issue} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "Twelve-vantage issue",
+          description: "first observation",
+          severity: :high
+        })
+
+      {:ok, issue} = CodeMySpec.Issues.accept_issue(scope, issue)
+      settle(scope)
+
+      applied =
+        settle_after(scope, fn ->
+          {:ok, _} =
+            CodeMySpec.Issues.update_issue(scope, issue, %{description: "updated observation"})
+        end)
+        |> Enum.filter(fn {_cost, meta} ->
+          meta.kind == :event and handled(meta) > 0 and recomputed(meta) == 0
+        end)
+
+      assert applied != []
+      {cost, meta} = Enum.max_by(applied, fn {cost, _meta} -> cost.queries end)
+      assert meta.vantages == 12
+      assert cost.queries < 1_000
+    end
+
     test "a drain reports how many checkouts it settled", ctx do
       scope = ctx.scope
       story = create_story(scope, title: "Counted", description: "across checkouts")
