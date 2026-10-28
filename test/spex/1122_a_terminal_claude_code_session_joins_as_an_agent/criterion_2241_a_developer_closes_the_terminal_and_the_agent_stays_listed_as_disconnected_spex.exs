@@ -50,11 +50,13 @@ defmodule CodeMySpecSpex.Story1122.Criterion2241Spex do
       end
 
       then_ "the agent stays listed, shown as not connected", context do
+        # The panel's status follows the same presence change asynchronously, so
+        # it is waited on, not read once after presence drops.
         eventually(fn ->
           refute MapSet.member?(Agents.present_ids(context.scope), context.agent_id)
+          assert panel(context) =~ "Away"
         end)
 
-        assert panel(context) =~ "Away"
         assert [%{"id" => id}] = agents(context)
         assert id == context.agent_id
         {:ok, context}
