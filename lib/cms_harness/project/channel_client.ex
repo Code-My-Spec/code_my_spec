@@ -1240,6 +1240,16 @@ defmodule CmsHarness.Project.ChannelClient do
   defp apply_promotion("promotion_build_assets", %{"root" => root}),
     do: with_served_root(root, &build_assets/1)
 
+  defp apply_promotion(
+         "promotion_select_tests",
+         %{"root" => root, "base" => base, "head" => head}
+       ),
+       do:
+         with_served_root(
+           root,
+           &Steps.select_tests(ExecutionContext.new(:local, &1), &1, base, head)
+         )
+
   defp apply_promotion("promotion_changed", %{"root" => root, "from" => from, "to" => to}),
     do: with_served_root(root, &Steps.changed(ExecutionContext.new(:local, &1), &1, from, to))
 

@@ -440,18 +440,36 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       since: DateTime.add(DateTime.utc_now(), -1, :second)
     }
 
-    Logger.info(
-      "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
-    )
+    environment = WorkingCopies.execution_context(batch.scope)
 
-    # Asked now, and again on the recheck timer whatever happens to this one:
-    # a lost `:gate` must not stall the queue.
-    send(self(), :gate)
+    case Runner.select_tests(environment, gate.root, base, head, gate.id) do
+      {:ok, selection} ->
+        selection = Map.new(selection, fn {key, value} -> {to_string(key), value} end)
 
-    {:noreply,
-     %{state | phase: :gating, batch: batch, reserved_entries: []}
-     |> Map.put(:gate_wait_since, nil)
-     |> recheck_later()}
+        in_batch =
+          Enum.map(in_batch, fn entry ->
+            result = Map.put(entry.result || %{}, "test_selection", selection)
+            moved(entry, :gating, %{result: result})
+          end)
+
+        batch = %{batch | entries: in_batch}
+
+        Logger.info(
+          "[PromotionQueue] gating #{length(in_batch)} candidate(s) at #{head} on #{base} in #{gate.root}"
+        )
+
+        # Asked now, and again on the recheck timer whatever happens to this one:
+        # a lost `:gate` must not stall the queue.
+        send(self(), :gate)
+
+        {:noreply,
+         %{state | phase: :gating, batch: batch, reserved_entries: []}
+         |> Map.put(:gate_wait_since, nil)
+         |> recheck_later()}
+
+      {:error, reason} ->
+        could_not_gate(%{state | batch: batch}, in_batch, reason)
+    end
   end
 
   # Taken, and stopped short of a verdict. Ejected rather than requeued: a
@@ -878,6 +896,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp landed_result(entry, batch, report) do
     base = %{
       "timing" => timing(entry),
+      "test_selection" => Map.get(entry.result || %{}, "test_selection"),
       "version" => report[:version],
       "head" => batch.head,
       "promotion_id" => batch.id,
@@ -995,10 +1014,58 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp record_runs(batch, swept) do
     ids = Enum.map(swept, & &1.run_id) |> Enum.reject(&is_nil/1)
 
+    failures =
+      for source <- ~w(exunit spex),
+          %Run{kind: :full, findings: findings} <-
+            [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+          failure <- Map.get(findings || %{}, "failures", []),
+          is_binary(failure["file"]) and is_binary(failure["name"]),
+          do: failure
+
+    gate_history =
+      batch.scope
+      |> History.list()
+      |> Enum.filter(&(&1.working_copy_id == batch.gate.id))
+
+    classified = Enum.map(failures, &Flakes.classify_one(&1, batch.head, gate_history, []))
+
     entries =
       Enum.map(batch.entries, fn entry ->
         value = Map.put(timing(entry), "run_ids", ids)
-        moved(entry, entry.status, %{result: put_timing(entry, value)})
+        result = put_timing(entry, value)
+
+        result =
+          case result["test_selection"] do
+            %{} = selection ->
+              selected = selection["selected_tests"] || []
+              changed = selection["changed_files"] || []
+
+              misses =
+                for %{failure: failure, classification: classification} <- classified,
+                    failure["file"] not in selected and classification != :confirmed_flake,
+                    do: %{
+                      "file" => failure["file"],
+                      "name" => failure["name"],
+                      "changed_files" => changed
+                    }
+
+              flakes =
+                for %{failure: failure, classification: :confirmed_flake} <- classified,
+                    do: failure["file"]
+
+              selection =
+                selection
+                |> Map.put("failed_tests", failures |> Enum.map(& &1["file"]) |> Enum.uniq())
+                |> Map.put("misses", Enum.uniq(misses))
+                |> Map.put("flakes", Enum.uniq(flakes))
+
+              Map.put(result, "test_selection", selection)
+
+            _ ->
+              result
+          end
+
+        moved(entry, entry.status, %{result: result})
       end)
 
     %{batch | entries: entries}

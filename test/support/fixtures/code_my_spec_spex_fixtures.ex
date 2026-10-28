@@ -6998,6 +6998,124 @@ defmodule CodeMySpecSpex.Fixtures do
     enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
   end
 
+  @doc "Write the last green test dependency baseline for a promotion gate fixture."
+  def green_test_impact_baseline(_scope, gate, opts) do
+    require Mix.Compilers.Elixir, as: CE
+
+    source = Keyword.get(opts, :source, "lib/fixture.ex")
+    related = Keyword.get(opts, :related, [])
+    unrelated = Keyword.get(opts, :unrelated, [])
+    module = CodeMySpecSpex.TestImpactFixture
+    tests = related ++ unrelated
+
+    test_sources =
+      Map.new(tests, fn path ->
+        references = if path in related, do: [module], else: []
+        {path, {:source, [], references, []}}
+      end)
+
+    baseline = %{
+      version: 1,
+      modules: %{module => CE.module(kind: :module, sources: [source])},
+      sources: %{source => CE.source(modules: [module])},
+      test_sources: test_sources
+    }
+
+    path = Path.join(gate.root, "_build/test/lib/code_my_spec/.mix/compile.test_impact")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, :erlang.term_to_binary(baseline))
+    true = File.exists?(path)
+    :ok
+  end
+
+  @doc "Plan failures for the gate harness's next full test run."
+  def fail_full_promotion_run(gate, files) do
+    Process.put({:promotion_failure_paths, gate.working_copy_id}, List.wrap(files))
+    :ok
+  end
+
+  def promotion_failure_paths(gate) do
+    Process.get({:promotion_failure_paths, gate.working_copy_id}, [])
+  end
+
+  @doc "Mark a test for same-commit passing evidence before the gate's failing run."
+  def confirmed_promotion_flake(scope, file) do
+    Process.put({:promotion_confirmed_flake, scope.active_project_id}, file)
+    :ok
+  end
+
+  def prepare_promotion_flake(scope, gate, commit) do
+    case Process.get({:promotion_confirmed_flake, scope.active_project_id}) do
+      nil ->
+        :ok
+
+      file ->
+        now = DateTime.utc_now()
+        before_gate = DateTime.add(now, -60, :second)
+        source = if String.starts_with?(file, "test/spex/"), do: "spex", else: "exunit"
+
+        CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
+          project_id: scope.active_project_id,
+          working_copy_id: gate.working_copy_id,
+          source: source,
+          kind: :full,
+          status: :completed,
+          completed_commit: commit,
+          findings: %{"failures" => []},
+          started_at: before_gate,
+          began_at: before_gate,
+          finished_at: now
+        })
+
+        :ok
+    end
+  end
+
+  @doc "Record a published story as the premise for post-landing timing checks."
+  def story_landed_on_main(scope, number) do
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        number: number,
+        title: "Story #{number} landed on main",
+        story: "As a user, I want a published story, so that gate history can be reviewed."
+      })
+
+    record_story_publication(scope, story.id, "fixture-published")
+  end
+
+  @doc "Record a landed promotion with a persisted gate selection."
+  def landed_promotion_with_gate_selection(scope, opts) do
+    selection = gate_selection_fixture(opts)
+    promotion_with_timing(scope, :landed, Keyword.put(opts, :test_selection, selection))
+  end
+
+  @doc "Read a promotion's persisted selection, independently of its timing projection."
+  def promotion_gate_selection(scope, entry_id) do
+    timing = CodeMySpec.PromotionQueue.Timings.get(scope.active_project_id, entry_id)
+    selection = timing.selection
+    %{selected_tests: selection["selected_tests"], suite_size: selection["suite_size"]}
+  end
+
+  @doc "Record promotion selections throughout the requested time window."
+  def promotion_history_with_gate_selections(scope, opts) do
+    count = Keyword.fetch!(opts, :count)
+    for _ <- 1..count, do: landed_promotion_with_gate_selection(scope, opts)
+    :ok
+  end
+
+  defp gate_selection_fixture(opts) do
+    selected_size = Keyword.fetch!(opts, :selected_size)
+
+    %{
+      "mode" => "partial",
+      "selected_tests" => for(i <- 1..selected_size, do: "test/selected_#{i}_test.exs"),
+      "suite_size" => Keyword.fetch!(opts, :suite_size),
+      "failed_tests" => Keyword.get(opts, :failures, []),
+      "misses" => [],
+      "flakes" => []
+    }
+  end
+
   @doc "Record a completed queue candidate and its associated full gate runs."
   def landed_promotion_with_timing(scope, opts \\ []) do
     promotion_with_timing(scope, :landed, opts)
@@ -7130,7 +7248,8 @@ defmodule CodeMySpecSpex.Fixtures do
           "stages" => recorded,
           "run_ids" => Enum.map(runs, & &1.id),
           "gate_copy_id" => copy.id
-        }
+        },
+        "test_selection" => Keyword.get(opts, :test_selection, %{})
       },
       inserted_at: at,
       updated_at: at

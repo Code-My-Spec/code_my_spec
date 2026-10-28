@@ -27,6 +27,7 @@ defmodule CodeMySpec.PromotionQueue.Timings do
           analyzer_waits: %{String.t() => stage()},
           test_timings: [map()],
           file_timings: [map()],
+          selection: map(),
           total_seconds: non_neg_integer(),
           gate_seconds: non_neg_integer()
         }
@@ -87,6 +88,9 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       "count" => length(timings),
       "empty" => timings == [],
       "outcomes" => outcomes,
+      "promotions" => Enum.map(timings, &selection_summary/1),
+      "miss_count" =>
+        Enum.sum(Enum.map(timings, &length((Map.get(&1, :selection) || %{})["misses"] || []))),
       "slowest_tests" => slowest(timings, :test_timings),
       "slowest_files" => slowest(timings, :file_timings)
     }
@@ -123,12 +127,26 @@ defmodule CodeMySpec.PromotionQueue.Timings do
       analyzer_waits: analyzer_waits,
       test_timings: timed_items(own_runs, "tests"),
       file_timings: timed_items(own_runs, "files"),
+      selection: Map.get(entry.result || %{}, "test_selection", %{}),
       total_seconds: sum_stages(stages, @stages) + wait_seconds,
       gate_seconds: sum_stages(stages, @gate_stages) + wait_seconds
     }
   end
 
   def build(%Entry{}, _runs), do: nil
+
+  defp selection_summary(timing) do
+    selection = Map.get(timing, :selection) || %{}
+    selected = selection["selected_tests"] || []
+    suite_size = selection["suite_size"] || 0
+
+    %{
+      "id" => Map.get(timing, :id),
+      "selected_share_percent" =>
+        if(suite_size > 0, do: 100 * length(selected) / suite_size, else: nil),
+      "selection" => selection
+    }
+  end
 
   defp load_timing(nil), do: nil
 
