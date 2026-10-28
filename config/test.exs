@@ -517,6 +517,8 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # A call with no stub registered raises rather than reaching GitHub, which is
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
+config :code_my_spec, CodeMySpec.Provisioning.Tools.ConnectProvider,
+  plug: {Req.Test, CodeMySpec.Provisioning.Tools.ConnectProvider}
 
 # Every provider's /models answers 404 (an unknown list, allowed) unless a test
 # installs a cassette: `Agents.ProviderModels`.

@@ -36,10 +36,38 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProviderTest do
       context: context
     } do
       connect(scope, :github)
+      stub_github(200)
 
       assert {:ok, text} = ConnectProvider.call(%{provider: "github"}, context)
       assert text =~ "already connected"
       refute text =~ "https://"
+    end
+
+    test "a revoked GitHub grant gives a new consent link", %{scope: scope, context: context} do
+      connect(scope, :github)
+      stub_github(401)
+
+      assert {:ok, text} = ConnectProvider.call(%{provider: "github"}, context)
+      assert text =~ "https://github.com"
+      assert text =~ "await_provider_connection"
+    end
+
+    test "a GitHub outage leaves connection status unknown", %{scope: scope, context: context} do
+      connect(scope, :github)
+      stub_github(503)
+
+      assert {:error, text} = ConnectProvider.call(%{provider: "github"}, context)
+      assert text =~ "could not check"
+      refute text =~ "already connected"
+      refute text =~ "https://"
+    end
+
+    test "a GitHub network error leaves connection status unknown", %{scope: scope, context: context} do
+      connect(scope, :github)
+      Req.Test.stub(ConnectProvider, &Req.Test.transport_error(&1, :nxdomain))
+
+      assert {:error, text} = ConnectProvider.call(%{provider: "github"}, context)
+      assert text =~ "could not check"
     end
 
     test "a provider that is not on the list is refused", %{context: context} do
@@ -79,6 +107,17 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProviderTest do
       assert AwaitProviderConnection.wait_seconds(%{}) == 20
       assert AwaitProviderConnection.wait_seconds(%{wait_seconds: -5}) == 0
     end
+  end
+
+  defp stub_github(status) do
+    Req.Test.stub(ConnectProvider, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/user"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.resp(status, Jason.encode!(%{login: "test-user"}))
+    end)
   end
 
   defp connect(scope, provider) do

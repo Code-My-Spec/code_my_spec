@@ -44,7 +44,11 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProvider do
   def call(%{provider: provider}, context) do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, provider} <- fetch_provider(provider) do
-      if connected?(scope, provider), do: already(provider), else: start(provider)
+      case connection_status(scope, provider) do
+        :connected -> already(provider)
+        :disconnected -> start(provider)
+        {:error, reason} -> error("could not check the #{provider} connection: #{inspect(reason)}")
+      end
     else
       {:error, reason} -> error(reason)
     end
@@ -87,6 +91,30 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProvider do
   @doc false
   def connected?(scope, provider),
     do: Credentials.stored?(scope, %{kind: :connection, provider: provider})
+
+  defp connection_status(scope, :github) do
+    case Integrations.fetch_access_token(scope, :github) do
+      {:ok, token} -> check_github_grant(token)
+      {:error, reason} when reason in [:not_found, :reauthorize_required] -> :disconnected
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp connection_status(scope, provider) do
+    if connected?(scope, provider), do: :connected, else: :disconnected
+  end
+
+  defp check_github_grant(token) do
+    opts = [auth: {:bearer, token}, retry: false]
+    opts = Keyword.merge(opts, Application.get_env(:code_my_spec, __MODULE__, []))
+
+    case Req.get("https://api.github.com/user", opts) do
+      {:ok, %Req.Response{status: 200}} -> :connected
+      {:ok, %Req.Response{status: 401}} -> :disconnected
+      {:ok, %Req.Response{status: status}} -> {:error, {:github_status, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   defp error(reason) when is_binary(reason), do: {:error, reason}
   defp error(reason), do: CodeMySpec.Tools.error(reason)
