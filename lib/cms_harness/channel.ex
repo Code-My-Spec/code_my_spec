@@ -155,7 +155,8 @@ defmodule CmsHarness.Channel do
       [] -> {:error, :not_connected}
     end
   catch
-    :exit, _ -> {:error, :no_reply}
+    :exit, {:timeout, _} -> {:error, :no_reply}
+    :exit, _ -> {:error, :not_connected}
   end
 
   @doc """
