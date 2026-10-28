@@ -104,8 +104,14 @@ defmodule CodeMySpec.Analysis.HistoryTest do
     assert Repo.get(Finding, hd(History.failures(scope, fresh)).id)
     assert History.failures(scope, old) == []
 
-    previous = Application.get_env(:code_my_spec, History)
-    on_exit(fn -> Application.put_env(:code_my_spec, History, previous) end)
+    previous = Application.fetch_env(:code_my_spec, History)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, config} -> Application.put_env(:code_my_spec, History, config)
+        :error -> Application.delete_env(:code_my_spec, History)
+      end
+    end)
     Application.put_env(:code_my_spec, History, retention_days: 7)
     assert {:ok, 1} = History.prune(scope)
     assert Repo.get(Run, fresh.id) == nil
