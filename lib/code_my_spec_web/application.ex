@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Embeddings.HetznerFlameBackend
+  alias CodeMySpec.Embeddings.InFlightCalls
   alias CodeMySpec.Notifications.AnalysisPush
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
@@ -61,6 +62,9 @@ defmodule CodeMySpecWeb.Application do
         when_serving(serving?, CodeMySpec.RunGuard),
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
+        # Deletes idle burst boxes and leftover builders. Prod only, and only
+        # with `CMS_BURST_SWEEP=1`: it deletes servers, so it is opt-in.
+        when_serving(serving?, burst_sweep_child(env)),
         # One reconcile per boot; a `:temporary`, non-raising Task, so it never
         # blocks or fails boot.
         when_serving(
@@ -226,6 +230,24 @@ defmodule CodeMySpecWeb.Application do
   end
 
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
+
+  # `%Scope{}` is the platform acting for itself, as for the FLAME backend
+  # below. `busy?` counts a connected embed runner as well as a running build,
+  # which `BurstBox.busy?/2`'s default does not.
+  defp burst_sweep_child(:prod) do
+    if System.get_env("CMS_BURST_SWEEP") == "1" and hetzner_burst_box_configured?() do
+      {BurstBox.Sweep,
+       scope: %Scope{},
+       reap_legacy_builders: true,
+       busy?: fn scope, server ->
+         BurstBox.busy?(scope, server,
+           embed_runner_busy?: fn -> InFlightCalls.any_in_flight?(CodeMySpec.EmbedPool) end
+         )
+       end}
+    end
+  end
+
+  defp burst_sweep_child(_env), do: nil
 
   defp hetzner_burst_box_configured? do
     case System.get_env("HETZNER_API_TOKEN") do
