@@ -115,6 +115,15 @@ defmodule CodeMySpec.Analysis.FlakesTest do
     assert b.evidence == []
   end
 
+  # An agent's copy runs its uncommitted work at the same commit; that run
+  # passing a test says nothing about the committed code.
+  test "a pass at the same commit on a dirty tree does not confirm a flake", %{scope: scope} do
+    commit = sha(5)
+    completed_run(scope, commit, [], dirty: true)
+
+    assert Flakes.classify(scope, commit, @a).classification == :no_flake_evidence
+  end
+
   test "a failed run or a missing snapshot cannot establish a pass", %{scope: scope} do
     commit = sha(3)
     run = analysis_run_fixture(scope, %{status_override: :failed})
@@ -149,8 +158,16 @@ defmodule CodeMySpec.Analysis.FlakesTest do
 
   defp completed_run(scope, commit, failures, opts \\ []) do
     kind = Keyword.get(opts, :kind, :full)
+    dirty? = Keyword.get(opts, :dirty, false)
     run = analysis_run_fixture(scope, %{kind: kind, status_override: :completed})
-    run = RunsRepository.record_tree(run, %{start_commit: commit, completed_commit: commit})
+
+    run =
+      RunsRepository.record_tree(run, %{
+        start_commit: commit,
+        completed_commit: commit,
+        start_tree_dirty: dirty?
+      })
+
     History.record!(run, failures, [])
   end
 

@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Cms.Spex do
     # CodeMySpec.Analysis.ProjectServer's own 30-minute @job_timeout, the
     # ceiling that kills a run before it could still legitimately be here.
     CodeMySpec.TempFile.sweep_stale("spex", :timer.hours(1))
+    CodeMySpec.TempFile.sweep_orphans(:timer.minutes(10))
     Mix.Task.run("compile")
     {files, jsonl, formatters, rest} = split_args(args)
 

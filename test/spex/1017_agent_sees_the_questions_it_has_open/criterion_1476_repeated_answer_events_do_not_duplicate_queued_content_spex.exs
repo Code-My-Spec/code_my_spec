@@ -88,9 +88,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion3578Spex do
 
         [_, question_id] = Regex.run(~r/Question id: ([a-f0-9-]+)/i, response_text(asked))
         base_url = HeldProvider.start()
-        HeldProvider.hold()
         {:ok, _} = Machine.start_agent(agent.id, context.copy, base_url: base_url)
         on_exit(fn -> Machine.stop_agent(agent.id) end)
+
+        # Held only after any turn the start itself began has finished, so the
+        # held request is this message's and the send never finds it busy.
+        :ok = Machine.await_idle(agent.id)
+        HeldProvider.hold()
 
         {:ok, :started} =
           Machine.send_message(agent.id, "user-turn-3578", "Finish this user turn")
