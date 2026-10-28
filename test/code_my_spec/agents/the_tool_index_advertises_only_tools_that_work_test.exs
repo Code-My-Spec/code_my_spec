@@ -52,6 +52,16 @@ defmodule CodeMySpec.Agents.TheToolIndexAdvertisesOnlyToolsThatWorkTest do
     end
   end
 
+  test "analysis history is scriptable for coding, QA and Main", ctx do
+    for role <- [:coding, :qa, :main] do
+      profile = RoleProfile.get(role)
+      names = ToolIndex.reach(agent(profile), ctx.registry)["scriptable"]
+
+      assert "get_analysis_history" in names, "#{role} cannot read retained analyzer failures"
+      assert RoleProfile.carries?(role, "get_analysis_history")
+    end
+  end
+
   test "every direct name resolves to a registered tool", ctx do
     direct = MapSet.new(ctx.registry.direct, & &1.name)
 
