@@ -226,16 +226,18 @@ defmodule CodeMySpec.Provisioning.Sops do
   def put_secret(env, environment, key, value, private_key)
       when is_binary(key) and is_binary(value) and is_binary(private_key) do
     with :ok <- ensure_available() do
-      on_this_node(env, environment, :write_back, fn env ->
-        with :ok <- ensure_file(env, environment) do
-          args = ["set", env_file(environment), ~s(["#{key}"]), Jason.encode!(value)]
+      on_this_node(env, environment, :write_back, &set(&1, environment, key, value, private_key))
+    end
+  end
 
-          case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
-            {_out, 0} -> :ok
-            {out, status} -> {:error, {:sops_failed, status, out}}
-          end
-        end
-      end)
+  defp set(env, environment, key, value, private_key) do
+    with :ok <- ensure_file(env, environment) do
+      args = ["set", env_file(environment), ~s(["#{key}"]), Jason.encode!(value)]
+
+      case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
+        {_out, 0} -> :ok
+        {out, status} -> {:error, {:sops_failed, status, out}}
+      end
     end
   end
 
@@ -250,14 +252,16 @@ defmodule CodeMySpec.Provisioning.Sops do
           {:ok, %{String.t() => String.t()}} | error()
   def decrypt(env, environment, private_key) when is_binary(private_key) do
     with :ok <- ensure_available() do
-      on_this_node(env, environment, :read_only, fn env ->
-        args = ["decrypt", env_file(environment)]
+      on_this_node(env, environment, :read_only, &decrypt_here(&1, environment, private_key))
+    end
+  end
 
-        case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
-          {out, 0} -> {:ok, parse_dotenv(out)}
-          {out, status} -> {:error, {:sops_failed, status, out}}
-        end
-      end)
+  defp decrypt_here(env, environment, private_key) do
+    args = ["decrypt", env_file(environment)]
+
+    case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
+      {out, 0} -> {:ok, parse_dotenv(out)}
+      {out, status} -> {:error, {:sops_failed, status, out}}
     end
   end
 
@@ -327,9 +331,8 @@ defmodule CodeMySpec.Provisioning.Sops do
 
     try do
       with :ok <- mirror(env, local, @sops_config),
-           :ok <- mirror(env, local, path),
-           :ok <- fun.(local) |> write_back(mode, local, env, path) do
-        :ok
+           :ok <- mirror(env, local, path) do
+        fun.(local) |> write_back(mode, local, env, path)
       end
     after
       File.rm_rf(dir)
