@@ -54,8 +54,16 @@ defmodule CmsHarness.Agents.Terminal do
   def attach(agent_id, %{working_copy: working_copy} = session) do
     case CmsHarness.Agents.whereis(agent_id) do
       {:ok, pid} ->
-        GenServer.call(pid, {:session, session})
-        {:ok, pid}
+        # A terminal can close after the registry lookup but before it answers.
+        # Reconnect treats that as an ended session, not a failed restore task.
+        try do
+          GenServer.call(pid, {:session, session})
+          {:ok, pid}
+        catch
+          :exit, {reason, {GenServer, :call, [^pid, {:session, ^session}, _timeout]}}
+          when reason in [:normal, :noproc] ->
+            {:error, :session_ended}
+        end
 
       {:error, :not_running} ->
         with {:ok, _copy} <- Copy.ensure(working_copy) do

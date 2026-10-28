@@ -35,16 +35,30 @@ defmodule CodeMySpec.Hooks.SessionStart do
       |> Agents.register_terminal(session_id, :main, engine(params))
       |> Agents.keep_transcript_path(scope, params["transcript_path"])
 
-    {200,
-     %{}
-     |> maybe_warn_co_occupant(scope, registered)
-     |> introduce(registered, messaging)}
+    case registered do
+      {:ok, agent} ->
+        {200,
+         %{}
+         |> maybe_warn_co_occupant(scope, {:ok, agent})
+         |> introduce({:ok, agent}, messaging)}
+
+      {:error, reason} ->
+        Logger.warning(
+          "[SessionStart] a terminal session did not register as an agent: #{inspect(reason)}"
+        )
+
+        registration_error(reason)
+    end
   end
+
+  defp registration_error(:no_working_copy),
+    do: {409, %{error: "no working copy is selected for this session"}}
+
+  defp registration_error(_reason), do: {503, %{error: "agent registration failed"}}
 
   # The agent hears who it is: its id and the role it joined as, which it
   # settles with the person, and — when its harness found messages cannot
   # reach it directly — why they arrive when it stops (story 1123).
-  # Registration failing leaves the session working.
   defp introduce(body, {:ok, agent}, messaging) do
     body
     |> Map.put(:agent_id, agent.id)
@@ -57,16 +71,6 @@ defmodule CodeMySpec.Hooks.SessionStart do
           "`set_my_role({ role = \"coding\" })`." <>
           reached(messaging)
     })
-  end
-
-  # Never silent (issue 945c8a01): a session that did not join is the one thing
-  # nobody would otherwise notice.
-  defp introduce(body, {:error, reason}, _messaging) do
-    Logger.warning(
-      "[SessionStart] a terminal session did not register as an agent: #{inspect(reason)}"
-    )
-
-    body
   end
 
   defp engine(%{"engine" => "codex"}), do: :codex
