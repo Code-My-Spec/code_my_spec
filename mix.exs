@@ -212,7 +212,7 @@ defmodule CodeMySpec.MixProject do
       # release lands with the harness change that needs it. Not a path dep: a
       # path dep makes every mix command take the build lock, and a migrate
       # beside a running :4000 waited on its code reloader.
-      {:client_utils, "== 0.3.0"},
+      {:client_utils, "== 0.3.1"},
       {:credo, "== 1.7.19"},
       {:ex_slop, "== 0.4.5", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.14.1"},

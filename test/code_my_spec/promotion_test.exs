@@ -5,8 +5,8 @@ defmodule CodeMySpec.PromotionTest do
   Every spec in story 1046 builds `ExecutionContext.new(:local, root)` and drives a
   real checkout on the machine running the suite. Production does not look like
   that: a project's checkout is on someone else's machine, `fixture_execution_context(scope)`
-  is a harness environment, and `ExecutionContexts.Harness.cmd/4` answers
-  `{:error, :not_supported_on_harness}` — it carries file operations to the
+  is a harness environment, and `ExecutionContexts.Harness.cmd/4` refuses
+  with a non-zero status — it carries file operations to the
   disk, not commands.
 
   So the one environment that matters was the one nothing covered, and the
@@ -73,7 +73,7 @@ defmodule CodeMySpec.PromotionTest do
 
   describe "a command that errors instead of running" do
     # The exact crash. `ExecutionContexts.cmd(nil, ...)` answers `{"no environment", 1}`
-    # and a harness environment answers `{:error, :not_supported_on_harness}`;
+    # and a harness environment answers `{"... cannot run here ...", 127}`;
     # `Steps` has to survive both without trimming an atom.
     test "does not raise out of a step" do
       assert {:error, %{reason: reason}} = Steps.precheck(nil, "/nowhere")

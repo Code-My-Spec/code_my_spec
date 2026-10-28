@@ -196,6 +196,65 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     end
   end
 
+  # A harness copy's checkout is on another machine and its harness runs no
+  # git. The agent there pushes; GitHub proves the remote.
+  describe "a harness copy" do
+    @adoptable Map.merge(@repo, %{
+                 "owner" => %{"login" => "sam"},
+                 "default_branch" => "main",
+                 "permissions" => %{"push" => true}
+               })
+
+    setup do
+      %{harness: %ExecutionContext{type: :harness, cwd: "/Users/sam/sams-thing"}}
+    end
+
+    test "is proven by the default branch's head on GitHub", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/sams-thing"} = conn ->
+          json(conn, 200, @adoptable)
+
+        %{method: "GET", request_path: "/repos/sam/sams-thing/branches/main"} = conn ->
+          json(conn, 200, %{"commit" => %{"sha" => "abc123"}})
+      end)
+
+      result = Repository.run(ctx.scope, ctx.harness, @project, owner: "sam", adopt: true)
+
+      assert result.state == :pushed
+      assert result.commit == "abc123"
+    end
+
+    test "with no branch on GitHub yet says to push it", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/sams-thing"} = conn ->
+          json(conn, 200, @adoptable)
+
+        %{method: "GET", request_path: "/repos/sam/sams-thing/branches/main"} = conn ->
+          json(conn, 404, %{})
+      end)
+
+      result = Repository.run(ctx.scope, ctx.harness, @project, owner: "sam", adopt: true)
+
+      assert result.state == :push_rejected
+      assert result.reason =~ "push it from the working copy"
+    end
+
+    test "is not proven by a grant that cannot push", ctx do
+      stub_github(fn
+        %{method: "GET", request_path: "/repos/sam/sams-thing"} = conn ->
+          json(conn, 200, Map.put(@adoptable, "permissions", %{"push" => false}))
+
+        %{method: "GET", request_path: "/repos/sam/sams-thing/branches/main"} = conn ->
+          json(conn, 200, %{"commit" => %{"sha" => "abc123"}})
+      end)
+
+      result = Repository.run(ctx.scope, ctx.harness, @project, owner: "sam", adopt: true)
+
+      assert result.state == :push_rejected
+      assert result.reason =~ "cannot push"
+    end
+  end
+
   describe "creation and adoption failures" do
     test "a failed create identifies the new repository and offers adoption", ctx do
       stub_github(fn

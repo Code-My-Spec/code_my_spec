@@ -75,6 +75,25 @@ defmodule CodeMySpec.GitHub do
   end
 
   @doc """
+  The commit a branch points at. `{:error, :not_found}` for a branch (or an
+  empty repository) GitHub does not have.
+  """
+  @spec branch_head(Scope.t(), String.t(), String.t(), String.t()) ::
+          {:ok, String.t()}
+          | {:error, :not_found}
+          | {:error, :github_not_connected}
+          | {:error, term()}
+  def branch_head(%Scope{} = scope, owner, name, branch) do
+    with {:ok, token} <- get_auth(scope) do
+      case request(:get, "/repos/#{owner}/#{name}/branches/#{branch}", token, []) do
+        {:ok, %{"commit" => %{"sha" => sha}}} -> {:ok, sha}
+        {:error, {:github_error, 404, _}} -> {:error, :not_found}
+        other -> other
+      end
+    end
+  end
+
+  @doc """
   The login the grant belongs to.
 
   Needed because "adopt an existing repository rather than create a second

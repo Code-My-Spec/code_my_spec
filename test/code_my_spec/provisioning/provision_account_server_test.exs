@@ -49,6 +49,33 @@ defmodule CodeMySpec.Provisioning.ProvisionAccountServerTest do
     {:ok, scope: scope}
   end
 
+  describe "the builder's ssh" do
+    alias CodeMySpec.ExecutionContexts.ExecutionContext
+
+    # A harness copy's context runs no commands: `await_ssh` read
+    # `{:error, :not_supported_on_harness}` as output "error" and timed out
+    # against boxes that were up. ssh runs here, where the key is.
+    test "a harness copy's ssh runs on this node, in the key's directory", %{scope: scope} do
+      harness = %ExecutionContext{type: :harness, cwd: "/Users/someone/app"}
+
+      {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id", env: harness)
+
+      assert Keyword.fetch!(opts, :env) == harness
+      assert %{type: :local, cwd: "/keys"} = Keyword.fetch!(opts, :ssh_env)
+    end
+
+    # A checkout that runs commands keeps running ssh, so an injected context
+    # (and the cassettes behind it) still answers.
+    test "a checkout that runs commands keeps running ssh", %{scope: scope} do
+      checkout = ExecutionContext.new(:local, "/work/app")
+
+      {:ok, opts} = Steps.with_builder_ssh(scope, ssh_key_path: "/keys/id", env: checkout)
+
+      assert Keyword.fetch!(opts, :env) == checkout
+      refute Keyword.has_key?(opts, :ssh_env)
+    end
+  end
+
   test "repairs database isolation through provisioning on an existing box", %{scope: scope} do
     record_requests(self(), existing: true)
 
