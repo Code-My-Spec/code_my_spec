@@ -12,6 +12,7 @@ defmodule CodeMySpecSpex.Story1141.Criterion2362Spex do
 
   import Phoenix.LiveViewTest
 
+  alias CodeMySpec.Analysis.RunsRepository
   alias CmsHarnessTest.ClusteredProject
   alias CodeMySpecSpex.LiveRun
   alias Ecto.Adapters.SQL.Sandbox
@@ -47,6 +48,34 @@ defmodule CodeMySpecSpex.Story1141.Criterion2362Spex do
           60_000
         )
 
+        {:ok, context}
+      end
+    end
+
+    scenario "Sam reopens a finished run after its live state is gone" do
+      given_ "a finished run recorded three tests and one failure", context do
+        {:ok, run} =
+          RunsRepository.start_run(context.scope, %{source: "spex", kind: :partial})
+
+        {:ok, run} =
+          RunsRepository.finish_run(run, :completed, %{stats: %{"tests" => 3, "failures" => 1}})
+
+        assert CodeMySpec.Analysis.live_state(run.id) == nil
+        {:ok, Map.put(context, :run, run)}
+      end
+
+      when_ "Sam opens the run later", context do
+        {:ok, _view, html} =
+          live(
+            context.conn,
+            "/app/projects/#{context.scope.active_project_id}/runs/#{context.run.id}"
+          )
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "the recorded totals are shown", context do
+        assert context.html =~ "3 tests, 1 failure"
         {:ok, context}
       end
     end

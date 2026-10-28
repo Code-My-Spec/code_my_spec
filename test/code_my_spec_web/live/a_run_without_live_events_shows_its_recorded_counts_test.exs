@@ -24,4 +24,27 @@ defmodule CodeMySpecWeb.ARunWithoutLiveEventsShowsItsRecordedCountsTest do
 
     assert html =~ "5 tests, 0 failures"
   end
+
+  test "a finished credo run shows recorded findings without live events", %{
+    conn: conn,
+    scope: scope
+  } do
+    run = analysis_run_fixture(scope, %{source: "credo", kind: :partial})
+
+    {:ok, run} =
+      RunsRepository.finish_run(run, :completed, %{stats: %{"files" => 12, "findings" => 7}})
+
+    assert CodeMySpec.Analysis.live_state(run.id) == nil
+    {:ok, _view, html} = live(conn, "/app/projects/#{scope.active_project_id}/runs/#{run.id}")
+    assert html =~ "12 files, 7 findings"
+  end
+
+  test "an old run with no recorded totals does not claim zero", %{conn: conn, scope: scope} do
+    run = analysis_run_fixture(scope, %{source: "spex", kind: :partial})
+    {:ok, run} = RunsRepository.finish_run(run, :completed, %{stats: %{}})
+
+    {:ok, _view, html} = live(conn, "/app/projects/#{scope.active_project_id}/runs/#{run.id}")
+    assert html =~ "test count not recorded"
+    refute html =~ "0 tests, 0 failures"
+  end
 end
