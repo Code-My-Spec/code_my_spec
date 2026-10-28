@@ -47,6 +47,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Utils.MapAccess
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -1748,15 +1749,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   # What `Builder.Remote.ssh_runner/2` `fetch!`es: `:env` and a key on disk.
   # The account key is written 0600 to a temp dir (ssh refuses a readable
   # key) and removed by `cleanup_builder_key/2`.
-  defp with_builder_ssh(scope, opts) do
+  #
+  # ssh runs on this node, where the key file is, whatever working copy the
+  # scope names: `env/1` would route it to that copy's harness, which runs no
+  # commands, and `await_ssh` then times out on a box that is up.
+  @doc false
+  def with_builder_ssh(scope, opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
-        {:ok, Keyword.put_new(opts, :env, env(scope))}
+        {:ok, Keyword.put_new(opts, :env, ssh_env(Path.dirname(path)))}
 
       _ ->
         write_builder_key(scope, opts)
     end
   end
+
+  defp ssh_env(dir), do: ExecutionContext.new(:local, dir)
 
   defp write_builder_key(scope, opts) do
     case AccountSecrets.fetch_value(scope, @access_key_private) do
@@ -1772,7 +1780,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts
          |> Keyword.put(:ssh_key_path, path)
          |> Keyword.put(:builder_key_dir, dir)
-         |> Keyword.put_new(:env, env(scope))}
+         |> Keyword.put_new(:env, ssh_env(dir))}
 
       _ ->
         {:error,
