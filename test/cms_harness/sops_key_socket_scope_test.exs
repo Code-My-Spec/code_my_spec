@@ -8,8 +8,6 @@ defmodule CmsHarness.SopsKeySocketScopeTest do
     assert System.get_env("CMS_SOPS_KEY_SOCKET_PATH") == expected
     assert CmsHarness.SopsKeySocket.path() == expected
 
-    if elem(:os.type(), 0) != :win32 do
-      assert File.exists?(expected)
-    end
+    assert elem(:os.type(), 0) == :win32 or File.exists?(expected)
   end
 end
