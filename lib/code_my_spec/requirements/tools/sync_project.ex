@@ -2,6 +2,8 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
   @moduledoc false
   @behaviour CodeMySpec.Tools.Tool
 
+  require Logger
+
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Work
   alias CodeMySpec.Analysis
@@ -43,6 +45,16 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
     else
       {:error, reason} -> CodeMySpec.Tools.error(reason)
     end
+  rescue
+    exception ->
+      Logger.error(
+        "sync_project failed unexpectedly:\n" <>
+          Exception.format(:error, exception, __STACKTRACE__)
+      )
+
+      {:error,
+       "Sync failed during project setup or local scanning: #{Exception.message(exception)}. " <>
+         "Some changes may have been applied; no rescan was confirmed."}
   end
 
   defp sync_scope(scope, nil), do: {:ok, scope}
@@ -126,53 +138,80 @@ defmodule CodeMySpec.Requirements.Tools.SyncProject do
   # server already holds, so a component main's code no longer names is pruned
   # without waiting for a manifest that changes something (14f4f837).
   defp remote_sync(scope, _context) do
-    {:ok, _components} = FileComponentSync.sync_from_files(scope)
+    with {:ok, _components} <-
+           sync_step("component reconciliation", fn ->
+             FileComponentSync.sync_from_files(scope)
+           end),
+         {:ok, requirements} <- sync_step("requirement recompute", fn -> recompute(scope) end) do
+      case sync_step("rescan request", fn -> Analysis.request_rescan(scope) end) do
+        :ok ->
+          text = """
+          # Rescan requested
 
-    case {recompute(scope), Analysis.request_rescan(scope)} do
-      {{:error, reason}, _rescan} ->
-        {:error, "Recompute failed: #{inspect(reason)}"}
+          This server holds no working copy — the disk is on the harness, so the \
+          scan runs there and the manifest comes back the way every other one \
+          does. A few thousand files takes a few seconds.
 
-      {{:ok, requirements}, :ok} ->
-        text = """
-        # Rescan requested
+          Nothing is synced on return from this call. Re-check the requirement or \
+          the file you are waiting on; if it still looks stale after a few \
+          seconds, the harness log names what it scanned and the server log names \
+          what it reconciled.
 
-        This server holds no working copy — the disk is on the harness, so the \
-        scan runs there and the manifest comes back the way every other one \
-        does. A few thousand files takes a few seconds.
+          Components were reconciled against main's code as it stands: a \
+          discovered component whose module main no longer has is gone, whatever \
+          another checkout still holds. A module only on a feature copy becomes a \
+          component once it is promoted.
 
-        Nothing is synced on return from this call. Re-check the requirement or \
-        the file you are waiting on; if it still looks stale after a few \
-        seconds, the harness log names what it scanned and the server log names \
-        what it reconciled.
+          The requirement graph was recomputed from what this server holds now: \
+          #{requirements} requirements. The manifest moves them again when it lands.
+          """
 
-        Components were reconciled against main's code as it stands: a \
-        discovered component whose module main no longer has is gone, whatever \
-        another checkout still holds. A module only on a feature copy becomes a \
-        component once it is promoted.
+          {:ok, text}
 
-        The requirement graph was recomputed from what this server holds now: \
-        #{requirements} requirements. The manifest moves them again when it lands.
-        """
+        {:error, "rescan request", {:harness_not_registered, _details}} ->
+          text = """
+          Nothing to sync from here — this server holds no working copy, and no \
+          harness is currently registered for this project to ask.
 
-        {:ok, text}
+          A harness that has not joined the channel since this server started \
+          cannot be addressed, even though its own `/health` will say connected — \
+          that is about its socket, not about whether the server can reach it. \
+          Restarting the harness rejoins, and a join scans the whole working copy \
+          anyway.
+          """
 
-      {_recomputed, {:error, {:harness_not_registered, _details}}} ->
-        text = """
-        Nothing to sync from here — this server holds no working copy, and no \
-        harness is currently registered for this project to ask.
+          {:ok, text}
 
-        A harness that has not joined the channel since this server started \
-        cannot be addressed, even though its own `/health` will say connected — \
-        that is about its socket, not about whether the server can reach it. \
-        Restarting the harness rejoins, and a join scans the whole working copy \
-        anyway.
-        """
+        {:error, "rescan request", reason} ->
+          {:error,
+           "Sync failed during rescan request: #{inspect(reason)}. Component reconciliation and " <>
+             "requirement recompute completed; the rescan request was not confirmed."}
+      end
+    else
+      {:error, "component reconciliation", reason} ->
+        {:error,
+         "Sync failed during component reconciliation: #{inspect(reason)}. Component changes " <>
+           "may have been partially applied. No rescan was requested."}
 
-        {:ok, text}
-
-      {_recomputed, {:error, reason}} ->
-        {:error, "Rescan failed: #{inspect(reason)}"}
+      {:error, "requirement recompute", reason} ->
+        {:error,
+         "Sync failed during requirement recompute: #{inspect(reason)}. Component reconciliation " <>
+           "completed; graph changes may have been partially applied. No rescan was requested."}
     end
+  end
+
+  defp sync_step(stage, fun) do
+    case fun.() do
+      {:error, reason} -> {:error, stage, reason}
+      result -> result
+    end
+  rescue
+    exception ->
+      Logger.error(
+        "sync_project #{stage} failed:\n" <> Exception.format(:error, exception, __STACKTRACE__)
+      )
+
+      {:error, stage, Exception.message(exception)}
   end
 
   defp recompute(scope) do
