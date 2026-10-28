@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story1172.Criterion2561Spex do
 
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.AnalysisDashboardFixtures, as: AnalysisDashboard
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -15,11 +15,12 @@ defmodule CodeMySpecSpex.Story1172.Criterion2561Spex do
     scenario "a shared spex execution and a queued credo execution" do
       given_ "team B's copy is running a full spex run that a promotion and an agent both asked for",
              context do
-        {:ok, Map.put(context, :runs, AnalysisDashboard.two_copies_in_flight(context.scope))}
+        {:ok,
+         Map.put(context, :runs, Fixtures.analysis_dashboard_two_copies_in_flight(context.scope))}
       end
 
       and_ "security's copy is running exunit with credo queued behind it", context do
-        on_exit(AnalysisDashboard.stub_harness(context.runs))
+        on_exit(Fixtures.stub_analysis_dashboard_harness(context.runs))
         {:ok, context}
       end
 
