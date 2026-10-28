@@ -5,6 +5,7 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   alias CmsHarness.Agents.Engine.Impl
   alias CmsHarness.Agents.Engine.State
+  alias CmsHarness.DiskCapacity
 
   def start_link(opts) do
     agent_id = Keyword.fetch!(opts, :agent_id)
@@ -28,14 +29,12 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   @impl true
   def handle_call({:send, ref, message, timeout, await?}, from, %{turn: nil} = state) do
-    case Impl.consume_message(state, ref) do
-      :ok ->
-        awaiting = if await?, do: from
-        state = %{state | turn: Impl.start_turn(state, ref, message, timeout, awaiting)}
-        if await?, do: {:noreply, state}, else: {:reply, {:ok, :started}, state}
-
-      {:error, _} = error ->
-        {:reply, error, state}
+    with :ok <- capacity_check(state), :ok <- Impl.consume_message(state, ref) do
+      awaiting = if await?, do: from
+      state = %{state | turn: Impl.start_turn(state, ref, message, timeout, awaiting)}
+      if await?, do: {:noreply, state}, else: {:reply, {:ok, :started}, state}
+    else
+      {:error, _} = error -> {:reply, error, state}
     end
   end
 
@@ -43,13 +42,17 @@ defmodule CmsHarness.Agents.Engine.Server do
     do: {:reply, {:error, :busy}, state}
 
   def handle_call({:work_available, ref, message, timeout}, _from, state) do
-    case State.offer_work(state, %{ref: ref, message: message, timeout: timeout}) do
-      {:start, entry, state} ->
-        {:reply, {:ok, :started},
-         %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, nil)}}
+    with :ok <- capacity_check(state) do
+      case State.offer_work(state, %{ref: ref, message: message, timeout: timeout}) do
+        {:start, entry, state} ->
+          {:reply, {:ok, :started},
+           %{state | turn: Impl.start_turn(state, entry.ref, entry.message, entry.timeout, nil)}}
 
-      {:rejected, reason, state} ->
-        {:reply, {:error, reason}, state}
+        {:rejected, reason, state} ->
+          {:reply, {:error, reason}, state}
+      end
+    else
+      {:error, _} = error -> {:reply, error, state}
     end
   end
 
@@ -122,4 +125,17 @@ defmodule CmsHarness.Agents.Engine.Server do
 
   @impl true
   def terminate(reason, state), do: Impl.terminate(reason, state)
+
+  defp capacity_check(state) do
+    case DiskCapacity.check([state.working_copy, System.tmp_dir!()]) do
+      :ok ->
+        :ok
+
+      {:error, reason} = error ->
+        if is_function(state.on_event, 2),
+          do: state.on_event.(state.agent_id, %{event: :disk_capacity_refused, text: reason})
+
+        error
+    end
+  end
 end
