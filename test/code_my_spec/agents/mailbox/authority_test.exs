@@ -167,6 +167,30 @@ defmodule CodeMySpec.Agents.Mailbox.AuthorityTest do
     assert Repo.reload!(offer).status == :undelivered
   end
 
+  test "an internal notice waits through a harness disconnect and reaches the agent on reconnect",
+       ctx do
+    CodeMySpecTest.AgentTransportRouter.route(ctx, HarnessNotConnectedTransport)
+
+    {:ok, message} =
+      Conversations.add_message(ctx.conversation, :operator, "The app restarted.", "operator", [],
+        delivery: :pending,
+        delivery_ref: Ecto.UUID.generate()
+      )
+
+    offer = Offers.record_or_link({:ok, message}, ctx.agent, :resume, {"restart", nil})
+    Mailbox.admit(ctx.agent, message, :own_reply)
+
+    assert {:ok, :queued} = Mailbox.pump(ctx.scope, ctx.agent.id)
+    assert [%{state: :queued}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert Repo.get!(Conversations.Message, message.id).delivery == :pending
+    assert Repo.reload!(offer).status == :open
+
+    CodeMySpecTest.AgentTransportRouter.route(ctx, AcceptingTransport)
+    assert {:ok, :started} = Mailbox.pump(ctx.scope, ctx.agent.id)
+    assert [%{state: :consumed}] = Mailbox.entries(ctx.scope, ctx.agent.id)
+    assert Repo.get!(Conversations.Message, message.id).delivery == :delivered
+  end
+
   test "FIFO advances only after the consumed turn finishes", ctx do
     {first, _} = admit(ctx, "first")
     {second, _} = admit(ctx, "second")
