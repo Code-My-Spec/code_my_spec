@@ -67,9 +67,10 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  defp run_resolved("compiler", %Scope{} = _scope, _args, opts) do
+  defp run_resolved("compiler", %Scope{} = _scope, args, opts) do
     execute_opts =
-      [execution_context: opts[:execution_context], cwd: opts[:cwd]] |> maybe_output_file(opts)
+      [execution_context: opts[:execution_context], cwd: opts[:cwd], force: "--force" in args]
+      |> maybe_output_file(opts)
 
     result = Compile.execute(execute_opts)
 
