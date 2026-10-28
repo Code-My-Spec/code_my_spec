@@ -27,16 +27,26 @@ defmodule CmsHarness.Sync do
   @spec start(map(), ReadModel.t()) :: :ok
   def start(project, %ReadModel{} = read_model) do
     case Task.Supervisor.start_child(task_supervisor(project.root), fn ->
-           # A full manifest removes files it omits. An older scan finishing
-           # after a rescan could therefore erase a newly written spec. Hold
-           # the checkout's lock through observation and delivery; each waiting
-           # request reads the disk afresh once the preceding scan finishes.
-           # The lock is local to this node and released if the worker dies.
-           :global.trans(
-             {{__MODULE__, :scan, project.root}, self()},
-             fn -> run(project, read_model) end,
-             [node()]
-           )
+           # One scan waits, the rest are absorbed: it reads the disk only once
+           # it holds the lock, so it sees every change requested meanwhile.
+           # Each request used to queue its own full scan, and under a stream
+           # of edits they ran back to back (5,064 files, 15 s each, all night).
+           waiting = {__MODULE__, :waiting, project.root}
+
+           if :global.register_name(waiting, self()) == :yes do
+             # A full manifest removes files it omits. An older scan finishing
+             # after a rescan could therefore erase a newly written spec. Hold
+             # the checkout's lock through observation and delivery. The lock
+             # is local to this node and released if the worker dies.
+             :global.trans(
+               {{__MODULE__, :scan, project.root}, self()},
+               fn ->
+                 :global.unregister_name(waiting)
+                 run(project, read_model)
+               end,
+               [node()]
+             )
+           end
          end) do
       {:ok, _pid} ->
         :ok
