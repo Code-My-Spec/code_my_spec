@@ -62,7 +62,10 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProviderTest do
       refute text =~ "https://"
     end
 
-    test "a GitHub network error leaves connection status unknown", %{scope: scope, context: context} do
+    test "a GitHub network error leaves connection status unknown", %{
+      scope: scope,
+      context: context
+    } do
       connect(scope, :github)
       Req.Test.stub(ConnectProvider, &Req.Test.transport_error(&1, :nxdomain))
 

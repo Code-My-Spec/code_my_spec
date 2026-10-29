@@ -45,9 +45,14 @@ defmodule CodeMySpec.Provisioning.Tools.ConnectProvider do
     with {:ok, scope} <- CodeMySpec.Tools.project_scope(context),
          {:ok, provider} <- fetch_provider(provider) do
       case connection_status(scope, provider) do
-        :connected -> already(provider)
-        :disconnected -> start(provider)
-        {:error, reason} -> error("could not check the #{provider} connection: #{inspect(reason)}")
+        :connected ->
+          already(provider)
+
+        :disconnected ->
+          start(provider)
+
+        {:error, reason} ->
+          error("could not check the #{provider} connection: #{inspect(reason)}")
       end
     else
       {:error, reason} -> error(reason)
