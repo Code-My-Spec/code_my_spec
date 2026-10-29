@@ -15,7 +15,7 @@ defmodule CodeMySpec.Requirements.Bands do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementGraph
@@ -98,14 +98,19 @@ defmodule CodeMySpec.Requirements.Bands do
     }
   end
 
-  defp at_vantage(query, nil), do: where(query, [r], is_nil(r.working_copy_id))
-  defp at_vantage(query, vantage), do: where(query, [r], r.working_copy_id == ^vantage)
+  defp rows_at(vantage), do: from(r in subquery(GraphStore.rows_at(vantage)))
+
+  # A checkout sees its own stories and the unplaced ones; `nil` sees every one.
+  defp placed_here(query, nil), do: query
+
+  defp placed_here(query, vantage),
+    do: where(query, [_r, s], is_nil(s.working_copy_id) or s.working_copy_id == ^vantage)
 
   defp satisfied_gates(project_id, vantage) do
-    Node
+    vantage
+    |> rows_at()
     |> where([r], r.project_id == ^project_id and r.satisfied)
     |> where([r], is_nil(r.story_id) and is_nil(r.component_id) and is_nil(r.issue_id))
-    |> at_vantage(vantage)
     |> select([r], r.name)
     |> Repo.all()
     |> MapSet.new()
@@ -116,11 +121,12 @@ defmodule CodeMySpec.Requirements.Bands do
   # Returns the in-progress stories and the count of done ones.
   defp stories(project_id, vantage) do
     rows =
-      Node
+      vantage
+      |> rows_at()
       |> join(:inner, [r], s in Story, on: s.id == r.story_id)
       |> where([_r, s], s.project_id == ^project_id)
       |> where([_r, s], s.ready_for_dev and is_nil(s.retired_at))
-      |> at_vantage(vantage)
+      |> placed_here(vantage)
       |> select([r, s], {{r.story_id, s.number, s.title, s.working_copy_id}, r.name, r.satisfied})
       |> Repo.all()
 
@@ -208,10 +214,10 @@ defmodule CodeMySpec.Requirements.Bands do
   # — and the ones found on disk that nobody planned (`:discovered`).
   defp component_counts(project_id, vantage) do
     per_component =
-      Node
+      vantage
+      |> rows_at()
       |> join(:inner, [r], c in Component, on: c.id == r.component_id)
       |> where([_r, c], c.project_id == ^project_id)
-      |> at_vantage(vantage)
       |> group_by([_r, c], [c.id, c.provenance])
       |> select([r, c], %{provenance: c.provenance, open: count(r.id) |> filter(not r.satisfied)})
 

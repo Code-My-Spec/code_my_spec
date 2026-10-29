@@ -432,11 +432,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
           # Counted per vantage: a hit at one checkout must not cover a miss at
           # another in `log_handled/2`.
           {state, handled, recomputed, kinds} =
-            Enum.reduce(
-              vantages,
-              {state, 0, 0, %{}},
-              &settle_vantage(&1, &2, marks, base_scope, config)
-            )
+            settle_vantages(vantages, state, marks, base_scope, config)
 
           state = draw_edges(%{state | scope: base_scope}, config)
 
@@ -464,6 +460,16 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         last_drain: DateTime.utc_now(),
         last_error: nil
     }
+  end
+
+  # Project-wide requirements are settled at the first vantage only.
+  defp settle_vantages(vantages, state, marks, base_scope, config) do
+    vantages
+    |> Enum.with_index()
+    |> Enum.reduce({state, 0, 0, %{}}, fn {vantage, index}, acc ->
+      skip = if index == 0, do: [], else: GraphStore.project_wide_names()
+      settle_vantage(vantage, acc, marks, base_scope, config, skip)
+    end)
   end
 
   defp account_for([], _project_id), do: :ok
@@ -511,23 +517,41 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   defp vantages(state, marks) do
     requested = MapSet.to_list(state.requested_vantages)
-    named = marks |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
+    {project_wide, rest} = Enum.split_with(marks, &(&1 in project_wide_marks(marks)))
+    named = rest |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
 
     if Enum.any?(named, &is_nil/1) do
       Projection.live_vantages(state.scope, Projection.vantages(state.scope))
     else
       # `nil` reads the default checkout's files, or every checkout's when the
-      # project has none.
+      # project has none; it also settles project-wide marks, which no other
+      # vantage would see.
       keep_nil? =
-        case Preloader.files_vantage(state.scope) do
-          nil -> true
-          default -> default in named
-        end
+        project_wide != [] or
+          case Preloader.files_vantage(state.scope) do
+            nil -> true
+            default -> default in named
+          end
 
       state.scope
       |> Projection.live_vantages(Enum.concat(named, requested))
       |> Enum.filter(&(keep_nil? or not is_nil(&1) or &1 in requested))
     end
+  end
+
+  # Marks whose kind moves only project-wide requirements, and their fallback
+  # invalidations: settled at one vantage, they need no fan-out.
+  defp project_wide_marks(marks) do
+    wide = Enum.filter(marks, &(is_nil(&1.working_copy_id) and Handlers.project_wide?(&1.kind)))
+    observations = wide |> Enum.map(& &1.observation_id) |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+    fallbacks =
+      Enum.filter(marks, fn mark ->
+        is_nil(mark.working_copy_id) and mark.kind in [nil, "invalidate"] and
+          MapSet.member?(observations, mark.observation_id)
+      end)
+
+    wide ++ fallbacks
   end
 
   # The vantages readers asked about, considered in the next drain even when no
@@ -540,14 +564,19 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # Each event offered to its handler; anything without one handed back.
   # `{:ok, []}` (moved nothing the graph reads) is not `:no_handler` (unknown,
   # must re-derive).
-  defp apply_handlers(state, marks) do
-    {handled, rest} = split_handled(state, marks)
+  defp apply_handlers(state, marks, skip) do
+    {handled, rest} = split_handled(state, marks, skip)
 
     # An invalidation beside a handled event is that event's fallback: dropped by
-    # observation id, or the handled event would recompute its entities too.
+    # observation id, or the handled event would recompute its entities too. A
+    # partial event's fallback that only re-establishes project-wide nodes runs
+    # at the first vantage alone.
     answered =
       handled
-      |> Enum.reject(fn {mark, _c, _w} -> Handlers.partial_event?(mark) end)
+      |> Enum.reject(fn {mark, _c, _w} ->
+        Handlers.partial_event?(mark) and
+          not (skip != [] and Handlers.fallback_project_wide?(mark))
+      end)
       |> MapSet.new(fn {mark, _c, _w} -> mark.observation_id end)
 
     {handled,
@@ -559,13 +588,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # One settle per distinct kind, not per mark: a handler is a function of
   # current state (it ignores the payload), so running it twice in a drain pays
   # twice for the same answer, and marks arrive in bulk. Every mark of a handled
-  # kind is still returned — `apply_handlers/2` drops fallbacks by observation
+  # kind is still returned — `apply_handlers/3` drops fallbacks by observation
   # id — but only the first carries the changes, so work is counted once.
-  defp split_handled(state, marks) do
+  defp split_handled(state, marks, skip) do
     marks
     |> Enum.group_by(& &1.kind)
     |> Enum.reduce({[], []}, fn {_kind, kind_marks}, {handled, unhandled} ->
-      case handler_result(state.scope, hd(kind_marks)) do
+      case handler_result(state.scope, hd(kind_marks), skip) do
         {:ok, changes, sweeps} ->
           written = settle(state.scope, changes, sweeps)
           {attribute(kind_marks, changes, written) ++ handled, unhandled}
@@ -594,11 +623,11 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     written
   end
 
-  defp handler_result(_scope, %Invalidation{kind: kind}) when kind in [nil, "invalidate"],
+  defp handler_result(_scope, %Invalidation{kind: kind}, _skip) when kind in [nil, "invalidate"],
     do: :no_handler
 
-  defp handler_result(scope, %Invalidation{kind: kind, payload: payload}),
-    do: Handlers.apply_event(scope, kind, payload || %{})
+  defp handler_result(scope, %Invalidation{kind: kind, payload: payload}, skip),
+    do: Handlers.apply_event(scope, kind, payload || %{}, skip)
 
   defp write_change(scope, change) do
     {:ok, count} = GraphStore.put_verdict(scope, change)
@@ -608,9 +637,16 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # Applies the handled events at this vantage, then whatever is left: a seed
   # for an unestablished vantage (whatever the marks say — the seed has none),
   # a baseline or edge redraw when handlers covered everything, else a plan.
-  defp settle_vantage(vantage, {state, handled, recomputed, kinds}, marks, base_scope, config) do
+  defp settle_vantage(
+         vantage,
+         {state, handled, recomputed, kinds},
+         marks,
+         base_scope,
+         config,
+         skip
+       ) do
     state = %{state | scope: %{base_scope | active_working_copy_id: vantage}}
-    {applied, unhandled} = apply_handlers(state, marks)
+    {applied, unhandled} = apply_handlers(state, marks, skip)
 
     shape_moved? =
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)

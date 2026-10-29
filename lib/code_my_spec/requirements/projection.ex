@@ -84,7 +84,7 @@ defmodule CodeMySpec.Requirements.Projection do
   """
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
   def load(%Scope{active_project_id: project_id} = scope, ctx) do
-    nodes = Node |> project_rows(project_id, vantage(scope), ctx) |> rehydrate_all(ctx)
+    nodes = project_id |> project_rows(vantage(scope), ctx) |> rehydrate_all(ctx)
 
     {nodes, edges_for(project_id, nodes)}
   end
@@ -106,12 +106,19 @@ defmodule CodeMySpec.Requirements.Projection do
     copy_of = Map.new(stories, &{&1.id, &1.working_copy_id})
     copies = copy_of |> Map.values() |> Enum.uniq()
 
-    rows =
+    placed =
       Node
       |> where([n], n.story_id in ^Map.keys(copy_of) and n.working_copy_id in ^copies)
       |> where([n], n.name in ^names)
       |> Repo.all()
       |> Enum.filter(&(Map.get(copy_of, &1.story_id) == &1.working_copy_id))
+
+    # Project-wide verdicts are the same at the placement copy as anywhere.
+    rows =
+      GraphStore.project_rows()
+      |> where([n], n.story_id in ^Map.keys(copy_of) and n.name in ^names)
+      |> Repo.all()
+      |> Enum.concat(placed)
 
     ctx = %{stories: stories, components_by_id: %{}}
     nodes = rehydrate_all(rows, ctx)
@@ -178,7 +185,7 @@ defmodule CodeMySpec.Requirements.Projection do
 
   # Only rows of entities the context still has, so a row whose entity is gone
   # never reappears as a node.
-  defp project_rows(source, project_id, working_copy_id, ctx) do
+  defp project_rows(project_id, working_copy_id, ctx) do
     component_ids = Enum.map(ctx.components, & &1.id)
     story_ids = Enum.map(ctx.stories, & &1.id)
 
@@ -188,20 +195,13 @@ defmodule CodeMySpec.Requirements.Projection do
       |> Enum.filter(&(&1.story_id in story_ids))
       |> Enum.map(& &1.id)
 
-    source
-    |> where(
-      [n],
-      n.component_id in ^component_ids or n.story_id in ^story_ids or n.issue_id in ^issue_ids or
-        n.project_id == ^project_id
+    from(n in subquery(GraphStore.rows_at(working_copy_id)),
+      where:
+        n.component_id in ^component_ids or n.story_id in ^story_ids or
+          n.issue_id in ^issue_ids or n.project_id == ^project_id
     )
-    |> where(^copy_filter(working_copy_id))
     |> Repo.all()
   end
-
-  # `is_nil`, never `== nil`: `= NULL` matches no row and would read as a graph
-  # with no requirements.
-  defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
-  defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
   # Entities indexed by id once, and each definition set built once per read:
   # the registry builds definitions on every call, and a read has thousands of

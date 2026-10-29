@@ -2740,9 +2740,10 @@ defmodule CodeMySpecSpex.Fixtures do
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
 
-    {_, _} =
+    # Per checkout and once per project, wherever the rows live.
+    for table <- ["requirements", "project_requirements"] do
       CodeMySpec.Repo.update_all(
-        from(n in "requirements",
+        from(n in table,
           where:
             n.project_id == type(^project_id, :binary_id) or
               n.component_id in subquery(
@@ -2760,6 +2761,7 @@ defmodule CodeMySpecSpex.Fixtures do
         ),
         set: [checked_at: past]
       )
+    end
 
     :ok
   end

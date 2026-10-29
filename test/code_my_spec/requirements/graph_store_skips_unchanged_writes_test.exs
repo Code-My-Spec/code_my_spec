@@ -95,7 +95,7 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     refute changed_cost.raised
 
     stored =
-      GraphStore.event_target()
+      from(n in subquery(GraphStore.rows_at(ctx.scope.active_working_copy_id)))
       |> where([n], n.story_id == ^ctx.story.id)
       |> select([n], {n.name, %{satisfied: n.satisfied, details: n.details}})
       |> Repo.all()
