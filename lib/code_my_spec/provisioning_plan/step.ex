@@ -61,6 +61,7 @@ defmodule CodeMySpec.ProvisioningPlan.Step do
     # build from. Story 985 criterion 8182.
     :repository,
     :server,
+    :import,
     :secrets,
     :domain,
     :dns,

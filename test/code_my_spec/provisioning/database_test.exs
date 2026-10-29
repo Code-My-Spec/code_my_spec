@@ -434,6 +434,117 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
     defp role_exists_response(false), do: {"", 0}
   end
 
+  describe "import_from/4" do
+    defp source, do: %{container: "legacy-pg", database: "legacy_db"}
+
+    defp import_from(source, opts \\ []) do
+      Database.import_from(
+        scope(),
+        "uat",
+        source,
+        Keyword.merge([run: matched_count_recorder(self(), 3, 3), database_credential: credential()], opts)
+      )
+    end
+
+    # Both sides answer the same row-count query; the count itself only
+    # matters to the tests below that make it mismatch.
+    defp matched_count_recorder(owner, source_count, target_count) do
+      fn [command] ->
+        send(owner, {:ran, command})
+        count_response(command, source_count, target_count)
+      end
+    end
+
+    defp count_response(command, source_count, target_count) do
+      cond do
+        not String.contains?(command, "json_object_agg") -> {"", 0}
+        String.contains?(command, "docker exec 'legacy-pg'") -> {Jason.encode!(%{"t" => source_count}), 0}
+        true -> {Jason.encode!(%{"t" => target_count}), 0}
+      end
+    end
+
+    test "pipes a dump from the source straight into a restore on cms-postgres" do
+      assert {:ok, _} = import_from(source())
+
+      commands = collect_commands()
+
+      assert Enum.any?(
+               commands,
+               &(&1 =~
+                   "docker exec 'legacy-pg' pg_dump -Fc --no-owner --no-acl --no-comments " <>
+                     "-U 'postgres' -d 'legacy_db'" and
+                   &1 =~ " | docker exec -i cms-postgres pg_restore --no-owner --no-acl " <>
+                     "-U 'postgres' -d 'app_sam_s_app_uat'")
+             )
+    end
+
+    # The SQL payload itself is shell-escaped as one argument, which rewrites
+    # every quote it already contains — so these check the quote-free
+    # fragments that survive that escaping intact, not the literal SQL text.
+    test "reassigns ownership of every table, sequence and view to the tenant role, never the admin" do
+      assert {:ok, _} = import_from(source())
+
+      commands = collect_commands()
+
+      owned = Enum.find(commands, &(&1 =~ "DO"))
+      assert owned =~ "ALTER TABLE public.%I OWNER TO %I"
+      assert owned =~ "ALTER SEQUENCE public.%I OWNER TO %I"
+      assert owned =~ "ALTER VIEW public.%I OWNER TO %I"
+      assert owned =~ "pg_tables"
+      assert owned =~ "pg_sequences"
+      assert owned =~ "pg_views"
+      assert owned =~ "app_sam_s_app"
+      assert owned =~ "-d 'app_sam_s_app_uat'"
+    end
+
+    test "reports both sides' row counts once they match" do
+      assert {:ok, %{source: %{"t" => 3}, target: %{"t" => 3}}} = import_from(source())
+    end
+
+    # The whole point of comparing at all: a restore that silently dropped
+    # rows (a constraint violation `pg_restore` warned about and moved past)
+    # must not be reported as a successful import.
+    test "a row-count mismatch is reported, not silently accepted" do
+      assert {:error, {:database_import_row_counts_mismatched, %{"t" => 3}, %{"t" => 1}}} =
+               import_from(source(), run: matched_count_recorder(self(), 3, 1))
+    end
+
+    test "a restore failure is reported rather than reassigning ownership on nothing" do
+      run = fn [command] ->
+        if String.contains?(command, "pg_restore"),
+          do: {"pg_restore: error: could not execute query", 1},
+          else: {"", 0}
+      end
+
+      assert {:error, {:database_import_failed, 1, _}} = import_from(source(), run: run)
+    end
+  end
+
+  describe "imported?/3" do
+    defp imported?(source, run) do
+      Database.imported?([run: run], source, "app_sam_s_app_uat")
+    end
+
+    test "true once the target already holds what the source does" do
+      assert {:ok, true} = imported?(source(), matched_count_recorder(self(), 3, 3))
+    end
+
+    test "false while the target is still behind" do
+      assert {:ok, false} = imported?(source(), matched_count_recorder(self(), 3, 0))
+    end
+
+    # A check must never be the thing that moves data — only `import_from/4`
+    # is allowed to run `pg_dump`/`pg_restore`.
+    test "only reads — never dumps, restores or reassigns ownership" do
+      assert {:ok, _} = imported?(source(), matched_count_recorder(self(), 3, 3))
+
+      commands = collect_commands()
+      refute Enum.any?(commands, &(&1 =~ "pg_dump"))
+      refute Enum.any?(commands, &(&1 =~ "pg_restore"))
+      refute Enum.any?(commands, &(&1 =~ "OWNER TO"))
+    end
+  end
+
   describe "repair_existing/2" do
     test "repairs every discovered tenant without creating resources or changing passwords" do
       owner = self()
