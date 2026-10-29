@@ -24,7 +24,7 @@ defmodule CodeMySpecWeb.SourceGitController do
     scope = conn.assigns.current_scope
 
     with false <- Map.has_key?(conn.assigns, :box_device),
-         {:ok, project} <- Projects.get_project(scope, id),
+         {:ok, project} <- Projects.get_project_for_user(scope, id),
          {:ok, repo} <- repo_url(project, kind),
          {:ok, token} <- Integrations.fetch_access_token(scope, :github),
          {:ok, response} <- request(method, repo <> ~s(/) <> path, body, token) do
