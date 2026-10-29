@@ -146,7 +146,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       response =
         ToolLibrary.run(
           "run_provisioning_step",
-          %{step: "dns", environments: ["uat"]},
+          %{step: "dns", environment: "uat"},
           Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
         )
 

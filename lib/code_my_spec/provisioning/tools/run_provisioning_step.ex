@@ -63,12 +63,6 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
             description:
               "One of: repository, server, secrets, domain, dns, tls, deploy, email, inbound, storage, backups, content, widget, callback_credential, monitoring, telemetry."
           ]}},
-      environments:
-        {:meta, {:list, :string},
-         [
-           description:
-             "For the dns step: only publish records for these environments, for example [\"uat\"]."
-         ]},
       environment:
         {:meta, :string,
          [
@@ -120,7 +114,6 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
-    |> with_environments(params)
   end
 
   defp with_inbound_probe(opts, params) do
@@ -151,6 +144,10 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
+  defp with_environment(opts, %{step: "dns", environment: name})
+       when is_binary(name) and name != "",
+       do: Keyword.put(opts, :environments, [name])
+
   defp with_environment(opts, params) do
     case Map.get(params, :environment) do
       environment when is_binary(environment) and environment != "" ->
@@ -160,11 +157,6 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
         opts
     end
   end
-
-  defp with_environments(opts, %{step: "dns", environments: names}) when is_list(names),
-    do: Keyword.put(opts, :environments, names)
-
-  defp with_environments(opts, _params), do: opts
 
   defp find_step(step) do
     case Enum.find(Step.keys(), &(to_string(&1) == step)) do

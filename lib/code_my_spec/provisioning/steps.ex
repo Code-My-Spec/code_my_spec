@@ -3617,7 +3617,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          "server this run just created. If #{apex} is serving anything today, that takes it " <>
          "down. Nothing else about the run is blocked: production is an environment like any " <>
          "other, so remove the `prod` environment to leave the apex alone, or run DNS " <>
-         "for only the other environments with `environments: [\"uat\"]`, or " <>
+         "for only uat with `run_provisioning_step` and `environment: \"uat\"`, or " <>
          "confirm to repoint it when ready."}
     else
       _ -> :ok
