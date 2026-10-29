@@ -404,6 +404,7 @@ defmodule CodeMySpecWeb.Router do
       # "login" token the magic-link email carries, redeemed at the same route.
       post "/sign-in", DevSignInController, :create
       post "/sign-up", DevSignInController, :register
+      post "/device-approvals", DevDeviceApprovalController, :create
 
       post "/provisioning-fixtures", DevProvisioningFixtureController, :create
 
