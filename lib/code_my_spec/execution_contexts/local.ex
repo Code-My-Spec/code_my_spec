@@ -271,6 +271,7 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     wait "$child"
     status=$?
     /bin/kill -KILL "$watcher" 2>/dev/null
+    wait "$watcher" 2>/dev/null
     exit "$status"
     """
 

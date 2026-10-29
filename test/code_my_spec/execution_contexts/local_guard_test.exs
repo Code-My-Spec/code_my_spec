@@ -43,36 +43,32 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
 
     {:os_pid, beam_pid} = Port.info(port, :os_pid)
 
-    try do
-      assert eventually(fn -> File.exists?(pid_file) end)
-      child_pid = pid_file |> File.read!() |> String.trim()
-      assert {_, 0} = System.cmd("/bin/kill", ["-0", child_pid], stderr_to_stdout: true)
-
-      System.cmd("/bin/kill", ["-KILL", Integer.to_string(beam_pid)], stderr_to_stdout: true)
-
-      assert eventually(fn ->
-               case System.cmd("/bin/ps", ["-o", "stat=", "-p", child_pid],
-                      stderr_to_stdout: true
-                    ) do
-                 {_, status} when status != 0 -> true
-                 {state, 0} -> String.starts_with?(String.trim(state), "Z")
-               end
-             end)
-    after
+    on_exit(fn ->
       System.cmd("/bin/kill", ["-KILL", Integer.to_string(beam_pid)], stderr_to_stdout: true)
       File.rm_rf(dir)
-    end
+    end)
+
+    assert eventually(fn -> File.exists?(pid_file) end)
+    child_pid = pid_file |> File.read!() |> String.trim()
+    assert {_, 0} = System.cmd("/bin/kill", ["-0", child_pid], stderr_to_stdout: true)
+
+    System.cmd("/bin/kill", ["-KILL", Integer.to_string(beam_pid)], stderr_to_stdout: true)
+
+    assert eventually(fn ->
+             {state, status} =
+               System.cmd("/bin/ps", ["-o", "stat=", "-p", child_pid], stderr_to_stdout: true)
+
+             status != 0 or String.starts_with?(String.trim(state), "Z")
+           end)
   end
 
-  defp eventually(fun), do: eventually(fun, 80)
-  defp eventually(fun, 0), do: fun.()
-
-  defp eventually(fun, attempts) do
-    if fun.() do
-      true
-    else
-      Process.sleep(100)
-      eventually(fun, attempts - 1)
-    end
+  defp eventually(fun) do
+    Enum.any?(1..80, fn _ ->
+      fun.() or
+        (
+          Process.sleep(100)
+          false
+        )
+    end)
   end
 end
