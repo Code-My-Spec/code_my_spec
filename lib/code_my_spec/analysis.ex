@@ -63,6 +63,7 @@ defmodule CodeMySpec.Analysis do
 
   alias CodeMySpec.Problems.ProblemConverter
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation.Blocking
 
   # `:async` (default) runs jobs through the per-copy ProjectServer.
   # `:inline` (test env) executes in the caller process: sandbox-owned DB
@@ -445,7 +446,8 @@ defmodule CodeMySpec.Analysis do
 
   @doc """
   Record the commit a harness's analyzer started on, whether the tree was
-  clean, and when it began. The run may have sat in the harness's queue since
+  clean, its git tree (`start_tree`, absent from a harness that predates story
+  1174), and when it began. The run may have sat in the harness's queue since
   dispatch, so this is when it actually ran.
   """
   @spec record_remote_start(Scope.t(), map()) :: {:ok, Run.t()} | {:error, :unknown_run}
@@ -460,7 +462,7 @@ defmodule CodeMySpec.Analysis do
          RunsRepository.record_tree(
            run,
            payload
-           |> Map.take(["start_commit", "start_tree_dirty"])
+           |> Map.take(["start_commit", "start_tree_dirty", "start_tree"])
            |> Map.put("began_at", DateTime.utc_now())
          )}
     end
@@ -1128,6 +1130,49 @@ defmodule CodeMySpec.Analysis do
   def answer_at_commit(%Scope{} = scope, source, commit) do
     run = RunsRepository.latest_completed_run(scope, source)
     if Run.at_commit?(run, commit), do: run
+  end
+
+  @doc """
+  The newest run that passed `source` on git `tree`, from any working copy or
+  commit of the project, else nil (story 1174). Passed: full, completed, started
+  clean on `tree` and finished at the commit it started on, with no finding that
+  would block (`Blocking`), read from the run's own recorded findings, not a
+  copy's current Problems. A compiler run counts only forced, as the gate runs
+  it. Failed, abandoned, partial and dirty runs never pass; a nil tree (dirty,
+  or reported by a harness that predates it) has none.
+  """
+  @spec passed_on_tree(Scope.t(), String.t() | nil, String.t()) :: Run.t() | nil
+  def passed_on_tree(_scope, nil, _source), do: nil
+
+  def passed_on_tree(%Scope{} = scope, tree, source) when is_binary(tree) do
+    advisory = Blocking.advisory_findings(scope)
+
+    scope
+    |> RunsRepository.completed_on_tree(tree, source)
+    |> Enum.find(&passed?(&1, advisory))
+  end
+
+  defp passed?(%Run{findings: %{"problems" => problems}} = run, advisory)
+       when is_list(problems),
+       do: forced?(run) and not Enum.any?(problems, &blocks?(&1, run.source, advisory))
+
+  defp passed?(_run, _advisory), do: false
+
+  # An incremental compile reports only what it recompiled (`Promotion.gate/3`).
+  defp forced?(%Run{source: "compiler", args: %{"args" => args}}) when is_list(args),
+    do: "--force" in args
+
+  defp forced?(%Run{source: "compiler"}), do: false
+  defp forced?(_run), do: true
+
+  defp blocks?(problem, source, advisory) do
+    finding = %{
+      severity: if(problem["severity"] == "info", do: :info, else: problem["severity"]),
+      file_path: problem["file_path"]
+    }
+
+    Blocking.can_block?(finding, advisory) and
+      match?({[_], _}, Blocking.split_by_story_enforcement(source, [finding], nil))
   end
 
   @doc """

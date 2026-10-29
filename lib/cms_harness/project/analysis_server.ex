@@ -298,7 +298,8 @@ defmodule CmsHarness.Project.AnalysisServer do
         "run_id" => id,
         "source" => source,
         "start_commit" => tree.commit,
-        "start_tree_dirty" => tree.dirty
+        "start_tree_dirty" => tree.dirty,
+        "start_tree" => Map.get(tree, :tree)
       })
     end
 

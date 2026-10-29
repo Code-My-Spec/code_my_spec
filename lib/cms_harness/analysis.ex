@@ -158,17 +158,34 @@ defmodule CmsHarness.Analysis do
 
   Dirty is measured as `Promotion.Steps.precheck/2` measures it (tracked files
   only, submodules ignored), so a run's clean tree and a promotion's clean tree
-  are the same fact. Nil for whatever `git` could not answer.
+  are the same fact. `tree` is the commit's git tree, which a pass answers for
+  (story 1174); nil unless the tree is clean. Nil for whatever `git` could not
+  answer.
   """
-  @spec tree_state(ExecutionContext.t()) :: %{commit: String.t() | nil, dirty: boolean() | nil}
+  @spec tree_state(ExecutionContext.t()) :: %{
+          commit: String.t() | nil,
+          dirty: boolean() | nil,
+          tree: String.t() | nil
+        }
   def tree_state(env) do
-    %{commit: head_commit(env), dirty: tree_dirty(env)}
+    {commit, tree} = head(env)
+    dirty = tree_dirty(env)
+    %{commit: commit, dirty: dirty, tree: if(dirty == false, do: tree)}
   end
 
-  defp head_commit(env) do
-    case ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
-      {sha, 0} -> String.trim(sha)
-      _ -> nil
+  # One call, so the commit and its tree cannot straddle a commit landing.
+  defp head(env) do
+    case ExecutionContexts.cmd(env, "git", ["rev-parse", "HEAD", "HEAD^{tree}"],
+           stderr_to_stdout: true
+         ) do
+      {out, 0} ->
+        case String.split(out, "\n", trim: true) do
+          [commit, tree] -> {commit, tree}
+          _ -> {nil, nil}
+        end
+
+      _ ->
+        {nil, nil}
     end
   end
 

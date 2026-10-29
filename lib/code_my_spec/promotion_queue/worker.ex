@@ -602,7 +602,11 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp gate_runs(%{batch: batch} = state) do
+    batch = with_tree(batch)
+    state = %{state | batch: batch}
+
     case Promotion.gate(batch.scope, batch.head,
+           tree: batch.tree,
            fresh_since: fresh_since(batch.entries),
            retry_failed_since: queued_since(batch.entries)
          ) do
@@ -617,6 +621,25 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         red(state, reason)
     end
   end
+
+  # The batch commit's git tree: an analyzer that already passed it, anywhere,
+  # is not run again (story 1174). Read once from the copy it is checked out
+  # in; nil (no reuse) when that copy has moved or its harness does not say.
+  defp with_tree(%{tree: tree} = batch) when is_binary(tree), do: batch
+
+  defp with_tree(batch) do
+    tree =
+      case head_and_tree(batch) do
+        {:ok, %{head: head, tree: tree}} when head == batch.head and is_binary(tree) -> tree
+        _ -> nil
+      end
+
+    Map.put(batch, :tree, tree)
+  end
+
+  defp head_and_tree(batch),
+    do:
+      Runner.current(WorkingCopies.execution_context(batch.scope), batch.gate.root, batch.gate.id)
 
   defp queued_since(entries),
     do: entries |> Enum.map(& &1.inserted_at) |> Enum.min(DateTime, fn -> nil end)
@@ -717,7 +740,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       for entry <- batch.entries,
           story = story_of(state.scope, entry),
           files_scope = %{state.scope | active_working_copy_id: entry.working_copy_id},
-          {:error, reason} <- [Promotion.story_spex_check(batch.scope, story, files_scope)],
+          {:error, reason} <- [
+            Promotion.story_spex_check(batch.scope, story, files_scope, Map.get(batch, :tree))
+          ],
           do: {entry, reason}
 
     case failing do
@@ -736,7 +761,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   end
 
   defp red(%{batch: batch} = state, reason) do
-    problems = Promotion.blocking_problems_at(batch.scope, batch.head)
+    problems = Promotion.blocking_problems_at(batch.scope, batch.head, Map.get(batch, :tree))
 
     cond do
       problems == [] and retryable_start_failure?(Map.get(reason, :start_failures, [])) ->
@@ -1270,9 +1295,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         "#{source} (finished #{Calendar.strftime(at, "%H:%M:%SZ")})"
       end)
 
-    " Certified on runs recorded at this commit before you promoted: #{runs}. If anything " <>
-      "outside the commit changed since (a path dependency such as client_utils), promote " <>
-      "again with fresh: true."
+    " Certified on runs that passed this tree before you promoted: #{runs}. If anything " <>
+      "outside the tree changed since (a path dependency), promote again with fresh: true."
   end
 
   defp reused_note(_batch), do: ""
@@ -1388,7 +1412,10 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp gate_answers(batch) do
     for source <- Run.sources(),
-        %Run{kind: :full} = run <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
+        %Run{kind: :full} = run <- [
+          Analysis.passed_on_tree(batch.scope, Map.get(batch, :tree), source) ||
+            Analysis.answer_at_commit(batch.scope, source, batch.head)
+        ] do
       %{
         source: source,
         run_id: run.id,
