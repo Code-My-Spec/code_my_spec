@@ -1174,10 +1174,12 @@ defmodule CodeMySpec.Analysis do
     }
   end
 
-  # Path-like args mean the caller targeted specific files, so the run is
-  # `:partial`: it never satisfies freshness and never replaces Problems.
+  # Targeted runs, including a failed-tests-only rerun, never satisfy
+  # freshness or replace the Problems from a whole-project sweep.
   defp kind_for(args) do
-    if Enum.any?(args, &(not String.starts_with?(&1, "-"))), do: :partial, else: :full
+    if Enum.any?(args, &(&1 == "--failed" or not String.starts_with?(&1, "-"))),
+      do: :partial,
+      else: :full
   end
 
   @passthrough_opts [

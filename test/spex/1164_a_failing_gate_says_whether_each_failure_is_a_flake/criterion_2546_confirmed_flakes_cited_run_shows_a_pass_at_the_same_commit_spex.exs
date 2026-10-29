@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2546Spex do
       when_ "the gate ejects the candidate and John looks up its cited run", context do
         log =
           Fixtures.capture_log_at(:info, fn ->
-            the_gate_answers(context, %{"exunit" => [failure()]})
+            the_gate_answers_and_fails_rerun(context, %{"exunit" => [failure()]})
             what_the_agent_was_told(context)
           end)
 

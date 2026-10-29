@@ -20,7 +20,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Flakes, History, Run}
+  alias CodeMySpec.Analysis.{Flakes, History, Run, RunsRepository}
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
@@ -507,9 +507,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp gate(%{batch: batch} = state) do
     state = cancel_timer(state)
 
-    case failed_runs(batch) do
-      [] -> gate_runs(state)
-      failed -> could_not_run(state, failed)
+    if Map.has_key?(batch, :flake_reruns) do
+      finish_flake_reruns(state)
+    else
+      case failed_runs(batch) do
+        [] -> gate_runs(state)
+        failed -> could_not_run(state, failed)
+      end
     end
   end
 
@@ -617,15 +621,104 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp red(%{batch: batch} = state, reason) do
     problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
-    if problems == [] do
-      # No finding about the code: the gate could not run (an analyzer would
-      # not start, the tree was dirty).
-      could_not_gate(state, batch.entries, reason)
-    else
-      log_flake_classifications(batch)
-      eject_batch(state, findings(problems))
+    cond do
+      problems == [] ->
+        could_not_gate(state, batch.entries, reason)
+
+      rerunnable_test_failures?(batch, problems) ->
+        start_flake_reruns(state, problems)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(problems))
     end
   end
+
+  defp rerunnable_test_failures?(batch, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    length(gate_answers(batch)) == length(Run.sources()) and
+      Enum.all?(problems, &(&1.source_type == :test and &1.source in ~w(exunit spex))) and
+      Enum.all?(sources, fn source ->
+        case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+          %Run{kind: :full, findings: %{"failures" => [_ | _]}} -> true
+          _ -> false
+        end
+      end)
+  end
+
+  defp start_flake_reruns(%{batch: batch} = state, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    result =
+      Enum.reduce_while(sources, %{}, fn source, reruns ->
+        case Analysis.start_run(batch.scope, source, ["--failed"],
+               requested_by: %{kind: "promotion_flake_rerun"}
+             ) do
+          {:ok, disposition, run_id} when disposition in [:started, :joined] ->
+            {:cont, Map.put(reruns, source, run_id)}
+
+          other ->
+            {:halt, {:error, {source, other}}}
+        end
+      end)
+
+    case result do
+      {:error, {source, failure}} ->
+        eject_batch(
+          state,
+          "the " <> source <> " failed-test rerun could not start: " <> inspect(failure)
+        )
+
+      reruns ->
+        batch = batch |> Map.put(:flake_reruns, reruns) |> Map.put(:flake_problems, problems)
+        {:noreply, recheck_later(%{state | batch: batch})}
+    end
+  end
+
+  defp finish_flake_reruns(%{batch: batch} = state) do
+    runs =
+      for {source, run_id} <- batch.flake_reruns, into: %{} do
+        {source, RunsRepository.get_run_in_project(batch.scope, run_id)}
+      end
+
+    cond do
+      Enum.any?(runs, fn {_source, run} -> match?(%Run{status: :running}, run) end) ->
+        {:noreply, recheck_later(state)}
+
+      Enum.all?(runs, fn {source, run} -> flake_rerun_passed?(batch, source, run) end) ->
+        for {source, run} <- runs,
+            %Run{findings: %{"failures" => failures}} <-
+              [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+            failure <- failures do
+          Logger.info(
+            "[PromotionQueue] " <>
+              to_string(failure["file"]) <>
+              ": " <>
+              to_string(failure["name"]) <> " — confirmed flake; rerun=" <> to_string(run.id)
+          )
+        end
+
+        swept = gate_answers(batch)
+        state = %{state | batch: record_runs(batch, swept)}
+        assets_build(state, swept)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(batch.flake_problems))
+    end
+  end
+
+  defp flake_rerun_passed?(batch, source, %Run{} = run) do
+    run.working_copy_id == batch.gate.id and run.source == source and
+      run.kind == :partial and get_in(run.args || %{}, ["args"]) == ["--failed"] and
+      Run.at_commit?(run, batch.head) and run.exit_status == 0 and
+      Map.get(run.findings || %{}, "failures", []) == [] and
+      (source != "exunit" or
+         (is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0))
+  end
+
+  defp flake_rerun_passed?(_batch, _source, _run), do: false
 
   defp log_flake_classifications(batch) do
     runs = History.list(batch.scope, source: "exunit")
@@ -742,7 +835,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       tell(
         state.scope,
         entry,
-        "Your promotion of #{subject(entry)} is already on main " <>
+        "Your promotion of #{subject(entry)} has landed on main already " <>
           "(#{String.slice(head, 0, 12)}): there was nothing to gate or land."
       )
     end
@@ -1073,8 +1166,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp gate_answers(batch) do
     for source <- Run.sources(),
-        %Run{kind: :full, id: id} <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
-      %{run_id: id}
+        %Run{kind: :full} = run <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
     end
   end
 
@@ -1091,7 +1189,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     tell_durably(
       scope,
       entry,
-      "Your promotion of #{subject(entry)} was taken out of the queue and nothing of it " <>
+      "Your promotion of #{subject(entry)} was ejected from the queue and nothing of it " <>
         "landed: #{reason}"
     )
   end

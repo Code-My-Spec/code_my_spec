@@ -398,6 +398,32 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     context
   end
 
+  @doc "Answer a failed full gate and its failed-test rerun."
+  def the_gate_answers_and_fails_rerun(context, findings) do
+    the_gate_answers(context, findings)
+    [%{"run_id" => id}] = gate_runs(context.gate_socket, ["exunit"])
+    head = head_of(context, context.gate_root)
+    diagnostics = Map.fetch!(findings, "exunit")
+
+    push(context.gate_socket, "analysis_started", %{
+      "run_id" => id,
+      "start_commit" => head,
+      "start_tree_dirty" => false
+    })
+
+    ref =
+      push(context.gate_socket, "analysis_result", %{
+        "run_id" => id,
+        "source" => "exunit",
+        "status" => "ok",
+        "completed_commit" => head,
+        "result" => raw_result("exunit", diagnostics)
+      })
+
+    assert_reply(ref, :ok, _, 10_000)
+    context
+  end
+
   @doc """
   The sources the gate has been asked to run and has not been answered on,
   once it has been asked for `sources`. Leaves them pending.

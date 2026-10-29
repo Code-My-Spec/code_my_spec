@@ -52,7 +52,10 @@ defmodule CodeMySpecSpex.Story1164.Criterion2494Spex do
 
         log =
           Fixtures.capture_log_at(:info, fn ->
-            the_gate_answers(context, %{"exunit" => [failure("test A"), failure("test B")]})
+            the_gate_answers_and_fails_rerun(context, %{
+              "exunit" => [failure("test A"), failure("test B")]
+            })
+
             what_the_agent_was_told(context)
           end)
 
