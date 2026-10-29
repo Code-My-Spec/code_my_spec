@@ -391,18 +391,15 @@ defmodule CodeMySpec.GeneratorsTest do
     # class of bug, and it hid in the one line nobody reads because everything
     # around it interpolated correctly.
     #
-    # `kamal_config`'s own `ssh:` block is the one deliberate exception —
-    # ERB kamal itself renders at deploy time against `CMS_SSH_KEY_PATH`,
-    # which is only known then, not at generation time. That is a genuinely
-    # different thing from the bug this test exists to catch: this generator
-    # never uses EEx at all, so *any other* `<%= %>`/`<% %>` reaching the
-    # output is exactly the old failure — an Elixir interpolation, like
-    # `#{}_host`, that was never substituted — wearing the same syntax kamal
-    # happens to use for its own, later pass.
+    # Kamal renders the SSH key and target architecture ERB expressions at
+    # deploy time. Those values are not known when these files are generated.
+    # The exact expressions below are allowed; every other template tag still
+    # indicates a generator interpolation that was left unsubstituted.
     test "no generated file carries an unrendered template tag", %{dir: dir} do
       allowed = [
         ~s(<% if ENV["CMS_SSH_KEY_PATH"] %>),
         ~s(<%= ENV["CMS_SSH_KEY_PATH"] %>),
+        "<%= ENV.fetch(\"CMS_TARGET_ARCH\") %>",
         "<% end %>"
       ]
 
@@ -424,10 +421,9 @@ defmodule CodeMySpec.GeneratorsTest do
 
              #{Enum.map_join(offenders, "\n", &("  " <> &1))}
 
-             kamal's own config files are ERB, rendered by kamal itself at deploy
-             time against CMS_SSH_KEY_PATH — that one is expected. Anything else
-             here is this generator's own Elixir interpolation left unsubstituted,
-             and a tag that survives generation names a host that cannot exist.
+             Kamal renders the allowed CMS_SSH_KEY_PATH and CMS_TARGET_ARCH
+             expressions at deploy time. Any other template tag is an
+             unsubstituted generator interpolation.
              """
     end
 
