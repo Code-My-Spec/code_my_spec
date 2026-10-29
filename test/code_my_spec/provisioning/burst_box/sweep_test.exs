@@ -18,6 +18,18 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
 
   defp scope, do: %Scope{}
 
+  # Keep unrelated runs and setup rows in other async tests from changing
+  # which servers these unit tests examine. Explicit gate options still win.
+  defp sweep_now(scope, opts) do
+    Sweep.sweep_now(
+      scope,
+      Keyword.merge(
+        [run_in_flight?: fn -> false end, setup_pending?: fn -> false end],
+        opts
+      )
+    )
+  end
+
   defp due_now, do: fn -> ~U[2026-08-03 12:55:30Z] end
 
   defp burst_server(overrides \\ %{}) do
@@ -63,7 +75,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       list = fn _scope -> {:ok, [burst_server(), other_server()]} end
       busy? = fn _scope, server -> server["id"] == 7 end
 
-      assert [result] = Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?)
+      assert [result] = sweep_now(scope(), list: list, now: due_now(), busy?: busy?)
       assert result == :kept
     end
 
@@ -81,7 +93,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       end
 
       results =
-        Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
+        sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
 
       assert :deleted in results
       assert :kept in results
@@ -96,7 +108,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       ]
 
       busy? = fn _, _ -> flunk("app server must never be checked") end
-      assert [] = Sweep.sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
+      assert [] = sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
     end
 
     test "never checks an unlabelled box even when its name resembles a burst box" do
@@ -106,14 +118,14 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       ]
 
       busy? = fn _, _ -> flunk("unlabelled server must never be checked") end
-      assert [] = Sweep.sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
+      assert [] = sweep_now(scope(), list: fn _ -> {:ok, servers} end, busy?: busy?)
     end
 
     test "no burst boxes in the account is an empty, successful sweep" do
       list = fn _scope -> {:ok, [other_server()]} end
       busy? = fn _scope, _server -> flunk("a non-burst-box server must never be checked") end
 
-      assert Sweep.sweep_now(scope(), list: list, busy?: busy?) == []
+      assert sweep_now(scope(), list: list, busy?: busy?) == []
     end
 
     test "a listing failure is logged and swept as empty, rather than raising" do
@@ -121,7 +133,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
 
       log =
         capture_log(fn ->
-          assert Sweep.sweep_now(scope(), list: list, busy?: fn _, _ -> true end) == []
+          assert sweep_now(scope(), list: list, busy?: fn _, _ -> true end) == []
         end)
 
       assert log =~ "could not list servers"
@@ -147,7 +159,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       log =
         capture_log(fn ->
           results =
-            Sweep.sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
+            sweep_now(scope(), list: list, now: due_now(), busy?: busy?, destroy: destroy)
 
           assert Enum.any?(results, &match?({:error, _}, &1))
           assert :deleted in results
@@ -167,7 +179,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       busy? = fn _scope, _server -> flunk("a bootstrap server has no busy? check") end
 
       assert [:not_due] =
-               Sweep.sweep_now(scope(),
+               sweep_now(scope(),
                  list: list,
                  busy?: busy?,
                  list_images: no_image_yet(),
@@ -185,7 +197,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       end
 
       assert [:reaped] =
-               Sweep.sweep_now(scope(),
+               sweep_now(scope(),
                  list: list,
                  busy?: fn _, _ -> false end,
                  list_images: image_available(),
@@ -206,7 +218,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       end
 
       assert [:reaped] =
-               Sweep.sweep_now(scope(),
+               sweep_now(scope(),
                  list: list,
                  busy?: fn _, _ -> false end,
                  list_images: no_image_yet(),
@@ -226,7 +238,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
       list = fn _scope -> {:ok, [burst, bootstrap]} end
 
       results =
-        Sweep.sweep_now(scope(),
+        sweep_now(scope(),
           list: list,
           busy?: fn _, _ -> true end,
           list_images: no_image_yet(),
@@ -275,25 +287,25 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
     end
 
     test "deletes a builder-<12 hex> box past the age cutoff" do
-      assert [:reaped] = Sweep.sweep_now(scope(), reaper_opts([legacy_builder()], self()))
+      assert [:reaped] = sweep_now(scope(), reaper_opts([legacy_builder()], self()))
       assert_received {:destroyed, 21}
     end
 
     test "never deletes an unlabelled legacy builder" do
       unlabelled = legacy_builder(%{"labels" => %{}})
-      assert [] = Sweep.sweep_now(scope(), reaper_opts([unlabelled], self()))
+      assert [] = sweep_now(scope(), reaper_opts([unlabelled], self()))
       refute_received {:destroyed, _}
     end
 
     test "leaves a young builder alone" do
       young = legacy_builder(%{"created" => "2026-08-03T12:30:00Z"})
-      assert [:not_due] = Sweep.sweep_now(scope(), reaper_opts([young], self()))
+      assert [:not_due] = sweep_now(scope(), reaper_opts([young], self()))
       refute_received {:destroyed, _}
     end
 
     test "is off unless asked for" do
       opts = reaper_opts([legacy_builder()], self(), reap_legacy_builders: false)
-      assert [] = Sweep.sweep_now(scope(), opts)
+      assert [] = sweep_now(scope(), opts)
       refute_received {:destroyed, _}
     end
 
@@ -305,14 +317,14 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
         legacy_builder(%{"id" => 4, "name" => "builder-2633473a5e14-extra"})
       ]
 
-      assert [] = Sweep.sweep_now(scope(), reaper_opts(servers, self()))
+      assert [] = sweep_now(scope(), reaper_opts(servers, self()))
       refute_received {:destroyed, _}
     end
 
     test "leaves a builder that carries a burst or bootstrap label to its own path" do
       burst_labelled = legacy_builder(%{"labels" => %{Sweep.role_label() => "true"}})
 
-      assert [:kept] = Sweep.sweep_now(scope(), reaper_opts([burst_labelled], self()))
+      assert [:kept] = sweep_now(scope(), reaper_opts([burst_labelled], self()))
       refute_received {:destroyed, _}
     end
   end
@@ -330,7 +342,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
         destroy: fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
       ]
 
-      assert [] = Sweep.sweep_now(scope(), opts)
+      assert [] = sweep_now(scope(), opts)
       refute_received :listed
       refute_received {:destroyed, _}
     end
@@ -345,7 +357,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.SweepTest do
         destroy: fn _scope, id -> send(owner, {:destroyed, id}) && {:ok, %{}} end
       ]
 
-      assert [] = Sweep.sweep_now(scope(), opts)
+      assert [] = sweep_now(scope(), opts)
       refute_received :listed
       refute_received {:destroyed, _}
     end

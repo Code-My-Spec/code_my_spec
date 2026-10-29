@@ -12,8 +12,8 @@ defmodule CmsHarness.ProjectIdentity do
     3. refuse
 
   The copy's record wins for the reason `server_url/1` gives: one repository is
-  a different project on each server (ours is 708492f9 on dev and a3158f01 on
-  codemyspec.com), and the tracked file can hold only one of them.
+  a different project on each server, and the tracked file can hold only one
+  of them.
 
   There is no environment fallback. A directory that cannot say which project
   it is gets an error naming the file it should have said it in, because

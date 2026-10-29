@@ -79,6 +79,30 @@ defmodule CodeMySpec.Provisioning.DnsVerifyTest do
     end
   end
 
+  describe "a staged environment selection" do
+    test "verifies only the selected environment", %{scope: scope} do
+      seed_uat(scope, "159.69.49.203")
+      {:ok, _} = Environments.put(scope, "prod", %{host: "astralbi.com", ip: "5.161.1.1"})
+      stub([uat_at("159.69.49.203")])
+
+      assert {:ok, :satisfied, resources} = Steps.verify(:dns, scope, environments: ["uat"])
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_outcome" and &1.identifier == "environment=uat outcome=unchanged")
+             )
+
+      assert {:ok, :absent} = Steps.verify(:dns, scope, [])
+    end
+
+    test "a proxied A record is not DNS-only", %{scope: scope} do
+      seed_uat(scope, "159.69.49.203")
+      stub([Map.put(uat_at("159.69.49.203"), "proxied", true)])
+
+      assert {:ok, :absent} = Steps.verify(:dns, scope, environments: ["uat"])
+    end
+  end
+
   describe "a record that is not what this project put there" do
     # The dangerous direction. A record left from an earlier build points at an
     # address the project no longer holds, and calling that satisfied is how a

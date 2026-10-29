@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2545Spex do
         log =
           Fixtures.capture_log_at(:info, fn ->
             failures = Enum.map(@test_names, &failure/1)
-            the_gate_answers(context, %{"exunit" => failures})
+            the_gate_answers_and_fails_rerun(context, %{"exunit" => failures})
             what_the_agent_was_told(context)
           end)
 

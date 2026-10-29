@@ -76,6 +76,13 @@ defmodule CodeMySpec.Support.RecordingExecutionContext do
   end
 
   @impl true
+  # As `Local.file_exists?/2`: with no working directory a relative path is
+  # absent, not resolved against the test process's cwd (this repo, which
+  # holds its own envs/*.enc.env).
+  def file_exists?(%{cwd: nil}, path) do
+    Path.type(path) != :relative and File.exists?(path)
+  end
+
   def file_exists?(env, path) do
     resolved_path = resolve_path(path, env.cwd)
     File.exists?(resolved_path)

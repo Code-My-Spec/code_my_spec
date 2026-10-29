@@ -809,7 +809,7 @@ defmodule CodeMySpec.Provisioning do
   # Kinds that describe what the latest run did (phases, live version, failure);
   # a later run's answer supersedes an earlier one rather than merging.
   # See knowledge/provisioning, "Resource records".
-  @run_scoped ~w(deploy_phase live_version deploy_failure)
+  @run_scoped ~w(deploy_phase live_version deploy_failure dns_outcome)
 
   defp keeping_earlier(scope, key, environment, partial) do
     earlier =

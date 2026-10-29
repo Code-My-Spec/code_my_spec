@@ -884,6 +884,78 @@ defmodule CodeMySpec.PromotionQueueTest do
     assert Repository.get(entry.id).status == :gating
   end
 
+  test "an unavailable executor retries without ejecting the candidate", ctx do
+    a = candidate(ctx, "executor-retry", "main", "executor_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+    {:ok, failed} = CodeMySpec.Analysis.Reconciler.fail(first, :no_executor)
+    assert failed.stats["error"] =~ "no_executor"
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
+  test "a compiler run with no output or exit status retries without ejecting", ctx do
+    a = candidate(ctx, "compiler-retry", "main", "compiler_retry.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(credo exunit spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "compiler"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "compiler")
+    {:ok, failed} = CodeMySpec.Analysis.Reconciler.fail(first, :compiler_lost_result)
+    assert failed.output == nil and failed.exit_status == nil
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    send(worker, :gate)
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "compiler"}]}, 15_000
+    assert Repository.get(entry.id).status == :gating
+  end
+
+  test "an unavailable executor ejects after the gate retry limit", ctx do
+    a = candidate(ctx, "executor-expired", "main", "executor_expired.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+    [first] = RunsRepository.running_full_runs(gate, "exunit")
+    {:ok, _failed} = CodeMySpec.Analysis.Reconciler.fail(first, :no_executor)
+
+    [{worker, _}] =
+      Registry.lookup(CodeMySpec.PromotionQueue.Registry, ctx.scope.active_project_id)
+
+    :sys.replace_state(worker, fn state ->
+      put_in(state.batch.since, DateTime.add(DateTime.utc_now(), -31, :minute))
+    end)
+
+    send(worker, :gate)
+    assert {:ok, %{status: :ejected, result: %{"reason" => reason}}} = settle(entry)
+    assert reason =~ "no_executor"
+  end
+
   # A run that fails at the batch commit is red like a finding, and not retried:
   # the candidate's own change may be what stops the analyzer running. (The
   # first live batch, 2026-10-05: a gate copy minted without its envs could not
@@ -1205,6 +1277,72 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was
   # gating, and what it had been asked to run went with the connection. Its
   # rejoin asks the gate again, now, rather than at the next recheck.
+  test "a worker crash logs its application frame before a long exception" do
+    reason =
+      {%DBConnection.ConnectionError{message: String.duplicate("pool busy ", 100)},
+       [
+         {CodeMySpec.PromotionQueue.Repository, :gating, 1,
+          [file: ~c"lib/code_my_spec/promotion_queue/repository.ex", line: 198]}
+       ]}
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = Worker.terminate(reason, %{project_id: "project-1", phase: :gating})
+      end)
+
+    assert log =~ "project=project-1 phase=gating"
+    assert log =~ "repository.ex"
+    assert log =~ "line: 198"
+    assert byte_size(log) < 500
+  end
+
+  test "a worker crash resumes the same gate and keeps its analyzer run", ctx do
+    a = candidate(ctx, "crash-resume", "main", "resume.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+
+    before = Repository.get(entry.id)
+    [run] = RunsRepository.running_full_runs(gate, "exunit")
+    worker = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    monitor = Process.monitor(worker)
+    Process.exit(worker, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}, 5_000
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    restarted = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    assert restarted != worker
+    assert :sys.get_state(restarted).phase == :gating
+    after_restart = Repository.get(entry.id)
+    assert after_restart.batch_id == before.batch_id
+    assert after_restart.result["timing"]["gate_head"] == a.commit
+    assert [same_run] = RunsRepository.running_full_runs(gate, "exunit")
+    assert same_run.id == run.id
+    refute_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 500
+
+    {:ok, completed} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
+
+    RunsRepository.record_tree(completed, %{
+      start_commit: a.commit,
+      start_tree_dirty: false,
+      completed_commit: a.commit
+    })
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{ctx.scope.active_project_id}",
+      {:analysis,
+       %{source: "exunit", status: :completed, run_id: run.id, working_copy_id: gate_id}}
+    )
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
   test "a batch gating asks the gate again when the gate copy rejoins", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     gate = gate_scope(ctx)

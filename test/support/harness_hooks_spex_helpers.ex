@@ -137,7 +137,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
       })
 
     topic = "harness_project:#{project.id}"
-    handler = watch_channel(topic, working_copy_id)
+    handler = watch_channel(topic, working_copy_id, root)
 
     ExUnit.Callbacks.on_exit(fn ->
       teardown(%{
@@ -511,7 +511,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
   @spec restart_live_harness(map()) :: map()
   def restart_live_harness(%{harness: %{root: root, working_copy_id: id, topic: topic}} = context) do
     :ok = LiveHarness.stop_serving(root)
-    handler = watch_channel(topic, id)
+    handler = watch_channel(topic, id, root)
     :ok = LiveHarness.serve(root, sandbox_user_agent())
     await_joined(id, root, handler)
     context
@@ -563,22 +563,30 @@ defmodule CodeMySpecSpex.HarnessHooks do
     {listener, "http://127.0.0.1:#{port}"}
   end
 
-  # The join, the read model and the first manifest, observed on the cloud
+  # The join, the read model, the first manifest and the restore answer. The
+  # restore settles every turn on the copy not held by a terminal session, so
+  # landing after the givens it wipes the turn a fixture just opened.
+  #
+  # The join, the read model and the first manifest are observed on the cloud
   # side. The read model is the harness's first push after its join reply, so
   # once the channel has handled it the client has marked itself joined — and
   # a hook posted next is answered rather than refused as not connected. Its
   # reply starts the first scan, whose manifest is waited for too: reconciled
   # after the givens that follow, it lands under them — on results a spex has
   # just landed, among other things.
-  defp watch_channel(topic, working_copy_id) do
+  defp watch_channel(topic, working_copy_id, root) do
     handler = {__MODULE__, :join, working_copy_id}
 
     :ok =
       :telemetry.attach_many(
         handler,
-        [[:phoenix, :channel_joined], [:phoenix, :channel_handled_in]],
+        [
+          [:phoenix, :channel_joined],
+          [:phoenix, :channel_handled_in],
+          [:cms_harness, :restore, :answered]
+        ],
         &__MODULE__.handle_join/4,
-        %{topic: topic, id: working_copy_id, test: self()}
+        %{topic: topic, id: working_copy_id, root: root, test: self()}
       )
 
     handler
@@ -592,6 +600,10 @@ defmodule CodeMySpecSpex.HarnessHooks do
     if meta.socket.topic == config.topic and meta.params["harness_id"] == config.id do
       send(config.test, {:live_harness, config.id, :joined, meta.result})
     end
+  end
+
+  def handle_join([:cms_harness, :restore, :answered], _measure, %{root: root}, config) do
+    if config.root == root, do: send(config.test, {:live_harness, config.id, :restored, :ok})
   end
 
   def handle_join([:phoenix, :channel_handled_in], _measure, meta, config) do
@@ -615,6 +627,7 @@ defmodule CodeMySpecSpex.HarnessHooks do
 
     await_step(id, :ready, root, "the harness joined but never asked for its read model")
     await_step(id, :scanned, root, "the harness joined but never sent its first manifest")
+    await_step(id, :restored, root, "the harness joined but its restore was never answered")
     :telemetry.detach(handler)
     :ok
   end

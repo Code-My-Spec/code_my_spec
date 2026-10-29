@@ -193,10 +193,5 @@ defmodule CodeMySpec.Agents.AnAnswerReachesAnAskerThatIsComingBackTest do
 
   def capture_escalated_answer(_event, _measurements, _meta, _config), do: :ok
 
-  defp await_dispatches do
-    CodeMySpec.TaskSupervisor
-    |> Task.Supervisor.children()
-    |> Enum.map(&Process.monitor/1)
-    |> Enum.each(fn ref -> assert_receive {:DOWN, ^ref, _, _, _}, 5_000 end)
-  end
+  defp await_dispatches, do: CodeMySpecTest.OwnDispatches.await()
 end

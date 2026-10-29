@@ -1149,7 +1149,9 @@ defmodule CodeMySpec.Promotion do
            Enum.map_join(failed, ", ", fn {source, error} ->
              "#{source} (could not start one: #{inspect(error)})"
            end) <> ". Nothing was merged.",
-       working_copy: named
+       working_copy: named,
+       start_failures:
+         Enum.map(failed, fn {source, error} -> %{source: source, error: inspect(error)} end)
      }}
   end
 

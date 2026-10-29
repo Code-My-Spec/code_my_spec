@@ -115,8 +115,15 @@ defmodule CodeMySpec.ExecutionContexts.Harness do
   # run a command there would drift from it. `stream_files` is the manifest's
   # job, and `create`/`destroy` describe a lifecycle a harness does not have:
   # it exists because someone started it.
+  #
+  # Refused in the contract's own shape, `{output, status}`: callers match on
+  # it, and an `{:error, atom}` crashed them (`String.trim(:error)`) wherever
+  # one assumed a binary. 127 is the shell's "command not found".
   @impl true
-  def cmd(_env, _command, _args, _opts), do: {:error, :not_supported_on_harness}
+  def cmd(_env, command, _args, _opts) do
+    {"#{command} cannot run here: this working copy's checkout is on another machine, " <>
+       "and its harness runs no commands for the server.", 127}
+  end
 
   @impl true
   def stream_files(_env, _roots, _opts), do: {:error, :not_supported_on_harness}

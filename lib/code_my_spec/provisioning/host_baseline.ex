@@ -25,6 +25,8 @@ defmodule CodeMySpec.Provisioning.HostBaseline do
             raise ValueError('Docker configuration must be an object')
         desired = dict(config)
         desired['log-driver'] = 'local'
+        # A later daemon restart keeps containers running.
+        desired['live-restore'] = True
         desired['log-opts'] = {'max-size': '20m', 'max-file': '5', 'compress': 'true'}
         registry = json.loads(sys.argv[1])
         if registry is not None:
@@ -46,7 +48,22 @@ defmodule CodeMySpec.Provisioning.HostBaseline do
                 if os.path.exists(temporary):
                     os.unlink(temporary)
         active = subprocess.run(['docker', 'info', '--format', '{{.LoggingDriver}}'], capture_output=True, text=True)
-        if changed or active.returncode != 0 or active.stdout.strip() != 'local':
+        running = subprocess.run(['docker', 'ps', '-q'], capture_output=True, text=True)
+        # A box already serving containers (an adopted host: other apps live on
+        # it) is reloaded, never restarted. SIGHUP applies insecure-registries
+        # and live-restore; the default log driver only governs containers
+        # created later, so it waits for the next restart.
+        if running.returncode != 0 or running.stdout.strip() != '':
+            if changed:
+                result = subprocess.run(['systemctl', 'reload', 'docker'])
+                if result.returncode != 0:
+                    if existed:
+                        with open(path, 'wb') as output:
+                            output.write(previous)
+                    else:
+                        os.unlink(path)
+                    raise SystemExit(result.returncode)
+        elif changed or active.returncode != 0 or active.stdout.strip() != 'local':
             result = subprocess.run(['systemctl', 'restart', 'docker'])
             if result.returncode != 0:
                 if changed:
