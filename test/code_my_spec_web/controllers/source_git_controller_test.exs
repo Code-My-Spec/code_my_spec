@@ -9,6 +9,10 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
   alias CodeMySpec.Projects
   alias CodeMySpecWeb.SourceGitController
 
+  defmodule RawAdapter do
+    def run(request), do: Process.get(:source_git_raw_adapter).(request)
+  end
+
   setup do
     scope = full_scope_fixture()
     project = scope.active_project
@@ -167,6 +171,53 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
       assert pack.status == 200
       assert pack.resp_body == <<255, 0, 4>>
     end
+  end
+
+  test "forwards Git protocol and compressed upload-pack bytes unchanged", context do
+    compressed_request = :zlib.gzip(<<0, 255, 3, 4>>)
+    compressed_response = :zlib.gzip(<<255, 0, 4, 5>>)
+
+    previous = Application.get_env(:code_my_spec, SourceGitController)
+    on_exit(fn -> Application.put_env(:code_my_spec, SourceGitController, previous) end)
+
+    adapter = fn request ->
+      assert Req.Request.get_header(request, "git-protocol") == ["version=2"]
+      assert Req.Request.get_header(request, "accept") == ["application/x-git-upload-pack-result"]
+      assert Req.Request.get_header(request, "content-encoding") == ["gzip"]
+      assert request.body == compressed_request
+
+      response = %Req.Response{
+        status: 200,
+        headers:
+          Req.Fields.new([
+            {"content-type", "application/x-git-upload-pack-result"},
+            {"content-encoding", "gzip"}
+          ]),
+        body: compressed_response
+      }
+
+      {request, response}
+    end
+
+    Process.put(:source_git_raw_adapter, adapter)
+    Application.put_env(:code_my_spec, SourceGitController, adapter: RawAdapter)
+
+    conn =
+      Plug.Test.conn(:post, "/", compressed_request)
+      |> Plug.Conn.put_req_header("git-protocol", "version=2")
+      |> Plug.Conn.put_req_header("accept", "application/x-git-upload-pack-result")
+      |> Plug.Conn.put_req_header("content-encoding", "gzip")
+      |> Plug.Conn.assign(:current_scope, context.scope)
+
+    response =
+      SourceGitController.upload_pack(conn, %{
+        "project_id" => context.project.id,
+        "kind" => "code"
+      })
+
+    assert response.status == 200
+    assert response.resp_body == compressed_response
+    assert Plug.Conn.get_resp_header(response, "content-encoding") == ["gzip"]
   end
 
   test "a device-token non-member cannot reach the project's source", context do
