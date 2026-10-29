@@ -38,8 +38,8 @@ defmodule CodeMySpecSpex.Story1164.Criterion2573Spex do
         promote(context, context.story.number, fresh: true)
         the_gate_is_running(context)
 
-        log =
-          Fixtures.capture_log_at(:info, fn ->
+        {{outcome, rerun_id}, log} =
+          Fixtures.with_log_at(:info, fn ->
             the_gate_answers(context, %{"exunit" => [failure()]})
 
             assert_receive %Phoenix.Socket.Message{
@@ -71,10 +71,9 @@ defmodule CodeMySpecSpex.Story1164.Criterion2573Spex do
               })
 
             assert_reply ref, :ok, _, 10_000
-            send(self(), {:promotion_outcome, what_the_agent_was_told(context), rerun_id})
+            {what_the_agent_was_told(context), rerun_id}
           end)
 
-        assert_receive {:promotion_outcome, outcome, rerun_id}
         {:ok, Map.merge(context, %{log: log, outcome: outcome, rerun_id: rerun_id})}
       end
 

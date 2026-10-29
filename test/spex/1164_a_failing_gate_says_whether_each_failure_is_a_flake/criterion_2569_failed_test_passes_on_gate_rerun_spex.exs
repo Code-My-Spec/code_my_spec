@@ -9,6 +9,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
   import CodeMySpecSpex.PromotionHelpers
   import Phoenix.ChannelTest, only: [assert_reply: 4]
 
+  alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -30,6 +31,7 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
       given_ "a promotable candidate whose gate will fail one exunit test", context do
         context = context |> a_promotable_project() |> an_agent_on_the_copy()
         commit_work(context, context.agent_root, "lib/broken_oaths/diplomacy/peace.ex", peace())
+        commit_work(context, context.agent_root, @test_file, flaky_test())
         context = Map.put(context, :story, a_promotable_story(context))
         analyzers_are_current(context)
         {:ok, Map.put(context, :candidate_commit, head_of(context, context.agent_root))}
@@ -39,8 +41,11 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
         promote(context, context.story.number, fresh: true)
         the_gate_is_running(context)
 
-        log =
-          Fixtures.capture_log_at(:info, fn ->
+        {outcome, log} =
+          Fixtures.with_log_at(:info, fn ->
+            {first_output, first_status} = run_gate_test(context)
+            assert first_status != 0, first_output
+            assert first_output =~ "1 test, 1 failure", first_output
             the_gate_answers(context, %{"exunit" => [failure()]})
 
             assert_receive %Phoenix.Socket.Message{
@@ -49,6 +54,9 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
                            },
                            10_000
 
+            {rerun_output, rerun_status} = run_gate_test(context)
+            assert rerun_status == 0, rerun_output
+            assert rerun_output =~ "1 test, 0 failures", rerun_output
             commit = head_of(context, context.gate_root)
 
             Phoenix.ChannelTest.push(context.gate_socket, "analysis_started", %{
@@ -72,10 +80,9 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
               })
 
             assert_reply ref, :ok, _, 10_000
-            send(self(), {:promotion_outcome, what_the_agent_was_told(context)})
+            what_the_agent_was_told(context)
           end)
 
-        assert_receive {:promotion_outcome, outcome}
         {:ok, Map.merge(context, %{log: log, outcome: outcome})}
       end
 
@@ -91,7 +98,30 @@ defmodule CodeMySpecSpex.Story1164.Criterion2569Spex do
   end
 
   defp failure do
-    %{"file" => @test_file, "line" => 3, "name" => @test_name, "message" => "assertion failed"}
+    %{"file" => @test_file, "line" => 4, "name" => @test_name, "message" => "assertion failed"}
+  end
+
+  defp run_gate_test(context) do
+    ExecutionContexts.cmd(context.execution_context, "elixir", [@test_file],
+      cd: context.gate_root,
+      stderr_to_stdout: true
+    )
+  end
+
+  defp flaky_test do
+    """
+    ExUnit.start()
+    defmodule BrokenOaths.Diplomacy.WarTest do
+      use ExUnit.Case
+      test "declares war" do
+        marker = Path.join(File.cwd!(), "_build/war_test_ran")
+        File.mkdir_p!(Path.dirname(marker))
+        ran_before = File.exists?(marker)
+        File.write!(marker, "ran")
+        assert ran_before
+      end
+    end
+    """
   end
 
   defp peace, do: "defmodule BrokenOaths.Diplomacy.Peace do\n  def keep, do: :ok\nend\n"

@@ -747,6 +747,30 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
 
+  defp passing_flake_rerun(batch, failure) do
+    source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
+
+    case Map.get(Map.get(batch, :flake_reruns, %{}), source) do
+      {run_id, targets} ->
+        run = RunsRepository.get_run_in_project(batch.scope, run_id)
+
+        if match?(%Run{status: :completed}, run) and
+             run.working_copy_id == batch.gate.id and run.source == source and
+             run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
+             Run.at_commit?(run, batch.head) and is_map(run.findings) and
+             rerun_executed_tests?(source, run) and
+             not Enum.any?(Map.get(run.findings, "failures", []), fn rerun_failure ->
+               rerun_failure["file"] == failure["file"] and
+                 rerun_failure["name"] == failure["name"]
+             end) do
+          run
+        end
+
+      _ ->
+        nil
+    end
+  end
+
   defp rerun_executed_tests?("exunit", run) do
     is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0
   end
@@ -778,18 +802,21 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     for result <-
           Flakes.classify_all(batch.scope, batch.head, failures, unrelated_candidate?: unrelated?) do
       failure = result.failure
-      evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
 
-      label =
-        case result.classification do
-          :confirmed_flake -> "confirmed flake"
-          :suspected_flake -> "suspect"
-          :no_flake_evidence -> "not a flake"
-        end
+      case passing_flake_rerun(batch, failure) do
+        %Run{} = rerun ->
+          Logger.info(
+            "[PromotionQueue] #{failure["file"]}: #{failure["name"]} — confirmed flake; rerun=#{rerun.id}; evidence=#{rerun.id}"
+          )
 
-      Logger.info(
-        "[PromotionQueue] #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
-      )
+        nil ->
+          evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
+          label = if result.classification == :suspected_flake, do: "suspect", else: "not a flake"
+
+          Logger.info(
+            "[PromotionQueue] #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
+          )
+      end
     end
   end
 
@@ -1153,13 +1180,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           is_binary(failure["file"]) and is_binary(failure["name"]),
           do: failure
 
-    gate_history =
-      batch.scope
-      |> History.list()
-      |> Enum.filter(&(&1.working_copy_id == batch.gate.id))
-
-    classified = Enum.map(failures, &Flakes.classify_one(&1, batch.head, gate_history, []))
-
     entries =
       Enum.map(batch.entries, fn entry ->
         value = Map.put(timing(entry), "run_ids", ids)
@@ -1172,8 +1192,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
               changed = selection["changed_files"] || []
 
               misses =
-                for %{failure: failure, classification: classification} <- classified,
-                    failure["file"] not in selected and classification != :confirmed_flake,
+                for failure <- failures,
+                    failure["file"] not in selected and
+                      is_nil(passing_flake_rerun(batch, failure)),
                     do: %{
                       "file" => failure["file"],
                       "name" => failure["name"],
@@ -1181,7 +1202,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
                     }
 
               flakes =
-                for %{failure: failure, classification: :confirmed_flake} <- classified,
+                for failure <- failures,
+                    passing_flake_rerun(batch, failure),
                     do: failure["file"]
 
               selection =
