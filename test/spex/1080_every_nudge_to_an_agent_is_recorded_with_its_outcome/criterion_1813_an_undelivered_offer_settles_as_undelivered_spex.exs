@@ -44,7 +44,8 @@ defmodule CodeMySpecSpex.Story1080.Criterion1813Spex do
         context = put_to_work(context)
 
         eventually(fn ->
-          assert [_ | _] = offers(context, context.coder, %{kind: "work"}),
+          # A bare match would raise MatchError, which `eventually` does not retry.
+          assert offers(context, context.coder, %{kind: "work"}) != [],
                  "no work offer was made:\n" <> listing(context)
         end)
 

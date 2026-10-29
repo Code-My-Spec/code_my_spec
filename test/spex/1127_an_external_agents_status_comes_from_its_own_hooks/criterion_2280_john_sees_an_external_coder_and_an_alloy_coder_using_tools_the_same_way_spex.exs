@@ -118,9 +118,15 @@ defmodule CodeMySpecSpex.Story1127.Criterion2280Spex do
             )
             |> Enum.map(fn [_, tool, count] -> {tool, count} end)
 
-          assert [first, second] = activity,
+          # `assert pattern = expr, message` is a bare match that raises
+          # MatchError, which `eventually` does not retry: under load the
+          # first render can hold one row, and the spex failed instead of
+          # waiting for the second.
+          assert length(activity) == 2,
                  "each agent's row shows its tool activity; got #{inspect(activity)} " <>
                    "from rows #{inspect(rows(html, context))}"
+
+          [first, second] = activity
 
           assert first == second,
                  "the two rows must show it in the same form; got #{inspect(activity)}"

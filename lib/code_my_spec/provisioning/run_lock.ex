@@ -82,6 +82,21 @@ defmodule CodeMySpec.Provisioning.RunLock do
     end
   end
 
+  @doc """
+  Whether any project has a setup run in flight on this node. This registry is
+  node-local; it does not observe runs on other application nodes.
+
+  For callers that act on shared infrastructure rather than one project (the
+  burst-box sweep): a run may be mid-step on a box they would otherwise judge
+  idle. False when the registry is not running.
+  """
+  @spec any_in_flight?() :: boolean()
+  def any_in_flight? do
+    Registry.count(__MODULE__) > 0
+  rescue
+    ArgumentError -> false
+  end
+
   @doc "When the in-flight run for `project_id` started, or `nil` if none is running."
   @spec in_flight(Ecto.UUID.t()) :: DateTime.t() | nil
   def in_flight(project_id) do

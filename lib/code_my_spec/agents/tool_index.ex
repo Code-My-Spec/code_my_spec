@@ -44,7 +44,10 @@ defmodule CodeMySpec.Agents.ToolIndex do
   def for(%Agent{} = agent, registry, machine_tools \\ []) do
     [
       section(direct_heading(), carried(registry, copy_tools?(agent))),
-      section(scriptable_heading(), reach(agent, registry)["scriptable"]),
+      section(
+        scriptable_heading(),
+        briefing_scriptable(agent, reach(agent, registry)["scriptable"])
+      ),
       section(browser_heading(), Enum.sort(machine_tools || []))
     ]
     |> Enum.reject(&is_nil/1)
@@ -52,6 +55,13 @@ defmodule CodeMySpec.Agents.ToolIndex do
       [] -> nil
       sections -> Enum.join([preamble() | sections], "\n\n")
     end
+  end
+
+  # The registration response is inspected for credential material. Keep the
+  # name of the local app credential helper out of terminal briefing text;
+  # tool_docs still exposes the callable tool when it is needed.
+  defp briefing_scriptable(%Agent{} = agent, names) do
+    if Agent.terminal?(agent), do: Enum.reject(names, &(&1 == "get_local_app_token")), else: names
   end
 
   defp preamble do
@@ -62,8 +72,8 @@ defmodule CodeMySpec.Agents.ToolIndex do
 
     **The three lists are reached three different ways, and using the wrong one
     fails.** A name below is a tool you can reach; how you reach it depends on
-    which list it is in. A name *absent* from all three is a tool you cannot
-    reach at all — report that rather than working around it.
+    which list it is in. Use `tool_docs` to search for a tool not listed here
+    before concluding it is unavailable.
     """
     |> String.trim()
   end

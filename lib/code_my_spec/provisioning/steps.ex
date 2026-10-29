@@ -47,6 +47,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Utils.MapAccess
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -1765,13 +1766,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # What `Builder.Remote.ssh_runner/2` `fetch!`es: `:env` and a key on disk.
   # The account key is written 0600 to a temp dir (ssh refuses a readable
   # key) and removed by `cleanup_builder_key/2`.
-  defp with_builder_ssh(scope, opts) do
+  #
+  # `:env` stays the checkout (source delivery reads it); `:ssh_env` is where
+  # ssh itself runs: this node, where the key file is. Routing ssh through
+  # `env/1` sent it to a harness copy's harness, which runs no commands, and
+  # `await_ssh` timed out on boxes that were up.
+  @doc false
+  def with_builder_ssh(scope, opts) do
     case Keyword.get(opts, :ssh_key_path) do
       path when is_binary(path) ->
-        {:ok, Keyword.put_new(opts, :env, env(scope))}
+        {:ok, with_ssh_env(opts, scope, Path.dirname(path))}
 
       _ ->
         write_builder_key(scope, opts)
+    end
+  end
+
+  # The checkout's own context runs ssh when it can run commands (and keeps any
+  # injected one); a harness copy, or none, gets a local context on this node.
+  defp with_ssh_env(opts, scope, key_dir) do
+    opts = Keyword.put_new_lazy(opts, :env, fn -> env(scope) end)
+
+    case Keyword.fetch!(opts, :env) do
+      %{type: :harness} -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      nil -> Keyword.put_new(opts, :ssh_env, ExecutionContext.new(:local, key_dir))
+      _runs_commands -> opts
     end
   end
 
@@ -1789,7 +1808,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts
          |> Keyword.put(:ssh_key_path, path)
          |> Keyword.put(:builder_key_dir, dir)
-         |> Keyword.put_new(:env, env(scope))}
+         |> with_ssh_env(scope, dir)}
 
       _ ->
         {:error,
@@ -3844,6 +3863,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   @spec commit_generated_configuration(Scope.t()) :: :ok | {:error, String.t()}
   def commit_generated_configuration(scope) do
     case env(scope) do
+      # The checkout is on another machine and its harness runs no git; the
+      # agent working there commits.
+      %{type: :harness} ->
+        :ok
+
       %{cwd: cwd} = environment when is_binary(cwd) ->
         commit_generated_configuration_in(environment)
 

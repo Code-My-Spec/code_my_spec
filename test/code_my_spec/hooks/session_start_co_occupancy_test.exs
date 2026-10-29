@@ -52,6 +52,13 @@ defmodule CodeMySpec.Hooks.SessionStartCoOccupancyTest do
     SessionStart.handle(scope, %{"session_id" => external_id})
   end
 
+  test "a session without a working copy gets an explicit registration error", %{scope: scope} do
+    scope = %{scope | active_working_copy_id: nil}
+
+    assert {409, %{error: "no working copy is selected for this session"}} =
+             start_session(scope, "session-without-copy")
+  end
+
   test "the first session in a checkout is not warned", %{scope: scope} do
     {200, body} = start_session(scope, "session-alone")
 

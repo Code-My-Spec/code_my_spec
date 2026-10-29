@@ -711,4 +711,29 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       assert_received {:destroyed, 42}
     end
   end
+
+  describe "where a build's source comes from" do
+    alias CodeMySpec.ExecutionContexts.ExecutionContext
+
+    test "a checkout on this node is archived from it" do
+      opts = [env: ExecutionContext.new(:local, "/work/app")]
+
+      refute Keyword.has_key?(
+               Builder.with_deliver(opts, %{"ip" => "10.0.0.2"}, scope()),
+               :deliver
+             )
+    end
+
+    # A harness copy's checkout is on another machine: `git archive` cannot run
+    # there for us, so the source has to come from the repository's remote.
+    test "a harness copy's source comes from GitHub, not its checkout" do
+      opts = [env: %ExecutionContext{type: :harness, cwd: "/Users/someone/app"}]
+
+      deliver =
+        Keyword.fetch!(Builder.with_deliver(opts, %{"ip" => "10.0.0.2"}, scope()), :deliver)
+
+      assert {:error, {:source_delivery_failed, :no_reachable_source, _}} =
+               deliver.("HEAD", "/build")
+    end
+  end
 end

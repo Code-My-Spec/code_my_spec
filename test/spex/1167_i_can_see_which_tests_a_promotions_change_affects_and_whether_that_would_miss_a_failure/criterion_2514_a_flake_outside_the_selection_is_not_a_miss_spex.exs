@@ -46,17 +46,18 @@ defmodule CodeMySpecSpex.Story1167.Criterion2514Spex do
          context |> Map.put(:story, story) |> certify_current_story() |> analyzers_are_current()}
       end
 
-      given_ "sync_path_test.exs fails in the full run and is marked a confirmed flake",
-             context do
+      given_ "sync_path_test.exs fails in the full run", context do
         Fixtures.fail_full_promotion_run(context.gate, @flake_test)
-        Fixtures.confirmed_promotion_flake(context.scope, @flake_test)
         {:ok, context}
       end
 
-      when_ "the promotion result is recorded and John opens promotion timing", context do
+      when_ "the failed test passes on the targeted rerun and John opens promotion timing",
+            context do
         response = promote(context, context.story.number, fresh: true)
         refute response.isError
-        the_gate_answers(context)
+
+        the_gate_answers_and_passes_rerun(context, %{})
+
         what_the_agent_was_told(context)
 
         {:ok, view, _html} =

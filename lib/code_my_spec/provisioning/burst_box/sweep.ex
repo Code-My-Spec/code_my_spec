@@ -45,6 +45,8 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   alias CodeMySpec.Provisioning.Builder
   alias CodeMySpec.Provisioning.BurstBox.Lifecycle
   alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Provisioning.RunLock
+  alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.Users.Scope
 
   # The label every burst box carries, set at creation by whatever ensures
@@ -63,6 +65,17 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   # bootstrap took before that, and conveniently inside the one Hetzner
   # billing hour it is already paying for either way.
   @bootstrap_max_age_minutes 60
+
+  # The retired design made one `builder-<12 hex>` box per build and destroyed
+  # it afterwards; nothing reaps one that was left behind, so opt-in
+  # (`reap_legacy_builders: true`) sweeps them once they are well past any
+  # build. Two hours, past the longest build and the billing hour it is in.
+  @legacy_builder_name ~r/\Abuilder-[0-9a-f]{12}\z/
+  @legacy_builder_role_label "cms-builder-role"
+  @legacy_builder_max_age_minutes 120
+
+  @doc "The ownership label required before a legacy builder can be reaped."
+  def legacy_builder_role_label, do: @legacy_builder_role_label
 
   # Anonymous unless a caller asks for a name. A customer's own sweep and the
   # platform's own are two different `Scope`s with no business sharing one
@@ -102,7 +115,20 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
           [:not_due | :kept | :deleted | :reaped | {:error, term()}]
   def sweep_now(%Scope{} = scope, opts \\ []) do
     list = Keyword.get(opts, :list, &Hetzner.list_servers/1)
+    run_in_flight? = Keyword.get(opts, :run_in_flight?, &RunLock.any_in_flight?/0)
+    setup_pending? = Keyword.get(opts, :setup_pending?, &ProvisioningPlan.server_setup_pending?/0)
 
+    # A run can be mid-step, or paused between steps before its server is ready.
+    # The latter must retain the builder that the server step adopts.
+    if run_in_flight?.() or setup_pending?.() do
+      Logger.info("[BurstBox.Sweep] provisioning still needs the burst box — skipping this sweep")
+      []
+    else
+      sweep_servers(scope, list, opts)
+    end
+  end
+
+  defp sweep_servers(scope, list, opts) do
     case list.(scope) do
       {:ok, servers} ->
         burst = servers |> Enum.filter(&burst_box?/1) |> Enum.map(&safe_check(scope, &1, opts))
@@ -112,11 +138,49 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
           |> Enum.filter(&bootstrap_box?/1)
           |> Enum.map(&safe_reap_bootstrap(scope, &1, opts))
 
-        burst ++ bootstrap
+        legacy =
+          if Keyword.get(opts, :reap_legacy_builders, false) do
+            servers
+            |> Enum.filter(&legacy_builder?/1)
+            |> Enum.map(&safe_reap_legacy_builder(scope, &1, opts))
+          else
+            []
+          end
+
+        burst ++ bootstrap ++ legacy
 
       {:error, reason} ->
         Logger.error("[BurstBox.Sweep] could not list servers: #{inspect(reason)}")
         []
+    end
+  end
+
+  defp safe_reap_legacy_builder(scope, server, opts) do
+    reap_legacy_builder(scope, server, opts)
+  rescue
+    e ->
+      Logger.error(
+        "[BurstBox.Sweep] checking legacy builder #{inspect(server["name"])} raised: " <>
+          Exception.format(:error, e, __STACKTRACE__)
+      )
+
+      {:error, e}
+  end
+
+  # Age is the only signal: these boxes were one-per-build and are never
+  # reused, so one past `@legacy_builder_max_age_minutes` is a leftover of a
+  # build that died before its own cleanup, not a build still running.
+  defp reap_legacy_builder(scope, server, opts) do
+    max_age =
+      Keyword.get(opts, :legacy_builder_max_age_minutes, @legacy_builder_max_age_minutes)
+
+    if older_than?(server, max_age, opts) do
+      case destroy_bootstrap(scope, server, opts, :legacy_builder) do
+        :reaped -> :reaped
+        {:error, _} = error -> error
+      end
+    else
+      :not_due
     end
   end
 
@@ -186,9 +250,13 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   end
 
   defp stale_bootstrap?(server, opts) do
-    now = Keyword.get(opts, :now, &DateTime.utc_now/0).()
     max_age = Keyword.get(opts, :bootstrap_max_age_minutes, @bootstrap_max_age_minutes)
-    cutoff = DateTime.add(now, -max_age * 60, :second)
+    older_than?(server, max_age, opts)
+  end
+
+  defp older_than?(server, max_age_minutes, opts) do
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0).()
+    cutoff = DateTime.add(now, -max_age_minutes * 60, :second)
 
     case DateTime.from_iso8601(to_string(server["created"] || "")) do
       {:ok, created, _} -> DateTime.compare(created, cutoff) == :lt
@@ -199,8 +267,28 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   defp server_id(%{"id" => id}), do: id
   defp server_id(%{"server" => %{"id" => id}}), do: id
 
-  defp burst_box?(server), do: Map.has_key?(labels(server), @role_label)
-  defp bootstrap_box?(server), do: Map.has_key?(labels(server), Builder.bootstrap_role_label())
+  defp burst_box?(server) do
+    Map.has_key?(labels(server), @role_label) and
+      server["name"] not in ["fuellytics", "fuellytics-prod"]
+  end
+
+  # Exactly `builder-` + 12 hex digits: the name the retired one-box-per-build
+  # design gave its servers. Anything else (`fuellytics-prod`, `builder-x`)
+  # never matches, and a box that carries a burst or bootstrap label is the
+  # other two paths' business, not this one's.
+  defp legacy_builder?(server) do
+    labels = labels(server)
+
+    Regex.match?(@legacy_builder_name, to_string(server["name"])) and
+      Map.has_key?(labels, @legacy_builder_role_label) and
+      not Map.has_key?(labels, @role_label) and
+      not Map.has_key?(labels, Builder.bootstrap_role_label())
+  end
+
+  defp bootstrap_box?(server) do
+    Map.has_key?(labels(server), Builder.bootstrap_role_label()) and
+      String.starts_with?(to_string(server["name"]), "cms-burst-bootstrap-")
+  end
 
   defp labels(%{"labels" => labels}) when is_map(labels), do: labels
   defp labels(%{"server" => server}), do: labels(server)

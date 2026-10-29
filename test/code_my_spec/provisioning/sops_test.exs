@@ -181,6 +181,37 @@ defmodule CodeMySpec.Provisioning.SopsTest do
     end
   end
 
+  # A harness copy's files are on another machine and it runs no commands. The
+  # in-memory context is the same shape: files with no local disk behind them.
+  describe "a copy whose files are not on this node" do
+    setup ctx do
+      {:ok, remote} = CodeMySpec.Support.InMemoryExecutionContext.create()
+      :ok = Sops.write_config(remote, %{"uat" => ctx.uat.pub, "prod" => ctx.prod.pub})
+      %{remote: remote}
+    end
+
+    test "gets ciphertext written back, and decrypts it", ctx do
+      :ok = Sops.put_secret(ctx.remote, "uat", "DATABASE_URL", "postgres://plain", ctx.uat.priv)
+
+      {:ok, stored} = ExecutionContexts.read_file(ctx.remote, Sops.env_file("uat"))
+      assert stored =~ "ENC["
+      refute stored =~ "postgres://plain"
+
+      assert {:ok, %{"DATABASE_URL" => "postgres://plain"}} =
+               Sops.decrypt(ctx.remote, "uat", ctx.uat.priv)
+
+      assert {:ok, []} = Sops.missing_secrets(ctx.remote, "uat", ctx.uat.priv, ["DATABASE_URL"])
+    end
+
+    test "keeps earlier secrets when another is set", ctx do
+      :ok = Sops.put_secret(ctx.remote, "prod", "A", "one", ctx.prod.priv)
+      :ok = Sops.put_secret(ctx.remote, "prod", "B", "two", ctx.prod.priv)
+
+      assert {:ok, %{"A" => "one", "B" => "two"}} =
+               Sops.decrypt(ctx.remote, "prod", ctx.prod.priv)
+    end
+  end
+
   describe "write_config/2" do
     test "maps each environment to its own recipient", ctx do
       {:ok, yaml} = ExecutionContexts.read_file(ctx.env, ".sops.yaml")

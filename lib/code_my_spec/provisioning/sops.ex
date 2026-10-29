@@ -225,8 +225,13 @@ defmodule CodeMySpec.Provisioning.Sops do
         ) :: :ok | error()
   def put_secret(env, environment, key, value, private_key)
       when is_binary(key) and is_binary(value) and is_binary(private_key) do
-    with :ok <- ensure_available(),
-         :ok <- ensure_file(env, environment) do
+    with :ok <- ensure_available() do
+      on_this_node(env, environment, :write_back, &set(&1, environment, key, value, private_key))
+    end
+  end
+
+  defp set(env, environment, key, value, private_key) do
+    with :ok <- ensure_file(env, environment) do
       args = ["set", env_file(environment), ~s(["#{key}"]), Jason.encode!(value)]
 
       case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
@@ -247,12 +252,16 @@ defmodule CodeMySpec.Provisioning.Sops do
           {:ok, %{String.t() => String.t()}} | error()
   def decrypt(env, environment, private_key) when is_binary(private_key) do
     with :ok <- ensure_available() do
-      args = ["decrypt", env_file(environment)]
+      on_this_node(env, environment, :read_only, &decrypt_here(&1, environment, private_key))
+    end
+  end
 
-      case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
-        {out, 0} -> {:ok, parse_dotenv(out)}
-        {out, status} -> {:error, {:sops_failed, status, out}}
-      end
+  defp decrypt_here(env, environment, private_key) do
+    args = ["decrypt", env_file(environment)]
+
+    case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
+      {out, 0} -> {:ok, parse_dotenv(out)}
+      {out, status} -> {:error, {:sops_failed, status, out}}
     end
   end
 
@@ -309,6 +318,57 @@ defmodule CodeMySpec.Provisioning.Sops do
   end
 
   ## Internals
+
+  # sops is a command, and a harness copy runs no commands: its files are on
+  # another machine. So sops runs here, over a temp mirror of `.sops.yaml` and
+  # the environment's file, and only the encrypted result is written back.
+  # The plaintext stays an argument, as on a local copy.
+  defp on_this_node(env, environment, mode, fun) do
+    if files_elsewhere?(env),
+      do: mirrored(env, environment, mode, fun),
+      else: fun.(env)
+  end
+
+  # A harness copy's files are on another machine; an in-memory store with no
+  # directory behind it has none at all. Anything else runs sops in place.
+  defp files_elsewhere?(%{type: :harness}), do: true
+  defp files_elsewhere?(%{type: :memory, cwd: cwd}), do: not File.dir?(cwd || "")
+  defp files_elsewhere?(_env), do: false
+
+  defp mirrored(env, environment, mode, fun) do
+    dir = TempFile.owned_dir("cms-sops")
+    local = ExecutionContexts.ExecutionContext.new(:local, dir)
+    path = env_file(environment)
+
+    try do
+      with :ok <- mirror(env, local, @sops_config),
+           :ok <- mirror(env, local, path) do
+        fun.(local) |> write_back(mode, local, env, path)
+      end
+    after
+      File.rm_rf(dir)
+    end
+    |> unwrap_read(mode)
+  end
+
+  # `:read_only` results are `{:ok, map}` rather than `:ok`; carried through
+  # `write_back/5` untouched and unwrapped after.
+  defp write_back(:ok, :write_back, local, remote, path), do: mirror(local, remote, path)
+  defp write_back({:ok, _} = read, :read_only, _local, _remote, _path), do: {:read, read}
+  defp write_back(other, _mode, _local, _remote, _path), do: other
+
+  defp unwrap_read({:read, read}, :read_only), do: read
+  defp unwrap_read(result, _mode), do: result
+
+  defp mirror(from, to, path) do
+    if ExecutionContexts.file_exists?(from, path) do
+      with {:ok, contents} <- ExecutionContexts.read_file(from, path) do
+        ExecutionContexts.write_file(to, path, contents)
+      end
+    else
+      :ok
+    end
+  end
 
   defp ensure_available do
     if available?(), do: :ok, else: {:error, :sops_unavailable}

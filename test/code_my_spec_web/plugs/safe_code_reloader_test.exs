@@ -59,6 +59,37 @@ defmodule CodeMySpecWeb.Plugs.SafeCodeReloaderTest do
     assert log =~ "Phoenix.CodeReloader failed"
   end
 
+  test "an MCP call gets retry-later during a failed reload, then succeeds after recovery" do
+    {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+    opts =
+      SafeCodeReloader.init(
+        reloader: fn _endpoint, _opts ->
+          Agent.get_and_update(attempts, fn
+            0 -> {{:error, "lib/foo.ex:42: a real compile error"}, 1}
+            n -> {:ok, n + 1}
+          end)
+        end
+      )
+
+    request =
+      Plug.Test.conn(:post, "/mcp/harness")
+      |> Plug.Conn.put_private(:phoenix_endpoint, CodeMySpecWeb.Endpoint)
+
+    log =
+      capture_log(fn ->
+        response = SafeCodeReloader.call(request, opts)
+        assert response.status == 503
+        assert response.halted
+        assert Plug.Conn.get_resp_header(response, "retry-after") == ["1"]
+        assert response.resp_body == "Code reload in progress; retry shortly."
+        refute response.resp_body =~ "CompileError"
+      end)
+
+    assert log =~ "lib/foo.ex:42: a real compile error"
+    assert SafeCodeReloader.call(request, opts) == request
+  end
+
   test "a genuine compile error still halts with its own 500, unchanged" do
     opts =
       SafeCodeReloader.init(

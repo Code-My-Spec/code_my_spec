@@ -4338,11 +4338,17 @@ defmodule CodeMySpecSpex.Fixtures do
   deliberately, since at warning it emitted 2,190 lines in one suite run.
   """
   def capture_log_at(level, fun) when is_function(fun, 0) do
+    {_result, log} = with_log_at(level, fun)
+    log
+  end
+
+  @doc "Capture the result of a function together with its log at the requested level."
+  def with_log_at(level, fun) when is_function(fun, 0) do
     previous_level = Logger.level()
     Logger.configure(level: level)
 
     try do
-      ExUnit.CaptureLog.capture_log(fun)
+      ExUnit.CaptureLog.with_log(fun)
     after
       Logger.configure(level: previous_level)
     end
@@ -7253,39 +7259,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
   def promotion_failure_paths(gate) do
     Process.get({:promotion_failure_paths, gate.working_copy_id}, [])
-  end
-
-  @doc "Mark a test for same-commit passing evidence before the gate's failing run."
-  def confirmed_promotion_flake(scope, file) do
-    Process.put({:promotion_confirmed_flake, scope.active_project_id}, file)
-    :ok
-  end
-
-  def prepare_promotion_flake(scope, gate, commit) do
-    case Process.get({:promotion_confirmed_flake, scope.active_project_id}) do
-      nil ->
-        :ok
-
-      file ->
-        now = DateTime.utc_now()
-        before_gate = DateTime.add(now, -60, :second)
-        source = if String.starts_with?(file, "test/spex/"), do: "spex", else: "exunit"
-
-        CodeMySpec.Repo.insert!(%CodeMySpec.Analysis.Run{
-          project_id: scope.active_project_id,
-          working_copy_id: gate.working_copy_id,
-          source: source,
-          kind: :full,
-          status: :completed,
-          completed_commit: commit,
-          findings: %{"failures" => []},
-          started_at: before_gate,
-          began_at: before_gate,
-          finished_at: now
-        })
-
-        :ok
-    end
   end
 
   @doc "Record a published story as the premise for post-landing timing checks."

@@ -10,6 +10,7 @@ defmodule CmsHarness.Web.HealthController do
   use Phoenix.Controller, formats: [:json]
 
   alias ClientUtils.Harness.Onboarding
+  alias CmsHarness.Authorization
   alias CmsHarness.Channel
   alias CmsHarness.Config
   alias CmsHarness.Project.Watcher
@@ -54,6 +55,7 @@ defmodule CmsHarness.Web.HealthController do
       server_url: Config.server_url(),
       device_id: CmsHarness.Device.recorded_id(),
       credential: match?({:ok, _}, Config.credential()),
+      authorization: Authorization.status(),
       projects: projects,
       # Explicit, so "serving nothing" is never read off a 200 as fine.
       serving: length(projects),
