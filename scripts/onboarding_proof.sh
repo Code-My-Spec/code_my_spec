@@ -23,12 +23,14 @@ fi
 proof_home=$(cd "$proof_home" && pwd -P)
 claude_bin=${CMS_PROOF_CLAUDE_BIN:-$(command -v claude || true)}
 [[ -x $claude_bin ]] || fail 'Claude Code executable is missing'
+python_bin=${CMS_PROOF_PYTHON_BIN:-$(command -v python3 || true)}
+[[ -x $python_bin ]] || fail 'Python 3 is required for the proof driver'
 source_head=$(git -C "$source" rev-parse HEAD) || fail 'cannot read source commit'
 # The clean child receives only the explicit proof configuration. Its PATH
 # excludes the operator's asdf, mise, Homebrew and user-level installations.
 if [[ ${CMS_PROOF_CHILD:-0} != 1 ]]; then
   exec env -i HOME="$proof_home" PATH='/usr/bin:/bin' \
-    CMS_PROOF_CHILD=1 CMS_PROOF_CLAUDE_BIN="$claude_bin" \
+    CMS_PROOF_CHILD=1 CMS_PROOF_CLAUDE_BIN="$claude_bin" CMS_PROOF_PYTHON_BIN="$python_bin" \
     CMS_PROOF_EMAIL="$CMS_PROOF_EMAIL" CMS_PROOF_PASSWORD_FILE="$CMS_PROOF_PASSWORD_FILE" \
     CMS_PROOF_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" CMS_PROOF_TIMEOUT="${CMS_PROOF_TIMEOUT:-900}" \
     CMS_PROOF_SOURCE_HEAD="$source_head" CMS_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" \
@@ -79,8 +81,7 @@ fi
 [[ $server =~ ^https?://[^/]+ ]] || fail 'clone has no server_url and CMS_PROOF_SERVER_URL was not set'
 export CMS_PROOF_SERVER_URL=$server CMS_PROOF_USER_CODE=$user_code
 # Pass the password through stdin to Python, never through a process argument.
-command -v python3 >/dev/null 2>&1 || fail 'Python 3 is required for the test approval request'
-if ! python3 -c 'import json,os,sys,urllib.request; p=sys.stdin.read().strip(); body=json.dumps({"email":os.environ["CMS_PROOF_EMAIL"],"password":p,"user_code":os.environ["CMS_PROOF_USER_CODE"]}).encode(); req=urllib.request.Request(os.environ["CMS_PROOF_SERVER_URL"].rstrip("/")+"/dev/device-approvals",body,{"Content-Type":"application/json"}); response=urllib.request.urlopen(req,timeout=20); assert json.load(response)["approved"] is True' <"$CMS_PROOF_PASSWORD_FILE" >"$HOME/logs/approval.log" 2>&1; then
+if ! "$python_bin" -c 'import json,os,sys,urllib.request; p=sys.stdin.read().strip(); body=json.dumps({"email":os.environ["CMS_PROOF_EMAIL"],"password":p,"user_code":os.environ["CMS_PROOF_USER_CODE"]}).encode(); req=urllib.request.Request(os.environ["CMS_PROOF_SERVER_URL"].rstrip("/")+"/dev/device-approvals",body,{"Content-Type":"application/json"}); response=urllib.request.urlopen(req,timeout=20); assert json.load(response)["approved"] is True' <"$CMS_PROOF_PASSWORD_FILE" >"$HOME/logs/approval.log" 2>&1; then
   fail 'dev server refused device approval (see logs/approval.log)'
 fi
 unset CMS_PROOF_USER_CODE
@@ -93,6 +94,10 @@ while (( SECONDS < deadline )); do
 done
 curl -fsS --max-time 2 http://localhost:4004/health >"$HOME/logs/health.json" 2>&1 || fail 'timed out waiting for harness health'
 [[ -s .cms_harness.json ]] || fail 'harness is healthy but onboarding record is missing'
+# The plugin's MCP header needs the ID issued during device onboarding.
+CMS_HARNESS_ID=$("$python_bin" -c 'import json; record=json.load(open(".cms_harness.json")); print(record.get("working_copy_id") or record.get("harness_id") or "")')
+[[ -n $CMS_HARNESS_ID ]] || fail 'onboarding record has no harness ID'
+export CMS_HARNESS_ID
 
 step=claude_init
 # Read the token only at invocation time. No xtrace and no token-bearing log.
