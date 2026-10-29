@@ -31,8 +31,8 @@ defmodule CodeMySpecWeb.DeviceAuthorizationController do
         json(conn, %{
           device_code: grant.device_code,
           user_code: grant.user_code,
-          verification_uri: verification_uri(),
-          verification_uri_complete: verification_uri_complete(grant.user_code),
+          verification_uri: verification_uri(conn),
+          verification_uri_complete: verification_uri_complete(conn, grant.user_code),
           expires_in: DateTime.diff(grant.expires_at, DateTime.utc_now()),
           interval: grant.interval
         })
@@ -143,8 +143,15 @@ defmodule CodeMySpecWeb.DeviceAuthorizationController do
   defp decision_error(:already_decided), do: "That code was already used."
   defp decision_error(_other), do: "Something went wrong. Try again."
 
-  defp verification_uri, do: CodeMySpecWeb.Endpoint.url() <> "/oauth/device"
+  defp verification_uri(conn) do
+    URI.to_string(%URI{
+      scheme: Atom.to_string(conn.scheme),
+      host: conn.host,
+      port: conn.port,
+      path: ~p"/oauth/device"
+    })
+  end
 
-  defp verification_uri_complete(user_code),
-    do: verification_uri() <> "?" <> URI.encode_query(%{"user_code" => user_code})
+  defp verification_uri_complete(conn, user_code),
+    do: verification_uri(conn) <> "?" <> URI.encode_query(%{"user_code" => user_code})
 end

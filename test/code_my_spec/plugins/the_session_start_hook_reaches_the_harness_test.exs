@@ -16,7 +16,7 @@ defmodule CodeMySpec.Plugins.TheSessionStartHookReachesTheHarnessTest do
     assert hook["type"] == "command"
 
     assert hook["command"] ==
-             ~s(node "${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.cjs" session-start)
+             ~s(python3 "${CLAUDE_PLUGIN_ROOT}/hooks/post-hook.py" session-start)
   end
 
   test "command hooks post the original payload to the configured port and preserve the response" do

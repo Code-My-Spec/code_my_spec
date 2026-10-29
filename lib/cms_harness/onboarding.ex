@@ -281,6 +281,14 @@ defmodule CmsHarness.Onboarding do
   """
   @spec start_local_repo() :: :ok | {:error, term()}
   def start_local_repo do
+    if Application.get_env(:code_my_spec, :env) == :harness do
+      {:error, :harness_has_no_local_repo}
+    else
+      start_configured_local_repo()
+    end
+  end
+
+  defp start_configured_local_repo do
     Application.ensure_all_started(:postgrex)
     Application.ensure_all_started(:ecto_sql)
     Application.ensure_all_started(:cloak)

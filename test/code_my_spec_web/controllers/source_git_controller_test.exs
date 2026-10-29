@@ -48,6 +48,33 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
     refute response.resp_body =~ context.integration.access_token
   end
 
+  test "proxies a member project's code when the device has no active account", context do
+    Req.Test.stub(SourceGitController, fn upstream ->
+      assert upstream.request_path == "/example/private-code.git/info/refs"
+      Plug.Conn.resp(upstream, 200, <<0, 255, 1, 2>>)
+    end)
+
+    scope = %{
+      context.scope
+      | active_account_id: nil,
+        active_account: nil,
+        active_project_id: nil,
+        active_project: nil
+    }
+
+    conn = Plug.Test.conn(:get, "/") |> Plug.Conn.assign(:current_scope, scope)
+
+    response =
+      SourceGitController.refs(conn, %{
+        "project_id" => context.project.id,
+        "kind" => "code",
+        "service" => "git-upload-pack"
+      })
+
+    assert response.status == 200
+    assert response.resp_body == <<0, 255, 1, 2>>
+  end
+
   test "does not proxy another account's project", context do
     conn = Plug.Test.conn(:get, "/") |> Plug.Conn.assign(:current_scope, context.scope)
 
