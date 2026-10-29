@@ -131,15 +131,15 @@ defmodule CodeMySpec.Requirements.Topology do
   def depth_map(nodes, edges) do
     node_keys = MapSet.new(nodes, &key/1)
     valid = Enum.filter(edges, &both_endpoints_in?(&1, node_keys))
-    incoming = group_edges(valid, & &1.to, & &1.from)
+    waiting = valid |> Enum.frequencies_by(& &1.to)
+    sources = Enum.reject(node_keys, &Map.has_key?(waiting, &1))
+    initial = Map.new(node_keys, &{&1, if(Map.has_key?(waiting, &1), do: nil, else: 0)})
 
-    initial =
-      Map.new(nodes, fn n ->
-        k = key(n)
-        if Map.get(incoming, k, []) == [], do: {k, 0}, else: {k, nil}
-      end)
+    depths = resolve_depths(sources, {initial, %{}}, waiting, outgoing(valid))
 
-    resolve_depths(initial, incoming)
+    if Enum.any?(depths, fn {_k, d} -> is_nil(d) end),
+      do: finalize_unresolved(depths),
+      else: depths
   end
 
   defp both_endpoints_in?(%{from: f, to: t}, node_keys) do
@@ -175,11 +175,18 @@ defmodule CodeMySpec.Requirements.Topology do
   nodes?" without enumerating intermediate paths.
   """
   @spec descendants_of([Requirement.t()], [edge()]) :: MapSet.t(node_key())
-  def descendants_of(from_nodes, edges) do
+  def descendants_of(from_nodes, edges), do: descendants(from_nodes, outgoing(edges))
+
+  @doc "`descendants_of/2` over `outgoing/1`, for a caller asking many times."
+  @spec descendants([Requirement.t()], %{node_key() => [node_key()]}) :: MapSet.t(node_key())
+  def descendants(from_nodes, outgoing) do
     from_keys = MapSet.new(from_nodes, &key/1)
-    outgoing = group_edges(edges, & &1.from, & &1.to)
     bfs_descendants(MapSet.to_list(from_keys), MapSet.new(), outgoing)
   end
+
+  @doc "Each node's direct successors."
+  @spec outgoing([edge()]) :: %{node_key() => [node_key()]}
+  def outgoing(edges), do: group_edges(edges, & &1.from, & &1.to)
 
   defp bfs_descendants([], visited, _outgoing), do: visited
 
@@ -187,7 +194,7 @@ defmodule CodeMySpec.Requirements.Topology do
     successors = Map.get(outgoing, k, [])
     to_add = Enum.reject(successors, &MapSet.member?(visited, &1))
     new_visited = Enum.reduce(to_add, visited, &MapSet.put(&2, &1))
-    bfs_descendants(rest ++ to_add, new_visited, outgoing)
+    bfs_descendants(to_add ++ rest, new_visited, outgoing)
   end
 
   @doc """
@@ -373,32 +380,28 @@ defmodule CodeMySpec.Requirements.Topology do
     end)
   end
 
-  defp resolve_depths(depths, incoming) do
-    {updated, changed?} =
-      Enum.map_reduce(depths, false, &maybe_assign_depth(&1, &2, depths, incoming))
+  # In topological order: a node's depth is final once its last incoming edge
+  # is seen (`deepest` holds the running max until then). A node in or below a
+  # cycle never gets there and stays nil.
+  defp resolve_depths([], {depths, _deepest}, _waiting, _outgoing), do: depths
 
-    updated_map = Map.new(updated)
+  defp resolve_depths([k | rest], {depths, deepest}, waiting, outgoing) do
+    depth = Map.fetch!(depths, k) + 1
 
-    cond do
-      changed? -> resolve_depths(updated_map, incoming)
-      Enum.any?(updated_map, fn {_k, d} -> is_nil(d) end) -> finalize_unresolved(updated_map)
-      true -> updated_map
-    end
-  end
+    {ready, depths, deepest, waiting} =
+      outgoing
+      |> Map.get(k, [])
+      |> Enum.reduce({rest, depths, deepest, waiting}, fn succ,
+                                                          {ready, depths, deepest, waiting} ->
+        deepest = Map.update(deepest, succ, depth, &max(&1, depth))
+        waiting = Map.update!(waiting, succ, &(&1 - 1))
 
-  defp maybe_assign_depth({k, depth}, any_changed, _depths, _incoming) when not is_nil(depth) do
-    {{k, depth}, any_changed}
-  end
+        if waiting[succ] == 0,
+          do: {[succ | ready], Map.put(depths, succ, deepest[succ]), deepest, waiting},
+          else: {ready, depths, deepest, waiting}
+      end)
 
-  defp maybe_assign_depth({k, _nil}, any_changed, depths, incoming) do
-    sources = Map.get(incoming, k, [])
-    source_depths = Enum.map(sources, &Map.get(depths, &1))
-
-    if Enum.all?(source_depths, &(not is_nil(&1))) do
-      {{k, Enum.max(source_depths, fn -> -1 end) + 1}, true}
-    else
-      {{k, nil}, any_changed}
-    end
+    resolve_depths(ready, {depths, deepest}, waiting, outgoing)
   end
 
   # Cyclic nodes (those that never resolved) get sequential depths in

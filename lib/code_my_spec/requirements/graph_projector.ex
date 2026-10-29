@@ -54,7 +54,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   columns or rows the story zone spans.
   """
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Edges
@@ -95,8 +94,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   @doc """
-  Same as `project_graph/1` plus per-phase timings (compute + display edges +
-  layout + components query, in milliseconds).
+  Same as `project_graph/1` plus per-phase timings (read context + graph +
+  display edges + layout, in milliseconds).
   """
   @spec project_graph_with_metrics(Scope.t()) :: {map(), %{atom() => integer()}}
   def project_graph_with_metrics(%Scope{} = scope) do
@@ -104,11 +103,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     {us_display, graph_data} = :timer.tc(fn -> displayed(scope, graph_data) end)
     graph_data = Requirements.project_issue_graph(scope, graph_data)
 
-    {us_components, components} =
-      :timer.tc(fn -> Components.list_components_with_dependencies(scope) end)
-
     {us_layout, sigma_data} =
-      :timer.tc(fn -> project_layout(graph_data, components) end)
+      :timer.tc(fn -> project_layout(graph_data, graph_data.components) end)
 
     metrics =
       metrics
@@ -117,7 +113,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         Enum.count(graph_data.nodes, &(&1.entity_type == "issue" and &1.name == "assigned"))
       )
       |> Map.put(:display_edges_ms, div(us_display, 1000))
-      |> Map.put(:components_query_ms, div(us_components, 1000))
       |> Map.put(:layout_ms, div(us_layout, 1000))
 
     {sigma_data, metrics}
@@ -137,7 +132,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     # Topology facts (no name lookups, no template reads).
     topo = build_topo(nodes, edges)
     cross_sinks = Topology.cross_entity_sinks(nodes, edges) |> MapSet.new(&node_key/1)
-    component_descendants = Topology.descendants_of(comp_nodes, edges)
+    component_descendants = Topology.descendants(comp_nodes, topo.outgoing)
 
     sorted_project = sort_by_depth(project_nodes, topo)
 
@@ -591,12 +586,18 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     %{graph | edges: edges}
   end
 
+  # Asked once per context, so indexed once per render.
   defp build_topo(nodes, edges) do
+    fan_out_keys = Topology.fan_out_keys(nodes, edges)
+
     %{
-      nodes: nodes,
-      edges: edges,
+      outgoing: Topology.outgoing(edges),
       depth: Topology.depth_map(nodes, edges),
-      fan_out_keys: Topology.fan_out_keys(nodes, edges)
+      fan_out_keys: fan_out_keys,
+      fan_outs_by_entity:
+        nodes
+        |> Enum.filter(&MapSet.member?(fan_out_keys, node_key(&1)))
+        |> Enum.group_by(& &1.entity_id)
     }
   end
 
@@ -946,13 +947,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     {spec_reqs, impl_reqs}
   end
 
-  defp fan_out_nodes_by_depth(parent_id, topo) do
-    topo.nodes
-    |> Enum.filter(fn n ->
-      n.entity_id == parent_id and MapSet.member?(topo.fan_out_keys, node_key(n))
-    end)
-    |> sort_by_depth(topo)
-  end
+  defp fan_out_nodes_by_depth(parent_id, topo),
+    do: topo.fan_outs_by_entity |> Map.get(parent_id, []) |> sort_by_depth(topo)
 
   # Current layout supports exactly two fan-out points per context
   # (spec phase + impl phase bands). If a template grows a third
@@ -961,12 +957,12 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   defp phase_descendant_sets([], _topo), do: {MapSet.new(), MapSet.new()}
 
   defp phase_descendant_sets([first], topo) do
-    {Topology.descendants_of([first], topo.edges), MapSet.new()}
+    {Topology.descendants([first], topo.outgoing), MapSet.new()}
   end
 
   defp phase_descendant_sets([first, second], topo) do
-    first_set = Topology.descendants_of([first], topo.edges)
-    second_set = Topology.descendants_of([second], topo.edges)
+    first_set = Topology.descendants([first], topo.outgoing)
+    second_set = Topology.descendants([second], topo.outgoing)
     {MapSet.difference(first_set, second_set), second_set}
   end
 

@@ -84,11 +84,7 @@ defmodule CodeMySpec.Requirements.Projection do
   """
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
   def load(%Scope{active_project_id: project_id} = scope, ctx) do
-    nodes =
-      Node
-      |> project_rows(project_id, vantage(scope), ctx)
-      |> Enum.map(&rehydrate(&1, ctx))
-      |> Enum.reject(&is_nil/1)
+    nodes = Node |> project_rows(project_id, vantage(scope), ctx) |> rehydrate_all(ctx)
 
     {nodes, edges_for(project_id, nodes)}
   end
@@ -118,7 +114,7 @@ defmodule CodeMySpec.Requirements.Projection do
       |> Enum.filter(&(Map.get(copy_of, &1.story_id) == &1.working_copy_id))
 
     ctx = %{stories: stories, components_by_id: %{}}
-    nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
+    nodes = rehydrate_all(rows, ctx)
     {nodes, edges_for(hd(stories).project_id, nodes)}
   end
 
@@ -207,31 +203,49 @@ defmodule CodeMySpec.Requirements.Projection do
   defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
   defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 
-  defp rehydrate(row, ctx) do
-    with {:ok, entity_type, entity} <- entity_for(row, ctx),
-         %{} = definition <- definition_for(row, entity, row.name) do
-      %Requirement{
-        entity_type: entity_type,
-        entity_id: entity_id(row, entity_type),
-        entity_name: entity_name(entity),
-        name: row.name,
-        description: definition.description,
-        satisfied: row.satisfied,
-        satisfied_by: definition.satisfied_by,
-        scope: definition.scope || :local,
-        execution_type: definition.execution_type || :main_agent,
-        validation_type: definition.validation_type || :automatic,
-        prerequisites: definition.prerequisites || [],
-        orchestrated_by: definition.orchestrated_by,
-        render_command_always?: definition.render_command_always? || false,
-        role: definition.role,
-        details: row.details || %{},
-        checked_at: row.checked_at,
-        inputs_fingerprint: row.inputs_fingerprint
-      }
-      |> with_parent(entity_type, entity, definition, ctx)
+  # Entities indexed by id once, and each definition set built once per read:
+  # the registry builds definitions on every call, and a read has thousands of
+  # rows.
+  defp rehydrate_all(rows, ctx) do
+    ix =
+      Map.merge(ctx, %{
+        stories_by_id: Map.new(ctx.stories, &{&1.id, &1}),
+        issues_by_id: ctx |> Map.get(:story_issues, []) |> Map.new(&{&1.id, &1})
+      })
+
+    {nodes, _definitions} = Enum.map_reduce(rows, %{}, &rehydrate(&1, ix, &2))
+    Enum.reject(nodes, &is_nil/1)
+  end
+
+  defp rehydrate(row, ix, definitions) do
+    with {:ok, entity_type, entity} <- entity_for(row, ix),
+         {%{} = definition, definitions} <- definition_for(row, entity, definitions) do
+      node =
+        %Requirement{
+          entity_type: entity_type,
+          entity_id: entity_id(row, entity_type),
+          entity_name: entity_name(entity),
+          name: row.name,
+          description: definition.description,
+          satisfied: row.satisfied,
+          satisfied_by: definition.satisfied_by,
+          scope: definition.scope || :local,
+          execution_type: definition.execution_type || :main_agent,
+          validation_type: definition.validation_type || :automatic,
+          prerequisites: definition.prerequisites || [],
+          orchestrated_by: definition.orchestrated_by,
+          render_command_always?: definition.render_command_always? || false,
+          role: definition.role,
+          details: row.details || %{},
+          checked_at: row.checked_at,
+          inputs_fingerprint: row.inputs_fingerprint
+        }
+        |> with_parent(entity_type, entity, definition, ix)
+
+      {node, definitions}
     else
-      _ -> nil
+      :error -> {nil, definitions}
+      {nil, definitions} -> {nil, definitions}
     end
   end
 
@@ -239,50 +253,41 @@ defmodule CodeMySpec.Requirements.Projection do
   # as a computed node (`Requirement.orchestration_parent/3`): a child takes its
   # explicit parent; an orchestrated parent- or self-scope node self-parents, so
   # it groups under its own context. A nil parent renders as `## unknown`.
-  defp with_parent(%Requirement{} = req, "component", component, definition, ctx) do
+  defp with_parent(%Requirement{} = req, "component", component, definition, ix) do
     parent =
       if definition.node_scope == :child,
-        do: Map.get(ctx.components_by_id, Map.get(component, :parent_component_id))
+        do: Map.get(ix.components_by_id, Map.get(component, :parent_component_id))
 
     {parent_id, parent_name} = Requirement.orchestration_parent(definition, component, parent)
     %{req | parent_entity_id: parent_id, parent_entity_name: parent_name}
   end
 
-  defp with_parent(req, "issue", issue, _definition, ctx) do
-    story = Enum.find(ctx.stories, &(&1.id == issue.story_id))
+  defp with_parent(req, "issue", issue, _definition, ix) do
+    story = Map.get(ix.stories_by_id, issue.story_id)
     %{req | parent_entity_id: issue.story_id, parent_entity_name: story && story.title}
   end
 
-  defp with_parent(req, "story", story, _definition, _ctx),
+  defp with_parent(req, "story", story, _definition, _ix),
     do: %{req | parent_entity_id: story.project_id}
 
-  defp with_parent(req, _type, _entity, _definition, _ctx), do: req
+  defp with_parent(req, _type, _entity, _definition, _ix), do: req
 
-  defp entity_for(%Node{component_id: id}, ctx) when not is_nil(id) do
-    case Map.get(ctx.components_by_id, id) do
-      nil -> :error
-      component -> {:ok, "component", component}
-    end
-  end
+  defp entity_for(%Node{component_id: id}, ix) when not is_nil(id),
+    do: found("component", Map.get(ix.components_by_id, id))
 
-  defp entity_for(%Node{issue_id: id}, ctx) when not is_nil(id) do
-    case Enum.find(Map.get(ctx, :story_issues, []), &(&1.id == id)) do
-      nil -> :error
-      issue -> {:ok, "issue", issue}
-    end
-  end
+  defp entity_for(%Node{issue_id: id}, ix) when not is_nil(id),
+    do: found("issue", Map.get(ix.issues_by_id, id))
 
-  defp entity_for(%Node{story_id: id}, ctx) when not is_nil(id) do
-    case Enum.find(ctx.stories, &(&1.id == id)) do
-      nil -> :error
-      story -> {:ok, "story", story}
-    end
-  end
+  defp entity_for(%Node{story_id: id}, ix) when not is_nil(id),
+    do: found("story", Map.get(ix.stories_by_id, id))
 
-  defp entity_for(%Node{project_id: id}, _ctx) when not is_nil(id),
+  defp entity_for(%Node{project_id: id}, _ix) when not is_nil(id),
     do: {:ok, "project", %CodeMySpec.Projects.Project{id: id}}
 
-  defp entity_for(_row, _ctx), do: :error
+  defp entity_for(_row, _ix), do: :error
+
+  defp found(_entity_type, nil), do: :error
+  defp found(entity_type, entity), do: {:ok, entity_type, entity}
 
   # The row says which definition produced it, because the name alone does not.
   #
@@ -292,23 +297,36 @@ defmodule CodeMySpec.Requirements.Projection do
   #
   # `nil` columns mean a row written before they existed; the entity's own type
   # stands in until the row is next rewritten.
-  defp definition_for(row, entity, name) do
-    stored_definition(row, name) || own_definition(entity, name)
-  end
-
-  defp stored_definition(%Node{owner_component_type: type, node_scope: scope}, name)
+  defp definition_for(%Node{owner_component_type: type, node_scope: scope} = row, entity, defs)
        when is_binary(type) and is_binary(scope) do
-    type
-    |> Registry.get_requirements_for_type()
-    |> Enum.find(&(&1.name == name and to_string(&1.node_scope) == scope))
+    {set, defs} =
+      definitions(defs, {:type, type}, fn -> Registry.get_requirements_for_type(type) end)
+
+    case Enum.find(set, &(&1.name == row.name and to_string(&1.node_scope) == scope)) do
+      nil -> own_definition(row, entity, defs)
+      definition -> {definition, defs}
+    end
   end
 
-  defp stored_definition(_row, _name), do: nil
+  defp definition_for(row, entity, defs), do: own_definition(row, entity, defs)
 
-  defp own_definition(entity, name) do
-    entity
-    |> Registry.get_requirements()
-    |> Enum.find(&(&1.name == name))
+  defp own_definition(row, entity, defs) do
+    {set, defs} = definitions(defs, own_key(entity), fn -> Registry.get_requirements(entity) end)
+    {Enum.find(set, &(&1.name == row.name)), defs}
+  end
+
+  defp own_key(%{__struct__: struct, type: type}), do: {struct, type}
+  defp own_key(%{__struct__: struct}), do: struct
+
+  defp definitions(defs, key, build) do
+    case defs do
+      %{^key => set} ->
+        {set, defs}
+
+      _ ->
+        set = build.()
+        {set, Map.put(defs, key, set)}
+    end
   end
 
   defp entity_id(row, "component"), do: row.component_id

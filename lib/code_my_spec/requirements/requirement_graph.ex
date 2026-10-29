@@ -377,7 +377,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   @doc """
   `cached_graph/1` plus the actionable set, for readers that want both without
-  paying for the preload twice.
+  paying for the read context twice.
 
   Returns `{{nodes, edges}, actionable, computed_at}`.
 
@@ -400,9 +400,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       settle_owner(scope)
     end
 
-    with {:ok, ctx} <- Preloader.load(scope) do
-      serve_with_actionable(scope, ctx)
-    end
+    serve_with_actionable(scope, Preloader.read_context(scope))
   end
 
   @doc """
@@ -413,15 +411,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   "computed": reads compute nothing, and on a page that says whether the graph
   is current that word must not mislead.
   """
-  @spec cached_graph_with_actionable_metrics(Scope.t()) ::
-          {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
+  @spec cached_graph_with_actionable_metrics(Scope.t()) :: {map(), map()}
   def cached_graph_with_actionable_metrics(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
     # Settle, like every other read, or the page renders a graph one write behind.
     settle_owner(scope)
 
-    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
+    {us_preload, ctx} = :timer.tc(fn -> Preloader.read_context(scope) end)
 
     {us_graph, {{nodes, edges}, actionable, computed_at}} =
       :timer.tc(fn -> serve_with_actionable(scope, ctx) end)
@@ -435,7 +432,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       served_from: if(computed_at, do: "cache", else: "empty")
     }
 
-    {{nodes, edges, actionable}, metrics}
+    {%{nodes: nodes, edges: edges, actionable: actionable, components: ctx.components}, metrics}
   end
 
   # A read answers from the rows; it never re-derives what nobody announced, or
@@ -444,8 +441,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp serve_with_actionable(scope, ctx) do
     {nodes, edges} = Projection.load(scope, ctx)
 
-    # The un-enriched ctx, as in `next_actionable/1`: `actionable_from/3` reads
-    # `ctx.components` and `ctx.stories`, both of which the preloader supplies.
+    # `Preloader.read_context/1` is enough: `Projection.load/2` reads the shape
+    # and `actionable_from/3` reads `ctx.components_by_id` and `ctx.stories`.
     {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(nodes)}
   end
 
