@@ -1249,7 +1249,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     tell_durably(
       scope,
       entry,
-      "Your promotion of #{subject(entry)} was ejected from the queue and nothing of it " <>
+      "Your promotion of #{subject(entry)} was taken out of the queue and nothing of it " <>
         "landed: #{reason}"
     )
   end

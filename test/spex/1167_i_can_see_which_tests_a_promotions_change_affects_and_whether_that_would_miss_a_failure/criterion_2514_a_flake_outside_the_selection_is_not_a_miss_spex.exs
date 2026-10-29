@@ -47,6 +47,7 @@ defmodule CodeMySpecSpex.Story1167.Criterion2514Spex do
       end
 
       given_ "sync_path_test.exs fails in the full run", context do
+        Fixtures.fail_full_promotion_run(context.gate, @flake_test)
         {:ok, context}
       end
 
@@ -55,16 +56,7 @@ defmodule CodeMySpecSpex.Story1167.Criterion2514Spex do
         response = promote(context, context.story.number, fresh: true)
         refute response.isError
 
-        the_gate_answers_and_passes_rerun(context, %{
-          "exunit" => [
-            %{
-              "file" => @flake_test,
-              "line" => 1,
-              "name" => "test sync path",
-              "message" => "test failure"
-            }
-          ]
-        })
+        the_gate_answers_and_passes_rerun(context, %{})
 
         what_the_agent_was_told(context)
 
