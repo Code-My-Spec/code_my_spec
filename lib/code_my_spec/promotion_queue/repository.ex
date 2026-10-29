@@ -192,6 +192,16 @@ defmodule CodeMySpec.PromotionQueue.Repository do
     )
   end
 
+  @doc "Candidates whose gate was active when its worker exited."
+  def gating(project_id) do
+    Repo.all(
+      from(e in Entry,
+        where: e.project_id == ^project_id and e.status == :gating,
+        order_by: [asc: e.inserted_at, asc: e.id]
+      )
+    )
+  end
+
   @doc "1 for the candidate at the front, counting the ones being gated."
   @spec position(Entry.t()) :: pos_integer()
   def position(%Entry{project_id: project_id, inserted_at: inserted_at}) do
