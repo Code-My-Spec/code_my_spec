@@ -56,7 +56,9 @@ defmodule CodeMySpec.Provisioning.Tools.AdoptRepository do
     `push/3` already supports.
 
     Only pushes what is already committed — `ensure_commit/1` stages and
-    commits only when the checkout has no commit at all yet. Uncommitted local
+    commits only when the checkout has no commit at all yet, and the one other
+    commit this can make (`commit_owner_patch/1`) touches only the generated CI
+    workflow file, explicitly, never a broad `add -A`. Uncommitted local
     changes and untracked files in the working tree are not staged, committed,
     or pushed as a side effect of adopting.
 
