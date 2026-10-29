@@ -8,8 +8,8 @@ if [[ -f .gitmodules ]]; then
 fi
 
 if ! command -v mix >/dev/null 2>&1; then
-  echo 'Elixir Mix is required. Install Elixir, then rerun bash scripts/start-harness.' >&2
-  exit 1
+  mix_bin=$(bash scripts/install-harness-toolchain)
+  export PATH="$(dirname "$mix_bin"):${CMS_TOOLCHAIN_HOME:-$HOME/.codemyspec/toolchain}/otp-28.1/bin:$PATH"
 fi
 
 server=${1:-${CMS_SERVER_URL:-}}

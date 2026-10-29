@@ -45,8 +45,8 @@ git clone --recurse-submodules "$source" "$clone" >"$HOME/logs/clone.log" 2>&1 |
 [[ ! -e $clone/.cms_harness.json ]] || fail 'clone already contains a harness credential'
 
 step=toolchain
-# This deliberately exercises the documented one-command source entry. A
-# missing Mix must fail here rather than be supplied from the operator's HOME.
+# Exercise the documented source entry with no operator toolchain on PATH.
+# It must install Mix inside this empty HOME before onboarding.
 cd "$clone"
 CMS_HARNESS_PORT=4004 CMS_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" bash scripts/start-harness >"$HOME/logs/harness.log" 2>&1 &
 harness_pid=$!
