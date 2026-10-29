@@ -16,9 +16,11 @@ defmodule CodeMySpec.Provisioning.HarnessScriptReadinessTest do
     @behaviour CodeMySpec.ExecutionContexts.HarnessTransport
 
     @impl true
-    def harness_fs_request(_id, "stat", %{"path" => path}, _timeout) do
-      if String.starts_with?(path, ".env"), do: {:error, :enoent}, else: {:ok, %{"size" => 0}}
-    end
+    def harness_fs_request(_id, "stat", %{"path" => ".env" <> _}, _timeout),
+      do: {:error, :enoent}
+
+    def harness_fs_request(_id, "stat", %{"path" => _path}, _timeout),
+      do: {:ok, %{"size" => 0}}
 
     def harness_fs_request(_id, _op, _payload, _timeout), do: {:error, :harness_unreachable}
   end
@@ -43,13 +45,7 @@ defmodule CodeMySpec.Provisioning.HarnessScriptReadinessTest do
     previous = Application.get_env(:code_my_spec, :harness_fs_transport)
     Application.put_env(:code_my_spec, :harness_fs_transport, HarnessFiles)
 
-    on_exit(fn ->
-      if previous do
-        Application.put_env(:code_my_spec, :harness_fs_transport, previous)
-      else
-        Application.delete_env(:code_my_spec, :harness_fs_transport)
-      end
-    end)
+    on_exit(fn -> restore_harness_transport(previous) end)
 
     harness = ExecutionContext.new(:harness, nil, ref: %{"harness_id" => Ecto.UUID.generate()})
     :ok = ExecutionContexts.unregister({:working_copy, scope.active_working_copy_id})
@@ -61,6 +57,12 @@ defmodule CodeMySpec.Provisioning.HarnessScriptReadinessTest do
     assert {:error, reason, []} = Steps.run(:backups, scope, environments: ["uat"])
     refute reason =~ "bin/backup is not present or not executable"
   end
+
+  defp restore_harness_transport(nil),
+    do: Application.delete_env(:code_my_spec, :harness_fs_transport)
+
+  defp restore_harness_transport(transport),
+    do: Application.put_env(:code_my_spec, :harness_fs_transport, transport)
 
   test "a local script without execute permission is still refused", %{scope: scope} do
     tmp = CodeMySpec.TempFile.owned_dir("local_script_readiness")
