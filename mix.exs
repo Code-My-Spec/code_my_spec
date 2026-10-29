@@ -192,6 +192,16 @@ defmodule CodeMySpec.MixProject do
       {:finch, "~> 0.23", override: true},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
+      # Traces to the box's OTel collector, only where OTEL_EXPORTER_OTLP_ENDPOINT
+      # is set (config/runtime.exs); same set as Metric Flow.
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry_exporter, "~> 1.8"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_bandit, "~> 0.2"},
+      {:opentelemetry_ecto, "~> 1.2"},
+      {:opentelemetry_oban, "~> 1.1"},
+      {:opentelemetry_logger_metadata, "~> 0.2"},
       {:gettext, "~> 0.26"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
