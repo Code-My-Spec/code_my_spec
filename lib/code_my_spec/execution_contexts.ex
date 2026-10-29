@@ -18,7 +18,7 @@ defmodule CodeMySpec.ExecutionContexts do
   See knowledge/infrastructure, "Execution contexts".
   """
 
-  use Boundary, top_level?: true, deps: [], exports: :all
+  use Boundary, top_level?: true, deps: [CodeMySpec.DurableRun], exports: :all
 
   alias CodeMySpec.ExecutionContexts.ExecutionContext
 

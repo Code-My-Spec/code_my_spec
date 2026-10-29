@@ -2,6 +2,7 @@ defmodule CodeMySpec.ExecutionContexts.Local do
   @moduledoc "Local filesystem environment implementation."
   @behaviour CodeMySpec.ExecutionContexts.ExecutionContextsBehaviour
 
+  alias CodeMySpec.DurableRun
   alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   @impl true
@@ -230,9 +231,61 @@ defmodule CodeMySpec.ExecutionContexts.Local do
         opts
       end
 
-    case System.cmd(command, args, opts) do
-      {output, 0} -> {clean_terminal_output(output), 0}
-      {output, exit_code} -> {clean_terminal_output(output), exit_code}
+    {output, exit_code} =
+      case Map.get(metadata, :durable_run) do
+        id when is_integer(id) -> durable_cmd(id, command, args, opts)
+        _ -> System.cmd(command, args, opts)
+      end
+
+    {clean_terminal_output(output), exit_code}
+  end
+
+  # A durable test must keep its output descriptor after this BEAM disappears.
+  # The shell execs the real command after redirecting both streams to a file,
+  # so the same OS pid can be verified and adopted by the next harness.
+  defp durable_cmd(id, command, args, opts) do
+    output_path = DurableRun.output_path(id)
+    File.write!(output_path, "")
+    executable = System.find_executable(command) || raise("command not found: #{command}")
+
+    shell =
+      "\"$@\" >\"$CMS_RUN_OUTPUT\" 2>&1; status=$?; printf '%s\\n' \"$status\" >\"$CMS_RUN_EXIT\"; exit \"$status\""
+
+    env =
+      [
+        {"CMS_RUN_OUTPUT", output_path},
+        {"CMS_RUN_EXIT", DurableRun.exit_path(id)} | Keyword.get(opts, :env, [])
+      ]
+      |> Enum.map(fn {key, value} ->
+        {String.to_charlist(key), if(is_nil(value), do: false, else: String.to_charlist(value))}
+      end)
+
+    port =
+      Port.open({:spawn_executable, ~c"/bin/sh"}, [
+        :binary,
+        :exit_status,
+        args: Enum.map(["-c", shell, "durable-run", executable | args], &String.to_charlist/1),
+        cd: opts[:cd] |> String.to_charlist(),
+        env: env
+      ])
+
+    {:os_pid, pid} = Port.info(port, :os_pid)
+    DurableRun.attach_pid(id, pid)
+    status = await_durable_exit(port)
+    output = File.read!(output_path)
+
+    case opts[:into] do
+      %{device: capture} -> IO.binwrite(capture, output)
+      _ -> :ok
+    end
+
+    {output, status}
+  end
+
+  defp await_durable_exit(port) do
+    receive do
+      {^port, {:exit_status, status}} -> status
+      {^port, {:data, _data}} -> await_durable_exit(port)
     end
   end
 
