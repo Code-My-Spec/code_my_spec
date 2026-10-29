@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1167.Criterion2513Spex do
         Fixtures.fail_full_promotion_run(context.gate, @selected_test)
         response = promote(context, context.story.number, fresh: true)
         refute response.isError
-        the_gate_answers(context)
+        the_gate_answers_and_fails_rerun(context, %{})
         what_the_agent_was_told(context)
 
         {:ok, view, _html} =

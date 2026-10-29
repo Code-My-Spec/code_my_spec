@@ -13,9 +13,11 @@ defmodule CmsHarness.Onboarding do
   """
 
   alias CmsHarness.Config
+  alias CmsHarness.Device
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
+  alias CodeMySpec.Auth.HarnessOAuth
   alias CodeMySpec.Projects
 
   @doc """
@@ -31,11 +33,11 @@ defmodule CmsHarness.Onboarding do
   in-process through `mint/2` gets both without a `mix` subprocess
   recompiling this checkout to ask it.
   """
-  @spec mint(String.t(), String.t() | nil) :: {:ok, String.t()} | {:error, String.t()}
-  def mint(root, project_id) do
+  @spec mint(String.t(), String.t() | nil, keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def mint(root, project_id, opts \\ []) do
     with {:ok, project} <- project_for(root, project_id),
-         credential = ensure_local_credential(project.id),
-         {:ok, token} <- token_for(credential),
+         credential = credential_for_mint(project.id, opts),
+         {:ok, token} <- token_for(credential, opts),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <-
            HarnessConfig.write(root, %{
@@ -77,15 +79,9 @@ defmodule CmsHarness.Onboarding do
            """
            No credential to mint a harness id for #{root} against #{Config.server_url()}.
 
-           A deploy key reaches exactly one project on exactly one server. This task
-           reads one from this machine's database, which only holds projects for a
-           CodeMySpec running here — so onboarding against anything else needs the
-           key passed in:
-
-             CMS_DEPLOY_KEY=<a key from that server> \\
-               mix cms.harness.onboard #{root} --project <that server's project id>
-
-           Generate one on that server's project page if it has none.
+           Run mix cms.harness.onboard #{root} --server-url #{Config.server_url()}
+           to authorize this machine with a device code. Open the verification URL
+           it prints and enter the code; no deploy key is needed.
            """}
         end
 
@@ -158,8 +154,8 @@ defmodule CmsHarness.Onboarding do
           Mix.shell().info([
             :yellow,
             "Not reading a deploy key from the local database: this is onboarding " <>
-              "against #{Config.server_url()}, whose projects are not in it. Export " <>
-              "CMS_DEPLOY_KEY with a key from that server if the mint is refused.",
+              "against #{Config.server_url()}, whose projects are not in it. " <>
+              "Device authorization will be offered if no credential exists.",
             :reset
           ])
         end
@@ -179,8 +175,67 @@ defmodule CmsHarness.Onboarding do
     "#{reason} Add a dev box on #{server}/app/devices and set its token as a network secret for #{host}. Use the bare token, with no 'Bearer ' prefix."
   end
 
-  defp token_for({:ok, key}), do: Token.access_token_for_key(key)
-  defp token_for(:none), do: Token.access_token()
+  # An interactive first boot authenticates with the server. It must not start
+  # this checkout's database merely to look for a legacy deploy key.
+  defp credential_for_mint(project_id, opts) do
+    if Keyword.get(opts, :authorize, false) and blank?(System.get_env("CMS_DEPLOY_KEY")) do
+      :none
+    else
+      ensure_local_credential(project_id)
+    end
+  end
+
+  defp token_for({:ok, key}, _opts), do: Token.access_token_for_key(key)
+
+  defp token_for(:none, opts) do
+    case Token.access_token() do
+      {:error, reason} when reason in [:no_credential, :authorization_required] ->
+        if Keyword.get(opts, :authorize, false) and not Config.dev_box?() do
+          authorize_device(opts)
+        else
+          {:error, reason}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp authorize_device(opts) do
+    server = Config.server_url()
+    oauth_opts = Application.get_env(:code_my_spec, HarnessOAuth, [])
+
+    with {:ok, grant} <- HarnessOAuth.begin_authorization(server, Device.ensure_id(), oauth_opts) do
+      if running_under_mix?() do
+        Mix.shell().info(
+          "Approve this harness: open #{grant.verification_uri} and enter #{grant.user_code}"
+        )
+      end
+
+      poll_device(server, grant, oauth_opts, Keyword.get(opts, :sleep, &Process.sleep/1))
+    end
+  end
+
+  defp poll_device(server, grant, oauth_opts, sleep) do
+    sleep.(grant.interval * 1_000)
+
+    case HarnessOAuth.poll(server, grant, oauth_opts) do
+      {:ok, token} ->
+        {:ok, token}
+
+      {:error, :authorization_pending} ->
+        poll_device(server, grant, oauth_opts, sleep)
+
+      {:error, :slow_down} ->
+        poll_device(server, %{grant | interval: grant.interval + 5}, oauth_opts, sleep)
+
+      {:error, :unreachable} ->
+        poll_device(server, %{grant | interval: grant.interval * 2}, oauth_opts, sleep)
+
+      error ->
+        error
+    end
+  end
 
   defp credential_key({:ok, key}), do: key
   defp credential_key(:none), do: nil

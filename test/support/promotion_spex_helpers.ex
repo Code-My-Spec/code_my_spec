@@ -368,7 +368,6 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     runs = gate_runs(context.gate_socket, sources)
     # Read once the runs are here: the batch is built before they are sent.
     head = head_of(context, context.gate_root)
-    :ok = Fixtures.prepare_promotion_flake(context.scope, context.gate, head)
 
     for %{"run_id" => id, "source" => source} <- runs do
       diagnostics =
@@ -395,6 +394,61 @@ defmodule CodeMySpecSpex.PromotionHelpers do
       assert_reply(ref, :ok, _, 10_000)
     end
 
+    context
+  end
+
+  @doc "Answer a failed full gate and its failed-test rerun."
+  def the_gate_answers_and_fails_rerun(context, findings) do
+    the_gate_answers(context, findings)
+    [%{"run_id" => id}] = gate_runs(context.gate_socket, ["exunit"])
+    head = head_of(context, context.gate_root)
+
+    diagnostics =
+      Enum.map(Fixtures.promotion_failure_paths(context.gate), fn file ->
+        %{"file" => file, "line" => 1, "severity" => "error", "message" => "test failure"}
+      end) ++ Map.get(findings, "exunit", [])
+
+    push(context.gate_socket, "analysis_started", %{
+      "run_id" => id,
+      "start_commit" => head,
+      "start_tree_dirty" => false
+    })
+
+    ref =
+      push(context.gate_socket, "analysis_result", %{
+        "run_id" => id,
+        "source" => "exunit",
+        "status" => "ok",
+        "completed_commit" => head,
+        "result" => raw_result("exunit", diagnostics)
+      })
+
+    assert_reply(ref, :ok, _, 10_000)
+    context
+  end
+
+  @doc "Answer a failed full gate and a passing targeted ExUnit rerun."
+  def the_gate_answers_and_passes_rerun(context, findings) do
+    the_gate_answers(context, findings)
+    [%{"run_id" => id}] = gate_runs(context.gate_socket, ["exunit"])
+    head = head_of(context, context.gate_root)
+
+    push(context.gate_socket, "analysis_started", %{
+      "run_id" => id,
+      "start_commit" => head,
+      "start_tree_dirty" => false
+    })
+
+    ref =
+      push(context.gate_socket, "analysis_result", %{
+        "run_id" => id,
+        "source" => "exunit",
+        "status" => "ok",
+        "completed_commit" => head,
+        "result" => raw_result("exunit", [])
+      })
+
+    assert_reply(ref, :ok, _, 10_000)
     context
   end
 

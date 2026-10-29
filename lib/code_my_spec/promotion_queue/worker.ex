@@ -20,7 +20,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Flakes, History, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Flakes, Run, RunsRepository}
   alias CodeMySpec.Analysis.ValidationHolds
   alias CodeMySpec.Projects
   alias CodeMySpec.Promotion
@@ -507,9 +507,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp gate(%{batch: batch} = state) do
     state = cancel_timer(state)
 
-    case failed_runs(batch) do
-      [] -> gate_runs(state)
-      failed -> could_not_run(state, failed)
+    if Map.has_key?(batch, :flake_reruns) do
+      finish_flake_reruns(state)
+    else
+      case failed_runs(batch) do
+        [] -> gate_runs(state)
+        failed -> could_not_run(state, failed)
+      end
     end
   end
 
@@ -625,13 +629,164 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp red(%{batch: batch} = state, reason) do
     problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
-    if problems == [] do
-      # No finding about the code: the gate could not run (an analyzer would
-      # not start, the tree was dirty).
-      could_not_gate(state, batch.entries, reason)
-    else
-      log_flake_classifications(batch)
-      eject_batch(state, findings(problems))
+    cond do
+      problems == [] ->
+        could_not_gate(state, batch.entries, reason)
+
+      rerunnable_test_failures?(batch, problems) ->
+        start_flake_reruns(state, problems)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(problems))
+    end
+  end
+
+  defp rerunnable_test_failures?(batch, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    length(gate_answers(batch)) == length(Run.sources()) and
+      Enum.all?(problems, &(&1.source_type == :test and &1.source in ~w(exunit spex))) and
+      Enum.all?(sources, fn source ->
+        case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+          %Run{kind: :full, findings: %{"failures" => [_ | _]}} -> true
+          _ -> false
+        end
+      end)
+  end
+
+  defp start_flake_reruns(%{batch: batch} = state, problems) do
+    sources = problems |> Enum.map(& &1.source) |> Enum.uniq()
+
+    result =
+      Enum.reduce_while(sources, %{}, fn source, reruns ->
+        with {:ok, targets} <- failed_test_targets(batch, source),
+             {:ok, :started, run_id} <-
+               Analysis.start_run(batch.scope, source, targets,
+                 requested_by: %{kind: "promotion_flake_rerun"}
+               ) do
+          {:cont, Map.put(reruns, source, {run_id, targets})}
+        else
+          other -> {:halt, {:error, {source, other}}}
+        end
+      end)
+
+    case result do
+      {:error, {source, failure}} ->
+        eject_batch(
+          state,
+          "the " <> source <> " failed-test rerun could not start: " <> inspect(failure)
+        )
+
+      reruns ->
+        batch = batch |> Map.put(:flake_reruns, reruns) |> Map.put(:flake_problems, problems)
+        {:noreply, recheck_later(%{state | batch: batch})}
+    end
+  end
+
+  defp failed_test_targets(batch, source) do
+    case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+      %Run{kind: :full, findings: %{"failures" => [_ | _] = failures}} ->
+        suffix = if source == "spex", do: "_spex.exs", else: "_test.exs"
+
+        if Enum.all?(failures, fn failure ->
+             file = failure["file"]
+             line = failure["line"]
+
+             is_binary(file) and String.starts_with?(file, "test/") and
+               String.ends_with?(file, suffix) and Path.type(file) == :relative and
+               ".." not in Path.split(file) and is_integer(line) and line > 0
+           end) do
+          targets =
+            failures |> Enum.map(&"#{&1["file"]}:#{&1["line"]}") |> Enum.uniq() |> Enum.sort()
+
+          {:ok, targets}
+        else
+          {:error, :unusable_failure_location}
+        end
+
+      _ ->
+        {:error, :missing_full_gate_failures}
+    end
+  end
+
+  defp finish_flake_reruns(%{batch: batch} = state) do
+    runs =
+      for {source, {run_id, targets}} <- batch.flake_reruns, into: %{} do
+        {source, {RunsRepository.get_run_in_project(batch.scope, run_id), targets}}
+      end
+
+    cond do
+      Enum.any?(runs, fn {_source, {run, _targets}} -> match?(%Run{status: :running}, run) end) ->
+        {:noreply, recheck_later(state)}
+
+      Enum.all?(runs, fn {source, {run, targets}} ->
+        flake_rerun_passed?(batch, source, run, targets)
+      end) ->
+        for {source, {run, _targets}} <- runs,
+            %Run{findings: %{"failures" => failures}} <-
+              [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+            failure <- failures do
+          Logger.info(
+            "[PromotionQueue] " <>
+              to_string(failure["file"]) <>
+              ": " <>
+              to_string(failure["name"]) <> " — confirmed flake; rerun=" <> to_string(run.id)
+          )
+        end
+
+        swept = gate_answers(batch)
+        state = %{state | batch: record_runs(batch, swept)}
+        assets_build(state, swept)
+
+      true ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(batch.flake_problems))
+    end
+  end
+
+  defp flake_rerun_passed?(batch, source, %Run{} = run, targets) do
+    run.working_copy_id == batch.gate.id and run.source == source and
+      run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
+      Run.at_commit?(run, batch.head) and run.exit_status == 0 and
+      Map.get(run.findings || %{}, "failures", []) == [] and
+      rerun_executed_tests?(source, run)
+  end
+
+  defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
+
+  defp passing_flake_rerun(batch, failure) do
+    source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
+
+    case Map.get(Map.get(batch, :flake_reruns, %{}), source) do
+      {run_id, targets} ->
+        run = RunsRepository.get_run_in_project(batch.scope, run_id)
+
+        if match?(%Run{status: :completed}, run) and
+             run.working_copy_id == batch.gate.id and run.source == source and
+             run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
+             Run.at_commit?(run, batch.head) and is_map(run.findings) and
+             rerun_executed_tests?(source, run) and
+             not Enum.any?(Map.get(run.findings, "failures", []), fn rerun_failure ->
+               rerun_failure["file"] == failure["file"] and
+                 rerun_failure["name"] == failure["name"]
+             end) do
+          run
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  defp rerun_executed_tests?("exunit", run) do
+    is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0
+  end
+
+  defp rerun_executed_tests?("spex", run) do
+    case Regex.run(~r/\b(\d+) tests?, \d+ failures?\b/, run.output || "") do
+      [_, count] -> String.to_integer(count) > 0
+      _ -> false
     end
   end
 
@@ -643,18 +798,21 @@ defmodule CodeMySpec.PromotionQueue.Worker do
             unrelated_candidate?: unrelated?
           ) do
       failure = result.failure
-      evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
 
-      label =
-        case result.classification do
-          :confirmed_flake -> "confirmed flake"
-          :suspected_flake -> "suspect"
-          :no_flake_evidence -> "not a flake"
-        end
+      case passing_flake_rerun(batch, failure) do
+        %Run{} = rerun ->
+          Logger.info(
+            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — confirmed flake; rerun=#{rerun.id}; evidence=#{rerun.id}"
+          )
 
-      Logger.info(
-        "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
-      )
+        nil ->
+          evidence = Enum.map_join(result.evidence, ",", &"#{&1.run_id}:#{&1.working_copy_id}")
+          label = if result.classification == :suspected_flake, do: "suspect", else: "not a flake"
+
+          Logger.info(
+            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
+          )
+      end
     end
   rescue
     error ->
@@ -743,7 +901,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
       tell(
         state.scope,
         entry,
-        "Your promotion of #{subject(entry)} is already on main " <>
+        "Your promotion of #{subject(entry)} has landed on main already " <>
           "(#{String.slice(head, 0, 12)}): there was nothing to gate or land."
       )
     end
@@ -1023,10 +1181,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           is_binary(failure["file"]) and is_binary(failure["name"]),
           do: failure
 
-    gate_history = History.list(batch.scope, working_copy_id: batch.gate.id)
-
-    classified = Enum.map(failures, &Flakes.classify_one(&1, batch.head, gate_history, []))
-
     entries =
       Enum.map(batch.entries, fn entry ->
         value = Map.put(timing(entry), "run_ids", ids)
@@ -1039,8 +1193,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
               changed = selection["changed_files"] || []
 
               misses =
-                for %{failure: failure, classification: classification} <- classified,
-                    failure["file"] not in selected and classification != :confirmed_flake,
+                for failure <- failures,
+                    failure["file"] not in selected and
+                      is_nil(passing_flake_rerun(batch, failure)),
                     do: %{
                       "file" => failure["file"],
                       "name" => failure["name"],
@@ -1048,7 +1203,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
                     }
 
               flakes =
-                for %{failure: failure, classification: :confirmed_flake} <- classified,
+                for failure <- failures,
+                    passing_flake_rerun(batch, failure),
                     do: failure["file"]
 
               selection =
@@ -1071,8 +1227,13 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp gate_answers(batch) do
     for source <- Run.sources(),
-        %Run{kind: :full, id: id} <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
-      %{run_id: id}
+        %Run{kind: :full} = run <- [Analysis.answer_at_commit(batch.scope, source, batch.head)] do
+      %{
+        source: source,
+        run_id: run.id,
+        finished_at: run.finished_at,
+        commit: run.completed_commit
+      }
     end
   end
 
