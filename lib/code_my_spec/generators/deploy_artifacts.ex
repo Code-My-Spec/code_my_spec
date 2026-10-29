@@ -10,7 +10,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   ## Where the content comes from
 
   `priv/knowledge/devops/hetzner-docker-deploy.md` — the stack this project
-  actually deploys on. The image is built in CI and pushed to the project's registry, Kamal pulls
+  actually deploys on. The burst-box builder builds the image at deploy time, and Kamal pulls
   it onto the host by commit SHA, and kamal-proxy terminates TLS and routes by
   hostname. Writing a plausible-looking Dockerfile from memory would produce a
   project that generates cleanly and fails on its first real deploy.
@@ -124,8 +124,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       `CodeMySpec.Provisioning.Registry.image/2` and is required by
       `generate/2`.
     * `:kamal_image` — kamal's `image:`, a bare repository path (kamal reads
-      the host from `registry.server`), where CI's `docker build -t` needs the
-      full reference. Required by `generate/2`.
+      the host from `registry.server`). The burst-box builder uses the full
+      reference when it builds and pushes. Required by `generate/2`.
     * `:prod_registry` / `:uat_registry` — per-environment registry hosts,
       since two environments may sit on two boxes. Each defaults to
       `:registry`.
@@ -144,7 +144,6 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
     [
       {"Dockerfile", dockerfile(app)},
-      {".github/workflows/build.yml", ci_workflow([prod_registry, uat_registry], kamal_image)},
       {"config/deploy.yml",
        kamal_config(app, kamal_image, host, "prod", prod_registry, telemetry_host)},
       {"config/deploy.uat.yml",
@@ -260,54 +259,6 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # and the deploy reports a failed traffic swap, naming the swap rather than
     # the thing that was wrong.
     CMD ["bin/boot"]
-    """
-  end
-
-  # Multi-arch: the box may be ARM (Hetzner's cax range) or amd64, and the
-  # wrong one fails at `docker run` with an error that names nothing useful.
-  defp ci_workflow(registries, repository) do
-    registry_hosts = registries |> Enum.uniq() |> Enum.map_join(", ", &~s("#{&1}"))
-
-    """
-    name: build
-
-    on:
-      push:
-        branches: [main]
-
-    jobs:
-      image:
-        runs-on: ubuntu-latest
-        permissions:
-          contents: read
-        strategy:
-          matrix:
-            registry: [#{registry_hosts}]
-
-        steps:
-          - uses: actions/checkout@v4
-
-          - uses: docker/setup-qemu-action@v3
-          - uses: docker/setup-buildx-action@v3
-
-          - uses: docker/login-action@v3
-            with:
-              registry: ${{ matrix.registry }}
-              username: ${{ secrets.CMS_REGISTRY_USERNAME }}
-              password: ${{ secrets.CMS_REGISTRY_PASSWORD }}
-
-          # Tagged by commit SHA, so what is running is traceable to a commit
-          # rather than to whenever `latest` was last pushed.
-          - uses: docker/build-push-action@v6
-            with:
-              context: .
-              platforms: linux/amd64,linux/arm64
-              push: true
-              tags: |
-                ${{ matrix.registry }}/#{repository}:${{ github.sha }}
-                ${{ matrix.registry }}/#{repository}:latest
-              cache-from: type=gha
-              cache-to: type=gha,mode=max
     """
   end
 

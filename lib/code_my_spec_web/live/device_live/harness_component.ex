@@ -120,6 +120,33 @@ defmodule CodeMySpecWeb.DeviceLive.HarnessComponent do
               Add a network secret for {@server_host} with the copied token as its value, without a Bearer prefix.
             </li>
           </ol>
+          <ol
+            :if={@new_box.device.provider == :codex_cloud}
+            data-test="codex-cloud-steps"
+            class="list-decimal pl-5 text-sm"
+          >
+            <li>Open a Codex cloud environment for this project's repository.</li>
+            <li>
+              Apply the environment settings and allowed hosts below, then run the installation
+              script in that environment's setup step.
+            </li>
+            <li>
+              Paste “Start or resume” into the cloud chat. When it displays an authorization link
+              and code, approve them in your browser and let the agent finish connecting.
+            </li>
+            <li>
+              Wait for the agent to confirm it is connected before giving it work. To continue
+              later, reopen the same cloud chat and paste “Start or resume” again.
+            </li>
+          </ol>
+          <p
+            :if={@new_box.device.provider == :codex_cloud}
+            data-test="codex-cloud-manual-resume"
+            class="text-sm"
+          >
+            Cloud work does not require your computer to stay open. CodeMySpec cannot wake this
+            chat automatically; return to the cloud chat when you want the agent to continue.
+          </p>
           <p :if={Map.get(@new_box, :show_token?, true)} class="text-sm">
             This is its token. It is shown once: copy it now, because it cannot be shown again.
           </p>

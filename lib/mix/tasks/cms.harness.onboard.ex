@@ -638,8 +638,32 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
 
     case Onboarding.onboard(root, opts) do
-      %{settings: {:ok, _path}} -> :ok
+      %{settings: {:ok, _path}} -> record_claude_port(env)
       %{settings: {:error, reason}} -> {:error, describe_settings_error(reason)}
+    end
+  end
+
+  defp record_claude_port(env) do
+    with {:ok, body} <- ExecutionContexts.read_file(env, @settings_file),
+         {:ok, settings} when is_map(settings) <- Jason.decode(body) do
+      port = System.get_env("CMS_HARNESS_PORT") || "4004"
+
+      settings =
+        Map.update(settings, "env", %{"CMS_HARNESS_PORT" => port}, fn vars ->
+          Map.put(vars, "CMS_HARNESS_PORT", port)
+        end)
+
+      case ExecutionContexts.write_file(
+             env,
+             @settings_file,
+             Jason.encode!(settings, pretty: true)
+           ) do
+        {:ok, _} -> :ok
+        :ok -> :ok
+        {:error, reason} -> {:error, describe_settings_error(reason)}
+      end
+    else
+      {:error, reason} -> {:error, describe_settings_error(reason)}
     end
   end
 

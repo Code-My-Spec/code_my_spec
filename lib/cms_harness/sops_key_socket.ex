@@ -4,8 +4,9 @@ defmodule CmsHarness.SopsKeySocket do
   Unix domain socket, and nowhere else — never HTTP, never a file (story
   1132).
 
-  The socket lives at `~/.codemyspec/run/key.sock`, in a `0700` directory
-  with the socket itself `0600`: Unix enforces both at `connect()`, so no
+  The socket normally lives at `~/.codemyspec/run/key.sock`. A deep HOME
+  uses a stable, short `/tmp/cms-sops-*` directory instead. The directory is
+  `0700` and the socket is `0600`: Unix enforces both at `connect()`, so no
   other user on the box can even reach the path. `cms sops-key`
   (`CmsHarness.Cli.SopsKey`) is the one client; `sops` runs it via
   `SOPS_AGE_KEY_CMD` and reads the key off its stdout.
@@ -28,7 +29,22 @@ defmodule CmsHarness.SopsKeySocket do
 
   @doc "The directory the socket lives in."
   @spec dir() :: Path.t()
-  def dir, do: Path.join(CmsHarness.Config.local_state_dir(), "run")
+  def dir do
+    state_dir = CmsHarness.Config.local_state_dir()
+    long_dir = Path.join(state_dir, "run")
+
+    if byte_size(Path.join(long_dir, "key.sock")) < 100 do
+      long_dir
+    else
+      # Unix socket paths are limited by sockaddr_un even when HOME is valid.
+      # Keep the private directory stable for both the harness and cms client.
+      # /tmp is short even on macOS, where TMPDIR can live under a long HOME.
+      digest =
+        :crypto.hash(:sha256, state_dir) |> Base.encode16(case: :lower) |> binary_part(0, 32)
+
+      Path.join("/tmp", "cms-sops-#{digest}")
+    end
+  end
 
   @doc """
   The socket path itself.
