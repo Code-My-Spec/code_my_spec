@@ -886,6 +886,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  # The rerun behind a "not a flake" verdict, so the line says what decided it.
+  defp rerun_note(batch, failure) do
+    source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
+
+    case Map.get(Map.get(batch, :flake_reruns, %{}), source) do
+      {run_id, _targets} -> "rerun=#{run_id} failed again"
+      _ -> "no rerun"
+    end
+  end
+
   defp passing_flake_rerun(batch, failure) do
     source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
 
@@ -959,7 +969,8 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           label = if result.classification == :suspected_flake, do: "suspect", else: "not a flake"
 
           Logger.info(
-            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; evidence=#{evidence}"
+            "[PromotionQueue] #{source} #{failure["file"]}: #{failure["name"]} — #{label}; " <>
+              "#{rerun_note(batch, failure)}; evidence=#{evidence}"
           )
       end
     end
