@@ -1,0 +1,101 @@
+defmodule CodeMySpec.Provisioning.RepositorySecrets do
+  @moduledoc "Writes encrypted environment secrets straight to the project's GitHub repository."
+
+  alias CodeMySpec.GitHub
+  alias CodeMySpec.ProjectSecrets
+  alias CodeMySpec.Provisioning.{Sops, Steps}
+  alias CodeMySpec.Users.Scope
+
+  @spec put(Scope.t(), String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, String.t()}
+  def put(%Scope{active_project: %{code_repo: repo} = project} = scope, environment, key, value)
+      when is_binary(environment) and is_binary(key) and is_binary(value) do
+    with :ok <- validate(environment, key, repo),
+         {:ok, owner, name} <- location(repo),
+         {:ok, private} <- private_key(scope, environment),
+         branch = project.development_branch || "main",
+         {:ok, %{content: config}} <- GitHub.get_file(scope, owner, name, ".sops.yaml", branch) do
+      write(scope, owner, name, branch, config, environment, key, value, private, 1)
+    else
+      {:error, :github_not_connected} ->
+        {:error, "Reconnect GitHub before writing secrets."}
+
+      {:error, :not_found} ->
+        {:error, "The repository has no .sops.yaml. Run secrets setup first."}
+
+      {:error, reason} when is_binary(reason) ->
+        {:error, reason}
+
+      {:error, _} ->
+        {:error, "Could not read the repository secrets configuration."}
+    end
+  end
+
+  def put(_scope, _environment, _key, _value),
+    do: {:error, "Project repository is not configured."}
+
+  defp write(scope, owner, name, branch, config, environment, key, value, private, retries) do
+    path = Sops.env_file(environment)
+
+    with {:ok, existing} <- current_file(scope, owner, name, path, branch),
+         {:ok, ciphertext} <-
+           Sops.set_repository_file(config, existing.content, environment, key, value, private) do
+      message = "Set #{key} in #{environment} secrets"
+
+      case GitHub.put_file(scope, owner, name, path, branch, ciphertext, message, existing.sha) do
+        {:ok, commit} ->
+          {:ok, %{environment: environment, key: key, file: path, commit: commit}}
+
+        {:error, :stale_file} when retries > 0 ->
+          write(scope, owner, name, branch, config, environment, key, value, private, retries - 1)
+
+        {:error, :stale_file} ->
+          {:error, "The secrets file changed concurrently. Try again."}
+
+        {:error, _} ->
+          {:error, "Could not commit the encrypted secrets file."}
+      end
+    else
+      {:error, :github_not_connected} -> {:error, "Reconnect GitHub before writing secrets."}
+      {:error, :invalid_file_content} -> {:error, "The repository secrets file is invalid."}
+      {:error, _} -> {:error, "Could not update the encrypted secrets file."}
+    end
+  end
+
+  defp current_file(scope, owner, name, path, branch) do
+    case GitHub.get_file(scope, owner, name, path, branch) do
+      {:ok, file} -> {:ok, file}
+      {:error, :not_found} -> {:ok, %{content: nil, sha: nil}}
+      other -> other
+    end
+  end
+
+  defp private_key(scope, environment) do
+    case ProjectSecrets.fetch_value(scope, Steps.age_key_name(environment)) do
+      {:ok, key} when is_binary(key) and key != "" -> {:ok, key}
+      _ -> {:error, "The #{environment} age key is missing. Run secrets setup first."}
+    end
+  end
+
+  defp validate(environment, key, repo) do
+    cond do
+      not is_binary(repo) or repo == "" -> {:error, "Project repository is not configured."}
+      not Regex.match?(~r/\A[a-z0-9_-]+\z/, environment) -> {:error, "Invalid environment."}
+      not Regex.match?(~r/\A[A-Za-z_][A-Za-z0-9_]*\z/, key) -> {:error, "Invalid secret name."}
+      true -> :ok
+    end
+  end
+
+  defp location(repo) do
+    case URI.parse(repo) do
+      %URI{host: "github.com", path: path} when is_binary(path) ->
+        case path |> String.trim_trailing(".git") |> String.split("/", trim: true) do
+          [owner, name] -> {:ok, owner, name}
+          _ -> {:error, "Project repository is not a GitHub repository."}
+        end
+
+      _ ->
+        {:error, "Project repository is not a GitHub repository."}
+    end
+  end
+end

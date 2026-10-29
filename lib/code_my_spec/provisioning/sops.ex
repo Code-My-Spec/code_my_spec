@@ -230,6 +230,31 @@ defmodule CodeMySpec.Provisioning.Sops do
     end
   end
 
+  @doc "Set a secret in a server-side mirror and return only encrypted bytes."
+  def set_repository_file(config, encrypted, environment, key, value, private_key) do
+    with :ok <- ensure_available() do
+      dir = TempFile.owned_dir("cms-sops-repository")
+      local = ExecutionContexts.ExecutionContext.new(:local, dir)
+      path = env_file(environment)
+
+      try do
+        with :ok <- ExecutionContexts.write_file(local, @sops_config, config),
+             :ok <- write_existing(local, path, encrypted),
+             :ok <- set(local, environment, key, value, private_key),
+             {:ok, ciphertext} <- ExecutionContexts.read_file(local, path) do
+          {:ok, ciphertext}
+        end
+      after
+        File.rm_rf(dir)
+      end
+    end
+  end
+
+  defp write_existing(_local, _path, nil), do: :ok
+
+  defp write_existing(local, path, encrypted),
+    do: ExecutionContexts.write_file(local, path, encrypted)
+
   defp set(env, environment, key, value, private_key) do
     with :ok <- ensure_file(env, environment) do
       args = ["set", env_file(environment), ~s(["#{key}"]), Jason.encode!(value)]

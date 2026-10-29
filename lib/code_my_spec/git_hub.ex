@@ -157,6 +157,57 @@ defmodule CodeMySpec.GitHub do
     end
   end
 
+  @doc "Read a file from a repository branch, including its blob SHA."
+  def get_file(%Scope{} = scope, owner, name, path, branch) do
+    with {:ok, token} <- get_auth(scope) do
+      encoded =
+        path
+        |> String.split("/")
+        |> Enum.map_join("/", fn segment -> URI.encode(segment, &URI.char_unreserved?/1) end)
+
+      case request(
+             :get,
+             "/repos/#{owner}/#{name}/contents/#{encoded}?ref=#{URI.encode_www_form(branch)}",
+             token,
+             []
+           ) do
+        {:ok, %{"type" => "file", "content" => content, "sha" => sha}} ->
+          case Base.decode64(content, ignore: :whitespace) do
+            {:ok, bytes} -> {:ok, %{content: bytes, sha: sha}}
+            :error -> {:error, :invalid_file_content}
+          end
+
+        {:error, {:github_error, 404, _}} ->
+          {:error, :not_found}
+
+        {:ok, _} ->
+          {:error, :invalid_file_content}
+
+        other ->
+          other
+      end
+    end
+  end
+
+  @doc "Commit a file to a repository branch, using the current blob SHA when replacing it."
+  def put_file(%Scope{} = scope, owner, name, path, branch, content, message, sha) do
+    with {:ok, token} <- get_auth(scope) do
+      encoded =
+        path
+        |> String.split("/")
+        |> Enum.map_join("/", fn segment -> URI.encode(segment, &URI.char_unreserved?/1) end)
+
+      body = %{message: message, content: Base.encode64(content), branch: branch}
+      body = if sha, do: Map.put(body, :sha, sha), else: body
+
+      case request(:put, "/repos/#{owner}/#{name}/contents/#{encoded}", token, json: body) do
+        {:ok, %{"commit" => %{"sha" => commit}}} -> {:ok, commit}
+        {:error, {:github_error, 409, _}} -> {:error, :stale_file}
+        other -> other
+      end
+    end
+  end
+
   # Private Helpers
 
   defp request(method, path, token, opts) do

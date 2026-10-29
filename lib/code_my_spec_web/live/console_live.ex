@@ -1358,7 +1358,7 @@ defmodule CodeMySpecWeb.ConsoleLive do
   def handle_event("put_secret", %{"secret" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    case Steps.put_secret(
+    case Steps.put_secret_in_repository(
            scope,
            params["environment"] || hd(socket.assigns.environments),
            String.trim(params["key"] || ""),
