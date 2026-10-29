@@ -1277,6 +1277,72 @@ defmodule CodeMySpec.PromotionQueueTest do
   # 2026-10-05, 08:41: the gate copy's harness restarted while its batch was
   # gating, and what it had been asked to run went with the connection. Its
   # rejoin asks the gate again, now, rather than at the next recheck.
+  test "a worker crash logs its application frame before a long exception" do
+    reason =
+      {%DBConnection.ConnectionError{message: String.duplicate("pool busy ", 100)},
+       [
+         {CodeMySpec.PromotionQueue.Repository, :gating, 1,
+          [file: ~c"lib/code_my_spec/promotion_queue/repository.ex", line: 198]}
+       ]}
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = Worker.terminate(reason, %{project_id: "project-1", phase: :gating})
+      end)
+
+    assert log =~ "project=project-1 phase=gating"
+    assert log =~ "repository.ex"
+    assert log =~ "line: 198"
+    assert byte_size(log) < 500
+  end
+
+  test "a worker crash resumes the same gate and keeps its analyzer run", ctx do
+    a = candidate(ctx, "crash-resume", "main", "resume.ex", "ok\n")
+    gate = gate_scope(ctx)
+    AnalysisFixtures.fresh_analysis_runs_fixture(gate, ~w(compiler credo spex), commit: a.commit)
+    a_harness_for(ctx.gate.id, ctx.gate_root)
+
+    entry = queue(ctx, a)
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    gate_id = ctx.gate.id
+    assert_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 15_000
+
+    before = Repository.get(entry.id)
+    [run] = RunsRepository.running_full_runs(gate, "exunit")
+    worker = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    monitor = Process.monitor(worker)
+    Process.exit(worker, :kill)
+    assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}, 5_000
+
+    :ok = PromotionQueue.ensure_worker(ctx.scope)
+    restarted = GenServer.whereis(Worker.via(ctx.scope.active_project_id))
+    assert restarted != worker
+    assert :sys.get_state(restarted).phase == :gating
+    after_restart = Repository.get(entry.id)
+    assert after_restart.batch_id == before.batch_id
+    assert after_restart.result["timing"]["gate_head"] == a.commit
+    assert [same_run] = RunsRepository.running_full_runs(gate, "exunit")
+    assert same_run.id == run.id
+    refute_receive {:run_analysis_on, ^gate_id, [%{"source" => "exunit"}]}, 500
+
+    {:ok, completed} = RunsRepository.finish_run(run, :completed, %{exit_status: 0})
+
+    RunsRepository.record_tree(completed, %{
+      start_commit: a.commit,
+      start_tree_dirty: false,
+      completed_commit: a.commit
+    })
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{ctx.scope.active_project_id}",
+      {:analysis,
+       %{source: "exunit", status: :completed, run_id: run.id, working_copy_id: gate_id}}
+    )
+
+    assert {:ok, %{status: :landed}} = settle(entry)
+  end
+
   test "a batch gating asks the gate again when the gate copy rejoins", ctx do
     a = candidate(ctx, "a", "main", "a.ex", "a\n")
     gate = gate_scope(ctx)
