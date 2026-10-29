@@ -1023,10 +1023,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
           is_binary(failure["file"]) and is_binary(failure["name"]),
           do: failure
 
-    gate_history =
-      batch.scope
-      |> History.list()
-      |> Enum.filter(&(&1.working_copy_id == batch.gate.id))
+    gate_history = History.list(batch.scope, working_copy_id: batch.gate.id)
 
     classified = Enum.map(failures, &Flakes.classify_one(&1, batch.head, gate_history, []))
 

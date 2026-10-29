@@ -16,6 +16,23 @@ defmodule CodeMySpec.Analysis.History do
   @default_retention_days 30
   @terminal_statuses [:completed, :failed, :superseded, :cancelled, :abandoned]
 
+  # What a history entry reads. Not `output` or `stats`: `stats` lists every
+  # passing test, so a project's whole history ran to tens of MB and the
+  # promotion worker's read of it outlived the pool's 15s checkout (5cd7dd47).
+  @entry_fields [
+    :id,
+    :status,
+    :completed_commit,
+    :start_commit,
+    :working_copy_id,
+    :source,
+    :kind,
+    :start_tree_dirty,
+    :findings,
+    :started_at,
+    :finished_at
+  ]
+
   @doc "Retention window in days, configured with `:analysis_retention_days`."
   @spec retention_days() :: pos_integer()
   def retention_days do
@@ -42,7 +59,7 @@ defmodule CodeMySpec.Analysis.History do
     |> Repo.update!()
   end
 
-  @doc "List retained runs for the active project, optionally filtered by source."
+  @doc "List retained runs for the active project, optionally filtered by `:source` and `:working_copy_id`."
   @spec list(Scope.t(), keyword()) :: [map()]
   def list(%Scope{active_project_id: project_id}, opts \\ []) do
     source = Keyword.get(opts, :source)
@@ -50,7 +67,9 @@ defmodule CodeMySpec.Analysis.History do
     Run
     |> where([r], r.project_id == ^project_id and r.status in ^@terminal_statuses)
     |> maybe_source(source)
+    |> maybe_copy(Keyword.get(opts, :working_copy_id))
     |> order_by([r], desc: r.finished_at, desc: r.id)
+    |> select([r], struct(r, ^@entry_fields))
     |> Repo.all()
     |> Enum.map(&as_history_entry/1)
   end
@@ -96,6 +115,9 @@ defmodule CodeMySpec.Analysis.History do
 
   defp maybe_source(query, source) when is_binary(source),
     do: where(query, [r], r.source == ^source)
+
+  defp maybe_copy(query, nil), do: query
+  defp maybe_copy(query, copy_id), do: where(query, [r], r.working_copy_id == ^copy_id)
 
   defp as_history_entry(%Run{} = run) do
     %{
