@@ -9,18 +9,28 @@ mkdir -p "$root"
 
 if [[ ! -x $otp_dir/bin/erl ]]; then
   case "$(uname -s):$(uname -m)" in
-    Darwin:arm64) target=aarch64-apple-darwin; expected=831fcfb46929c752abf0a921409a46b306e7019061653323fab7f0958ad4db25 ;;
-    Darwin:x86_64) target=x86_64-apple-darwin; expected=821d8f2e039548b4343eadc7d25741e4d5b2280f429d14ded378f4de2067b83c ;;
+    Darwin:arm64) target=aarch64-apple-darwin; expected=831fcfb46929c752abf0a921409a46b306e7019061653323fab7f0958ad4db25; url=https://github.com/erlef/otp_builds/releases/download/OTP-28.1/otp-$target.tar.gz ;;
+    Darwin:x86_64) target=x86_64-apple-darwin; expected=821d8f2e039548b4343eadc7d25741e4d5b2280f429d14ded378f4de2067b83c; url=https://github.com/erlef/otp_builds/releases/download/OTP-28.1/otp-$target.tar.gz ;;
+    Linux:x86_64) target=ubuntu-24.04-x86_64; expected=6f7a95250a83f999909cf64dc375fd08809eb057f61b24eecdf2b3b44fe621ab; url=https://builds.hex.pm/builds/otp/ubuntu-24.04/OTP-28.1.tar.gz ;;
     *) echo 'No bundled OTP build for this platform. Install Erlang/OTP 28 and Elixir 1.19, then rerun scripts/start-harness.' >&2; exit 1 ;;
   esac
   archive=$root/otp-$target.tar.gz
   echo "Downloading Erlang/OTP 28.1 for $target" >&2
-  curl -fL --retry 3 -o "$archive" "https://github.com/erlef/otp_builds/releases/download/OTP-28.1/otp-$target.tar.gz"
-  actual=$(shasum -a 256 "$archive")
+  curl -fL --retry 3 -o "$archive" "$url"
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$archive")
+  else
+    actual=$(shasum -a 256 "$archive")
+  fi
   actual=${actual%% *}
   [[ $actual == "$expected" ]] || { echo 'OTP archive checksum mismatch' >&2; rm -f "$archive"; exit 1; }
   mkdir -p "$otp_dir"
-  tar -xzf "$archive" -C "$otp_dir"
+  if [[ $target == ubuntu-* ]]; then
+    tar -xzf "$archive" -C "$otp_dir" --strip-components=1
+    (cd "$otp_dir" && ./Install -minimal "$otp_dir" >/dev/null)
+  else
+    tar -xzf "$archive" -C "$otp_dir"
+  fi
   rm -f "$archive"
 fi
 
@@ -29,7 +39,11 @@ if [[ ! -x $elixir_dir/bin/mix ]]; then
   echo 'Downloading Elixir 1.19.4 for OTP 28' >&2
   curl -fL --retry 3 -o "$archive" 'https://builds.hex.pm/builds/elixir/v1.19.4-otp-28.zip'
   mkdir -p "$elixir_dir"
-  unzip -qo "$archive" -d "$elixir_dir"
+  if command -v unzip >/dev/null 2>&1; then
+    unzip -qo "$archive" -d "$elixir_dir"
+  else
+    python3 -c 'import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$archive" "$elixir_dir"
+  fi
   chmod +x "$elixir_dir"/bin/*
   rm -f "$archive"
 fi
