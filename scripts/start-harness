@@ -42,5 +42,11 @@ fi
 mix deps.get
 mix cms.harness.onboard --server-url "$server"
 
-echo "Starting CodeMySpec harness for $PWD against $server" >&2
-exec env CMS_HARNESS=1 CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}" CMS_ANALYSIS_SLOTS=1 mix run --no-halt
+port=${CMS_HARNESS_PORT:-4004}
+if [[ ! $port =~ ^[0-9]+$ ]] || (( port < 1 || port > 65535 )); then
+  echo "Invalid CMS_HARNESS_PORT: $port. Set it to a port from 1 to 65535." >&2
+  exit 1
+fi
+printf '%s\n' "$port" >"$HOME/.codemyspec/harness.port"
+echo "Starting CodeMySpec harness for $PWD against $server on port $port" >&2
+exec env CMS_HARNESS=1 CMS_HARNESS_PORT="$port" CMS_ANALYSIS_SLOTS=1 mix run --no-halt

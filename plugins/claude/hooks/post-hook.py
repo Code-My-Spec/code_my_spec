@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Forward a Claude command hook to the local harness without requiring Node."""
 import os
+import pathlib
 import re
 import sys
 import urllib.error
@@ -8,7 +9,12 @@ import urllib.request
 
 
 def main():
-    port = os.environ.get('CMS_HARNESS_PORT', '4004')
+    port = os.environ.get('CMS_HARNESS_PORT')
+    if not port:
+        try:
+            port = (pathlib.Path.home() / '.codemyspec/harness.port').read_text().strip()
+        except FileNotFoundError:
+            port = '4004'
     event = sys.argv[1] if len(sys.argv) == 2 else ''
     if not port.isdecimal() or not 1 <= int(port) <= 65535 or not re.fullmatch(r'[a-z-]+', event):
         print('Invalid CodeMySpec harness port or hook event', file=sys.stderr)

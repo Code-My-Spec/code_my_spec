@@ -4,6 +4,7 @@ import json
 import os
 import pathlib
 import subprocess
+import tempfile
 import threading
 import unittest
 
@@ -50,6 +51,38 @@ class HookTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, answer)
                     self.assertEqual(received[-1], ('/api/hooks/' + event, payload))
+            finally:
+                server.shutdown()
+                thread.join()
+
+    def test_port_file_is_used_without_environment_override(self):
+        received = []
+
+        class Receiver(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{}')
+
+            def log_message(self, *_):
+                pass
+
+        with http.server.HTTPServer(('127.0.0.1', 0), Receiver) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with tempfile.TemporaryDirectory() as home:
+                    state = pathlib.Path(home) / '.codemyspec'
+                    state.mkdir()
+                    (state / 'harness.port').write_text(str(server.server_port) + '\n')
+                    env = {key: value for key, value in os.environ.items()
+                           if key != 'CMS_HARNESS_PORT'}
+                    env['HOME'] = home
+                    result = subprocess.run(['python3', str(HOOK), 'session-start'],
+                        input=b'{}', capture_output=True, timeout=10, env=env)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(received, ['/api/hooks/session-start'])
             finally:
                 server.shutdown()
                 thread.join()

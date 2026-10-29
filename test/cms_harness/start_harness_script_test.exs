@@ -33,12 +33,14 @@ defmodule CmsHarness.StartHarnessScriptTest do
           {"MIX_HOME", dir},
           {"CMS_DEPLOY_KEY", ""},
           {"CMS_SERVER_URL", ""},
+          {"CMS_HARNESS_PORT", "4014"},
           {"CMS_START_TEST_LOG", log}
         ],
         stderr_to_stdout: true
       )
 
     assert status == 0, output
+    assert File.read!(Path.join(home, ".codemyspec/harness.port")) == "4014\n"
     commands = File.read!(log)
     assert commands =~ "mix local.hex --force"
     assert commands =~ "mix local.rebar --force"
