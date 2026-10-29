@@ -11,6 +11,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   onboarding a checkout this build does not belong to: the id is minted against
   the *calling* build's server otherwise, and a sibling repo served by a
   packaged release ends up with an id its own daemon has never heard of.
+  With no credential, the command prints a device verification URL and code
+  and waits for approval before minting; no deploy key is required.
 
   Reads the id the server issued this working copy and writes it to
   `.cms_harness.json` and `.claude/settings.local.json`. No `--plugin-dir` is
@@ -464,7 +466,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp identity(env, root, project_id) do
     case ExecutionContexts.read_file(env, @harness_config_file) do
       {:ok, contents} -> existing_id(contents, env, root, project_id)
-      _ -> CmsHarness.Onboarding.mint(root, project_id)
+      _ -> CmsHarness.Onboarding.mint(root, project_id, authorize: true)
     end
   end
 
@@ -576,7 +578,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   end
 
   defp mint_and_record(env, root, project_id) do
-    with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id) do
+    with {:ok, id} <- CmsHarness.Onboarding.mint(root, project_id, authorize: true) do
       # Both names, matching `HarnessConfig.write/2`. This writes through
       # `ExecutionContexts` rather than that function because the copy may be on
       # another machine — which is exactly how it drifted out of step with it.

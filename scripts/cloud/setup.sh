@@ -10,8 +10,7 @@
 # Nothing in the repo has to change.
 #
 # Environment variables (set them in the environment, not here):
-#   CMS_DEPLOY_KEY   the code_my_spec project's deploy key
-#   CMS_SERVER_URL   e.g. https://dev.codemyspec.com
+#   CMS_SERVER_URL   e.g. https://dev.codemyspec.com (device approval is prompted)
 set -euo pipefail
 
 OTP_VERSION=28.1
@@ -134,21 +133,11 @@ setsid bash -c '
   export CMS_PROJECT_DIR="$root"
   git submodule update --init || echo "WARN: .code_my_spec submodule did not initialise"
 
-  MIX_ENV=harness mix deps.get >/dev/null
-
-  if [ ! -f .cms_harness.json ]; then
-    if [ -z "${CMS_DEPLOY_KEY:-}" ]; then
-      echo "ERROR: CMS_DEPLOY_KEY is not set in the cloud environment; cannot onboard"
-      exit 0
-    fi
-    MIX_ENV=harness mix cms.harness.onboard "$root" --server-url "$server" \
-      || { echo "ERROR: onboard failed"; exit 0; }
-  fi
-
-  # Backgrounded and detached: the first boot compiles, which takes minutes.
-  CMS_PROJECT_DIR="$root" CMS_HARNESS=1 CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" CMS_ANALYSIS_SLOTS=1 \
-    MIX_ENV=harness nohup elixir -S mix run --no-halt >>"$HOME/.codemyspec/harness.out" 2>&1 &
-  echo "harness starting (pid $!); boot output in ~/.codemyspec/harness.out"
+  # The shared source entry installs missing prerequisites, asks for device
+  # approval when needed, onboards this copy, then starts the harness.
+  CMS_PROJECT_DIR="$root" CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" \
+    nohup bash scripts/start-harness "$server" >>"$HOME/.codemyspec/harness.out" 2>&1 &
+  echo "harness onboarding/starting (pid $!); approve the code in ~/.codemyspec/harness.out"
 
   # Once the harness has joined it installs the project age keys, and then the
   # test env can be decrypted for the analyzers. Waits in the background.

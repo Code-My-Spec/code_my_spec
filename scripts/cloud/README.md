@@ -18,13 +18,10 @@ comes from the cloud environment's settings.
 
       CMS_SERVER_URL=https://dev.codemyspec.com
       CMS_HARNESS_PORT=4004
-      CMS_DEPLOY_KEY=<the code_my_spec project's deploy key>
 
 - **Setup script:** paste `setup.sh` in full.
 
-The script in this directory is the repository-development setup using a project
-deploy key. The device UI generates a separate setup using a proxy network secret.
-Both pass `CMS_HARNESS_PORT` to the harness and Claude settings. Use a plugin version
+The setup script uses the same source entry point as a local checkout. It prints a device verification URL and code in `~/.codemyspec/harness.out` on first boot; approve that code once. The device UI generates a separate setup using a proxy network secret. Both pass `CMS_HARNESS_PORT` to the harness and Claude settings. Use a plugin version
 that supports this override; older published plugins have a fixed port of 4003.
 
 `dev.codemyspec.com` is the local `mix phx.server` on :4000 behind the Cloudflare
@@ -38,12 +35,8 @@ SessionStart hook, `cms-cloud-session`, which runs only when `CLAUDE_CODE_REMOTE
 is `true` and does this, detached:
 
 1. `git submodule update --init` for `.code_my_spec`
-2. `mix cms.harness.onboard . --server-url $CMS_SERVER_URL`
-   on the first session; it writes the gitignored `.cms_harness.json`, including
-   the deploy key used to authenticate. Keep this file untracked. The script reads
-   `CMS_DEPLOY_KEY` only from the environment and never embeds its value in scripts
-   or settings.
-3. starts the harness from source on :4004 (`MIX_ENV=harness mix run --no-halt`)
+2. runs `bash scripts/start-harness $CMS_SERVER_URL`, which installs missing Hex and Rebar, requests device approval on first use, and writes the gitignored `.cms_harness.json`. Approve the verification code shown in `~/.codemyspec/harness.out`. Keep this file untracked.
+3. starts the harness from source on :4004 after approval
 4. once the harness has joined and installed the project's age keys, decrypts
    `envs/dev.env` and `envs/test.env` for the analyzers
 

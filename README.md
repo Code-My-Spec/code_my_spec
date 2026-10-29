@@ -21,6 +21,12 @@ The CLI binary auto-installs on first SessionStart.
 
 ---
 
+## Start a source harness
+
+From a CodeMySpec checkout, run `bash scripts/start-harness https://dev.codemyspec.com` once. Later runs can omit the URL: the command reads `.cms_harness.json` or `.code_my_spec/config.yml` (`server_url`). If neither records a URL, pass the target explicitly; the command will not guess one. It installs missing Hex and Rebar, resolves dependencies, onboards the checkout, and serves the harness on port 4004. Open the verification URL it prints and enter its device code. That approval is the only manual onboarding step; no deploy key is needed. After startup, `/codemyspec:init` and `get_next_requirement` can reach the harness.
+
+This entry does not require `just`. The existing Justfile uses `[positional-arguments]`, which just 1.21.0 cannot parse. Upgrade `just` if you use those recipes; the startup command does not invoke it.
+
 ## Development Setup
 
 To start your Phoenix server:
