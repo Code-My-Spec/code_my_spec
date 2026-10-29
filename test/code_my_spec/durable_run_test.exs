@@ -150,11 +150,7 @@ defmodule CodeMySpec.DurableRunTest do
     DurableRun.begin_run(id, File.cwd!(), "exunit", [], "abc123")
 
     on_exit(fn ->
-      case DurableRun.read_manifest(id) do
-        {:ok, manifest} -> DurableRun.cancel(manifest)
-        _ -> :ok
-      end
-
+      id |> DurableRun.read_manifest() |> cancel_if_attached()
       DurableRun.cleanup(id)
     end)
 
@@ -174,17 +170,20 @@ defmodule CodeMySpec.DurableRunTest do
     refute DurableRun.alive?(manifest)
   end
 
+  defp cancel_if_attached({:ok, manifest}), do: DurableRun.cancel(manifest)
+  defp cancel_if_attached(_), do: :ok
+
   defp await_attached_manifest(_id, 0), do: flunk("durable child did not attach")
 
-  defp await_attached_manifest(id, attempts) do
-    case DurableRun.read_manifest(id) do
-      {:ok, %{"status" => "running"} = manifest} ->
-        manifest
+  defp await_attached_manifest(id, attempts),
+    do: await_attached_manifest(id, attempts, DurableRun.read_manifest(id))
 
-      _ ->
-        Process.sleep(20)
-        await_attached_manifest(id, attempts - 1)
-    end
+  defp await_attached_manifest(_id, _attempts, {:ok, %{"status" => "running"} = manifest}),
+    do: manifest
+
+  defp await_attached_manifest(id, attempts, _unattached) do
+    Process.sleep(20)
+    await_attached_manifest(id, attempts - 1)
   end
 
   test "a new manifest remains pending while the child PID is being attached" do
