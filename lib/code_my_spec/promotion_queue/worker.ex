@@ -508,8 +508,16 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     state = cancel_timer(state)
 
     case failed_runs(batch) do
-      [] -> gate_runs(state)
-      failed -> could_not_run(state, failed)
+      {[], []} ->
+        gate_runs(state)
+
+      {[], unavailable} ->
+        if gate_retry_expired?(batch),
+          do: could_not_run(state, unavailable),
+          else: gate_runs(state)
+
+      {failed, _unavailable} ->
+        could_not_run(state, failed)
     end
   end
 
@@ -558,15 +566,37 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  # A failed run can mean the candidate prevents the analyzer from starting.
-  # A collision with the gate runner's own key socket says nothing about the
-  # candidate, so let the ordinary gate path ask for a fresh ExUnit run.
+  # A run failure from unavailable infrastructure says nothing about the
+  # candidate. Other failed runs can be caused by its code and remain terminal.
   defp failed_runs(batch) do
-    Enum.filter(Run.sources(), fn source ->
-      batch.scope
-      |> RunsRepository.failed_runs_at_commit(source, batch.head, batch.since)
-      |> Enum.any?(&(not retryable_socket_failure?(&1)))
+    Enum.reduce(Run.sources(), {[], []}, fn source, {failed, unavailable} ->
+      runs = RunsRepository.failed_runs_at_commit(batch.scope, source, batch.head, batch.since)
+
+      cond do
+        Enum.any?(runs, &(not retryable_failure?(&1))) -> {[source | failed], unavailable}
+        runs != [] -> {failed, [source | unavailable]}
+        true -> {failed, unavailable}
+      end
     end)
+  end
+
+  defp retryable_failure?(%Run{stats: %{"error" => error}} = run)
+       when is_binary(error),
+       do:
+         retryable_socket_failure?(run) or infrastructure_failure?(error) or
+           (run.source == "compiler" and run.exit_status == nil and
+              run.output in [nil, ""] and run.stats["execution_terminal"] != true and
+              not String.contains?(error, "compile_diagnostics_unavailable"))
+
+  defp retryable_failure?(_), do: false
+
+  defp infrastructure_failure?(error) do
+    error = String.downcase(error)
+
+    Enum.any?(
+      ["no_executor", "busy", "harness_disconnected", "eperm"],
+      &String.contains?(error, &1)
+    )
   end
 
   defp retryable_socket_failure?(%Run{source: "exunit", stats: %{"error" => reason}})
@@ -591,6 +621,9 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     case Analysis.latest_run(scope, source) do
       %{output: output} when is_binary(output) and output != "" ->
         "#{source}: …#{String.slice(output, -800, 800)}"
+
+      %{stats: %{"error" => error}} when is_binary(error) ->
+        "#{source}: #{error}"
 
       _ ->
         "#{source}: its runs fail with no output"
@@ -625,15 +658,36 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   defp red(%{batch: batch} = state, reason) do
     problems = Promotion.blocking_problems_at(batch.scope, batch.head)
 
-    if problems == [] do
-      # No finding about the code: the gate could not run (an analyzer would
-      # not start, the tree was dirty).
-      could_not_gate(state, batch.entries, reason)
-    else
-      log_flake_classifications(batch)
-      eject_batch(state, findings(problems))
+    cond do
+      problems != [] ->
+        log_flake_classifications(batch)
+        eject_batch(state, findings(problems))
+
+      retryable_start_failure?(Map.get(reason, :start_failures, [])) ->
+        gate_unavailable(state, reason.reason)
+
+      true ->
+        could_not_gate(state, batch.entries, reason)
     end
   end
+
+  defp retryable_start_failure?([_ | _] = failures) do
+    Enum.all?(failures, fn %{error: error} -> infrastructure_failure?(error) end)
+  end
+
+  defp retryable_start_failure?(_), do: false
+
+  defp gate_unavailable(%{batch: batch} = state, reason) do
+    if gate_retry_expired?(batch) do
+      eject_batch(state, "the gate could not start analyzers for 30 minutes: #{reason}")
+    else
+      Logger.warning("[PromotionQueue] gate analyzers unavailable at #{batch.head}: #{reason}")
+      {:noreply, recheck_later(state)}
+    end
+  end
+
+  defp gate_retry_expired?(batch),
+    do: DateTime.diff(DateTime.utc_now(), batch.since, :millisecond) >= @gate_wait_limit_ms
 
   defp log_flake_classifications(batch) do
     unrelated? = fn run, failure -> unrelated_candidate?(batch, run, failure) end
