@@ -88,7 +88,7 @@ defmodule CodeMySpec.Provisioning.Builder do
   """
   @spec build(Scope.t(), String.t(), keyword()) :: {:ok, Build.t()} | {:error, term()}
   def build(%Scope{} = scope, ref, opts \\ []) when is_binary(ref) do
-    architecture = Keyword.get(opts, :architecture, :arm)
+    architecture = Keyword.get(opts, :architecture)
 
     with {:ok, spec} <- builder_spec(architecture),
          {:ok, server} <- ensure_box(scope, architecture, spec, opts) do

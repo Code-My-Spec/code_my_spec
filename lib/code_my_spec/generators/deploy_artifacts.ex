@@ -289,6 +289,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # Kamal deploys #{environment} for #{app}.
     service: #{service_name}
     image: #{image}
+    # The server can fall back to another architecture when its region is full.
+    # Provisioning sets this from the architecture reported by Hetzner.
+    builder:
+      arch: <%= ENV.fetch("CMS_TARGET_ARCH") %>
     #{kamal_ssh_block()}
     servers:
       web:
