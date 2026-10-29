@@ -2,8 +2,10 @@ defmodule CodeMySpecWeb.SourceGitController do
   @moduledoc ~s(Read-only Git smart HTTP for a project source repository.)
   use CodeMySpecWeb, :controller
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Integrations
   alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
 
   @max_request_bytes 16_000_000
 
@@ -26,7 +28,7 @@ defmodule CodeMySpecWeb.SourceGitController do
     with false <- Map.has_key?(conn.assigns, :box_device),
          {:ok, project} <- Projects.get_project_for_user(scope, id),
          {:ok, repo} <- repo_url(project, kind),
-         {:ok, token} <- Integrations.fetch_access_token(scope, :github),
+         {:ok, token} <- account_github_token(scope, project.account_id),
          {:ok, response} <- request(method, repo <> ~s(/) <> path, body, token) do
       send_git_response(conn, method, response)
     else
@@ -34,6 +36,23 @@ defmodule CodeMySpecWeb.SourceGitController do
       {:error, :invalid_repo} -> send_resp(conn, :not_found, ~s(Git source unavailable))
       _ -> send_resp(conn, :bad_gateway, ~s(Git source unavailable))
     end
+  end
+
+  # A device grant identifies an account member, who may never have connected
+  # GitHub. Use a connection held by the project's account instead. Prefer its
+  # owner, then another connected member, so the choice is stable.
+  defp account_github_token(scope, account_id) do
+    scope
+    |> Accounts.list_account_members(account_id)
+    |> Enum.sort_by(fn member -> {member.role != :owner, member.inserted_at, member.id} end)
+    |> Enum.find_value({:error, :not_found}, fn member ->
+      member_scope = %Scope{user: member.user, user_id: member.user_id}
+
+      case Integrations.get_integration(member_scope, :github) do
+        {:ok, _integration} -> Integrations.fetch_access_token(member_scope, :github)
+        {:error, :not_found} -> nil
+      end
+    end)
   end
 
   defp send_git_response(conn, method, %{status: status, body: body})
