@@ -7,7 +7,6 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.GetPromotionTimings do
   alias CodeMySpec.PromotionQueue.Timings
 
   schema do
-    field :project_id, :string, required: true, description: "Project to inspect"
     field :window, :string, description: "24h or 7d; defaults to 24h"
   end
 
@@ -16,7 +15,6 @@ defmodule CodeMySpec.McpServers.Promotion.Tools.GetPromotionTimings do
     window = Map.get(params, :window) || "24h"
 
     with {:ok, scope} <- Validators.validate_local_scope(frame),
-         true <- Map.get(params, :project_id) == scope.active_project_id,
          true <- window in ["24h", "7d"] do
       {:reply,
        Response.tool()

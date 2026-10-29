@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story1167.Criterion2550Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =
-          GetPromotionTimings.execute(%{project_id: context.project.id, window: "24h"}, frame)
+          GetPromotionTimings.execute(%{window: "24h"}, frame)
 
         refute response.isError
         figures = response |> response_text() |> Jason.decode!()
