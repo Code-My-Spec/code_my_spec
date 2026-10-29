@@ -6201,7 +6201,10 @@ defmodule CodeMySpecSpex.Case do
       # `:plug` key, own cassette coverage.
       CmsHarness.Onboarding,
       # Remote onboarding's token exchange now reads the same HTTP plug.
-      CmsHarness.Token
+      CmsHarness.Token,
+      # The authenticated source Git proxy reads its own HTTP plug, so its
+      # upstream requests must be captured and replayed by cassettes.
+      CodeMySpecWeb.SourceGitController
     ]
   end
 
