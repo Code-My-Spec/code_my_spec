@@ -29,32 +29,11 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     body
   end
 
-  describe "the build workflow" do
-    test "pushes to each registry Kamal pulls from using registry credentials" do
-      opts =
-        Keyword.merge(@opts,
-          image: "10.0.0.2:5000/my-app",
-          kamal_image: "my-app",
-          prod_registry: "10.0.0.2:5000",
-          uat_registry: "10.1.0.2:5000"
-        )
-
-      files = Map.new(DeployArtifacts.files(opts))
-      workflow = files[".github/workflows/build.yml"]
-
-      for path <- ["config/deploy.yml", "config/deploy.uat.yml"] do
-        config = files[path]
-        [_, registry] = Regex.run(~r/server: ([^\s]+)/, config)
-        [_, repository] = Regex.run(~r/image: ([^\s]+)/, config)
-
-        assert workflow =~ ~s("#{registry}")
-        assert workflow =~ "/#{repository}:"
-      end
-
-      assert workflow =~ "secrets.CMS_REGISTRY_USERNAME"
-      assert workflow =~ "secrets.CMS_REGISTRY_PASSWORD"
-      refute workflow =~ "secrets.GITHUB_TOKEN"
-      refute workflow =~ "registry: ghcr.io"
+  describe "deploy build inputs" do
+    test "generates a Dockerfile but no CI build workflow" do
+      files = Map.new(DeployArtifacts.files(@opts))
+      assert files["Dockerfile"] =~ "mix release"
+      refute Map.has_key?(files, ".github/workflows/build.yml")
     end
 
     test "generation requires a provisioned registry image instead of defaulting to GitHub" do
@@ -234,7 +213,7 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
     end
 
     # `:kamal_image` is the fix: a bare repository path, independent of
-    # whatever `:image` carries for the CI workflow's own `docker build -t`.
+    # whatever `:image` carries for the builder.
     # Confirmed against real kamal: this is the only shape that resolves to
     # a single, correct repository.
     test "kamal_image writes image: bare, and kamal resolves a single correct repository" do
