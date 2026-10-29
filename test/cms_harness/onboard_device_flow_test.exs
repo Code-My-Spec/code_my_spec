@@ -9,7 +9,8 @@ defmodule CmsHarness.OnboardDeviceFlowTest do
   alias CodeMySpec.Auth.HarnessOAuth
 
   test "a fresh checkout mints with device approval and no deploy key" do
-    server = "https://device-onboarding.example.test"
+    server = "http://127.0.0.1:4000"
+    verification_uri = "https://device-onboarding.example.test/verify"
 
     %{root: root, id: project_id} =
       Projects.project_dir(project_id: Ecto.UUID.generate(), working_copy_id: nil)
@@ -63,7 +64,7 @@ defmodule CmsHarness.OnboardDeviceFlowTest do
         Req.Test.json(conn, %{
           device_code: "private-code",
           user_code: "ABCD-EFGH",
-          verification_uri: server <> "/verify",
+          verification_uri: verification_uri,
           expires_in: 600,
           interval: 1
         })
@@ -88,10 +89,11 @@ defmodule CmsHarness.OnboardDeviceFlowTest do
                  Onboarding.mint(root, project_id, authorize: true, sleep: fn _ -> :ok end)
       end)
 
-    assert output =~ server <> "/verify"
+    assert output =~ verification_uri
     assert output =~ "ABCD-EFGH"
     assert {:ok, config} = HarnessConfig.read_file(root)
     assert config.working_copy_id == "approved-copy"
+    assert config.server_url == server
     assert config.deploy_key == nil
 
     assert {:ok, "approved-token"} =

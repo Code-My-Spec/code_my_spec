@@ -36,7 +36,7 @@ defmodule CmsHarness.Onboarding do
   @spec mint(String.t(), String.t() | nil, keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def mint(root, project_id, opts \\ []) do
     with {:ok, project} <- project_for(root, project_id),
-         credential = ensure_local_credential(project.id),
+         credential = credential_for_mint(project.id, opts),
          {:ok, token} <- token_for(credential, opts),
          {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
          :ok <-
@@ -173,6 +173,16 @@ defmodule CmsHarness.Onboarding do
     host = URI.parse(server).host || server
 
     "#{reason} Add a dev box on #{server}/app/devices and set its token as a network secret for #{host}. Use the bare token, with no 'Bearer ' prefix."
+  end
+
+  # An interactive first boot authenticates with the server. It must not start
+  # this checkout's database merely to look for a legacy deploy key.
+  defp credential_for_mint(project_id, opts) do
+    if Keyword.get(opts, :authorize, false) and blank?(System.get_env("CMS_DEPLOY_KEY")) do
+      :none
+    else
+      ensure_local_credential(project_id)
+    end
   end
 
   defp token_for({:ok, key}, _opts), do: Token.access_token_for_key(key)

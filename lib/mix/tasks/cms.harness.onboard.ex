@@ -168,6 +168,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # starts only `Vault` and `Repo` (via `start_local_repo/0`): `run/1` starts
   # just `:req`, and `WorkingCopies.fetch/1` is a `Repo.get`.
   defp provision_preview(env, root, id) do
+    if Mix.env() == :harness, do: :ok, else: provision_preview_from_local_repo(env, root, id)
+  end
+
+  defp provision_preview_from_local_repo(env, root, id) do
     with :ok <- reachable_repo(),
          {:ok, copy} <- WorkingCopies.fetch(id),
          {:ok, credentials} <- PreviewTunnel.ensure(copy) do
