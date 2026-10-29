@@ -110,13 +110,16 @@ defmodule CmsHarness.WorkingCopyReporter do
 
     case Device.announce(observations) do
       {:ok, %{working_copies: from_server} = reply} ->
-        # The server's device roster may include a checkout served by a
-        # previous HOME on this machine. Only this harness's own durable
-        # roots or currently running copies may be picked up.
+        # An existing checkout from another HOME must not be picked up. A
+        # missing checkout still belongs in the report: after a restart the
+        # server is the only place its path survives, and the next observation
+        # must tell the server it is gone.
         local_roots = MapSet.new(ServedRoots.list() ++ Projects.list())
 
         from_server =
-          Map.filter(from_server, fn {_id, root} -> MapSet.member?(local_roots, root) end)
+          Map.filter(from_server, fn {_id, root} ->
+            is_binary(root) and (not File.dir?(root) or MapSet.member?(local_roots, root))
+          end)
 
         say(observations, last)
         serve(from_server)
