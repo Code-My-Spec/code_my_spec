@@ -51,7 +51,7 @@ defmodule CmsHarness.Agents.Tools.RunScriptSpillTest do
                context
              )
 
-    assert [_, path] = Regex.run(~r/Full output saved to: (\S+)/, notice)
+    assert [_, path] = Regex.run(~r/Full output saved to: ([^\r\n]+)/, notice)
     assert Path.dirname(path) == context.spill_dir
     assert File.read!(path) == "Returned:\n" <> String.duplicate("x", 60_000) <> "TAIL"
 
@@ -72,7 +72,7 @@ defmodule CmsHarness.Agents.Tools.RunScriptSpillTest do
     assert {:error, notice} =
              RunScript.execute(%{"script" => ~S|error(string.rep("bad", 20000))|}, context)
 
-    assert [_, path] = Regex.run(~r/Full output saved to: (\S+)/, notice)
+    assert [_, path] = Regex.run(~r/Full output saved to: ([^\r\n]+)/, notice)
     assert Path.dirname(path) == context.spill_dir
     assert File.read!(path) =~ String.duplicate("bad", 20_000)
   end
