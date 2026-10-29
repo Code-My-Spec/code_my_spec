@@ -11,6 +11,9 @@ defmodule CodeMySpec.Hooks.SessionStart do
 
   alias CodeMySpec.Agents
   alias CodeMySpec.Agents.Agent
+  alias CodeMySpec.Agents.LaunchRequest
+  alias CodeMySpec.McpServers.ToolRegistry
+  alias CodeMySpec.Hooks.AgentBriefing
 
   @doc """
   Returns `{http_status, body}`.
@@ -64,13 +67,25 @@ defmodule CodeMySpec.Hooks.SessionStart do
     |> Map.put(:agent_id, agent.id)
     |> Map.put(:hookSpecificOutput, %{
       hookEventName: "SessionStart",
-      additionalContext:
-        "You are agent #{agent.id} on this project, registered as its #{agent.role} agent. " <>
-          "Main is the default; ask the person which role you should take (main, coding, " <>
-          "qa or product); if it is not main, set it with `run_script`: " <>
-          "`set_my_role({ role = \"coding\" })`." <>
-          reached(messaging)
+      additionalContext: registration_context(agent, messaging)
     })
+  end
+
+  defp registration_context(agent, messaging) do
+    briefing =
+      agent
+      |> LaunchRequest.for(ToolRegistry.registry())
+      |> AgentBriefing.for_request()
+
+    [
+      briefing,
+      "You are agent #{agent.id} on this project, registered as its #{agent.role} agent. " <>
+        "Main is the default; ask the person which role you should take (main, coding, " <>
+        "qa or product); if it is not main, set it with `run_script`: " <>
+        "`set_my_role({ role = \"coding\" })`." <> reached(messaging)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join("\n\n")
   end
 
   defp engine(%{"engine" => "codex"}), do: :codex

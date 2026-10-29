@@ -16,4 +16,6 @@ Fetch your instructions from the local CodeMySpec server, then follow them.
      --data-urlencode "external_id=codex:$PWD"
    ```
 
-2. Follow the `prompt` field in the response. If there is only an `error` field, show it to the user and stop.
+2. If no service answers, run `bash scripts/start-harness https://your-server.example` from a CodeMySpec source checkout. The command installs missing Hex and Rebar, prompts for the device code, onboards this checkout, and starts the harness. Then retry the request. A packaged install uses `cms start`.
+
+3. Follow the `prompt` field in the response. If there is only an `error` field, show it to the user and stop.

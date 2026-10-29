@@ -22,7 +22,7 @@ defmodule CmsHarness.Agents.Engine.Impl do
   alias CmsHarness.Agents.Engine.State
   alias CmsHarness.Agents.Liveness
   alias CmsHarness.Agents.Provider
-  alias CmsHarness.Agents.SystemPrompt
+  alias CodeMySpec.Hooks.AgentBriefing
   alias CmsHarness.Agents.ToolResults
   alias CmsHarness.Agents.Tools.Direct
   alias CmsHarness.Agents.TurnEvents
@@ -934,13 +934,9 @@ defmodule CmsHarness.Agents.Engine.Impl do
        # them general to specific. Nothing is read from the checkout.
        |> Keyword.put(
          :system_prompt,
-         SystemPrompt.compose(
-           universal: Keyword.get(opts, :universal),
-           provider_brief: Keyword.get(opts, :provider_brief),
-           app_url: Keyword.get(opts, :app_url),
-           scratch_dir: scratch_dir(Keyword.fetch!(opts, :agent_id)),
-           tool_index: Keyword.get(opts, :tool_index),
-           role_brief: Keyword.get(opts, :role_brief)
+         AgentBriefing.for_request(
+           Map.new(opts),
+           scratch_dir(Keyword.fetch!(opts, :agent_id))
          )
        )
        |> Keyword.put(:max_turns, @max_turns)
