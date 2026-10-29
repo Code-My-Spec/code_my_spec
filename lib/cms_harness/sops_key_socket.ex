@@ -4,8 +4,9 @@ defmodule CmsHarness.SopsKeySocket do
   Unix domain socket, and nowhere else — never HTTP, never a file (story
   1132).
 
-  The socket lives at `~/.codemyspec/run/key.sock`, in a `0700` directory
-  with the socket itself `0600`: Unix enforces both at `connect()`, so no
+  The socket normally lives at `~/.codemyspec/run/key.sock`. A deep HOME
+  uses a stable, short `/tmp/cms-sops-*` directory instead. The directory is
+  `0700` and the socket is `0600`: Unix enforces both at `connect()`, so no
   other user on the box can even reach the path. `cms sops-key`
   (`CmsHarness.Cli.SopsKey`) is the one client; `sops` runs it via
   `SOPS_AGE_KEY_CMD` and reads the key off its stdout.
