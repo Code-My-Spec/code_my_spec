@@ -143,10 +143,8 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
                "/example/private-docs.git/git-upload-pack"
              ]
 
-      case upstream.method do
-        "GET" -> Plug.Conn.resp(upstream, 200, <<0, 255, 1, 2>>)
-        "POST" -> Plug.Conn.resp(upstream, 200, <<255, 0, 4>>)
-      end
+      response_bodies = %{"GET" => <<0, 255, 1, 2>>, "POST" => <<255, 0, 4>>}
+      Plug.Conn.resp(upstream, 200, Map.fetch!(response_bodies, upstream.method))
     end)
 
     for kind <- ["code", "docs"] do
