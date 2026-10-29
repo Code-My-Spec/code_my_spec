@@ -5404,7 +5404,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     spex_write_file!(path, """
     #!/bin/sh
-    cd #{root} || exit 1
+    cd #{inspect(root)} || exit 1
     exec env MIX_ENV=test mix run --no-start --no-compile -e 'CmsHarness.Cli.SopsKey.start([])'
     """)
 
