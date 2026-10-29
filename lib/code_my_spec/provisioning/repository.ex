@@ -24,11 +24,6 @@ defmodule CodeMySpec.Provisioning.Repository do
   alias CodeMySpec.GitHub
   alias CodeMySpec.Users.Scope
 
-  # The generated CI template writes this placeholder literally: the owner is
-  # unknown until a repository exists, so `push/3` substitutes it.
-  @ci_workflow_path ".github/workflows/build.yml"
-  @github_owner_placeholder "<GITHUB_OWNER>"
-
   @type disposition :: :created | :adopted
 
   @type result :: %{
@@ -227,9 +222,7 @@ defmodule CodeMySpec.Provisioning.Repository do
     run = fn args -> ExecutionContexts.cmd(env, git, args, stderr_to_stdout: true) end
 
     with :ok <- ensure_repo(run, branch),
-         :ok <- patch_ci_owner(env, opts),
          :ok <- ensure_commit(run),
-         :ok <- commit_owner_patch(run),
          :ok <- set_remote(run, remote_url),
          :ok <- push_remote(run, branch, opts),
          {sha, 0} <- run.(["rev-parse", "HEAD"]) do
@@ -237,62 +230,6 @@ defmodule CodeMySpec.Provisioning.Repository do
     else
       {:error, reason} -> {:error, reason}
       {output, status} -> {:error, "git exited #{status}: #{String.trim(to_string(output))}"}
-    end
-  end
-
-  # Before `ensure_commit` so a fresh repository's initial commit includes the
-  # substitution. An already-pushed repository gets it committed by
-  # `commit_owner_patch/1`. No-op without `:owner` or without the file.
-  defp patch_ci_owner(env, opts) do
-    case Keyword.get(opts, :owner) do
-      owner when is_binary(owner) and owner != "" -> substitute_owner(env, owner)
-      _ -> :ok
-    end
-  end
-
-  defp substitute_owner(env, owner) do
-    case ExecutionContexts.read_file(env, @ci_workflow_path) do
-      {:ok, content} ->
-        if String.contains?(content, @github_owner_placeholder) do
-          write_owner(env, String.replace(content, @github_owner_placeholder, owner))
-        else
-          :ok
-        end
-
-      {:error, _} ->
-        :ok
-    end
-  end
-
-  defp write_owner(env, content) do
-    case ExecutionContexts.write_file(env, @ci_workflow_path, content) do
-      :ok -> :ok
-      {:ok, _} -> :ok
-      other -> {:error, "could not patch #{@ci_workflow_path}: #{inspect(other)}"}
-    end
-  end
-
-  # `ensure_commit/1` commits only when there is no HEAD, so an existing
-  # repository would leave the substitution uncommitted. Scoped to the one
-  # path, not `git add -A`.
-  defp commit_owner_patch(run) do
-    case run.(["status", "--porcelain", "--", @ci_workflow_path]) do
-      {"", 0} ->
-        :ok
-
-      {_dirty, 0} ->
-        with {_, 0} <- run.(["add", "--", @ci_workflow_path]),
-             {_, 0} <- run.(["commit", "-m", "Set GHCR image owner in CI workflow"]) do
-          :ok
-        else
-          {output, status} ->
-            {:error,
-             "could not commit the CI workflow owner fix (#{status}): #{String.trim(output)}"}
-        end
-
-      {output, status} ->
-        {:error,
-         "could not check #{@ci_workflow_path} status (#{status}): #{String.trim(output)}"}
     end
   end
 

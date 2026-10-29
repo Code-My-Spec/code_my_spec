@@ -430,12 +430,10 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     end
   end
 
-  # `cms_new`'s template writes `<GITHUB_OWNER>` next to an EEx tag that does
-  # render, because no repository exists yet at generation time to have an
-  # owner (issue 1152b511). These exercise the real `push/3` (no `push:`
-  # override) so the substitution actually runs; `push_remote: false` keeps
-  # the network `git push` out of the test.
-  describe "run/4 — the CI workflow's owner placeholder" do
+  # Repository provisioning leaves any existing workflow alone. The deploy
+  # image is built by the burst-box builder, so no workflow owner is patched.
+  # `push_remote: false` keeps network git pushes out of these tests.
+  describe "run/4 — existing workflows" do
     @repo_with_owner Map.put(@repo, "owner", %{"login" => "sam"})
 
     @placeholder_workflow """
@@ -445,7 +443,7 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
       IMAGE: ghcr.io/<GITHUB_OWNER>/devops-drill
     """
 
-    test "substitutes the real owner before the initial commit, in one commit",
+    test "keeps an existing workflow unchanged in the initial commit",
          %{env: env} = ctx do
       write_workflow(env, @placeholder_workflow)
 
@@ -459,12 +457,11 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
 
       assert result.state == :pushed
       content = read_workflow(env)
-      refute content =~ "<GITHUB_OWNER>"
-      assert content =~ "ghcr.io/sam/devops-drill"
+      assert content == @placeholder_workflow
       assert commit_count(env) == 1
     end
 
-    test "commits the fix on a repository that already pushed the placeholder",
+    test "does not amend an existing repository for its workflow",
          %{env: env} = ctx do
       write_workflow(env, @placeholder_workflow)
       init_and_commit(env)
@@ -476,10 +473,8 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
 
       assert result.state == :pushed
       content = read_workflow(env)
-      refute content =~ "<GITHUB_OWNER>"
-      assert content =~ "ghcr.io/sam/devops-drill"
-      assert commit_count(env) == 2
-      assert last_commit_message(env) =~ "GHCR image owner"
+      assert content == @placeholder_workflow
+      assert commit_count(env) == 1
     end
 
     test "does nothing when there is no placeholder to fix", %{env: env} = ctx do
@@ -512,11 +507,6 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     defp commit_count(env) do
       {log, 0} = System.cmd("git", ["log", "--oneline"], cd: env.cwd)
       log |> String.split("\n", trim: true) |> length()
-    end
-
-    defp last_commit_message(env) do
-      {message, 0} = System.cmd("git", ["log", "-1", "--format=%s"], cd: env.cwd)
-      String.trim(message)
     end
   end
 end

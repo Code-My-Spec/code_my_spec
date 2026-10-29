@@ -55,7 +55,6 @@ defmodule CodeMySpec.GeneratorsTest do
   defp deployable_project(dir) do
     for path <- [
           "Dockerfile",
-          ".github/workflows/build.yml",
           "config/deploy.yml",
           "config/deploy.uat.yml",
           ".sops.yaml",
@@ -136,7 +135,7 @@ defmodule CodeMySpec.GeneratorsTest do
 
       explanation = Generators.explain({:missing_file, artifact})
       assert explanation =~ "Dockerfile"
-      assert explanation =~ "first push"
+      assert explanation =~ "burst-box builder"
     end
 
     test "a missing encrypted env file is reported", %{env: env, dir: dir} do

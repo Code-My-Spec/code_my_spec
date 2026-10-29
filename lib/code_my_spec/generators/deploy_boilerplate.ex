@@ -30,15 +30,7 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       key: :dockerfile,
       path: "Dockerfile",
       description: "Dockerfile",
-      why:
-        "the image is built in CI from this; without it the first push produces nothing to deploy"
-    },
-    %{
-      key: :ci_workflow,
-      path: ".github/workflows/build.yml",
-      description: "CI build workflow",
-      why:
-        "publishes the multi-arch image the deploy pulls by commit SHA, so what runs is traceable to a commit"
+      why: "the burst-box builder builds the deploy image from this at deploy time"
     },
     %{
       key: :deploy_prod,

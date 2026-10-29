@@ -29,8 +29,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   #
   # The drill checkout rather than `real_working_directory`, because the whole
   # plan includes the deploy: against the stub — a directory holding only a
-  # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile, missing
-  # CI build workflow", and the ten steps behind it reported nothing.
+  # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile",
+  # and the ten steps behind it reported nothing.
   setup :fake_working_directory
   # After fake_working_directory, not before: it registers the memory
   # environment with `Fakes.Shell` wired to `:memory_shell`, and
