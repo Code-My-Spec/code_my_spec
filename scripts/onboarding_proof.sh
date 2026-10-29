@@ -88,7 +88,9 @@ fi
 
 step=toolchain
 cd "$clone"
-CMS_HARNESS_PORT="${CMS_PROOF_PORT:-4014}" CMS_SERVER_URL="$server" bash scripts/start-harness >"$HOME/logs/harness.log" 2>&1 &
+# Claude's native HTTP MCP config and command hooks resolve the same port as the child harness.
+export CMS_HARNESS_PORT=${CMS_PROOF_PORT:-4014}
+CMS_SERVER_URL="$server" bash scripts/start-harness >"$HOME/logs/harness.log" 2>&1 &
 harness_pid=$!
 
 step=harness_ready
