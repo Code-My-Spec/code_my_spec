@@ -280,10 +280,9 @@ defmodule CodeMySpec.Analysis do
   # 8db9e442: longer than the harness's own full round trip for a run, not
   # just its analyzer kill timeout alone -- `CmsHarness.Project.AnalysisServer`
   # only arms that kill timer once `CmsHarness.AnalysisSlots.acquire/1` grants
-  # a machine-wide slot, and `acquire/1` itself waits up to its own
-  # `wait_ceiling/0` first (both 30 minutes as of this writing, so a run can
-  # legitimately take up to an hour and still be the harness working, not an
-  # unresponsive one). Kept as an independent constant, not a call into
+  # a machine-wide slot, and `acquire/1` waits in line for one with no limit,
+  # so this bounds only how long a caller waits for the answer; the run itself
+  # still finishes and records its result. Kept as an independent constant, not a call into
   # `CmsHarness` (undeclared Boundary dep, and a real deployment's harness is
   # not even the same process): if either of those two change, this needs to
   # stay ahead of their sum, not just one of them.

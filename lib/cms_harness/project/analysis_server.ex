@@ -660,8 +660,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   # Inside the task, so the slot is held by the process doing the work and is
   # released when it exits. Timeout cleanup retains the suspended owner until
   # all owned OS process groups have been confirmed dead.
-  # `AnalysisSlots.acquire/1` waits for a slot; `:slot_acquired` is sent only on
-  # `:ok`, since a `:busy` never ran. `:busy` is still answered, as an error.
+  # `AnalysisSlots.acquire/1` waits in line for a slot, however long that takes.
   defp run_with_slot(project, entry, parent) do
     requested_at = System.monotonic_time(:millisecond)
 
@@ -700,14 +699,6 @@ defmodule CmsHarness.Project.AnalysisServer do
           {:error, reason} ->
             {:ran, {:error, "git snapshot before the analyzer ran: #{reason}"}, nil}
         end
-
-      :busy ->
-        {:ran,
-         {:error,
-          "this machine could not free one of its #{AnalysisSlots.limit()} analyzer " <>
-            "slots within #{AnalysisSlots.wait_ceiling()}ms — more running at once makes " <>
-            "every one of them report failures that are the load rather than the code. " <>
-            "Nothing ran. The next stop re-enqueues this."}, nil}
     end
   end
 
