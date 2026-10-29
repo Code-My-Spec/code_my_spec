@@ -1,8 +1,9 @@
 # Running the harness in a Claude Code cloud session
 
-A claude.ai/code session on this repo runs its own harness, which joins the
-CodeMySpec server at `CMS_SERVER_URL`. Nothing in the repo changes: everything
-comes from the cloud environment's settings.
+A claude.ai/code session on this repo runs its own harness. The server URL is
+resolved by `scripts/start-harness` from `CMS_SERVER_URL`, the checkout's existing
+`.cms_harness.json`, or `.code_my_spec/config.yml`. The cloud hook does not
+substitute a server URL when none is configured.
 
 ## Environment settings (claude.ai/code → environment)
 
@@ -14,10 +15,9 @@ comes from the cloud environment's settings.
   /usr/local/lib by hand), and `archive.ubuntu.com` plus
   `security.ubuntu.com` for `inotify-tools`. Without inotifywait the harness's
   file watcher cannot start and the project channel rejoins about once a second.
-- **Environment variables:**
-
-      CMS_SERVER_URL=https://dev.codemyspec.com
-      CMS_HARNESS_PORT=4004
+- **Environment variables:** Set `CMS_HARNESS_PORT=4004`. Set
+  `CMS_SERVER_URL=https://dev.codemyspec.com` only when the checkout has no
+  server URL in `.code_my_spec/config.yml` or `.cms_harness.json`.
 
 - **Setup script:** paste `setup.sh` in full.
 
@@ -35,7 +35,7 @@ SessionStart hook, `cms-cloud-session`, which runs only when `CLAUDE_CODE_REMOTE
 is `true` and does this, detached:
 
 1. `git submodule update --init` for `.code_my_spec`
-2. runs `bash scripts/start-harness $CMS_SERVER_URL`, which installs missing Hex and Rebar, requests device approval on first use, and writes the gitignored `.cms_harness.json`. Approve the verification code shown in `~/.codemyspec/harness.out`. Keep this file untracked.
+2. runs `bash scripts/start-harness`, which resolves the server URL, installs missing Hex and Rebar, requests device approval on first use, and writes the gitignored `.cms_harness.json`. Approve the verification code shown in `~/.codemyspec/harness.out`. Keep this file untracked.
 3. starts the harness from source on :4004 after approval
 4. once the harness has joined and installed the project's age keys, decrypts
    `envs/dev.env` and `envs/test.env` for the analyzers

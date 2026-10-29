@@ -82,7 +82,7 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       # The harness builds its tools from these rather than keeping copies.
       "direct_tools" => ToolIndex.carried_definitions(tools, ToolIndex.copy_tools?(agent)),
       # How a tool call physically happens on this provider. See `ProviderBrief`.
-      "provider_brief" => ProviderBrief.for(agent.provider),
+      "provider_brief" => provider_brief(agent),
       # Where the application is running: the main checkout's preview, whichever
       # copy the agent is in (only the main copy records one).
       "app_url" => app_url(agent),
@@ -92,6 +92,12 @@ defmodule CodeMySpec.Agents.LaunchRequest do
       "messages" => demo_turns() ++ (agent.history || [])
     }
     |> Map.merge(credential_fields(agent.credential))
+  end
+
+  # Terminal sessions call their native MCP tools. ProviderBrief describes the
+  # Alloy backend's tool-call envelope, which would misdirect a terminal Codex.
+  defp provider_brief(agent) do
+    if Agent.terminal?(agent), do: nil, else: ProviderBrief.for(agent.provider)
   end
 
   # Nil when nothing is serving the main checkout: "no address" is a fact an

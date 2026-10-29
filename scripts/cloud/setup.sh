@@ -114,13 +114,14 @@ done
 port="${CMS_HARNESS_PORT:-4004}"
 export CMS_HARNESS_PORT="$port"
 root="${CLAUDE_PROJECT_DIR:-$PWD}"
-server="${CMS_SERVER_URL:-https://dev.codemyspec.com}"
+# The source entry resolves the server from CMS_SERVER_URL, the existing
+# harness record, or .code_my_spec/config.yml. Do not guess a remote target.
 mkdir -p "$HOME/.codemyspec"
 log="$HOME/.codemyspec/cloud-session.log"
 
 setsid bash -c '
-  root="$1"; port="$2"; server="$3"; log="$4"
-  echo "== $(date -u +%FT%TZ) session start in $root (server $server)"
+  root="$1"; port="$2"; log="$3"
+  echo "== $(date -u +%FT%TZ) session start in $root"
 
   if curl -fs "localhost:$port/health" >/dev/null; then
     echo "harness already up"
@@ -135,8 +136,8 @@ setsid bash -c '
 
   # The shared source entry installs missing prerequisites, asks for device
   # approval when needed, onboards this copy, then starts the harness.
-  CMS_PROJECT_DIR="$root" CMS_HARNESS_PORT=$port CMS_SERVER_URL="$server" \
-    nohup bash scripts/start-harness "$server" >>"$HOME/.codemyspec/harness.out" 2>&1 &
+  CMS_PROJECT_DIR="$root" CMS_HARNESS_PORT=$port \
+    nohup bash scripts/start-harness >>"$HOME/.codemyspec/harness.out" 2>&1 &
   echo "harness onboarding/starting (pid $!); approve the code in ~/.codemyspec/harness.out"
 
   # Once the harness has joined it installs the project age keys, and then the
@@ -172,7 +173,7 @@ setsid bash -c '
       echo "envs/$e.env decrypted"
     done
   ) &
-' _ "$root" "$port" "$server" "$log" </dev/null >>"$log" 2>&1 &
+' _ "$root" "$port" "$log" </dev/null >>"$log" 2>&1 &
 exit 0
 SESSION
 bash -n /usr/local/bin/cms-cloud-session
