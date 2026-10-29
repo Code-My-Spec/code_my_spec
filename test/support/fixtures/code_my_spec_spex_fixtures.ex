@@ -5401,10 +5401,11 @@ defmodule CodeMySpecSpex.Fixtures do
     dir = spex_tmp_dir!("sops-key-shim")
     path = Path.join(dir, "cms-sops-key-shim")
     root = File.cwd!()
+    quoted_root = "'" <> String.replace(root, "'", "'\\''") <> "'"
 
     spex_write_file!(path, """
     #!/bin/sh
-    cd #{root} || exit 1
+    cd #{quoted_root} || exit 1
     exec env MIX_ENV=test mix run --no-start --no-compile -e 'CmsHarness.Cli.SopsKey.start([])'
     """)
 
