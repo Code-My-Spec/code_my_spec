@@ -72,10 +72,11 @@ defmodule CodeMySpec.MixProject do
   end
 
   # Specifies which paths to compile per environment.
-  defp elixirc_paths(:test), do: ["lib", "test/support", ".code_my_spec/content"]
+  defp elixirc_paths(:test), do: ["lib", "lib_server", "test/support", ".code_my_spec/content"]
   # Modules that `use` the desktop-only `desktop` dependency.
-  defp elixirc_paths(:desktop), do: ["lib", "lib_desktop"]
-  defp elixirc_paths(_), do: ["lib"]
+  defp elixirc_paths(:desktop), do: ["lib", "lib_server", "lib_desktop"]
+  defp elixirc_paths(:harness), do: ["lib"]
+  defp elixirc_paths(_), do: ["lib", "lib_server"]
 
   # The version is git's (John, 2026-10-04): a promotion tags the commit the gate
   # certified and commits nothing, so there is no literal to bump here.
@@ -295,12 +296,10 @@ defmodule CodeMySpec.MixProject do
 
       # Embeddings
       #
-      # No `only:` — the embeddings rework (577de9bb) moves inference onto
-      # the server (OrtexServing, lib/code_my_spec/embeddings/), so :dev and
-      # :prod need Ortex/Tokenizers/Nx now too. They were CLI-only while
-      # only the packaged binary embedded anything.
-      {:ortex, "~> 0.1"},
-      {:tokenizers, "~> 0.5"},
+      # Inference runs in the server, not the source harness. Keep the native
+      # dependencies out of :harness so a fresh checkout needs no Rust toolchain.
+      {:ortex, "~> 0.1", only: [:dev, :test, :prod, :desktop]},
+      {:tokenizers, "~> 0.5", only: [:dev, :test, :prod, :desktop]},
       {:nx, "~> 0.9"},
       {:flame, "~> 0.1"},
 

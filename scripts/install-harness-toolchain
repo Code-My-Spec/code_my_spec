@@ -12,6 +12,7 @@ if [[ ! -x $otp_dir/bin/erl ]]; then
     Darwin:arm64) target=aarch64-apple-darwin; expected=831fcfb46929c752abf0a921409a46b306e7019061653323fab7f0958ad4db25; url=https://github.com/erlef/otp_builds/releases/download/OTP-28.1/otp-$target.tar.gz ;;
     Darwin:x86_64) target=x86_64-apple-darwin; expected=821d8f2e039548b4343eadc7d25741e4d5b2280f429d14ded378f4de2067b83c; url=https://github.com/erlef/otp_builds/releases/download/OTP-28.1/otp-$target.tar.gz ;;
     Linux:x86_64) target=ubuntu-24.04-x86_64; expected=6f7a95250a83f999909cf64dc375fd08809eb057f61b24eecdf2b3b44fe621ab; url=https://builds.hex.pm/builds/otp/ubuntu-24.04/OTP-28.1.tar.gz ;;
+    Linux:aarch64|Linux:arm64) target=ubuntu-24.04-arm64; expected=4585a32725c8eebcd9154cd8884366c93077895d1044974f1b728df5eae2cee9; url=https://builds.hex.pm/builds/otp/arm64/ubuntu-24.04/OTP-28.1.tar.gz ;;
     *) echo 'No bundled OTP build for this platform. Install Erlang/OTP 28 and Elixir 1.19, then rerun scripts/start-harness.' >&2; exit 1 ;;
   esac
   archive=$root/otp-$target.tar.gz
@@ -38,6 +39,13 @@ if [[ ! -x $elixir_dir/bin/mix ]]; then
   archive=$root/elixir-1.19.4-otp-28.zip
   echo 'Downloading Elixir 1.19.4 for OTP 28' >&2
   curl -fL --retry 3 -o "$archive" 'https://builds.hex.pm/builds/elixir/v1.19.4-otp-28.zip'
+  if command -v sha256sum >/dev/null 2>&1; then
+    actual=$(sha256sum "$archive")
+  else
+    actual=$(shasum -a 256 "$archive")
+  fi
+  actual=${actual%% *}
+  [[ $actual == 8fd7b5705b756c0e1ec71f9e8281b4b75801b9564f0205b5035319e8505ad2b4 ]] || { echo 'Elixir archive checksum mismatch' >&2; rm -f "$archive"; exit 1; }
   mkdir -p "$elixir_dir"
   if command -v unzip >/dev/null 2>&1; then
     unzip -qo "$archive" -d "$elixir_dir"

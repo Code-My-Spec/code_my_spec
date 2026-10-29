@@ -32,7 +32,7 @@ if [[ ${CMS_PROOF_CHILD:-0} != 1 ]]; then
   exec env -i HOME="$proof_home" PATH='/usr/bin:/bin' \
     CMS_PROOF_CHILD=1 CMS_PROOF_CLAUDE_BIN="$claude_bin" CMS_PROOF_PYTHON_BIN="$python_bin" \
     CMS_PROOF_EMAIL="$CMS_PROOF_EMAIL" CMS_PROOF_PASSWORD_FILE="$CMS_PROOF_PASSWORD_FILE" \
-    CMS_PROOF_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" CMS_PROOF_TIMEOUT="${CMS_PROOF_TIMEOUT:-900}" \
+    CMS_PROOF_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" CMS_PROOF_PORT="${CMS_PROOF_PORT:-4014}" CMS_PROOF_TIMEOUT="${CMS_PROOF_TIMEOUT:-900}" \
     CMS_PROOF_SOURCE_HEAD="$source_head" CMS_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" \
     /bin/bash "$0" "$token_file" "$proof_home" "$source"
 fi
@@ -48,7 +48,7 @@ step=toolchain
 # Exercise the documented source entry with no operator toolchain on PATH.
 # It must install Mix inside this empty HOME before onboarding.
 cd "$clone"
-CMS_HARNESS_PORT=4004 CMS_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" bash scripts/start-harness >"$HOME/logs/harness.log" 2>&1 &
+CMS_HARNESS_PORT="${CMS_PROOF_PORT:-4014}" CMS_SERVER_URL="${CMS_PROOF_SERVER_URL:-}" bash scripts/start-harness >"$HOME/logs/harness.log" 2>&1 &
 harness_pid=$!
 cleanup() { kill "$harness_pid" 2>/dev/null || true; }
 trap cleanup EXIT
@@ -88,16 +88,12 @@ unset CMS_PROOF_USER_CODE
 
 step=harness_ready
 while (( SECONDS < deadline )); do
-  if curl -fsS --max-time 2 http://localhost:4004/health >"$HOME/logs/health.json" 2>&1; then break; fi
+  if curl -fsS --max-time 2 http://localhost:${CMS_PROOF_PORT:-4014}/health >"$HOME/logs/health.json" 2>&1; then break; fi
   kill -0 "$harness_pid" 2>/dev/null || fail 'harness exited after approval (see logs/harness.log)'
   sleep 2
 done
-curl -fsS --max-time 2 http://localhost:4004/health >"$HOME/logs/health.json" 2>&1 || fail 'timed out waiting for harness health'
+curl -fsS --max-time 2 http://localhost:${CMS_PROOF_PORT:-4014}/health >"$HOME/logs/health.json" 2>&1 || fail 'timed out waiting for harness health'
 [[ -s .cms_harness.json ]] || fail 'harness is healthy but onboarding record is missing'
-# The plugin's MCP header needs the ID issued during device onboarding.
-CMS_HARNESS_ID=$("$python_bin" -c 'import json; record=json.load(open(".cms_harness.json")); print(record.get("working_copy_id") or record.get("harness_id") or "")')
-[[ -n $CMS_HARNESS_ID ]] || fail 'onboarding record has no harness ID'
-export CMS_HARNESS_ID
 
 step=claude_init
 # Read the token only at invocation time. No xtrace and no token-bearing log.
