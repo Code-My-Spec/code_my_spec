@@ -98,6 +98,44 @@ defmodule CmsHarness.AnalysisSlotsTest do
     end
   end
 
+  # A gate run that waited out the slot ceiling behind agents' certification
+  # runs ejected its candidate; every team's landing waits on the gate.
+  describe "a promotion gate's run" do
+    setup do
+      Application.put_env(:code_my_spec, :analysis_slots, 1)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :analysis_slots) end)
+    end
+
+    test "takes the next free slot ahead of runs that were waiting first" do
+      {holder_pid, :ok} = holder()
+      normal = waiter(:normal)
+      wait_until(fn -> AnalysisSlots.waiting() == 1 end)
+      gate = waiter(:gate)
+      wait_until(fn -> AnalysisSlots.waiting() == 2 end)
+
+      send(holder_pid, :stop)
+
+      assert_receive {:took, ^gate, :ok}, 1000
+      refute_receive {:took, ^normal, _}, 200
+    end
+  end
+
+  defp waiter(priority) do
+    test = self()
+
+    pid =
+      spawn(fn ->
+        send(test, {:took, self(), AnalysisSlots.acquire(:full, priority)})
+
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    on_exit(fn -> Process.exit(pid, :kill) end)
+    pid
+  end
+
   describe "acquiring" do
     setup do
       Application.put_env(:code_my_spec, :analysis_slots, 2)

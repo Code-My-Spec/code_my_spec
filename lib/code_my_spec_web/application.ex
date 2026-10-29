@@ -30,6 +30,8 @@ defmodule CodeMySpecWeb.Application do
     CodeMySpec.BootVersion.capture()
     log_boot_version()
 
+    setup_opentelemetry(env)
+
     # Children that act outside this process start only when this boot serves
     # (`when_serving/2`).
     # See knowledge/web, "Boot".
@@ -325,6 +327,19 @@ defmodule CodeMySpecWeb.Application do
   end
 
   def children(children, _env, _serving?), do: children
+
+  # Instrumentation only attaches handlers; nothing leaves the node unless
+  # config/runtime.exs switched the exporter on. Not under test, where the
+  # handlers would only add work to every request and query.
+  defp setup_opentelemetry(:test), do: :ok
+
+  defp setup_opentelemetry(_env) do
+    OpentelemetryLoggerMetadata.setup()
+    OpentelemetryBandit.setup()
+    OpentelemetryPhoenix.setup(adapter: :bandit, liveview: true)
+    OpentelemetryEcto.setup([:code_my_spec, :repo])
+    OpentelemetryOban.setup()
+  end
 
   # A copy's own app has no harness, so it runs analysis itself: what QA drives
   # through `/dev/qa-agents` before a change lands. Main's sends it to its harness.

@@ -4,7 +4,7 @@ defmodule CodeMySpecSpex.Story970.Criterion630Spex do
   Criterion 630 — The project already contains everything a build needs.
 
   Sam generates deploy files through the console. The fresh project tree must
-  carry its Docker build, CI, release migration, and deploy entry points before
+  carry its Dockerfile, release migration, and deploy entry points before
   he edits any of them. The generator lives outside this repository, so this
   checks the files visible through the project's execution context.
   """
@@ -59,7 +59,6 @@ defmodule CodeMySpecSpex.Story970.Criterion630Spex do
 
         for path <- [
               "Dockerfile",
-              ".github/workflows/build.yml",
               "rel/overlays/bin/migrate",
               "bin/deploy",
               health_controller
@@ -74,14 +73,13 @@ defmodule CodeMySpecSpex.Story970.Criterion630Spex do
       then_ "Sam has not written build tooling or researched how to containerise the release",
             context do
         {:ok, dockerfile} = Map.fetch!(context.contents, "Dockerfile")
-        {:ok, workflow} = Map.fetch!(context.contents, ".github/workflows/build.yml")
         {:ok, migration} = Map.fetch!(context.contents, "rel/overlays/bin/migrate")
 
         assert dockerfile =~ "mix release",
                "expected the generated Dockerfile to build a Phoenix release"
 
-        assert workflow =~ "docker",
-               "expected the generated CI workflow to build a container"
+        refute Map.has_key?(context.contents, ".github/workflows/build.yml"),
+               "the builder builds the image on the burst box at deploy time"
 
         assert migration =~ "migrate",
                "expected a generated release migration entry point"

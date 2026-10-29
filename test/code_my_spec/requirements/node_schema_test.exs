@@ -1,15 +1,14 @@
 defmodule CodeMySpec.Requirements.NodeSchemaTest do
   @moduledoc """
-  The changesets that keep a requirement row's identity and an edge honest.
+  The changeset that keeps a requirement row's identity honest.
 
-  Three entity types, three partial unique indexes, one owner each — and an edge
-  that joins two different nodes.
+  Three entity types, three partial unique indexes, one owner each.
   """
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Requirements.{Edge, Node}
+  alias CodeMySpec.Requirements.Node
 
   setup do
     %{scope: full_scope_fixture()}
@@ -35,12 +34,5 @@ defmodule CodeMySpec.Requirements.NodeSchemaTest do
              "two owners satisfies two partial indexes, so the same node is reachable " <>
                "as two different nodes"
     end
-  end
-
-  test "a self-edge is refused by the changeset" do
-    changeset = Edge.changeset(%Edge{}, %{from_requirement_id: 1, to_requirement_id: 1})
-
-    refute changeset.valid?,
-           "a self-edge is a one-node cycle — the node would never become actionable"
   end
 end

@@ -4,11 +4,12 @@ import json
 import os
 import pathlib
 import subprocess
+import tempfile
 import threading
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-HOOK = ROOT / 'plugins/claude/hooks/post-hook.cjs'
+HOOK = ROOT / 'plugins/claude/hooks/post-hook.py'
 
 
 class HookTests(unittest.TestCase):
@@ -26,15 +27,7 @@ class HookTests(unittest.TestCase):
 
         class Receiver(http.server.BaseHTTPRequestHandler):
             def do_POST(self):
-                # Node streams stdin with chunked transfer encoding.
-                body = b''
-                while True:
-                    size = int(self.rfile.readline().strip(), 16)
-                    if size == 0:
-                        self.rfile.readline()
-                        break
-                    body += self.rfile.read(size)
-                    self.rfile.read(2)
+                body = self.rfile.read(int(self.headers['Content-Length']))
                 received.append((self.path, body))
                 self.send_response(200)
                 self.end_headers()
@@ -52,7 +45,7 @@ class HookTests(unittest.TestCase):
                     command = groups[0]['hooks'][0]['command']
                     event = command.rsplit(' ', 1)[1]
                     payload = b'{"session_id":"cloud-probe","cwd":"/repo"}'
-                    result = subprocess.run(['node', str(HOOK), event], input=payload,
+                    result = subprocess.run(['python3', str(HOOK), event], input=payload,
                         capture_output=True, timeout=10,
                         env={**os.environ, 'CMS_HARNESS_PORT': str(server.server_port)})
                     self.assertEqual(result.returncode, 0, result.stderr)
@@ -62,8 +55,40 @@ class HookTests(unittest.TestCase):
                 server.shutdown()
                 thread.join()
 
+    def test_port_file_is_used_without_environment_override(self):
+        received = []
+
+        class Receiver(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{}')
+
+            def log_message(self, *_):
+                pass
+
+        with http.server.HTTPServer(('127.0.0.1', 0), Receiver) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with tempfile.TemporaryDirectory() as home:
+                    state = pathlib.Path(home) / '.codemyspec'
+                    state.mkdir()
+                    (state / 'harness.port').write_text(str(server.server_port) + '\n')
+                    env = {key: value for key, value in os.environ.items()
+                           if key != 'CMS_HARNESS_PORT'}
+                    env['HOME'] = home
+                    result = subprocess.run(['python3', str(HOOK), 'session-start'],
+                        input=b'{}', capture_output=True, timeout=10, env=env)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(received, ['/api/hooks/session-start'])
+            finally:
+                server.shutdown()
+                thread.join()
+
     def test_invalid_port_is_reported(self):
-        result = subprocess.run(['node', str(HOOK), 'session-start'], input=b'{}',
+        result = subprocess.run(['python3', str(HOOK), 'session-start'], input=b'{}',
             capture_output=True, env={**os.environ, 'CMS_HARNESS_PORT': 'not-a-port'})
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(b'Invalid CodeMySpec harness port', result.stderr)

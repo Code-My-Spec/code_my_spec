@@ -120,7 +120,7 @@ defmodule CodeMySpecWeb do
   # and is gitignored, so anything placed there is absent in production.
   def static_paths,
     do:
-      ~w(assets vendor fonts images favicon.ico robots.txt sw.js manifest.json 2b3072f808084089a59fa6ee3a6555b3.txt)
+      ~w(assets vendor fonts images favicon.ico robots.txt sw.js manifest.json bootstrap-harness.py 2b3072f808084089a59fa6ee3a6555b3.txt)
 
   def router do
     quote do

@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
   ## Reading
 
-  These rows plus `requirement_edges` are a read model, and questions about the
+  These rows plus the project's edges are a read model, and questions about the
   graph's *current* shape can be answered from them without recomputing
   anything. `requirement_details/3` is one such reader; the recompute path
   exists to keep the rows true, not to answer every question about them.

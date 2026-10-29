@@ -56,7 +56,6 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
 
       for path <- [
             "Dockerfile",
-            ".github/workflows/build.yml",
             "config/deploy.yml",
             "config/deploy.uat.yml",
             ".sops.yaml",
@@ -85,7 +84,6 @@ defmodule CodeMySpec.Generators.DeployReadinessFromSyncTest do
       scope = directoryless_scope()
       # Everything except the Dockerfile — the one thing genuinely absent.
       for path <- [
-            ".github/workflows/build.yml",
             "config/deploy.yml",
             "config/deploy.uat.yml",
             ".sops.yaml",

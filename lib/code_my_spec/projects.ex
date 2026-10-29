@@ -59,6 +59,27 @@ defmodule CodeMySpec.Projects do
     Repo.all_by(Project, account_id: scope.active_account_id)
   end
 
+  @doc "Lists projects in every account the authenticated user belongs to."
+  def list_projects_for_user(%Scope{user: %{id: _}} = scope) do
+    account_ids = scope |> CodeMySpec.Accounts.list_accounts() |> Enum.map(& &1.id)
+
+    from(p in Project, where: p.account_id in ^account_ids, order_by: [asc: p.name])
+    |> Repo.all()
+  end
+
+  def list_projects_for_user(%Scope{}), do: []
+
+  def get_project_for_user(%Scope{user: %{id: _}} = scope, id) do
+    account_ids = scope |> CodeMySpec.Accounts.list_accounts() |> Enum.map(& &1.id)
+
+    case Repo.one(from(p in Project, where: p.id == ^id and p.account_id in ^account_ids)) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
+    end
+  end
+
+  def get_project_for_user(%Scope{}, _id), do: {:error, :not_found}
+
   @doc """
   Returns all projects that have a local_path set, ordered by name.
   Does not require a scope — intended for the local web project index.

@@ -835,6 +835,9 @@ config :code_my_spec, CodeMySpec.Integrations.Providers.GitHub.DeviceAuth,
 
 config :code_my_spec, CodeMySpec.Auth.HarnessOAuth, plug: {Req.Test, CodeMySpec.Auth.HarnessOAuth}
 
+config :code_my_spec, CodeMySpecWeb.SourceGitController,
+  plug: {Req.Test, CodeMySpecWeb.SourceGitController}
+
 # The run guard watches this machine's ports and sweeps what dead BEAMs left. A
 # test BEAM is neither: it polls only when a test asks, and records in its own
 # directory, so it never reaps another harness's runs.
@@ -863,3 +866,6 @@ if System.get_env("CMS_TEST_SQLITE") do
     busy_timeout: 10_000,
     default_transaction_mode: :immediate
 end
+
+# No minute-by-minute memory log line under test.
+config :code_my_spec, :memory_report_period, false

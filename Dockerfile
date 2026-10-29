@@ -85,6 +85,7 @@ RUN mix assets.setup
 COPY priv priv
 
 COPY lib lib
+COPY lib_server lib_server
 
 # Compile the release
 RUN mix compile

@@ -19,8 +19,9 @@ defmodule CodeMySpec.Requirements.GraphReport do
       and checkouts settled.
     * `vantage` — which row-space answered, and whose tree those rows are about.
     * `nodes` — name, entity, satisfaction, details and freshness stamps.
-    * `edges` — prerequisites, as `[entity_type, entity_id, name]` pairs. Nodes
-      alone cannot say whether a requirement is gated.
+    * `edges` — prerequisites, as `[entity_type, entity_id, name]` pairs, as
+      generated and stored: unreduced, so an edge a longer path implies is
+      listed too. Nodes alone cannot say whether a requirement is gated.
 
   Deliberately does not settle unless asked. A caller checking whether a write
   moved the graph must see the state as it stands; `settle: false` answers

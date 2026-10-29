@@ -171,6 +171,8 @@ defmodule CmsHarness.OnboardSettingsTest do
 
       assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
                "http://localhost:4321/api/harnesses/abc-123"
+
+      assert read!(file)["env"]["CMS_HARNESS_PORT"] == "4321"
     end
   end
 

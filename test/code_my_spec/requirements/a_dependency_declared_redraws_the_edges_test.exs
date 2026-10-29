@@ -11,18 +11,17 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
 
   What a dependency changes: the cross-context edge from the target's last
   requirement to the source's first, and every story kicked off through the
-  source, whose fan-out now lands on the target instead. What it does not
+  source, whose fan-out now reaches the target too. What it does not
   change: any verdict. So the kind is handled as moving nothing and listed as
   a shape kind, and the drain redraws.
   """
   use CodeMySpecSpex.Case, async: true
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.Edge
-  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
+  alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Stories
 
   setup :register_log_in_setup_account
@@ -73,8 +72,15 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
       assert kicks_off?(declared, story.id, accounts.id),
              "the story's kickoff should land on the head of the chain it now has"
 
-      refute kicks_off?(declared, story.id, billing.id),
-             "a kickoff straight to Billing is redundant once Accounts gates it"
+      assert kicks_off?(declared, story.id, billing.id),
+             "edges are stored as generated: the kickoff to Billing stays beside the chain's"
+
+      refute kicks_off?(
+               MapSet.new(Topology.transitive_reduction(Enum.to_list(declared))),
+               story.id,
+               billing.id
+             ),
+             "a view reduces the kickoff straight to Billing away once Accounts gates it"
 
       {:ok, _deleted} = Components.delete_dependency(scope, dependency)
       settle(scope)
@@ -98,8 +104,7 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   # The event path's edges at this vantage, as node-key pairs.
   defp edges(scope) do
     ctx = Preloader.topology_context(scope)
-    source = {GraphStore.event_target(), {GraphStore.event_edges(), Edge}}
-    {_nodes, edges} = Projection.load(scope, ctx, source: source)
+    {_nodes, edges} = Projection.load(scope, ctx)
     MapSet.new(edges)
   end
 

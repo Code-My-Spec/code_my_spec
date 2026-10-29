@@ -1011,7 +1011,8 @@ claude-dev *args: _submodules
     # to run *that* copy means overriding this — `claude --plugin-dir
     # "$PWD/plugins/claude"` directly, which is what the moduledoc on
     # `mix cms.harness.onboard` describes.
-    PLUGIN="/Users/johndavenport/Documents/github/code_my_spec/plugins/claude"
+    # The main checkout, wherever it lives: every worktree shares its .git.
+    PLUGIN="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/plugins/claude"
 
     # Unconditionally, not "if the plugin is missing". The plugin is tracked and
     # always there, so that guard would never fire — and the thing actually
@@ -1345,7 +1346,7 @@ ship:
 # Fast-forward only, and refuses a dirty tree. That checkout is where merges get
 # done by hand, so anything else there is someone's work in progress — this is
 # for picking up what is already on origin, never for resolving anything.
-sync-main root="/Users/johndavenport/Documents/github/code_my_spec":
+sync-main root=`dirname "$(git rev-parse --path-format=absolute --git-common-dir)"`:
     #!/usr/bin/env bash
     set -euo pipefail
     root="{{root}}"

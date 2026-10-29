@@ -308,6 +308,20 @@ if config_env() == :desktop do
   end
 end
 
+# OTLP traces only where a collector is named (the box's cms-otel-collector on
+# db_net). The SDK reads OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES itself.
+# Graph drains run thousands of queries, so roots are sampled; a trace whose
+# parent is sampled keeps every child. OTEL_TRACES_SAMPLER_ARG overrides the ratio.
+if config_env() != :test and System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
+  ratio = String.to_float(System.get_env("OTEL_TRACES_SAMPLER_ARG") || "0.2")
+
+  config :opentelemetry,
+    traces_exporter: :otlp,
+    sampler: {:parent_based, %{root: {:trace_id_ratio_based, ratio}}}
+
+  config :opentelemetry_exporter, otlp_protocol: :http_protobuf
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

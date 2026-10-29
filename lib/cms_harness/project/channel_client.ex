@@ -552,6 +552,8 @@ defmodule CmsHarness.Project.ChannelClient do
         # Off this process: attaching registers through this channel.
         root = socket.assigns.project.root
         Task.start(fn -> reattach_terminals(root, restore["terminals"] || []) end)
+        # The server settled every interrupted turn before answering.
+        :telemetry.execute([:cms_harness, :restore, :answered], %{}, %{root: root})
         {:ok, socket |> assign(:restored, true) |> start_restore(agents)}
 
       {:error, %{"reason" => "graph_rebuilding"}} ->

@@ -49,12 +49,7 @@ defmodule CodeMySpecWeb.FilingAWidgetIssueDoesNotNotifyMainTest do
     %{conn: put_req_header(conn, "accept", "application/json"), scope: scope, main: main}
   end
 
-  defp await_dispatches do
-    CodeMySpec.TaskSupervisor
-    |> Task.Supervisor.children()
-    |> Enum.map(&Process.monitor/1)
-    |> Enum.each(fn ref -> assert_receive {:DOWN, ^ref, _, _, _}, 5_000 end)
-  end
+  defp await_dispatches, do: CodeMySpecTest.OwnDispatches.await()
 
   defp assert_main_told_nothing_and_triage_is_owed(%{scope: scope, main: %{id: main_id}}) do
     await_dispatches()

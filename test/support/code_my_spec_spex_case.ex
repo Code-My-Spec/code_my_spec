@@ -3029,7 +3029,7 @@ defmodule CodeMySpecSpex.Case do
 
   The premise of story 970 — the boilerplate arrives with the project — stated
   rather than assumed. Without it the deploy step refuses with "this project is
-  not deploy-ready: missing Dockerfile, missing CI build workflow", correctly,
+  not deploy-ready: missing Dockerfile", correctly,
   and the six steps behind it report nothing; a criterion about setup finishing
   then reads as setup being broken.
 
@@ -6201,7 +6201,10 @@ defmodule CodeMySpecSpex.Case do
       # `:plug` key, own cassette coverage.
       CmsHarness.Onboarding,
       # Remote onboarding's token exchange now reads the same HTTP plug.
-      CmsHarness.Token
+      CmsHarness.Token,
+      # The authenticated source Git proxy reads its own HTTP plug, so its
+      # upstream requests must be captured and replayed by cassettes.
+      CodeMySpecWeb.SourceGitController
     ]
   end
 

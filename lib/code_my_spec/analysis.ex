@@ -975,7 +975,15 @@ defmodule CodeMySpec.Analysis do
 
           send(
             pid,
-            {:run_analysis, [%{"run_id" => run.id, "source" => run.source, "args" => args}]}
+            {:run_analysis,
+             [
+               %{
+                 "run_id" => run.id,
+                 "source" => run.source,
+                 "args" => args,
+                 "priority" => slot_priority(run.requested_by)
+               }
+             ]}
           )
 
         true ->
@@ -1239,7 +1247,15 @@ defmodule CodeMySpec.Analysis do
 
     send(
       channel,
-      {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+      {:run_analysis,
+       [
+         %{
+           "run_id" => run.id,
+           "source" => job.source,
+           "args" => job.args,
+           "priority" => slot_priority(job.requested_by)
+         }
+       ]}
     )
 
     {:ok, :joined, run.id}
@@ -1268,7 +1284,15 @@ defmodule CodeMySpec.Analysis do
     else
       send(
         channel,
-        {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+        {:run_analysis,
+         [
+           %{
+             "run_id" => run.id,
+             "source" => job.source,
+             "args" => job.args,
+             "priority" => slot_priority(job.requested_by)
+           }
+         ]}
       )
 
       {:ok, :started, run.id}
@@ -1344,4 +1368,12 @@ defmodule CodeMySpec.Analysis do
   # Grace added to the caller's timeout so "slow" and "gone" stay
   # distinguishable; configurable for tests.
   defp call_grace_ms, do: Application.get_env(:code_my_spec, :call_grace_ms, 5_000)
+
+  # A promotion gate's run goes ahead of agents' runs for the machine's analyzer
+  # slots: every team's landing waits on the gate, and a gate run that waited
+  # out the slot ceiling behind certification runs ejected its candidate.
+  @gate_kinds ["promotion", "promotion_flake_rerun"]
+  defp slot_priority(%{kind: kind}) when kind in @gate_kinds, do: "gate"
+  defp slot_priority(%{"kind" => kind}) when kind in @gate_kinds, do: "gate"
+  defp slot_priority(_requested_by), do: "normal"
 end
