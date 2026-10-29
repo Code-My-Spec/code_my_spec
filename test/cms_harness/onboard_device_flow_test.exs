@@ -46,9 +46,8 @@ defmodule CmsHarness.OnboardDeviceFlowTest do
     Application.put_env(:code_my_spec, Onboarding, plug: {Req.Test, Onboarding})
 
     on_exit(fn ->
-      if previous_key,
-        do: System.put_env("CMS_DEPLOY_KEY", previous_key),
-        else: System.delete_env("CMS_DEPLOY_KEY")
+      System.delete_env("CMS_DEPLOY_KEY")
+      Enum.each(List.wrap(previous_key), &System.put_env("CMS_DEPLOY_KEY", &1))
 
       Enum.each(previous, fn
         {key, {:ok, value}} -> Application.put_env(:code_my_spec, key, value)
@@ -56,27 +55,25 @@ defmodule CmsHarness.OnboardDeviceFlowTest do
       end)
     end)
 
-    Req.Test.stub(HarnessOAuth, fn conn ->
-      case conn.request_path do
-        "/oauth/register" ->
-          Req.Test.json(conn, %{client_id: "new-client", client_secret: "new-secret"})
+    Req.Test.stub(HarnessOAuth, fn
+      %{request_path: "/oauth/register"} = conn ->
+        Req.Test.json(conn, %{client_id: "new-client", client_secret: "new-secret"})
 
-        "/oauth/device/code" ->
-          Req.Test.json(conn, %{
-            device_code: "private-code",
-            user_code: "ABCD-EFGH",
-            verification_uri: server <> "/verify",
-            expires_in: 600,
-            interval: 1
-          })
+      %{request_path: "/oauth/device/code"} = conn ->
+        Req.Test.json(conn, %{
+          device_code: "private-code",
+          user_code: "ABCD-EFGH",
+          verification_uri: server <> "/verify",
+          expires_in: 600,
+          interval: 1
+        })
 
-        "/oauth/token" ->
-          Req.Test.json(conn, %{
-            access_token: "approved-token",
-            refresh_token: "refresh-token",
-            expires_in: 7200
-          })
-      end
+      %{request_path: "/oauth/token"} = conn ->
+        Req.Test.json(conn, %{
+          access_token: "approved-token",
+          refresh_token: "refresh-token",
+          expires_in: 7200
+        })
     end)
 
     Req.Test.stub(Onboarding, fn conn ->
