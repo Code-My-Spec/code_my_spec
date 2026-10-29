@@ -8,8 +8,10 @@ alias CodeMySpec.Problems
 alias CodeMySpec.Projects
 alias CodeMySpec.Repo
 
-# Find the CodeMySpec project by its local_path
-cwd = "/Users/johndavenport/Documents/github/code_my_spec"
+# Find the CodeMySpec project by its local_path: the main checkout, from any worktree.
+{common, 0} = System.cmd("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"])
+main = common |> String.trim() |> Path.dirname()
+cwd = main
 
 project =
   Repo.get_by(CodeMySpec.Projects.Project, local_path: cwd) ||

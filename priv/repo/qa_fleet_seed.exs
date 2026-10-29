@@ -51,8 +51,12 @@ alias CodeMySpec.UserPreferences
 
 project_name = "QA Agent Fleet"
 email = "qa@codemyspec.local"
-root = "/Users/johndavenport/Documents/github/code_my_spec_test_repos/qa_fleet"
-template = "/Users/johndavenport/Documents/github/math_test_project"
+# Siblings of the main checkout, wherever the repos live.
+{common, 0} = System.cmd("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"])
+main = common |> String.trim() |> Path.dirname()
+github = Path.dirname(main)
+root = Path.join(github, "code_my_spec_test_repos/qa_fleet")
+template = Path.join(github, "math_test_project")
 
 # One role per checkout, named so the path says what lives there.
 copies = [
