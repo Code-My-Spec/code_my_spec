@@ -160,13 +160,23 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Asked of the Cloudflare zone, not a resolver: does each record still point
   # where this project put it. One zone lookup and one record list.
-  def verify(:dns, %Scope{} = scope, _opts) do
-    case {domain(scope), pointable_environments(scope)} do
-      {nil, _} -> {:ok, :absent}
-      # No environment has an address yet, so there is nothing dns could have
-      # written. Absent rather than satisfied: the server step has not run.
-      {_domain, []} -> {:ok, :absent}
-      {domain, environments} -> verify_dns_records(scope, domain, environments)
+  def verify(:dns, %Scope{} = scope, opts) do
+    with domain when is_binary(domain) <- domain(scope),
+         {:ok, selected} <- selected_dns_environments(permitted_hosts(scope, domain), opts),
+         [_ | _] <- selected do
+      pointable =
+        Enum.filter(
+          selected,
+          &(is_binary(&1.ip) and &1.ip != "" and is_binary(&1.host) and &1.host != "")
+        )
+
+      if length(pointable) == length(selected),
+        do: verify_dns_records(scope, domain, pointable),
+        else: {:ok, :absent}
+    else
+      nil -> {:ok, :absent}
+      [] -> {:ok, :absent}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -395,7 +405,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, zone} <- find_dns_zone(scope, name, opts),
          # `[_ | _]`: an empty list would report done having published
          # nothing. Empty means the devops level filtered out every row.
-         [_ | _] = environments <- permitted_hosts(scope, name),
+         {:ok, environments} <- selected_dns_environments(permitted_hosts(scope, name), opts),
+         [_ | _] <- environments,
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       record_client_api_url(scope, environments, opts)
       {:ok, resources}
@@ -408,8 +419,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       # Passed through: "your apex is live" is a question for the operator,
       # not a failure.
+      {:paused, message, partial} ->
+        {:paused, message, partial}
+
       {:paused, message} ->
         {:paused, message}
+
+      {:error, reason, partial} ->
+        {:error, format(reason), partial}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -2321,14 +2338,6 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   ## Helpers
 
-  # Only environments the server step has given an address and host; one
-  # without has no record to check.
-  defp pointable_environments(scope) do
-    scope
-    |> permitted_environment_rows()
-    |> Enum.filter(&(is_binary(&1.ip) and &1.ip != "" and is_binary(&1.host) and &1.host != ""))
-  end
-
   defp verify_dns_records(scope, domain, environments) do
     with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, domain),
          {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
@@ -2341,7 +2350,9 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp dns_records_satisfied(records, environments) do
     if Enum.all?(environments, &record_points_at?(records, &1)),
-      do: {:ok, :satisfied, Enum.flat_map(environments, &dns_resources_for/1)},
+      do:
+        {:ok, :satisfied,
+         Enum.flat_map(environments, &(dns_resources_for(&1) ++ [dns_outcome(&1, "unchanged")]))},
       else: {:ok, :absent}
   end
 
@@ -2349,7 +2360,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # point at an address the project no longer holds.
   defp record_points_at?(records, environment) do
     Enum.any?(records, fn record ->
-      record["name"] == environment.host and record["content"] == environment.ip
+      record["name"] == environment.host and record["type"] == "A" and
+        record["content"] == environment.ip and record["proxied"] != true
     end)
   end
 
@@ -3020,6 +3032,30 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> Enum.filter(&MapSet.member?(permitted, &1.name))
   end
 
+  defp selected_dns_environments(environments, opts) do
+    case Keyword.fetch(opts, :environments) do
+      :error ->
+        {:ok, environments}
+
+      {:ok, names} when is_list(names) and names != [] ->
+        if Enum.all?(names, &(is_binary(&1) and &1 != "")) do
+          selected = Enum.filter(environments, &(&1.name in names))
+          missing = Enum.uniq(names) -- Enum.map(selected, & &1.name)
+
+          if missing == [],
+            do: {:ok, selected},
+            else:
+              {:error,
+               "DNS environments are not permitted or do not exist: #{Enum.join(missing, ", ")}"}
+        else
+          {:error, "DNS environments must be a nonempty list of names"}
+        end
+
+      {:ok, _} ->
+        {:error, "DNS environments must be a nonempty list of names"}
+    end
+  end
+
   defp devops_level(scope), do: ProvisioningPlan.devops_level(scope)
 
   # For every fan-out step whose permitted environment list is empty: refuse
@@ -3527,12 +3563,58 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     environments
     |> Enum.filter(& &1.host)
-    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+    |> Enum.reduce_while({[], []}, fn environment, {resources, pauses} ->
       case apex_repoint(scope, environment, existing, opts) do
-        :ok -> dns_record_for(scope, zone, environment, existing, acc, opts)
-        {:paused, message} -> {:halt, {:paused, message}}
+        {:paused, message} ->
+          outcome = dns_outcome(environment, "paused-awaiting-confirmation")
+          {:cont, {resources ++ [outcome], pauses ++ [message]}}
+
+        :ok ->
+          ip = environment_ip(scope, environment, opts)
+
+          if is_nil(ip) do
+            {:cont, {resources, pauses}}
+          else
+            unchanged? =
+              Enum.any?(existing, fn record ->
+                record["name"] == environment.host and record["type"] == "A" and
+                  record["content"] == ip and record["proxied"] != true
+              end)
+
+            case write_dns_record_for(scope, zone, environment, ip, existing, resources, opts) do
+              {:cont, {:ok, written}} ->
+                outcome = if unchanged?, do: "unchanged", else: "written"
+                {:cont, {written ++ [dns_outcome(environment, outcome)], pauses}}
+
+              {:halt, {:error, reason}} ->
+                {:halt, {:error, reason, resources}}
+            end
+          end
       end
     end)
+    |> case do
+      {:error, _, _} = error ->
+        error
+
+      {resources, []} ->
+        {:ok, resources}
+
+      {resources, pauses} ->
+        outcomes =
+          resources
+          |> Enum.filter(&(&1.kind == "dns_outcome"))
+          |> Enum.map_join(", ", & &1.identifier)
+
+        {:paused, "DNS outcomes: #{outcomes}. #{Enum.join(pauses, " ")}", resources}
+    end
+  end
+
+  defp dns_outcome(environment, outcome) do
+    %{
+      kind: "dns_outcome",
+      location: environment.host,
+      identifier: "environment=#{environment.name} outcome=#{outcome}"
+    }
   end
 
   # Refuse to move a live apex without `confirm_apex_repoint: true`: only the
@@ -3553,24 +3635,18 @@ defmodule CodeMySpec.Provisioning.Steps do
        "#{apex} already resolves to #{current}, and this would repoint it at #{ip} — a " <>
          "server this run just created. If #{apex} is serving anything today, that takes it " <>
          "down. Nothing else about the run is blocked: production is an environment like any " <>
-         "other, so remove the `prod` environment to leave the apex alone, or confirm to " <>
-         "repoint it."}
+         "other, so remove the `prod` environment to leave the apex alone, or run DNS " <>
+         "for only uat with `run_provisioning_step` and `environment: \"uat\"`, or " <>
+         "confirm to repoint it when ready."}
     else
       _ -> :ok
-    end
-  end
-
-  defp dns_record_for(scope, zone, environment, existing, acc, opts) do
-    case environment_ip(scope, environment, opts) do
-      nil -> {:cont, {:ok, acc}}
-      ip -> write_dns_record_for(scope, zone, environment, ip, existing, acc, opts)
     end
   end
 
   defp write_dns_record_for(scope, zone, environment, ip, existing, acc, opts) do
     write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
 
-    case write.(scope, zone["id"], environment.host, ip, records: existing) do
+    case write.(scope, zone["id"], environment.host, ip, records: existing, proxied: false) do
       {:ok, response} ->
         record = dns_resource(environment.host, ip, response, environment.name)
         confirm_dns_record(environment, ip, record, acc, opts)

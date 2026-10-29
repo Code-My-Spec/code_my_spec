@@ -65,7 +65,13 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
     test "the step pauses and names both addresses", %{scope: scope} do
       existing = [%{"name" => @apex, "type" => "A", "content" => @live_ip}]
 
-      assert {:paused, message} = Steps.run(:dns, scope, opts(existing))
+      assert {:paused, message, resources} = Steps.run(:dns, scope, opts(existing))
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_outcome" and
+                   &1.identifier == "environment=prod outcome=paused-awaiting-confirmation")
+             )
 
       assert message =~ @live_ip, "expected the address it would replace"
       assert message =~ @new_ip, "expected the address it would point at"
@@ -112,6 +118,54 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
     end
   end
 
+  describe "staged environment cutover" do
+    setup %{scope: scope} do
+      {:ok, _} = Environments.put(scope, "uat", %{host: "uat.#{@apex}", ip: @new_ip})
+      :ok
+    end
+
+    test "uat-only writes uat and leaves the live apex untouched", %{scope: scope} do
+      existing = [%{"name" => @apex, "type" => "A", "content" => @live_ip}]
+
+      assert {:ok, resources} = Steps.run(:dns, scope, opts(existing, environments: ["uat"]))
+      assert_received {:wrote, "uat.#{@apex}", @new_ip}
+      refute_received {:wrote, @apex, _}
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_outcome" and &1.identifier == "environment=uat outcome=written")
+             )
+    end
+
+    test "an apex pause does not block uat and reports both outcomes", %{scope: scope} do
+      existing = [%{"name" => @apex, "type" => "A", "content" => @live_ip}]
+
+      assert {:paused, message, resources} = Steps.run(:dns, scope, opts(existing))
+      assert_received {:wrote, "uat.#{@apex}", @new_ip}
+      refute_received {:wrote, @apex, _}
+      assert message =~ "environment=prod outcome=paused-awaiting-confirmation"
+      assert message =~ "environment=uat outcome=written"
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_record" and &1.location == "cloudflare/uat.#{@apex}")
+             )
+    end
+
+    test "an existing DNS-only record reports unchanged", %{scope: scope} do
+      existing = [
+        %{"name" => "uat.#{@apex}", "type" => "A", "content" => @new_ip, "proxied" => false}
+      ]
+
+      assert {:ok, resources} = Steps.run(:dns, scope, opts(existing, environments: ["uat"]))
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_outcome" and &1.identifier == "environment=uat outcome=unchanged")
+             )
+    end
+  end
+
   describe "a record that does not resolve" do
     # The step checked this and threw the answer away: `dns_verification/2`
     # returned an empty resource list and the step reported done, with no
@@ -121,7 +175,7 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
     test "fails this step instead of the one ten minutes later", %{scope: scope} do
       silent = [resolver: fn _url -> {:ok, %{status: 200, body: %{}}} end]
 
-      assert {:error, message} = Steps.run(:dns, scope, opts([], silent))
+      assert {:error, message, _partial} = Steps.run(:dns, scope, opts([], silent))
       assert message =~ @apex
       assert message =~ "no public resolver returns it"
     end
@@ -129,7 +183,7 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
     test "the address it wrote is named, so there is something to check", %{scope: scope} do
       silent = [resolver: fn _url -> {:ok, %{status: 200, body: %{}}} end]
 
-      assert {:error, message} = Steps.run(:dns, scope, opts([], silent))
+      assert {:error, message, _partial} = Steps.run(:dns, scope, opts([], silent))
       assert message =~ @new_ip
     end
   end
