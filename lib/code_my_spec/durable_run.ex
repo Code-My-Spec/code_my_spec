@@ -89,6 +89,57 @@ defmodule CodeMySpec.DurableRun do
 
   def alive?(_), do: false
 
+  @doc "Stop a streamed run by its verified OS identity, including its child processes."
+  def cancel(%{"pid" => pid} = manifest) when is_integer(pid) and pid > 1 do
+    if alive?(manifest) do
+      pgid =
+        case System.cmd("/bin/ps", ["-o", "pgid=", "-p", Integer.to_string(pid)],
+               stderr_to_stdout: true
+             ) do
+          {value, 0} -> String.trim(value)
+          _ -> ""
+        end
+
+      targets =
+        if pgid == Integer.to_string(pid) do
+          ["-#{pid}"]
+        else
+          descendants(pid) ++ [Integer.to_string(pid)]
+        end
+
+      Enum.each(targets, &System.cmd("/bin/kill", ["-TERM", "--", &1], stderr_to_stdout: true))
+      Process.sleep(100)
+
+      Enum.each(targets, &System.cmd("/bin/kill", ["-KILL", "--", &1], stderr_to_stdout: true))
+    end
+
+    :ok
+  end
+
+  def cancel(_), do: :ok
+
+  defp descendants(pid) do
+    case System.cmd("/bin/ps", ["-axo", "pid=,ppid="], stderr_to_stdout: true) do
+      {output, 0} ->
+        pairs =
+          for line <- String.split(output, "\n"),
+              [child, parent] <- [String.split(line)],
+              {child_id, ""} <- [Integer.parse(child)],
+              {parent_id, ""} <- [Integer.parse(parent)],
+              do: {child_id, parent_id}
+
+        descendants(pairs, [pid], []) |> Enum.map(&Integer.to_string/1)
+
+      _ ->
+        []
+    end
+  end
+
+  defp descendants(pairs, parents, found) do
+    children = for {child, parent} <- pairs, parent in parents, do: child
+    if children == [], do: found, else: descendants(pairs, children, children ++ found)
+  end
+
   def protected_pid?(pid, root_dir \\ dir()) when is_integer(pid) do
     case File.ls(root_dir) do
       {:ok, names} ->
@@ -245,7 +296,7 @@ defmodule CodeMySpec.DurableRun do
         {:error, "analyzer exited without a recorded exit status"}
 
       true ->
-        failures = Enum.filter(events, &(&1["event"] == "test_failed"))
+        failures = Enum.filter(events, &(&1["event"] in ["test_failed", "test_invalid"]))
 
         totals =
           Enum.reduce(
@@ -270,7 +321,7 @@ defmodule CodeMySpec.DurableRun do
           "source" => manifest["source"],
           "exit_status" => exit_status,
           "output" => output,
-          "stats" => %{"tests" => tests, "failures" => totals["fail"]},
+          "stats" => %{"tests" => tests, "failures" => totals["fail"] + totals["invalid"]},
           "diagnostics" => diagnostics
         }
 
@@ -316,7 +367,7 @@ defmodule CodeMySpec.DurableRun do
     }
 
   def live_event(%{"event" => kind} = event)
-      when kind in ["test_passed", "test_failed", "test_skipped", "test_excluded"] do
+      when kind in ["test_passed", "test_failed", "test_invalid", "test_skipped", "test_excluded"] do
     Map.merge(Map.take(event, ["file", "line", "name", "duration", "message", "failure_line"]), %{
       "event" => "test",
       "state" => String.replace_prefix(kind, "test_", "")

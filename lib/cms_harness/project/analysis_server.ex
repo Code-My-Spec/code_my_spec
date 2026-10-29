@@ -241,7 +241,13 @@ defmodule CmsHarness.Project.AnalysisServer do
   def handle_call({:cancel, reason}, _from, state) do
     held = Enum.reject([state.running | state.queue], &is_nil/1)
 
+    recovered =
+      Enum.reject(Map.get(state, :recovering, %{}), fn {id, _manifest} ->
+        state.running && state.running.run_id == id
+      end)
+
     if running = state.running do
+      cancel_durable_run(running.run_id)
       Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
       Process.demonitor(running.task.ref, [:flush])
 
@@ -259,21 +265,42 @@ defmodule CmsHarness.Project.AnalysisServer do
       })
     end
 
-    if held != [] do
+    for {owner_id, manifest} <- recovered do
+      cancel_durable_run(owner_id)
+
+      for id <- [owner_id | manifest["tied_run_ids"] || []] do
+        Channel.deliver_analysis_result(state.project.root, %{
+          "run_id" => id,
+          "source" => manifest["source"],
+          "status" => "superseded",
+          "error" => reason
+        })
+      end
+    end
+
+    count = length(held) + length(recovered)
+
+    if count > 0 do
       Logger.info(
-        "[CmsHarness] cancelled #{length(held)} analyzer run(s) for #{state.project.root}: #{reason}"
+        "[CmsHarness] cancelled #{count} analyzer run(s) for #{state.project.root}: #{reason}"
       )
     end
 
-    {:reply, length(held), clear_running(%{state | queue: []})}
+    {:reply, count, state |> Map.put(:queue, []) |> Map.put(:recovering, %{}) |> clear_running()}
   end
 
   def handle_call({:cancel_run, run_id}, _from, state) do
     queued = Enum.find(state.queue, &(run_id in answers_for(&1)))
 
+    recovered =
+      Enum.find(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
+        run_id in [manifest["run_id"] | manifest["tied_run_ids"] || []]
+      end)
+
     cond do
       state.running && run_id in answers_for(state.running) ->
         running = state.running
+        cancel_durable_run(running.run_id)
 
         Task.Supervisor.terminate_child(
           Sync.task_supervisor(state.project.root),
@@ -287,11 +314,31 @@ defmodule CmsHarness.Project.AnalysisServer do
         end
 
         answer_cancelled(state.project.root, running)
-        {:reply, :ok, state |> clear_running() |> maybe_start_next()}
+
+        {:reply, :ok,
+         state
+         |> Map.update(:recovering, %{}, &Map.delete(&1, running.run_id))
+         |> clear_running()
+         |> maybe_start_next()}
 
       queued ->
         answer_cancelled(state.project.root, queued)
         {:reply, :ok, %{state | queue: List.delete(state.queue, queued)}}
+
+      recovered ->
+        {owner_id, manifest} = recovered
+        cancel_durable_run(owner_id)
+
+        for id <- [owner_id | manifest["tied_run_ids"] || []] do
+          Channel.deliver_analysis_result(state.project.root, %{
+            "run_id" => id,
+            "source" => manifest["source"],
+            "status" => "cancelled"
+          })
+        end
+
+        {:reply, :ok,
+         state |> Map.update!(:recovering, &Map.delete(&1, owner_id)) |> maybe_start_next()}
 
       true ->
         {:reply, :not_found, state}
@@ -306,6 +353,17 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:reply,
      %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)},
      state}
+  end
+
+  defp cancel_durable_run(run_id) do
+    case DurableRun.read_manifest(run_id) do
+      {:ok, manifest} ->
+        DurableRun.cancel(manifest)
+        DurableRun.cleanup(run_id)
+
+      _ ->
+        :ok
+    end
   end
 
   @impl true
