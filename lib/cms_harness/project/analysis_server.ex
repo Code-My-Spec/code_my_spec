@@ -850,7 +850,12 @@ defmodule CmsHarness.Project.AnalysisServer do
           {:ok, start_tree} ->
             send(parent, {:analysis_started, entry.run_id, start_tree})
 
-            durable? = entry.source in ["exunit", "spex"]
+            # The current formatter does not emit a recoverable event stream.
+            # Keep the existing live reporting and process cleanup until the
+            # stream is explicitly enabled for this harness.
+            durable? =
+              entry.source in ["exunit", "spex"] and
+                System.get_env("CMS_RUN_EVENT_STREAM") not in [nil, ""]
 
             if durable? do
               DurableRun.begin_run(
