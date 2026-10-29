@@ -18,22 +18,13 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
       })
 
     integration = github_integration_fixture(scope.user)
-    previous = Application.get_env(:code_my_spec, :source_git_plug)
-    Application.put_env(:code_my_spec, :source_git_plug, {Req.Test, __MODULE__})
-
-    on_exit(fn -> restore_source_git_plug(previous) end)
 
     %{scope: scope, project: project, integration: integration}
   end
 
-  defp restore_source_git_plug(nil), do: Application.delete_env(:code_my_spec, :source_git_plug)
-
-  defp restore_source_git_plug(previous),
-    do: Application.put_env(:code_my_spec, :source_git_plug, previous)
-
   test "advertises an account project's private code without exposing the GitHub token",
        context do
-    Req.Test.stub(__MODULE__, fn upstream ->
+    Req.Test.stub(SourceGitController, fn upstream ->
       assert upstream.request_path == "/example/private-code.git/info/refs"
       assert upstream.query_string == "service=git-upload-pack"
 
@@ -84,7 +75,7 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
   end
 
   test "proxies the binary upload pack request to the configured docs repo", context do
-    Req.Test.stub(__MODULE__, fn upstream ->
+    Req.Test.stub(SourceGitController, fn upstream ->
       assert upstream.method == "POST"
       assert upstream.request_path == "/example/private-docs.git/git-upload-pack"
       assert {:ok, <<0, 255, 3>>, upstream} = Plug.Conn.read_body(upstream)

@@ -98,7 +98,7 @@ defmodule CodeMySpecWeb.SourceGitController do
     ]
 
     options =
-      case Application.get_env(:code_my_spec, :source_git_plug) do
+      case Application.get_env(:code_my_spec, __MODULE__, [])[:plug] do
         nil -> options
         plug -> Keyword.put(options, :plug, plug)
       end
