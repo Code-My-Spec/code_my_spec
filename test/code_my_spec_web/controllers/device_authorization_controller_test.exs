@@ -8,6 +8,8 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
   use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.OauthFixtures
+  import CodeMySpec.AccountsFixtures
+  import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
   describe "POST /oauth/device/code" do
@@ -31,12 +33,30 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
 
       assert is_binary(device_code)
       assert user_code =~ ~r/^[A-Z2-9]{4}-[A-Z2-9]{4}$/
-      assert verification_uri == CodeMySpecWeb.Endpoint.url() <> "/oauth/device"
+      assert verification_uri == "http://www.example.com/oauth/device"
 
       assert verification_uri_complete ==
                verification_uri <> "?user_code=" <> URI.encode(user_code)
 
       assert expires_in > 0
+    end
+
+    test "uses the server that received the request for verification", %{conn: conn} do
+      client = oauth_application_fixture()
+      conn = %{conn | host: "localhost", port: 4000, scheme: :http}
+
+      response =
+        post(conn, ~p"/oauth/device/code", %{
+          "client_id" => client.uid,
+          "device_id" => Ecto.UUID.generate()
+        })
+
+      assert %{
+               "verification_uri" => "http://localhost:4000/oauth/device",
+               "verification_uri_complete" => complete
+             } = json_response(response, 200)
+
+      assert String.starts_with?(complete, "http://localhost:4000/oauth/device?user_code=")
     end
 
     test "refuses an unregistered client", %{conn: conn} do
@@ -77,6 +97,40 @@ defmodule CodeMySpecWeb.DeviceAuthorizationControllerTest do
 
       assert html_response(conn, 200) =~ "Connect a device"
     end
+  end
+
+  test "device token lists only its user's projects across accounts" do
+    user = user_fixture()
+    first_account = account_with_owner_fixture(user)
+    second_account = account_with_owner_fixture(user)
+    other_user = user_fixture()
+    other_account = account_with_owner_fixture(other_user)
+    first = project_fixture(user_scope_fixture(user, first_account), %{name: "First"})
+    second = project_fixture(user_scope_fixture(user, second_account), %{name: "Second"})
+    foreign = project_fixture(user_scope_fixture(other_user, other_account), %{name: "Foreign"})
+    assert is_nil(CodeMySpec.UserPreferences.scope_for(user).active_account_id)
+
+    client = oauth_application_fixture()
+    {:ok, grant} = CodeMySpec.Oauth.request_device_code(client.uid, Ecto.UUID.generate())
+    assert {:ok, _} = CodeMySpec.Oauth.decide_device_grant(grant, user, :approve)
+
+    poll =
+      post(build_conn(), ~p"/oauth/token", %{
+        "grant_type" => "urn:ietf:params:oauth:grant-type:device_code",
+        "device_code" => grant.device_code,
+        "client_id" => client.uid
+      })
+
+    assert %{"access_token" => token} = json_response(poll, 200)
+
+    response =
+      build_conn()
+      |> put_req_header("authorization", "Bearer " <> token)
+      |> get(~p"/api/projects")
+
+    assert %{"projects" => projects} = json_response(response, 200)
+    assert Enum.sort(Enum.map(projects, & &1["id"])) == Enum.sort([first.id, second.id])
+    refute Enum.any?(projects, &(&1["id"] == foreign.id))
   end
 
   describe "the full flow" do
