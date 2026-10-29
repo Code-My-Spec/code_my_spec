@@ -63,6 +63,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
             description:
               "One of: repository, server, secrets, domain, dns, tls, deploy, email, inbound, storage, backups, content, widget, callback_credential, monitoring, telemetry."
           ]}},
+      environments:
+        {:meta, {:list, :string},
+         [
+           description:
+             "For the dns step: only publish records for these environments, for example [\"uat\"]."
+         ]},
       environment:
         {:meta, :string,
          [
@@ -114,6 +120,7 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
+    |> with_environments(params)
   end
 
   defp with_inbound_probe(opts, params) do
@@ -153,6 +160,11 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
         opts
     end
   end
+
+  defp with_environments(opts, %{step: "dns", environments: names}) when is_list(names),
+    do: Keyword.put(opts, :environments, names)
+
+  defp with_environments(opts, _params), do: opts
 
   defp find_step(step) do
     case Enum.find(Step.keys(), &(to_string(&1) == step)) do
@@ -232,8 +244,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   end
 
   # The synchronous (test-mode) outcomes: `Provisioning.run_step/3`'s result.
-  defp reply({:ok, %{state: state}}, step, project, _context) do
-    ok("#{step} for #{project.name} is now #{state}.")
+  defp reply({:ok, %{state: state} = row}, step, project, _context) do
+    ok("#{step} for #{project.name} is now #{state}.#{dns_outcomes(row, step)}")
   end
 
   # Paused (waiting on a person) is an expected outcome, not a failure.
@@ -265,8 +277,9 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   defp label(step, _params), do: step
 
   @doc false
-  def outcome_message({:ok, %{state: state}}, label, name),
-    do: "Your #{label} step for #{name} finished: #{state}. #{answer()}"
+  def outcome_message({:ok, %{state: state} = row}, label, name),
+    do:
+      "Your #{label} step for #{name} finished: #{state}.#{dns_outcomes(row, label)} #{answer()}"
 
   def outcome_message({:halt, %{state: :paused}, reason}, label, name),
     do:
@@ -283,6 +296,17 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     do:
       "Your #{label} step for #{name} stopped, still #{state}: " <>
         "#{Truncate.head_and_tail(reason)}\n\n#{answer()}"
+
+  defp dns_outcomes(%{resources: resources}, "dns") when is_list(resources) do
+    outcomes =
+      resources
+      |> Enum.filter(&(&1.kind == "dns_outcome"))
+      |> Enum.map_join(", ", & &1.identifier)
+
+    if outcomes == "", do: "", else: " DNS outcomes: #{outcomes}."
+  end
+
+  defp dns_outcomes(_row, _step), do: ""
 
   defp answer, do: "This is the outcome of the step you started — act on it now."
 

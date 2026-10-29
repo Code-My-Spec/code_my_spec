@@ -73,6 +73,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
             cf_ok([%{"id" => "rec1", "name" => @apex, "type" => "A", "content" => @old_ip}])
           )
 
+        %{method: "POST", request_path: "/client/v4/zones/" <> rest} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+          send(test_pid, {:created, rest, payload})
+          json(conn, 200, cf_ok(Map.put(payload, "id", "new-record")))
+
         %{method: "PUT", request_path: "/client/v4/zones/" <> rest} = conn ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
           payload = Jason.decode!(body)
@@ -130,6 +136,25 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStepConfirmApexRepointTes
       assert text =~ "confirm to repoint it"
 
       refute_received {:wrote, _rest, _content}
+    end
+
+    test "a uat-only call writes DNS-only uat and reports its outcome without touching the apex",
+         %{scope: scope} do
+      {:ok, _} = Environments.put(scope, "uat", %{host: "uat.#{@apex}", ip: @new_ip})
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      response =
+        ToolLibrary.run(
+          "run_provisioning_step",
+          %{step: "dns", environments: ["uat"]},
+          Map.put(frame.assigns, :scope, frame.assigns[:current_scope])
+        )
+
+      assert response_text(response) =~ "environment=uat outcome=written"
+      assert_received {:created, "z1/dns_records", payload}
+      assert payload["name"] == "uat.#{@apex}"
+      assert payload["proxied"] == false
+      refute_received {:wrote, _, _}
     end
 
     test "repoints the apex when confirm_apex_repoint is true", %{scope: scope} do
