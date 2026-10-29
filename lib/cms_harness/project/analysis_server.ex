@@ -723,7 +723,7 @@ defmodule CmsHarness.Project.AnalysisServer do
     do: run_id in held_run_ids(state) or run_id in recovered_run_ids(state)
 
   defp recovered_run_ids(state) do
-    Enum.flat_map(state.recovering, fn {_id, manifest} ->
+    Enum.flat_map(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
       [manifest["run_id"] | manifest["tied_run_ids"] || []]
     end)
   end
@@ -769,7 +769,9 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp maybe_start_next(%{pending_cleanups: [_ | _]} = state), do: state
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
-    if Enum.any?(state.recovering, fn {_id, manifest} -> manifest["status"] != "completed" end) do
+    if Enum.any?(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
+         manifest["status"] != "completed"
+       end) do
       state
     else
       case DiskCapacity.check([state.project.root, System.tmp_dir!()]) do
