@@ -69,40 +69,42 @@ defmodule CodeMySpec.Provisioning.RepositorySecretsTest do
   end
 
   defp github_reply(%{method: "GET", request_path: path} = conn, state) do
-    data = Agent.get(state, & &1)
-
-    cond do
-      String.contains?(path, ".sops.yaml") -> file_reply(conn, data.config, "config-sha")
-      data.file == nil -> json(conn, 404, %{})
-      true -> file_reply(conn, data.file, data.sha)
-    end
+    github_get_reply(conn, Agent.get(state, & &1), String.contains?(path, ".sops.yaml"))
   end
 
   defp github_reply(%{method: "PUT"} = conn, state) do
     {:ok, body, conn} = Plug.Conn.read_body(conn)
     payload = Jason.decode!(body)
-
-    outcome =
-      Agent.get_and_update(state, fn data ->
-        next = %{data | puts: data.puts + 1}
-
-        cond do
-          data.stale_once ->
-            {:stale, %{next | stale_once: false, sha: "stale-sha"}}
-
-          payload["sha"] != data.sha ->
-            {:stale, next}
-
-          true ->
-            {:ok, %{next | file: Base.decode64!(payload["content"]), sha: "blob-#{next.puts}"}}
-        end
-      end)
-
-    case outcome do
-      :stale -> json(conn, 409, %{})
-      :ok -> json(conn, 200, %{"commit" => %{"sha" => "commit-#{Agent.get(state, & &1.puts)}"}})
-    end
+    outcome = Agent.get_and_update(state, &put_outcome(&1, payload))
+    put_reply(conn, outcome, state)
   end
+
+  defp github_get_reply(conn, data, true), do: file_reply(conn, data.config, "config-sha")
+  defp github_get_reply(conn, %{file: nil}, false), do: json(conn, 404, %{})
+  defp github_get_reply(conn, data, false), do: file_reply(conn, data.file, data.sha)
+
+  defp put_outcome(%{stale_once: true} = data, _payload) do
+    next = %{data | puts: data.puts + 1, stale_once: false, sha: "stale-sha"}
+    {:stale, next}
+  end
+
+  defp put_outcome(data, payload) do
+    put_outcome_for_sha(data, payload, Map.get(payload, "sha"), data.sha)
+  end
+
+  defp put_outcome_for_sha(data, payload, sha, sha) do
+    puts = data.puts + 1
+    next = %{data | puts: puts, file: Base.decode64!(payload["content"]), sha: "blob-#{puts}"}
+    {:ok, next}
+  end
+
+  defp put_outcome_for_sha(data, _payload, _sent, _current),
+    do: {:stale, %{data | puts: data.puts + 1}}
+
+  defp put_reply(conn, :stale, _state), do: json(conn, 409, %{})
+
+  defp put_reply(conn, :ok, state),
+    do: json(conn, 200, %{"commit" => %{"sha" => "commit-#{Agent.get(state, & &1.puts)}"}})
 
   defp file_reply(conn, content, sha),
     do: json(conn, 200, %{"type" => "file", "content" => Base.encode64(content), "sha" => sha})

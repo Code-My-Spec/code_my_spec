@@ -172,10 +172,7 @@ defmodule CodeMySpec.GitHub do
              []
            ) do
         {:ok, %{"type" => "file", "content" => content, "sha" => sha}} ->
-          case Base.decode64(content, ignore: :whitespace) do
-            {:ok, bytes} -> {:ok, %{content: bytes, sha: sha}}
-            :error -> {:error, :invalid_file_content}
-          end
+          decode_file_content(content, sha)
 
         {:error, {:github_error, 404, _}} ->
           {:error, :not_found}
@@ -209,6 +206,13 @@ defmodule CodeMySpec.GitHub do
   end
 
   # Private Helpers
+
+  defp decode_file_content(content, sha) do
+    case Base.decode64(content, ignore: :whitespace) do
+      {:ok, bytes} -> {:ok, %{content: bytes, sha: sha}}
+      :error -> {:error, :invalid_file_content}
+    end
+  end
 
   defp request(method, path, token, opts) do
     req_opts =

@@ -240,9 +240,8 @@ defmodule CodeMySpec.Provisioning.Sops do
       try do
         with :ok <- ExecutionContexts.write_file(local, @sops_config, config),
              :ok <- write_existing(local, path, encrypted),
-             :ok <- set(local, environment, key, value, private_key),
-             {:ok, ciphertext} <- ExecutionContexts.read_file(local, path) do
-          {:ok, ciphertext}
+             :ok <- set(local, environment, key, value, private_key) do
+          ExecutionContexts.read_file(local, path)
         end
       after
         File.rm_rf(dir)

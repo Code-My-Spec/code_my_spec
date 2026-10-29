@@ -15,7 +15,20 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
          {:ok, private} <- private_key(scope, environment),
          branch = project.development_branch || "main",
          {:ok, %{content: config}} <- GitHub.get_file(scope, owner, name, ".sops.yaml", branch) do
-      write(scope, owner, name, branch, config, environment, key, value, private, 1)
+      write(
+        %{
+          scope: scope,
+          owner: owner,
+          name: name,
+          branch: branch,
+          config: config,
+          environment: environment,
+          key: key,
+          value: value,
+          private: private
+        },
+        1
+      )
     else
       {:error, :github_not_connected} ->
         {:error, "Reconnect GitHub before writing secrets."}
@@ -34,20 +47,36 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
   def put(_scope, _environment, _key, _value),
     do: {:error, "Project repository is not configured."}
 
-  defp write(scope, owner, name, branch, config, environment, key, value, private, retries) do
-    path = Sops.env_file(environment)
+  defp write(ctx, retries) do
+    path = Sops.env_file(ctx.environment)
 
-    with {:ok, existing} <- current_file(scope, owner, name, path, branch),
+    with {:ok, existing} <- current_file(ctx.scope, ctx.owner, ctx.name, path, ctx.branch),
          {:ok, ciphertext} <-
-           Sops.set_repository_file(config, existing.content, environment, key, value, private) do
-      message = "Set #{key} in #{environment} secrets"
+           Sops.set_repository_file(
+             ctx.config,
+             existing.content,
+             ctx.environment,
+             ctx.key,
+             ctx.value,
+             ctx.private
+           ) do
+      message = "Set #{ctx.key} in #{ctx.environment} secrets"
 
-      case GitHub.put_file(scope, owner, name, path, branch, ciphertext, message, existing.sha) do
+      case GitHub.put_file(
+             ctx.scope,
+             ctx.owner,
+             ctx.name,
+             path,
+             ctx.branch,
+             ciphertext,
+             message,
+             existing.sha
+           ) do
         {:ok, commit} ->
-          {:ok, %{environment: environment, key: key, file: path, commit: commit}}
+          {:ok, %{environment: ctx.environment, key: ctx.key, file: path, commit: commit}}
 
         {:error, :stale_file} when retries > 0 ->
-          write(scope, owner, name, branch, config, environment, key, value, private, retries - 1)
+          write(ctx, retries - 1)
 
         {:error, :stale_file} ->
           {:error, "The secrets file changed concurrently. Try again."}
