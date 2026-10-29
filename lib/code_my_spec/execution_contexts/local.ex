@@ -232,12 +232,56 @@ defmodule CodeMySpec.ExecutionContexts.Local do
       end
 
     {output, exit_code} =
-      case Map.get(metadata, :durable_run) do
-        id when is_integer(id) -> durable_cmd(id, command, args, opts)
+      case {Map.get(metadata, :durable_run), Map.get(metadata, :run_id)} do
+        {id, _} when is_integer(id) -> durable_cmd(id, command, args, opts)
+        {nil, id} when is_integer(id) -> guarded_cmd(command, args, opts)
         _ -> System.cmd(command, args, opts)
       end
 
     {clean_terminal_output(output), exit_code}
+  end
+
+  # Until the child formatter can publish a durable stream, an analyzer must
+  # not keep running after an abrupt harness exit. This watcher is an OS process
+  # in the port's process group, so it survives a killed BEAM long enough to
+  # terminate that group. The birth time prevents a reused owner PID from
+  # keeping an orphan alive.
+  defp guarded_cmd(command, args, opts) do
+    executable = System.find_executable(command) || raise("command not found: #{command}")
+    owner = System.pid()
+
+    {birth, 0} =
+      System.cmd("/bin/ps", ["-o", "lstart=", "-p", owner], stderr_to_stdout: true)
+
+    birth = String.trim(birth)
+
+    script = """
+    "$@" &
+    child=$!
+    (
+      trap '' TERM
+      while [ "$(/bin/ps -o lstart= -p "$CMS_RUN_OWNER" 2>/dev/null | /usr/bin/xargs)" = "$CMS_RUN_OWNER_BIRTH" ]; do
+        /bin/sleep 1
+      done
+      /bin/kill -TERM -- "-$$" 2>/dev/null
+      /bin/sleep 2
+      /bin/kill -KILL -- "-$$" 2>/dev/null
+    ) >/dev/null 2>&1 &
+    watcher=$!
+    wait "$child"
+    status=$?
+    /bin/kill -KILL "$watcher" 2>/dev/null
+    exit "$status"
+    """
+
+    env =
+      [{"CMS_RUN_OWNER", owner}, {"CMS_RUN_OWNER_BIRTH", birth} | Keyword.get(opts, :env, [])]
+
+    System.cmd(
+      "/bin/sh",
+      ["-c", script, "guarded-run", executable | args],
+      Keyword.put(opts, :env, env)
+    )
   end
 
   # A durable test must keep its output descriptor after this BEAM disappears.
