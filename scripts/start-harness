@@ -26,6 +26,9 @@ fi
 
 export CMS_SERVER_URL=$server
 export MIX_ENV=harness
+# A fresh HOME has no SQLite parent directory; onboarding and runtime state
+# must have one before any Mix task loads the harness configuration.
+mkdir -p "$HOME/.codemyspec"
 
 if ! mix archive | grep -q 'hex-'; then
   echo 'Installing missing Hex with mix local.hex --force' >&2

@@ -110,6 +110,14 @@ defmodule CmsHarness.WorkingCopyReporter do
 
     case Device.announce(observations) do
       {:ok, %{working_copies: from_server} = reply} ->
+        # The server's device roster may include a checkout served by a
+        # previous HOME on this machine. Only this harness's own durable
+        # roots or currently running copies may be picked up.
+        local_roots = MapSet.new(ServedRoots.list() ++ Projects.list())
+
+        from_server =
+          Map.filter(from_server, fn {_id, root} -> MapSet.member?(local_roots, root) end)
+
         say(observations, last)
         serve(from_server)
         state = generate(Map.get(reply, :pending_local_projects, []), state)
