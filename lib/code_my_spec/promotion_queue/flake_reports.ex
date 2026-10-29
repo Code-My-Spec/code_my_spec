@@ -50,17 +50,15 @@ defmodule CodeMySpec.PromotionQueue.FlakeReports do
     marker = "rerun #{rerun_id};"
 
     issue =
-      case String.contains?(issue.description, marker) do
-        true ->
-          issue
+      if String.contains?(issue.description, marker) do
+        issue
+      else
+        {:ok, updated} =
+          Issues.update_issue(scope, issue, %{
+            description: issue.description <> "\n\n" <> evidence
+          })
 
-        false ->
-          {:ok, updated} =
-            Issues.update_issue(scope, issue, %{
-              description: issue.description <> "\n\n" <> evidence
-            })
-
-          updated
+        updated
       end
 
     case issue.assigned_working_copy_id do
