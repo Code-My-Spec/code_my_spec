@@ -82,7 +82,10 @@ defmodule CodeMySpecSpex.Story1164.Criterion2570Spex do
         assert context.log =~ @test_file, context.log
         assert context.log =~ @test_name, context.log
         refute context.log =~ "confirmed flake", context.log
-        assert context.outcome =~ "eject", context.outcome
+
+        assert context.outcome =~ "was taken out of the queue and nothing of it landed",
+               context.outcome
+
         assert head_of(context, context.running_root) == context.main_commit
         {:ok, context}
       end

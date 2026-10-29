@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story1167.Criterion2512Spex do
       when_ "the promotion is gated and John opens promotion timing", context do
         response = promote(context, context.story.number, fresh: true)
         refute response.isError
-        the_gate_answers(context)
+        the_gate_answers_and_fails_rerun(context, %{})
         what_the_agent_was_told(context)
 
         {:ok, view, _html} =

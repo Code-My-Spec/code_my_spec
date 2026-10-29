@@ -92,7 +92,10 @@ defmodule CodeMySpecSpex.Story1164.Criterion2571Spex do
           })
 
         assert_reply ref, :ok, _, 10_000
-        assert what_the_agent_was_told(context) =~ "eject"
+
+        assert what_the_agent_was_told(context) =~
+                 "was taken out of the queue and nothing of it landed"
+
         refute_receive %Phoenix.Socket.Message{event: "run_analysis"}, 500
         {:ok, context}
       end

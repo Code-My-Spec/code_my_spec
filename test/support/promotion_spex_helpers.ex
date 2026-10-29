@@ -402,7 +402,11 @@ defmodule CodeMySpecSpex.PromotionHelpers do
     the_gate_answers(context, findings)
     [%{"run_id" => id}] = gate_runs(context.gate_socket, ["exunit"])
     head = head_of(context, context.gate_root)
-    diagnostics = Map.fetch!(findings, "exunit")
+
+    diagnostics =
+      Enum.map(Fixtures.promotion_failure_paths(context.gate), fn file ->
+        %{"file" => file, "line" => 1, "severity" => "error", "message" => "test failure"}
+      end) ++ Map.get(findings, "exunit", [])
 
     push(context.gate_socket, "analysis_started", %{
       "run_id" => id,
