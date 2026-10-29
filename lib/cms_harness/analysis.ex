@@ -367,7 +367,7 @@ defmodule CmsHarness.Analysis do
            "exit_status" => exit_code,
            # No failures plus a nonzero exit means the suite did not run; the
            # output is where the reason can be read.
-           "output" => cap(output || ""),
+           "output" => output || "",
            "diagnostics" => Enum.map(failures, &spex_failure/1)
          }}
 

@@ -70,6 +70,35 @@ defmodule CodeMySpec.Analysis.RunnersTest do
   # Problems. `run/4` goes through the same function, so the two paths cannot
   # disagree about what a diagnostic means.
   describe "from_raw/2" do
+    test "spex records the suite total from its full output" do
+      assert {:ok, result} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 0,
+                 "execution_status" => "success",
+                 "diagnostics" => [],
+                 "output" => "3 tests, 0 failures\n"
+               })
+
+      assert result.stats["tests"] == 3
+      assert result.stats["failures"] == 0
+    end
+
+    test "credo records its finding total" do
+      finding = %{
+        "filename" => "lib/example.ex",
+        "line_no" => 1,
+        "message" => "Modules should have a @moduledoc tag.",
+        "check" => "Credo.Check.Readability.ModuleDoc",
+        "category" => "readability",
+        "priority" => 10
+      }
+
+      assert {:ok, result} =
+               Runners.from_raw("credo", %{"exit_status" => 0, "diagnostics" => [finding]})
+
+      assert result.stats["findings"] == 1
+    end
+
     # Three outcomes that must stay three, not two. A clean build, a build with
     # errors, and a build that failed while saying nothing — the last of which
     # used to be recorded as the first.
@@ -211,6 +240,23 @@ defmodule CodeMySpec.Analysis.RunnersTest do
 
       assert {:error, {:test_suite_did_not_run, 1, excerpt}} = Runners.from_raw("exunit", raw)
       assert excerpt =~ "did not match"
+    end
+
+    test "a key socket bind collision is a named suite startup failure" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "error",
+        "output" =>
+          "** (Mix) Could not start application cms_harness: " <>
+            "CmsHarness.SopsKeySocket listener exited with :eaddrinuse",
+        "stats" => %{},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, :sops_key_socket_address_in_use, 1, excerpt}} =
+               Runners.from_raw("exunit", raw)
+
+      assert excerpt =~ "eaddrinuse"
     end
 
     # Run 54391: the first `** (` in a full suite's output is a logged

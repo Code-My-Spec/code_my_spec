@@ -17,8 +17,38 @@ defmodule CodeMySpec.Analysis.Flakes do
   @spec classify_all(Scope.t(), String.t(), [map()], keyword()) :: [result()]
   def classify_all(%Scope{} = scope, commit, failures, opts \\ [])
       when is_binary(commit) and is_list(failures) and is_list(opts) do
-    runs = History.list(scope, source: "exunit")
+    runs = History.list(scope, source: Keyword.get(opts, :source, "exunit"))
     Enum.map(failures, &classify_from_runs(&1, commit, runs, opts))
+  end
+
+  @doc "Classify the current gate's exunit and spex failures against their own histories."
+  @spec classify_gate_failures(Scope.t(), String.t(), String.t(), keyword()) :: [
+          %{source: String.t(), result: result()}
+        ]
+  def classify_gate_failures(%Scope{} = scope, gate_copy_id, commit, opts \\ [])
+      when is_binary(gate_copy_id) and is_binary(commit) and is_list(opts) do
+    Enum.flat_map(~w(exunit spex), fn source ->
+      current =
+        scope
+        |> History.list(source: source)
+        |> Enum.find(fn run ->
+          run.working_copy_id == gate_copy_id and run.commit == commit and
+            run.status == :completed and not run.partial and run.findings_recorded
+        end)
+
+      failures =
+        current
+        |> then(&if(&1, do: &1.failures, else: []))
+        |> Enum.filter(&(is_binary(&1["file"]) and is_binary(&1["name"])))
+        |> Enum.uniq_by(&{&1["file"], &1["name"]})
+
+      Enum.map(
+        classify_all(scope, commit, failures, Keyword.put(opts, :source, source)),
+        fn result ->
+          %{source: source, result: result}
+        end
+      )
+    end)
   end
 
   @doc "Classify one failure using the same evidence rules as `classify_all/4`."

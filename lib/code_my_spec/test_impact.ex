@@ -1,4 +1,37 @@
 defmodule CodeMySpec.TestImpact do
+  @reference_map_script ~S"""
+  cwd = Path.dirname(Mix.Project.project_file())
+  paths = Mix.Project.config()[:test_paths] || ["test"]
+  files = paths |> Enum.flat_map(&Path.wildcard(Path.join(&1, "**/*_test.exs"))) |> Enum.sort()
+  Code.compiler_options(docs: false, debug_info: false, infer_signatures: false)
+  {:ok, _} = Application.ensure_all_started(:ex_unit)
+  ExUnit.configure(autorun: false)
+  {:ok, agent} = Agent.start_link(fn -> Map.new(files, &{&1, {:source, [], [], []}}) end)
+  each_module = fn file, module, _binary ->
+    external = for f <- Module.get_attribute(module, :external_resource), do: Path.relative_to(f, cwd)
+    if external != [] do
+      Agent.update(agent, fn sources ->
+        file = Path.relative_to(file, cwd)
+        {:source, compile, runtime, current} = Map.fetch!(sources, file)
+        Map.put(sources, file, {:source, compile, runtime, external ++ current})
+      end)
+    end
+    :ok
+  end
+  each_file = fn file, lexical ->
+    Agent.update(agent, fn sources ->
+      file = Path.relative_to(file, cwd)
+      {compile, export, runtime, _env} = Kernel.LexicalTracker.references(lexical)
+      {:source, _, _, external} = Map.fetch!(sources, file)
+      Map.put(sources, file, {:source, compile ++ export, runtime, external})
+    end)
+  end
+  {:ok, _, _} = Kernel.ParallelCompiler.require(files, return_diagnostics: true, each_module: each_module, each_file: each_file)
+  out = Path.join(Mix.Project.manifest_path(), "compile.test_refs")
+  File.write!(out, :erlang.term_to_binary([2 | Agent.get(agent, & &1)], [:compressed]))
+  IO.puts("test references: #{length(files)} files -> #{out}")
+  """
+
   @moduledoc """
   Which test files a diff can affect, without respect to what ran last.
 
@@ -268,7 +301,16 @@ defmodule CodeMySpec.TestImpact do
   @spec read_baseline(Path.t()) :: {:ok, map()} | {:error, String.t()}
   def read_baseline(manifest_dir) do
     saved = Path.join(manifest_dir, "compile.test_impact")
+    references = Path.join(manifest_dir, "compile.test_refs")
 
+    cond do
+      File.exists?(saved) -> read_saved(saved)
+      File.exists?(references) -> read_with_test_manifest(manifest_dir, references)
+      true -> read_with_test_manifest(manifest_dir, Path.join(manifest_dir, "compile.test_stale"))
+    end
+  end
+
+  defp read_saved(saved) do
     if File.exists?(saved) do
       with {:ok, binary} <- File.read(saved),
            %{version: 1, modules: modules, sources: sources, test_sources: tests}
@@ -277,16 +319,28 @@ defmodule CodeMySpec.TestImpact do
       else
         _ -> {:error, "#{saved} is not a recognised green test baseline"}
       end
-    else
-      elixir_manifest = Path.join(manifest_dir, "compile.elixir")
-      test_manifest = Path.join(manifest_dir, "compile.test_stale")
-
-      with {:ok, modules, sources} <- read_elixir_manifest(elixir_manifest),
-           {:ok, test_sources} <- read_test_manifest(test_manifest) do
-        {:ok, %{modules: modules, sources: sources, test_sources: test_sources}}
-      end
     end
   end
+
+  defp read_with_test_manifest(manifest_dir, test_manifest) do
+    with {:ok, modules, sources} <-
+           read_elixir_manifest(Path.join(manifest_dir, "compile.elixir")),
+         {:ok, test_sources} <- read_test_manifest(test_manifest) do
+      {:ok, %{modules: modules, sources: sources, test_sources: test_sources}}
+    end
+  end
+
+  @doc """
+  A script for `mix run --no-start -e` in a project's test env that writes
+  `compile.test_refs`: each test file's compile, export and runtime references
+  and external resources, in `compile.test_stale`'s layout, gathered by
+  requiring the test files with the two callbacks `Mix.Compilers.Test` uses.
+  No test runs, no app starts, and `test_helper.exs` is not loaded. Checked
+  against Mix's own manifest on 1,386 test files with no difference (spike,
+  2026-10-28).
+  """
+  @spec reference_map_script() :: String.t()
+  def reference_map_script, do: @reference_map_script
 
   defp read_elixir_manifest(path) do
     {modules, sources} = CE.read_manifest(path)

@@ -155,6 +155,7 @@ defmodule CodeMySpec.PromotionQueue do
         working_copy_id: copy.id,
         commit: head,
         requested_by_agent_id: Keyword.get(opts, :notify),
+        task_id: Keyword.get(opts, :task_id),
         restart: Keyword.get(opts, :restart, false),
         fresh: Keyword.get(opts, :fresh, false)
       })
@@ -237,18 +238,33 @@ defmodule CodeMySpec.PromotionQueue do
   @doc "What to tell the caller that enqueued."
   @spec queued_text({:ok, map()} | {:error, map()}) :: String.t()
   def queued_text({:ok, %{queued: entry, timed_out: true}}) do
-    "Still queued after waiting: #{describe(entry)}. It has not landed and was not taken " <>
-      "out; the queue is still working on it. Do not promote again to check."
+    "Still queued after waiting: #{describe(entry)}. Entry #{entry.id}, revision #{entry.commit}, task #{inspect(entry.task_id)}. It has not landed and was not taken " <>
+      "out; the queue is still working on it. Do not promote again to check." <>
+      other_open_warning(entry)
   end
 
   def queued_text({:ok, %{queued: entry, position: position}}) do
-    "Queued for promotion at position #{position}: #{describe(entry)}. Nothing is merged " <>
+    "Queued for promotion at position #{position}: #{describe(entry)}. Entry #{entry.id}, revision #{entry.commit}, task #{inspect(entry.task_id)}. Nothing is merged " <>
       "yet. The queue gates it with the candidates ahead of it and lands it on main " <>
       "when that batch is green; you will be told when it lands, or why it was taken " <>
-      "out. Keep working; do not promote again to check."
+      "out. Keep working; do not promote again to check." <>
+      other_open_warning(entry)
   end
 
   def queued_text({:error, %{reason: reason}}), do: "Your promotion was not queued. #{reason}"
+
+  defp other_open_warning(entry) do
+    case Repository.other_open_for_copy(entry) do
+      [] ->
+        ""
+
+      entries ->
+        " Warning: another revision is still queued or gating: " <>
+          Enum.map_join(entries, ", ", fn other ->
+            "#{other.commit} (entry #{other.id}, #{other.status})"
+          end) <> "."
+    end
+  end
 
   @doc "What became of an entry, in a sentence."
   @spec outcome_text(Entry.t()) :: String.t()

@@ -17,6 +17,8 @@ defmodule CodeMySpecWeb.Application do
   alias CodeMySpec.Provisioning.BurstBox
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.AgentTasks.RunReconciled
+  alias CodeMySpec.Agents.ValidationHoldReport
+  alias CodeMySpec.Staffing
 
   @impl true
   def start(_type, args) do
@@ -59,6 +61,9 @@ defmodule CodeMySpecWeb.Application do
         when_serving(serving?, CodeMySpec.RunGuard),
         when_serving(serving?, CodeMySpec.Files.LockfileSweep),
         when_serving(serving?, embeddings_configured?() && CodeMySpec.Embeddings.HexDocSweep),
+        # Deletes idle burst boxes and leftover builders. Prod only, and only
+        # with `CMS_BURST_SWEEP=1`: it deletes servers, so it is opt-in.
+        when_serving(serving?, burst_sweep_child(env)),
         # One reconcile per boot; a `:temporary`, non-raising Task, so it never
         # blocks or fails boot.
         when_serving(
@@ -151,7 +156,8 @@ defmodule CodeMySpecWeb.Application do
         # Main serves remote harnesses even though it has no local analyzer supervisor.
         when_serving(serving? and env != :test, CodeMySpec.Analysis.BootRecovery),
         CodeMySpecWeb.Endpoint,
-        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler)
+        when_serving(serving?, CodeMySpec.Agents.Mailbox.Reconciler),
+        {CodeMySpecWeb.TelemetryHandlers, telemetry_handlers()}
       ]
       |> Enum.filter(& &1)
       |> children(env, serving?)
@@ -166,11 +172,11 @@ defmodule CodeMySpecWeb.Application do
       {:ok, _pid} = ok ->
         GoogleAnalytics.attach()
         AnalysisReport.attach()
-        CodeMySpec.Agents.ValidationHoldReport.attach()
+        ValidationHoldReport.attach()
         Events.attach()
         RunReconciled.attach()
         AnalysisPush.attach()
-        CodeMySpec.Staffing.attach()
+        Staffing.attach()
         # A copy's app holds main's open candidates in its cloned database;
         # resuming them there would gate and publish beside main.
         when_serving(serving? and main_copy?(), &CodeMySpec.PromotionQueue.resume_all/0)
@@ -180,6 +186,20 @@ defmodule CodeMySpecWeb.Application do
       other ->
         other
     end
+  end
+
+  # Attached at boot below; `TelemetryHandlers` puts back any that come off.
+  defp telemetry_handlers do
+    [
+      {"GoogleAnalytics", &GoogleAnalytics.attach/0},
+      {"AnalysisReport", &AnalysisReport.attach/0},
+      {"ValidationHoldReport", &ValidationHoldReport.attach/0},
+      {"Events", &Events.attach/0},
+      {"RunReconciled", &RunReconciled.attach/0},
+      {"AnalysisPush", &AnalysisPush.attach/0},
+      {"Staffing", &Staffing.attach/0},
+      {"GraphWake", &GraphWake.attach/0}
+    ]
   end
 
   defp log_boot_version do
@@ -209,6 +229,24 @@ defmodule CodeMySpecWeb.Application do
   end
 
   defp embed_pool_backend(_env), do: FLAME.LocalBackend
+
+  # `%Scope{}` is the platform acting for itself, as for the FLAME backend
+  # below. `busy?` counts a connected embed runner as well as a running build,
+  # which `BurstBox.busy?/2`'s default does not.
+  defp burst_sweep_child(:prod) do
+    if System.get_env("CMS_BURST_SWEEP") == "1" and hetzner_burst_box_configured?() do
+      {BurstBox.Sweep,
+       scope: %Scope{},
+       reap_legacy_builders: true,
+       busy?: fn scope, server ->
+         BurstBox.busy?(scope, server,
+           embed_runner_busy?: fn -> CodeMySpec.embedding_runner_busy?() end
+         )
+       end}
+    end
+  end
+
+  defp burst_sweep_child(_env), do: nil
 
   defp hetzner_burst_box_configured? do
     case System.get_env("HETZNER_API_TOKEN") do

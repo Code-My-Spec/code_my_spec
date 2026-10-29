@@ -477,7 +477,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   """
   @spec ssh_runner(map(), keyword()) :: (list() -> {String.t(), non_neg_integer()})
   def ssh_runner(server, opts) do
-    env = Keyword.fetch!(opts, :env)
+    env = Keyword.get(opts, :ssh_env) || Keyword.fetch!(opts, :env)
     args = ssh_args(server, opts)
     timeout = Keyword.get(opts, :remote_command_timeout_s, @default_remote_timeout_s)
 

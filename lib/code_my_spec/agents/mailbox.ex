@@ -11,6 +11,8 @@ defmodule CodeMySpec.Agents.Mailbox do
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Agents.CompletionHandoffs
   alias CodeMySpec.Agents.Mailbox.Entry
+  alias CodeMySpec.Agents.Offer
+  alias CodeMySpec.Agents.OfferMessage
   alias CodeMySpec.Agents.Offers
   alias CodeMySpec.Agents.Presence
   alias CodeMySpec.Agents.SenderStamp
@@ -306,14 +308,64 @@ defmodule CodeMySpec.Agents.Mailbox do
 
   @terminal_dispatch_reason :harness_not_connected
 
-  # A definite transport refusal, not a missing acknowledgement: the harness
-  # itself reported it cannot be reached (Transport.Harness's unreachable/3),
-  # as opposed to a call that simply did not answer in time. Settles the same
-  # way Agents.record_dispatch_result/3's no-entry branch already does for
-  # this case -- Offers.fail_dispatch/1, shared so neither path copies the
-  # other. This entry already exists (Mailbox.admit ran first), so it also
-  # moves off :claimed to the schema's own, previously-unused :failed state.
-  defp reconcile_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason} = error) do
+  # Run results and restart replies stay in the durable mailbox across a
+  # harness disconnect. They are retried by the reconciler or on reconnect.
+  # Offer notices and operator messages retain their definite-refusal contract
+  # below: an offer the agent never received is marked undelivered.
+  defp reconcile_dispatch(
+         scope,
+         agent_id,
+         %{event: event} = entry,
+         {:error, @terminal_dispatch_reason}
+       )
+       when event == "own_reply" do
+    refused_offer? =
+      Repo.exists?(
+        from link in OfferMessage,
+          join: offer in Offer,
+          on: offer.id == link.offer_id,
+          where: link.message_id == ^entry.message_id and offer.kind != :resume
+      )
+
+    if refused_offer? do
+      fail_refused_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason})
+    else
+      case transition(scope, agent_id, entry.delivery_ref, fn
+             %{state: :claimed} = current ->
+               change_entry(current, %{
+                 state: :queued,
+                 claimed_at: nil,
+                 diagnostic: "Dispatch deferred: #{@terminal_dispatch_reason}"
+               })
+
+             current ->
+               current
+           end) do
+        {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
+        _ -> {:ok, :queued}
+      end
+    end
+  end
+
+  # A definite refusal of a direct operator message or offer notice settles
+  # its delivery and offer as failed, so the sender sees it was not delivered.
+  defp reconcile_dispatch(scope, agent_id, entry, {:error, @terminal_dispatch_reason} = error),
+    do: fail_refused_dispatch(scope, agent_id, entry, error)
+
+  defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
+    case transition(scope, agent_id, entry.delivery_ref, fn
+           %{state: :claimed} = current ->
+             change_entry(current, %{diagnostic: "Dispatch unconfirmed: #{inspect(reason)}"})
+
+           current ->
+             current
+         end) do
+      {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
+      _ -> error
+    end
+  end
+
+  defp fail_refused_dispatch(scope, agent_id, entry, error) do
     case transition(scope, agent_id, entry.delivery_ref, fn
            %{state: :claimed} = current ->
              change_entry(current, %{
@@ -334,19 +386,6 @@ defmodule CodeMySpec.Agents.Mailbox do
 
       _other ->
         error
-    end
-  end
-
-  defp reconcile_dispatch(scope, agent_id, entry, {:error, reason} = error) do
-    case transition(scope, agent_id, entry.delivery_ref, fn
-           %{state: :claimed} = current ->
-             change_entry(current, %{diagnostic: "Dispatch unconfirmed: #{inspect(reason)}"})
-
-           current ->
-             current
-         end) do
-      {:ok, %{state: state}} when state in [:consumed, :completed] -> {:ok, :started}
-      _ -> error
     end
   end
 

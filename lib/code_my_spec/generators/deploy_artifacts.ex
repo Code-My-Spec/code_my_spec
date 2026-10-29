@@ -373,9 +373,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         OTEL_SERVICE_NAME: #{service_name}-web
         OTEL_EXPORTER_OTLP_ENDPOINT: http://cms-otel-collector:4318
         OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+      # The one secret the container gets: `bin/boot` and `bin/migrate`
+      # decrypt envs/<env>.enc.env with it, which holds everything else.
       secret:
-        - SECRET_KEY_BASE
-        - DATABASE_URL
+        - SOPS_AGE_KEY
 
     # Migrations run against the new image before traffic moves to it, so a
     # migration that fails leaves the old version serving.

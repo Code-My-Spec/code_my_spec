@@ -9,10 +9,9 @@ defmodule CmsHarnessTest.Projects do
   @doc """
   Start `CmsHarness.Supervisor` if nothing has yet, tolerating a second call.
 
-  `mix test`'s own `test_helper.exs` starts this once for the whole run —
-  "started here rather than from `CodeMySpecWeb.Application`'s test children,
-  so the cloud application does not gain a compile-time reference to
-  `CmsHarness` that only the test suite ever wanted." `mix spex` loads no test
+  `mix test`'s own `test_helper.exs` calls this once for the whole run,
+  after clearing any socket path inherited from its parent harness. The cloud
+  application therefore has no test-only reference to `CmsHarness`. `mix spex` loads no test
   helper at all (a deliberate choice, so a spex run boots however this
   project's own alias says to), so a spex file that drives real
   `CmsHarness` processes — a real websocket, a real analyzer queue — has to
@@ -52,19 +51,17 @@ defmodule CmsHarnessTest.Projects do
   # booting its own `CmsHarness.Supervisor` -- including its own
   # `CmsHarness.SopsKeySocket`, which otherwise binds the one real,
   # machine-global path every production harness correctly shares. Scoping it
-  # here, once per BEAM (this function's own idempotency), to this process's
-  # own pid is what keeps four concurrent shards' harnesses from fighting over
+  # here to this process's own pid, overriding any inherited parent path, is
+  # what keeps four concurrent shards' harnesses from fighting over
   # the same socket file and crashing each other's unrelated scenarios
   # (confirmed: that is exactly what an unscoped path did). `System.put_env/2`
   # on this process is what a later `System.cmd` from it inherits down through
   # `sops` to `cms sops-key` -- the one piece of state this whole flow has
   # that crosses process boundaries without any file on disk.
   defp scope_sops_key_socket_path do
-    if System.get_env("CMS_SOPS_KEY_SOCKET_PATH") == nil do
-      dir = Path.join(System.tmp_dir!(), "cms-sops-key-sockets")
-      File.mkdir_p!(dir)
-      System.put_env("CMS_SOPS_KEY_SOCKET_PATH", Path.join(dir, "key-#{System.pid()}.sock"))
-    end
+    dir = Path.join(System.tmp_dir!(), "cms-sops-key-sockets")
+    File.mkdir_p!(dir)
+    System.put_env("CMS_SOPS_KEY_SOCKET_PATH", Path.join(dir, "key-#{System.pid()}.sock"))
   end
 
   @doc """

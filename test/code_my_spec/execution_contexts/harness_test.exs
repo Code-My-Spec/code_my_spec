@@ -112,8 +112,8 @@ defmodule CodeMySpec.ExecutionContexts.HarnessTest do
 
   describe "operations that do not belong here" do
     test "cmd is refused, because analysis/run owns running commands" do
-      assert {:error, :not_supported_on_harness} =
-               ExecutionContexts.cmd(env(), "mix", ["test"], [])
+      assert {output, 127} = ExecutionContexts.cmd(env(), "mix", ["test"], [])
+      assert output =~ "mix cannot run here"
     end
   end
 end

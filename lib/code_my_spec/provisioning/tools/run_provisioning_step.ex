@@ -144,6 +144,10 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
+  defp with_environment(opts, %{step: "dns", environment: name})
+       when is_binary(name) and name != "",
+       do: Keyword.put(opts, :environments, [name])
+
   defp with_environment(opts, params) do
     case Map.get(params, :environment) do
       environment when is_binary(environment) and environment != "" ->
@@ -232,8 +236,8 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   end
 
   # The synchronous (test-mode) outcomes: `Provisioning.run_step/3`'s result.
-  defp reply({:ok, %{state: state}}, step, project, _context) do
-    ok("#{step} for #{project.name} is now #{state}.")
+  defp reply({:ok, %{state: state} = row}, step, project, _context) do
+    ok("#{step} for #{project.name} is now #{state}.#{dns_outcomes(row, step)}")
   end
 
   # Paused (waiting on a person) is an expected outcome, not a failure.
@@ -265,8 +269,9 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
   defp label(step, _params), do: step
 
   @doc false
-  def outcome_message({:ok, %{state: state}}, label, name),
-    do: "Your #{label} step for #{name} finished: #{state}. #{answer()}"
+  def outcome_message({:ok, %{state: state} = row}, label, name),
+    do:
+      "Your #{label} step for #{name} finished: #{state}.#{dns_outcomes(row, label)} #{answer()}"
 
   def outcome_message({:halt, %{state: :paused}, reason}, label, name),
     do:
@@ -283,6 +288,17 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     do:
       "Your #{label} step for #{name} stopped, still #{state}: " <>
         "#{Truncate.head_and_tail(reason)}\n\n#{answer()}"
+
+  defp dns_outcomes(%{resources: resources}, "dns") when is_list(resources) do
+    outcomes =
+      resources
+      |> Enum.filter(&(&1.kind == "dns_outcome"))
+      |> Enum.map_join(", ", & &1.identifier)
+
+    if outcomes == "", do: "", else: " DNS outcomes: #{outcomes}."
+  end
+
+  defp dns_outcomes(_row, _step), do: ""
 
   defp answer, do: "This is the outcome of the step you started — act on it now."
 

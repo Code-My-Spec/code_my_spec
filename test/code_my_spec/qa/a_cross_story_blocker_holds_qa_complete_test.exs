@@ -19,7 +19,14 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Qa.Verdict
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Users.Scope
+
+  def count_owner_query(_, _, _, {owner, counter}) when self() == owner do
+    :counters.add(counter, 1, 1)
+  end
+
+  def count_owner_query(_, _, _, _), do: :ok
 
   setup do
     user = user_fixture()
@@ -171,5 +178,87 @@ defmodule CodeMySpec.Qa.ACrossStoryBlockerHoldsQaCompleteTest do
 
     refute satisfied?
     refute Map.has_key?(details, :waiting_on)
+  end
+
+  test "the bulk QA profile preserves cross-story blocker verdicts", ctx do
+    other = story_fixture(ctx.scope)
+    {:ok, blocker} = Issues.update_issue(ctx.scope, ctx.blocker, %{story_id: other.id})
+    profile = Profiles.load(ctx.scope, :qa)
+
+    verdict_context = %{
+      qa_latest_by_story: profile.latest_by_story,
+      qa_submission_snapshots: profile.submission_snapshots,
+      qa_issues_by_id: profile.issues_by_id,
+      qa_issue_threshold: profile.issue_threshold
+    }
+
+    assert Map.has_key?(profile.issues_by_id, blocker.id)
+
+    assert Verdict.complete_check(ctx.scope, ctx.story, verdict_context) ==
+             Verdict.complete_check(ctx.scope, ctx.story)
+  end
+
+  test "bulk QA verdicts do not query once per cited issue", ctx do
+    stories =
+      for _ <- 1..12 do
+        story = story_fixture(ctx.scope)
+
+        %QaAttempt{}
+        |> QaAttempt.changeset(%{
+          story_id: story.id,
+          status: :partial,
+          scenarios: [%{name: "Blocked", status: :partial, observation: "Open issue"}],
+          issue_ids: [ctx.blocker.id],
+          submitted_at: DateTime.utc_now()
+        })
+        |> Repo.insert!()
+
+        story
+      end
+
+    owner = self()
+    counter = :counters.new(1, [])
+    handler = {__MODULE__, owner, make_ref()}
+
+    :ok =
+      :telemetry.attach(
+        handler,
+        [:code_my_spec, :repo, :query],
+        &__MODULE__.count_owner_query/4,
+        {owner, counter}
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    profile = Profiles.load(ctx.scope, :qa)
+
+    verdict_context = %{
+      qa_latest_by_story: profile.latest_by_story,
+      qa_submission_snapshots: profile.submission_snapshots,
+      qa_issues_by_id: profile.issues_by_id,
+      qa_issue_threshold: profile.issue_threshold
+    }
+
+    profile_queries = :counters.get(counter, 1)
+    assert profile_queries < 20
+    :counters.put(counter, 1, 0)
+
+    for story <- stories do
+      {false, details} =
+        Verdict.complete_check(ctx.scope, story, Map.delete(verdict_context, :qa_issues_by_id))
+
+      assert details.waiting_on == "cross_story_issue_block"
+    end
+
+    uncached_queries = :counters.get(counter, 1)
+    assert uncached_queries >= length(stories)
+    :counters.put(counter, 1, 0)
+
+    for story <- stories do
+      {false, details} = Verdict.complete_check(ctx.scope, story, verdict_context)
+      assert details.waiting_on == "cross_story_issue_block"
+    end
+
+    assert :counters.get(counter, 1) == 0
   end
 end

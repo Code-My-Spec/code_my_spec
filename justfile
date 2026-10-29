@@ -482,11 +482,14 @@ reload:
     : "${PORT:?PORT must be set}"
     : "${DATABASE_NAME:?DATABASE_NAME must be set}"
 
-    # The migrations are in: requests held since the merge (`Steps.merge`,
-    # `CodeMySpecWeb.Plugs.HoldDuringLanding`) may now reload the new code.
+    # Keep agent requests held while the local probe compiles the merged code.
+    # The hold plug lets only these loopback probe paths through.
+    # A wedged endpoint must release the app-instance server promptly so it can
+    # stop the old BEAM and start a fresh one. A slow code reload falls back to
+    # the restart path instead of holding restart_app behind this probe.
+    curl -fsS -o /dev/null --max-time 30 "http://127.0.0.1:$PORT/"
+    curl -fsS --max-time 10 "http://127.0.0.1:$PORT/health"
     rm -f "$(git rev-parse --git-path landing_hold)"
-    curl -sf -o /dev/null --max-time 600 "http://127.0.0.1:$PORT/"
-    curl -sf --max-time 30 "http://127.0.0.1:$PORT/health"
 
 # Story 1108, criterion 4663: the project-specific half of a promote's
 # deployment. `CmsHarness.AppInstance` runs this, if declared, right after

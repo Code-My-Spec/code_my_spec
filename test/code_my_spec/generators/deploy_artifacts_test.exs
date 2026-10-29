@@ -604,4 +604,15 @@ defmodule CodeMySpec.Generators.DeployArtifactsTest do
       assert body =~ ~s(hosts: ["localhost", "127.0.0.1"])
     end
   end
+
+  describe "config/deploy.yml" do
+    # The container gets SOPS_AGE_KEY and nothing else: `bin/boot` exits without
+    # it, and every other secret is inside the encrypted env it decrypts.
+    test "hands the container only the age key" do
+      body = file("config/deploy.yml")
+
+      assert body =~ ~r/secret:\n\s+- SOPS_AGE_KEY\n/
+      refute body =~ ~r/secret:[^\n]*\n(\s+- \w+\n)*\s+- (SECRET_KEY_BASE|DATABASE_URL)/
+    end
+  end
 end

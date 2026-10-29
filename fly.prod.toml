@@ -29,7 +29,9 @@ kill_signal = 'SIGTERM'
     hard_limit = 1000
     soft_limit = 1000
 
+# The graph rebuild after a sync starves a shared CPU, and local embeddings
+# load ~425 MB native, so 1 GB shared took prod down on 2026-10-28.
 [[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
+  memory = '4gb'
+  cpu_kind = 'performance'
+  cpus = 2

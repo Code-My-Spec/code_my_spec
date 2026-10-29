@@ -494,8 +494,14 @@ defmodule CodeMySpec.Provisioning.Builder do
     end
   end
 
-  defp with_deliver(opts, server, scope) do
+  # A harness copy's checkout is on another machine, where `git archive` cannot
+  # be run for us, so its source comes from GitHub like a copy with none.
+  @doc false
+  def with_deliver(opts, server, scope) do
     case Keyword.get(opts, :env) do
+      %{type: :harness} ->
+        github_delivery(opts, server, scope)
+
       %{cwd: cwd} when is_binary(cwd) and cwd != "" ->
         opts
 

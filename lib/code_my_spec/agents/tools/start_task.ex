@@ -208,13 +208,27 @@ defmodule CodeMySpec.Agents.Tools.StartTask do
   defp resolve_owner(scope, session_id, _caller, _subject),
     do: resolve_session_owner(scope, session_id)
 
-  # Every task is an agent's: a terminal Claude Code session is one, registered
-  # by its SessionStart hook. One that never registered has no owner.
-  defp resolve_session_owner(scope, session_id) do
+  # A session already running when the plugin was installed missed SessionStart.
+  # Register it with the same defaults as that hook on its first task claim.
+  defp resolve_session_owner(scope, session_id) when is_binary(session_id) and session_id != "" do
     case Agents.fetch_owner(scope, nil, session_id) do
       {:ok, agent} -> {:ok, agent}
-      {:error, :no_owner} -> {:error, Agents.no_owner_message()}
+      {:error, :no_owner} -> register_session_owner(scope, session_id)
       {:error, _reason} -> {:error, "Agent not found in this project."}
+    end
+  end
+
+  defp resolve_session_owner(_scope, _session_id),
+    do: {:error, "session_id is required to start a task."}
+
+  defp register_session_owner(scope, session_id) do
+    case Agents.register_terminal(scope, session_id, :main, :claude_code) do
+      {:ok, agent} ->
+        {:ok, agent}
+
+      {:error, _reason} ->
+        {:error,
+         "Could not register session #{inspect(session_id)}. Restart this session: claude --resume"}
     end
   end
 

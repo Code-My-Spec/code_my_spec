@@ -585,7 +585,9 @@ defmodule CmsHarness.AppInstance do
       after_promote?,
       tunnel,
       %{action: "restarted", action_reason: why},
-      settle_by(reload_timeout())
+      # Reload probing has already consumed part of the caller's time budget.
+      # Reply starting if the replacement is still booting, then watch it.
+      settle_by(div(op_timeout(), 2))
     )
   end
 
@@ -604,13 +606,13 @@ defmodule CmsHarness.AppInstance do
         Logger.warning("[CmsHarness] reload of #{state.root} failed: #{inspect(reason)}")
 
         case probe(state) do
-          %{status: "down"} = down ->
+          %{status: status} = unhealthy when status in ["down", "erroring"] ->
             restart_instead(
-              down,
+              unhealthy,
               from,
               after_promote?,
               tunnel,
-              "the reload failed and left the app down"
+              "the reload failed and left the app #{status}: #{inspect(reason)}"
             )
 
           probed ->
@@ -636,8 +638,16 @@ defmodule CmsHarness.AppInstance do
     )
   end
 
-  defp reloaded(%__MODULE__{status: "down"} = probed, from, after_promote?, tunnel),
-    do: restart_instead(probed, from, after_promote?, tunnel, "the reload left the app down")
+  defp reloaded(%__MODULE__{status: status} = probed, from, after_promote?, tunnel)
+       when status in ["down", "erroring"],
+       do:
+         restart_instead(
+           probed,
+           from,
+           after_promote?,
+           tunnel,
+           "the reload left the app #{status}"
+         )
 
   defp reloaded(probed, _from, _after_promote?, _tunnel) do
     Logger.warning(

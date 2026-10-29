@@ -36,6 +36,8 @@ defmodule CodeMySpec.Problems do
     to: ProblemRepository
 
   defdelegate clear_problems_for_missing_files(scope, current_paths), to: ProblemRepository
+  defdelegate missing_problem_file_paths(scope, current_paths), to: ProblemRepository
+  defdelegate clear_problems_for_paths(scope, paths), to: ProblemRepository
   defdelegate replace_project_problems(scope, problems), to: ProblemRepository
 
   defdelegate replace_problems_for_files(scope, file_paths, problems),

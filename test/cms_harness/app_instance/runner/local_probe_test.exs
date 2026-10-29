@@ -25,6 +25,33 @@ defmodule CmsHarness.AppInstance.Runner.LocalProbeTest do
     assert Local.probe(0) == :serving
   end
 
+  test "an older app without /health still serves when / and JS answer" do
+    Test.stub(Local, fn
+      %{request_path: "/health"} = conn -> Plug.Conn.send_resp(conn, 404, "not found")
+      conn -> ok_root_and_js(conn)
+    end)
+
+    assert Local.probe(0) == :serving
+  end
+
+  test "/ answers but /health reports failure: erroring, not serving" do
+    Test.stub(Local, fn
+      %{request_path: "/health"} = conn -> Plug.Conn.send_resp(conn, 503, "unhealthy")
+      conn -> ok_root_and_js(conn)
+    end)
+
+    assert Local.probe(0) == :erroring
+  end
+
+  test "/ answers but /health cannot be reached: down, not serving" do
+    Test.stub(Local, fn
+      %{request_path: "/health"} = conn -> Test.transport_error(conn, :econnrefused)
+      conn -> ok_root_and_js(conn)
+    end)
+
+    assert Local.probe(0) == :down
+  end
+
   test "/ answers but the JS bundle 404s: erroring, not serving" do
     Test.stub(Local, &ok_root_missing_js/1)
 

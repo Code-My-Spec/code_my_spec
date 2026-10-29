@@ -438,7 +438,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert conn.status == 200
       body = Jason.decode!(conn.resp_body)
       assert body["id"] == 7
-      assert body["error"]["message"] =~ "mix cms.harness.onboard"
+      assert body["error"]["message"] =~ "/codemyspec:init"
       assert FakeUpstream.last_request() == nil
     end
 

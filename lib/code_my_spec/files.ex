@@ -717,6 +717,17 @@ defmodule CodeMySpec.Files do
     |> Repo.delete_all()
   end
 
+  @doc "Delete a bounded set of paths for this checkout, returning the removed rows."
+  @spec delete_removed_paths(Scope.t(), [String.t()]) :: {integer(), [File.t()]}
+  def delete_removed_paths(%Scope{active_project_id: project_id} = scope, paths)
+      when is_list(paths) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> scope_to_harness(scope)
+    |> select([f], f)
+    |> Repo.delete_all()
+  end
+
   # Nil-`working_copy_id` rows are not matched when a harness is set: a row
   # owned by nobody is not this checkout's to delete.
   defp scope_to_harness(query, %Scope{active_working_copy_id: nil}), do: query
