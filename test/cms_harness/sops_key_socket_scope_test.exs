@@ -6,11 +6,7 @@ defmodule CmsHarness.SopsKeySocketScopeTest do
     deep_state = Path.join(System.tmp_dir!(), String.duplicate("deep-home-", 17))
     System.put_env("CMS_STATE_DIR", deep_state)
 
-    on_exit(fn ->
-      if previous,
-        do: System.put_env("CMS_STATE_DIR", previous),
-        else: System.delete_env("CMS_STATE_DIR")
-    end)
+    on_exit(fn -> restore_state_dir(previous) end)
 
     assert byte_size(deep_state) > 150
     path = Path.join(CmsHarness.SopsKeySocket.dir(), "key.sock")
@@ -30,4 +26,7 @@ defmodule CmsHarness.SopsKeySocketScopeTest do
 
     assert elem(:os.type(), 0) == :win32 or File.exists?(expected)
   end
+
+  defp restore_state_dir(nil), do: System.delete_env("CMS_STATE_DIR")
+  defp restore_state_dir(previous), do: System.put_env("CMS_STATE_DIR", previous)
 end
