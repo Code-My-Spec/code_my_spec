@@ -57,6 +57,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Edges
+  alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
@@ -93,12 +95,13 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   end
 
   @doc """
-  Same as `project_graph/1` plus per-phase timings (compute + layout +
-  components query, in milliseconds).
+  Same as `project_graph/1` plus per-phase timings (compute + display edges +
+  layout + components query, in milliseconds).
   """
   @spec project_graph_with_metrics(Scope.t()) :: {map(), %{atom() => integer()}}
   def project_graph_with_metrics(%Scope{} = scope) do
     {graph_data, metrics} = Requirements.project_graph_with_actionable_metrics(scope)
+    {us_display, graph_data} = :timer.tc(fn -> displayed(scope, graph_data) end)
     graph_data = Requirements.project_issue_graph(scope, graph_data)
 
     {us_components, components} =
@@ -113,6 +116,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         :project_issue_count,
         Enum.count(graph_data.nodes, &(&1.entity_type == "issue" and &1.name == "assigned"))
       )
+      |> Map.put(:display_edges_ms, div(us_display, 1000))
       |> Map.put(:components_query_ms, div(us_components, 1000))
       |> Map.put(:layout_ms, div(us_layout, 1000))
 
@@ -575,48 +579,16 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end)
   end
 
-  @doc """
-  Single context graph: the context's requirements as a vertical
-  chain in the centre, with children fanning out at each parent
-  fan-out point (the structural phase break — see
-  `Topology.fans_out_to_children?/3`).
-  """
-  @spec component_graph(Scope.t(), String.t()) :: map()
-  def component_graph(%Scope{} = scope, component_id) do
-    # The read model: display, served from the rows.
-    %{nodes: nodes, edges: edges, actionable: actionable} =
-      Requirements.cached_graph_with_actionable(scope)
+  # A drawing shows only the edges no longer path implies: the project's stored
+  # reduction, between the nodes shown. Layout reads depth, fan-out and
+  # cross-entity seams off these.
+  defp displayed(scope, %{nodes: nodes} = graph) do
+    edges =
+      scope.active_project_id
+      |> GraphStore.display_edges()
+      |> Edges.among(MapSet.new(nodes, &node_key/1))
 
-    actionable_set = MapSet.new(actionable, &node_key/1)
-
-    components = Components.list_components(scope)
-    children = Enum.filter(components, &(&1.parent_component_id == component_id))
-    tree_ids = MapSet.new([component_id | Enum.map(children, & &1.id)])
-    tree_nodes = filter_tree_nodes(nodes, tree_ids)
-    comp_reqs_by_id = Enum.group_by(tree_nodes, & &1.entity_id)
-
-    layout = %{req_gap: 400, child_col_gap: 500, child_req_gap: 300}
-    topo = build_topo(nodes, edges)
-
-    sorted_ctx_reqs = sort_context_reqs(comp_reqs_by_id, component_id, topo)
-    sorted_children = sort_children_by_dependency(children, components)
-
-    children_with_reqs =
-      partition_children_reqs(sorted_children, comp_reqs_by_id, component_id, topo)
-
-    {context_sigma, specs_y, impl_y} =
-      build_context_column(sorted_ctx_reqs, children_with_reqs, layout, actionable_set, 14, topo)
-
-    spec_child_sigma =
-      build_phase_child_sigma(children_with_reqs, :spec_reqs, specs_y, layout, actionable_set, 10)
-
-    impl_child_sigma =
-      build_phase_child_sigma(children_with_reqs, :impl_reqs, impl_y, layout, actionable_set, 10)
-
-    all_sigma = context_sigma ++ spec_child_sigma ++ impl_child_sigma
-    sigma_edges = component_graph_edges(edges, tree_nodes, all_sigma)
-
-    %{nodes: all_sigma, edges: sigma_edges}
+    %{graph | edges: edges}
   end
 
   defp build_topo(nodes, edges) do
@@ -906,12 +878,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   defp comp_label(n), do: n.entity_name |> String.split(".") |> List.last()
 
-  defp short_req_label(n) do
-    mod = n.entity_name |> String.split(".") |> List.last()
-    name = n.name |> String.replace("_", " ")
-    if n.satisfied, do: "#{mod}: #{name} ✓", else: "#{mod}: #{name}"
-  end
-
   defp short_title(t), do: if(String.length(t) > 20, do: String.slice(t, 0, 20) <> "..", else: t)
 
   # -- Status --
@@ -931,12 +897,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   defp edge_color(_), do: "#64748b"
 
   # -- Shared layout helpers --
-
-  defp filter_tree_nodes(nodes, tree_ids) do
-    Enum.filter(nodes, fn n ->
-      n.entity_type == "component" and MapSet.member?(tree_ids, n.entity_id)
-    end)
-  end
 
   defp sort_context_reqs(comp_reqs_by_id, component_id, topo) do
     comp_reqs_by_id
@@ -1019,28 +979,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     children_with_reqs |> Enum.map(&length(Map.fetch!(&1, key))) |> Enum.max(fn -> 0 end)
   end
 
-  defp build_context_column(
-         sorted_ctx_reqs,
-         children_with_reqs,
-         layout,
-         actionable_set,
-         size,
-         topo
-       ) do
-    {nodes, _y_cursor, specs_y, impl_y} =
-      build_context_column_with_cursor(
-        sorted_ctx_reqs,
-        children_with_reqs,
-        layout,
-        actionable_set,
-        size,
-        &short_req_label/1,
-        topo
-      )
-
-    {nodes, specs_y, impl_y}
-  end
-
   defp build_context_column_with_cursor(
          sorted_ctx_reqs,
          children_with_reqs,
@@ -1120,18 +1058,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     end
   end
 
-  defp build_phase_child_sigma(children_with_reqs, phase, base_y, layout, actionable_set, size) do
-    build_phase_child_sigma_with_label(
-      children_with_reqs,
-      phase,
-      base_y,
-      layout,
-      actionable_set,
-      size,
-      &short_req_label/1
-    )
-  end
-
   defp build_phase_child_sigma_with_label(
          children_with_reqs,
          phase,
@@ -1173,30 +1099,6 @@ defmodule CodeMySpec.Requirements.GraphProjector do
         entity_id: req.entity_id,
         name: req.name
       )
-    end)
-  end
-
-  defp component_graph_edges(edges, tree_nodes, all_sigma) do
-    tree_node_keys = MapSet.new(tree_nodes, &node_key/1)
-    all_keys = MapSet.new(all_sigma, & &1.key)
-
-    edges
-    |> Enum.filter(fn e ->
-      MapSet.member?(tree_node_keys, e.from) and MapSet.member?(tree_node_keys, e.to)
-    end)
-    |> Enum.map(fn e -> {key_to_string(e.from), key_to_string(e.to), e} end)
-    |> Enum.filter(fn {f, t, _} ->
-      MapSet.member?(all_keys, f) and MapSet.member?(all_keys, t)
-    end)
-    |> Enum.uniq_by(fn {f, t, _} -> {f, t} end)
-    |> Enum.reject(fn {f, t, _} -> f == t end)
-    |> Enum.map(fn {f, t, _e} ->
-      %{
-        key: "#{f}->#{t}",
-        source: f,
-        target: t,
-        attributes: %{size: 2, color: "#64748b", type: "arrow"}
-      }
     end)
   end
 

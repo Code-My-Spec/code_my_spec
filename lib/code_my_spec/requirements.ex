@@ -401,7 +401,7 @@ defmodule CodeMySpec.Requirements do
   defp owner_of(%{project_id: id}), do: {"project", to_string(id)}
 
   @doc """
-  Every requirement node, read from `requirements` and `requirement_edges`
+  Every requirement node, read from `requirements` and the project's edges
   (through `Requirements.Projection`) once the projector has applied what is
   pending, so it is current. `computed_at` says when the rows were written.
   """

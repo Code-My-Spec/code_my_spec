@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.CommittedRowsGuard do
   @moduledoc "Fails a sandboxed spex run when fixture rows were committed outside its tests."
 
-  @tables ~w(users accounts projects stories components requirements requirement_edges)
+  @tables ~w(users accounts projects stories components requirements requirement_topologies)
 
   def install! do
     callback = &__MODULE__.check_after_suite!/1

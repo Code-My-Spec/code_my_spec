@@ -2,24 +2,7 @@ defmodule CodeMySpec.Requirements.TopologyInvariantsTest do
   use ExUnit.Case, async: true
 
   import Bitwise
-  alias CodeMySpec.Requirements.{Edges, Topology}
-
-  test "reachability agrees with independent traversal on every four-node graph" do
-    nodes = [:a, :b, :c, :d]
-
-    for edges <- graphs(nodes, false) do
-      reach = Topology.reach(edges)
-
-      actual =
-        for source <- nodes,
-            target <- nodes,
-            Topology.reaches?(reach, source, Topology.mask(reach, [target])),
-            into: MapSet.new(),
-            do: {source, target}
-
-      assert actual == closure(edges)
-    end
-  end
+  alias CodeMySpec.Requirements.Topology
 
   test "reduction preserves reachability for every four-node directed graph" do
     for edges <- graphs([:a, :b, :c, :d], false) do
@@ -33,40 +16,6 @@ defmodule CodeMySpec.Requirements.TopologyInvariantsTest do
     for edges <- graphs([:a, :b, :c], true) do
       assert closure(Topology.transitive_reduction(edges)) == closure(edges),
              "Lost paths reducing #{inspect(edges)}"
-    end
-  end
-
-  test "kickoff selection preserves access to every original target" do
-    for edges <- graphs([:a, :b, :c], true),
-        targets <- subsets([:a, :b, :c, :isolated]) do
-      selected = Topology.minimal(Topology.reach(edges), targets)
-      assert MapSet.subset?(MapSet.new(selected), MapSet.new(targets))
-
-      before = edges ++ Enum.map(targets, &edge(:kickoff, &1))
-      after_selection = edges ++ Enum.map(selected, &edge(:kickoff, &1))
-
-      assert closure(after_selection) == closure(before),
-             "Lost kickoff access: #{inspect({edges, targets, selected})}"
-    end
-  end
-
-  test "composed story reduction preserves paths through cyclic components" do
-    for components <- graphs([:a, :b, :c], false),
-        entries <- subsets([:a, :b, :c]),
-        exits <- subsets([:a, :b, :c]) do
-      sides = %{
-        template: [edge(:bdd, :qa)],
-        kickoff: Enum.map(entries, &edge(:bdd, &1)),
-        exit: Enum.map(exits, &edge(&1, :qa)),
-        project: []
-      }
-
-      result = Edges.story_side(sides, %{reach: Topology.reach(components)}, fn _ -> true end)
-      original = components ++ sides.template ++ sides.kickoff ++ sides.exit
-      reduced = Topology.transitive_reduction(components) ++ result.edges
-
-      assert closure(reduced) == closure(original),
-             "Lost story paths: #{inspect({components, entries, exits})}"
     end
   end
 

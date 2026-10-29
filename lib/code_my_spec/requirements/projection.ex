@@ -18,7 +18,7 @@ defmodule CodeMySpec.Requirements.Projection do
 
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Edge, Node, Registry, Requirement}
+  alias CodeMySpec.Requirements.{Edges, GraphStore, Node, Registry, Requirement, Topology}
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -79,22 +79,18 @@ defmodule CodeMySpec.Requirements.Projection do
   end
 
   @doc """
-  The graph as `{nodes, edges}`, in the same shape `compute_graph/1` returns.
-
-  ## Options
-
-    * `:source` — `{nodes_schema, edges_schema}` to read instead of the
-      default `{Node, Edge}`. No caller in `lib` passes it.
+  The graph as `{nodes, edges}`, in the same shape `compute_graph/1` returns:
+  this vantage's rows, and the project's edges between them.
   """
-  @spec load(Scope.t(), map(), keyword()) :: {[Requirement.t()], [map()]}
-  def load(%Scope{active_project_id: project_id} = scope, ctx, opts \\ []) do
-    {node_source, edge_source} = Keyword.get(opts, :source, {Node, Edge})
+  @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
+  def load(%Scope{active_project_id: project_id} = scope, ctx) do
+    nodes =
+      Node
+      |> project_rows(project_id, vantage(scope), ctx)
+      |> Enum.map(&rehydrate(&1, ctx))
+      |> Enum.reject(&is_nil/1)
 
-    rows = project_rows(node_source, project_id, vantage(scope), ctx)
-    nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
-
-    by_id = Map.new(rows, &{&1.id, &1})
-    {nodes, edges_for(edge_source, rows, by_id, ctx)}
+    {nodes, edges_for(project_id, nodes)}
   end
 
   @doc """
@@ -123,7 +119,7 @@ defmodule CodeMySpec.Requirements.Projection do
 
     ctx = %{stories: stories, components_by_id: %{}}
     nodes = rows |> Enum.map(&rehydrate(&1, ctx)) |> Enum.reject(&is_nil/1)
-    {nodes, edges_for(Edge, rows, Map.new(rows, &{&1.id, &1}), ctx)}
+    {nodes, edges_for(hd(stories).project_id, nodes)}
   end
 
   @doc """
@@ -327,26 +323,6 @@ defmodule CodeMySpec.Requirements.Projection do
 
   # An edge is only in the graph if both its nodes rehydrated; one that lost an
   # end would gate a node on something unreachable.
-  defp edges_for(source, rows, by_id, ctx) do
-    keys = Map.new(rows, &{&1.id, node_key(&1, ctx)})
-    ids = Map.keys(by_id)
-
-    source
-    |> where([e], e.from_requirement_id in ^ids and e.to_requirement_id in ^ids)
-    |> Repo.all()
-    |> Enum.flat_map(fn edge ->
-      case {Map.get(keys, edge.from_requirement_id), Map.get(keys, edge.to_requirement_id)} do
-        {nil, _} -> []
-        {_, nil} -> []
-        {from, to} -> [%{from: from, to: to}]
-      end
-    end)
-  end
-
-  defp node_key(row, ctx) do
-    case entity_for(row, ctx) do
-      {:ok, entity_type, _entity} -> {entity_type, entity_id(row, entity_type), row.name}
-      :error -> nil
-    end
-  end
+  defp edges_for(project_id, nodes),
+    do: project_id |> GraphStore.edges() |> Edges.among(MapSet.new(nodes, &Topology.node_key/1))
 end

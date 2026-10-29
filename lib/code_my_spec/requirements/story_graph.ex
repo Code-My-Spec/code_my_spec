@@ -2,7 +2,7 @@ defmodule CodeMySpec.Requirements.StoryGraph do
   @moduledoc "A story's component architecture first, then its published requirements."
 
   alias CodeMySpec.{Components, Issues, Requirements, Stories}
-  alias CodeMySpec.Requirements.{Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{Projection, RequirementGraph, Topology}
   alias CodeMySpec.Users.Scope
 
   def read(scope, story_id) do
@@ -106,10 +106,15 @@ defmodule CodeMySpec.Requirements.StoryGraph do
     nodes = Enum.filter(graph.nodes, &MapSet.member?(included, key(&1)))
     keys = MapSet.new(nodes, &key/1)
 
+    # Drawn reduced over the slice: rows hold every edge as generated.
+    edges =
+      graph.edges
+      |> Enum.filter(&(MapSet.member?(keys, &1.from) and MapSet.member?(keys, &1.to)))
+      |> Topology.transitive_reduction()
+
     %{
       nodes: nodes,
-      edges:
-        Enum.filter(graph.edges, &(MapSet.member?(keys, &1.from) and MapSet.member?(keys, &1.to))),
+      edges: edges,
       actionable: Enum.filter(graph.actionable, &MapSet.member?(keys, key(&1))),
       story_keys: roots
     }
