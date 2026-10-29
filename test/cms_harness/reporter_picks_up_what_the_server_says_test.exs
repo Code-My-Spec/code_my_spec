@@ -178,7 +178,9 @@ defmodule CmsHarness.ReporterPicksUpWhatTheServerSaysTest do
     start_supervised!(CmsHarnessTest.FakeAppInstanceRunner)
     Application.put_env(:code_my_spec, :test_server_copies, %{"copy-3" => gone})
 
-    {:ok, pid} = start_supervised({WorkingCopyReporter, name: :drop_gone_test, known: %{"copy-3" => gone}})
+    {:ok, pid} =
+      start_supervised({WorkingCopyReporter, name: :drop_gone_test, known: %{"copy-3" => gone}})
+
     WorkingCopyReporter.report(pid)
     WorkingCopyReporter.report(pid)
     WorkingCopyReporter.report(pid)
