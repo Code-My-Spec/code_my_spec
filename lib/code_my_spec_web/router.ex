@@ -227,6 +227,19 @@ defmodule CodeMySpecWeb.Router do
       server: CodeMySpec.McpServers.GoogleAdsServer
   end
 
+  # Git clients send binary pack bodies and Accept: */*, so use a dedicated
+  # pipeline while retaining the same OAuth authentication as the API.
+  pipeline :source_git do
+    plug :require_oauth_token
+  end
+
+  scope "/api/source", CodeMySpecWeb do
+    pipe_through :source_git
+
+    get "/:project_id/:kind/info/refs", SourceGitController, :refs
+    post "/:project_id/:kind/git-upload-pack", SourceGitController, :upload_pack
+  end
+
   # API routes
   scope "/api", CodeMySpecWeb do
     pipe_through [:api, :require_oauth_token, CodeMySpecWeb.Plugs.ProjectScopeOverride]
