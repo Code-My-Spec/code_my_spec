@@ -17,6 +17,17 @@ defmodule CodeMySpecWeb.HealthControllerTest do
     assert is_boolean(body["harness_connected"])
   end
 
+  # The deploy proxy probes with no JSON Accept header; a pipeline's
+  # `:accepts` on this route would 406 it.
+  test "answers a probe that does not ask for JSON", %{conn: conn} do
+    conn =
+      conn
+      |> Plug.Conn.put_req_header("accept", "text/html")
+      |> get(~p"/health")
+
+    assert conn.status == 200
+  end
+
   # Only the positive: other async tests register harnesses in the same
   # registry, so "none connected" is not something this test can own.
   test "a connected harness is reported" do

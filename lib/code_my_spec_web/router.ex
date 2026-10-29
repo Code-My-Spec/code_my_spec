@@ -45,10 +45,11 @@ defmodule CodeMySpecWeb.Router do
     plug CodeMySpecWeb.Plugs.IntakeSession
   end
 
-  # Unauthenticated, no session: `just reload` asks it after a promote.
+  # Unauthenticated, no session: `just reload` asks it after a promote, and
+  # the deploy proxy probes it. Piped through nothing: a plug that can fail
+  # (`:accepts` on a probe with no JSON Accept header) fails the probe for
+  # reasons unrelated to the app.
   scope "/", CodeMySpecWeb do
-    pipe_through :api
-
     get "/health", HealthController, :index
   end
 
