@@ -261,6 +261,7 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     (
       trap '' TERM
       while [ "$(/bin/ps -o lstart= -p "$CMS_RUN_OWNER" 2>/dev/null | /usr/bin/xargs)" = "$CMS_RUN_OWNER_BIRTH" ]; do
+        /bin/kill -0 "$child" 2>/dev/null || exit 0
         /bin/sleep 1
       done
       /bin/kill -TERM -- "-$$" 2>/dev/null
@@ -270,7 +271,6 @@ defmodule CodeMySpec.ExecutionContexts.Local do
     watcher=$!
     wait "$child"
     status=$?
-    /bin/kill -KILL "$watcher" 2>/dev/null
     wait "$watcher" 2>/dev/null
     exit "$status"
     """
