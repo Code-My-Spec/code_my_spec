@@ -24,9 +24,9 @@ defmodule CodeMySpec.Requirements.Tools.GetNextRequirementTest do
     :ok = IncrementalGraph.settle(scope.active_project_id)
 
     CodeMySpecTest.SuspendedProjector.while_suspended(pid, fn ->
-      started = System.monotonic_time(:millisecond)
+      # Answering at all while the writer is suspended is the claim: blocking on
+      # it would never return here. A wall-clock bound failed only under load.
       assert {:ok, text} = ToolLibrary.run("get_next_requirement", %{}, %{scope: scope})
-      assert System.monotonic_time(:millisecond) - started < 3_000
       assert text =~ "retry in 5 s"
       refute text =~ "requirement_name=`"
       refute text =~ "All requirements satisfied"

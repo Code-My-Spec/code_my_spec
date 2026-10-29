@@ -85,12 +85,11 @@ defmodule CodeMySpec.Requirements.Freshness do
 
   An edge comes from the template (by `component.type`, filtered by config and
   the definition set), the component tree (`parent_component_id`), cross-context
-  `dependencies`, story attachment (`story.component_id`), and which discovered
-  components have files on this checkout. Nothing else: validity, QA results
-  and deploys move nodes, never edges.
+  `dependencies` and story attachment (`story.component_id`). Nothing else:
+  files, validity, QA results and deploys move nodes, never edges.
 
   This gates edges only; verdicts are moved by marks. `IncrementalGraph` redraws
-  a vantage's edges when this moves and reuses an edge plan while it holds.
+  the project's edges when this moves.
   See knowledge/requirements_graph/checkers, "Fingerprints".
   """
   @spec topology(Preloader.context(), map()) :: String.t()
@@ -107,16 +106,13 @@ defmodule CodeMySpec.Requirements.Freshness do
   def topology_parts(ctx, config) do
     components =
       ctx.components
-      |> Enum.map(
-        &{&1.id, &1.type, &1.parent_component_id, dependency_ids(&1), Map.get(&1, :provenance)}
-      )
+      |> Enum.map(&{&1.id, &1.type, &1.parent_component_id, dependency_ids(&1)})
       |> Enum.sort()
 
     stories = ctx.stories |> Enum.map(&{&1.id, &1.component_id}) |> Enum.sort()
 
     %{
       components: hash(components),
-      discovered_files: hash(discovered_files(ctx)),
       stories: hash(stories),
       story_issues:
         hash(
@@ -129,21 +125,6 @@ defmodule CodeMySpec.Requirements.Freshness do
       config: hash(config_shape(config)),
       definitions: hash(definition_shape(ctx))
     }
-  end
-
-  defp discovered_files(ctx) do
-    present =
-      Map.get_lazy(ctx, :file_component_ids, fn ->
-        ctx
-        |> Map.get(:files_by_component, %{})
-        |> Enum.reject(fn {_id, files} -> files == [] end)
-        |> MapSet.new(fn {id, _files} -> id end)
-      end)
-
-    ctx.components
-    |> Enum.filter(&(Map.get(&1, :provenance) == :discovered and MapSet.member?(present, &1.id)))
-    |> Enum.map(& &1.id)
-    |> Enum.sort()
   end
 
   # The definition set itself (names and prerequisites only), so a release that

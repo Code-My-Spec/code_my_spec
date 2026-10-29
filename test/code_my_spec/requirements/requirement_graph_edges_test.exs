@@ -114,7 +114,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   # — uniformly ×2, none higher, which is the signature of exactly two paths
   # reaching one edge.
   #
-  # `Enum.uniq/1` already removed them before the reduction, so suppressing the
+  # `Enum.uniq/1` already removed them before anything read them, so suppressing the
   # parent's copy cannot change the graph. These assert that: the edge survives,
   # and nothing is emitted twice.
   describe "the parent/child fan-out no longer emits an edge twice" do
@@ -309,26 +309,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       assert ctx_entry, "should have entry edge to direct dependency context"
     end
 
-    @tag :pending
-    test "kickoff edge lands on the deepest transitive dep, intermediate kickoffs collapse" do
-      # Per the moduledoc on RequirementGraph (`Kickoff edges ... span
-      # the surface AND every component in its transitive cross-context
-      # dependency closure. Transitive reduction collapses these to the
-      # deepest dep(s)`), the story's outgoing kickoff edge should end up
-      # at the deepest transitive dep, with intermediate kickoffs reduced
-      # away because the path
-      #   story → deep_dep → ... → context → ... → surface
-      # already exists via the cross-context dependency edges.
-      #
-      # Currently failing: `context.spec_valid → context.review_file` is
-      # missing from the intra-component chain because the only prereq
-      # chain into `review_file` goes through child-scoped reqs, and the
-      # `Todos` context here has no children. With that gap in the
-      # chain, transitive_reduction can't see that surface is reachable
-      # via context, so the intermediate kickoffs survive. This is a
-      # design gap in `context_graph` (child reqs gate parent reqs but
-      # leave the chain broken when no children exist) — not a bug in
-      # this test's expectations.
+    test "the kickoff reaches the whole dependency closure, deepest dep included" do
+      # Kickoff edges span the surface and every component in its transitive
+      # cross-context dependency closure, and are stored as generated: the
+      # kickoff to an intermediate component stays beside the one to the
+      # deepest dependency. A view reduces what a longer path implies.
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -390,18 +375,17 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         |> MapSet.new()
 
       assert MapSet.member?(story_kickoffs, deep_dep.id),
-             "story's kickoff edge should land on the deepest transitive dep"
+             "story's kickoff edge should reach the deepest transitive dep"
 
-      refute MapSet.member?(story_kickoffs, surface.id),
-             "intermediate surface kickoff should be collapsed by transitive reduction"
-
-      refute MapSet.member?(story_kickoffs, context.id),
-             "intermediate context kickoff should be collapsed by transitive reduction"
+      assert MapSet.member?(story_kickoffs, context.id),
+             "the kickoff to an intermediate dependency is stored as generated"
     end
   end
 
-  describe "discovered components with no file on this checkout are not swept into a story" do
-    test "a discovered child of a dependency context, referenced only by that context, is excluded" do
+  # The component record says write the file; a checkout without it has the
+  # requirement unsatisfied, not the component out of the story.
+  describe "discovered components with no file on this checkout are swept into a story" do
+    test "a discovered child of a dependency context, referenced only by that context, is kicked off" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -438,28 +422,20 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       write_file(tmp_dir, "lib/my_app/accounts.ex", impl_content("MyApp.Accounts"))
       sync!(scope, tmp_dir)
 
-      # Simulated the way the real defect arrives: a component row synced
-      # into existence by a *different* checkout's files, referenced only
-      # by its authored parent, with nothing on this project's own Files
-      # records. Created directly, after the real sync above, so this
-      # module's own pruning pass never runs against it.
+      # A component row synced into existence by a *different* checkout's
+      # files, referenced only by its authored parent, with nothing on this
+      # project's own Files records. Created directly, after the real sync
+      # above, so this module's own pruning pass never runs against it.
       ghost = create_child_component(scope, "MyApp.Accounts.Ghost", "module", context.id)
       {:ok, ghost} = Components.update_component(scope, ghost, %{provenance: :discovered})
 
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
-      refute Enum.any?(edges, fn e ->
+      assert Enum.any?(edges, fn e ->
                e.from == {"story", story.id, "bdd_specs_exist"} and
                  e.to == {"component", ghost.id, "implementation_file"}
              end),
-             "the story's kickoff must not reach a discovered component with no file on " <>
-               "this checkout"
-
-      assert Enum.any?(edges, fn e ->
-               e.from == {"story", story.id, "bdd_specs_exist"} and
-                 e.to == {"component", context.id, "dependencies_met"}
-             end),
-             "the real, file-backed dependency context must still be reached"
+             "the story's kickoff reaches a discovered component wherever its file is"
     end
   end
 

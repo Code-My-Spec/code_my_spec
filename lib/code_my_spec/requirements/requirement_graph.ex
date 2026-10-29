@@ -67,26 +67,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp normalize_vantage(%Scope{} = scope),
     do: %{scope | active_working_copy_id: Projection.vantage(scope)}
 
-  @doc """
-  The edge set over a node set, without computing a verdict.
-
-  `compute_topology/3` answers the same question by computing every node first,
-  which is right on a cold vantage. When the nodes are already stored this
-  rebuilds edges without recomputing them.
-
-  `ctx` needs the shape — `Preloader.topology_context/1` is enough — and
-  `nodes` are whatever the caller holds for the vantage.
-  """
-  @spec edges_over(Scope.t(), [Requirement.t()], map(), map()) :: [edge()]
-  def edges_over(scope, nodes, ctx, config) do
-    ctx =
-      ctx
-      |> Freshness.with_config(config)
-      |> Map.put(:template_edges, template_edges(scope, ctx, config))
-
-    compute_edges(nodes, ctx, config)
-  end
-
   # Settle the writer before serving its rows, at the vantage the reader named.
   @doc """
   Wait for the writer to apply what is pending at the scope's vantage, as every
@@ -151,14 +131,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  # Every template edge in the project, without computing a single node: the
-  # id map and the template are shape alone, read no file and no verdict.
-  defp template_edges(scope, ctx, config) do
-    component_template_edges(ctx, config) ++
-      Enum.flat_map(ctx.stories, &story_template_edges(&1, ctx, config)) ++
-      project_template_edges(scope, config)
-  end
-
   defp component_template_edges(ctx, config) do
     {top_level, children_by_parent} = component_families(ctx)
 
@@ -177,9 +149,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     build_template_edges(template, id_map) ++ StoryIssueGraph.edges(story, ctx, config)
   end
 
-  # The generators one side at a time, for `Edges`. `compute_edges/3` reduces
-  # the union; `Edges.over/4` reduces per entity against the component side, so
-  # the two differ only in the reduction (`edges_derived_per_entity_match_the_pass_test`).
+  # The generators one side at a time, for `Edges`. `compute_edges/3` draws the
+  # union at once; the two must agree (`edges_derived_per_entity_match_the_pass_test`).
 
   @doc """
   The shape with what the story generators read off it — children by parent
@@ -195,42 +166,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   @doc """
   The component side of the edge set as generated: every component's template
-  edges and the cross-context edges its dependencies declare. Unreduced;
-  `Edges.component_side/3` reduces it.
+  edges and the cross-context edges its dependencies declare.
   """
   @spec component_side_edges(map(), map()) :: [edge()]
   def component_side_edges(ctx, config),
     do: component_template_edges(ctx, config) ++ cross_context_dependency_edges(ctx, config)
 
   @doc """
-  One story's edges as generated, by kind: its own chain, its kickoff into
-  the components, the exits back from them, and the pair joining it to the
-  project. Unreduced; `Edges.story_side/5` reduces each against the component
-  side.
+  One story's edges as generated: its own chain, its kickoff into the
+  components, the exits back from them, and the pair joining it to the project.
   """
-  @spec story_side_edges(map(), map(), map()) :: %{
-          template: [edge()],
-          kickoff: [edge()],
-          exit: [edge()],
-          project: [edge()]
-        }
+  @spec story_side_edges(map(), map(), map()) :: [edge()]
   def story_side_edges(story, ctx, config) do
     timing = %{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}
     {chain, _timing} = story_chain_edges(story, ctx, config, timing)
-    {kickoff, exit} = Enum.split_with(chain, &match?(%{from: {"story", _, _}}, &1))
     one = %{stories: [story]}
 
-    %{
-      template: story_template_edges(story, ctx, config),
-      kickoff: kickoff,
-      exit: exit,
-      project: project_to_story_edges(one) ++ story_to_project_edges(one)
-    }
+    story_template_edges(story, ctx, config) ++
+      chain ++ project_to_story_edges(one) ++ story_to_project_edges(one)
   end
 
   @doc """
-  The project's own chain as generated. Unreduced; `Edges.project_side/4`
-  reduces it against the stories that bridge it.
+  The project's own chain as generated.
   """
   @spec project_side_edges(Scope.t(), map()) :: [edge()]
   def project_side_edges(scope, config), do: project_template_edges(scope, config)
@@ -358,10 +315,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   The project's whole node set and the edges between them, computed and not
   written.
 
-  Edges end in a transitive reduction, which is global, so they cannot be
-  computed per entity. They depend on the node set, never on a verdict: only a
-  drain that wrote or reaped nodes needs this. See knowledge/requirements_graph,
-  "Edges".
+  Edges depend on the node set, never on a verdict: only a drain that wrote or
+  reaped nodes needs this. See knowledge/requirements_graph, "Edges".
   """
   @spec compute_topology(Scope.t(), map(), map()) ::
           {[Requirement.t()], [%{from: tuple(), to: tuple()}]}
@@ -375,8 +330,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   the computation enriched — what `compute_topology/3` does before the edges.
 
   On its own so a caller settling several vantages can draw the edges once:
-  every vantage shares the shape. `edges_over/4` draws them when the caller has
-  no set to reuse.
+  every vantage shares the shape.
   """
   @spec compute_nodes(Scope.t(), map(), map()) :: {[Requirement.t()], map()}
   def compute_nodes(scope, ctx, config), do: compute_all_from_ctx(scope, ctx, config)
@@ -423,7 +377,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   @doc """
   `cached_graph/1` plus the actionable set, for readers that want both without
-  paying for the preload twice.
+  paying for the read context twice.
 
   Returns `{{nodes, edges}, actionable, computed_at}`.
 
@@ -446,9 +400,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       settle_owner(scope)
     end
 
-    with {:ok, ctx} <- Preloader.load(scope) do
-      serve_with_actionable(scope, ctx)
-    end
+    serve_with_actionable(scope, Preloader.read_context(scope))
   end
 
   @doc """
@@ -459,15 +411,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   "computed": reads compute nothing, and on a page that says whether the graph
   is current that word must not mislead.
   """
-  @spec cached_graph_with_actionable_metrics(Scope.t()) ::
-          {{[Requirement.t()], [edge()], [Requirement.t()]}, map()}
+  @spec cached_graph_with_actionable_metrics(Scope.t()) :: {map(), map()}
   def cached_graph_with_actionable_metrics(%Scope{} = scope) do
     scope = normalize_vantage(scope)
 
     # Settle, like every other read, or the page renders a graph one write behind.
     settle_owner(scope)
 
-    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
+    {us_preload, ctx} = :timer.tc(fn -> Preloader.read_context(scope) end)
 
     {us_graph, {{nodes, edges}, actionable, computed_at}} =
       :timer.tc(fn -> serve_with_actionable(scope, ctx) end)
@@ -481,7 +432,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       served_from: if(computed_at, do: "cache", else: "empty")
     }
 
-    {{nodes, edges, actionable}, metrics}
+    {%{nodes: nodes, edges: edges, actionable: actionable, components: ctx.components}, metrics}
   end
 
   # A read answers from the rows; it never re-derives what nobody announced, or
@@ -490,8 +441,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp serve_with_actionable(scope, ctx) do
     {nodes, edges} = Projection.load(scope, ctx)
 
-    # The un-enriched ctx, as in `next_actionable/1`: `actionable_from/3` reads
-    # `ctx.components` and `ctx.stories`, both of which the preloader supplies.
+    # `Preloader.read_context/1` is enough: `Projection.load/2` reads the shape
+    # and `actionable_from/3` reads `ctx.components_by_id` and `ctx.stories`.
     {{nodes, edges}, actionable_from(nodes, edges, ctx), last_checked_at(nodes)}
   end
 
@@ -937,16 +888,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         end)
       end)
 
-    # Deduplicate before the expensive reduction; a duplicate cannot change
-    # reachability.
     {dedup_us, unique} = :timer.tc(fn -> Enum.uniq(kept) end)
 
-    {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(unique) end)
-
-    log_edge_timing(generated, unique, reduced, generate_us, filter_us + dedup_us, reduce_us)
+    log_edge_timing(generated, unique, generate_us, filter_us + dedup_us)
     log_edge_sources(by_source)
 
-    reduced
+    unique
   end
 
   # Per-source counts and duplicates, so the generator wasting work is visible.
@@ -998,19 +945,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us) do
+  defp log_edge_timing(generated, kept, generate_us, filter_us) do
     ms = &round(&1 / 1000)
 
     Logger.info(
-      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} unique, " <>
-        "#{length(reduced)} after reduction; generate #{ms.(generate_us)}ms, " <>
-        "filter+dedup #{ms.(filter_us)}ms, reduce #{ms.(reduce_us)}ms"
+      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} unique; " <>
+        "generate #{ms.(generate_us)}ms, filter+dedup #{ms.(filter_us)}ms"
     )
   end
 
   # Cross-entity: story ↔ surface tree. Kickoff edges (`bdd_specs_exist → first
   # work item`) span the surface and its transitive cross-context dependency
-  # closure; transitive reduction collapses them to the deepest dependency.
+  # closure, one edge per kickoff target.
   # Kickoff targets child implementations for contexts, or the component's own
   # implementation when it has no implementable children; a live context exits
   # through its children's implementations. `children_by_parent` is built once
@@ -1086,7 +1032,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         (closure ++ Enum.flat_map(closure, &context_children(&1, children_by_parent)))
         |> Enum.uniq_by(& &1.id)
-        |> Enum.reject(&phantom?(&1, ctx))
     end
   end
 
@@ -1099,18 +1044,6 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     do: Map.get(children_by_parent, id, [])
 
   defp context_children(_component, _children_by_parent), do: []
-
-  # A `:discovered` component with no file on this checkout is a phantom: it was
-  # synced from another checkout's files and is kept project-wide while
-  # referenced. `:authored` components are never filtered. Topology loads and
-  # full loads must exclude exactly the same ghosts. See knowledge/requirements_graph, "Edges".
-  defp phantom?(%{provenance: :discovered, id: id}, %{file_component_ids: ids}),
-    do: not MapSet.member?(ids, id)
-
-  defp phantom?(%{provenance: :discovered, id: id}, %{files_by_component: files_by_component}),
-    do: Map.get(files_by_component, id, []) == []
-
-  defp phantom?(_component, _ctx), do: false
 
   defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
@@ -1223,9 +1156,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # - leaf surface (template has no :child defs): the surface's own
   #   last :self def feeds ready_for_qa.
   # - container surface (template has :child defs): each direct
-  #   child's terminal feeds ready_for_qa. Sibling children
-  #   with cross-context deps collapse via transitive reduction —
-  #   only the deepest leaf survives.
+  #   child's terminal feeds ready_for_qa.
   #
   # The gate then feeds qa_complete via the intra-story prerequisite
   # edge, so a story cannot reach QA before its own specs have gone green.
@@ -1276,11 +1207,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end)
   end
 
-  defp direct_children(parent, ctx) do
-    ctx.children_by_parent
-    |> Map.get(parent.id, [])
-    |> Enum.reject(&phantom?(&1, ctx))
-  end
+  defp direct_children(parent, ctx), do: Map.get(ctx.children_by_parent, parent.id, [])
 
   defp child_terminal_name(parent_type, child_type, config) do
     child_own_names =

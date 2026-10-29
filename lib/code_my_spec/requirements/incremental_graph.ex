@@ -3,7 +3,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   One process per project, keeping the requirement graph current from
   invalidation marks: the incremental graph, and the only thing that writes it.
 
-  It writes `requirements` and `requirement_edges` (through `GraphStore`) and
+  It writes `requirements` and the project's edges (through `GraphStore`) and
   announces what moved. `GraphWatcher` is the front callers use to start and
   settle it.
 
@@ -36,6 +36,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 
   # -- Client --
@@ -266,12 +267,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
        requested_vantages: MapSet.new([scope.active_working_copy_id]),
        # Vantages this process has seen rows for (its own writes or rows found).
        established_vantages: MapSet.new(),
-       # Per vantage: the `Freshness.topology/2` hash the edges were last drawn
-       # for, so a drain can ask whether edges can have moved at all.
+       # Per vantage: the `Freshness.topology/2` hash its membership was last
+       # established for, so a drain can ask whether the shape moved at all.
        last_topology: %{},
-       # Generated edges keyed by shape and discovered-file membership.
-       # See `edge_plan/3`.
-       edge_plan: nil,
+       # The project's: the hash its stored edges were drawn from, and whether
+       # this drain could have moved it. See `draw_edges/2`.
+       topology: nil,
+       edges_due: false,
        last_drain: nil,
        last_error: nil
      }}
@@ -436,7 +438,9 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
               &settle_vantage(&1, &2, marks, base_scope, config)
             )
 
-          {%{state | scope: base_scope},
+          state = draw_edges(%{state | scope: base_scope}, config)
+
+          {state,
            %{
              handled: handled,
              recomputed: recomputed,
@@ -611,15 +615,15 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     shape_moved? =
       Enum.any?(applied, fn {mark, _c, _w} -> mark.kind in Handlers.shape_kinds() end)
 
-    # Rows are trusted; edges are redrawn once per vantage per process, by
-    # `baseline/2` for verdict-only drains and `reproject_topology/3` when the
-    # shape could have moved.
+    # Rows are trusted; the shape is checked once per vantage per process, by
+    # `baseline/2` for verdict-only drains and `reproject_topology/2` when it
+    # could have moved.
     state =
       cond do
         # A vantage with no rows has nothing to be partial against.
         not established?(state, vantage, config) -> run(:everything, state, config)
         unhandled == [] and not shape_moved? -> baseline(state, config)
-        unhandled == [] -> reproject_topology(state, config, false)
+        unhandled == [] -> reproject_topology(state, config)
         true -> run_plan(state, unhandled, config)
       end
 
@@ -690,14 +694,14 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   defp run_plan(state, unhandled, config), do: run(plan(state, unhandled), state, config)
 
-  # A vantage met with rows already there is redrawn once per process, then
-  # left alone: its rows are trusted, but its edges were drawn under whatever
-  # templates the previous process had, and a release that moves a
+  # A vantage met with rows already there is checked once per process, then
+  # left alone: its rows are trusted, but the stored edges were drawn under
+  # whatever templates the previous process had, and a release that moves a
   # prerequisite moves edges and no row. See knowledge/requirements_graph, "Edges".
   defp baseline(state, config) do
     if Map.has_key?(state.last_topology, vantage(state)),
       do: state,
-      else: reproject_topology(state, config, false)
+      else: reproject_topology(state, config)
   end
 
   # What this drain has to load, decided before anything is loaded:
@@ -718,7 +722,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
     # Every node computed once and written in one write; computing entity by
     # entity cost a seed tens of seconds. See knowledge/requirements_graph, "Seeding".
-    {nodes_us, {nodes, enriched}} =
+    {nodes_us, {nodes, _enriched}} =
       :timer.tc(fn -> RequirementGraph.compute_nodes(state.scope, ctx, config) end)
 
     topology = Freshness.topology(ctx, config)
@@ -726,133 +730,93 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
     {write_us, {:ok, _moved}} = :timer.tc(fn -> GraphStore.write(state.scope, covered, nodes) end)
 
-    # Edges drawn over the rows just written, per vantage: every checkout sees
-    # its own stories, so no two vantages share a node set.
-    {state, drawn} = redraw(state, enriched, config)
-
     Logger.info(
       "[IncrementalGraph] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
-        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms; " <>
-        "#{drawn.edges} edges in #{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
+        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms"
     )
 
-    remember_topology(state, topology)
+    state |> remember_topology(topology) |> edges_due()
   end
 
   # The narrow path: one entity at a time, each loading only what it needs, and
   # no project-wide read. Deduped by what each computation covered: a
   # component's unit is its family, so two marks naming siblings are one.
   defp run({:narrow, entities}, state, config) do
-    {_done, node_set_moved?} = narrow_each(entities, state.scope, config)
-    reproject_topology(state, config, node_set_moved?)
+    narrow_each(entities, state.scope, config)
+    reproject_topology(state, config)
   end
 
-  # Answers whether any write added or reaped a row, beside what it covered.
-  @spec narrow_each(Enumerable.t(), Scope.t(), map()) ::
-          {MapSet.t(GraphStore.entity()), boolean()}
+  @spec narrow_each(Enumerable.t(), Scope.t(), map()) :: MapSet.t(GraphStore.entity())
   defp narrow_each(entities, scope, config) do
-    Enum.reduce(entities, {MapSet.new(), false}, fn entity, {done, moved?} ->
+    Enum.reduce(entities, MapSet.new(), fn entity, done ->
       if MapSet.member?(done, entity) do
-        {done, moved?}
+        done
       else
         {:ok, ctx} = narrow_load(scope, entity)
         {covered, nodes} = RequirementGraph.compute_entity(scope, ctx, config, entity)
-        {:ok, %{inserted: inserted, reaped: reaped}} = GraphStore.write(scope, covered, nodes)
-        {MapSet.union(done, covered), moved? or inserted > 0 or reaped > 0}
+        {:ok, _moved} = GraphStore.write(scope, covered, nodes)
+        MapSet.union(done, covered)
       end
     end)
   end
 
-  # Redraws edges over the stored rows when the shape (`Freshness.topology/2`)
-  # moved or a write inserted or reaped a row — the two move in different
-  # drains, so both are asked. No baseline (`last` is nil) means redraw.
-  # See knowledge/requirements_graph, "Edges".
-  defp reproject_topology(state, config, node_set_moved?) do
+  # When this vantage's shape (`Freshness.topology/2`) moved: establish any
+  # entity a membership change brought here, and mark the project's edges due.
+  # No baseline (`last` is nil) counts as moved. See knowledge/requirements_graph, "Edges".
+  defp reproject_topology(state, config) do
     shape = Preloader.topology_context(state.scope)
-    last = Map.get(state.last_topology, vantage(state))
     topology = Freshness.topology(shape, config)
 
-    if topology == last and not node_set_moved? do
+    if topology == Map.get(state.last_topology, vantage(state)) do
       state
     else
       # A membership change (including a story moving into this checkout) can
       # be handled by verdict sweeps, which cannot create its missing rows.
-      # Establish those entities before drawing edges over the stored nodes.
       expected = RequirementGraph.defined_entities(shape, config)
-      incomplete = GraphStore.incomplete_entities(state.scope, expected)
-      narrow_each(incomplete, state.scope, config)
-      {state, drawn} = redraw(state, shape, config)
+      narrow_each(GraphStore.incomplete_entities(state.scope, expected), state.scope, config)
 
-      Logger.info(
-        "[IncrementalGraph] redrew #{inspect(vantage(state))} — #{drawn.edges} edges in " <>
-          "#{drawn.draw_ms}ms, #{drawn.moved} written in #{drawn.write_ms}ms"
-      )
-
-      remember_topology(state, topology)
+      state |> remember_topology(topology) |> edges_due()
     end
   end
 
-  # The edge set at this vantage, drawn over the rows it holds (one entity at a
-  # time against the component side) and written as a difference. Announced as
-  # an edge rebuild, so a drain of verdicts can be shown to have drawn nothing.
-  defp redraw(state, shape, config) do
-    {state, plan} = edge_plan(state, shape, config)
-    ids = GraphStore.node_ids(state.scope)
-    story_ids = Enum.map(shape.stories, & &1.id)
+  defp edges_due(state), do: %{state | edges_due: true}
 
-    {draw_us, edges} = :timer.tc(fn -> Edges.over(plan, story_ids, GraphStore.present?(ids)) end)
+  # The project's edges, drawn once per drain that could have moved them and
+  # only when the project's shape moved: every checkout shares them, so they
+  # are drawn over every ready story, wherever placed. Announced as an edge
+  # rebuild, so a drain of verdicts can be shown to have drawn nothing.
+  defp draw_edges(%{edges_due: false} = state, _config), do: state
 
-    {write_us, {:ok, moved}} =
-      :timer.tc(fn -> GraphStore.write_edges(state.scope, edges, ids) end)
+  defp draw_edges(state, config) do
+    scope = %{state.scope | active_working_copy_id: nil}
+    shape = Preloader.topology_context(scope)
+    topology = Freshness.topology(shape, config)
+    state = %{state | edges_due: false}
 
-    :telemetry.execute(
-      DrainCost.edges_rebuilt(),
-      %{count: 1, nodes: map_size(ids)},
-      %{project_id: state.project_id}
-    )
+    cond do
+      topology == state.topology ->
+        state
 
-    {state,
-     %{
-       edges: length(edges),
-       moved: moved,
-       draw_ms: div(draw_us, 1000),
-       write_ms: div(write_us, 1000)
-     }}
-  end
+      topology == GraphStore.topology(state.project_id) ->
+        %{state | topology: topology}
 
-  # Reuse a generated plan only when both the project shape and this
-  # checkout's discovered-component file membership match. Story dependency
-  # closure excludes discoveries with no files here, so a project-wide plan
-  # alone can introduce dependencies belonging to a different checkout.
-  defp edge_plan(state, shape, config) do
-    file_component_ids =
-      Map.get_lazy(shape, :file_component_ids, fn ->
-        shape.files_by_component
-        |> Enum.reject(fn {_id, files} -> files == [] end)
-        |> MapSet.new(fn {id, _files} -> id end)
-      end)
+      true ->
+        {draw_us, edges} = :timer.tc(fn -> Edges.generate(scope, shape, config) end)
+        {reduce_us, display} = :timer.tc(fn -> Topology.transitive_reduction(edges) end)
+        :ok = GraphStore.write_topology(state.project_id, topology, edges, display)
 
-    wide =
-      state.scope
-      |> Map.put(:active_working_copy_id, nil)
-      |> Preloader.topology_context()
-      |> Map.put(:file_component_ids, file_component_ids)
-
-    key = Freshness.topology(wide, config)
-
-    case state.edge_plan do
-      {^key, plan} ->
-        {state, plan}
-
-      _stale_or_none ->
-        {plan_us, plan} = :timer.tc(fn -> Edges.plan(state.scope, wide, config) end)
-
-        Logger.info(
-          "[IncrementalGraph] planned edges for #{map_size(plan.stories)} stories over " <>
-            "#{length(plan.component_side)} component-side edges in #{div(plan_us, 1000)}ms"
+        :telemetry.execute(
+          DrainCost.edges_rebuilt(),
+          %{count: 1, edges: length(edges)},
+          %{project_id: state.project_id}
         )
 
-        {%{state | edge_plan: {key, plan}}, plan}
+        Logger.info(
+          "[IncrementalGraph] drew #{length(edges)} edges for #{state.project_id} in " <>
+            "#{div(draw_us, 1000)}ms, reduced to #{length(display)} in #{div(reduce_us, 1000)}ms"
+        )
+
+        %{state | topology: topology}
     end
   end
 

@@ -169,7 +169,7 @@ report_dirty_tables = fn label ->
            UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
            UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
            UNION ALL SELECT 'requirements', count(*), min(inserted_at), max(inserted_at) FROM requirements
-           UNION ALL SELECT 'requirement_edges', count(*), min(inserted_at), max(inserted_at) FROM requirement_edges
+           UNION ALL SELECT 'requirement_topologies', count(*), min(inserted_at), max(inserted_at) FROM requirement_topologies
            """,
            []
          ) do
