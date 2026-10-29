@@ -17,14 +17,14 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.ExecutionContexts
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
+  setup :fake_providers
+  setup :repo_secret_setup
 
   spex "A UAT key will not open production's secrets", criterion: 610 do
     scenario "each environment's file is encrypted to its own key only" do
@@ -50,25 +50,13 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
       end
 
       when_ "the recipients of each environment's file are compared", context do
-        # A fresh mount, not `context.view` re-rendered: the console's
-        # `put_secret` handler (unlike the old page's) does not refresh its
-        # own `sops_recipients` assign after minting a new environment's age
-        # key, so the same view would still show whichever recipients
-        # existed at its own mount. A fresh mount reads the current DB state
-        # directly, which is what this criterion is actually about — not
-        # whether the page live-updates without a reload.
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/console/secrets")
-
         recipients =
-          view
-          |> render()
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='sops-recipient']")
-          |> Enum.group_by(
-            &(Floki.attribute(&1, "data-environment") |> List.first()),
-            &(Floki.attribute(&1, "data-key-fingerprint") |> List.first())
-          )
+          Enum.into(["uat", "prod"], %{}, fn environment ->
+            {:ok, contents} = repo_secret_file(context, "envs/#{environment}.enc.env")
+
+            {environment,
+             Regex.scan(~r/age1[a-z0-9]+/, contents) |> List.flatten() |> Enum.uniq()}
+          end)
 
         {:ok, Map.put(context, :recipients, recipients)}
       end
@@ -92,12 +80,15 @@ defmodule CodeMySpecSpex.Story967.Criterion8053Spex do
 
       then_ "production's file does not name UAT's key as a recipient", context do
         {:ok, prod_file} =
-          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
+          repo_secret_file(context, "envs/prod.enc.env")
 
         for uat_key <- context.recipients["uat"] do
           refute prod_file =~ uat_key,
                  "expected production's file not to be decryptable with UAT's key #{inspect(uat_key)}"
         end
+
+        assert {:error, _} =
+                 repo_secret_decrypt(context, "prod", context.repo_secrets.private_keys["uat"])
 
         {:ok, context}
       end

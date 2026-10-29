@@ -32,6 +32,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
+  setup :fake_providers
+  setup :repo_secret_setup
 
   spex "A new secret lands in the repo unreadable", criterion: 603 do
     scenario "the value is ciphertext in the file and plaintext nowhere in the tree" do
@@ -56,7 +58,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
 
       then_ "the value in the repo's environment file is ciphertext", context do
         {:ok, contents} =
-          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
+          repo_secret_file(context, "envs/prod.enc.env")
 
         # Anchor: the file exists and mentions the key, so the refute below
         # is not passing on an empty or absent file.
@@ -65,6 +67,9 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
 
         refute contents =~ @plaintext,
                "expected the value to be encrypted, found plaintext in envs/prod.enc.env"
+
+        assert [%{path: "envs/prod.enc.env", content: ^contents, branch: "main"}] =
+                 repo_secret_commits(context)
 
         {:ok, context}
       end
