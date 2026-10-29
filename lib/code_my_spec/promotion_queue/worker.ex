@@ -652,14 +652,14 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
     result =
       Enum.reduce_while(sources, %{}, fn source, reruns ->
-        case Analysis.start_run(batch.scope, source, ["--failed"],
-               requested_by: %{kind: "promotion_flake_rerun"}
-             ) do
-          {:ok, disposition, run_id} when disposition in [:started, :joined] ->
-            {:cont, Map.put(reruns, source, run_id)}
-
-          other ->
-            {:halt, {:error, {source, other}}}
+        with {:ok, targets} <- failed_test_targets(batch, source),
+             {:ok, :started, run_id} <-
+               Analysis.start_run(batch.scope, source, targets,
+                 requested_by: %{kind: "promotion_flake_rerun"}
+               ) do
+          {:cont, Map.put(reruns, source, {run_id, targets})}
+        else
+          other -> {:halt, {:error, {source, other}}}
         end
       end)
 
@@ -676,18 +676,46 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
+  defp failed_test_targets(batch, source) do
+    case Analysis.answer_at_commit(batch.scope, source, batch.head) do
+      %Run{kind: :full, findings: %{"failures" => [_ | _] = failures}} ->
+        suffix = if source == "spex", do: "_spex.exs", else: "_test.exs"
+
+        if Enum.all?(failures, fn failure ->
+             file = failure["file"]
+             line = failure["line"]
+
+             is_binary(file) and String.starts_with?(file, "test/") and
+               String.ends_with?(file, suffix) and Path.type(file) == :relative and
+               ".." not in Path.split(file) and is_integer(line) and line > 0
+           end) do
+          targets =
+            failures |> Enum.map(&"#{&1["file"]}:#{&1["line"]}") |> Enum.uniq() |> Enum.sort()
+
+          {:ok, targets}
+        else
+          {:error, :unusable_failure_location}
+        end
+
+      _ ->
+        {:error, :missing_full_gate_failures}
+    end
+  end
+
   defp finish_flake_reruns(%{batch: batch} = state) do
     runs =
-      for {source, run_id} <- batch.flake_reruns, into: %{} do
-        {source, RunsRepository.get_run_in_project(batch.scope, run_id)}
+      for {source, {run_id, targets}} <- batch.flake_reruns, into: %{} do
+        {source, {RunsRepository.get_run_in_project(batch.scope, run_id), targets}}
       end
 
     cond do
-      Enum.any?(runs, fn {_source, run} -> match?(%Run{status: :running}, run) end) ->
+      Enum.any?(runs, fn {_source, {run, _targets}} -> match?(%Run{status: :running}, run) end) ->
         {:noreply, recheck_later(state)}
 
-      Enum.all?(runs, fn {source, run} -> flake_rerun_passed?(batch, source, run) end) ->
-        for {source, run} <- runs,
+      Enum.all?(runs, fn {source, {run, targets}} ->
+        flake_rerun_passed?(batch, source, run, targets)
+      end) ->
+        for {source, {run, _targets}} <- runs,
             %Run{findings: %{"failures" => failures}} <-
               [Analysis.answer_at_commit(batch.scope, source, batch.head)],
             failure <- failures do
@@ -709,16 +737,26 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     end
   end
 
-  defp flake_rerun_passed?(batch, source, %Run{} = run) do
+  defp flake_rerun_passed?(batch, source, %Run{} = run, targets) do
     run.working_copy_id == batch.gate.id and run.source == source and
-      run.kind == :partial and get_in(run.args || %{}, ["args"]) == ["--failed"] and
+      run.kind == :partial and get_in(run.args || %{}, ["args"]) == targets and
       Run.at_commit?(run, batch.head) and run.exit_status == 0 and
       Map.get(run.findings || %{}, "failures", []) == [] and
-      (source != "exunit" or
-         (is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0))
+      rerun_executed_tests?(source, run)
   end
 
-  defp flake_rerun_passed?(_batch, _source, _run), do: false
+  defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
+
+  defp rerun_executed_tests?("exunit", run) do
+    is_integer((run.stats || %{})["tests"]) and (run.stats || %{})["tests"] > 0
+  end
+
+  defp rerun_executed_tests?("spex", run) do
+    case Regex.run(~r/\b(\d+) tests?, \d+ failures?\b/, run.output || "") do
+      [_, count] -> String.to_integer(count) > 0
+      _ -> false
+    end
+  end
 
   defp log_flake_classifications(batch) do
     runs = History.list(batch.scope, source: "exunit")

@@ -1177,7 +1177,7 @@ defmodule CodeMySpec.Analysis do
   # Targeted runs, including a failed-tests-only rerun, never satisfy
   # freshness or replace the Problems from a whole-project sweep.
   defp kind_for(args) do
-    if Enum.any?(args, &(&1 == "--failed" or not String.starts_with?(&1, "-"))),
+    if Enum.any?(args, &(not String.starts_with?(&1, "-"))),
       do: :partial,
       else: :full
   end

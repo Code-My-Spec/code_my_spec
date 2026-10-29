@@ -62,7 +62,9 @@ defmodule CodeMySpecSpex.Story1164.Criterion2571Spex do
       end
 
       then_ "the request selects failed tests and a second request never follows", context do
-        assert context.rerun["args"] == ["--failed"]
+        assert "#{@failed_file}:3" in context.rerun["args"]
+        assert Enum.all?(context.rerun["args"], &String.starts_with?(&1, @failed_file <> ":"))
+        refute "--failed" in context.rerun["args"]
         assert head_of(context, context.gate_root) == context.commit
         {tree, 0} = git(context, context.gate_root, ["rev-parse", "HEAD^{tree}"])
         {status, 0} = git(context, context.gate_root, ["status", "--porcelain"])
