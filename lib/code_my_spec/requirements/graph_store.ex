@@ -564,7 +564,7 @@ defmodule CodeMySpec.Requirements.GraphStore do
   end
 
   # What this vantage holds: its own rows, and the project's for the entities
-  # visible here — every story at `nil`, else the unplaced and its own.
+  # visible here — the ready stories `Preloader` would load at this vantage.
   defp held(scope, project_id) do
     vantage = Projection.vantage(scope)
     {component_ids, story_ids} = entity_ids(project_id)
@@ -583,17 +583,46 @@ defmodule CodeMySpec.Requirements.GraphStore do
     end)
   end
 
-  defp visible_story_ids(project_id, nil), do: elem(entity_ids(project_id), 1)
+  defp visible_story_ids(project_id, vantage) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+    |> placed_here(vantage)
+    |> select([s], s.id)
+    |> Repo.all()
+  end
 
-  defp visible_story_ids(project_id, vantage),
-    do:
-      Repo.all(
-        from(s in Story,
-          where: s.project_id == ^project_id,
-          where: is_nil(s.working_copy_id) or s.working_copy_id == ^vantage,
-          select: s.id
-        )
+  defp placed_here(query, nil), do: query
+
+  defp placed_here(query, vantage),
+    do: where(query, [s], is_nil(s.working_copy_id) or s.working_copy_id == ^vantage)
+
+  @doc """
+  Delete this vantage's rows owned by stories it does not see — placed at
+  another checkout, or no longer ready — and their issues' rows.
+
+  A seed covers only the stories it sees, so it never reaped these, and
+  coverage counts them as entities the vantage should not hold: every arrival
+  reseeded the vantage. Per checkout only; the project's rows are shared.
+  """
+  @spec reap_unseen(Scope.t(), [term()]) :: {:ok, non_neg_integer()}
+  def reap_unseen(%Scope{active_project_id: project_id} = scope, seen_story_ids) do
+    unseen =
+      from(s in Story,
+        where: s.project_id == ^project_id and s.id not in ^seen_story_ids,
+        select: s.id
       )
+
+    unseen_issues =
+      from(i in CodeMySpec.Issues.Issue, where: i.story_id in subquery(unseen), select: i.id)
+
+    {count, _} =
+      @table
+      |> where([n], n.story_id in subquery(unseen) or n.issue_id in subquery(unseen_issues))
+      |> at(Projection.vantage(scope))
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
 
   defp entity_coverage?(_held, nil), do: true
   defp entity_coverage?(held, expected), do: MapSet.size(mismatched_entities(held, expected)) == 0

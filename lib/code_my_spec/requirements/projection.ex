@@ -16,10 +16,12 @@ defmodule CodeMySpec.Requirements.Projection do
 
   import Ecto.Query
 
+  alias CodeMySpec.Analysis.HarnessRegistry
   alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.{Edges, GraphStore, Node, Registry, Requirement, Topology}
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies.WorkingCopy
 
   @doc """
   Every vantage this project already has rows in, `nil` among them.
@@ -34,7 +36,7 @@ defmodule CodeMySpec.Requirements.Projection do
   has.
   """
   @spec vantages(Scope.t()) :: [Ecto.UUID.t() | nil]
-  def vantages(%Scope{active_project_id: project_id} = scope) when is_binary(project_id) do
+  def vantages(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     stored =
       Node
       |> where([n], n.project_id == ^project_id)
@@ -42,40 +44,66 @@ defmodule CodeMySpec.Requirements.Projection do
       |> select([n], n.working_copy_id)
       |> Repo.all()
 
-    live_vantages(scope, stored)
+    copies = copies(project_id, stored)
+    Enum.uniq([nil | Enum.filter(stored, &Map.has_key?(copies, &1))])
   end
 
   def vantages(%Scope{}), do: [nil]
 
   @doc """
-  The vantages worth computing, out of `nil`, the stored ones, and any a reader
-  has asked for.
+  The vantages worth settling, out of `nil`, the stored ones, and any a reader
+  has asked for (`requested`).
 
-  Filters to checkouts that still exist: a row's `working_copy_id` references
+  A checkout must still exist: a row's `working_copy_id` references
   `working_copies`, so writing for a deleted checkout (named by a reader before
-  the offboard) would fail every drain after it.
+  the offboard) would fail every drain after it. And it must be awake — its
+  harness connected, the main copy, or seen within a day — or requested: a
+  dormant checkout's rows are left as they were, and `IncrementalGraph` seeds it
+  whole when it wakes. Most of a large project's checkouts are old worktrees.
   """
-  @spec live_vantages(Scope.t(), Enumerable.t()) :: [Ecto.UUID.t() | nil]
-  def live_vantages(%Scope{active_project_id: project_id}, candidates)
+  @awake_within_hours 24
+
+  @spec live_vantages(Scope.t(), Enumerable.t(), [Ecto.UUID.t() | nil]) ::
+          [Ecto.UUID.t() | nil]
+  def live_vantages(scope, candidates, requested \\ [])
+
+  def live_vantages(%Scope{active_project_id: project_id}, candidates, requested)
       when is_binary(project_id) do
-    candidates
-    |> Enum.uniq()
-    |> Enum.filter(&live_copy?(project_id, &1))
-    |> then(&Enum.uniq([nil | &1]))
+    wanted = Enum.concat(candidates, requested)
+    copies = copies(project_id, wanted)
+    cutoff = DateTime.add(DateTime.utc_now(), -@awake_within_hours * 3600)
+
+    live? = fn id ->
+      case Map.get(copies, id) do
+        nil -> false
+        copy -> id in requested or awake?(copy, cutoff)
+      end
+    end
+
+    Enum.uniq([nil | Enum.filter(wanted, &(is_nil(&1) or live?.(&1)))])
   end
 
-  def live_vantages(%Scope{}, _candidates), do: [nil]
+  def live_vantages(%Scope{}, _candidates, _requested), do: [nil]
 
-  defp live_copy?(_project_id, nil), do: true
+  defp awake?(copy, cutoff) do
+    copy.main or (copy.last_seen_at != nil and DateTime.after?(copy.last_seen_at, cutoff)) or
+      HarnessRegistry.connected?(copy.id)
+  end
 
-  defp live_copy?(project_id, working_copy_id) do
-    Repo.exists?(
-      from(c in "working_copies",
-        where:
-          c.id == type(^working_copy_id, :binary_id) and
-            c.project_id == type(^project_id, :binary_id)
-      )
-    )
+  # The project's checkouts among `ids`, one query.
+  defp copies(project_id, ids) do
+    case ids |> Enum.reject(&is_nil/1) |> Enum.uniq() do
+      [] ->
+        %{}
+
+      ids ->
+        from(w in WorkingCopy,
+          where: w.project_id == ^project_id and w.id in ^ids,
+          select: map(w, [:id, :main, :last_seen_at])
+        )
+        |> Repo.all()
+        |> Map.new(&{&1.id, &1})
+    end
   end
 
   @doc """

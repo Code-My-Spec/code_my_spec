@@ -350,7 +350,13 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     # The dev fault `graph_recompute_fails` (`POST /dev/faults`).
     refuse_if_faulted(state.project_id)
 
-    case {state.seeded, Invalidations.pending(state.project_id), unestablished(state)} do
+    # A dormant checkout's marks wait, unconsumed, until it wakes.
+    pending = Invalidations.pending(state.project_id)
+    named = pending |> Enum.map(& &1.working_copy_id) |> Enum.reject(&is_nil/1)
+    awake = Projection.live_vantages(state.scope, named)
+    pending = Enum.filter(pending, &(&1.working_copy_id in awake))
+
+    case {state.seeded, pending, unestablished(state)} do
       # Requests already served are forgotten, or every later drain settles
       # them again.
       {true, [], []} -> %{state | requested_vantages: MapSet.new()}
@@ -428,6 +434,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
         },
         fn ->
           vantages = vantages(state, marks)
+          leave_behind(state, marks)
 
           # Counted per vantage: a hit at one checkout must not cover a miss at
           # another in `log_handled/2`.
@@ -462,14 +469,40 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     }
   end
 
-  # Project-wide requirements are settled at the first vantage only.
+  # Project-wide requirements are settled at the first vantage only. Each
+  # vantage settles the marks about it: those naming no checkout, its own, and
+  # at `nil` the default checkout's, whose files it reads.
   defp settle_vantages(vantages, state, marks, base_scope, config) do
+    default = Preloader.files_vantage(base_scope)
+
     vantages
     |> Enum.with_index()
     |> Enum.reduce({state, 0, 0, %{}}, fn {vantage, index}, acc ->
       skip = if index == 0, do: [], else: GraphStore.project_wide_names()
-      settle_vantage(vantage, acc, marks, base_scope, config, skip)
+      own = Enum.filter(marks, &(&1.working_copy_id in [nil, vantage, vantage || default]))
+      settle_vantage(vantage, acc, own, base_scope, config, skip)
     end)
+  end
+
+  # A drain that fans out passes dormant checkouts by. Each gets one durable
+  # mark that names it and nothing else, which waits, unconsumed, until it wakes:
+  # the next drain then seeds it whole, as a full recompute would.
+  defp leave_behind(state, marks) do
+    with true <- fans_out?(marks),
+         stored = Projection.vantages(state.scope),
+         [_ | _] = dormant <- stored -- Projection.live_vantages(state.scope, stored) do
+      waiting =
+        state.project_id
+        |> Invalidations.pending()
+        |> Enum.filter(&(Invalidation.entity(&1) == :unknown))
+        |> MapSet.new(& &1.working_copy_id)
+
+      for copy <- dormant, not MapSet.member?(waiting, copy) do
+        Invalidations.record(state.project_id, "IncrementalGraph", [], nil, copy)
+      end
+    end
+
+    :ok
   end
 
   defp account_for([], _project_id), do: :ok
@@ -511,8 +544,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # checkout's files, so it is kept only when that checkout's marks moved it.
   # See knowledge/requirements_graph, "Vantages".
   defp vantages(%{seeded: false} = state, _marks) do
-    stored = Projection.vantages(state.scope)
-    Projection.live_vantages(state.scope, stored ++ MapSet.to_list(state.requested_vantages))
+    requested = MapSet.to_list(state.requested_vantages)
+    Projection.live_vantages(state.scope, Projection.vantages(state.scope), requested)
   end
 
   defp vantages(state, marks) do
@@ -521,7 +554,7 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     named = rest |> Enum.map(& &1.working_copy_id) |> Enum.uniq()
 
     if Enum.any?(named, &is_nil/1) do
-      Projection.live_vantages(state.scope, Projection.vantages(state.scope))
+      Projection.live_vantages(state.scope, Projection.vantages(state.scope), requested)
     else
       # `nil` reads the default checkout's files, or every checkout's when the
       # project has none; it also settles project-wide marks, which no other
@@ -534,9 +567,15 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
           end
 
       state.scope
-      |> Projection.live_vantages(Enum.concat(named, requested))
+      |> Projection.live_vantages(named, requested)
       |> Enum.filter(&(keep_nil? or not is_nil(&1) or &1 in requested))
     end
+  end
+
+  # Whether a mark names no checkout and moves something per checkout.
+  defp fans_out?(marks) do
+    wide = project_wide_marks(marks)
+    Enum.any?(marks, &(is_nil(&1.working_copy_id) and &1 not in wide))
   end
 
   # Marks whose kind moves only project-wide requirements, and their fallback
@@ -765,10 +804,12 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
     {write_us, {:ok, _moved}} = :timer.tc(fn -> GraphStore.write(state.scope, covered, nodes) end)
+    {:ok, reaped} = GraphStore.reap_unseen(state.scope, Enum.map(ctx.stories, & &1.id))
 
     Logger.info(
       "[IncrementalGraph] seeded #{inspect(vantage(state))} — #{length(nodes)} nodes in " <>
-        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms"
+        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms, " <>
+        "#{reaped} rows of unseen stories reaped"
     )
 
     state |> remember_topology(topology) |> edges_due()
