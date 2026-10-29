@@ -21,14 +21,15 @@ defmodule CodeMySpecWeb.SourceGitControllerTest do
     previous = Application.get_env(:code_my_spec, :source_git_plug)
     Application.put_env(:code_my_spec, :source_git_plug, {Req.Test, __MODULE__})
 
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:code_my_spec, :source_git_plug, previous),
-        else: Application.delete_env(:code_my_spec, :source_git_plug)
-    end)
+    on_exit(fn -> restore_source_git_plug(previous) end)
 
     %{scope: scope, project: project, integration: integration}
   end
+
+  defp restore_source_git_plug(nil), do: Application.delete_env(:code_my_spec, :source_git_plug)
+
+  defp restore_source_git_plug(previous),
+    do: Application.put_env(:code_my_spec, :source_git_plug, previous)
 
   test "advertises an account project's private code without exposing the GitHub token",
        context do

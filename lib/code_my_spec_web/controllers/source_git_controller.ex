@@ -28,25 +28,28 @@ defmodule CodeMySpecWeb.SourceGitController do
          {:ok, repo} <- repo_url(project, kind),
          {:ok, token} <- Integrations.fetch_access_token(scope, :github),
          {:ok, response} <- request(method, repo <> ~s(/) <> path, body, token) do
-      if response.status in 200..299 and is_binary(response.body) do
-        content_type =
-          case method do
-            :get -> ~s(application/x-git-upload-pack-advertisement)
-            :post -> ~s(application/x-git-upload-pack-result)
-          end
-
-        conn
-        |> put_resp_header("content-type", content_type)
-        |> send_resp(response.status, response.body)
-      else
-        send_resp(conn, :bad_gateway, ~s(Git source unavailable))
-      end
+      send_git_response(conn, method, response)
     else
       {:error, :not_found} -> send_resp(conn, :not_found, ~s(Project not found))
       {:error, :invalid_repo} -> send_resp(conn, :not_found, ~s(Git source unavailable))
       _ -> send_resp(conn, :bad_gateway, ~s(Git source unavailable))
     end
   end
+
+  defp send_git_response(conn, method, %{status: status, body: body})
+       when status in 200..299 and is_binary(body) do
+    content_type = git_content_type(method)
+
+    conn
+    |> put_resp_header("content-type", content_type)
+    |> send_resp(status, body)
+  end
+
+  defp send_git_response(conn, _method, _response),
+    do: send_resp(conn, :bad_gateway, ~s(Git source unavailable))
+
+  defp git_content_type(:get), do: ~s(application/x-git-upload-pack-advertisement)
+  defp git_content_type(:post), do: ~s(application/x-git-upload-pack-result)
 
   defp repo_url(project, kind) when kind in [~s(code), ~s(docs)] do
     value = if kind == ~s(code), do: project.code_repo, else: project.docs_repo
