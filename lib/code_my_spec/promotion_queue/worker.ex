@@ -26,6 +26,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
+  alias CodeMySpec.PromotionQueue.FlakeReports
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.Qa
   alias CodeMySpec.Repo.SandboxAllowance
@@ -755,6 +756,25 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
 
+  defp confirmed_flakes(batch) do
+    for source <- ~w(exunit spex),
+        %Run{findings: %{} = findings} = gate_run <-
+          [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+        failure <- Map.get(findings, "failures", []),
+        is_binary(failure["file"]) and is_binary(failure["name"]),
+        %Run{} = rerun <- [passing_flake_rerun(batch, failure)] do
+      %{
+        source: source,
+        file: failure["file"],
+        name: failure["name"],
+        message: to_string(failure["message"]),
+        gate_run_id: gate_run.id,
+        rerun_id: rerun.id,
+        commit: batch.head
+      }
+    end
+  end
+
   defp passing_flake_rerun(batch, failure) do
     source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
 
@@ -969,6 +989,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         for entry <- batch.entries do
           moved(entry, :landed, %{result: landed_result(entry, batch, report)})
           issue_landed(state.scope, entry, batch.head)
+          FlakeReports.record_landed(state.scope, entry, confirmed_flakes(batch))
 
           # The landing report itself, in memory, for a caller waiting on this
           # entry (`PromotionQueue.await/2`): it answers with what a direct
