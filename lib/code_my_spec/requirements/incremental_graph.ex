@@ -258,6 +258,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
      %{
        project_id: project_id,
        scope: scope,
+       # Who started it, for `owner_gone/2` to name when it has no connection.
+       owners: owners,
        seeded: false,
        # The starter's vantage is established in the first drain, not when
        # something first reads it.
@@ -326,6 +328,18 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
 
   defp expected_key(project_id), do: {__MODULE__, :expected, project_id}
 
+  # Which starter left it without one: a dead test, or a long-lived process
+  # that was never allowed.
+  defp describe_owner(pid) do
+    {pid, Process.info(pid, [:registered_name, :initial_call, :dictionary]) |> owner_info()}
+  end
+
+  defp owner_info(nil), do: :dead
+
+  defp owner_info(info) do
+    {info[:registered_name], get_in(info, [:dictionary, :"$initial_call"]) || info[:initial_call]}
+  end
+
   # Nothing pending, seeded, and every requested vantage established is the
   # common case and costs one query. Otherwise it computes: an unseeded
   # projector must establish what is true before deltas mean anything, and a
@@ -371,7 +385,8 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
   # and enough of those trip the supervisor's restart intensity.
   defp owner_gone(state, why) do
     Logger.warning(
-      "[IncrementalGraph] stopping: the sandbox owner for #{state.project_id} is gone (#{why})"
+      "[IncrementalGraph] stopping: the sandbox owner for #{state.project_id} is gone (#{why}); " <>
+        "started by #{inspect(Enum.map(List.wrap(state[:owners]), &describe_owner/1))}"
     )
 
     exit(:normal)
