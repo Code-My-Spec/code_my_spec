@@ -866,3 +866,6 @@ if System.get_env("CMS_TEST_SQLITE") do
     busy_timeout: 10_000,
     default_transaction_mode: :immediate
 end
+
+# No minute-by-minute memory log line under test.
+config :code_my_spec, :memory_report_period, false
