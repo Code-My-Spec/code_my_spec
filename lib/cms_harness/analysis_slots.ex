@@ -27,9 +27,10 @@ defmodule CmsHarness.AnalysisSlots do
   Call from the process that will do the work — the slot is held for that
   process's lifetime.
   """
-  @spec acquire(lane()) :: :ok | :busy
-  def acquire(lane \\ :full) when lane in [:full, :fast],
-    do: GenServer.call(__MODULE__, {:acquire, lane}, wait_ceiling() + 5_000)
+  @spec acquire(lane(), :gate | :normal) :: :ok | :busy
+  def acquire(lane \\ :full, priority \\ :normal)
+      when lane in [:full, :fast] and priority in [:gate, :normal],
+      do: GenServer.call(__MODULE__, {:acquire, lane, priority}, wait_ceiling() + 5_000)
 
   @typedoc "`:fast` for runs of named test files, `:full` for everything else."
   @type lane :: :full | :fast
@@ -91,7 +92,7 @@ defmodule CmsHarness.AnalysisSlots do
   end
 
   @impl true
-  def handle_call({:acquire, lane}, {pid, _tag} = from, state) do
+  def handle_call({:acquire, lane, priority}, {pid, _tag} = from, state) do
     %{held: held, waiting: waiting} = state.lanes[lane]
 
     if map_size(held) >= limit(lane) do
@@ -102,7 +103,8 @@ defmodule CmsHarness.AnalysisSlots do
       )
 
       timer_ref = Process.send_after(self(), {:wait_timeout, lane, from}, wait_ceiling())
-      {:noreply, put_lane(state, lane, :waiting, :queue.in({from, pid, timer_ref}, waiting))}
+      waiter = {from, pid, timer_ref, priority}
+      {:noreply, put_lane(state, lane, :waiting, enqueue_waiter(waiting, waiter))}
     else
       Logger.info("[CmsHarness] #{inspect(pid)} granted a machine-wide #{lane} slot immediately")
       {:reply, :ok, grant(state, lane, pid)}
@@ -159,7 +161,7 @@ defmodule CmsHarness.AnalysisSlots do
     %{held: held, waiting: waiting} = state.lanes[lane]
 
     with true <- map_size(held) < limit(lane),
-         {{:value, {from, pid, timer_ref}}, rest} <- :queue.out(waiting) do
+         {{:value, {from, pid, timer_ref, _priority}}, rest} <- :queue.out(waiting) do
       Process.cancel_timer(timer_ref)
       GenServer.reply(from, :ok)
       state |> put_lane(lane, :waiting, rest) |> grant(lane, pid)
@@ -168,11 +170,23 @@ defmodule CmsHarness.AnalysisSlots do
     end
   end
 
+  # A gate run waits behind earlier gate runs and ahead of everything else:
+  # every team's landing waits on the promotion gate.
+  defp enqueue_waiter(waiting, {_from, _pid, _ref, :gate} = waiter) do
+    {gates, rest} = waiting |> :queue.to_list() |> Enum.split_while(&(elem(&1, 3) == :gate))
+    :queue.from_list(gates ++ [waiter | rest])
+  end
+
+  defp enqueue_waiter(waiting, waiter), do: :queue.in(waiter, waiting)
+
   defp take_waiting(waiting, target_from) do
     list = :queue.to_list(waiting)
 
-    if Enum.any?(list, &match?({^target_from, _pid, _ref}, &1)) do
-      {:ok, list |> Enum.reject(&match?({^target_from, _pid, _ref}, &1)) |> :queue.from_list()}
+    if Enum.any?(list, &match?({^target_from, _pid, _ref, _priority}, &1)) do
+      {:ok,
+       list
+       |> Enum.reject(&match?({^target_from, _pid, _ref, _priority}, &1))
+       |> :queue.from_list()}
     else
       :not_found
     end

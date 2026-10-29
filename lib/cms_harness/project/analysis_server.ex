@@ -503,7 +503,8 @@ defmodule CmsHarness.Project.AnalysisServer do
               tied_run_ids: [],
               source: source,
               args: args,
-              settled: false
+              settled: false,
+              priority: priority(request)
             }
 
             %{state | queue: insert_by_cost(state.queue, entry)}
@@ -552,6 +553,11 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   defp parse(request), do: {:error, request}
+
+  # The server marks a promotion gate's runs; a server that predates the field
+  # sends none, and the run waits like any other.
+  defp priority(%{"priority" => "gate"}), do: :gate
+  defp priority(_request), do: :normal
 
   # Only the queue, deliberately not `state.running`: a duplicate of a running
   # source becomes a new entry that later duplicates tie onto.
@@ -658,7 +664,9 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp run_with_slot(project, entry, parent) do
     requested_at = System.monotonic_time(:millisecond)
 
-    case AnalysisSlots.acquire(AnalysisSlots.lane(entry.source, entry.args)) do
+    lane = AnalysisSlots.lane(entry.source, entry.args)
+
+    case AnalysisSlots.acquire(lane, Map.get(entry, :priority, :normal)) do
       :ok ->
         waited_ms = System.monotonic_time(:millisecond) - requested_at
         send(parent, {:slot_acquired, entry.run_id, waited_ms})

@@ -23,6 +23,14 @@ The CLI binary auto-installs on first SessionStart.
 
 ## Start a source harness
 
+On a new machine without GitHub credentials, run:
+
+```bash
+curl -fsS https://dev.codemyspec.com/bootstrap-harness.py | python3 - https://dev.codemyspec.com PROJECT_ID code_my_spec
+```
+
+The script asks for one CodeMySpec device approval, then clones the private code repository and `.code_my_spec` submodule through the authenticated server Git proxy. The GitHub integration credential stays on the server. The checkout's Git remotes use the proxy URL, and Git receives the CodeMySpec device token through process environment configuration. `PROJECT_ID` is optional when the account has exactly one project. The server proxy keeps both repositories private and reuses the existing GitHub integration without issuing a broad GitHub credential to the new machine.
+
 From a CodeMySpec checkout, run `bash scripts/start-harness https://dev.codemyspec.com` once. Later runs can omit the URL: the command reads `.cms_harness.json` or `.code_my_spec/config.yml` (`server_url`). If neither records a URL, pass the target explicitly; the command will not guess one. It installs missing Hex and Rebar, resolves dependencies, onboards the checkout, and serves the harness on port 4004. Open the verification URL it prints and enter its device code. That approval is the only manual onboarding step; no deploy key is needed. After startup, `/codemyspec:init` and `get_next_requirement` can reach the harness.
 
 This entry does not require `just`. The existing Justfile uses `[positional-arguments]`, which just 1.21.0 cannot parse. Upgrade `just` if you use those recipes; the startup command does not invoke it.

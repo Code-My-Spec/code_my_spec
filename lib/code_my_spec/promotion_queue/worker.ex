@@ -26,6 +26,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
   alias CodeMySpec.Promotion
   alias CodeMySpec.Promotion.Runner
   alias CodeMySpec.PromotionQueue.Entry
+  alias CodeMySpec.PromotionQueue.FlakeReports
   alias CodeMySpec.PromotionQueue.Repository
   alias CodeMySpec.Qa
   alias CodeMySpec.Repo.SandboxAllowance
@@ -71,7 +72,6 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "validation_holds:#{project_id}")
     PubSub.subscribe(CodeMySpec.PubSub, "completion_handoffs:#{project_id}")
-    Repository.requeue_gating(project_id)
     send(self(), :next)
 
     {:ok,
@@ -86,6 +86,27 @@ defmodule CodeMySpec.PromotionQueue.Worker do
        gate_wait_since: nil
      }}
   end
+
+  @impl true
+  def terminate({error, stacktrace}, state) when is_list(stacktrace) do
+    frame =
+      Enum.find(stacktrace, fn
+        {module, _, _, _} -> String.starts_with?(Atom.to_string(module), "Elixir.CodeMySpec.")
+        _ -> false
+      end) || List.first(stacktrace)
+
+    # The packaged log keeps only the beginning of a crash report. Put the
+    # project, phase and application frame before the exception text.
+    Logger.error(
+      ("[PromotionQueue] crash project=#{state.project_id} phase=#{state.phase} " <>
+         "at=#{inspect(frame)} error=#{inspect(error, limit: 2, printable_limit: 100)}")
+      |> String.slice(0, 450)
+    )
+
+    :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
 
   @impl true
   def handle_cast({:scope, %Scope{} = scope}, state), do: {:noreply, %{state | scope: scope}}
@@ -150,11 +171,58 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     state = cancel_timer(state)
 
     if ValidationHolds.promotion_allowed?(state.project_id) do
-      reserve_next(state)
+      case Repository.gating(state.project_id) do
+        [entry | _] -> recover_gating(state, entry)
+        [] -> reserve_next(state)
+      end
     else
       {:noreply, idle(state)}
     end
   end
+
+  defp recover_gating(state, entry) do
+    scope = %{state.scope | active_working_copy_id: entry.working_copy_id}
+    saved = timing(entry)
+
+    with head when is_binary(head) <- saved["gate_head"],
+         base when is_binary(base) <- saved["gate_base"],
+         gate_id when is_binary(gate_id) <- saved["gate_copy_id"],
+         {:ok, %WorkingCopy{} = gate} <- WorkingCopies.fetch(gate_id),
+         {:ok, ^head} <- head_of(scope, gate, "the gate copy"),
+         {:ok, ^base} <- main_head(scope),
+         since_string when is_binary(since_string) <- saved["gate_since"],
+         {:ok, since, _} <- DateTime.from_iso8601(since_string) do
+      batch = %{
+        id: entry.batch_id,
+        entries: [entry],
+        gate: gate,
+        scope: scope_for(scope, gate),
+        base: base,
+        head: head,
+        branch: development_branch(scope),
+        format: recovered_format(saved["gate_format"]),
+        since: since
+      }
+
+      Logger.info("[PromotionQueue] resuming batch #{entry.batch_id} at #{head}")
+      send(self(), :gate)
+      {:noreply, recheck_later(%{state | scope: scope, phase: :gating, batch: batch})}
+    else
+      {:error, reason} ->
+        Logger.warning("[PromotionQueue] cannot check gate recovery yet: #{describe(reason)}")
+        {:noreply, recheck_later(idle(state), :next)}
+
+      _ ->
+        Logger.warning("[PromotionQueue] gate changed; rebuilding candidate #{entry.id}")
+        {:ok, _} = Repository.move(entry, :queued, %{batch_id: nil})
+        reserve_next(state)
+    end
+  end
+
+  defp recovered_format(%{"commit" => commit, "files" => files}),
+    do: %{commit: commit, files: files}
+
+  defp recovered_format(_), do: nil
 
   defp reserve_next(state) do
     with [entry] <- Repository.queued(state.project_id, @batch_cap) do
@@ -421,7 +489,15 @@ defmodule CodeMySpec.PromotionQueue.Worker do
     in_batch =
       Enum.map(entries, fn entry ->
         entry = finish_stage(entry, "gate-build", "build_started_at")
-        timing = timing(entry) |> Map.put("gate_copy_id", gate.id)
+
+        timing =
+          timing(entry)
+          |> Map.put("gate_copy_id", gate.id)
+          |> Map.put("gate_base", base)
+          |> Map.put("gate_head", head)
+          |> Map.put("gate_since", DateTime.to_iso8601(DateTime.utc_now()))
+          |> Map.put("gate_format", format)
+
         moved(entry, :gating, %{batch_id: batch_id, result: put_timing(entry, timing)})
       end)
 
@@ -791,6 +867,25 @@ defmodule CodeMySpec.PromotionQueue.Worker do
 
   defp flake_rerun_passed?(_batch, _source, _run, _targets), do: false
 
+  defp confirmed_flakes(batch) do
+    for source <- ~w(exunit spex),
+        %Run{findings: %{} = findings} = gate_run <-
+          [Analysis.answer_at_commit(batch.scope, source, batch.head)],
+        failure <- Map.get(findings, "failures", []),
+        is_binary(failure["file"]) and is_binary(failure["name"]),
+        %Run{} = rerun <- [passing_flake_rerun(batch, failure)] do
+      %{
+        source: source,
+        file: failure["file"],
+        name: failure["name"],
+        message: to_string(failure["message"]),
+        gate_run_id: gate_run.id,
+        rerun_id: rerun.id,
+        commit: batch.head
+      }
+    end
+  end
+
   defp passing_flake_rerun(batch, failure) do
     source = if String.starts_with?(failure["file"], "test/spex/"), do: "spex", else: "exunit"
 
@@ -1023,6 +1118,7 @@ defmodule CodeMySpec.PromotionQueue.Worker do
         for entry <- batch.entries do
           moved(entry, :landed, %{result: landed_result(entry, batch, report)})
           issue_landed(state.scope, entry, batch.head)
+          FlakeReports.record_landed(state.scope, entry, confirmed_flakes(batch))
 
           # The landing report itself, in memory, for a caller waiting on this
           # entry (`PromotionQueue.await/2`): it answers with what a direct
