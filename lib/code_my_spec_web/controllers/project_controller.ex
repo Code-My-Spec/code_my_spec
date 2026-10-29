@@ -13,7 +13,7 @@ defmodule CodeMySpecWeb.ProjectController do
   """
   def index(conn, _params) do
     scope = conn.assigns.current_scope
-    projects = Projects.list_projects(scope)
+    projects = Projects.list_projects_for_user(scope)
 
     json(conn, %{
       projects: Enum.map(projects, &project_json/1)
