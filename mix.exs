@@ -300,7 +300,7 @@ defmodule CodeMySpec.MixProject do
       # dependencies out of :harness so a fresh checkout needs no Rust toolchain.
       {:ortex, "~> 0.1", only: [:dev, :test, :prod, :desktop]},
       {:tokenizers, "~> 0.5", only: [:dev, :test, :prod, :desktop]},
-      {:nx, "~> 0.9"},
+      {:nx, "~> 0.9", only: [:dev, :test, :prod, :desktop]},
       {:flame, "~> 0.1"},
 
       # Harness release
@@ -336,7 +336,6 @@ defmodule CodeMySpec.MixProject do
           steps: [
             :assemble,
             &copy_bcrypt_nif_dll/1,
-            &copy_onnxruntime_dll/1,
             &copy_mcp_relay/1,
             :tar
           ]
@@ -347,10 +346,8 @@ defmodule CodeMySpec.MixProject do
     end
   end
 
-  # Put the bundled runtime beside erl.exe so Windows finds it before the
-  # incompatible Windows ML runtime in System32. Run before tar/MSI packaging.
-  defp copy_onnxruntime_dll(release), do: copy_onnxruntime_dll(release, :os.type())
-
+  # Legacy utility retained for the Windows DLL fixture tests. The source
+  # harness release does not include Ortex and never invokes this function.
   @doc false
   def copy_onnxruntime_dll(release, {:win32, _}) do
     bin =
