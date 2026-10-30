@@ -330,14 +330,7 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
     copy_id = copy(ctx.scope)
     coder = agent(ctx.scope, :coding, copy_id)
 
-    issue =
-      if story_linked? do
-        story = story_fixture(ctx.scope)
-        {:ok, linked} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: story.id})
-        linked
-      else
-        ctx.issue
-      end
+    issue = issue_for_resolution_test(ctx, story_linked?)
 
     {:ok, assigned} = Agents.assign_issue_to_working_copy(ctx.scope, issue.id, copy_id)
 
@@ -360,6 +353,14 @@ defmodule CodeMySpec.Agents.IssueWorkTest do
 
     assert %{status: :accepted, landed_commit: nil} = Issues.get_issue(ctx.scope, issue.id)
     assert %{status: :active} = TaskOwner.find_task(reload(coder), task.id)
+  end
+
+  defp issue_for_resolution_test(ctx, false), do: ctx.issue
+
+  defp issue_for_resolution_test(ctx, true) do
+    story = story_fixture(ctx.scope)
+    {:ok, linked} = Issues.update_issue(ctx.scope, ctx.issue, %{story_id: story.id})
+    linked
   end
 
   test "resolving an issue supersedes its promotion offer without affecting other work", ctx do
