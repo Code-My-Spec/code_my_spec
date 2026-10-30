@@ -54,16 +54,38 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     proposal_verdict(scope, Map.get(files.by_path, @proposal_path), authored?)
   end
 
+  # Everything handed in, so a harness with no database answers it.
+  def complete?(_scope, _entity, %{
+        files_by_project: files,
+        authored?: authored?,
+        story_numbers: numbers,
+        context_names: contexts
+      }) do
+    proposal = Enum.find(files, &(&1.path == @proposal_path))
+    verdict(proposal, authored?, MapSet.new(numbers), MapSet.new(contexts))
+  end
+
   def complete?(scope, entity, _ctx), do: complete?(scope, entity)
 
-  defp proposal_verdict(_scope, _file, true), do: {true, %{status: @planned}}
-  defp proposal_verdict(_scope, nil, false), do: {false, %{reason: @no_architecture}}
+  defp proposal_verdict(_scope, file, true), do: verdict(file, true, nil, nil)
+  defp proposal_verdict(_scope, nil, false), do: verdict(nil, false, nil, nil)
 
   defp proposal_verdict(scope, file, false) do
-    data = Map.get(file.validation_errors || %{}, "data", %{})
     {:ok, stories} = Stories.list_project_stories(scope)
-    active_numbers = MapSet.new(stories, & &1.number)
-    active_contexts = Components.list_contexts(scope) |> MapSet.new(& &1.module_name)
+    contexts = Components.list_contexts(scope)
+    verdict(file, false, MapSet.new(stories, & &1.number), MapSet.new(contexts, & &1.module_name))
+  end
+
+  @doc """
+  The verdict from the proposal file, whether a component is authored, and the
+  project's active story numbers and context module names.
+  """
+  @spec verdict(map() | nil, boolean(), MapSet.t() | nil, MapSet.t() | nil) :: {boolean(), map()}
+  def verdict(_file, true, _numbers, _contexts), do: {true, %{status: @planned}}
+  def verdict(nil, false, _numbers, _contexts), do: {false, %{reason: @no_architecture}}
+
+  def verdict(file, false, active_numbers, active_contexts) do
+    data = Map.get(file.validation_errors || %{}, "data", %{})
 
     stale_stories =
       Enum.reject(data["story_numbers"] || [], &MapSet.member?(active_numbers, &1))
