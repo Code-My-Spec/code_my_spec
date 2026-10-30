@@ -494,7 +494,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       # An older harness never reports one, and is not told.
       component_changed(scope)
-      refute_push "read_model_changed", _, 2_500
+      refute_push "read_model_changed", _, 200
 
       ref = push(channel, "overlay", %{"read_model" => "abc", "verdicts" => []})
       assert_reply ref, :ok, _, 2_000
@@ -502,8 +502,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       # A burst is one push.
       component_changed(scope)
       component_changed(scope)
-      assert_push "read_model_changed", _, 3_000
-      refute_push "read_model_changed", _, 2_500
+      # The window is 50ms here (config/test.exs).
+      assert_push "read_model_changed", _, 1_000
+      refute_push "read_model_changed", _, 200
     end
 
     test "a report is stored and compared with this checkout's rows",

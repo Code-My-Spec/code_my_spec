@@ -285,9 +285,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # v3 requires UUID instance descriptors, instance-tagged replies, and confirmed discard_app.
   @contract_version 3
 
-  # How long a burst of record writes is gathered into one read-model push.
-  @read_model_coalesce_ms 2_000
-
   @doc """
   The channel contract version this server speaks.
 
@@ -1548,7 +1545,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       do: {:noreply, socket}
 
   def handle_info({:read_model_changed, _project_id}, socket) do
-    Process.send_after(self(), :read_model_changed, @read_model_coalesce_ms)
+    Process.send_after(self(), :read_model_changed, read_model_coalesce_ms())
     {:noreply, assign(socket, :read_model_due, true)}
   end
 
@@ -2185,6 +2182,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp fingerprint(payload),
     do: payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
+
+  # How long a burst of record writes is gathered into one read-model push.
+  # Config so a test can gather over milliseconds.
+  defp read_model_coalesce_ms,
+    do: Application.get_env(:code_my_spec, :read_model_coalesce_ms, 2_000)
 
   # Told of read-model changes once the harness reports overlays: an older one
   # does not, and would log a push it does not know.
