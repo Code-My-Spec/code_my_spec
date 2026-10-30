@@ -21,6 +21,7 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.{CopyGraph, CopyOverlay, IncrementalGraph}
+  alias CodeMySpec.Requirements.CopyGraph.Equivalence
   alias CodeMySpec.Requirements.{Preloader, Projection, Topology, Verification}
 
   setup do
@@ -89,6 +90,40 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsAsTheProjectionDoesTest do
 
     assert %{satisfied: false, details: %{"reason" => "no checkout has reported files"}} =
              Enum.find(nodes, &(&1.name == "technical_strategy"))
+  end
+
+  test "the cut-over check is clean at every reported copy, and names a disagreement",
+       %{scope: scope} do
+    {:ok, _} = CopyOverlay.report(scope, report(scope))
+    unscoped = %{scope | active_working_copy_id: nil}
+
+    Repo.update_all(
+      from(p in CodeMySpec.Projects.Project, where: p.id == ^scope.active_project_id),
+      set: [default_working_copy_id: scope.active_working_copy_id]
+    )
+
+    reports = Equivalence.check(unscoped)
+    assert Map.keys(reports) |> Enum.sort() == Enum.sort([nil, scope.active_working_copy_id])
+    assert Equivalence.clean?(reports), inspect(reports)
+
+    flipped =
+      Map.update!(report(scope), "verdicts", fn verdicts ->
+        Enum.map(verdicts, fn
+          %{"name" => "technical_strategy"} = sweep ->
+            %{sweep | "default" => not sweep["default"]}
+
+          sweep ->
+            sweep
+        end)
+      end)
+
+    {:ok, _} = CopyOverlay.report(scope, flipped)
+    reports = Equivalence.check(unscoped)
+
+    refute Equivalence.clean?(reports)
+
+    assert %{disagree: 1, samples: [{{"project", _, "technical_strategy"}, _}]} =
+             reports[scope.active_working_copy_id]
   end
 
   # What the copy's harness would report: its files, as scanned.
