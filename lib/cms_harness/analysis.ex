@@ -77,9 +77,11 @@ defmodule CmsHarness.Analysis do
     started = System.monotonic_time(:millisecond)
 
     result =
-      fn -> execute(source, env, args) end
-      |> heal_stale_deps(fn -> deps_get(env) end)
-      |> stamp_partition(env, source)
+      serialize_build(project.root, fn ->
+        fn -> execute(source, env, args) end
+        |> heal_stale_deps(fn -> deps_get(env) end)
+        |> stamp_partition(env, source)
+      end)
 
     Logger.info(
       "[CmsHarness] #{source} #{inspect(args)} in #{project.root}#{run_id_suffix(run_id)} " <>
@@ -149,6 +151,11 @@ defmodule CmsHarness.Analysis do
       end
     end)
   end
+
+  @doc "Run an analyzer while holding the checkout's build lock."
+  @spec serialize_build(String.t(), (-> result)) :: result when result: term()
+  def serialize_build(cwd, fun),
+    do: :global.trans({{__MODULE__, :build, Path.expand(cwd)}, self()}, fun)
 
   @doc "Run `fun` holding the checkout's `deps.get` lock, so concurrent runs fetch one at a time."
   # A `:global` lock id must be `{ResourceId, RequesterId}`; anything else
