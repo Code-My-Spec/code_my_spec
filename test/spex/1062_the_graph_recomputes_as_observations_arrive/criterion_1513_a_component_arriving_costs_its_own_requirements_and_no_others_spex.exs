@@ -52,6 +52,10 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpecSpex.Fixtures
 
+  # A copy's file verdicts: read from its files, never stored.
+  @file_verdicts ~w(implementation_file bdd_specs_exist technical_strategy code_generation
+    qa_journey_execute spex_boundary_ready architecture_designed qa_integration_plan)
+
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -168,16 +172,18 @@ defmodule CodeMySpecSpex.Story1062.Criterion3617Spex do
         {:ok, context}
       end
 
-      then_ "and the other entities' requirements are not recomputed", context do
+      then_ "and no other entity's stored verdicts are rewritten", context do
+        # Stored verdicts only: a copy's file verdicts are read from its files
+        # and carry its sync time, not a recompute.
         moved =
           context.before
           |> moved_between(context.after)
-          |> Enum.reject(fn {type, _id, _name} -> type == "project" end)
+          |> Enum.reject(fn {type, _id, name} -> type == "project" or name in @file_verdicts end)
 
         assert moved == [],
                """
-               A component arrived and #{length(moved)} requirement(s) belonging
-               to other entities were recomputed.
+               A component arrived and #{length(moved)} stored verdict(s) belonging
+               to other entities were rewritten.
 
                `Freshness.topology_parts/2` hashes every component's id, type,
                parent and dependencies, so the arrival moves the shape — which

@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
 
-  alias CodeMySpec.Requirements.{GraphInputs, IncrementalGraph, Preloader, Projection}
+  alias CodeMySpec.Requirements.{GraphInputs, IncrementalGraph, Preloader, RequirementGraph}
 
   alias CodeMySpec.Stories
   alias CodeMySpec.WorkingCopies
@@ -121,7 +121,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
 
   defp child_edge?(scope, component_id) do
     ctx = Preloader.topology_context(scope)
-    {_nodes, edges} = Projection.load(scope, ctx)
+    {_nodes, edges} = RequirementGraph.served_graph(scope, ctx)
 
     Enum.any?(edges, fn edge ->
       match?({"story", _, _}, edge.from) and
@@ -131,7 +131,7 @@ defmodule CodeMySpec.Requirements.DiscoveredComponentEdgeProjectionTest do
 
   # Every requirement of the component holds at this checkout.
   defp child_satisfied?(scope, component_id) do
-    {nodes, _edges} = Projection.load(scope, Preloader.topology_context(scope))
+    {nodes, _edges} = RequirementGraph.served_graph(scope, Preloader.topology_context(scope))
 
     nodes
     |> Enum.filter(&(&1.entity_type == "component" and &1.entity_id == component_id))

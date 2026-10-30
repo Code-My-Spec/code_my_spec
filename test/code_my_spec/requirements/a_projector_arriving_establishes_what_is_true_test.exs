@@ -138,17 +138,17 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
   # checkout is answered from — and `=` against it matches nothing.
   defp flip_one_verdict(%Scope{} = scope) do
     [{id, name, satisfied}] =
-      scope |> at_vantage("requirements") |> Ecto.Query.limit(1) |> Repo.all()
+      scope |> story_rows() |> Ecto.Query.limit(1) |> Repo.all()
 
     {1, _} =
-      from(n in "requirements", where: n.id == ^id)
+      from(n in "project_requirements", where: n.id == ^id)
       |> Repo.update_all(set: [satisfied: not satisfied])
 
     name
   end
 
   defp disagreements(%Scope{} = scope) do
-    stored = scope |> at_vantage("requirements") |> Repo.all() |> Map.new(&key/1)
+    stored = scope |> story_rows() |> Repo.all() |> Map.new(&key/1)
     # What the domain says now, computed in memory.
     {nodes, _edges} = RequirementGraph.compute_graph(scope)
 
@@ -160,14 +160,13 @@ defmodule CodeMySpec.Requirements.AProjectorArrivingEstablishesWhatIsTrueTest do
 
   defp key({_id, name, satisfied}), do: {name, satisfied}
 
-  defp at_vantage(%Scope{} = scope, table) do
-    copy = scope.active_working_copy_id
-
-    from(n in table,
+  # The story's record verdicts, stored once per project: the rows the
+  # projector keeps. Its file verdict is the copy's overlay.
+  defp story_rows(%Scope{} = scope) do
+    from(n in "project_requirements",
       join: s in "stories",
       on: s.id == n.story_id,
       where: s.project_id == type(^scope.active_project_id, :binary_id),
-      where: fragment("? IS NOT DISTINCT FROM ?", n.working_copy_id, type(^copy, :binary_id)),
       order_by: [asc: n.id],
       select: {n.id, n.name, type(n.satisfied, :boolean)}
     )

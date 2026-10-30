@@ -178,7 +178,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1595,6 +1594,21 @@ defmodule CodeMySpecSpex.Fixtures do
         socket
       )
 
+    # And the overlay from the same scan, as a harness sends after each
+    # manifest: a live harness that never saw these files must not answer for
+    # them.
+    {served, _payload} = CodeMySpec.Requirements.CopyOverlay.served_read_model(scope)
+
+    {:reply, _overlay_reply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "overlay",
+        %{
+          "read_model" => served.fingerprint,
+          "verdicts" => CodeMySpec.Requirements.CopyOverlay.verdicts(entries, served)
+        },
+        socket
+      )
+
     reply
   end
 
@@ -1973,10 +1987,15 @@ defmodule CodeMySpecSpex.Fixtures do
   restart alone measures a trust. Oracle tooling, like `watch_graph/1`.
   """
   @spec forget_projection(Scope.t()) :: :ok
-  def forget_projection(%Scope{} = scope) do
-    scope
-    |> Projection.vantages()
-    |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
+  def forget_projection(%Scope{active_project_id: project_id} = scope) do
+    :ok = GraphStore.clear(scope)
+
+    # The topology too: a project is projected once it has one.
+    Repo.delete_all(
+      from(t in CodeMySpec.Requirements.ProjectTopology, where: t.project_id == ^project_id)
+    )
+
+    :ok
   end
 
   @doc """
@@ -2740,8 +2759,14 @@ defmodule CodeMySpecSpex.Fixtures do
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
 
-    # Per checkout and once per project, wherever the rows live.
-    for table <- ["requirements", "project_requirements"] do
+    # A copy's file verdicts carry their files' sync time; record verdicts are
+    # stored once per project.
+    CodeMySpec.Repo.update_all(
+      from(f in "files", where: f.project_id == type(^project_id, :binary_id)),
+      set: [updated_at: past]
+    )
+
+    for table <- ["project_requirements"] do
       CodeMySpec.Repo.update_all(
         from(n in table,
           where:

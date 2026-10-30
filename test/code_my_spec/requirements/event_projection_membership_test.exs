@@ -51,10 +51,7 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
 
     assert GraphStore.definitions_covered?(scope, defined)
 
-    Repo.delete_all(
-      from n in Node,
-        where: n.story_id == ^missing.id and n.working_copy_id == ^scope.active_working_copy_id
-    )
+    Repo.delete_all(from n in "project_requirements", where: n.story_id == ^missing.id)
 
     refute GraphStore.definitions_covered?(scope, defined)
 
@@ -64,11 +61,9 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
            )
   end
 
+  # The story's nodes in the graph served at this checkout.
   defp story_names(scope, story) do
-    Repo.all(
-      from n in Node,
-        where: n.story_id == ^story.id and n.working_copy_id == ^scope.active_working_copy_id,
-        select: n.name
-    )
+    {nodes, _edges} = RequirementGraph.served_graph(scope, RequirementGraph.read_context(scope))
+    for %{entity_type: "story", entity_id: id, name: name} <- nodes, id == story.id, do: name
   end
 end

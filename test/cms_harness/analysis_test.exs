@@ -444,6 +444,36 @@ defmodule CmsHarness.AnalysisTest do
   end
 
   describe "exunit" do
+    test "a compiler requested during ExUnit waits for the suite to release the build", ctx do
+      with_client_utils(ctx, "concurrent compiler and ExUnit", fn ->
+        body = ~S"""
+        File.write!(Path.join(File.cwd!(), "test_started"), "ready")
+        until_file = Path.join(File.cwd!(), "test_continue")
+        Enum.reduce_while(1..200, nil, fn _, _ ->
+          if File.exists?(until_file), do: {:halt, :ok}, else: (Process.sleep(25); {:cont, nil})
+        end)
+        assert File.exists?(until_file)
+        assert Demo.Fine.go() == :ok
+        """
+
+        project = exunit_project(ctx, body)
+        suite = Task.async(fn -> Analysis.run(project, "exunit") end)
+        started = Path.join(project.root, "test_started")
+
+        assert CmsHarnessTest.AnalysisResults.await_file(started, 1200),
+               "ExUnit did not start: #{inspect(Task.yield(suite, 0))}"
+
+        compiler = Task.async(fn -> Analysis.run(project, "compiler", ["--force"]) end)
+        assert Task.yield(compiler, 100) == nil
+        File.write!(Path.join(project.root, "test_continue"), "go")
+
+        assert {:ok, %{"execution_status" => "success", "diagnostics" => []}} =
+                 Task.await(suite, 180_000)
+
+        assert {:ok, %{"exit_status" => 0}} = Task.await(compiler, 180_000)
+      end)
+    end
+
     test "a failing test comes back as a failure diagnostic", ctx do
       with_client_utils(ctx, "exunit failures", fn ->
         project = exunit_project(ctx, "assert 1 == 2")

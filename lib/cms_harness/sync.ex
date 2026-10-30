@@ -160,8 +160,10 @@ defmodule CmsHarness.Sync do
     %{
       "head" => git(env, ["rev-parse", "HEAD"]),
       "behind" => behind(env),
+      # No optional locks: a plain `status` refreshes the index under
+      # `index.lock`, and a commit landing meanwhile fails on it.
       "dirty" =>
-        case git(env, ["status", "--porcelain", "--untracked-files=no"]) do
+        case git(env, ["--no-optional-locks", "status", "--porcelain", "--untracked-files=no"]) do
           nil -> nil
           out -> out != ""
         end

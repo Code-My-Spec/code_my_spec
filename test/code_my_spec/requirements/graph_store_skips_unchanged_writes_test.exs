@@ -95,7 +95,7 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
     refute changed_cost.raised
 
     stored =
-      from(n in subquery(GraphStore.rows_at(ctx.scope.active_working_copy_id)))
+      from(n in subquery(GraphStore.project_rows()))
       |> where([n], n.story_id == ^ctx.story.id)
       |> select([n], {n.name, %{satisfied: n.satisfied, details: n.details}})
       |> Repo.all()
@@ -139,13 +139,13 @@ defmodule CodeMySpec.Requirements.GraphStoreSkipsUnchangedWritesTest do
   end
 
   defp backdate(story_id) do
-    GraphStore.event_target()
+    {"project_requirements", CodeMySpec.Requirements.Node}
     |> where([n], n.story_id == ^story_id)
     |> Repo.update_all(set: [updated_at: ~N[2000-01-01 00:00:00]])
   end
 
   defp row_versions(story_id) do
-    GraphStore.event_target()
+    {"project_requirements", CodeMySpec.Requirements.Node}
     |> where([n], n.story_id == ^story_id)
     |> select([n], {n.name, n.updated_at})
     |> Repo.all()

@@ -1,0 +1,5 @@
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl libssl3t64 libncurses6 libtinfo6 libstdc++6 inotify-tools && rm -rf /var/lib/apt/lists/*
+COPY harness-smoke.sh /usr/local/bin/harness-smoke
+ENTRYPOINT ["bash", "/usr/local/bin/harness-smoke"]

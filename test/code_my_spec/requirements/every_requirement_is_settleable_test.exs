@@ -30,9 +30,24 @@ defmodule CodeMySpec.Requirements.EveryRequirementIsSettleableTest do
   # nothing currently needs one; kept as a real map, not deleted, because the
   # next name that genuinely is settled some other way should have a reason
   # written here rather than the test being loosened to `true`.
+  # A copy's file verdicts are its overlay: reported by its harness or computed
+  # from its files on read (`CopyOverlay.verdicts_at/1`), never settled here.
+  @copy_verdict "a copy's file verdict, read from its overlay (`Handlers.copy_verdicts/1`)"
+
+  # A copy's issues leave out those on stories placed elsewhere: its three gates
+  # are settled when its graph is read (`Handlers.gate_verdicts/1`).
+  @gate "a copy's placement gate, settled on read (`Handlers.gate_verdicts/1`)"
+
   @not_via_handlers %{
     "dependencies_met" =>
-      "a container's dependency junction: `check_type: :always`, so no event can move it"
+      "a container's dependency junction: `check_type: :always`, so no event can move it",
+    "implementation_file" => @copy_verdict,
+    "bdd_specs_exist" => @copy_verdict,
+    "technical_strategy" => @copy_verdict,
+    "code_generation" => @copy_verdict,
+    "qa_journey_execute" => @copy_verdict,
+    "issues_triaged" => @gate,
+    "issues_resolved" => @gate
   }
 
   @component_types ~w(context coordination_context live_context controller schema

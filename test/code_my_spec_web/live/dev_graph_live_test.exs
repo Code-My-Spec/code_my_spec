@@ -34,19 +34,22 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
       |> DateTime.to_naive()
 
     ids =
-      from(n in Node,
+      from(n in {"project_requirements", Node},
         where: n.project_id == type(^scope.active_project_id, :binary_id),
         limit: ^count,
         select: n.id
       )
       |> Repo.all()
 
-    Repo.update_all(from(n in Node, where: n.id in ^ids), set: [checked_at: at])
+    Repo.update_all(from(n in {"project_requirements", Node}, where: n.id in ^ids),
+      set: [checked_at: at]
+    )
+
     length(ids)
   end
 
   test "a small pass renders as a small pass", %{conn: conn, scope: scope} do
-    total = Repo.aggregate(from(n in Node), :count)
+    total = Repo.aggregate(from(n in {"project_requirements", Node}), :count)
     stamp(scope, total, 600)
     moved = stamp(scope, 2, 0)
 
@@ -124,12 +127,18 @@ defmodule CodeMySpecWeb.DevGraphLiveTest do
 
   test "opening the page does not recompute the graph", %{conn: conn, scope: _scope} do
     before_stamps =
-      from(n in Node, select: n.checked_at) |> Repo.all() |> Enum.uniq() |> Enum.sort()
+      from(n in {"project_requirements", Node}, select: n.checked_at)
+      |> Repo.all()
+      |> Enum.uniq()
+      |> Enum.sort()
 
     {:ok, _view, _html} = live(conn, ~p"/dev/graph")
 
     after_stamps =
-      from(n in Node, select: n.checked_at) |> Repo.all() |> Enum.uniq() |> Enum.sort()
+      from(n in {"project_requirements", Node}, select: n.checked_at)
+      |> Repo.all()
+      |> Enum.uniq()
+      |> Enum.sort()
 
     assert before_stamps == after_stamps,
            """

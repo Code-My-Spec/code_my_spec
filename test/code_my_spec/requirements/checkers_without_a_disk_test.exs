@@ -197,7 +197,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
         Map.put(
           Profiles.load(scope, :architecture),
           :files_by_project,
-          Profiles.load(scope, :files).all
+          CodeMySpec.Files.list_files(scope)
         )
 
       assert {false, %{reason: ^reason}} = ArchitectureChecker.complete?(scope, nil, profile)
@@ -218,7 +218,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
         Map.put(
           Profiles.load(scope, :architecture),
           :files_by_project,
-          Profiles.load(scope, :files).all
+          CodeMySpec.Files.list_files(scope)
         )
 
       assert {false, %{reason: ^reason}} = ArchitectureChecker.complete?(scope, nil, profile)

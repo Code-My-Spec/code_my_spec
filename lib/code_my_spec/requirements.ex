@@ -50,6 +50,7 @@ defmodule CodeMySpec.Requirements do
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.BacklogReport
+  alias CodeMySpec.Requirements.CopyGraph
   alias CodeMySpec.Requirements.Directives
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphStore
@@ -122,7 +123,7 @@ defmodule CodeMySpec.Requirements do
     with :project <- RoleProfile.story_vantage(role),
          true <- offered_to?(role, name),
          %{} = story <- Enum.find(Preloader.placed_elsewhere(scope), &same_id?(&1.id, story_id)) do
-      {nodes, _edges} = Projection.placed([story], [name])
+      {nodes, _edges} = CopyGraph.placed(scope, [story], [name])
       List.first(nodes)
     else
       _ -> nil

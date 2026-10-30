@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   require Logger
 
   alias CodeMySpec.Agents.RoleProfile
-  alias CodeMySpec.Requirements.{Preloader, Projection, Registry, RequirementGraph}
+  alias CodeMySpec.Requirements.{CopyGraph, Preloader, Registry, RequirementGraph}
   alias CodeMySpec.{Stories, WorkingCopies}
 
   @slow_read_ms 1_000
@@ -109,16 +109,16 @@ defmodule CodeMySpec.Requirements.StoryExecution do
   # unchanged. The stories join `ctx.stories` for ordering by story priority.
   defp across_project(scope, role, nodes, edges, ctx) do
     case RoleProfile.story_vantage(role) do
-      :project -> with_placed(Preloader.placed_elsewhere(scope), role, nodes, edges, ctx)
+      :project -> with_placed(scope, Preloader.placed_elsewhere(scope), role, {nodes, edges, ctx})
       :copy -> {nodes, edges, ctx}
     end
   end
 
-  defp with_placed([], _role, nodes, edges, ctx), do: {nodes, edges, ctx}
+  defp with_placed(_scope, [], _role, graph), do: graph
 
-  defp with_placed(stories, role, nodes, edges, ctx) do
+  defp with_placed(scope, stories, role, {nodes, edges, ctx}) do
     {placed_nodes, placed_edges} =
-      Projection.placed(stories, Registry.requirement_names_for_role(role))
+      CopyGraph.placed(scope, stories, Registry.requirement_names_for_role(role))
 
     {nodes ++ placed_nodes, edges ++ placed_edges, %{ctx | stories: ctx.stories ++ stories}}
   end

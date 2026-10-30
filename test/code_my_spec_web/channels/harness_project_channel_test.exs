@@ -507,7 +507,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       refute_push "read_model_changed", _, 200
     end
 
-    test "a report is stored and compared with this checkout's rows",
+    test "a report is stored",
          %{scope: scope, topic: topic} do
       {:ok, _reply, channel} = join_as(scope, topic)
 
@@ -522,7 +522,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert_reply ref, :ok, _, 2_000
 
-      assert %Report{head: "0123abc", behind: 2, dirty: false, compared_at: %DateTime{}} =
+      assert %Report{head: "0123abc", behind: 2, dirty: false} =
                CodeMySpec.Repo.get(Report, scope.active_working_copy_id)
     end
   end

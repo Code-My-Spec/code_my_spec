@@ -70,6 +70,21 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
              )
   end
 
+  test "a beam read error fails the run before recording cascading test failures" do
+    output =
+      "erl_prim_loader: cannot read _build/analyzer/test/lib/demo/ebin/Elixir.Demo.beam: eio"
+
+    payload = raw(["** (UndefinedFunctionError) function Demo.go/0 is undefined"])
+
+    assert {:error, {:build_read_failed, :beam_read_error}} =
+             Runners.from_raw("exunit", %{payload | "output" => output})
+  end
+
+  test "an analyzer crash is never read as a clean suite" do
+    assert {:error, {:build_read_failed, :analyzer_crashed}} =
+             Runners.from_raw("exunit", %{raw([]) | "execution_status" => "analyzer_crashed"})
+  end
+
   test "a clean run is unaffected" do
     assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw([]))
   end
@@ -132,6 +147,14 @@ defmodule CodeMySpec.Analysis.LostBuildTest do
   test "genuine spex failures are still reported" do
     assert {:ok, %{problems: [_]}} =
              Runners.from_raw("spex", spex_raw(["Assertion with == failed"]))
+  end
+
+  test "a spex beam read error fails without reconciling its diagnostics" do
+    payload = spex_raw(["function Demo.go/0 is undefined"])
+    output = "reading Elixir.Demo.beam failed: enoent"
+
+    assert {:error, {:build_read_failed, :beam_read_error}} =
+             Runners.from_raw("spex", %{payload | "output" => output})
   end
 
   test "a clean spex run is unaffected" do

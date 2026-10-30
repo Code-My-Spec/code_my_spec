@@ -201,7 +201,35 @@ defmodule CodeMySpec.Analysis.Runners do
   anything. A harness's `analysis_result` comes in through here.
   """
   @spec from_raw(String.t(), map()) :: {:ok, result()} | {:error, term()}
-  def from_raw("compiler", raw) do
+  def from_raw(source, raw) do
+    case build_read_failure(raw) do
+      nil -> parse_raw(source, raw)
+      reason -> {:error, {:build_read_failed, reason}}
+    end
+  end
+
+  defp build_read_failure(raw) do
+    output = raw["output"] || ""
+
+    cond do
+      raw["error"] == "analyzer_crashed" or raw["execution_status"] == "analyzer_crashed" ->
+        :analyzer_crashed
+
+      Regex.match?(
+        ~r/erl_prim_loader[^\n]*(?:eio|enoent)|(?:eio|enoent)[^\n]*erl_prim_loader/,
+        output
+      ) ->
+        :beam_read_error
+
+      Regex.match?(~r/\.beam[^\n]*(?:eio|enoent)|(?:eio|enoent)[^\n]*\.beam/, output) ->
+        :beam_read_error
+
+      true ->
+        nil
+    end
+  end
+
+  defp parse_raw("compiler", raw) do
     problems =
       raw
       |> diagnostics()
@@ -227,7 +255,7 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def from_raw("credo", raw) do
+  defp parse_raw("credo", raw) do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
 
     stats = %{"issues" => length(problems), "findings" => length(problems)}
@@ -239,7 +267,7 @@ defmodule CodeMySpec.Analysis.Runners do
   # would clear every exunit Problem and read as passing tests; a failed run is
   # never fresh and is re-enqueued.
   # See knowledge/analysis, "A run that saw nothing is not clean".
-  def from_raw("exunit", %{"execution_status" => "error"} = raw) do
+  defp parse_raw("exunit", %{"execution_status" => "error"} = raw) do
     output = raw["output"] || ""
     excerpt = error_excerpt(output)
 
@@ -255,22 +283,22 @@ defmodule CodeMySpec.Analysis.Runners do
   # Zero tests is not zero failures: the same trap reached through a zero exit.
   # Only the exact `%{"tests" => 0}` shape matches; a payload with no stats
   # falls through rather than being failed on a guess.
-  def from_raw("exunit", %{"execution_status" => status, "stats" => %{"tests" => 0}} = raw)
-      when is_binary(status) do
+  defp parse_raw("exunit", %{"execution_status" => status, "stats" => %{"tests" => 0}} = raw)
+       when is_binary(status) do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
   # Whatever the analyzer reports is recorded; no diagnostic is dropped or
   # second-guessed.
   # See knowledge/analysis, "Never drop diagnostics".
-  def from_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
+  defp parse_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
     exunit_result(raw)
   end
 
   # `Spex.parse_jsonl/1` answers `{:ok, []}` for a missing file, so a nonzero
   # exit with no failures is a suite that never ran: fail the run, carrying an
   # output excerpt so the reason is recorded somewhere.
-  def from_raw("spex", raw) do
+  defp parse_raw("spex", raw) do
     exit_code = raw["exit_status"]
 
     case {diagnostics(raw), exit_code} do
@@ -290,7 +318,7 @@ defmodule CodeMySpec.Analysis.Runners do
 
   # An exunit payload with no `execution_status`, or an unknown source, is
   # refused: read charitably it would become a clean `:completed` run.
-  def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
+  defp parse_raw(source, _raw), do: {:error, {:unreadable_result, source}}
 
   # Boundary and warnings-as-errors can fail compilation while their emitted
   # diagnostics still say warning. If those are the only findings on a failed

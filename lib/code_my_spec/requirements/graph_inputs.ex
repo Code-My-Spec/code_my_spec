@@ -51,6 +51,7 @@ defmodule CodeMySpec.Requirements.GraphInputs do
     component_deleted
     dependency_changed
     files_synced
+    qa_document_changed
     deploy_changed
     devops_setup_changed
     qa_attempt_submitted

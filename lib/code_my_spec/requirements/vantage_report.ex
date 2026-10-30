@@ -50,14 +50,19 @@ defmodule CodeMySpec.Requirements.VantageReport do
   def build(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     labels = labels_for(project_id)
 
-    Node
-    |> where(
-      [n],
-      n.project_id == ^project_id or not is_nil(n.component_id) or not is_nil(n.story_id)
+    # Rows are stored once per project: one row-space, read by every checkout.
+    from(n in {"project_requirements", Node},
+      left_join: s in "stories",
+      on: s.id == n.story_id,
+      left_join: c in "components",
+      on: c.id == n.component_id,
+      where:
+        n.project_id == type(^project_id, :binary_id) or
+          s.project_id == type(^project_id, :binary_id) or
+          c.project_id == type(^project_id, :binary_id)
     )
-    |> group_by([n], n.working_copy_id)
     |> select([n], %{
-      working_copy_id: n.working_copy_id,
+      working_copy_id: nil,
       rows: count(n.id),
       newest: max(n.checked_at),
       oldest: min(n.checked_at)

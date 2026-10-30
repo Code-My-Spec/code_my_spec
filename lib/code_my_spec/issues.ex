@@ -328,20 +328,30 @@ defmodule CodeMySpec.Issues do
     end
   end
 
-  def resolve_issue(
-        %Scope{},
-        %Issue{story_id: story_id, assigned_working_copy_id: nil},
-        _resolution
-      )
-      when not is_nil(story_id),
-      do: {:error, :story_issue_requires_shared_qa_and_promotion}
-
   def resolve_issue(%Scope{} = scope, %Issue{} = issue, resolution) do
-    with {:ok, issue} <- IssuesRepository.update_status(issue, :resolved, resolution) do
-      broadcast(scope, {:resolved, issue})
-      {:ok, issue}
+    # Read the current assignment. Callers can hold a struct from before the
+    # issue was assigned to a copy, so guarding only the passed struct lets a
+    # direct domain call strand its fix before QA and promotion.
+    with %Issue{} = current <- get_issue(scope, issue.id),
+         :ok <- resolution_allowed?(current),
+         {:ok, resolved} <- IssuesRepository.update_status(current, :resolved, resolution) do
+      broadcast(scope, {:resolved, resolved})
+      {:ok, resolved}
+    else
+      nil -> {:error, :issue_not_found}
+      other -> other
     end
   end
+
+  defp resolution_allowed?(%Issue{assigned_working_copy_id: copy_id, landed_commit: nil})
+       when not is_nil(copy_id),
+       do: {:error, :fix_not_landed_on_main_use_evaluate_task_then_promote_issue}
+
+  defp resolution_allowed?(%Issue{story_id: story_id, assigned_working_copy_id: nil})
+       when not is_nil(story_id),
+       do: {:error, :story_issue_requires_shared_qa_and_promotion}
+
+  defp resolution_allowed?(_issue), do: :ok
 
   @doc """
   Set or clear which copy's team this issue is assigned to.

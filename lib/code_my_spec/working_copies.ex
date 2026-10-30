@@ -380,7 +380,9 @@ defmodule CodeMySpec.WorkingCopies do
   Answers must still come from one tree: blending every checkout
   over-satisfies (a file in one worktree reads as present everywhere).
   `project.default_working_copy_id` wins where set; otherwise the copy
-  designated `main`. `nil` (no checkout) leaves the caller to blend.
+  designated `main`; otherwise the project's only checkout, when it has exactly
+  one (only desktop onboarding designates a main copy). `nil` when several
+  checkouts and none is designated: no tree speaks for the project.
 
   Here rather than in `Requirements`, so `Files` (`component_ids_present/1`)
   and `Preloader.files_vantage/1` share the one rule.
@@ -388,10 +390,20 @@ defmodule CodeMySpec.WorkingCopies do
   @spec reading_copy_id(Scope.t()) :: Ecto.UUID.t() | nil
   def reading_copy_id(%Scope{active_project_id: project_id}) when is_binary(project_id) do
     Repo.one(from p in Project, where: p.id == ^project_id, select: p.default_working_copy_id) ||
-      Repo.one(from w in WorkingCopy, where: w.project_id == ^project_id and w.main, select: w.id)
+      Repo.one(from w in WorkingCopy, where: w.project_id == ^project_id and w.main, select: w.id) ||
+      sole_copy_id(project_id)
   end
 
   def reading_copy_id(%Scope{}), do: nil
+
+  defp sole_copy_id(project_id) do
+    case Repo.all(
+           from w in WorkingCopy, where: w.project_id == ^project_id, select: w.id, limit: 2
+         ) do
+      [id] -> id
+      _none_or_several -> nil
+    end
+  end
 
   @doc """
   Make this checkout the project's main working copy.
