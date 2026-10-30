@@ -17,6 +17,8 @@ servers:
 
 proxy:
   ssl: true
+  # Where the app listens (PORT below); kamal-proxy otherwise assumes 80.
+  app_port: 4000
   host: uat.codemyspec.com
   # The proxy probes this before moving traffic. It must answer without a
   # session, without auth and without the database (criterion 7977).
@@ -39,6 +41,7 @@ registry:
 
 env:
   clear:
+    PORT: 4000
     APP_ENV: uat
     PHX_HOST: uat.codemyspec.com
     # Names this deploy to the project's own telemetry collector, so

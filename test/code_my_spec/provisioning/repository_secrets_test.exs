@@ -59,6 +59,38 @@ defmodule CodeMySpec.Provisioning.RepositorySecretsTest do
     assert values == %{"SOPS_INITIALIZED" => "true", "FIRST" => "one", "SECOND" => "two"}
   end
 
+  test "writes many secrets in one commit, none of them in the response", ctx do
+    pairs = [{"GITHUB_CLIENT_ID", "id-value"}, {"GITHUB_CLIENT_SECRET", "secret-value"}]
+
+    assert {:ok, result} = RepositorySecrets.put_many(ctx.scope, "prod", pairs)
+    assert result.keys == ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"]
+    refute inspect(result) =~ "secret-value"
+
+    %{file: ciphertext, puts: 1} = Agent.get(ctx.state, & &1)
+    assert {:ok, values} = decrypt_content(ctx.config, ciphertext, ctx.private)
+    assert values["GITHUB_CLIENT_ID"] == "id-value"
+    assert values["GITHUB_CLIENT_SECRET"] == "secret-value"
+  end
+
+  test "a pasted env file imports through the repository with no working copy", ctx do
+    dotenv = "# app secrets\nRESEND_API_KEY=re-value\n\nGA4_MEASUREMENT_ID=G-123\n"
+
+    assert {:ok, ["GA4_MEASUREMENT_ID", "RESEND_API_KEY"]} =
+             Steps.import_dotenv_in_repository(ctx.scope, "prod", dotenv)
+
+    %{file: ciphertext, puts: 1} = Agent.get(ctx.state, & &1)
+    assert {:ok, values} = decrypt_content(ctx.config, ciphertext, ctx.private)
+    assert values["RESEND_API_KEY"] == "re-value"
+    assert values["GA4_MEASUREMENT_ID"] == "G-123"
+  end
+
+  test "an invalid name refuses the whole batch before anything is written", ctx do
+    assert {:error, "Invalid secret name."} =
+             RepositorySecrets.put_many(ctx.scope, "prod", [{"OK_KEY", "a"}, {"bad-key", "b"}])
+
+    assert %{puts: 0} = Agent.get(ctx.state, & &1)
+  end
+
   defp decrypt_content(config, ciphertext, private) do
     dir = CodeMySpec.TempFile.owned_dir("repo-secrets-decrypt")
     local = ExecutionContext.new(:local, dir)
