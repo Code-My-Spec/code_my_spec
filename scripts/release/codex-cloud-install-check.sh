@@ -28,4 +28,5 @@ python3 -c 'import json; from pathlib import Path; Path("/private-state/config.j
 export CMS_HARNESS_VERSION=2.0.700 CMS_HARNESS_ARCHIVE=/artifacts/cms-linux-x64.tar.gz
 export CMS_POSTGRES_MODE=existing
 python3 /source/priv/dev_boxes/codex_cloud.py install --root /target/release_probe --state /private-state
+/private-state/tools/harness/bin/cms_harness eval 'IO.puts("INSTALLED_HARNESS_RUNTIME_PASSED")'
 echo FRESH_X64_INSTALL_PASSED
