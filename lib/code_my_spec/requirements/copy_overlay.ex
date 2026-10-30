@@ -43,8 +43,10 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
           {story_id, Enum.map(criteria, & &1.number)}
         end),
       "authored" => architecture.authored?,
-      "story_numbers" => architecture.story_numbers,
-      "context_names" => architecture.context_names
+      # Sorted: the database returns them in no fixed order, and the read
+      # model's fingerprint must not move when nothing did.
+      "story_numbers" => Enum.sort(architecture.story_numbers),
+      "context_names" => Enum.sort(architecture.context_names)
     }
   end
 
