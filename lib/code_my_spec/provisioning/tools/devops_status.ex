@@ -203,6 +203,9 @@ defmodule CodeMySpec.Provisioning.Tools.DevopsStatus do
        when key in [:deploy, "deploy"],
        do: " — " <> text
 
+  defp reason(%{step_state: :errored, detail: "Provisioning exception: " <> _ = text}),
+    do: " — " <> text
+
   defp reason(%{step_state: :errored, detail: text}) when is_binary(text) and text != "",
     do: " — " <> Truncate.head_and_tail(text)
 

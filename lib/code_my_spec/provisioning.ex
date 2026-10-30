@@ -55,7 +55,7 @@ defmodule CodeMySpec.Provisioning do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Provisioning.{QaFixture, RunLock, Steps}
+  alias CodeMySpec.Provisioning.{ExceptionDiagnostic, QaFixture, RunLock, Steps}
   alias CodeMySpec.ProvisioningPlan
   alias CodeMySpec.ProvisioningPlan.{Sequence, Step, StepRepository}
 
@@ -463,14 +463,14 @@ defmodule CodeMySpec.Provisioning do
 
     execute_and_record(scope, key, environment, execute, opts)
   rescue
-    # A step that raises halts as an errored step rather than crashing the
-    # runner and leaving its row `:running` forever. The stacktrace is logged;
-    # the row stores only the message.
+    # Persist a secret-safe trace before returning an errored step. A Fly log
+    # buffer can discard the original exception within minutes.
     error ->
-      reason = Exception.message(error)
-      Logger.error(Exception.format(:error, error, __STACKTRACE__))
-      row = mark(scope, key, environment, :errored, error_attrs(key, reason))
-      {:halt, row, reason}
+      diagnostic = ExceptionDiagnostic.build(key, error, __STACKTRACE__)
+      Logger.error(diagnostic.trace)
+      attrs = error_attrs(key, diagnostic.detail) |> Map.put(:exception_trace, diagnostic.trace)
+      row = mark(scope, key, environment, :errored, attrs)
+      {:halt, row, diagnostic.detail}
   end
 
   defp execute_and_record(scope, key, environment, execute, opts) do
