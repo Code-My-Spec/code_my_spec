@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   alias CodeMySpec.Components
   alias CodeMySpec.Requirements.IncrementalGraph
   alias CodeMySpec.Requirements.Preloader
-  alias CodeMySpec.Requirements.Projection
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Stories
 
@@ -104,7 +104,7 @@ defmodule CodeMySpec.Requirements.ADependencyDeclaredRedrawsTheEdgesTest do
   # The event path's edges at this vantage, as node-key pairs.
   defp edges(scope) do
     ctx = Preloader.topology_context(scope)
-    {_nodes, edges} = Projection.load(scope, ctx)
+    {_nodes, edges} = RequirementGraph.served_graph(scope, ctx)
     MapSet.new(edges)
   end
 

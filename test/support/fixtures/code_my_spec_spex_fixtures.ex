@@ -178,7 +178,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.GraphStore
   alias CodeMySpec.Requirements.GraphWatcher
-  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1974,9 +1973,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec forget_projection(Scope.t()) :: :ok
   def forget_projection(%Scope{active_project_id: project_id} = scope) do
-    scope
-    |> Projection.vantages()
-    |> Enum.each(&GraphStore.clear(%{scope | active_working_copy_id: &1}))
+    :ok = GraphStore.clear(scope)
 
     # The topology too: a project is projected once it has one.
     Repo.delete_all(

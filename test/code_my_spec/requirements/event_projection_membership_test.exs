@@ -51,9 +51,7 @@ defmodule CodeMySpec.Requirements.EventProjectionMembershipTest do
 
     assert GraphStore.definitions_covered?(scope, defined)
 
-    Repo.delete_all(
-      from n in Node, where: n.story_id == ^missing.id and is_nil(n.working_copy_id)
-    )
+    Repo.delete_all(from n in "project_requirements", where: n.story_id == ^missing.id)
 
     refute GraphStore.definitions_covered?(scope, defined)
 

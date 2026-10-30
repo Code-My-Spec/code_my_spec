@@ -157,8 +157,6 @@ defmodule CodeMySpec.Requirements.Handlers do
   # one list when they agree, `{moved_by, reads}` when a rollup is moved by more
   # than it reads (`personas_complete`). Each profile loads once per event.
   @requirement_profiles %{
-    "issues_triaged" => [:issues],
-    "issues_resolved" => [:issues],
     "story_issues_triaged" => [:issues],
     "ready_for_qa" => [:stories],
     # Stored QA documents; the clauses read the documents themselves.
@@ -176,8 +174,7 @@ defmodule CodeMySpec.Requirements.Handlers do
     # The rollups, which query for themselves — see `@delegate_requirements`.
     # The profile carries a persona's `summary.md` and `sources.md` files.
     "personas_complete" => [:personas],
-    "stories_exist" => [:stories],
-    "work_dispatched" => [:stories, :issues]
+    "stories_exist" => [:stories]
   }
 
   # Rollups no event carries the answer to, settled by calling the

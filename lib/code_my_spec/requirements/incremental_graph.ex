@@ -690,12 +690,10 @@ defmodule CodeMySpec.Requirements.IncrementalGraph do
     covered = ctx |> all_entities() |> MapSet.put({"project", state.project_id})
 
     {write_us, {:ok, _moved}} = :timer.tc(fn -> GraphStore.write(state.scope, covered, nodes) end)
-    {:ok, reaped} = GraphStore.reap_unseen(state.scope, Enum.map(ctx.stories, & &1.id))
 
     Logger.info(
       "[IncrementalGraph] seeded #{state.project_id} — #{length(nodes)} nodes in " <>
-        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms, " <>
-        "#{reaped} rows of unseen stories reaped"
+        "#{div(nodes_us, 1000)}ms, written in #{div(write_us, 1000)}ms"
     )
 
     state |> remember_topology(topology) |> edges_due()

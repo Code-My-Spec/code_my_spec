@@ -20,7 +20,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Requirements.{GraphStore, Preloader, Projection, RequirementGraph}
+  alias CodeMySpec.Requirements.{GraphStore, Preloader, RequirementGraph}
   alias CodeMySpec.Stories
 
   setup do
@@ -33,9 +33,11 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     {nodes, edges}
   end
 
+  # What is served against what the domain says now, computed in memory.
   defp round_trip(scope) do
-    {nodes, edges} = publish(scope)
-    {read_nodes, read_edges} = Projection.load(scope, ctx!(scope))
+    publish(scope)
+    {nodes, edges} = RequirementGraph.compute_graph(scope)
+    {read_nodes, read_edges} = RequirementGraph.served_graph(scope, ctx!(scope))
 
     {{nodes, edges}, {read_nodes, read_edges}}
   end
@@ -51,7 +53,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     ctx
   end
 
-  describe "load/2 against a computed graph" do
+  describe "the served graph against a computed one" do
     test "every computed node comes back", %{scope: scope} do
       {{nodes, _}, {read, _}} = round_trip(scope)
 
@@ -106,7 +108,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   # tests above exercise one of `entity_for/2`'s three branches. Component ids
   # are UUIDs and story ids are integers — the two easiest to get wrong were the
   # two not being run.
-  describe "load/2 across all three entity types" do
+  describe "the served graph across all three entity types" do
     setup %{scope: scope} do
       component_fixture(scope, %{type: "context"})
 
@@ -152,56 +154,6 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   # The question the payload could not answer, and the reason for all of this.
   # A `bytea` addressed by one hash cannot say which of its nodes a changed file
   # touches, so any change discarded the whole graph.
-  describe "for_file/2" do
-    setup %{scope: scope} do
-      component = component_fixture(scope, %{type: "context"})
-      publish(scope)
-      %{component: component}
-    end
-
-    test "a component's file names that component's requirements", %{
-      scope: scope,
-      component: component
-    } do
-      path = "lib/demo/#{System.unique_integer([:positive])}.ex"
-
-      Repo.insert!(%CodeMySpec.Files.File{
-        project_id: scope.active_project_id,
-        working_copy_id: scope.active_working_copy_id,
-        component_id: component.id,
-        path: path,
-        role: :implementation
-      })
-
-      found = Projection.for_file(scope, path)
-
-      assert found != []
-      assert Enum.all?(found, &(&1.component_id == component.id))
-    end
-
-    # A pinned nil in `component_id == ^nil` compiles to `= NULL`, which is
-    # never true — so a story's file must not accidentally match every node
-    # whose component is null, which is every project node.
-    test "a file owned by nothing bears on nothing", %{scope: scope} do
-      path = "lib/demo/unowned_#{System.unique_integer([:positive])}.ex"
-
-      Repo.insert!(%CodeMySpec.Files.File{
-        project_id: scope.active_project_id,
-        working_copy_id: scope.active_working_copy_id,
-        path: path,
-        role: :implementation
-      })
-
-      assert Projection.for_file(scope, path) == [],
-             "an unowned file bearing on every project requirement would be worse " <>
-               "than no answer — it would invalidate the whole graph on any edit"
-    end
-
-    test "a path with no file row is not an error", %{scope: scope} do
-      assert Projection.for_file(scope, "lib/does/not/exist.ex") == []
-    end
-  end
-
   # Whether the rows are actually the source, or just written and compared.
   #
   # The payload and the rows agree by construction, so equality proves nothing
@@ -239,7 +191,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     end
   end
 
-  describe "load/2 when rows and definitions disagree" do
+  describe "the served graph when rows and definitions disagree" do
     # A row whose name matches no definition is dropped rather than guessed at:
     # the definitions moved and this node genuinely is not in the graph any
     # more. Rehydrating it would put a retired requirement back in front of an
@@ -247,14 +199,17 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     test "a row with no matching definition is not rehydrated", %{scope: scope} do
       publish(scope)
 
-      Repo.insert!(%CodeMySpec.Requirements.Node{
+      %CodeMySpec.Requirements.Node{}
+      |> Ecto.put_meta(source: "project_requirements")
+      |> Ecto.Changeset.change(
         project_id: scope.active_project_id,
         name: "a_requirement_that_no_longer_exists",
         description: "left behind by a definition rename",
         satisfied: true
-      })
+      )
+      |> Repo.insert!()
 
-      {read, _edges} = Projection.load(scope, ctx!(scope))
+      {read, _edges} = RequirementGraph.served_graph(scope, ctx!(scope))
 
       refute Enum.any?(read, &(&1.name == "a_requirement_that_no_longer_exists"))
     end

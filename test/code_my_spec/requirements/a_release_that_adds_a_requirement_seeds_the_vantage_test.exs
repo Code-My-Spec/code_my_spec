@@ -73,24 +73,21 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       # A row a retired definition left behind.
       [{template_row_id}] =
         scope
-        |> story_rows("bdd_specs_exist")
+        |> story_rows("three_amigos_complete")
         |> Ecto.Query.select([n], {n.id})
         |> Ecto.Query.limit(1)
         |> Repo.all()
 
       row =
         Repo.one!(
-          from(n in "requirements",
+          from(n in "project_requirements",
             where: n.id == ^template_row_id,
             select:
               map(n, [
                 :story_id,
                 :description,
                 :satisfied,
-                :scope,
-                :validation_type,
-                :execution_type,
-                :working_copy_id,
+                :details,
                 :inserted_at,
                 :updated_at,
                 :checked_at
@@ -98,8 +95,8 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
           )
         )
 
-      Repo.insert_all("requirements", [
-        Map.merge(row, %{name: "retired_requirement", story_id: story.id, satisfied_by: nil})
+      Repo.insert_all("project_requirements", [
+        Map.merge(row, %{name: "retired_requirement", story_id: story.id})
       ])
 
       assert rows_named(scope, "retired_requirement") == 1
@@ -173,20 +170,11 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
-  # Where the name's rows live: once per project, or per checkout.
-  defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
+  # Rows are stored once per project.
+  defp story_rows(%Scope{active_project_id: project_id}, name) do
     stories =
       from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
 
-    if name in GraphStore.project_wide_names() do
-      from(n in "project_requirements",
-        where: n.story_id in subquery(stories) and n.name == ^name
-      )
-    else
-      from(n in "requirements",
-        where: n.story_id in subquery(stories) and n.name == ^name,
-        where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
-      )
-    end
+    from(n in "project_requirements", where: n.story_id in subquery(stories) and n.name == ^name)
   end
 end

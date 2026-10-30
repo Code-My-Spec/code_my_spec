@@ -35,7 +35,7 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{GraphWatcher, Node, Projection}
+  alias CodeMySpec.Requirements.{GraphWatcher, Node}
   alias CodeMySpec.Users.Scope
 
   @type pass :: %{at: NaiveDateTime.t(), rows: non_neg_integer(), share: float()}
@@ -73,7 +73,7 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
   # owners it hangs off. A row has exactly one, so the three clauses are
   # disjoint and no row is counted twice.
   defp owned_rows(project_id) do
-    from(n in Node,
+    from(n in {"project_requirements", Node},
       left_join: s in "stories",
       on: s.id == n.story_id,
       left_join: c in "components",
@@ -85,29 +85,11 @@ defmodule CodeMySpec.Requirements.IncrementalReport do
     )
   end
 
-  # Rows per vantage, with how fresh the freshest row in each is.
-  #
-  # A vantage that has stopped moving while its neighbours advance is the
-  # visible form of a watcher maintaining one checkout's row-space and no
-  # others — which is a real failure this branch fixed and which nothing
-  # surfaced at the time.
-  defp vantages(rows, scope) do
-    counted =
-      rows
-      |> group_by([n], n.working_copy_id)
-      |> select([n], {n.working_copy_id, count(n.id), max(n.checked_at)})
-      |> Repo.all()
-      |> Map.new(fn {vantage, count, newest} -> {vantage, {count, newest}} end)
-
-    scope
-    |> Projection.vantages()
-    |> Enum.concat(Map.keys(counted))
-    |> Enum.uniq()
-    |> Enum.map(fn vantage ->
-      {count, newest} = Map.get(counted, vantage, {0, nil})
-      %{vantage: vantage, rows: count, newest: newest}
-    end)
-    |> Enum.sort_by(& &1.rows, :desc)
+  # The project's one row-space: rows are stored once per project, and a
+  # checkout's file verdicts are its overlay.
+  defp vantages(rows, _scope) do
+    {count, newest} = rows |> select([n], {count(n.id), max(n.checked_at)}) |> Repo.one()
+    [%{vantage: nil, rows: count, newest: newest}]
   end
 
   # One entry per distinct `checked_at`, newest first — which is one entry per

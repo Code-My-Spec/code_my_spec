@@ -276,11 +276,9 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
       assert meta.vantages == 1, "eleven copies were settled one by one"
       assert cost.queries < 300
 
-      # A copy's file verdicts are its overlay; nothing is written per copy.
-      assert CodeMySpec.Repo.aggregate(
-               from(n in "requirements", where: not is_nil(n.working_copy_id)),
-               :count
-             ) == 0
+      # A copy's file verdicts are its overlay and its gates are settled on
+      # read: the per-copy table is never written.
+      assert CodeMySpec.Repo.aggregate("requirements", :count) == 0
     end
 
     test "a drain reports how many checkouts it settled", ctx do
