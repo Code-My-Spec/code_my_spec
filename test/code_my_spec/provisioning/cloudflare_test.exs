@@ -207,6 +207,44 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
                Cloudflare.ensure_dns_record(@scope, "z1", "app.example.com", "1.2.3.4")
     end
 
+    test "ensure_dns_record updates TTL in place when the address matches" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(
+            conn,
+            200,
+            ok([
+              %{
+                "id" => "r1",
+                "name" => "app.example.com",
+                "type" => "A",
+                "content" => "1.2.3.4",
+                "proxied" => false,
+                "ttl" => 60
+              }
+            ])
+          )
+
+        %{method: "PUT", request_path: path} = conn ->
+          assert path =~ "/dns_records/r1"
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+          assert payload["ttl"] == 120
+          assert payload["proxied"] == false
+          json(conn, 200, ok(Map.put(payload, "id", "r1")))
+
+        %{method: "POST"} = conn ->
+          flunk("TTL change created a duplicate DNS record")
+          conn
+      end)
+
+      assert {:ok, _} =
+               Cloudflare.ensure_dns_record(@scope, "z1", "app.example.com", "1.2.3.4",
+                 ttl: 120,
+                 proxied: false
+               )
+    end
+
     # An apex record duplicated rather than updated breaks inbound mail, so
     # this is not merely untidiness.
     test "ensure_dns_record updates in place when the content differs" do

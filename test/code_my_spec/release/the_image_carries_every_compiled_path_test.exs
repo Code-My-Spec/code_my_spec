@@ -28,4 +28,14 @@ defmodule CodeMySpec.Release.TheImageCarriesEveryCompiledPathTest do
       assert path in copied, "Dockerfile does not copy #{path}, which :prod compiles"
     end
   end
+
+  # bin/server and bin/migrate decrypt ../envs/<env>.enc.env; an image without
+  # it refused every boot and migrate on our own boxes ("image has no
+  # ../envs/uat.enc.env").
+  test "the release image carries the encrypted environments, and only those" do
+    dockerfile = File.read!(Path.join(@root, "Dockerfile"))
+
+    assert dockerfile =~ ~r{^COPY --chown=nobody:root envs/\*\.enc\.env \./envs/$}m
+    refute dockerfile =~ ~r{^COPY .*envs/(\*|[a-z]+)\.env\b}m
+  end
 end

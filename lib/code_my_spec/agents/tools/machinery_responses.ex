@@ -41,6 +41,7 @@ defmodule CodeMySpec.Agents.Tools.MachineryResponses do
         tools(machinery),
         previews(machinery),
         analyzers(machinery),
+        queue(machinery),
         machines(machinery)
       ],
       "\n"
@@ -144,6 +145,22 @@ defmodule CodeMySpec.Agents.Tools.MachineryResponses do
   defp age(seconds) when seconds < 90, do: "#{seconds}s"
   defp age(seconds) when seconds < 5400, do: "#{div(seconds, 60)}m"
   defp age(seconds), do: "#{div(seconds, 3600)}h"
+
+  # The promotion queue (criterion 2482): what it is gating, or why it cannot.
+  defp queue(%Machinery{queue: nil}), do: "queue: not read.\n"
+
+  defp queue(%Machinery{queue: %{blocked: %{reason: reason, since: since}} = q}),
+    do:
+      "queue: CANNOT GATE for #{DateTime.diff(DateTime.utc_now(), since, :second) |> age()}" <>
+        " — #{reason}; #{waiting(q.queued)}\n"
+
+  defp queue(%Machinery{queue: %{gating: commit} = q}) when is_binary(commit),
+    do: "queue: gating #{String.slice(commit, 0, 9)}; #{waiting(q.queued)}\n"
+
+  defp queue(%Machinery{queue: q}), do: "queue: idle; #{waiting(q.queued)}\n"
+
+  defp waiting(0), do: "nothing waiting"
+  defp waiting(n), do: "#{n} waiting"
 
   defp machines(%Machinery{machines: []}), do: "machine: nothing has reported a device.\n"
 

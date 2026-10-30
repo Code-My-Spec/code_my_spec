@@ -42,6 +42,7 @@ defmodule CodeMySpec.Provisioning.Tools do
       CodeMySpec.Provisioning.Tools.ReadDatabaseUrl,
       CodeMySpec.Provisioning.Tools.ReadProjectFile,
       CodeMySpec.Provisioning.Tools.ReadRegistryCredential,
+      CodeMySpec.Provisioning.Tools.RestoreDatabaseDump,
       CodeMySpec.Provisioning.Tools.RunDevopsSetup,
       CodeMySpec.Provisioning.Tools.RunProvisioningStep,
       CodeMySpec.Provisioning.Tools.SaveProviderCredential,

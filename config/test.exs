@@ -460,6 +460,10 @@ config :code_my_spec, provisioning_async: false
 # against the live dev server.
 config :code_my_spec, analysis_mode: :inline
 
+# `HarnessProjectChannel` gathers read-model pushes over this window; 2s in
+# production.
+config :code_my_spec, read_model_coalesce_ms: 50
+
 # Static harness socket secret in tests — deterministic and avoids writing a
 # generated secret into the developer's ~/.codemyspec on `mix test`.
 config :code_my_spec, harness_secret: "test-harness-secret"

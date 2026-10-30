@@ -23,7 +23,8 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   def needs_attention?(%Digest{} = digest) do
     Enum.any?(digest.questions, &(&1.holder == "main_agent")) or
       Enum.any?(attention_agents(digest), &(not waiting_elsewhere?(&1, digest.questions))) or
-      not is_nil(machinery_alarm(digest)) or TokenBurn.over_threshold(digest.tokens) != []
+      not is_nil(machinery_alarm(digest)) or TokenBurn.over_threshold(digest.tokens) != [] or
+      Enum.any?(Digest.copy_problems(digest), & &1.raised?)
   end
 
   @spec render(Digest.t(), keyword()) :: String.t()
@@ -48,7 +49,9 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       "(leave off). run_script: list_agent_work({}); list_agents({}). " <>
       question_counts(digest.questions) <>
       " " <>
-      requirements(digest.requirements) <>
+      requirements(digest.requirements, digest.previous_requirements) <>
+      problems_suffix(digest) <>
+      suffix(teams_line(digest)) <>
       tokens_suffix(digest)
   end
 
@@ -57,6 +60,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     attention = attention_agents(digest)
     new_stalls = Keyword.get(opts, :new_stalls, [])
     needs = Enum.map(mine, &question_line/1) ++ Enum.map(attention, &agent_line(&1, new_stalls))
+    needs = needs ++ copy_problem_lines(digest)
     needs = needs ++ List.wrap(machinery_alarm(digest)) ++ burn_lines(digest)
 
     [
@@ -73,8 +77,10 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       work(Keyword.get(opts, :work?, false)),
       "agents: #{length(digest.work) - length(attention)} settled; #{length(attention)} needing attention; " <>
         "#{length(digest.off)} off (leave off). run_script: list_agent_work({}); list_agents({})",
+      teams_line(digest),
       question_counts(others),
-      requirements(digest.requirements),
+      problems_count(digest),
+      requirements(digest.requirements, digest.previous_requirements),
       tokens_line(digest)
     ]
     |> Enum.reject(&is_nil/1)
@@ -93,7 +99,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     stalled = MapSet.new(Digest.stalled(digest), & &1.agent_id)
 
     Enum.filter(digest.work, fn entry ->
-      MapSet.member?(stalled, entry.agent_id) or entry.problems != [] or
+      MapSet.member?(stalled, entry.agent_id) or
         entry.blocked_reasons != [] or entry.task_status == :blocked or
         starting?(entry) or AgentWork.toolless?(entry) or AgentWork.provider_blocked?(entry) or
         AgentWork.timing_out?(entry)
@@ -107,7 +113,7 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
 
   defp waiting_elsewhere?(entry, questions) do
     Enum.any?(questions, &(&1.agent_id == entry.agent_id and &1.holder != "main_agent")) and
-      entry.problems == [] and not AgentWork.toolless?(entry) and
+      not AgentWork.toolless?(entry) and
       not AgentWork.provider_blocked?(entry) and not AgentWork.timing_out?(entry) and
       not starting?(entry)
   end
@@ -139,16 +145,102 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
         AgentWork.turn_timeouts(entry)
 
       entry.blocked_reasons != [] or entry.task_status == :blocked ->
-        "blocked; inspect the waiting work"
+        blocked_on(entry)
 
       starting?(entry) ->
         "starting; inspect startup progress"
 
-      entry.problems != [] ->
-        "#{length(entry.problems)} checkout problems"
-
       true ->
         stall_reason(entry)
+    end
+  end
+
+  # What a blocked agent waits on (criterion 2476): the question it asked, in
+  # its words, or — with no question open — a task left blocked after its
+  # answer, which only resuming it ends.
+  defp blocked_on(%{blocked_reasons: [question | rest]}),
+    do: "waiting on its question: \"#{summary(question)}\"" <> more(rest)
+
+  defp blocked_on(entry),
+    do: "its #{entry.task_name || "task"} is blocked with no open question; it needs resuming"
+
+  # A copy's problem, once, saying what it is (criteria 2473, 2474). Only raised
+  # ones: a team's work in progress is counted in `problems_count/1` instead.
+  defp copy_problem_lines(digest) do
+    for %{raised?: true} = copy <- Digest.copy_problems(digest) do
+      [first | rest] = copy.problems
+
+      "copy #{copy.working_copy_id} #{copy.root}#{main_mark(copy, digest)}: " <>
+        "#{first.source} #{first.file_path}#{line(first.line)} — #{summary(first.message)}" <>
+        more(rest) <> " — run_script: list_agent_work({})"
+    end
+  end
+
+  defp main_mark(%{working_copy_id: id}, %Digest{main_copy_id: id}), do: " (main)"
+  defp main_mark(_copy, _digest), do: ""
+
+  defp line(n) when is_integer(n), do: ":#{n}"
+  defp line(_n), do: ""
+
+  defp more([]), do: ""
+  defp more(rest), do: " (+#{length(rest)} more)"
+
+  defp problems_count(digest) do
+    case Enum.count(Digest.copy_problems(digest), &(not &1.raised?)) do
+      0 -> nil
+      1 -> "problems: 1 copy with problems in progress."
+      n -> "problems: #{n} copies with problems in progress."
+    end
+  end
+
+  # Teams (criterion 2483): the insight is a team with nothing in hand, which
+  # main can move; busy teams are a count, and list_agent_work has the rest.
+  defp teams_line(%Digest{work: work}) do
+    teams =
+      work
+      |> Enum.filter(&(&1.role in [:coding, :qa] and is_binary(&1.working_copy_id)))
+      |> Enum.group_by(& &1.working_copy_id)
+      |> Map.values()
+
+    {free, busy} = Enum.split_with(teams, &free?/1)
+
+    case {free, busy} do
+      {[], []} ->
+        nil
+
+      {[], busy} ->
+        "teams: #{length(busy)} busy."
+
+      {free, busy} ->
+        "teams: #{length(busy)} busy; free: #{labels(free)} — run_script: list_agent_work({})."
+    end
+  end
+
+  defp free?(entries) do
+    Enum.all?(entries, fn entry ->
+      is_nil(entry.story_title) and is_nil(entry.issue_id) and is_nil(entry.task_name) and
+        not entry.turn_in_flight? and is_nil(entry.turn_started_at)
+    end)
+  end
+
+  defp labels(teams) do
+    teams
+    |> Enum.map(fn [entry | _] ->
+      if entry.working_copy_root,
+        do: Path.basename(entry.working_copy_root),
+        else: short(entry.working_copy_id)
+    end)
+    |> Enum.sort()
+    |> Enum.join(", ")
+  end
+
+  defp suffix(nil), do: ""
+  defp suffix(line), do: " " <> line
+
+  defp problems_suffix(digest) do
+    case problems_count(digest) do
+      nil -> ""
+      line -> " " <> line
     end
   end
 
@@ -184,9 +276,26 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
       "product #{Map.get(counts, "product_agent", 0)}. run_script: list_notifications({})"
   end
 
-  defp requirements(%{total: total, satisfied: satisfied}),
+  defp requirements(%{total: total, satisfied: satisfied}, previous),
     do:
-      "Requirements: #{satisfied}/#{total} satisfied. run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+      "Requirements: #{satisfied}/#{total} satisfied#{since(satisfied, total, previous)}. " <>
+        "run_script: list_requirements({status = \"unsatisfied\", summary = true})"
+
+  defp requirements(other, _previous), do: requirements(other)
+
+  # The change since the previous check-in (criterion 2477); nothing on the first.
+  defp since(_satisfied, _total, nil), do: ""
+
+  defp since(satisfied, total, %{satisfied: was, total: was_total}) do
+    case {satisfied - was, total - was_total} do
+      {0, 0} -> " (no change since last check-in)"
+      {s, 0} -> " (#{signed(s)} since last check-in)"
+      {s, t} -> " (#{signed(s)} satisfied, #{signed(t)} total since last check-in)"
+    end
+  end
+
+  defp signed(n) when n >= 0, do: "+#{n}"
+  defp signed(n), do: "#{n}"
 
   defp requirements({:unavailable, reason}),
     do:

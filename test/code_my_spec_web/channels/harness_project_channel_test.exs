@@ -21,6 +21,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   @endpoint CodeMySpecWeb.Endpoint
 
   alias CodeMySpec.Analysis.RunsRepository
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.WorkingCopies
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -468,6 +469,74 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       end
     end
   end
+
+  describe "overlay" do
+    alias CodeMySpec.Requirements.CopyOverlay.Report
+
+    test "the read model carries the records the overlay reads, and names itself",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "read_model", %{})
+      assert_reply ref, :ok, payload, 2_000
+
+      decoded = payload |> Jason.encode!() |> Jason.decode!()
+
+      assert %{"criteria_by_story" => _, "authored" => _, "story_numbers" => _} =
+               decoded["overlay_records"]
+
+      assert is_binary(decoded["fingerprint"])
+    end
+
+    test "once it reports overlays, a harness is told when its read model moved",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      # An older harness never reports one, and is not told.
+      component_changed(scope)
+      refute_push "read_model_changed", _, 200
+
+      ref = push(channel, "overlay", %{"read_model" => "abc", "verdicts" => []})
+      assert_reply ref, :ok, _, 2_000
+
+      # A burst is one push.
+      component_changed(scope)
+      component_changed(scope)
+      # The window is 50ms here (config/test.exs).
+      assert_push "read_model_changed", _, 1_000
+      refute_push "read_model_changed", _, 200
+    end
+
+    test "a report is stored and compared with this checkout's rows",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref =
+        push(channel, "overlay", %{
+          "read_model" => "abc",
+          "head" => "0123abc",
+          "behind" => 2,
+          "dirty" => false,
+          "verdicts" => []
+        })
+
+      assert_reply ref, :ok, _, 2_000
+
+      assert %Report{head: "0123abc", behind: 2, dirty: false, compared_at: %DateTime{}} =
+               CodeMySpec.Repo.get(Report, scope.active_working_copy_id)
+    end
+  end
+
+  defp component_changed(scope),
+    do:
+      GraphInputs.event(
+        scope,
+        "Test",
+        "component_changed",
+        %{},
+        [],
+        :project_wide
+      )
 
   describe "observations" do
     setup %{scope: scope, topic: topic} do

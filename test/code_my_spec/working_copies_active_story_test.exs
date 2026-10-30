@@ -43,6 +43,24 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
   defp choose(scope, story_id),
     do: Agents.assign_team(scope, scope.active_working_copy_id, story_id)
 
+  # Every requirement of the story satisfied at the copy: its own rows, and the
+  # ones stored once per project.
+  defp satisfy_story(story, scope) do
+    Repo.update_all(
+      from(n in CodeMySpec.Requirements.Node,
+        where: n.story_id == ^story.id and n.working_copy_id == ^scope.active_working_copy_id
+      ),
+      set: [satisfied: true]
+    )
+
+    Repo.update_all(
+      from(n in {"project_requirements", CodeMySpec.Requirements.Node},
+        where: n.story_id == ^story.id
+      ),
+      set: [satisfied: true]
+    )
+  end
+
   # A copy used to keep every story it had ever been pointed at, and each one
   # was then stuck: `story_assigned_elsewhere` refuses to move an assigned
   # story, and clearing left the assignment behind. Pointing a copy at a second
@@ -97,12 +115,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
 
     {_done, total} = CodeMySpec.Requirements.story_progress(scope, done.id)
 
-    Repo.update_all(
-      from(n in CodeMySpec.Requirements.Node,
-        where: n.story_id == ^done.id and n.working_copy_id == ^scope.active_working_copy_id
-      ),
-      set: [satisfied: true]
-    )
+    satisfy_story(done, scope)
 
     assert {^total, ^total} = CodeMySpec.Requirements.story_progress(scope, done.id),
            "the fixture did not make a fully satisfied story"
@@ -117,12 +130,7 @@ defmodule CodeMySpec.WorkingCopiesActiveStoryTest do
     {:ok, done} =
       story_fixture(scope) |> Story.changeset(%{promoted_version: "2.0.1"}) |> Repo.update()
 
-    Repo.update_all(
-      from(n in CodeMySpec.Requirements.Node,
-        where: n.story_id == ^done.id and n.working_copy_id == ^scope.active_working_copy_id
-      ),
-      set: [satisfied: true]
-    )
+    satisfy_story(done, scope)
 
     issue_fixture(scope, %{story_id: done.id, status: :accepted})
 

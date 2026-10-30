@@ -15,6 +15,15 @@ defmodule CodeMySpec.Provisioning.Database do
   - **A separate restore role** (`app_<project>_restore`, `CREATEDB` only)
     makes and drops `bin/backup restore`'s scratch database. The app's own
     role never gets `CREATEDB`.
+  - **Adopting an existing app copies its data in, once.** `import_from/4`
+    dumps and restores a legacy database on the same box, reassigns
+    ownership, and compares row counts; `imported?/3` is the same compare
+    with nothing run, for `verify/3` and for a repeat caller to skip the work.
+  - **A cutover restores an uploaded dump, not a live source.** `restore_dump/4`
+    is `import_from/4`'s counterpart for a dump file already on the box:
+    it refuses a target that already holds rows unless the caller confirms,
+    takes a pre-restore dump first, and checks row counts against the dump
+    itself rather than the target's prior state.
 
   See knowledge/provisioning, "Database".
   """
@@ -255,6 +264,200 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  @doc """
+  Copy a legacy database on the same box into this environment's tenant,
+  then hand ownership of everything it brought over to the tenant role.
+
+  `source` names another container and database `:run` already reaches —
+  never a remote host, since the legacy app and `cms-postgres` share a
+  server. The dump and the restore are one piped command, so the data never
+  touches the filesystem in between. A dump taken with `--no-owner` restores
+  everything to whichever role ran `pg_restore` (the admin, here), which is
+  why ownership is reassigned afterward rather than carried by the dump —
+  the dump cannot know the tenant role's name.
+
+  Row counts are compared, table by table, once the restore and the
+  ownership change are both done. A mismatch is reported rather than
+  silently accepted; teardown has nothing to do with an import, so nothing
+  here is undone on failure.
+  """
+  @spec import_from(
+          Scope.t(),
+          String.t(),
+          %{container: String.t(), database: String.t()},
+          keyword()
+        ) ::
+          {:ok, %{source: map(), target: map()}} | {:error, term()}
+  def import_from(%Scope{} = scope, environment, source, opts) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, credential} <- serve_credential(scope, environment, opts),
+         target = %{database: credential.database, username: credential.username},
+         :ok <- dump_and_restore(run, source, target),
+         :ok <- reassign_ownership(run, target) do
+      compare_row_counts(run, source, target)
+    end
+  end
+
+  @doc """
+  Whether `target_database` already holds what `source` does, table by
+  table. Never writes anything — `import_from/4`'s own idempotency check,
+  and `:import`'s `verify/3`.
+  """
+  @spec imported?(keyword(), %{container: String.t(), database: String.t()}, String.t()) ::
+          {:ok, boolean()} | {:error, term()}
+  def imported?(opts, source, target_database) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, source_counts} <-
+           table_row_counts(run, source.container, @admin_username, source.database),
+         {:ok, target_counts} <-
+           table_row_counts(run, @container, @admin_username, target_database) do
+      {:ok, source_counts == target_counts}
+    end
+  end
+
+  defp compare_row_counts(run, source, target) do
+    with {:ok, source_counts} <-
+           table_row_counts(run, source.container, @admin_username, source.database),
+         {:ok, target_counts} <-
+           table_row_counts(run, @container, @admin_username, target.database) do
+      if source_counts == target_counts do
+        {:ok, %{source: source_counts, target: target_counts}}
+      else
+        {:error, {:database_import_row_counts_mismatched, source_counts, target_counts}}
+      end
+    end
+  end
+
+  # Written on the host, not inside the container: `dump_before_restore/4`
+  # and the upload both land here, and `restore_file/3`'s `<` redirection
+  # reads it the same way regardless of which wrote it.
+  @pre_restore_dir "/var/backups/cms-postgres"
+
+  @doc """
+  Restore an uploaded pg_dump -Fc file into `environment`'s tenant database
+  — the upload-file counterpart to `import_from/4`'s container-to-container
+  copy (b6daceee). Unlike that always-empty adopted tenant, this target may
+  already have schema from a migration that ran ahead of it, so
+  `opts[:confirm_non_empty]` is required once any table already holds a
+  row; the refusal names exactly what is there rather than guessing. A
+  pre-restore dump of the target is taken once past that gate, win or lose,
+  so a bad restore is recoverable from it. `rows` is compared against the
+  dump itself — learned by restoring it once into a disposable database,
+  never by trusting a count the dump's own header claims — not against the
+  target's state before this ran.
+  """
+  @spec restore_dump(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, %{pre_restore_dump: String.t(), rows: map()}} | {:error, term()}
+  def restore_dump(%Scope{} = scope, environment, dump_path, opts) do
+    run = Keyword.fetch!(opts, :run)
+
+    with {:ok, credential} <- serve_credential(scope, environment, opts),
+         target = %{database: credential.database, username: credential.username},
+         {:ok, existing} <-
+           table_row_counts(run, @container, @admin_username, target.database),
+         :ok <- refuse_unless_confirmed(existing, opts),
+         {:ok, pre_restore_dump} <- dump_before_restore(run, target, environment, opts),
+         {:ok, expected} <- dump_row_counts(run, dump_path, target.database),
+         :ok <- restore_file(run, dump_path, target.database),
+         :ok <- reassign_ownership(run, target),
+         {:ok, actual} <-
+           table_row_counts(run, @container, @admin_username, target.database) do
+      if actual == expected do
+        {:ok, %{pre_restore_dump: pre_restore_dump, rows: actual}}
+      else
+        {:error, {:database_restore_row_counts_mismatched, expected, actual}}
+      end
+    end
+  end
+
+  defp refuse_unless_confirmed(existing, opts) do
+    present = for {table, count} <- existing, count > 0, into: %{}, do: {table, count}
+
+    cond do
+      map_size(present) == 0 -> :ok
+      Keyword.get(opts, :confirm_non_empty, false) -> :ok
+      true -> {:error, {:database_restore_target_not_empty, present}}
+    end
+  end
+
+  defp dump_before_restore(run, target, environment, opts) do
+    dir = Keyword.get(opts, :pre_restore_dir, @pre_restore_dir)
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0).()
+    stamp = now |> DateTime.to_iso8601() |> String.replace(~r/[^0-9TZ]/, "")
+    path = "#{dir}/#{environment}-#{stamp}.dump"
+
+    command =
+      "mkdir -p #{shell_escape(dir)} && docker exec #{@container} pg_dump -Fc " <>
+        "-U #{shell_escape(@admin_username)} -d #{shell_escape(target.database)} > " <>
+        shell_escape(path)
+
+    case run.([command]) do
+      {_output, 0} ->
+        {:ok, path}
+
+      {output, status} ->
+        {:error, {:database_pre_restore_dump_failed, status, String.trim(output)}}
+    end
+  end
+
+  # A disposable database nothing else ever connects to, dropped once its
+  # count is read. Never the live scratch database `bin/backup restore`
+  # uses — that one proves backups, this one proves a specific upload, and
+  # a restore caught mid-cutover must not collide with either.
+  defp dump_row_counts(run, dump_path, target_database) do
+    scratch = "#{target_database}_dump_check"
+
+    with :ok <- create_scratch_database(run, scratch),
+         :ok <- restore_file(run, dump_path, scratch),
+         {:ok, counts} <- table_row_counts(run, @container, @admin_username, scratch),
+         :ok <- drop_scratch_database(run, scratch) do
+      {:ok, counts}
+    end
+  end
+
+  defp create_scratch_database(run, database) do
+    sql = "CREATE DATABASE #{database}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(@admin_username)} " <>
+        "-c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_scratch_create_failed, status, String.trim(output)}}
+    end
+  end
+
+  defp drop_scratch_database(run, database) do
+    sql = "DROP DATABASE IF EXISTS #{database}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(@admin_username)} " <>
+        "-c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_scratch_drop_failed, status, String.trim(output)}}
+    end
+  end
+
+  # `-i`: pg_restore reads from stdin, which the shell connects to
+  # `dump_path` via `<` — a file already on the box, never piped from
+  # another process the way `dump_and_restore/3`'s container source is.
+  defp restore_file(run, dump_path, database) do
+    command =
+      "docker exec -i #{@container} pg_restore --no-owner --no-acl " <>
+        "-U #{shell_escape(@admin_username)} -d #{shell_escape(database)} < " <>
+        shell_escape(dump_path)
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_restore_failed, status, String.trim(output)}}
+    end
+  end
+
   defp serve_admin_credential(scope, opts) do
     case Keyword.get(opts, :database_admin_credential) do
       %{username: _, password: _} = admin -> {:ok, admin}
@@ -447,6 +650,84 @@ defmodule CodeMySpec.Provisioning.Database do
     case run.([command]) do
       {_output, 0} -> :ok
       {output, status} -> {:error, {error_tag, status, String.trim(output)}}
+    end
+  end
+
+  # One piped command, both sides `docker exec`: the legacy container never
+  # takes a network hop to reach `cms-postgres`, both being on the same box.
+  # `--no-owner --no-acl --no-comments` on the dump side matches the hand-run
+  # recipe this step automates — ownership is reassigned separately, once the
+  # restored role's actual name is known.
+  defp dump_and_restore(run, source, target) do
+    dump =
+      "docker exec #{shell_escape(source.container)} pg_dump -Fc --no-owner --no-acl " <>
+        "--no-comments -U #{shell_escape(@admin_username)} -d #{shell_escape(source.database)}"
+
+    restore =
+      "docker exec -i #{@container} pg_restore --no-owner --no-acl " <>
+        "-U #{shell_escape(@admin_username)} -d #{shell_escape(target.database)}"
+
+    case run.([dump <> " | " <> restore]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_import_failed, status, String.trim(output)}}
+    end
+  end
+
+  # A dump restored with `--no-owner` lands on whichever role ran
+  # `pg_restore` — the admin, never the tenant, which the dump cannot name.
+  # Every table, sequence and view in `public` is walked rather than listed,
+  # since the legacy schema is whatever the adopted app happens to have.
+  defp reassign_ownership(run, target) do
+    owner = sql_escape(target.username)
+
+    sql =
+      "DO $$ DECLARE r RECORD; BEGIN " <>
+        "FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP " <>
+        "EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.tablename, #{owner}); END LOOP; " <>
+        "FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'public' LOOP " <>
+        "EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.sequencename, #{owner}); " <>
+        "END LOOP; " <>
+        "FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'public' LOOP " <>
+        "EXECUTE format('ALTER VIEW public.%I OWNER TO %I', r.viewname, #{owner}); END LOOP; " <>
+        "END $$;"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(@admin_username)} " <>
+        "-d #{shell_escape(target.database)} -c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:database_import_ownership_failed, status, String.trim(output)}}
+    end
+  end
+
+  # One query, every base table in `public`: the dynamic-count trick
+  # (`query_to_xml`/`xpath`) avoids a round trip per table, and is exact —
+  # unlike `pg_stat_user_tables.n_live_tup`, which is an estimate that has not
+  # caught up right after a bulk restore.
+  @row_count_sql "SELECT COALESCE(json_object_agg(t.relname, t.cnt), '{}'::json) FROM " <>
+                   "(SELECT c.relname, (xpath('/row/c/text()', query_to_xml(format(" <>
+                   "'select count(*) as c from %I.%I', n.nspname, c.relname), false, true, " <>
+                   "'')))[1]::text::bigint AS cnt FROM pg_class c JOIN pg_namespace n " <>
+                   "ON n.oid = c.relnamespace WHERE c.relkind = 'r' AND n.nspname = 'public') t"
+
+  defp table_row_counts(run, container, username, database) do
+    command =
+      "docker exec #{shell_escape(container)} psql -v ON_ERROR_STOP=1 " <>
+        "-U #{shell_escape(username)} -d #{shell_escape(database)} -tAc #{shell_escape(@row_count_sql)}"
+
+    case run.([command]) do
+      {output, 0} ->
+        case Jason.decode(String.trim(output)) do
+          {:ok, counts} -> {:ok, counts}
+          {:error, reason} -> {:error, {:database_row_counts_invalid, reason}}
+        end
+
+      {output, status} ->
+        {:error, {:database_row_counts_failed, container, status, String.trim(output)}}
     end
   end
 

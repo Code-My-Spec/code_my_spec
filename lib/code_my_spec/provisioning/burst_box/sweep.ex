@@ -67,9 +67,8 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   @bootstrap_max_age_minutes 60
 
   # The retired design made one `builder-<12 hex>` box per build and destroyed
-  # it afterwards; nothing reaps one that was left behind, so opt-in
-  # (`reap_legacy_builders: true`) sweeps them once they are well past any
-  # build. Two hours, past the longest build and the billing hour it is in.
+  # it afterwards. Sweep leftovers once they are well past any build.
+  # Two hours is past the longest build and its first billing hour.
   @legacy_builder_name ~r/\Abuilder-[0-9a-f]{12}\z/
   @legacy_builder_role_label "cms-builder-role"
   @legacy_builder_max_age_minutes 120
@@ -139,7 +138,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
           |> Enum.map(&safe_reap_bootstrap(scope, &1, opts))
 
         legacy =
-          if Keyword.get(opts, :reap_legacy_builders, false) do
+          if Keyword.get(opts, :reap_legacy_builders, true) do
             servers
             |> Enum.filter(&legacy_builder?/1)
             |> Enum.map(&safe_reap_legacy_builder(scope, &1, opts))
@@ -190,7 +189,8 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   # keeps the sweep itself alive, not a claim that the answer underneath it
   # was right.
   defp safe_check(scope, server, opts) do
-    Lifecycle.check(scope, server, opts)
+    force? = labels(server)[Builder.deploy_builder_label()] == "true"
+    Lifecycle.check(scope, server, Keyword.put(opts, :force?, force?))
   rescue
     e ->
       Logger.error(
@@ -239,7 +239,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
     case destroy.(scope, server_id(server)) do
       {:ok, _} ->
         Logger.info(
-          "[BurstBox.Sweep] reaping bootstrap server #{inspect(server["name"])} (#{reason})"
+          "[BurstBox.Sweep] reaped server id=#{server_id(server)} name=#{inspect(server["name"])} age_minutes=#{server_age_minutes(server, opts)} (#{reason})"
         )
 
         :reaped
@@ -252,6 +252,16 @@ defmodule CodeMySpec.Provisioning.BurstBox.Sweep do
   defp stale_bootstrap?(server, opts) do
     max_age = Keyword.get(opts, :bootstrap_max_age_minutes, @bootstrap_max_age_minutes)
     older_than?(server, max_age, opts)
+  end
+
+  defp server_age_minutes(server, opts) do
+    case DateTime.from_iso8601(to_string(server["created"] || "")) do
+      {:ok, created, _} ->
+        max(DateTime.diff(Keyword.get(opts, :now, &DateTime.utc_now/0).(), created, :minute), 0)
+
+      _ ->
+        :unknown
+    end
   end
 
   defp older_than?(server, max_age_minutes, opts) do

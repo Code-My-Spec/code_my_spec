@@ -273,7 +273,7 @@ defmodule CodeMySpec.Requirements.WhatADrainCostsTest do
       assert applied != []
       {cost, meta} = Enum.max_by(applied, fn {cost, _meta} -> cost.queries end)
       assert meta.vantages == 12
-      assert cost.queries < 1_000
+      assert cost.queries < 300
     end
 
     test "a drain reports how many checkouts it settled", ctx do

@@ -86,6 +86,11 @@ defmodule CodeMySpec.Analysis.HarnessRegistry do
   def supports?(working_copy_id, verb),
     do: Registry.lookup(__MODULE__, {:verb, verb, to_string(working_copy_id)}) != []
 
+  @doc "Whether a harness serving this working copy is connected now."
+  @spec connected?(Ecto.UUID.t()) :: boolean()
+  def connected?(working_copy_id),
+    do: Registry.lookup(__MODULE__, to_string(working_copy_id)) != []
+
   @doc "Whether any harness is registered with this server at all."
   @spec any_connected?() :: boolean()
   def any_connected?, do: Registry.count(__MODULE__) > 0

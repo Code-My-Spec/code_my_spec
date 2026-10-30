@@ -2740,9 +2740,10 @@ defmodule CodeMySpecSpex.Fixtures do
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
 
-    {_, _} =
+    # Per checkout and once per project, wherever the rows live.
+    for table <- ["requirements", "project_requirements"] do
       CodeMySpec.Repo.update_all(
-        from(n in "requirements",
+        from(n in table,
           where:
             n.project_id == type(^project_id, :binary_id) or
               n.component_id in subquery(
@@ -2760,6 +2761,7 @@ defmodule CodeMySpecSpex.Fixtures do
         ),
         set: [checked_at: past]
       )
+    end
 
     :ok
   end
@@ -5881,6 +5883,23 @@ defmodule CodeMySpecSpex.Fixtures do
     alias CodeMySpec.Environments
 
     Environments.put(scope, name, %{ip: ip})
+  end
+
+  @doc "Publish the environment's recorded server address for a staged deploy host."
+  def publish_deploy_host(%Scope{} = scope, environment, host) do
+    %{ip: ip} = CodeMySpec.Environments.get_deployment(scope, environment)
+    zone_name = host |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+
+    with {:ok, zone} <- CodeMySpec.Provisioning.Cloudflare.find_zone(scope, zone_name),
+         {:ok, _record} <-
+           CodeMySpec.Provisioning.Cloudflare.ensure_dns_record(
+             scope,
+             zone["id"],
+             host,
+             ip
+           ) do
+      :ok
+    end
   end
 
   @doc """

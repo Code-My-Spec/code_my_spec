@@ -36,12 +36,14 @@ defmodule CodeMySpec.Agents.Main.Cadence do
   alias CodeMySpec.Agents.AgentsRepository
   alias CodeMySpec.Agents.Main, as: MainAgent
   alias CodeMySpec.Agents.Main.AgentWork
+  alias CodeMySpec.Agents.Main.CheckInMemory
   alias CodeMySpec.Agents.Main.Digest
   alias CodeMySpec.Agents.Main.TokenBurn
   alias CodeMySpec.Configurations
   alias CodeMySpec.Faults
   alias CodeMySpec.Requirements
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @registry CodeMySpec.Agents.Main.CadenceRegistry
 
@@ -307,15 +309,26 @@ defmodule CodeMySpec.Agents.Main.Cadence do
     if Faults.active?(scope.active_project_id, :digest_unavailable) do
       Digest.failed("the analyzer ledger did not answer")
     else
+      requirements = requirements_summary(scope)
+
       %Digest{
         work: MainAgent.list_agent_work(scope),
         off: MainAgent.list_off_agents(scope),
         machinery: MainAgent.check_machinery(scope),
         questions: on_duty_questions(scope),
-        requirements: requirements_summary(scope),
+        requirements: requirements,
+        previous_requirements: CheckInMemory.swap(scope.active_project_id, requirements),
         completions: CodeMySpec.Agents.CompletionHandoffs.pending(scope),
-        tokens: TokenBurn.last_hour(scope)
+        tokens: TokenBurn.last_hour(scope),
+        main_copy_id: main_copy_id(scope)
       }
+    end
+  end
+
+  defp main_copy_id(scope) do
+    case WorkingCopies.main(scope) do
+      %{id: id} -> id
+      nil -> nil
     end
   end
 

@@ -45,11 +45,28 @@ defmodule CodeMySpec.Agents.Mailbox.WireTest do
              Agents.send_to_agent(agent.id, "one actual execution", :operator_message)
 
     HeldProvider.await_request()
-    assert [%{state: :consumed, generation: generation}] = Mailbox.entries(scope, agent.id)
+
+    assert [%{state: :consumed, generation: generation, delivery_ref: ref}] =
+             Mailbox.entries(scope, agent.id)
+
     assert is_binary(generation)
     assert {:ok, :queued} = Agents.send_to_agent(agent.id, "waiting in DB", :operator_message)
     assert {:ok, %{busy?: true}} = CmsHarness.Agents.status(agent.id)
     assert [%{state: :consumed}, %{state: :queued}] = Mailbox.entries(scope, agent.id)
+
+    # Two pushes for one durable message have distinct wire replies. Hold both
+    # results until both calls are pending to reproduce the old ref collision.
+    assert :ok = GenServer.call(wire, {:hold_results, self()})
+
+    calls =
+      for _ <- 1..2 do
+        Task.async(fn -> WireTransport.dispatch_message(nil, agent, ref, "duplicate", 5_000) end)
+      end
+
+    assert_receive {:wire_results_held, 2}, 5_000
+    assert :ok = GenServer.call(wire, :release_results)
+    assert Enum.map(calls, &Task.await(&1, 5_000)) == [{:error, :busy}, {:error, :busy}]
+    assert Process.alive?(wire)
     HeldProvider.release()
   end
 end

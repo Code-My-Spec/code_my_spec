@@ -73,6 +73,11 @@ defmodule CodeMySpec.Provisioning.Builder do
   # the architecture.
   @bootstrap_role_label "cms-bootstrap-role"
 
+  @deploy_builder_label "cms-deploy-builder"
+
+  @doc "Label added to burst boxes created for a deploy build."
+  def deploy_builder_label, do: @deploy_builder_label
+
   @doc "The label `BurstBox.Sweep` looks for to find a temp bootstrap server whose snapshot outcome is not yet confirmed."
   @spec bootstrap_role_label() :: String.t()
   def bootstrap_role_label, do: @bootstrap_role_label
@@ -124,18 +129,60 @@ defmodule CodeMySpec.Provisioning.Builder do
       |> Keyword.put(:architecture, architecture)
       |> Keyword.put(:server_type, Keyword.get(opts, :server_type) || spec.server_type)
       |> Keyword.put(:location, Keyword.get(opts, :builder_location) || spec.location)
+      # A deploy build box builds other images; it does not run this app.
+      # Without this, a first box for an architecture with no snapshot yet
+      # bootstrapped our own release and raised on the missing :ref.
+      |> Keyword.put_new(:install_release, fn _run, _server, _opts -> :ok end)
+      |> Keyword.update(
+        :labels,
+        %{@deploy_builder_label => "true"},
+        &Map.put(&1, @deploy_builder_label, "true")
+      )
 
-    ensure.(scope, BurstBox.box_name(), box_opts)
+    with {:ok, server} <- ensure.(scope, BurstBox.box_name(architecture), box_opts) do
+      join_networks(scope, server, opts)
+    end
   end
 
-  # Nothing here destroys the shared box outright. `Lifecycle.check/3` frees an
-  # idle box at the end of its billing hour; `BurstBox.Sweep` is the safety net.
+  # The box is the account's one, so it already exists for every build after
+  # the first, and `:network_ids` only reaches Hetzner when a box is created.
+  # A box made for uat's network then built for prod and could not reach
+  # prod's registry ("Client.Timeout exceeded" on docker login).
+  defp join_networks(scope, server, opts) do
+    attached = for net <- server["private_net"] || [], do: net["network"]
+
+    case (Keyword.get(opts, :network_ids) || []) -- attached do
+      [] ->
+        {:ok, server}
+
+      missing ->
+        attach = Keyword.get(opts, :attach_to_network, &Hetzner.attach_to_network/3)
+        find = Keyword.get(opts, :find, &Hetzner.find_server/2)
+
+        with :ok <- attach_all(scope, server["id"], missing, attach) do
+          find.(scope, server["name"])
+        end
+    end
+  end
+
+  defp attach_all(scope, server_id, network_ids, attach) do
+    Enum.reduce_while(network_ids, :ok, fn network_id, :ok ->
+      case attach.(scope, server_id, network_id) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+  end
+
+  # A deploy-created box is checked immediately after the build and deploy
+  # callback. `BurstBox.Sweep` covers an interrupted process.
   defp release_box(scope, server, opts) do
     busy? = Keyword.get(opts, :busy?, &BurstBox.busy?/2)
     destroy = Keyword.get(opts, :destroy, &Hetzner.delete_server/2)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
-    Lifecycle.check(scope, server, busy?: busy?, destroy: destroy, now: now)
+    force? = Map.get(server, "labels", %{})[@deploy_builder_label] == "true"
+    Lifecycle.check(scope, server, busy?: busy?, destroy: destroy, now: now, force?: force?)
   end
 
   # The only line that says a build finished, one way or the other — otherwise

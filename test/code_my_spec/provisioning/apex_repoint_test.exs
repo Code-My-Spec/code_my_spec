@@ -124,6 +124,49 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
       :ok
     end
 
+    test "reports the old and new address before a DNS-only write with the requested TTL", %{
+      scope: scope
+    } do
+      host = "uat.#{@apex}"
+
+      existing = [
+        %{"name" => @apex, "type" => "A", "content" => @live_ip},
+        %{"name" => host, "type" => "A", "content" => @live_ip}
+      ]
+
+      write = fn _scope, _zone, name, ip, record_opts ->
+        send(self(), {:wrote_with_options, name, ip, record_opts})
+        {:ok, %{"result" => %{}}}
+      end
+
+      report = fn message -> send(self(), {:dns_report, message}) end
+
+      assert {:ok, resources} =
+               Steps.run(
+                 :dns,
+                 scope,
+                 opts(existing,
+                   environments: ["uat"],
+                   ttl: 120,
+                   write_dns_record: write,
+                   report_dns_change: report
+                 )
+               )
+
+      assert_receive {:dns_report, message}
+      assert message =~ "environment=uat #{host} #{@live_ip} -> #{@new_ip}"
+      assert message =~ "proxied=false ttl=120"
+      assert_receive {:wrote_with_options, ^host, @new_ip, record_opts}
+      assert record_opts[:proxied] == false
+      assert record_opts[:ttl] == 120
+      refute_received {:wrote_with_options, @apex, _, _}
+
+      assert Enum.any?(
+               resources,
+               &(&1.kind == "dns_change" and &1.identifier =~ "#{@live_ip} -> #{@new_ip}")
+             )
+    end
+
     test "uat-only writes uat and leaves the live apex untouched", %{scope: scope} do
       existing = [%{"name" => @apex, "type" => "A", "content" => @live_ip}]
 

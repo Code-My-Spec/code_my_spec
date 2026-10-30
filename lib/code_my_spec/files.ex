@@ -90,11 +90,15 @@ defmodule CodeMySpec.Files do
 
   defp declared_boundaries(_), do: []
 
-  # Every path each component conventionally owns, pointing back at it. Built
-  # module → path because only that direction is exact (`Git.CLI` cannot be
-  # derived from its path); see `Components.ConventionalPaths`. Later
-  # components win a collision — a naming conflict the architecture layer owns.
-  defp component_by_path(components) do
+  @doc """
+  Every path each component conventionally owns, pointing back at it. Built
+  module → path because only that direction is exact (`Git.CLI` cannot be
+  derived from its path); see `Components.ConventionalPaths`. Later
+  components win a collision — a naming conflict the architecture layer owns.
+  Public so a harness rebuilds it from the components it was served.
+  """
+  @spec component_by_path([map()]) :: %{String.t() => Ecto.UUID.t()}
+  def component_by_path(components) do
     for component <- components,
         path <- ConventionalPaths.for_component(component),
         into: %{},

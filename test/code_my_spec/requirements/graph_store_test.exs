@@ -69,11 +69,10 @@ defmodule CodeMySpec.Requirements.GraphStoreTest do
     import Ecto.Query
     project_live(ctx.scope)
     project_graph(ctx.scope)
-    source = GraphStore.event_target()
 
     {changed, _} =
       CodeMySpec.Repo.update_all(
-        from(n in source,
+        from(n in {"project_requirements", CodeMySpec.Requirements.Node},
           where: n.project_id == ^ctx.scope.active_project_id and n.name == "personas_complete"
         ),
         set: [details: %{"waiting_on" => "verification probe"}]
