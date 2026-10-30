@@ -49,9 +49,8 @@ defmodule CodeMySpec.ExecutionContexts.LocalGuardTest do
       File.rm_rf(dir)
     end)
 
-    unless eventually(fn -> File.exists?(pid_file) end) do
-      flunk("nested mix did not start the child: #{port_output(port)}")
-    end
+    assert eventually(fn -> File.exists?(pid_file) end),
+           "nested mix did not start the child: #{port_output(port)}"
 
     child_pid = pid_file |> File.read!() |> String.trim()
     assert {_, 0} = System.cmd("/bin/kill", ["-0", child_pid], stderr_to_stdout: true)
