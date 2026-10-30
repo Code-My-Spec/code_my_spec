@@ -13,15 +13,20 @@ defmodule CodeMySpec.Requirements.ADeadProjectorIsNotASettledGraphTest do
 
   setup do
     scope = full_scope_fixture()
-    {:ok, pid} = IncrementalGraph.ensure_projecting(scope)
-    %{scope: scope, projector: pid}
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(scope)
+    %{scope: scope}
   end
 
   # The projector is suspended so the reader's call is queued behind it, and
   # only then does the projector go — the call is in flight, not refused.
-  defp settle_while(%{scope: scope, projector: pid}, ending) do
-    :sys.suspend(pid)
-    reader = Task.async(fn -> catch_error(IncrementalGraph.settle(scope.active_project_id)) end)
+  defp settle_while(%{scope: scope}, ending) do
+    project_id = scope.active_project_id
+    # The PID returned during setup may die while its initial seed is draining.
+    # Settle that drain, then suspend the projector currently registered for this project.
+    :ok = IncrementalGraph.settle(project_id)
+    pid = GenServer.whereis(IncrementalGraph.via(project_id))
+    :ok = :sys.suspend(pid)
+    reader = Task.async(fn -> catch_error(IncrementalGraph.settle(project_id)) end)
     await_queued(pid)
     ending.(pid)
     Task.await(reader)
