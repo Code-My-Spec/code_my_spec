@@ -174,19 +174,26 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
   # Where the name's rows live: once per project, or per checkout.
-  defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
-    stories =
-      from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
+  defp story_rows(scope, name),
+    do: story_rows(scope, name, name in GraphStore.project_wide_names())
 
-    if name in GraphStore.project_wide_names() do
-      from(n in "project_requirements",
-        where: n.story_id in subquery(stories) and n.name == ^name
-      )
-    else
-      from(n in "requirements",
-        where: n.story_id in subquery(stories) and n.name == ^name,
-        where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
-      )
-    end
+  defp story_rows(%Scope{active_project_id: project_id}, name, true) do
+    from(n in "project_requirements",
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name
+    )
   end
+
+  defp story_rows(
+         %Scope{active_project_id: project_id, active_working_copy_id: copy},
+         name,
+         false
+       ) do
+    from(n in "requirements",
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name,
+      where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
+    )
+  end
+
+  defp project_stories(project_id),
+    do: from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
 end
