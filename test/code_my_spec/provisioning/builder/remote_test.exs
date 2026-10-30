@@ -28,7 +28,12 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
 
   defp opts(run, overrides \\ []) do
     Keyword.merge(
-      [run: run, deliver: recording_deliver(self()), ssh_interval_ms: 0],
+      [
+        run: run,
+        deliver: recording_deliver(self()),
+        ssh_interval_ms: 0,
+        version_lookup: fn ref -> {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []} end
+      ],
       overrides
     )
   end
@@ -60,6 +65,53 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
   defp arm, do: {"arm64\n", 0}
 
   describe "build/4" do
+    test "a tagged commit passes its release tag into the image" do
+      run = recorder(self(), %{"inspect" => arm()})
+      sha = "abc123" <> String.duplicate("0", 34)
+      lookup = fn "abc123" -> {:ok, sha, ["v2.4.6"]} end
+
+      assert {:ok, _} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "reg/app:abc123",
+                 opts(run, version_lookup: lookup)
+               )
+
+      assert build_command() =~ "--build-arg CMS_VERSION='v2.4.6'"
+    end
+
+    test "an untagged commit passes the short SHA of that commit" do
+      run = recorder(self(), %{"inspect" => arm()})
+      sha = "abc123456789" <> String.duplicate("0", 28)
+      lookup = fn "abc123" -> {:ok, sha, []} end
+
+      assert {:ok, _} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "reg/app:abc123",
+                 opts(run, version_lookup: lookup)
+               )
+
+      assert build_command() =~ "--build-arg CMS_VERSION='abc123456789'"
+    end
+
+    test "an unknown commit refuses the build with a plain message" do
+      run = recorder(self(), %{"inspect" => arm()})
+      lookup = fn "abc123" -> {:error, :unknown_commit} end
+
+      assert {:error, "cannot build image: could not determine the commit being built"} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "reg/app:abc123",
+                 opts(run, version_lookup: lookup)
+               )
+
+      refute_received {:ran, _command}
+    end
+
     # Was "fetches only the commit being built", asserting a shallow clone.
     # The builder does not clone at all now: repositories are private and
     # setup installs no deploy key, so cloning could never have worked, and
