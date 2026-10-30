@@ -39,4 +39,24 @@ defmodule CodeMySpec.Provisioning.Builder.VersionTest do
     assert {:error, "cannot build image: could not determine the commit being built"} =
              Version.for_ref("000000000000", version_cd: ctx.repo)
   end
+
+  test "looks up the requested commit and its release tag through GitHub" do
+    sha = "abc123" <> String.duplicate("0", 34)
+
+    Req.Test.stub(Version, fn conn ->
+      case {conn.request_path, Plug.Conn.Query.decode(conn.query_string)["page"]} do
+        {"/repos/acme/app/commits/abc123", _} ->
+          Req.Test.json(conn, %{sha: sha})
+
+        {"/repos/acme/app/tags", "1"} ->
+          Req.Test.json(conn, [%{name: "v2.4.6", commit: %{sha: sha}}])
+
+        {"/repos/acme/app/tags", "2"} ->
+          Req.Test.json(conn, [])
+      end
+    end)
+
+    assert {:ok, "v2.4.6"} =
+             Version.for_ref("abc123", github_repo: "acme/app", github_token: "test-token")
+  end
 end

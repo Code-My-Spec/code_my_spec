@@ -75,23 +75,27 @@ defmodule CodeMySpec.Provisioning.Builder.Version do
     base = "https://api.github.com/repos/#{opts[:github_repo]}"
     headers = [{"authorization", "Bearer #{opts[:github_token]}"}]
 
+    request_opts = Application.get_env(:code_my_spec, __MODULE__, [])
+
     with {:ok, %Req.Response{status: 200, body: %{"sha" => sha}}} <-
-           Req.get(base <> "/commits/" <> ref, headers: headers),
-         {:ok, tags} <- github_tags(base, headers, sha, 1, []) do
+           Req.get(base <> "/commits/" <> ref, Keyword.merge(request_opts, headers: headers)),
+         {:ok, tags} <- github_tags(base, headers, sha, 1, [], request_opts) do
       {:ok, sha, tags}
     else
       _ -> {:error, @unknown}
     end
   end
 
-  defp github_tags(base, headers, sha, page, found) do
-    case Req.get(base <> "/tags", headers: headers, params: [per_page: 100, page: page]) do
+  defp github_tags(base, headers, sha, page, found, request_opts) do
+    opts = Keyword.merge(request_opts, headers: headers, params: [per_page: 100, page: page])
+
+    case Req.get(base <> "/tags", opts) do
       {:ok, %Req.Response{status: 200, body: []}} ->
         {:ok, found}
 
       {:ok, %Req.Response{status: 200, body: tags}} when is_list(tags) ->
         matching = for %{"name" => name, "commit" => %{"sha" => ^sha}} <- tags, do: name
-        github_tags(base, headers, sha, page + 1, matching ++ found)
+        github_tags(base, headers, sha, page + 1, matching ++ found, request_opts)
 
       _ ->
         {:error, @unknown}

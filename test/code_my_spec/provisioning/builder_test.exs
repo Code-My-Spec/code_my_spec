@@ -363,7 +363,17 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       run = fn [_cmd] -> {"", 0} end
 
       assert {:error, {:source_delivery_failed, :no_reachable_source, _}, _resources} =
-               Builder.build(scope, "abc123", opts(run: run, reference: "reg/app:abc123"))
+               Builder.build(
+                 scope,
+                 "abc123",
+                 opts(
+                   run: run,
+                   reference: "reg/app:abc123",
+                   version_lookup: fn ref ->
+                     {:ok, ref <> String.duplicate("0", 40 - byte_size(ref)), []}
+                   end
+                 )
+               )
     end
   end
 

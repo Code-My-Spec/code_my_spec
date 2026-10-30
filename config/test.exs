@@ -662,6 +662,9 @@ config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
 config :code_my_spec, CodeMySpec.Provisioning.Cloudflare,
   plug: {Req.Test, CodeMySpec.Provisioning.Cloudflare}
 
+config :code_my_spec, CodeMySpec.Provisioning.Builder.Version,
+  plug: {Req.Test, CodeMySpec.Provisioning.Builder.Version}
+
 config :code_my_spec, CodeMySpec.Provisioning.Deploy,
   plug: {Req.Test, CodeMySpec.Provisioning.Deploy}
 
