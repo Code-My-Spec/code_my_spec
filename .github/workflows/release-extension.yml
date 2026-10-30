@@ -140,6 +140,22 @@ jobs:
           cp _build/harness/cms_harness-*.tar.gz "${{ matrix.asset }}"
           ls -la "${{ matrix.asset }}"
 
+      # Exercise the router compiled into the release, not the test build.
+      # v2.0.701 shipped without this route even though the plugin posted to it.
+      - name: Check packaged init route
+        if: runner.os != 'Windows'
+        env:
+          CMS_HARNESS_PORT: '0'
+        run: |
+          _build/harness/rel/cms_harness/bin/cms_harness eval '
+            case Phoenix.Router.route_info(CmsHarness.Web.Router, "POST", "/api/skills/init", "localhost") do
+              %{plug: CmsHarness.Web.InitController, plug_opts: :start} ->
+                IO.puts("Packaged /api/skills/init reaches InitController.start")
+              other ->
+                raise "Packaged /api/skills/init is unavailable: #{inspect(other)}"
+            end
+          '
+
       - name: Upload release tarball
         uses: actions/upload-artifact@v4
         with:
