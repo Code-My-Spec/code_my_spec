@@ -369,6 +369,14 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
         "Your #{label} step for #{name} errored: #{reason}\n\n" <>
           "It is no longer running. #{answer()}"
 
+  def outcome_message(
+        {:halt, %{state: :errored}, "Provisioning exception: " <> _ = reason},
+        label,
+        name
+      ),
+      do:
+        "Your #{label} step for #{name} errored: #{reason}\n\nIt is no longer running. #{answer()}"
+
   def outcome_message({:halt, %{state: :errored}, reason}, label, name),
     do:
       "Your #{label} step for #{name} errored: #{Truncate.head_and_tail(reason)}\n\n" <>
