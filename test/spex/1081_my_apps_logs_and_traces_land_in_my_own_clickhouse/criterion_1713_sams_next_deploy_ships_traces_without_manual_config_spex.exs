@@ -40,6 +40,7 @@ defmodule CodeMySpecSpex.Story1081.Criterion1713Spex do
         run_console_step(servers_view, :server)
         await_console_step(servers_view, :server)
         :ok = CodeMySpecSpex.Fixtures.publish_deploy_host(context.scope, "uat", "uat.example.com")
+        :ok = CodeMySpecSpex.Fixtures.publish_deploy_host(context.scope, "uat", "example.com")
 
         {:ok, view, _html} =
           live(
