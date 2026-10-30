@@ -12,12 +12,10 @@ defmodule CodeMySpec.StaticAnalysis.CredoRunTest do
       assert {:ok, %{"issues" => []}} = CredoRun.extract_json(~s({"issues": []}))
     end
 
-    test "rejects compiler warnings and logs mixed with JSON" do
-      assert :error = CredoRun.extract_json(@warning <> @document)
-      assert :error = CredoRun.extract_json("21:36:49.068 [info] chatter\n" <> @document)
-      assert {:error, reason} = CredoRun.parse(@warning <> @document)
-      assert reason =~ "credo produced output that is not JSON"
-      assert reason =~ "dependency compilation"
+    test "retains findings when compiler warnings precede Credo JSON" do
+      assert {:ok, %{"issues" => [_, _]}} = CredoRun.extract_json(@warning <> @document)
+      assert {:ok, [_, _], _raw} = CredoRun.parse(@warning <> @document)
+      assert {:ok, [_, _], _raw} = CredoRun.parse("21:36:49.068 [info] chatter\n" <> @document)
     end
 
     test "never treats an unrelated object or missing document as a clean run" do

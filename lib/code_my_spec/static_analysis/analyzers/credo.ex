@@ -143,7 +143,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     case CodeMySpec.ExecutionContexts.cmd(environment, "mix", ["compile"], cmd_opts) do
       {_output, 0} ->
         case CodeMySpec.ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
-          {output, exit_code} when exit_code in 0..1 ->
+          {output, exit_code} when exit_code in 0..31 ->
             write_and_return(temp_file, output)
 
           {output, exit_code} ->

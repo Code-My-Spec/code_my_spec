@@ -72,8 +72,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
     Logger.info("[CredoRun] Running: mix #{Enum.join(args, " ")}")
 
-    # `mix credo` loads paths and can compile dependencies first. Keep that
-    # output on its own command so Credo's JSON is never mixed with it.
+    # Compile first to keep ordinary compiler output separate. Credo's
+    # loadpaths step can still compile a dependency, so parse its JSON below.
     case ExecutionContexts.cmd(environment, "mix", ["compile"], cmd_opts) do
       {_compile_output, 0} ->
         run_credo(environment, args, cmd_opts)
@@ -89,11 +89,11 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
   defp run_credo(environment, args, cmd_opts) do
     case ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
-      {output, exit_code} when exit_code in 0..1 ->
+      # Credo ORs category bits into its exit status (warning is 16).
+      # Its own command/configuration failures start at 128.
+      {output, exit_code} when exit_code in 0..31 ->
         parse(output)
 
-      # A failing command cannot certify a Credo result, even if it printed
-      # something that resembles JSON. Retain its output for diagnosis.
       {output, exit_code} ->
         {:error, "credo was not run: exited #{exit_code}: #{String.trim(output)}"}
     end
@@ -177,12 +177,27 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
        (output |> String.trim() |> String.slice(0, 300))}
   end
 
-  @doc "Decode Credo's complete JSON document; other output is not a result."
+  @doc "Decode the complete Credo JSON document after any compiler output."
   @spec extract_json(String.t()) :: {:ok, map()} | :error
   def extract_json(output) do
-    case Jason.decode(String.trim(output)) do
-      {:ok, %{"issues" => issues} = decoded} when is_list(issues) -> {:ok, decoded}
-      _ -> :error
-    end
+    output
+    |> brace_offsets()
+    |> Enum.find_value(:error, fn offset ->
+      candidate = binary_part(output, offset, byte_size(output) - offset)
+
+      case Jason.decode(String.trim(candidate)) do
+        {:ok, %{"issues" => issues} = decoded} when is_list(issues) -> {:ok, decoded}
+        _ -> nil
+      end
+    end)
+  end
+
+  @max_candidates 200
+
+  defp brace_offsets(output) do
+    output
+    |> :binary.matches("{")
+    |> Enum.take(@max_candidates)
+    |> Enum.map(fn {offset, _length} -> offset end)
   end
 end
