@@ -42,6 +42,31 @@ defmodule CodeMySpec.Requirements.AStoryPlacedElsewhereLeavesNoRowsBehindTest do
            "this checkout still reads as uncovered, so every arrival reseeds it"
   end
 
+  test "a recompute at the other checkout leaves the story's project-wide rows" do
+    here = full_scope_fixture()
+    {:ok, there} = WorkingCopies.issue(here, nil, label: "There", device: device_fixture(here))
+    story = story_fixture(here, %{ready_for_dev: true})
+
+    {:ok, _pid} = IncrementalGraph.ensure_projecting(here)
+    :ok = IncrementalGraph.settle(here.active_project_id, [here.active_working_copy_id, there.id])
+    shared = project_rows(story)
+    assert shared > 0, "the premise did not hold: the story has no project-wide rows"
+
+    Repo.update_all(from(s in Story, where: s.id == ^story.id), set: [working_copy_id: there.id])
+
+    # The story's own recompute here, where it is no longer seen.
+    config = Configurations.get_or_create(here)
+    {:ok, ctx} = Preloader.load_story(here, story.id)
+    {covered, nodes} = RequirementGraph.compute_entity(here, ctx, config, {"story", story.id})
+    {:ok, _} = GraphStore.write(here, covered, nodes)
+
+    assert project_rows(story) == shared,
+           "a recompute where the story is not seen reaped the rows every checkout shares"
+  end
+
+  defp project_rows(story),
+    do: Repo.aggregate(from(n in "project_requirements", where: n.story_id == ^story.id), :count)
+
   defp rows_here(scope, story) do
     Repo.aggregate(
       from(n in "requirements",

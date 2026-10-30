@@ -112,9 +112,14 @@ defmodule CodeMySpec.Requirements.Projection do
   """
   @spec load(Scope.t(), map()) :: {[Requirement.t()], [map()]}
   def load(%Scope{active_project_id: project_id} = scope, ctx) do
-    nodes = project_id |> project_rows(vantage(scope), ctx) |> rehydrate_all(ctx)
-
-    {nodes, edges_for(project_id, nodes)}
+    # A vantage never projected reads as empty, not as the project's rows
+    # without its own: that half is not a graph.
+    if GraphStore.projected?(scope) do
+      nodes = project_id |> project_rows(vantage(scope), ctx) |> rehydrate_all(ctx)
+      {nodes, edges_for(project_id, nodes)}
+    else
+      {[], []}
+    end
   end
 
   @doc """

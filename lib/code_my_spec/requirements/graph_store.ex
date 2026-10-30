@@ -120,11 +120,38 @@ defmodule CodeMySpec.Requirements.GraphStore do
 
     :telemetry.execute(DrainCost.projection_write(), %{count: 1}, %{project_id: project_id})
 
+    vantage = Projection.vantage(scope)
+
     Repo.transaction(fn ->
-      checkout = write_at(@table, Projection.vantage(scope), covered, checkout_nodes, now)
-      project = write_at(@project_table, :project, covered, project_nodes, now)
+      checkout = write_at(@table, vantage, covered, checkout_nodes, now)
+
+      project =
+        write_at(@project_table, :project, seen_here(covered, vantage), project_nodes, now)
 
       %{inserted: checkout.inserted + project.inserted, reaped: checkout.reaped + project.reaped}
+    end)
+  end
+
+  # A computation reaps the project's rows only for what it sees. A story placed
+  # at another checkout produces nothing here, which reaps its rows at this
+  # checkout and must not reap the ones every checkout shares.
+  defp seen_here(covered, nil), do: covered
+
+  defp seen_here(covered, vantage) do
+    story_ids = for {"story", id} <- covered, do: id
+
+    elsewhere =
+      Repo.all(
+        from(s in Story,
+          where: s.id in ^story_ids and s.ready_for_dev == true,
+          where: not is_nil(s.working_copy_id) and s.working_copy_id != ^vantage,
+          select: s.id
+        )
+      )
+
+    Enum.reject(covered, fn
+      {"story", id} -> id in elsewhere
+      _entity -> false
     end)
   end
 
