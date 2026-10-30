@@ -28,6 +28,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   alias CmsHarness.Channel
   alias CmsHarness.DiskCapacity
   alias CmsHarness.Sync
+  alias CodeMySpec.DurableRun
   alias CodeMySpec.ExecutionContexts.ExecutionContext
 
   # A ceiling, not an expectation: it bounds the run that will never finish,
@@ -161,14 +162,54 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
+  def acknowledge(root, run_id) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:acknowledge, run_id})
+      [] -> :ok
+    end
+  end
+
   # --- Server ---
 
   @impl true
   def init(project) do
-    {:ok, %{project: project, running: nil, queue: [], timer: nil, pending_cleanups: []}}
+    Process.set_label({__MODULE__, project.root})
+    recovering = DurableRun.for_root(project.root) |> Map.new(&{&1["run_id"], &1})
+    if map_size(recovering) > 0, do: Process.send_after(self(), :poll_recovery, 100)
+
+    {:ok,
+     %{
+       project: project,
+       running: nil,
+       queue: [],
+       timer: nil,
+       pending_cleanups: [],
+       recovering: recovering
+     }}
   end
 
   @impl true
+  def handle_cast({:acknowledge, run_id}, state) do
+    owner =
+      Enum.find(state.recovering, fn {_id, manifest} ->
+        run_id in [manifest["run_id"] | manifest["tied_run_ids"] || []]
+      end)
+
+    state =
+      case owner do
+        {id, manifest} ->
+          case DurableRun.acknowledge(manifest, run_id) do
+            :complete -> %{state | recovering: Map.delete(state.recovering, id)}
+            {:pending, updated} -> %{state | recovering: Map.put(state.recovering, id, updated)}
+          end
+
+        nil ->
+          state
+      end
+
+    {:noreply, maybe_start_next(state)}
+  end
+
   def handle_cast({:enqueue, runs}, state) do
     Logger.info(
       "[CmsHarness] enqueue for #{state.project.root}: " <>
@@ -186,20 +227,28 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   @impl true
   def handle_call(:idle?, _from, state) do
-    {:reply, is_nil(state.running) and state.queue == [] and state.pending_cleanups == [], state}
+    {:reply,
+     is_nil(state.running) and state.queue == [] and state.pending_cleanups == [] and
+       map_size(state.recovering) == 0, state}
   end
 
   # Queued and tied runs count as in flight. Their rows are already `:running`
   # on the server, so a sweep would close them just the same, and this server
   # will answer them.
   def handle_call(:in_flight, _from, state) do
-    {:reply, held_run_ids(state), state}
+    {:reply, Enum.uniq(held_run_ids(state) ++ recovered_run_ids(state)), state}
   end
 
   def handle_call({:cancel, reason}, _from, state) do
     held = Enum.reject([state.running | state.queue], &is_nil/1)
 
+    recovered =
+      Enum.reject(Map.get(state, :recovering, %{}), fn {id, _manifest} ->
+        state.running && state.running.run_id == id
+      end)
+
     if running = state.running do
+      cancel_durable_run(running.run_id)
       Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
       Process.demonitor(running.task.ref, [:flush])
 
@@ -217,21 +266,42 @@ defmodule CmsHarness.Project.AnalysisServer do
       })
     end
 
-    if held != [] do
+    for {owner_id, manifest} <- recovered do
+      cancel_durable_run(owner_id)
+
+      for id <- [owner_id | manifest["tied_run_ids"] || []] do
+        Channel.deliver_analysis_result(state.project.root, %{
+          "run_id" => id,
+          "source" => manifest["source"],
+          "status" => "superseded",
+          "error" => reason
+        })
+      end
+    end
+
+    count = length(held) + length(recovered)
+
+    if count > 0 do
       Logger.info(
-        "[CmsHarness] cancelled #{length(held)} analyzer run(s) for #{state.project.root}: #{reason}"
+        "[CmsHarness] cancelled #{count} analyzer run(s) for #{state.project.root}: #{reason}"
       )
     end
 
-    {:reply, length(held), clear_running(%{state | queue: []})}
+    {:reply, count, state |> Map.put(:queue, []) |> Map.put(:recovering, %{}) |> clear_running()}
   end
 
   def handle_call({:cancel_run, run_id}, _from, state) do
     queued = Enum.find(state.queue, &(run_id in answers_for(&1)))
 
+    recovered =
+      Enum.find(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
+        run_id in [manifest["run_id"] | manifest["tied_run_ids"] || []]
+      end)
+
     cond do
       state.running && run_id in answers_for(state.running) ->
         running = state.running
+        cancel_durable_run(running.run_id)
 
         Task.Supervisor.terminate_child(
           Sync.task_supervisor(state.project.root),
@@ -245,11 +315,31 @@ defmodule CmsHarness.Project.AnalysisServer do
         end
 
         answer_cancelled(state.project.root, running)
-        {:reply, :ok, state |> clear_running() |> maybe_start_next()}
+
+        {:reply, :ok,
+         state
+         |> Map.update(:recovering, %{}, &Map.delete(&1, running.run_id))
+         |> clear_running()
+         |> maybe_start_next()}
 
       queued ->
         answer_cancelled(state.project.root, queued)
         {:reply, :ok, %{state | queue: List.delete(state.queue, queued)}}
+
+      recovered ->
+        {owner_id, manifest} = recovered
+        cancel_durable_run(owner_id)
+
+        for id <- [owner_id | manifest["tied_run_ids"] || []] do
+          Channel.deliver_analysis_result(state.project.root, %{
+            "run_id" => id,
+            "source" => manifest["source"],
+            "status" => "cancelled"
+          })
+        end
+
+        {:reply, :ok,
+         state |> Map.update!(:recovering, &Map.delete(&1, owner_id)) |> maybe_start_next()}
 
       true ->
         {:reply, :not_found, state}
@@ -264,6 +354,17 @@ defmodule CmsHarness.Project.AnalysisServer do
     {:reply,
      %{running: entry_summary(state.running), queued: Enum.map(state.queue, &entry_summary/1)},
      state}
+  end
+
+  defp cancel_durable_run(run_id) do
+    case DurableRun.read_manifest(run_id) do
+      {:ok, manifest} ->
+        DurableRun.cancel(manifest)
+        DurableRun.cleanup(run_id)
+
+      _ ->
+        :ok
+    end
   end
 
   @impl true
@@ -362,7 +463,7 @@ defmodule CmsHarness.Project.AnalysisServer do
   # The confirmed-dead report from the cleanup task above, found in
   # `pending_cleanups` rather than `running`. Pending cleanup blocks the queue
   # until this report confirms that the owned process groups are gone.
-  def handle_info({ref, cleanup_result}, state) do
+  def handle_info({ref, cleanup_result}, state) when is_reference(ref) do
     case pop_pending_cleanup(state, &(&1.cleanup.ref == ref)) do
       {:ok, pending, state} ->
         Process.demonitor(ref, [:flush])
@@ -461,7 +562,127 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   def handle_info({:slot_acquired, _run_id, _waited_ms}, state), do: {:noreply, state}
 
+  def handle_info({:track_durable, id}, state) do
+    case DurableRun.read_manifest(id) do
+      {:ok, manifest} ->
+        if map_size(state.recovering) == 0, do: Process.send_after(self(), :poll_recovery, 250)
+        {:noreply, %{state | recovering: Map.put(state.recovering, id, manifest)}}
+
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  def handle_info({:track_completed, manifest}, state) do
+    if map_size(state.recovering) == 0, do: Process.send_after(self(), :poll_recovery, 250)
+
+    {:noreply,
+     %{
+       state
+       | recovering:
+           Map.put(state.recovering, manifest["run_id"], Map.put(manifest, "sent", true))
+     }}
+  end
+
+  def handle_info(:poll_recovery, state) do
+    recovering =
+      Map.new(state.recovering, fn {id, manifest} ->
+        current =
+          if manifest["status"] == "completed" do
+            manifest
+          else
+            case DurableRun.read_manifest(id) do
+              {:ok, latest} -> latest
+              _ -> manifest
+            end
+          end
+
+        manifest =
+          if state.running && state.running.run_id == id do
+            poll_live_run(state.project.root, current)
+          else
+            poll_recovered_run(state.project.root, current)
+          end
+
+        {id, manifest}
+      end)
+
+    if map_size(recovering) > 0, do: Process.send_after(self(), :poll_recovery, 250)
+    {:noreply, maybe_start_next(%{state | recovering: recovering})}
+  end
+
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp poll_recovered_run(root, %{"status" => "completed"} = manifest) do
+    unless manifest["sent"] do
+      Enum.each(
+        DurableRun.unacknowledged_payloads(manifest),
+        &Channel.deliver_analysis_result(root, &1)
+      )
+    end
+
+    Map.put(manifest, "sent", true)
+  end
+
+  defp poll_recovered_run(root, %{"status" => "starting"} = manifest) do
+    if DurableRun.startup_stale?(manifest) do
+      poll_recovered_run(root, Map.put(manifest, "status", "exited"))
+    else
+      manifest
+    end
+  end
+
+  defp poll_recovered_run(root, manifest) do
+    manifest = poll_live_run(root, manifest)
+
+    if DurableRun.alive?(manifest) do
+      manifest
+    else
+      result =
+        case DurableRun.completed_result(manifest) do
+          {:ok, raw} -> {:ok, raw}
+          {:error, reason} -> {:error, "analyzer process ended during harness restart: #{reason}"}
+        end
+
+      payloads = recovered_payloads(manifest, result)
+      manifest = DurableRun.complete(manifest, payloads)
+      Enum.each(payloads, &Channel.deliver_analysis_result(root, &1))
+      manifest
+    end
+  end
+
+  defp poll_live_run(root, manifest) do
+    {events, offsets} = DurableRun.stream_events(manifest)
+
+    for event <- events, live = DurableRun.live_event(event), live != nil do
+      Channel.deliver_analysis_event(root, %{"run_id" => manifest["run_id"], "event" => live})
+    end
+
+    DurableRun.advance(manifest, offsets)
+  end
+
+  defp recovered_payloads(manifest, result) do
+    owner = manifest["run_id"]
+    ids = [owner | manifest["tied_run_ids"] || []]
+    base = %{"args" => manifest["args"], "completed_commit" => manifest["start_commit"]}
+
+    Enum.map(ids, fn id ->
+      common = Map.merge(base, %{"run_id" => id, "source" => manifest["source"]})
+
+      case result do
+        {:ok, raw} ->
+          Map.merge(common, %{
+            "status" => "ok",
+            "result" => raw,
+            "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness(),
+            "tied_to" => if(id == owner, do: nil, else: owner)
+          })
+
+        {:error, reason} ->
+          Map.merge(common, %{"status" => "error", "error" => reason})
+      end
+    end)
+  end
 
   # --- Internals ---
 
@@ -563,7 +784,14 @@ defmodule CmsHarness.Project.AnalysisServer do
   # source becomes a new entry that later duplicates tie onto.
   defp queued_entry_for(state, source), do: Enum.find(state.queue, &(&1.source == source))
 
-  defp holds_run?(state, run_id), do: run_id in held_run_ids(state)
+  defp holds_run?(state, run_id),
+    do: run_id in held_run_ids(state) or run_id in recovered_run_ids(state)
+
+  defp recovered_run_ids(state) do
+    Enum.flat_map(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
+      [manifest["run_id"] | manifest["tied_run_ids"] || []]
+    end)
+  end
 
   # Every run id this queue will answer: each entry's own and everything tied
   # to it, including a timed-out run still in pending_cleanups -- its result
@@ -606,21 +834,27 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp maybe_start_next(%{pending_cleanups: [_ | _]} = state), do: state
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
-    case DiskCapacity.check([state.project.root, System.tmp_dir!()]) do
-      :ok ->
-        start_next(state, entry, rest)
+    if Enum.any?(Map.get(state, :recovering, %{}), fn {_id, manifest} ->
+         manifest["status"] != "completed"
+       end) do
+      state
+    else
+      case DiskCapacity.check([state.project.root, System.tmp_dir!()]) do
+        :ok ->
+          start_next(state, entry, rest)
 
-      {:error, reason} ->
-        for run_id <- answers_for(entry) do
-          Channel.deliver_analysis_result(state.project.root, %{
-            "run_id" => run_id,
-            "source" => entry.source,
-            "status" => "refused",
-            "error" => reason
-          })
-        end
+        {:error, reason} ->
+          for run_id <- answers_for(entry) do
+            Channel.deliver_analysis_result(state.project.root, %{
+              "run_id" => run_id,
+              "source" => entry.source,
+              "status" => "refused",
+              "error" => reason
+            })
+          end
 
-        maybe_start_next(%{state | queue: rest})
+          maybe_start_next(%{state | queue: rest})
+      end
     end
   end
 
@@ -683,9 +917,30 @@ defmodule CmsHarness.Project.AnalysisServer do
           {:ok, start_tree} ->
             send(parent, {:analysis_started, entry.run_id, start_tree})
 
+            # The current formatter does not emit a recoverable event stream.
+            # Keep the existing live reporting and process cleanup until the
+            # stream is explicitly enabled for this harness.
+            durable? =
+              entry.source in ["exunit", "spex"] and
+                System.get_env("CMS_RUN_EVENT_STREAM") not in [nil, ""]
+
+            if durable? do
+              DurableRun.begin_run(
+                entry.run_id,
+                project.root,
+                entry.source,
+                entry.args,
+                start_tree.commit,
+                entry.tied_run_ids
+              )
+
+              send(parent, {:track_durable, entry.run_id})
+            end
+
             result =
               Analysis.run(project, entry.source, entry.args, entry.run_id,
-                output_capture: Map.get(entry, :output_capture)
+                output_capture: Map.get(entry, :output_capture),
+                durable_run: if(durable?, do: entry.run_id)
               )
 
             completed_tree =
@@ -798,10 +1053,31 @@ defmodule CmsHarness.Project.AnalysisServer do
 
     tree = completed |> completed_tree() |> Map.put("args", Map.get(running, :args))
     tree = if match?({:error, _}, result), do: Map.put(tree, "output", output), else: tree
-    push_result(state.project.root, running.run_id, running.source, result, nil, tree)
 
-    for run_id <- Map.get(running, :tied_run_ids, []) do
-      push_result(state.project.root, run_id, running.source, result, running.run_id, tree)
+    case DurableRun.read_manifest(running.run_id) do
+      {:ok, manifest} ->
+        result =
+          case result do
+            {:ok, _} -> result
+            {:error, _} -> result
+            other -> {:error, "unreadable analyzer result: #{inspect(other)}"}
+          end
+
+        payloads =
+          manifest
+          |> recovered_payloads(result)
+          |> Enum.map(&Map.merge(&1, tree))
+
+        manifest = DurableRun.complete(manifest, payloads)
+        send(self(), {:track_completed, manifest})
+        Enum.each(payloads, &Channel.deliver_analysis_result(state.project.root, &1))
+
+      _ ->
+        push_result(state.project.root, running.run_id, running.source, result, nil, tree)
+
+        for run_id <- Map.get(running, :tied_run_ids, []) do
+          push_result(state.project.root, run_id, running.source, result, running.run_id, tree)
+        end
     end
   end
 

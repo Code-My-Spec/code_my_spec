@@ -524,6 +524,7 @@ defmodule CodeMySpec.Provisioning.DeployTest do
           deploy_script: "bin/deploy",
           host: "app.example.com",
           image: "localhost:5000/app:abc123",
+          architecture: :x86,
           run: run,
           remote_dir: "/build",
           probe: healthy()
@@ -535,8 +536,10 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert migrate_command =~ "cd '/build' &&"
       assert migrate_command =~ "bin/deploy 'migrate' 'prod'"
       assert migrate_command =~ "CMS_IMAGE='localhost:5000/app:abc123'"
+      assert migrate_command =~ "CMS_TARGET_ARCH='amd64'"
 
       assert swap_command =~ "bin/deploy 'swap' 'prod'"
+      assert swap_command =~ "CMS_TARGET_ARCH='amd64'"
       assert Result.swapped?(result)
     end
 

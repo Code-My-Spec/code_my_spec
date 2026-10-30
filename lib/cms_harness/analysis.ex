@@ -37,6 +37,7 @@ defmodule CmsHarness.Analysis do
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
+  alias CodeMySpec.DurableRun
   alias CodeMySpec.ExecutionContexts
   alias CodeMySpec.ExecutionContexts.ExecutionContext
   alias CodeMySpec.StaticAnalysis.CredoRun
@@ -66,7 +67,11 @@ defmodule CmsHarness.Analysis do
       when is_binary(source) and is_list(args) do
     env =
       ExecutionContext.new(:local, project.root,
-        metadata: %{output_capture: Keyword.get(opts, :output_capture), run_id: run_id}
+        metadata: %{
+          output_capture: Keyword.get(opts, :output_capture),
+          run_id: run_id,
+          durable_run: Keyword.get(opts, :durable_run)
+        }
       )
 
     started = System.monotonic_time(:millisecond)
@@ -271,7 +276,9 @@ defmodule CmsHarness.Analysis do
 
   defp execute("exunit", env, args) do
     extra_env =
-      AnalyzerEnv.extra_env(env, "exunit") ++ RunLink.env(env.cwd, env.metadata[:run_id])
+      AnalyzerEnv.extra_env(env, "exunit") ++
+        durable_stream_env(env) ++
+        if(env.metadata[:durable_run], do: [], else: RunLink.env(env.cwd, env.metadata[:run_id]))
 
     # No pre-run truncate, deliberately. See knowledge/harness, "Analysis".
 
@@ -346,15 +353,23 @@ defmodule CmsHarness.Analysis do
   # Linked like exunit's, so a spex run streams too; the formatter is what sends.
   defp run_spex(env, args) do
     {args, link} =
-      case RunLink.env(env.cwd, env.metadata[:run_id]) do
-        [] -> {args, []}
-        link -> {args ++ ["--formatter=ClientUtils.TestFormatter"], link}
+      case if(env.metadata[:durable_run],
+             do: [],
+             else: RunLink.env(env.cwd, env.metadata[:run_id])
+           ) do
+        [] ->
+          if env.metadata[:durable_run],
+            do: {args ++ ["--formatter=ClientUtils.TestFormatter"], []},
+            else: {args, []}
+
+        link ->
+          {args ++ ["--formatter=ClientUtils.TestFormatter"], link}
       end
 
     result =
       Spex.execute(args,
         execution_context: env,
-        extra_env: AnalyzerEnv.extra_env(env, "spex") ++ link
+        extra_env: AnalyzerEnv.extra_env(env, "spex") ++ durable_stream_env(env) ++ link
       )
 
     if link != [], do: RunLink.exited(env.metadata[:run_id])
@@ -375,6 +390,11 @@ defmodule CmsHarness.Analysis do
         {:error, inspect(reason)}
     end
   end
+
+  defp durable_stream_env(%{metadata: %{durable_run: id}}) when is_integer(id),
+    do: [{"CMS_RUN_EVENT_STREAM", DurableRun.stream_path(id)}]
+
+  defp durable_stream_env(_env), do: []
 
   defp crashed(source, exception) do
     Logger.error("[CmsHarness] #{source} crashed: #{Exception.message(exception)}")

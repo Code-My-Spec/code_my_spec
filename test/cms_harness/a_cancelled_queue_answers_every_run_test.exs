@@ -61,7 +61,7 @@ defmodule CmsHarness.ACancelledQueueAnswersEveryRunTest do
   end
 
   test "an idle queue has nothing to cancel", %{root: root} do
-    state = %{project: %{root: root}, running: nil, queue: [], timer: nil}
+    state = %{project: %{root: root}, running: nil, queue: [], timer: nil, recovering: %{}}
     assert {:reply, 0, ^state} = AnalysisServer.handle_call({:cancel, "why"}, self(), state)
     refute_received {:"$gen_cast", {:analysis_result, _}}
   end

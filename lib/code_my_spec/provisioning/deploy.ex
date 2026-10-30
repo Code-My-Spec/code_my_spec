@@ -316,6 +316,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   defp script_env(opts) do
     for {name, value} <- [
           {"CMS_IMAGE", Keyword.get(opts, :image)},
+          {"CMS_TARGET_ARCH", target_arch(Keyword.get(opts, :architecture))},
           {"CMS_DEPLOY_HOST", Keyword.get(opts, :host)},
           {"CMS_DEPLOY_HOST_IP", Keyword.get(opts, :host_ip)},
           # The decryption key, straight from `ProjectSecrets`; setup never
@@ -336,6 +337,11 @@ defmodule CodeMySpec.Provisioning.Deploy do
       {name, value}
     end
   end
+
+  # Kamal uses Docker platform names; Hetzner reports the architecture as atoms.
+  defp target_arch(:arm), do: "arm64"
+  defp target_arch(:x86), do: "amd64"
+  defp target_arch(_), do: nil
 
   # `script_env/1` keeps only binaries, so an integer port is stringified here.
   defp port_option(nil), do: nil
