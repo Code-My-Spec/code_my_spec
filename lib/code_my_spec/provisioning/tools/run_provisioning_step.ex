@@ -69,6 +69,12 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
            description:
              "Required for the \"deploy\" step: which environment to deploy (e.g. \"uat\"). Deploying is a decision about one specific environment, not a batch operation — without this, `Steps.run(:deploy, …)` would deploy every environment the project has in one call, in an unspecified order, stopping at the first failure. That silently includes prod even when a caller only meant to touch uat, so this tool requires naming the one environment intended."
          ]},
+      telemetry_mode:
+        {:meta, :string,
+         [
+           description:
+             "For the \"telemetry\" step only: \"full\" (the default: ClickHouse and the collector), \"capped\" (ClickHouse with a memory cap) or \"collector_only\" (only the OTLP collector; data queues locally until ClickHouse is installed). Pick capped or collector_only on a box shared with other apps."
+         ]},
       inbound_probe_to:
         {:meta, :string,
          [
@@ -107,13 +113,32 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
     end
   end
 
-  defp run_opts(params) do
+  @doc false
+  # Public for its test: each option a param carries to the step.
+  def run_opts(params) do
     []
+    |> with_telemetry_mode(params)
     |> with_inbound_probe(params)
     |> with_confirm_apex_repoint(params)
     |> with_confirm_inbound_mx_repoint(params)
     |> with_force(params)
     |> with_environment(params)
+  end
+
+  @telemetry_modes ~w(full capped collector_only)
+
+  # An unknown mode is passed through as given, for `ClickHouse` to refuse by name.
+  defp with_telemetry_mode(opts, params) do
+    case Map.get(params, :telemetry_mode) do
+      mode when mode in @telemetry_modes ->
+        Keyword.put(opts, :telemetry_mode, String.to_atom(mode))
+
+      mode when is_binary(mode) and mode != "" ->
+        Keyword.put(opts, :telemetry_mode, mode)
+
+      _ ->
+        opts
+    end
   end
 
   defp with_inbound_probe(opts, params) do
