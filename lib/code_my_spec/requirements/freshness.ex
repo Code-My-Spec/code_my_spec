@@ -16,6 +16,7 @@ defmodule CodeMySpec.Requirements.Freshness do
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementDefinitionData
+  alias CodeMySpec.Requirements.StoryIssueGraph
 
   @doc """
   One story's inputs, as a fingerprint.
@@ -114,14 +115,13 @@ defmodule CodeMySpec.Requirements.Freshness do
     %{
       components: hash(components),
       stories: hash(stories),
+      # Only the issues with a branch: filing or editing any other moves no edge.
       story_issues:
-        hash(
-          Enum.map(
-            Map.get(ctx, :story_issues, []),
-            &{&1.id, &1.story_id, &1.status, &1.severity, &1.assigned_working_copy_id}
-          )
-          |> Enum.sort()
-        ),
+        ctx
+        |> StoryIssueGraph.offered(config)
+        |> Enum.map(&{&1.id, &1.story_id})
+        |> Enum.sort()
+        |> hash(),
       config: hash(config_shape(config)),
       definitions: hash(definition_shape(ctx))
     }

@@ -101,6 +101,20 @@ defmodule CmsHarness.ChannelClientTransportTest do
              "the server may never close"
   end
 
+  test "a server's word that the read model moved re-requests it at once" do
+    assert {:ok, out} =
+             ChannelClient.handle_message(
+               "harness_project:p1",
+               "read_model_changed",
+               %{},
+               socket(%{})
+             )
+
+    assert_receive {:transport_push, "harness_project:p1", "read_model", _, ref}
+    assert out.assigns.read_model_ref == ref
+    assert out.assigns.read_model_reason == :refresh
+  end
+
   test "the read model is re-requested on the refresh tick" do
     assert {:noreply, _} = ChannelClient.handle_info(:refresh_read_model, socket(%{}))
 

@@ -73,7 +73,7 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
       # A row a retired definition left behind.
       [{template_row_id}] =
         scope
-        |> story_rows("component_linked")
+        |> story_rows("bdd_specs_exist")
         |> Ecto.Query.select([n], {n.id})
         |> Ecto.Query.limit(1)
         |> Repo.all()
@@ -173,13 +173,27 @@ defmodule CodeMySpec.Requirements.AReleaseThatAddsARequirementSeedsTheVantageTes
 
   defp rows_named(%Scope{} = scope, name), do: scope |> story_rows(name) |> Repo.aggregate(:count)
 
-  defp story_rows(%Scope{active_project_id: project_id, active_working_copy_id: copy}, name) do
-    stories =
-      from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
+  # Where the name's rows live: once per project, or per checkout.
+  defp story_rows(scope, name),
+    do: story_rows(scope, name, name in GraphStore.project_wide_names())
 
+  defp story_rows(%Scope{active_project_id: project_id}, name, true) do
+    from(n in "project_requirements",
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name
+    )
+  end
+
+  defp story_rows(
+         %Scope{active_project_id: project_id, active_working_copy_id: copy},
+         name,
+         false
+       ) do
     from(n in "requirements",
-      where: n.story_id in subquery(stories) and n.name == ^name,
+      where: n.story_id in subquery(project_stories(project_id)) and n.name == ^name,
       where: is_nil(n.working_copy_id) == is_nil(type(^copy, :binary_id))
     )
   end
+
+  defp project_stories(project_id),
+    do: from(s in "stories", where: s.project_id == type(^project_id, :binary_id), select: s.id)
 end

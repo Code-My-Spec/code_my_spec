@@ -320,6 +320,15 @@ defmodule CmsHarness.Channel do
     end
   end
 
+  @doc "Called from the scanning task with the checkout's overlay (`CopyOverlay`)."
+  @spec deliver_overlay(String.t(), map()) :: :ok
+  def deliver_overlay(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.cast(pid, {:overlay, payload})
+      [] -> :ok
+    end
+  end
+
   @doc "Whether this checkout's application is answering, measured on every scan."
   @spec deliver_preview_status(String.t(), String.t()) :: :ok
   def deliver_preview_status(root, status) do

@@ -40,8 +40,8 @@ defmodule CodeMySpec.DurableRun do
   end
 
   def attach_pid(id, pid) when is_integer(id) and is_integer(pid) do
-    # The launch shell stays alive until the child exits, so its identity
-    # remains stable while the next harness verifies this pid.
+    # The start time survives the launch shell exec'ing its command, so the
+    # identity stays stable while the next harness verifies this pid.
     with {:ok, manifest} <- read_manifest(id),
          {:ok, identity} <- identity(pid) do
       manifest
@@ -83,8 +83,13 @@ defmodule CodeMySpec.DurableRun do
 
   def startup_stale?(_), do: true
 
-  def alive?(%{"pid" => pid, "identity" => expected}) do
-    identity(pid) == {:ok, expected}
+  # A manifest written before identity was the start time alone carries the
+  # command line after it, so the start time is compared as a prefix.
+  def alive?(%{"pid" => pid, "identity" => expected}) when is_binary(expected) do
+    case identity(pid) do
+      {:ok, started} -> expected == started or String.starts_with?(expected, started <> " ")
+      _ -> false
+    end
   end
 
   def alive?(_), do: false
@@ -415,8 +420,10 @@ defmodule CodeMySpec.DurableRun do
 
   defp descendant_of?(_pid, _ancestor, _remaining), do: false
 
+  # The process's start time. Not its command line: `sh -c` replaces itself
+  # with its command, so a line read before that exec never matches again.
   defp identity(pid) do
-    case System.cmd("/bin/ps", ["-o", "lstart=", "-o", "command=", "-p", Integer.to_string(pid)],
+    case System.cmd("/bin/ps", ["-o", "lstart=", "-p", Integer.to_string(pid)],
            stderr_to_stdout: true
          ) do
       {output, 0} ->
