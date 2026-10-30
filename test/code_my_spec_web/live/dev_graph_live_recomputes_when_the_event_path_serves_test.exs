@@ -88,7 +88,7 @@ defmodule CodeMySpecWeb.DevGraphLiveRecomputesWhenTheEventPathServesTest do
     import Ecto.Query
 
     CodeMySpec.Repo.update_all(
-      from(n in CodeMySpec.Requirements.Node,
+      from(n in {"project_requirements", CodeMySpec.Requirements.Node},
         where: n.project_id == ^scope.active_project_id and n.name == "personas_complete"
       ),
       set: [details: %{"waiting_on" => "verification probe"}]

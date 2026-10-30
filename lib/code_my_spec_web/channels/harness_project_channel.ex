@@ -58,6 +58,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.PromotionQueue
+  alias CodeMySpec.Requirements.CopyOverlay
+  alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Utils
   alias CodeMySpec.WorkingCopies
@@ -130,7 +132,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
        |> assign(:reconciling, nil)
        |> assign(:reconciling_manifest, nil)
        |> assign(:reconcile_retries, 0)
-       |> assign(:pending_manifest, nil)}
+       |> assign(:pending_manifest, nil)
+       |> assign(:overlay_unchecked, false)
+       |> assign(:read_model_due, false)}
     else
       # A changeset is a map too, so it must be matched ahead of the generic
       # refusal clause below — otherwise it passes through as a raw struct
@@ -341,9 +345,31 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   """
   @impl true
   def handle_in("read_model", _payload, socket) do
-    read_model = Files.read_model(socket.assigns.scope)
+    scope = socket.assigns.scope
+    read_model = %{Files.read_model(scope) | overlay_records: CopyOverlay.records(scope)}
+    payload = serialize_read_model(read_model)
 
-    {:reply, {:ok, serialize_read_model(read_model)}, socket}
+    {:reply, {:ok, Map.put(payload, "fingerprint", fingerprint(payload))}, socket}
+  end
+
+  # A checkout's file verdicts and repository state (`CopyOverlay`). Shadow:
+  # stored, then compared with this server's rows once the copy's manifests
+  # have reconciled. Nothing reads it.
+  def handle_in("overlay", %{"verdicts" => verdicts} = payload, socket) when is_list(verdicts) do
+    case CopyOverlay.report(socket.assigns.scope, payload) do
+      {:ok, _report} ->
+        socket =
+          socket
+          |> assign(:overlay_unchecked, true)
+          |> check_overlay_when_quiet()
+          |> follow_read_model()
+
+        {:reply, :ok, socket}
+
+      {:error, reason} ->
+        Logger.warning("[HarnessProject] could not store an overlay: #{inspect(reason)}")
+        {:reply, {:error, %{"reason" => "invalid_overlay"}}, socket}
+    end
   end
 
   # A completed model turn from the sprite's proxy, recorded where the operator
@@ -1510,6 +1536,24 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # Ask for a fresh manifest. No payload: the channel already names the copy,
   # and a root on the wire would be a second answer.
+  # A record the read model holds moved. Coalesced: a burst of writes is one
+  # refresh.
+  def handle_info(
+        {:read_model_changed, _project_id},
+        %{assigns: %{read_model_due: true}} = socket
+      ),
+      do: {:noreply, socket}
+
+  def handle_info({:read_model_changed, _project_id}, socket) do
+    Process.send_after(self(), :read_model_changed, read_model_coalesce_ms())
+    {:noreply, assign(socket, :read_model_due, true)}
+  end
+
+  def handle_info(:read_model_changed, socket) do
+    push(socket, "read_model_changed", %{})
+    {:noreply, assign(socket, :read_model_due, false)}
+  end
+
   def handle_info(:rescan, socket) do
     push(socket, "rescan", %{})
     {:noreply, socket}
@@ -1741,6 +1785,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     |> assign(:reconciling, nil)
     |> assign(:reconciling_manifest, nil)
     |> assign(:reconcile_retries, 0)
+    |> check_overlay_when_quiet()
   end
 
   defp next_manifest(%{assigns: %{pending_manifest: entries}} = socket) do
@@ -2128,9 +2173,48 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       "component_by_module" => read_model.component_by_module,
       "component_by_id" => Map.new(read_model.component_by_id, &serialize_component/1),
       "story_ids" => MapSet.to_list(read_model.story_ids),
-      "strict" => read_model.strict?
+      "story_ids_by_number" => read_model.story_ids_by_number,
+      "story_by_spec_path" => read_model.story_by_spec_path,
+      "strict" => read_model.strict?,
+      "overlay_records" => read_model.overlay_records
     }
   end
+
+  defp fingerprint(payload),
+    do: payload |> :erlang.term_to_binary() |> :erlang.md5() |> Base.encode16(case: :lower)
+
+  # How long a burst of record writes is gathered into one read-model push.
+  # Config so a test can gather over milliseconds.
+  defp read_model_coalesce_ms,
+    do: Application.get_env(:code_my_spec, :read_model_coalesce_ms, 2_000)
+
+  # Told of read-model changes once the harness reports overlays: an older one
+  # does not, and would log a push it does not know.
+  defp follow_read_model(%{assigns: %{following_read_model: true}} = socket), do: socket
+
+  defp follow_read_model(socket) do
+    :ok = GraphInputs.subscribe_read_model(socket.assigns.scope.active_project_id)
+    assign(socket, :following_read_model, true)
+  end
+
+  # Compared only with no manifest reconciling or queued, so the rows have
+  # caught up with the scan the overlay came from.
+  defp check_overlay_when_quiet(
+         %{assigns: %{overlay_unchecked: true, reconciling: nil, pending_manifest: nil}} = socket
+       ) do
+    scope = socket.assigns.scope
+
+    if Application.get_env(:code_my_spec, :analysis_mode) == :inline do
+      CopyOverlay.check(scope)
+    else
+      {:ok, _pid} =
+        Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn -> CopyOverlay.check(scope) end)
+    end
+
+    assign(socket, :overlay_unchecked, false)
+  end
+
+  defp check_overlay_when_quiet(socket), do: socket
 
   defp serialize_component({id, component}) do
     {id,

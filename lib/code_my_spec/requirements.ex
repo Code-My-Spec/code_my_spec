@@ -10,6 +10,7 @@ defmodule CodeMySpec.Requirements do
   use Boundary,
     top_level?: true,
     deps: [
+      CodeMySpec.Analysis.HarnessRegistry,
       CodeMySpec.Stories,
       CodeMySpec.Agents.RoleProfile,
       CodeMySpec.BddRules,

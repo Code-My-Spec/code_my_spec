@@ -73,6 +73,11 @@ defmodule CodeMySpec.Files.Scanner do
     which file is its spex, so a spex file's story is a lookup. The number
     parse survives only as the fallback for files nothing has claimed yet —
     it is wrong after a migration, because story ids are per-deployment.
+
+    `overlay_records` is what a checkout's file verdicts read beyond its scan,
+    opaque here (`Requirements.CopyOverlay.records/1`); nil from a server that
+    serves none. `fingerprint` names the whole model as served, so a report
+    says which records it answers.
     """
     defstruct component_by_module: %{},
               component_by_path: %{},
@@ -80,7 +85,9 @@ defmodule CodeMySpec.Files.Scanner do
               story_ids: MapSet.new(),
               story_ids_by_number: %{},
               story_by_spec_path: %{},
-              strict?: true
+              strict?: true,
+              overlay_records: nil,
+              fingerprint: nil
 
     @type t :: %__MODULE__{
             component_by_module: %{String.t() => Ecto.UUID.t()},
@@ -89,7 +96,9 @@ defmodule CodeMySpec.Files.Scanner do
             story_ids: MapSet.t(integer()),
             story_ids_by_number: %{integer() => integer()},
             story_by_spec_path: %{String.t() => integer()},
-            strict?: boolean()
+            strict?: boolean(),
+            overlay_records: map() | nil,
+            fingerprint: String.t() | nil
           }
   end
 

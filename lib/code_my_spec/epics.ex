@@ -24,7 +24,7 @@ defmodule CodeMySpec.Epics do
     ],
     exports: :all
 
-  import Ecto.Query, only: [from: 2, where: 3]
+  import Ecto.Query, only: [dynamic: 2, from: 2, where: 2, where: 3]
 
   alias CodeMySpec.Agents.Agent
   alias CodeMySpec.Configurations
@@ -203,11 +203,31 @@ defmodule CodeMySpec.Epics do
       any_claimed_task?(project_id)
   end
 
+  # Asked in the database: decoding every agent's tasks to find one cost about
+  # 100ms on a project with 320 agents and 3,177 tasks, on every drain and read.
   defp any_claimed_task?(project_id) do
     Agent
     |> where([a], a.project_id == ^project_id)
-    |> Repo.all()
-    |> Enum.any?(fn agent -> Enum.any?(agent.tasks || [], &(&1.status == :active)) end)
+    |> where(^holds_active_task())
+    |> Repo.exists?()
+  end
+
+  # `tasks` is `jsonb[]` on Postgres, a JSON array in text on SQLite.
+  defp holds_active_task do
+    if Repo.sqlite?() do
+      dynamic(
+        [a],
+        fragment(
+          "EXISTS (SELECT 1 FROM json_each(?) WHERE json_extract(value, '$.status') = 'active')",
+          a.tasks
+        )
+      )
+    else
+      dynamic(
+        [a],
+        fragment("EXISTS (SELECT 1 FROM unnest(?) t WHERE t->>'status' = 'active')", a.tasks)
+      )
+    end
   end
 
   # `ready_for_dev` is product's approval and stays set after delivery

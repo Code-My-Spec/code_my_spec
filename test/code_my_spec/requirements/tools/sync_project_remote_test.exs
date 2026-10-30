@@ -194,6 +194,7 @@ defmodule CodeMySpec.Requirements.Tools.SyncProjectRemoteTest do
       story = story_fixture(ctx.scope)
       _ = requirements_of(ctx.scope, story)
       Repo.delete_all(from(r in "requirements", where: r.story_id == ^story.id))
+      Repo.delete_all(from(r in "project_requirements", where: r.story_id == ^story.id))
       assert requirements_of(ctx.scope, story) =~ "0/0 satisfied"
 
       {_response, text} = run(%{ctx.scope | cwd: nil})

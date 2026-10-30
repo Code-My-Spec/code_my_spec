@@ -81,7 +81,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # spex pass has no spec and nothing asks for one.
   defp check(%{check_type: :bdd_specs_covered, config: config}, scope, entity, _files, ctx) do
     role = config_role(config)
-    check_bdd_specs_covered(scope, entity, copy_files(scope, ctx), role)
+    entity |> story_criteria(scope, ctx) |> bdd_specs_covered(copy_files(scope, ctx), role)
   end
 
   defp check(%{check_type: :path_exists, config: config}, scope, _entity, _files, ctx) do
@@ -411,11 +411,19 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     Files.list_files(%{scope | active_working_copy_id: Preloader.files_copy(scope)})
   end
 
-  defp check_bdd_specs_covered(scope, %{id: story_id}, files, role) do
-    scope
-    |> AcceptanceCriteria.list_story_criteria(story_id)
-    |> bdd_specs_covered(files, role)
+  # From the context when it carries criteria (a load, or a harness's read
+  # model, which has no database), as `list_story_criteria/2` gives them: live
+  # ones, oldest first.
+  defp story_criteria(%{id: story_id}, _scope, %{criteria_by_story: by_story}) do
+    by_story
+    |> Map.get(story_id, [])
+    |> Enum.reject(& &1.retired_at)
+    |> Enum.sort_by(& &1.id)
+    |> Enum.sort_by(& &1.inserted_at, DateTime)
   end
+
+  defp story_criteria(%{id: story_id}, scope, _ctx),
+    do: AcceptanceCriteria.list_story_criteria(scope, story_id)
 
   @doc """
   Whether every criterion on a story has a valid file of `role` naming it.

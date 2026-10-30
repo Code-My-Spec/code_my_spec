@@ -602,40 +602,78 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       Map.new(ctx.components, &{{"component", &1.id}, MapSet.new()})
       |> Map.merge(Map.new(ctx.stories, &{{"story", &1.id}, MapSet.new()}))
 
+    ctx
+    |> defined_nodes(config)
+    |> Enum.reject(&(&1.entity_type == "project"))
+    |> Enum.reduce(entities, fn node, acc ->
+      Map.update!(acc, {node.entity_type, node.entity_id}, &MapSet.put(&1, node.name))
+    end)
+  end
+
+  @doc """
+  Every node the templates define for the entities in `ctx` and `project_id`,
+  as the identity a row carries: entity, name, and for a component which
+  template produced it (`owner_component_type`, `node_scope`). Records only:
+  no checker runs, so a read derives membership without a stored row.
+  """
+  @spec defined_nodes(map(), map(), Ecto.UUID.t() | nil) :: [map()]
+  def defined_nodes(ctx, config, project_id \\ nil) do
     {top_level, children_by_parent} = component_families(ctx)
 
-    entities =
-      Enum.reduce(top_level, entities, fn component, acc ->
+    components =
+      Enum.flat_map(top_level, fn component ->
         template =
           component.type
           |> RequirementDefinitionData.graph_for_type()
           |> filter_definitions_by_config(config)
 
-        own_names =
-          template
-          |> Enum.filter(&(&1.node_scope in [:parent, :self]))
-          |> MapSet.new(& &1.name)
+        own =
+          for definition <- template, definition.node_scope in [:parent, :self] do
+            identity("component", component.id, definition, component.type)
+          end
 
-        acc = Map.update!(acc, {"component", component.id}, &MapSet.union(&1, own_names))
+        children =
+          for child <- Map.get(children_by_parent, component.id, []),
+              definition <-
+                template
+                |> Enum.filter(&(&1.node_scope == :child))
+                |> filter_defs_for_child_type(child.type) do
+            identity("component", child.id, definition, component.type)
+          end
 
-        Enum.reduce(Map.get(children_by_parent, component.id, []), acc, fn child, child_acc ->
-          child_names =
-            template
-            |> Enum.filter(&(&1.node_scope == :child))
-            |> filter_defs_for_child_type(child.type)
-            |> MapSet.new(& &1.name)
-
-          Map.update!(child_acc, {"component", child.id}, &MapSet.union(&1, child_names))
-        end)
+        own ++ children
       end)
 
-    story_names = template_names(RequirementDefinitionData.story_graph(), config)
+    stories =
+      for story <- ctx.stories,
+          name <- template_names(RequirementDefinitionData.story_graph(), config),
+          do: identity("story", story.id, name)
 
-    Map.new(entities, fn
-      {{"story", _id} = key, _names} -> {key, story_names}
-      {key, names} -> {key, names}
-    end)
+    project =
+      for name <- template_names(RequirementDefinitionData.project_graph(), config),
+          do: identity("project", project_id, name)
+
+    components ++ stories ++ project
   end
+
+  defp identity(type, id, definition, owner_type) do
+    %{
+      entity_type: type,
+      entity_id: id,
+      name: definition.name,
+      owner_component_type: owner_type,
+      node_scope: definition.node_scope
+    }
+  end
+
+  defp identity(type, id, name),
+    do: %{
+      entity_type: type,
+      entity_id: id,
+      name: name,
+      owner_component_type: nil,
+      node_scope: nil
+    }
 
   defp template_names(template, config),
     do: template |> maybe_filter_devops(config) |> MapSet.new(& &1.name)

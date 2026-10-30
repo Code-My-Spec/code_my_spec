@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Node, Projection}
+  alias CodeMySpec.Requirements.{GraphStore, Projection}
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -54,7 +54,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   def requirement_details(%Scope{active_project_id: project_id} = scope, name, entity_ids) do
     wanted = Enum.map(entity_ids, &to_string/1)
 
-    from(n in Node,
+    from(n in subquery(GraphStore.rows_at(Projection.vantage(scope))),
       where: n.name == ^to_string(name),
       where:
         n.project_id == ^project_id or
@@ -81,7 +81,6 @@ defmodule CodeMySpec.Requirements.NodeRepository do
         issue_id: n.issue_id
       }
     )
-    |> where(^copy_filter(Projection.vantage(scope)))
     |> Repo.all()
     |> Enum.find(fn row ->
       # All three, because a row names its entity in exactly one of them and
@@ -105,10 +104,4 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   The two differ, and conflating them is what let stale rows survive forever.
   """
   @type visited :: %{components: [Ecto.UUID.t()], stories: [integer()]} | nil
-
-  # `is_nil` rather than `== nil`: the UI path's rows carry a null working copy,
-  # and `= NULL` is never true in SQL, so comparing that way would match no row
-  # and make every UI render insert a fresh duplicate.
-  defp copy_filter(nil), do: dynamic([n], is_nil(n.working_copy_id))
-  defp copy_filter(id), do: dynamic([n], n.working_copy_id == ^id)
 end
