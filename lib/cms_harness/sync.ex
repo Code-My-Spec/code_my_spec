@@ -20,6 +20,7 @@ defmodule CmsHarness.Sync do
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Generators.DeployBoilerplate
+  alias CodeMySpec.Requirements.CopyOverlay
 
   @doc """
   Kick off a scan for a project. Returns immediately.
@@ -106,6 +107,73 @@ defmodule CmsHarness.Sync do
         log_unclassified(env, project.root)
 
         Channel.deliver_observations(project.root, observations)
+        report_overlay(env, project.root, observations, read_model)
+    end
+  end
+
+  @doc """
+  Re-report the overlay from a scan already sent, when only the records it
+  reads moved. Returns immediately.
+  """
+  @spec start_overlay(map(), [map()], ReadModel.t()) :: :ok
+  def start_overlay(project, observations, %ReadModel{} = read_model) do
+    env = ExecutionContext.new(:local, project.root)
+
+    {:ok, _pid} =
+      Task.Supervisor.start_child(task_supervisor(project.root), fn ->
+        report_overlay(env, project.root, observations, read_model)
+      end)
+
+    :ok
+  end
+
+  # The checkout's file verdicts and repository state, which only this machine
+  # can read. Nothing from a server that serves no records.
+  defp report_overlay(env, root, observations, read_model) do
+    case CopyOverlay.verdicts(observations, read_model) do
+      nil ->
+        :ok
+
+      verdicts ->
+        Channel.deliver_overlay(
+          root,
+          Map.merge(repository_state(env), %{
+            "read_model" => read_model.fingerprint,
+            "verdicts" => verdicts
+          })
+        )
+    end
+  end
+
+  # `behind` against the remote main as last fetched: no fetch here. Each fact
+  # is nil when this checkout cannot answer it.
+  defp repository_state(env) do
+    %{
+      "head" => git(env, ["rev-parse", "HEAD"]),
+      "behind" => behind(env),
+      "dirty" =>
+        case git(env, ["status", "--porcelain", "--untracked-files=no"]) do
+          nil -> nil
+          out -> out != ""
+        end
+    }
+  end
+
+  defp behind(env) do
+    with main when is_binary(main) <-
+           git(env, ["rev-parse", "--abbrev-ref", "origin/HEAD"]) || "origin/main",
+         count when is_binary(count) <- git(env, ["rev-list", "--count", "HEAD.." <> main]),
+         {n, ""} <- Integer.parse(count) do
+      n
+    else
+      _ -> nil
+    end
+  end
+
+  defp git(env, args) do
+    case ExecutionContexts.cmd(env, "git", args, stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      _ -> nil
     end
   end
 

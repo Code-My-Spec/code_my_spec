@@ -62,6 +62,8 @@ defmodule CmsHarness do
       CodeMySpec.Paths,
       CodeMySpec.Projects,
       CodeMySpec.RecordingLock,
+      # `CopyOverlay`: the checkout's file verdicts, settled from its own scan.
+      CodeMySpec.Requirements,
       CodeMySpec.StaticAnalysis,
       CodeMySpec.Tests,
       # `mix cms.harness.onboard` (classified here) records the copy and its

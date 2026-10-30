@@ -469,6 +469,44 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "overlay" do
+    alias CodeMySpec.Requirements.CopyOverlay.Report
+
+    test "the read model carries the records the overlay reads, and names itself",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "read_model", %{})
+      assert_reply ref, :ok, payload, 2_000
+
+      decoded = payload |> Jason.encode!() |> Jason.decode!()
+
+      assert %{"criteria_by_story" => _, "authored" => _, "story_numbers" => _} =
+               decoded["overlay_records"]
+
+      assert is_binary(decoded["fingerprint"])
+    end
+
+    test "a report is stored and compared with this checkout's rows",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref =
+        push(channel, "overlay", %{
+          "read_model" => "abc",
+          "head" => "0123abc",
+          "behind" => 2,
+          "dirty" => false,
+          "verdicts" => []
+        })
+
+      assert_reply ref, :ok, _, 2_000
+
+      assert %Report{head: "0123abc", behind: 2, dirty: false, compared_at: %DateTime{}} =
+               CodeMySpec.Repo.get(Report, scope.active_working_copy_id)
+    end
+  end
+
   describe "observations" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =

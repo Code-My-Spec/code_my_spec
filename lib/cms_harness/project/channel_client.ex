@@ -63,6 +63,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.WorkingCopies.Create
   alias CmsHarness.WorkingCopies.SyncToMain
   alias CodeMySpec.ExecutionContexts.ExecutionContext
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Promotion.Steps
   alias CodeMySpec.Utils.MapAccess
@@ -498,11 +499,23 @@ defmodule CmsHarness.Project.ChannelClient do
   # The join's read model always earns a scan: it resolves owners and validates
   # specs, so the first manifest waits for it. A 60s refresh scans only when
   # the read model changed; the watcher covers the disk.
+  # Records only the overlay reads (criteria, story numbers) are recomputed
+  # from the last scan, not rescanned: the disk did not change.
   defp maybe_sync(socket, previous, read_model) do
-    if socket.assigns[:read_model_reason] != :refresh or previous != read_model do
-      Sync.start(socket.assigns.project, read_model)
+    cond do
+      socket.assigns[:read_model_reason] != :refresh or scanned(previous) != scanned(read_model) ->
+        Sync.start(socket.assigns.project, read_model)
+
+      previous != read_model and socket.assigns[:last_observations] ->
+        Sync.start_overlay(socket.assigns.project, socket.assigns.last_observations, read_model)
+
+      true ->
+        :ok
     end
   end
+
+  defp scanned(nil), do: nil
+  defp scanned(read_model), do: %{read_model | overlay_records: nil, fingerprint: nil}
 
   @impl Slipstream
   def handle_reply(ref, reply, %{assigns: %{read_model_ref: ref}} = socket) do
@@ -2478,7 +2491,8 @@ defmodule CmsHarness.Project.ChannelClient do
         )
 
         # Kept so the reply is read: a rejected manifest must not look accepted.
-        {:noreply, assign(socket, :observations_ref, ref)}
+        # The scan too, so a records-only read model change re-reports the overlay.
+        {:noreply, assign(socket, observations_ref: ref, last_observations: observations)}
 
       {:error, reason} ->
         Logger.error("[CmsHarness] could not send observations: #{inspect(reason)}")
@@ -2528,6 +2542,26 @@ defmodule CmsHarness.Project.ChannelClient do
        Map.put(Map.get(socket.assigns, :analysis_pending, %{}), payload["run_id"], payload)
      )}
   end
+
+  def handle_cast({:overlay, payload}, %{assigns: %{joined: true}} = socket) do
+    case transport().push(
+           socket,
+           socket.assigns.topic,
+           "overlay",
+           payload,
+           Channel.decision_timeout()
+         ) do
+      {:ok, _ref} ->
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("[CmsHarness] could not send the overlay: #{inspect(reason)}")
+        {:noreply, socket}
+    end
+  end
+
+  # Dropped like a manifest: the rescan on rejoin reports it again.
+  def handle_cast({:overlay, _payload}, socket), do: {:noreply, socket}
 
   # Dropped: a manifest describes *now*. The rescan on rejoin is the recovery.
   def handle_cast({:observations, _observations}, socket) do
@@ -2859,11 +2893,22 @@ defmodule CmsHarness.Project.ChannelClient do
   # `story_ids` crosses as a list because a MapSet has no JSON form; the
   # harness rebuilds it. Mirrors `HarnessProjectChannel.serialize_read_model/1`.
   defp deserialize_read_model(payload) do
+    component_by_id = atomize_components(payload["component_by_id"] || %{})
+
     %ReadModel{
       component_by_module: payload["component_by_module"] || %{},
-      component_by_id: atomize_components(payload["component_by_id"] || %{}),
+      component_by_id: component_by_id,
+      component_by_path:
+        Files.component_by_path(Enum.map(component_by_id, fn {id, c} -> Map.put(c, :id, id) end)),
       story_ids: MapSet.new(payload["story_ids"] || []),
-      strict?: payload["strict"] != false
+      story_ids_by_number:
+        Map.new(payload["story_ids_by_number"] || %{}, fn {n, id} ->
+          {String.to_integer(n), id}
+        end),
+      story_by_spec_path: payload["story_by_spec_path"] || %{},
+      strict?: payload["strict"] != false,
+      overlay_records: payload["overlay_records"],
+      fingerprint: payload["fingerprint"]
     }
   end
 
