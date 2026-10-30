@@ -5883,6 +5883,23 @@ defmodule CodeMySpecSpex.Fixtures do
     Environments.put(scope, name, %{ip: ip})
   end
 
+  @doc "Publish the environment's recorded server address for a staged deploy host."
+  def publish_deploy_host(%Scope{} = scope, environment, host) do
+    %{ip: ip} = CodeMySpec.Environments.get_deployment(scope, environment)
+    zone_name = host |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+
+    with {:ok, zone} <- CodeMySpec.Provisioning.Cloudflare.find_zone(scope, zone_name),
+         {:ok, _record} <-
+           CodeMySpec.Provisioning.Cloudflare.ensure_dns_record(
+             scope,
+             zone["id"],
+             host,
+             ip
+           ) do
+      :ok
+    end
+  end
+
   @doc """
   Point an environment at an account server, without a provider round trip.
 

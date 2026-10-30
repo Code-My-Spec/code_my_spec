@@ -624,6 +624,20 @@ defmodule CodeMySpecSpex.Case do
 
     Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
 
+    previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous_step_opts, :dns_lookup, fn name, :a, _opts ->
+        Fakes.Resolver.addresses(cloudflare, name)
+      end)
+    )
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+    end)
+
     # The *other* DNS seam, and the last recorded thing in this setup. The
     # page's "does this record resolve" check goes through `:dns_resolver`,
     # which in replay reads a table of names recorded on some earlier day — so
@@ -4145,6 +4159,11 @@ defmodule CodeMySpecSpex.Case do
   pre-flight passes, and step opts carry the host, environment and probe.
   """
   def stage_deploy(%{scope: scope, execution_context: env} = context, scenario \\ :ok) do
+    # This staged deploy has already passed DNS setup. Record its server
+    # address and answer only the two hostnames this fixture stages.
+    ip = "203.0.113.2"
+    {:ok, _} = Fixtures.seed_environment_ip(scope, "uat", ip)
+
     # First, so the `bin/deploy` stub below overwrites the generated one rather
     # than the other way round. The deploy step audits the checkout before it
     # runs anything, and an empty working directory is refused with "this
@@ -4204,6 +4223,9 @@ defmodule CodeMySpecSpex.Case do
       Keyword.merge(previous,
         environment: "uat",
         host: "staged.example.com",
+        dns_lookup: fn name, :a, _opts ->
+          if name in ["uat.example.com", "staged.example.com"], do: [ip], else: []
+        end,
         probe: probe,
         deploy_script: deploy_script,
         deployed_version: %{

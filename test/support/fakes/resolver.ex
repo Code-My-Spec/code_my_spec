@@ -60,6 +60,14 @@ defmodule CodeMySpecSpex.Fakes.Resolver do
     |> Kernel.!=([])
   end
 
+  @doc "A record addresses published in the fake Cloudflare zone."
+  def addresses(cloudflare_agent, name) do
+    cloudflare_agent
+    |> Agent.get(& &1)
+    |> matching(String.trim_trailing(to_string(name), "."), "A")
+    |> Enum.map(& &1["data"])
+  end
+
   defp matching(state, name, type) do
     zones = Map.new(state.zones, &{&1["id"], &1["name"]})
 
