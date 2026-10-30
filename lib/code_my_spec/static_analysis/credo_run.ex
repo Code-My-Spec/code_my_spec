@@ -72,19 +72,30 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
     Logger.info("[CredoRun] Running: mix #{Enum.join(args, " ")}")
 
+    # Compile first to keep ordinary compiler output separate. Credo's
+    # loadpaths step can still compile a dependency, so parse its JSON below.
+    case ExecutionContexts.cmd(environment, "mix", ["compile"], cmd_opts) do
+      {_compile_output, 0} ->
+        run_credo(environment, args, cmd_opts)
+
+      {compile_output, status} ->
+        {:error,
+         "credo was not run: mix compile exited #{status}: #{String.trim(compile_output)}"}
+    end
+  rescue
+    exception ->
+      {:error, "credo crashed: #{Exception.message(exception)}"}
+  end
+
+  defp run_credo(environment, args, cmd_opts) do
     case ExecutionContexts.cmd(environment, "mix", args, cmd_opts) do
-      {output, exit_code} when exit_code in 0..1 ->
+      # Credo ORs category bits into its exit status (warning is 16).
+      # Its own command/configuration failures start at 128.
+      {output, exit_code} when exit_code in 0..31 ->
         parse(output)
 
-      # Credo exits >1 for its own failures. Output is still worth parsing when
-      # there is any — but no output at all means it never ran, and that is an
-      # error rather than a clean sweep.
       {output, exit_code} ->
-        if String.trim(output) == "" do
-          {:error, "credo exited #{exit_code} with no output"}
-        else
-          parse(output)
-        end
+        {:error, "credo was not run: exited #{exit_code}: #{String.trim(output)}"}
     end
   rescue
     exception ->
@@ -133,9 +144,6 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
         {:ok, issues, output}
 
-      {:ok, %{}} ->
-        {:ok, [], output}
-
       {:ok, _other} ->
         {:error, "unexpected JSON structure from credo"}
 
@@ -169,14 +177,7 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
        (output |> String.trim() |> String.slice(0, 300))}
   end
 
-  @doc """
-  The JSON document credo printed, out of everything else it printed.
-
-  Compilation chatter precedes it and quotes Elixir source full of braces, so
-  neither the first nor the last `{` is reliable. Tries each `{` in order and
-  keeps the first that decodes to a whole document with an `issues` key (the
-  key stops a stray `{}` in a warning passing for a clean run).
-  """
+  @doc "Decode the complete Credo JSON document after any compiler output."
   @spec extract_json(String.t()) :: {:ok, map()} | :error
   def extract_json(output) do
     output
@@ -185,19 +186,18 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
       candidate = binary_part(output, offset, byte_size(output) - offset)
 
       case Jason.decode(String.trim(candidate)) do
-        {:ok, %{"issues" => _} = decoded} -> {:ok, decoded}
+        {:ok, %{"issues" => issues} = decoded} when is_list(issues) -> {:ok, decoded}
         _ -> nil
       end
     end)
   end
 
-  # Bounded so all-braces, no-JSON output cannot make a failed run a long one.
   @max_candidates 200
 
   defp brace_offsets(output) do
-    case :binary.matches(output, "{") do
-      [] -> []
-      matches -> matches |> Enum.take(@max_candidates) |> Enum.map(fn {start, _} -> start end)
-    end
+    output
+    |> :binary.matches("{")
+    |> Enum.take(@max_candidates)
+    |> Enum.map(fn {offset, _length} -> offset end)
   end
 end
