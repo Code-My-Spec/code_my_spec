@@ -57,7 +57,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
 
     scope = %{scope | active_project: project}
-    {:ok, _} = Environments.put(scope, "uat", %{})
+    {:ok, _} = Environments.put_deployment(scope, "uat", %{ip: "192.0.2.10"})
 
     {:ok, {public, private}} = Sops.generate_key()
     ProjectSecrets.put_value(scope, "age_private_key_uat", private)
@@ -87,6 +87,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
 
     File.mkdir_p!(Path.join(tmp, "config"))
     write_boilerplate(tmp)
+    File.chmod!(Path.join(tmp, "bin/deploy"), 0o755)
     {:ok, scope: scope, tmp: tmp}
   end
 
@@ -181,7 +182,8 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       reaches_the_guard!(ctx.scope)
       write_config(ctx.tmp, "uat.#{@domain}")
 
-      assert {:error, message} = Steps.run(:deploy, ctx.scope, environment: "uat")
+      assert {:error, message} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: &matching_dns/3)
 
       refute message =~ "will not deploy to a host",
              "the config points at this project's uat, so the guard has nothing to say"
@@ -203,7 +205,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
         host: <%= ENV["CMS_DEPLOY_HOST"] || "<UAT_HOST>" %>
       """)
 
-      result = Steps.run(:deploy, ctx.scope, environment: "uat")
+      result = Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: &matching_dns/3)
 
       refute match?({:error, message} when is_binary(message), result) and
                elem(result, 1) =~ "will not deploy to a host",
@@ -235,10 +237,57 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       reaches_the_guard!(ctx.scope)
       File.write!(Path.join(ctx.tmp, "config/deploy.uat.yml"), "{{ not yaml")
 
-      assert {:error, message} = Steps.run(:deploy, ctx.scope, environment: "uat")
+      assert {:error, message} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: &matching_dns/3)
 
       refute message =~ "will not deploy to a host",
              "a file this guard cannot read is not evidence of a wrong host"
     end
   end
+
+  describe "public DNS before a deploy build" do
+    test "matching A record passes the DNS check", ctx do
+      reaches_the_guard!(ctx.scope)
+      write_config(ctx.tmp, "uat.#{@domain}")
+
+      lookup = fn name, :a, [] ->
+        send(self(), {:dns_checked, name})
+        ["192.0.2.10"]
+      end
+
+      assert {:error, reason} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: lookup)
+
+      assert_received {:dns_checked, "uat.#{@domain}"}
+      refute reason =~ "resolves to"
+    end
+
+    test "wrong A record refuses before a build and names both addresses", ctx do
+      reaches_the_guard!(ctx.scope)
+      write_config(ctx.tmp, "uat.#{@domain}")
+      lookup = fn _name, :a, [] -> ["192.0.2.99"] end
+
+      assert {:error, reason} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: lookup)
+
+      assert reason =~ "uat.#{@domain} resolves to 192.0.2.99"
+      assert reason =~ "not this server (192.0.2.10)"
+      refute File.exists?(Path.join(ctx.tmp, ".kamal"))
+    end
+
+    test "unresolvable A record refuses before a build", ctx do
+      reaches_the_guard!(ctx.scope)
+      write_config(ctx.tmp, "uat.#{@domain}")
+      lookup = fn _name, :a, [] -> [] end
+
+      assert {:error, reason} =
+               Steps.run(:deploy, ctx.scope, environment: "uat", dns_lookup: lookup)
+
+      assert reason =~ "uat.#{@domain} resolves to no address"
+      assert reason =~ "not this server (192.0.2.10)"
+      refute File.exists?(Path.join(ctx.tmp, ".kamal"))
+    end
+  end
+
+  defp matching_dns(_name, :a, []), do: ["192.0.2.10"]
 end

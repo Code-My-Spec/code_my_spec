@@ -2941,6 +2941,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, delivery} <- check_secrets(scope, environment),
          :ok <- config_targets_this_project(scope, environment),
          :ok <- require_script(scope, "bin/deploy"),
+         :ok <- deploy_dns_ready(scope, environment, host, opts),
          # Before the build: the builder archives HEAD, and the image is
          # versioned by HEAD.
          :ok <- commit_generated_configuration(scope),
@@ -2975,6 +2976,37 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason, resources} ->
           {:error, reason, [delivery | resources]}
       end
+    end
+  end
+
+  # Kamal connects to the named host and ACME validates that same name. Refuse
+  # before committing configuration or building an image if any public name
+  # still points elsewhere. The resolver can be supplied by a test.
+  defp deploy_dns_ready(scope, environment, host, opts) do
+    target = Environments.get_deployment(scope, environment)
+    ip = target && target.ip
+
+    if is_binary(ip) and ip != "" do
+      lookup = Keyword.get(opts, :dns_lookup, &Dns.lookup/3)
+      hosts = Enum.uniq(expected_hosts(scope, environment) ++ [host])
+
+      Enum.reduce_while(hosts, :ok, fn name, :ok ->
+        answers = if is_binary(name) and name != "", do: lookup.(name, :a, []), else: []
+
+        if ip in answers do
+          {:cont, :ok}
+        else
+          resolved = if answers == [], do: "no address", else: Enum.join(answers, ", ")
+          name = name || "the deploy hostname"
+
+          {:halt,
+           {:error,
+            "#{name} resolves to #{resolved}, not this server (#{ip}). Point DNS at this server before deploying."}}
+        end
+      end)
+    else
+      {:error,
+       "#{environment} has no recorded server address; deploy cannot check its public DNS yet."}
     end
   end
 
