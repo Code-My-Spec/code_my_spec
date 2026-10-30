@@ -171,7 +171,11 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       owner = self()
 
       create = fn _scope, _name, create_opts ->
-        send(owner, {:created, create_opts[:server_type], create_opts[:location]})
+        send(
+          owner,
+          {:created, create_opts[:server_type], create_opts[:location], create_opts[:labels]}
+        )
+
         {:ok, %{"server" => server()}}
       end
 
@@ -190,7 +194,9 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
 
       # cpx31, not cpx32: identical on paper, but cpx32 does not exist in ash or
       # hil, and the builder has to be created wherever the app box is.
-      assert_received {:created, "cpx31", "fsn1"}
+      assert_received {:created, "cpx31", "fsn1", labels}
+      assert labels[Builder.deploy_builder_label()] == "true"
+      assert labels["cms-burst-role"] == "true"
     end
 
     # The builder pushes to a registry on the app box's private network, and a
@@ -643,6 +649,84 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
   # (success, failure, raise) reaches the check, and that its answer is
   # reported honestly rather than assumed.
   describe "build/3 — releasing the shared box afterward" do
+    test "deletes a box it creates when the build succeeds" do
+      owner = self()
+
+      create = fn _, name, create_opts ->
+        server =
+          server(%{
+            "name" => name,
+            "created" => "2026-08-03T00:00:00Z",
+            "labels" => create_opts[:labels]
+          })
+
+        send(owner, {:created_box, server["id"]})
+        {:ok, %{"server" => server}}
+      end
+
+      options =
+        opts(
+          find: fn _, _ -> {:error, :not_found} end,
+          ensure_burst_box_image: fn _, _, _ -> {:ok, "image-id"} end,
+          create: create,
+          build_fun: build_fun(),
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(owner),
+          now: fn -> ~U[2026-08-03 00:10:00Z] end
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:created_box, 42}
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a successful build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build_fun()
+        )
+
+      assert {:ok, build} = Builder.build(scope(), "abc123", options)
+      assert build.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
+    test "deletes an idle deploy-created box after a failed build before the billing window" do
+      created =
+        server(%{
+          "created" => "2026-08-03T00:00:00Z",
+          "labels" => %{Builder.deploy_builder_label() => "true"}
+        })
+
+      build = fn _, _, _, _ -> {:error, :compilation_failed} end
+
+      options =
+        opts(
+          find: fn _, _ -> {:ok, created} end,
+          now: fn -> ~U[2026-08-03 00:10:00Z] end,
+          busy?: fn _, _ -> false end,
+          destroy: recording_destroy(self()),
+          build_fun: build
+        )
+
+      assert {:error, :compilation_failed, disposition} =
+               Builder.build(scope(), "abc123", options)
+
+      assert disposition.builder_destroyed
+      assert_received {:destroyed, 42}
+    end
+
     test "keeps the box, and reports it, when it is not due for a check" do
       assert {:ok, result} = Builder.build(scope(), "abc123", opts(build_fun: build_fun()))
 

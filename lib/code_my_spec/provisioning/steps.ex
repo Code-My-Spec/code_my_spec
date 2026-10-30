@@ -171,7 +171,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         )
 
       if length(pointable) == length(selected),
-        do: verify_dns_records(scope, domain, pointable),
+        do: verify_dns_records(scope, domain, pointable, opts),
         else: {:ok, :absent}
     else
       nil -> {:ok, :absent}
@@ -2345,18 +2345,18 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   ## Helpers
 
-  defp verify_dns_records(scope, domain, environments) do
+  defp verify_dns_records(scope, domain, environments, opts) do
     with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, domain),
          {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
-      dns_records_satisfied(records, environments)
+      dns_records_satisfied(records, environments, opts)
     else
       # Unreadable zone: absent, and the idempotent run converges.
       _ -> {:ok, :absent}
     end
   end
 
-  defp dns_records_satisfied(records, environments) do
-    if Enum.all?(environments, &record_points_at?(records, &1)),
+  defp dns_records_satisfied(records, environments, opts) do
+    if Enum.all?(environments, &record_points_at?(records, &1, opts)),
       do:
         {:ok, :satisfied,
          Enum.flat_map(environments, &(dns_resources_for(&1) ++ [dns_outcome(&1, "unchanged")]))},
@@ -2365,10 +2365,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Present and pointing at this environment's server — a leftover record may
   # point at an address the project no longer holds.
-  defp record_points_at?(records, environment) do
+  defp record_points_at?(records, environment, opts) do
+    ttl = Keyword.get(opts, :ttl)
+
     Enum.any?(records, fn record ->
       record["name"] == environment.host and record["type"] == "A" and
-        record["content"] == environment.ip and record["proxied"] != true
+        record["content"] == environment.ip and
+        record["proxied"] != true and
+        (is_nil(ttl) or record["ttl"] == ttl)
     end)
   end
 
@@ -2943,6 +2947,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, delivery} <- check_secrets(scope, environment),
          :ok <- config_targets_this_project(scope, environment),
          :ok <- require_script(scope, "bin/deploy"),
+         :ok <- deploy_dns_ready(scope, environment, host, opts),
          # Before the build: the builder archives HEAD, and the image is
          # versioned by HEAD.
          :ok <- commit_generated_configuration(scope),
@@ -2977,6 +2982,37 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason, resources} ->
           {:error, reason, [delivery | resources]}
       end
+    end
+  end
+
+  # Kamal connects to the named host and ACME validates that same name. Refuse
+  # before committing configuration or building an image if any public name
+  # still points elsewhere. The resolver can be supplied by a test.
+  defp deploy_dns_ready(scope, environment, host, opts) do
+    target = Environments.get_deployment(scope, environment)
+    ip = target && target.ip
+
+    if is_binary(ip) and ip != "" do
+      lookup = Keyword.get(opts, :dns_lookup, &Dns.lookup/3)
+      hosts = Enum.uniq(expected_hosts(scope, environment) ++ [host])
+
+      Enum.reduce_while(hosts, :ok, fn name, :ok ->
+        answers = if is_binary(name) and name != "", do: lookup.(name, :a, []), else: []
+
+        if ip in answers do
+          {:cont, :ok}
+        else
+          resolved = if answers == [], do: "no address", else: Enum.join(answers, ", ")
+          name = name || "the deploy hostname"
+
+          {:halt,
+           {:error,
+            "#{name} resolves to #{resolved}, not this server (#{ip}). Point DNS at this server before deploying."}}
+        end
+      end)
+    else
+      {:error,
+       "#{environment} has no recorded server address; deploy cannot check its public DNS yet."}
     end
   end
 
@@ -3582,19 +3618,20 @@ defmodule CodeMySpec.Provisioning.Steps do
           if is_nil(ip) do
             {:cont, {resources, pauses}}
           else
-            unchanged? =
-              Enum.any?(existing, fn record ->
-                record["name"] == environment.host and record["type"] == "A" and
-                  record["content"] == ip and record["proxied"] != true
-              end)
+            old = Enum.find(existing, &(&1["name"] == environment.host and &1["type"] == "A"))
+            unchanged? = record_points_at?(existing, %{environment | ip: ip}, opts)
+            change = dns_change(environment, old, ip, opts)
+            report = Keyword.get(opts, :report_dns_change, fn message -> Logger.info(message) end)
+            report.("DNS change: #{change.identifier}")
+            reported = resources ++ [change]
 
-            case write_dns_record_for(scope, zone, environment, ip, existing, resources, opts) do
+            case write_dns_record_for(scope, zone, environment, ip, existing, reported, opts) do
               {:cont, {:ok, written}} ->
                 outcome = if unchanged?, do: "unchanged", else: "written"
                 {:cont, {written ++ [dns_outcome(environment, outcome)], pauses}}
 
               {:halt, {:error, reason}} ->
-                {:halt, {:error, reason, resources}}
+                {:halt, {:error, reason, reported}}
             end
           end
       end
@@ -3609,11 +3646,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       {resources, pauses} ->
         outcomes =
           resources
-          |> Enum.filter(&(&1.kind == "dns_outcome"))
+          |> Enum.filter(&(&1.kind in ["dns_outcome", "dns_change"]))
           |> Enum.map_join(", ", & &1.identifier)
 
         {:paused, "DNS outcomes: #{outcomes}. #{Enum.join(pauses, " ")}", resources}
     end
+  end
+
+  defp dns_change(environment, old, ip, opts) do
+    old_value = if old, do: old["content"], else: "absent"
+    ttl = Keyword.get(opts, :ttl, 60)
+
+    %{
+      kind: "dns_change",
+      location: environment.host,
+      identifier:
+        "environment=#{environment.name} #{environment.host} #{old_value} -> #{ip} proxied=false ttl=#{ttl}"
+    }
   end
 
   defp dns_outcome(environment, outcome) do
@@ -3653,7 +3702,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp write_dns_record_for(scope, zone, environment, ip, existing, acc, opts) do
     write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
 
-    case write.(scope, zone["id"], environment.host, ip, records: existing, proxied: false) do
+    record_opts = [records: existing, proxied: false]
+    record_opts = Keyword.put(record_opts, :ttl, Keyword.get(opts, :ttl, 60))
+
+    case write.(scope, zone["id"], environment.host, ip, record_opts) do
       {:ok, response} ->
         record = dns_resource(environment.host, ip, response, environment.name)
         confirm_dns_record(environment, ip, record, acc, opts)

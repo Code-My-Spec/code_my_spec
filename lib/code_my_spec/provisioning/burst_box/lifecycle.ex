@@ -101,6 +101,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Lifecycle do
       *would* have made the eager call already crashed.
     * `:destroy` — defaults to `&Hetzner.delete_server/2`.
     * `:now` — defaults to `&DateTime.utc_now/0`.
+    * `:force?` — checks an owned deploy box immediately after the deploy ends.
 
   Returns `:not_due` outside the check window (the common case, every call
   that is not near the end of an hour), `:kept` when due and busy, `:deleted`
@@ -114,7 +115,7 @@ defmodule CodeMySpec.Provisioning.BurstBox.Lifecycle do
 
     case created_at(server) do
       {:ok, created} ->
-        if due_for_check?(created, now) do
+        if Keyword.get(opts, :force?, false) or due_for_check?(created, now) do
           busy_fun = Keyword.fetch!(opts, :busy?)
           act(scope, server, busy_fun.(scope, server), opts)
         else
@@ -139,8 +140,8 @@ defmodule CodeMySpec.Provisioning.BurstBox.Lifecycle do
     case destroy.(scope, server_id(server)) do
       {:ok, _} ->
         Logger.info(
-          "[BurstBox.Lifecycle] #{server_name(server)} is idle at the end of its billing " <>
-            "hour — deleting it before the next one is billed"
+          "[BurstBox.Lifecycle] deleting idle box id=#{server_id(server)} name=#{server_name(server)} " <>
+            "age_minutes=#{age_minutes(server, opts)}"
         )
 
         :deleted
@@ -152,6 +153,16 @@ defmodule CodeMySpec.Provisioning.BurstBox.Lifecycle do
         )
 
         error
+    end
+  end
+
+  defp age_minutes(server, opts) do
+    case created_at(server) do
+      {:ok, created} ->
+        max(DateTime.diff(Keyword.get(opts, :now, &DateTime.utc_now/0).(), created, :minute), 0)
+
+      :error ->
+        :unknown
     end
   end
 
