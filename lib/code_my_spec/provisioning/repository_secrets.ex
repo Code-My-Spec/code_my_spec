@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Provisioning.RepositorySecrets do
   @moduledoc "Writes encrypted environment secrets straight to the project's GitHub repository."
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.GitHub
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sops, Steps}
@@ -28,9 +29,9 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
       when is_binary(environment) and is_list(pairs) and pairs != [] do
     with :ok <- validate_all(environment, pairs, repo),
          {:ok, owner, name} <- location(repo),
-         {:ok, private} <- private_key(scope, environment),
          branch = project.development_branch || "main",
-         {:ok, %{content: config}} <- GitHub.get_file(scope, owner, name, ".sops.yaml", branch) do
+         {:ok, %{content: config}} <- GitHub.get_file(scope, owner, name, ".sops.yaml", branch),
+         {:ok, private} <- matching_private_key(scope, environment, config) do
       write(
         %{
           scope: scope,
@@ -129,10 +130,73 @@ defmodule CodeMySpec.Provisioning.RepositorySecrets do
     end
   end
 
-  defp private_key(scope, environment) do
-    case ProjectSecrets.fetch_value(scope, Steps.age_key_name(environment)) do
-      {:ok, key} when is_binary(key) and key != "" -> {:ok, key}
-      _ -> {:error, "The #{environment} age key is missing. Run secrets setup first."}
+  defp matching_private_key(scope, environment, config) do
+    with {:ok, recipients} <- config_recipients(config, environment) do
+      case ProjectSecrets.fetch_value(scope, Steps.age_key_name(environment)) do
+        {:ok, key} when is_binary(key) and key != "" ->
+          case Sops.public_key(key) do
+            {:ok, public} ->
+              if Enum.member?(recipients, public),
+                do: {:ok, key},
+                else: {:error, missing_key_message(scope, environment)}
+
+            _ ->
+              {:error, missing_key_message(scope, environment)}
+          end
+
+        _ ->
+          {:error, missing_key_message(scope, environment)}
+      end
+    else
+      _ -> {:error, "The repository secrets configuration is invalid for #{environment}."}
+    end
+  end
+
+  defp config_recipients(config, environment) do
+    path = Sops.env_file(environment)
+
+    with {:ok, %{"creation_rules" => rules}} when is_list(rules) <-
+           YamlElixir.read_from_string(config) do
+      recipients =
+        rules
+        |> Enum.filter(fn rule ->
+          case rule do
+            %{"path_regex" => pattern} when is_binary(pattern) ->
+              case Regex.compile(pattern) do
+                {:ok, regex} -> Regex.match?(regex, path)
+                _ -> false
+              end
+
+            _ ->
+              false
+          end
+        end)
+        |> Enum.flat_map(fn rule ->
+          case Map.get(rule, "age") do
+            age when is_binary(age) ->
+              String.split(age, ",", trim: true) |> Enum.map(&String.trim/1)
+
+            _ ->
+              []
+          end
+        end)
+
+      {:ok, recipients}
+    else
+      _ -> {:error, :invalid_config}
+    end
+  end
+
+  defp missing_key_message(scope, environment) do
+    prefix = "This server has no key for #{environment}'s secrets; "
+
+    case Environments.get_deployment(scope, environment) do
+      %{server_name: name} when is_binary(name) and name != "" ->
+        prefix <> "they were set up on #{name}. Put secrets there."
+
+      _ ->
+        prefix <>
+          "the server where they were set up is not recorded. Put secrets on the server that holds its key."
     end
   end
 
