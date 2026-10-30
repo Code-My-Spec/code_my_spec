@@ -174,6 +174,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.ProvisioningPlan.StepRepository
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.CopyOverlay
   alias CodeMySpec.Requirements.GraphInputs
   alias CodeMySpec.Requirements.GraphReport
   alias CodeMySpec.Requirements.GraphStore
@@ -1597,14 +1598,15 @@ defmodule CodeMySpecSpex.Fixtures do
     # And the overlay from the same scan, as a harness sends after each
     # manifest: a live harness that never saw these files must not answer for
     # them.
-    {served, _payload} = CodeMySpec.Requirements.CopyOverlay.served_read_model(scope)
+    {served, _payload} = CopyOverlay.served_read_model(scope)
 
     {:reply, _overlay_reply, _socket} =
       CodeMySpecWeb.HarnessProjectChannel.handle_in(
         "overlay",
         %{
           "read_model" => served.fingerprint,
-          "verdicts" => CodeMySpec.Requirements.CopyOverlay.verdicts(entries, served)
+          "files" => CopyOverlay.files_digest(entries),
+          "verdicts" => CopyOverlay.verdicts(entries, served)
         },
         socket
       )
