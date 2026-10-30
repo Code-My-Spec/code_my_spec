@@ -16,6 +16,7 @@ defmodule CodeMySpec.Requirements.BddCoverageReadsNoDatabaseTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Requirements.{Registry, RequirementCalculator}
   alias CodeMySpec.Stories.AcceptanceCriteria
+  alias CodeMySpecTest.WithoutDatabase
 
   test "coverage from the criteria handed in, with no database, is coverage from the database" do
     scope = full_scope_fixture()
@@ -49,27 +50,8 @@ defmodule CodeMySpec.Requirements.BddCoverageReadsNoDatabaseTest do
       }
     }
 
-    assert without_database(fn ->
+    assert WithoutDatabase.run(fn ->
              RequirementCalculator.compute_one(scope, story, definition, files, handed)
            end) == {:ok, from_database}
-  end
-
-  # In a process the sandbox has not allowed, any query raises.
-  defp without_database(fun) do
-    parent = self()
-
-    spawn(fn ->
-      result =
-        try do
-          {:ok, fun.()}
-        rescue
-          error -> {:raised, error}
-        end
-
-      send(parent, {:without_database, result})
-    end)
-
-    assert_receive {:without_database, result}, 5_000
-    result
   end
 end

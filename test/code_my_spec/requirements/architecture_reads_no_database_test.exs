@@ -16,6 +16,7 @@ defmodule CodeMySpec.Requirements.ArchitectureReadsNoDatabaseTest do
   alias CodeMySpec.{Components, Paths, Repo, Stories}
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Requirements.ArchitectureChecker
+  alias CodeMySpecTest.WithoutDatabase
 
   test "the verdict from the facts handed in, with no database, is the verdict from the database" do
     scope = full_scope_fixture()
@@ -50,26 +51,7 @@ defmodule CodeMySpec.Requirements.ArchitectureReadsNoDatabaseTest do
       context_names: scope |> Components.list_contexts() |> Enum.map(& &1.module_name)
     }
 
-    assert without_database(fn -> ArchitectureChecker.complete?(scope, nil, handed) end) ==
+    assert WithoutDatabase.run(fn -> ArchitectureChecker.complete?(scope, nil, handed) end) ==
              {:ok, from_database}
-  end
-
-  # In a process the sandbox has not allowed, any query raises.
-  defp without_database(fun) do
-    parent = self()
-
-    spawn(fn ->
-      result =
-        try do
-          {:ok, fun.()}
-        rescue
-          error -> {:raised, error}
-        end
-
-      send(parent, {:without_database, result})
-    end)
-
-    assert_receive {:without_database, result}, 5_000
-    result
   end
 end

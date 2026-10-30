@@ -14,6 +14,7 @@ defmodule CodeMySpec.Requirements.SpexBoundaryReadsNoDatabaseTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.SpexBoundaryChecker
+  alias CodeMySpecTest.WithoutDatabase
 
   test "the verdict from the checkout's files, with no database, is the verdict from the database" do
     scope = full_scope_fixture()
@@ -40,27 +41,8 @@ defmodule CodeMySpec.Requirements.SpexBoundaryReadsNoDatabaseTest do
     files =
       Repo.all(from(f in FileRecord, where: f.working_copy_id == ^scope.active_working_copy_id))
 
-    assert without_database(fn ->
+    assert WithoutDatabase.run(fn ->
              SpexBoundaryChecker.complete?(scope, nil, %{files_by_project: files})
            end) == {:ok, from_database}
-  end
-
-  # In a process the sandbox has not allowed, any query raises.
-  defp without_database(fun) do
-    parent = self()
-
-    spawn(fn ->
-      result =
-        try do
-          {:ok, fun.()}
-        rescue
-          error -> {:raised, error}
-        end
-
-      send(parent, {:without_database, result})
-    end)
-
-    assert_receive {:without_database, result}, 5_000
-    result
   end
 end
