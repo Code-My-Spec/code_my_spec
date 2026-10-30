@@ -114,7 +114,53 @@ defmodule CodeMySpec.Requirements.ACopyGraphReadsFromItsOverlayTest do
              node(CopyGraph.load(scope, Preloader.read_context(scope)), "technical_strategy")
   end
 
-  test "nil with no default copy reads file verdicts as no checkout reporting", %{scope: scope} do
+  test "nil reads the project's default copy, whatever else it has", %{scope: scope} do
+    {:ok, _other} =
+      WorkingCopies.issue(scope, nil, label: "Other", device: device_fixture(scope))
+
+    {:ok, _} =
+      CodeMySpec.Projects.update_project(scope, scope.active_project, %{
+        default_working_copy_id: scope.active_working_copy_id
+      })
+
+    unscoped = %{scope | active_working_copy_id: nil}
+
+    assert %{satisfied: true} =
+             node(
+               CopyGraph.load(unscoped, Preloader.read_context(unscoped)),
+               "technical_strategy"
+             )
+  end
+
+  test "nil with no default copy reads the main copy's file verdicts", %{scope: scope} do
+    {:ok, _other} =
+      WorkingCopies.issue(scope, nil, label: "Other", device: device_fixture(scope))
+
+    {:ok, _} = WorkingCopies.designate_main(scope, scope.active_working_copy_id)
+    unscoped = %{scope | active_working_copy_id: nil}
+
+    assert %{satisfied: true} =
+             node(
+               CopyGraph.load(unscoped, Preloader.read_context(unscoped)),
+               "technical_strategy"
+             )
+  end
+
+  test "nil reads a project's only checkout when none is designated", %{scope: scope} do
+    unscoped = %{scope | active_working_copy_id: nil}
+
+    assert %{satisfied: true} =
+             node(
+               CopyGraph.load(unscoped, Preloader.read_context(unscoped)),
+               "technical_strategy"
+             )
+  end
+
+  test "nil with several checkouts and none designated reads no checkout reporting",
+       %{scope: scope} do
+    {:ok, _other} =
+      WorkingCopies.issue(scope, nil, label: "Other", device: device_fixture(scope))
+
     {:ok, _} = CopyOverlay.report(scope, report(scope))
     unscoped = %{scope | active_working_copy_id: nil}
 

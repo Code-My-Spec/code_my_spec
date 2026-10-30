@@ -26,6 +26,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   alias CodeMySpec.Requirements.Handlers
   alias CodeMySpec.Requirements.Profiles
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.WorkingCopies
 
   @doc """
   The records the file verdicts read beyond the scan, in wire form: live
@@ -207,7 +208,7 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
 
   @doc """
   The file verdicts a reader at the scope's vantage sees: its copy's, or for
-  `nil` the project's default copy's.
+  `nil` the copy the project reads from (`WorkingCopies.reading_copy_id/1`).
 
   The harness's report when it answers the records as they are now (its
   `read_model` fingerprint is current). Otherwise computed here, by the same
@@ -215,17 +216,12 @@ defmodule CodeMySpec.Requirements.CopyOverlay do
   restarted, or none at all still reads a complete graph from its last
   manifest; a copy with no File rows reads as an empty checkout, as its rows
   did. Computed verdicts are kept per copy until the records or the copy's
-  files move. `:no_checkout` for `nil` with no default copy.
+  files move. `:no_checkout` for `nil` when no copy speaks for the project.
   """
   @spec verdicts_at(Scope.t()) ::
           {:reported | :computed, [map()], NaiveDateTime.t() | nil} | :no_checkout
-  def verdicts_at(%Scope{active_working_copy_id: nil, active_project_id: project_id} = scope) do
-    case Repo.one(
-           from(p in CodeMySpec.Projects.Project,
-             where: p.id == ^project_id,
-             select: p.default_working_copy_id
-           )
-         ) do
+  def verdicts_at(%Scope{active_working_copy_id: nil} = scope) do
+    case WorkingCopies.reading_copy_id(scope) do
       nil -> :no_checkout
       copy -> verdicts_at(%{scope | active_working_copy_id: copy})
     end

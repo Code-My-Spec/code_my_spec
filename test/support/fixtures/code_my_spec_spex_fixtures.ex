@@ -1594,6 +1594,21 @@ defmodule CodeMySpecSpex.Fixtures do
         socket
       )
 
+    # And the overlay from the same scan, as a harness sends after each
+    # manifest: a live harness that never saw these files must not answer for
+    # them.
+    {served, _payload} = CodeMySpec.Requirements.CopyOverlay.served_read_model(scope)
+
+    {:reply, _overlay_reply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "overlay",
+        %{
+          "read_model" => served.fingerprint,
+          "verdicts" => CodeMySpec.Requirements.CopyOverlay.verdicts(entries, served)
+        },
+        socket
+      )
+
     reply
   end
 
@@ -2744,8 +2759,14 @@ defmodule CodeMySpecSpex.Fixtures do
       NaiveDateTime.utc_now()
       |> NaiveDateTime.add(-3600, :second)
 
-    # Per checkout and once per project, wherever the rows live.
-    for table <- ["requirements", "project_requirements"] do
+    # A copy's file verdicts carry their files' sync time; record verdicts are
+    # stored once per project.
+    CodeMySpec.Repo.update_all(
+      from(f in "files", where: f.project_id == type(^project_id, :binary_id)),
+      set: [updated_at: past]
+    )
+
+    for table <- ["project_requirements"] do
       CodeMySpec.Repo.update_all(
         from(n in table,
           where:
