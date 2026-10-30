@@ -635,10 +635,10 @@ defmodule CodeMySpec.Requirements.Handlers do
         DispatchChecker.verdict(dispatch_state(profiles))
 
       {SpexBoundaryChecker, :complete?} ->
-        # `verdict_from_paths/2` is the same function `complete?/2` calls once it
-        # has queried. The profile already holds every file this checkout has, so
-        # the query was the only part worth skipping.
-        SpexBoundaryChecker.verdict_from_paths(scope, boundary_paths(profiles.files))
+        # The profile already holds every file this checkout has.
+        SpexBoundaryChecker.complete?(scope, scope.active_project, %{
+          files_by_project: profiles.files.all
+        })
 
       {StoriesChecker, :exist?} ->
         StoriesChecker.verdict(profiles.stories.stories != [])
@@ -667,18 +667,6 @@ defmodule CodeMySpec.Requirements.Handlers do
           &(not is_nil(&1.story_id) and Issue.fix_offered?(&1, issues.threshold))
         )
       )
-
-  # The four locations `SpexBoundaryChecker` asks about, out of the files the
-  # profile already read. Over-matching is harmless — every gap re-tests with
-  # `starts_with?` or `MapSet.member?`.
-  defp boundary_paths(files) do
-    prefixes = SpexBoundaryChecker.search_prefixes()
-
-    for file <- files.all,
-        Enum.any?(prefixes, &String.starts_with?(file.path, &1)),
-        into: MapSet.new(),
-        do: file.path
-  end
 
   # The unsealed stories, each with its gap. Worded by
   # `BddRulesChecker.unsealed_reason/3` from the profile's context, not the four
