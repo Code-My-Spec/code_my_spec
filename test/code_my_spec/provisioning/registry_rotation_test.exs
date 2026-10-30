@@ -61,11 +61,7 @@ defmodule CodeMySpec.Provisioning.RegistryRotationTest do
     normal = runner(scope, old.password)
 
     leaking_runner = fn [command] = args ->
-      if String.contains?(command, "htpasswd.tmp") do
-        {old.password, 1}
-      else
-        normal.(args)
-      end
+      leaking_command(String.contains?(command, "htpasswd.tmp"), args, old.password, normal)
     end
 
     result = Registry.rotate_credential(scope, run: leaking_runner)
@@ -76,48 +72,61 @@ defmodule CodeMySpec.Provisioning.RegistryRotationTest do
   end
 
   defp runner(scope, old_password, opts \\ []) do
-    owner = self()
-
-    fn [command] ->
-      cond do
-        String.starts_with?(command, "docker ps -q") ->
-          {"c0ffeec0ffee", 0}
-
-        String.starts_with?(command, "docker port") ->
-          {"10.1.0.2:5000\n", 0}
-
-        String.contains?(command, "htpasswd.tmp") ->
-          [_, hash] = Regex.run(~r/cms_[^:]+:(\$2b\$[^']+)/, command)
-          send(owner, {:installed_hash, hash})
-          {"", 0}
-
-        String.starts_with?(command, "curl") ->
-          {:ok, current} = ProjectSecrets.fetch_value(scope, "registry_password")
-
-          cond do
-            String.contains?(command, old_password) ->
-              send(owner, :old_rejected)
-              if Keyword.get(opts, :old_accepted, false), do: {"", 0}, else: {"", 22}
-
-            String.contains?(command, current) ->
-              send(owner, :new_accepted)
-              {"", 0}
-
-            true ->
-              {"", 22}
-          end
-
-        String.starts_with?(command, "docker image ls") ->
-          {:ok, image} = Registry.image(scope, registry_host: "10.1.0.2:5000")
-          {image <> ":test-tag\n", 0}
-
-        String.contains?(command, "--password-stdin") ->
-          send(owner, :docker_login_and_pull_verified)
-          {"", 0}
-
-        true ->
-          {"", 0}
-      end
-    end
+    context = %{scope: scope, old_password: old_password, opts: opts, owner: self()}
+    fn [command] -> dispatch_command(command, context, command_flags(command)) end
   end
+
+  defp leaking_command(true, _args, password, _normal), do: {password, 1}
+  defp leaking_command(false, args, _password, normal), do: normal.(args)
+
+  defp command_flags(command) do
+    {String.starts_with?(command, "docker ps -q"), String.starts_with?(command, "docker port"),
+     String.contains?(command, "htpasswd.tmp"), String.starts_with?(command, "curl"),
+     String.starts_with?(command, "docker image ls"),
+     String.contains?(command, "--password-stdin")}
+  end
+
+  defp dispatch_command(_command, _context, {true, _, _, _, _, _}),
+    do: {"c0ffeec0ffee", 0}
+
+  defp dispatch_command(_command, _context, {_, true, _, _, _, _}),
+    do: {"10.1.0.2:5000\n", 0}
+
+  defp dispatch_command(command, %{owner: owner}, {_, _, true, _, _, _}) do
+    [_, hash] = Regex.run(~r/cms_[^:]+:(\$2b\$[^']+)/, command)
+    send(owner, {:installed_hash, hash})
+    {"", 0}
+  end
+
+  defp dispatch_command(command, context, {_, _, _, true, _, _}) do
+    {:ok, current} = ProjectSecrets.fetch_value(context.scope, "registry_password")
+    flags = {String.contains?(command, context.old_password), String.contains?(command, current)}
+    auth_response(flags, context)
+  end
+
+  defp dispatch_command(_command, %{scope: scope}, {_, _, _, _, true, _}) do
+    {:ok, image} = Registry.image(scope, registry_host: "10.1.0.2:5000")
+    {image <> ":test-tag\n", 0}
+  end
+
+  defp dispatch_command(_command, %{owner: owner}, {_, _, _, _, _, true}) do
+    send(owner, :docker_login_and_pull_verified)
+    {"", 0}
+  end
+
+  defp dispatch_command(_command, _context, _flags), do: {"", 0}
+
+  defp auth_response({true, _}, %{owner: owner, opts: opts}) do
+    send(owner, :old_rejected)
+    old_auth_status(Keyword.get(opts, :old_accepted, false))
+  end
+
+  defp auth_response({_, true}, %{owner: owner}) do
+    send(owner, :new_accepted)
+    {"", 0}
+  end
+
+  defp auth_response(_flags, _context), do: {"", 22}
+  defp old_auth_status(true), do: {"", 0}
+  defp old_auth_status(false), do: {"", 22}
 end
