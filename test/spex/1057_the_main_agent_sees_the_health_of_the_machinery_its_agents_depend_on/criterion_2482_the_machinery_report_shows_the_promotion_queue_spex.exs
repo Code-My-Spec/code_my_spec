@@ -33,7 +33,9 @@ defmodule CodeMySpecSpex.Story1057.Criterion2482Spex do
     scenario "nothing is waiting to land" do
       given_ "a project with a checkout and an empty queue", context do
         reply = join_working_copy(context, "/tmp/spex-2482", "the checkout")
-        {:ok, Map.put(context, :scope, %{context.scope | active_working_copy_id: reply.working_copy_id})}
+
+        {:ok,
+         Map.put(context, :scope, %{context.scope | active_working_copy_id: reply.working_copy_id})}
       end
 
       when_ "the main agent looks at the machinery", context do

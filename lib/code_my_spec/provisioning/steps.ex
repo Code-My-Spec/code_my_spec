@@ -4264,8 +4264,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, "could not reach #{environment}'s server to import onto: #{format(reason)}"}
 
       _ ->
-        {:error,
-         "no address is recorded for #{environment}, so there is no box to import onto"}
+        {:error, "no address is recorded for #{environment}, so there is no box to import onto"}
     end
   end
 

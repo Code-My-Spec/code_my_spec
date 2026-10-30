@@ -281,7 +281,12 @@ defmodule CodeMySpec.Provisioning.Database do
   silently accepted; teardown has nothing to do with an import, so nothing
   here is undone on failure.
   """
-  @spec import_from(Scope.t(), String.t(), %{container: String.t(), database: String.t()}, keyword()) ::
+  @spec import_from(
+          Scope.t(),
+          String.t(),
+          %{container: String.t(), database: String.t()},
+          keyword()
+        ) ::
           {:ok, %{source: map(), target: map()}} | {:error, term()}
   def import_from(%Scope{} = scope, environment, source, opts) do
     run = Keyword.fetch!(opts, :run)
@@ -389,8 +394,11 @@ defmodule CodeMySpec.Provisioning.Database do
         shell_escape(path)
 
     case run.([command]) do
-      {_output, 0} -> {:ok, path}
-      {output, status} -> {:error, {:database_pre_restore_dump_failed, status, String.trim(output)}}
+      {_output, 0} ->
+        {:ok, path}
+
+      {output, status} ->
+        {:error, {:database_pre_restore_dump_failed, status, String.trim(output)}}
     end
   end
 
@@ -688,8 +696,11 @@ defmodule CodeMySpec.Provisioning.Database do
         "-d #{shell_escape(target.database)} -c #{shell_escape(sql)} > /dev/null"
 
     case run.([command]) do
-      {_output, 0} -> :ok
-      {output, status} -> {:error, {:database_import_ownership_failed, status, String.trim(output)}}
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:database_import_ownership_failed, status, String.trim(output)}}
     end
   end
 

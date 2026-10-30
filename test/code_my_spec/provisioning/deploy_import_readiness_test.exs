@@ -34,9 +34,14 @@ defmodule CodeMySpec.Provisioning.DeployImportReadinessTest do
     tmp = CodeMySpec.TempFile.owned_dir("deploy_import_readiness")
 
     scope =
-      put_fixture_execution_context(provisioning_scope_fixture(), ExecutionContext.new(:local, tmp))
+      put_fixture_execution_context(
+        provisioning_scope_fixture(),
+        ExecutionContext.new(:local, tmp)
+      )
 
-    {:ok, project} = CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
+    {:ok, project} =
+      CodeMySpec.Projects.update_project(scope, scope.active_project, %{domain: @domain})
+
     scope = %{scope | active_project: project}
 
     {:ok, {public, private}} = Sops.generate_key()

@@ -93,7 +93,12 @@ defmodule CodeMySpec.Agents.Main.Digest do
   a team's work in progress — counted, not raised.
   """
   @spec copy_problems(t()) :: [
-          %{working_copy_id: Ecto.UUID.t(), root: String.t() | nil, problems: [map()], raised?: boolean()}
+          %{
+            working_copy_id: Ecto.UUID.t(),
+            root: String.t() | nil,
+            problems: [map()],
+            raised?: boolean()
+          }
         ]
   def copy_problems(%Digest{failed: reason}) when is_binary(reason), do: []
 

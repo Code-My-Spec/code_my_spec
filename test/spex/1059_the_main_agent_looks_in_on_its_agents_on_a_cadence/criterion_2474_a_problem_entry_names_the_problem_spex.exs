@@ -32,7 +32,9 @@ defmodule CodeMySpecSpex.Story1059.Criterion2474Spex do
         reply = join_working_copy(context, "/tmp/spex-2474-main", "main")
         :ok = Fixtures.designate_main(context.scope, reply.working_copy_id)
         scope = %{context.scope | active_working_copy_id: reply.working_copy_id}
-        _coder = Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2474-main")
+
+        _coder =
+          Fixtures.running_agent(scope, role: "coding", working_copy: "/tmp/spex-2474-main")
 
         {:ok, _} =
           Fixtures.record_problem(scope, "exunit", %{
@@ -50,7 +52,8 @@ defmodule CodeMySpecSpex.Story1059.Criterion2474Spex do
       then_ "the entry names its source, file and message", context do
         needs = Compact.needs_you(context.report)
 
-        assert needs =~ ~r/exunit[^\n]*test\/my_app\/accounts_test\.exs[^\n]*Assertion with == failed/,
+        assert needs =~
+                 ~r/exunit[^\n]*test\/my_app\/accounts_test\.exs[^\n]*Assertion with == failed/,
                """
                The entry has to say what the problem is, so main can tell whose
                it is without opening the copy.

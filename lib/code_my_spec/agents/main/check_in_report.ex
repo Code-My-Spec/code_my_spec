@@ -205,9 +205,14 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
     {free, busy} = Enum.split_with(teams, &free?/1)
 
     case {free, busy} do
-      {[], []} -> nil
-      {[], busy} -> "teams: #{length(busy)} busy."
-      {free, busy} -> "teams: #{length(busy)} busy; free: #{labels(free)} — run_script: list_agent_work({})."
+      {[], []} ->
+        nil
+
+      {[], busy} ->
+        "teams: #{length(busy)} busy."
+
+      {free, busy} ->
+        "teams: #{length(busy)} busy; free: #{labels(free)} — run_script: list_agent_work({})."
     end
   end
 
@@ -221,7 +226,9 @@ defmodule CodeMySpec.Agents.Main.CheckInReport do
   defp labels(teams) do
     teams
     |> Enum.map(fn [entry | _] ->
-      if entry.working_copy_root, do: Path.basename(entry.working_copy_root), else: short(entry.working_copy_id)
+      if entry.working_copy_root,
+        do: Path.basename(entry.working_copy_root),
+        else: short(entry.working_copy_id)
     end)
     |> Enum.sort()
     |> Enum.join(", ")

@@ -442,7 +442,10 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
         scope(),
         "uat",
         source,
-        Keyword.merge([run: matched_count_recorder(self(), 3, 3), database_credential: credential()], opts)
+        Keyword.merge(
+          [run: matched_count_recorder(self(), 3, 3), database_credential: credential()],
+          opts
+        )
       )
     end
 
@@ -482,8 +485,9 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
                &(&1 =~
                    "docker exec 'legacy-pg' pg_dump -Fc --no-owner --no-acl --no-comments " <>
                      "-U 'postgres' -d 'legacy_db'" and
-                   &1 =~ " | docker exec -i cms-postgres pg_restore --no-owner --no-acl " <>
-                     "-U 'postgres' -d 'app_sam_s_app_uat'")
+                   &1 =~
+                     " | docker exec -i cms-postgres pg_restore --no-owner --no-acl " <>
+                       "-U 'postgres' -d 'app_sam_s_app_uat'")
              )
     end
 
@@ -660,6 +664,7 @@ defmodule CodeMySpec.Provisioning.DatabaseTest do
 
       assert pre_restore_index, "no pre-restore dump of the target was taken at all"
       assert real_restore_index, "no real restore into the target ran"
+
       assert pre_restore_index < real_restore_index,
              "the pre-restore dump must happen before anything overwrites the target"
     end
