@@ -30,6 +30,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
+  setup :fake_providers
+  setup :repo_secret_setup
 
   spex "An agent working in the repo sees only ciphertext", criterion: 609 do
     scenario "neither the tree nor the process environment yields a secret value" do
@@ -66,7 +68,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
         # Anchor: the encrypted file exists and names the key, so this is a
         # real absence of plaintext rather than an absence of the secret.
         {:ok, contents} =
-          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
+          repo_secret_file(context, "envs/prod.enc.env")
 
         assert contents =~ "CLOUDFLARE_TOKEN",
                "expected the key to be present in the encrypted file"

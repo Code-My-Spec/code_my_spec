@@ -37,6 +37,7 @@ defmodule CodeMySpec.Provisioning.Tools do
       CodeMySpec.Provisioning.Tools.LinkServer,
       CodeMySpec.Provisioning.Tools.ProviderRequest,
       CodeMySpec.Provisioning.Tools.ProvisionAccountServer,
+      CodeMySpec.Provisioning.Tools.PutSecret,
       CodeMySpec.Provisioning.Tools.QueryTelemetry,
       CodeMySpec.Provisioning.Tools.ReadDatabaseUrl,
       CodeMySpec.Provisioning.Tools.ReadProjectFile,

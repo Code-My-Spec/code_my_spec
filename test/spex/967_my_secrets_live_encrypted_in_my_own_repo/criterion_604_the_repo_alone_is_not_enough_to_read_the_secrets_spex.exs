@@ -29,6 +29,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
+  setup :fake_providers
+  setup :repo_secret_setup
 
   spex "The repo alone is not enough to read the secrets", criterion: 604 do
     scenario "the encrypted file yields nothing but ciphertext without the key" do
@@ -49,7 +51,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
 
       when_ "someone with the repo but not the key opens the environment file", context do
         {:ok, contents} =
-          ExecutionContexts.read_file(context.execution_context, "envs/prod.enc.env")
+          repo_secret_file(context, "envs/prod.enc.env")
 
         {:ok, Map.put(context, :contents, contents)}
       end
@@ -60,6 +62,9 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
 
         refute context.contents =~ @plaintext,
                "expected the secret value to be unreadable from the repo alone"
+
+        assert {:error, _} =
+                 repo_secret_decrypt(context, "prod", context.repo_secrets.private_keys["uat"])
 
         {:ok, context}
       end

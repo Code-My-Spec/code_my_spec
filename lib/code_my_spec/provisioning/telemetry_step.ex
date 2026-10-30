@@ -27,8 +27,12 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
       probe_opts = opts |> Keyword.put(:scope, scope) |> Keyword.put(:environment, environment)
 
       case probe.(probe_opts) do
-        {:ok, _proof} -> {:ok, resources(environment)}
-        {:error, reason} -> {:error, reason}
+        {:ok, proof} ->
+          mode = if is_map(proof), do: Map.get(proof, :mode, :full), else: :full
+          {:ok, resources(environment, mode)}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
   end
@@ -45,8 +49,24 @@ defmodule CodeMySpec.Provisioning.TelemetryStep do
     end
   end
 
-  defp resources(environment) do
+  defp resources(environment, :collector_only) do
     [
+      %{kind: "telemetry_collector", location: "collector/#{environment}", identifier: nil},
+      %{
+        kind: "telemetry_mode",
+        location: "collector/#{environment}",
+        identifier: "collector_only"
+      }
+    ]
+  end
+
+  defp resources(environment, mode) do
+    [
+      %{
+        kind: "telemetry_mode",
+        location: "clickhouse/#{environment}",
+        identifier: to_string(mode)
+      },
       %{kind: "telemetry_collector", location: "clickhouse/#{environment}", identifier: nil},
       %{kind: "telemetry_dns", location: "telemetry.#{environment}", identifier: nil},
       %{

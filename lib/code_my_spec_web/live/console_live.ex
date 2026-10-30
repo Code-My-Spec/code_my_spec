@@ -1358,12 +1358,25 @@ defmodule CodeMySpecWeb.ConsoleLive do
   def handle_event("put_secret", %{"secret" => params}, socket) do
     scope = socket.assigns.current_scope
 
-    case Steps.put_secret(
-           scope,
-           params["environment"] || hd(socket.assigns.environments),
-           String.trim(params["key"] || ""),
-           params["value"] || ""
-         ) do
+    environment = params["environment"] || hd(socket.assigns.environments)
+    key = String.trim(params["key"] || "")
+    value = params["value"] || ""
+
+    result =
+      case operation_environment(scope) do
+        %{type: type} = execution_context when type != :harness ->
+          if CodeMySpec.ExecutionContexts.file_exists?(execution_context, ".sops.yaml") or
+               is_nil(scope.active_project.code_repo) do
+            Steps.put_secret(scope, environment, key, value)
+          else
+            Steps.put_secret_in_repository(scope, environment, key, value)
+          end
+
+        _ ->
+          Steps.put_secret_in_repository(scope, environment, key, value)
+      end
+
+    case result do
       {:ok, %{key: key, environment: environment}} ->
         # The name, never the value.
         Activity.record(scope, "secret_write", "secrets", "wrote secret #{key}",

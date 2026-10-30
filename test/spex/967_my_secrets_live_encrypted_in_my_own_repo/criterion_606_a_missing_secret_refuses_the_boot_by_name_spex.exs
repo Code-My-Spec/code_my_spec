@@ -39,6 +39,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
   setup :devops_on
   setup :fake_working_directory
   setup :fake_providers
+  setup :repo_secret_setup
 
   spex "A missing secret refuses the boot by name", criterion: 606 do
     scenario "the boot fails naming the absent key rather than starting anyway" do

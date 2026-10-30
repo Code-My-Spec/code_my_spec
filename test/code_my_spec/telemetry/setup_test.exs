@@ -3,8 +3,8 @@ defmodule CodeMySpec.Telemetry.SetupTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Environments
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Provisioning.TelemetryStep
 
@@ -27,7 +27,7 @@ defmodule CodeMySpec.Telemetry.SetupTest do
     Application.put_env(:code_my_spec, Cloudflare, api_token: "test-token", plug: plug)
 
     run = fn [command] ->
-      installation_response(String.contains?(command, "docker network inspect db_net"), command)
+      setup_response(String.contains?(command, "MemAvailable:"), command)
     end
 
     assert {:error, "telemetry private network setup failed (exit 42)"} =
@@ -36,6 +36,27 @@ defmodule CodeMySpec.Telemetry.SetupTest do
     assert_received {:installation_command, command}
     assert command =~ "docker network inspect db_net"
     refute_received {:installation_command, _}
+
+    assert {:error, :not_found} =
+             ProjectSecrets.fetch_value(scope, "CLICKHOUSE_URL", environment: "uat")
+  end
+
+  test "insufficient memory refuses before starting containers or changing DNS" do
+    scope = full_scope_fixture()
+    Environments.put(scope, "uat", %{ip: "203.0.113.10", host: "app.example.com"})
+
+    run = fn [command] ->
+      send(self(), {:remote_command, command})
+      {"FREE_KIB=1048576\nbroken-oaths-web\nmetric-flow-web", 0}
+    end
+
+    assert {:error, reason} = TelemetryStep.run(scope, "uat", run: run)
+    assert reason =~ "2176 MiB"
+    assert reason =~ "1024 MiB"
+    assert reason =~ "broken-oaths-web"
+    assert_received {:remote_command, command}
+    assert command =~ "MemAvailable:"
+    refute_received {:remote_command, _}
 
     assert {:error, :not_found} =
              ProjectSecrets.fetch_value(scope, "CLICKHOUSE_URL", environment: "uat")
@@ -65,6 +86,11 @@ defmodule CodeMySpec.Telemetry.SetupTest do
   defp cloudflare_zone_result(conn) do
     flunk("unexpected DNS request: #{conn.method} #{conn.request_path}")
   end
+
+  defp setup_response(true, _command), do: {"FREE_KIB=4194304\nother-project-web", 0}
+
+  defp setup_response(false, command),
+    do: installation_response(String.contains?(command, "docker network inspect db_net"), command)
 
   defp installation_response(true, command) do
     send(self(), {:installation_command, command})

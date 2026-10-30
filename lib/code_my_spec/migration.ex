@@ -334,6 +334,36 @@ defmodule CodeMySpec.Migration do
     end
   end
 
+  @doc "Import a JSON file within a transaction that always rolls back."
+  def dry_run_file(%Scope{} = scope, path) when is_binary(path) do
+    with {:ok, json} <- File.read(path),
+         {:ok, payload} when is_map(payload) <- Jason.decode(json) do
+      dry_run_project(scope, payload)
+    else
+      {:ok, _} -> {:error, :invalid_export}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def dry_run_project(%Scope{} = scope, payload) when is_map(payload) do
+    {:error, {:dry_run, result}} =
+      Repo.transaction(fn ->
+        result = import_project(scope, payload)
+        Repo.rollback({:dry_run, result})
+      end)
+
+    report =
+      case result do
+        {:ok, summary} ->
+          %{status: :imported, counts: Map.delete(summary, :skipped), refused: nil}
+
+        {:error, reason} ->
+          %{status: :refused, counts: nil, refused: inspect(reason)}
+      end
+
+    {:ok, Map.put(report, :rolled_back, true)}
+  end
+
   # Checked before the transaction opens, so a refused migration writes
   # nothing, and refused as `:plan_required` rather than a validation error
   # that would read as malformed data. Billing is not part of this path.
