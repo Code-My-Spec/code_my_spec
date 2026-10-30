@@ -346,6 +346,15 @@ defmodule CodeMySpec.Provisioning.Tools.RunProvisioningStep do
       "Your #{label} step for #{name} paused: #{Truncate.head_and_tail(reason)}\n\n" <>
         "It will not continue on its own. #{answer()}"
 
+  def outcome_message(
+        {:halt, %{state: :errored}, "Deploy refused at " <> _ = reason},
+        "deploy (" <> _ = label,
+        name
+      ),
+      do:
+        "Your #{label} step for #{name} errored: #{reason}\n\n" <>
+          "It is no longer running. #{answer()}"
+
   def outcome_message({:halt, %{state: :errored}, reason}, label, name),
     do:
       "Your #{label} step for #{name} errored: #{Truncate.head_and_tail(reason)}\n\n" <>

@@ -43,7 +43,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
             live_version: :previous | :new,
             failed_phase: CodeMySpec.Provisioning.Deploy.phase() | nil,
             reason: String.t() | nil,
-            output: String.t() | nil
+            output: String.t() | nil,
+            error_excerpt: String.t() | nil
           }
 
     defstruct bootstrapped_at: nil,
@@ -53,7 +54,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
               live_version: :previous,
               failed_phase: nil,
               reason: nil,
-              output: nil
+              output: nil,
+              error_excerpt: nil
 
     @doc "Whether traffic actually moved to the new version."
     @spec swapped?(t()) :: boolean()
@@ -107,13 +109,17 @@ defmodule CodeMySpec.Provisioning.Deploy do
       %{result | output: migrate_out, live_version: :new}
     else
       {:error, %Result{} = refused} ->
-        # Log an excerpt anchored on the last error marker: `bin/deploy`'s ssh
-        # trace keeps logging keepalives after the real error, so a blind tail
-        # is noise.
+        # Keep the same bounded diagnostic for the log and the step result.
+        # Redact the credentials supplied to the deploy script before either
+        # copy can reach logs, the status row, or an agent message.
+        secrets = Enum.map([:age_key, :registry_password], &Keyword.get(opts, &1))
+        excerpt = error_excerpt(refused.output, secrets)
+        refused = %{refused | reason: redact(refused.reason, secrets), error_excerpt: excerpt}
+
         Logger.warning(
           "[Deploy] #{environment} refused at #{refused.failed_phase} after " <>
             "#{took(started, System.monotonic_time(:millisecond))}: #{refused.reason} " <>
-            "output=#{inspect(error_excerpt(refused.output))}"
+            "output=#{inspect(excerpt)}"
         )
 
         refused
@@ -128,14 +134,38 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
   # Anchors on the last known marker (earlier attempts' markers are not the
   # one that mattered) and reads forward from it.
-  defp error_excerpt(output) when is_binary(output) do
-    case last_marker_index(output) do
-      nil -> String.slice(output, -1000, 1000)
-      index -> String.slice(output, index, 2000)
-    end
+  @doc false
+  def error_excerpt(output), do: error_excerpt(output, [])
+
+  def error_excerpt(output, secrets) when is_binary(output) do
+    excerpt =
+      case last_marker_index(output) do
+        nil -> String.slice(output, -1000, 1000)
+        index -> String.slice(output, index, 2000)
+      end
+
+    redact(excerpt, secrets)
   end
 
-  defp error_excerpt(_output), do: ""
+  def error_excerpt(_output, _secrets), do: ""
+
+  defp redact(text, secrets) when is_binary(text) do
+    Enum.reduce(secrets, text, fn
+      secret, acc when is_binary(secret) and secret != "" ->
+        String.replace(acc, secret, "[REDACTED]")
+
+      _, acc ->
+        acc
+    end)
+  end
+
+  @doc "The diagnostic persisted for a refused deploy and sent to its starter."
+  def failure_detail(%Result{failed_phase: phase, reason: reason} = result) do
+    excerpt = result.error_excerpt || ""
+    heading = "Deploy refused at #{phase}: #{reason}"
+
+    if excerpt == "", do: heading, else: heading <> "\n\n" <> excerpt
+  end
 
   defp last_marker_index(output) do
     @error_markers

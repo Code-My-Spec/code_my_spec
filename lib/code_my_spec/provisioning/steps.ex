@@ -2822,8 +2822,9 @@ defmodule CodeMySpec.Provisioning.Steps do
           identifier: to_string(result.failed_phase)
         }
 
-        # With what the script said, not just that it failed.
-        {:error, with_output(reason, result.output), [failure | phases]}
+        # The phase and the same bounded error excerpt logged by Deploy.run
+        # survive in both the persisted status row and the starter's message.
+        {:error, Deploy.failure_detail(result), [failure | phases]}
 
       %{swapped_at: _} ->
         {:ok, [%{kind: "deployment", location: "#{environment}/#{host}"} | phases]}

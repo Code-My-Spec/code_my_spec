@@ -83,6 +83,56 @@ defmodule CodeMySpec.Provisioning.DeployTest do
   end
 
   describe "a failed migration" do
+    test "the starter message and status row retain phase, reason, and redacted excerpt", %{
+      env: env
+    } do
+      secret = "private-registry-password"
+
+      output =
+        "ERROR (SSHKit::Command::Failed): docker login refused #{secret}\n" <>
+          String.duplicate("debug: sending keepalive\n", 150)
+
+      result =
+        Deploy.run(env, "uat",
+          run: fn _commands -> {output, 1} end,
+          registry_password: secret,
+          host: "uat.example.com"
+        )
+
+      detail = Deploy.failure_detail(result)
+      assert detail =~ "refused at migrate"
+      assert detail =~ "Migration failed (exit 1)"
+      assert detail =~ "ERROR (SSHKit::Command::Failed): docker login refused [REDACTED]"
+      refute detail =~ secret
+
+      message =
+        CodeMySpec.Provisioning.Tools.RunProvisioningStep.outcome_message(
+          {:halt, %{state: :errored}, detail},
+          "deploy (uat)",
+          "MF"
+        )
+
+      row =
+        CodeMySpec.Provisioning.Tools.DevopsStatus.step_line(
+          %{
+            project_name: "MF",
+            key: "deploy",
+            environment: "uat",
+            step_state: :errored,
+            recorded_at: ~U[2026-10-30 00:00:00Z],
+            detail: detail
+          },
+          %{now: ~U[2026-10-30 00:01:00Z], run?: false, holder: nil}
+        )
+
+      for rendered <- [message, row] do
+        assert rendered =~ "refused at migrate"
+        assert rendered =~ "Migration failed (exit 1)"
+        assert rendered =~ "docker login refused [REDACTED]"
+        refute rendered =~ secret
+      end
+    end
+
     # Criterion 8008: the previous version keeps serving, and nothing swaps.
     test "never swaps and leaves the previous version live", %{env: env} = ctx do
       script = deploy_script(ctx.env.cwd, migrate_exit: 1)
